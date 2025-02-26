@@ -1,0 +1,95 @@
+type Burn @entity {
+  id: ID!
+  block: Int!
+  address: String! @index
+  value: BigInt!
+  txHash: String!
+}
+
+type DelegateChanged @entity {
+  id: ID!
+  delegator: String! # address
+  fromDelegate: String! # address
+  toDelegate: String! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type DelegateVotesChanged @entity {
+  id: ID!
+  delegate: String! # address
+  previousVotes: BigInt! # uint256
+  newVotes: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+### ===
+
+type ProposalCanceled @entity {
+  id: ID!
+  proposalId: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type IGovernorProposalCreated @entity {
+  id: ID!
+  proposalId: BigInt! # uint256
+  proposer: String! # address
+  targets: [String!]! # address[]
+  values: [String!]! # uint256[] ## [BigInt!]!
+  signatures: [String!]! # string[]
+  calldatas: [String!]! # bytes[]
+  voteStart: BigInt! # uint256
+  voteEnd: BigInt! # uint256
+  description: String! # string
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type ProposalExecuted @entity {
+  id: ID!
+  proposalId: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type ProposalQueued @entity {
+  id: ID!
+  proposalId: BigInt! # uint256
+  etaSeconds: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type VoteCast @entity {
+  id: ID!
+  voter: String! # address
+  proposalId: BigInt! # uint256
+  support: Int! # uint8
+  weight: BigInt! # uint256
+  reason: String! # string
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type VoteCastWithParams @entity {
+  id: ID!
+  voter: String! # address
+  proposalId: BigInt! # uint256
+  support: Int! # uint8
+  weight: BigInt! # uint256
+  reason: String! # string
+  params: String! # bytes
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
