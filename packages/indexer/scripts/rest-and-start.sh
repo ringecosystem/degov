@@ -17,6 +17,6 @@ npx sqd codegen
 
 npx sqd migration:generate
 
-npx sqd migration:apply
+# npx sqd migration:apply
 
 ${BIN_PATH}/start.sh $@
