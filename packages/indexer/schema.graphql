@@ -6,8 +6,7 @@ type Burn @entity {
   txHash: String!
 }
 
-### ===
-
+### === ivotes
 
 type DelegateChanged @entity {
   id: ID!
@@ -29,7 +28,7 @@ type DelegateVotesChanged @entity {
   transactionHash: String!
 }
 
-### ===
+### === igovernor
 
 type ProposalCanceled @entity {
   id: ID!

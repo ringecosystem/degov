@@ -42,7 +42,7 @@ processor.run(new TypeormDatabase({ supportHotBlocks: true }), async (ctx) => {
         await new GovernorHandler(ctx).handle(event);
       }
       if (event.address === ITOKEN_CONTRACT_ADDRESS) {
-        // await new TokenHandler(ctx).handle(event);
+        await new TokenHandler(ctx).handle(event);
       }
     }
   }
