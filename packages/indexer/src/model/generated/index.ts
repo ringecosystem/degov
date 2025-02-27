@@ -1,4 +1,3 @@
-export * from "./burn.model"
 export * from "./delegateChanged.model"
 export * from "./delegateVotesChanged.model"
 export * from "./proposalCanceled.model"
