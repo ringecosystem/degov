@@ -6,6 +6,9 @@ type Burn @entity {
   txHash: String!
 }
 
+### ===
+
+
 type DelegateChanged @entity {
   id: ID!
   delegator: String! # address
@@ -36,7 +39,7 @@ type ProposalCanceled @entity {
   transactionHash: String!
 }
 
-type IGovernorProposalCreated @entity {
+type ProposalCreated @entity {
   id: ID!
   proposalId: BigInt! # uint256
   proposer: String! # address

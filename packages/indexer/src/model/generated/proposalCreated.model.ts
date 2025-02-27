@@ -1,8 +1,8 @@
 import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, StringColumn as StringColumn_} from "@subsquid/typeorm-store"
 
 @Entity_()
-export class IGovernorProposalCreated {
-    constructor(props?: Partial<IGovernorProposalCreated>) {
+export class ProposalCreated {
+    constructor(props?: Partial<ProposalCreated>) {
         Object.assign(this, props)
     }
 
