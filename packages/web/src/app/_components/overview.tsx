@@ -1,9 +1,35 @@
-import { formatNumberForDisplay } from "@/utils/number";
+"use client";
+import { useReadContract } from "wagmi";
+
+import { abi as tokenAbi } from "@/config/abi/token";
+import { useConfig } from "@/hooks/useConfig";
+import { useGovernanceToken } from "@/hooks/useGovernanceToken";
+import { formatBigIntForDisplay, formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
 import { ProposalsStatusDetail } from "./proposals-status-detail";
 
 export const Overview = () => {
+  const daoConfig = useConfig();
+  const {
+    data: totalSupply,
+    isLoading: isTotalSupplyLoading,
+    error,
+  } = useReadContract({
+    address: daoConfig?.contracts?.governorToken?.contract as `0x${string}`,
+    abi: tokenAbi,
+    functionName: "totalSupply",
+    query: {
+      enabled: !!daoConfig?.contracts?.governorToken?.contract,
+    },
+  });
+
+  const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
+    useGovernanceToken();
+
+  console.log("isTotalSupplyLoading", isTotalSupplyLoading, error);
+  console.log("isGovernanceTokenLoading", isGovernanceTokenLoading);
+
   return (
     <div className="flex flex-col gap-[20px]">
       <h3 className="text-[18px] font-extrabold">Overview</h3>
@@ -21,16 +47,22 @@ export const Overview = () => {
           <p>{formatNumberForDisplay(1010)[0]}</p>
         </OverviewItem>
         <OverviewItem
-          title="Total vote"
+          title="Total voting Power"
           icon="/assets/image/total-vote-colorful.svg"
         >
           <p>{formatNumberForDisplay(100)[0]}</p>
         </OverviewItem>
         <OverviewItem
-          title="Delegated vote"
+          title="Total Supply"
+          isLoading={isTotalSupplyLoading || isGovernanceTokenLoading}
           icon="/assets/image/delegated-vote-colorful.svg"
         >
-          <p>{formatNumberForDisplay(100)[0]}</p>
+          <p>
+            {formatBigIntForDisplay(
+              totalSupply ?? BigInt(0),
+              governanceToken?.decimals ?? 18
+            )}
+          </p>
         </OverviewItem>
       </div>
     </div>

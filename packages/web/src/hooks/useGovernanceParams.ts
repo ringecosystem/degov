@@ -1,6 +1,7 @@
 import { useReadContract, useReadContracts } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
+import { abi as timeLockAbi } from "@/config/abi/timeLock";
 
 import { useConfig } from "./useConfig";
 
@@ -11,11 +12,13 @@ interface GovernanceParams {
   quorum: bigint;
   votingDelay: bigint;
   votingPeriod: bigint;
+  timeLockDelay: bigint;
 }
 
 export function useGovernanceParams() {
   const daoConfig = useConfig();
   const governorAddress = daoConfig?.contracts?.governorContract as Address;
+  const timeLockAddress = daoConfig?.contracts?.timeLockContract as Address;
 
   const { data: clockData, isLoading: isClockLoading } = useReadContract({
     address: governorAddress as `0x${string}`,
@@ -46,6 +49,11 @@ export function useGovernanceParams() {
         abi: governorAbi,
         functionName: "votingPeriod" as const,
       },
+      {
+        address: timeLockAddress as `0x${string}`,
+        abi: timeLockAbi,
+        functionName: "getMinDelay" as const,
+      },
     ],
     query: {
       retry: false,
@@ -59,6 +67,7 @@ export function useGovernanceParams() {
         quorum: data[1]?.result as bigint,
         votingDelay: data[2]?.result as bigint,
         votingPeriod: data[3]?.result as bigint,
+        timeLockDelay: data[4]?.result as bigint,
       }
     : null;
 

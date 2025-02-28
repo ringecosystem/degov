@@ -30,21 +30,31 @@
     }
   },
   "contracts": {
-    "governorContract": "0xF72361096f11d7E4e45046d7a83726b1A9107D5E",
+    "governorContract": "0x9bCF89B951b9880AC1Ec9Ce6b82B2764ca7A532F",
     "governorToken": {
-      "contract": "0x80E657f4899eb513EdaBf4677eafe0692f6dcA55",
+      "contract": "0xcC43d7e20D4dC29Ca65f3327C9257e1E354f9E08",
       "standard": "ERC721"
     },
-    "timeLockContract": "0x6ba428686e10583560dE82dF6958A0703CE20E4a"
+    "timeLockContract": "0x527560d6a509ddE7828D598BF31Fc67DA50c8093"
   },
   "timeLockAssets": {
-    "kton": {
+    "mtk": {
       "logo": "https://staking.ktondao.xyz/images/token/kton.svg",
       "chain": "Darwinia Chain",
-      "contract": "0x0000000000000000000000000000000000000402",
-      "symbol": "KTON",
+      "contract": "0x9d633f05Ea918D392bDa0A74bD15E5bcCad324e2",
+      "symbol": "MTK",
       "decimals": 18,
-      "priceId": "KTON"
+      "priceId": "MTK",
+      "standard": "ERC20"
+    },
+    "usdt": {
+      "logo": "https://coingecko.com/coins/usdt/images/1/large/usdt.png",
+      "chain": "Darwinia Chain",
+      "contract": "0x8D71a40566fa4dCEE390Bbf854f63D43d06a90fd",
+      "symbol": "MTK-ERC721",
+      "decimals": 6,
+      "priceId": "MTK",
+      "standard": "ERC721"
     }
   }
 }

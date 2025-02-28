@@ -42,7 +42,8 @@ interface TokenDetails {
   contract: string;
   symbol: string;
   decimals: number;
-  priceId: string;
+  standard: string;
+  priceId?: string;
 }
 
 interface TimelockAssets {

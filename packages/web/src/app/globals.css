@@ -45,6 +45,7 @@ body {
     --canceled: var(--muted-foreground);
 
     --radius: 0.5rem;
+    --skeleton-bg: 0 0% 15%;
   }
 }
 

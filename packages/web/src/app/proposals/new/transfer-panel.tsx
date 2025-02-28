@@ -71,7 +71,7 @@ export const TransferPanel = ({
     mode: "onChange",
   });
 
-  // Watch form changes and sync to parent
+  // Watch form changes and sync to parent·
   useEffect(() => {
     const subscription = watch((value) => {
       onChange(value as TransferContent);

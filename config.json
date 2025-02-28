@@ -41,7 +41,8 @@
       "contract": "0x123456789xxx",
       "symbol": "KTON",
       "decimals": 18,
-      "priceId": "KTON"
+      "priceId": "KTON",
+      "standard": "ERC20/ERC721"
     },
     "usdt": {
       "logo": "https://www.open-governor.com/assets/token/usdt.png",
@@ -49,7 +50,8 @@
       "contract": "0x123456789xxx",
       "symbol": "USDT",
       "decimals": 18,
-      "priceId": "USDT"
+      "priceId": "USDT",
+      "standard": "ERC20/ERC721"
     }
   }
 }
