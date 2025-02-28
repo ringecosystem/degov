@@ -11,4 +11,4 @@ cd ${WORK_PATH}
 
 npm run build
 
-node -r dotenv/config lib/main.js $@
+node -r dotenv/config lib/main.js

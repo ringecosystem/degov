@@ -13,10 +13,11 @@ docker compose down || true
 
 docker compose up -d || true
 
-npx sqd codegen
+if [ "$1" = "force" ]; then
+  npx sqd codegen
+  npx sqd migration:generate
+fi
 
-npx sqd migration:generate
+npx sqd migration:apply
 
-# npx sqd migration:apply
-
-${BIN_PATH}/start.sh $@
+${BIN_PATH}/start.sh
