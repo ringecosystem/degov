@@ -1,6 +1,9 @@
 {
   "logo": "https://www.open-governor.com/assets/img/logo.png",
   "daoName": "DeGov Test DAO",
+  "indexer": {
+    "endpoint": "https://api.yourendpoint.com/graphql"
+  },
   "walletConnectProjectId": "xxxxxxxxxxxxxxxxxx",
   "description": "DeGov is a open-sourced governance platform that allows users to create and participate in decentralized governance.",
   "links": {
@@ -15,7 +18,10 @@
     "chain": "Darwinia",
     "logo": "https://darwinia.network/images/darwinia-logo-black-background-round.svg",
     "chainId": 46,
-    "rpc": ["https://rpc.darwinia.network", "https://darwinia-rpc.dwellir.com"],
+    "rpc": [
+      "https://rpc.darwinia.network",
+      "https://darwinia-rpc.dwellir.com"
+    ],
     "explorer": {
       "name": "Darwinia Explorer",
       "url": "https://explorer.darwinia.network/"

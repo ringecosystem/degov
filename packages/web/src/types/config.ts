@@ -49,6 +49,9 @@ interface TokenDetails {
 interface TimelockAssets {
   [key: string]: TokenDetails;
 }
+interface Indexer {
+  endpoint: string;
+}
 
 interface Config {
   logo: string;
@@ -59,6 +62,7 @@ interface Config {
   network: NetworkInfo;
   contracts: Contracts;
   timeLockAssets: TimelockAssets;
+  indexer: Indexer;
 }
 
 export type {
@@ -70,4 +74,5 @@ export type {
   Contracts,
   TokenDetails,
   TimelockAssets,
+  Indexer,
 };

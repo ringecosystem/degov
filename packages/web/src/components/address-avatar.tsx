@@ -1,3 +1,5 @@
+"use client";
+
 import { blo } from "blo";
 import Image from "next/image";
 import { useState, useEffect } from "react";

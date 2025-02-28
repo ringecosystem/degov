@@ -3,6 +3,9 @@
   "daoName": "DeGov Test DAO",
   "walletConnectProjectId": "2719448e2ce94fdd269a3c8587123bcc",
   "description": "DeGov is a open-sourced governance platform that allows users to create and participate in decentralized governance.",
+  "indexer": {
+    "endpoint": "https://cors.kahub.in/60.214.102.126:4350/graphql"
+  },
   "links": {
     "website": "https://www.open-governor.com",
     "twitter": "https://twitter.com/DarwiniaNetwork",

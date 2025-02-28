@@ -1,3 +1,5 @@
+"use client";
+
 import { useAccount } from "wagmi";
 
 import NotFound from "@/components/not-found";
