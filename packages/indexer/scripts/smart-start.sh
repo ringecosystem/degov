@@ -19,4 +19,4 @@ fi
 
 npm run build
 
-${BIN_PATH}/entrypoint.sh
+${BIN_PATH}/start.sh
