@@ -19,7 +19,7 @@ export const processor = new EvmBatchProcessor()
     url: "wss://rpc.darwinia.network",
 
     // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
-    maxBatchCallSize: 300,
+    maxBatchCallSize: 500,
     // rateLimit: 2,
   })
   .setFinalityConfirmation(75)
