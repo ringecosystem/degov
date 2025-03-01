@@ -16,10 +16,11 @@ export const processor = new EvmBatchProcessor()
   // .setGateway("https://v2.archive.subsquid.io/network/ethereum-mainnet")
   .setRpcEndpoint({
     // url: assertNotNull(process.env.RPC_ETH_HTTP, "No RPC endpoint supplied"),
-    url: "https://rpc.darwinia.network",
+    url: "wss://rpc.darwinia.network",
 
     // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
-    rateLimit: 10,
+    maxBatchCallSize: 300,
+    // rateLimit: 2,
   })
   .setFinalityConfirmation(75)
   .setFields({
@@ -41,7 +42,7 @@ export const processor = new EvmBatchProcessor()
       IGOVERNOR_CONTRACT_ADDRESS, // governorContract
       ITOKEN_CONTRACT_ADDRESS, // token
     ],
-  })
+  });
 //
 
 export type Fields = EvmBatchProcessorFields<typeof processor>;
