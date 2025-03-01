@@ -16,5 +16,4 @@ RUN npm i -g @subsquid/cli \
   && yarn build \
   && mv docker/services.d /etc
 
-# ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 ENTRYPOINT ["/init"]
