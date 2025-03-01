@@ -1,23 +1,22 @@
-import { cn } from '@/lib/utils';
+import { getDisplayText, getStatusColor } from "@/config/proposals";
+import { cn } from "@/lib/utils";
+import type { ProposalState } from "@/types/proposal";
 
 interface ProposalStatusProps {
-  status: 'pending' | 'active' | 'succeeded' | 'executed' | 'defeated' | 'canceled';
+  status: ProposalState;
 }
 
 export function ProposalStatus({ status }: ProposalStatusProps) {
+  console.log("status", status);
   return (
     <span
       className={cn(
-        'inline-block rounded-[14px] px-[18px] py-[4px] text-[14px] font-normal',
-        status === 'pending' && 'bg-pending/10 text-pending',
-        status === 'active' && 'bg-active/10 text-active',
-        status === 'succeeded' && 'bg-succeeded/10 text-succeeded',
-        status === 'executed' && 'bg-executed/10 text-executed',
-        status === 'defeated' && 'bg-defeated/10 text-defeated',
-        status === 'canceled' && 'bg-canceled/10 text-canceled'
+        "inline-block rounded-[14px] px-[18px] py-[4px] text-[14px] font-normal",
+        getStatusColor(status).bg,
+        getStatusColor(status).text
       )}
     >
-      {status}
+      {getDisplayText(status)}
     </span>
   );
 }

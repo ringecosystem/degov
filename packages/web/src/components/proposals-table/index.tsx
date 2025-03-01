@@ -1,129 +1,189 @@
 import Link from "next/link";
+import { useCallback, useEffect, useMemo } from "react";
 
-import { Empty } from "@/components/ui/empty";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import type { ProposalItem } from "@/services/graphql/types";
+import { extractTitleFromDescription } from "@/utils";
+import { formatTimestampToFriendlyDate } from "@/utils/date";
 
+import { CustomTable } from "../custom-table";
 import { ProposalStatus } from "../proposal-status";
+import { Skeleton } from "../ui/skeleton";
 
+import { useProposalData } from "./hooks/useProposalData";
 import { VotePercentage } from "./vote-percentage";
 import { VoteTotal } from "./vote-total";
 
+import type { ColumnType } from "../custom-table";
 
-// Move raw data to separate interface/type
-interface ProposalData {
-  proposal: string;
-  id: string;
-  time: string;
-  status: "canceled" | "pending"; // Use string type instead of component
-  votesFor: string;
-  votesAgainst: string;
-  totalVotes: {
-    value: string;
-    total: string;
-  };
-}
+const Caption = ({
+  type,
+  data,
+  currentPage,
+  loadMoreData,
+  isLoading,
+}: {
+  type: "active" | "all";
+  data: ProposalItem[];
+  currentPage: number;
+  loadMoreData: () => void;
+  isLoading: boolean;
+}) => {
+  return type === "active" ? (
+    <div className="flex justify-center items-center">
+      <Link
+        href="/proposals"
+        className="text-foreground transition-colors hover:text-foreground/80"
+      >
+        View all
+      </Link>
+    </div>
+  ) : (
+    <div className="flex justify-center items-center">
+      {data.length >= 10 * currentPage && (
+        <button
+          onClick={loadMoreData}
+          className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={isLoading}
+        >
+          {isLoading ? "Loading..." : "Load More"}
+        </button>
+      )}
+    </div>
+  );
+};
 
-const data: ProposalData[] = [
-  {
-    proposal: "[Non-Constitutional] DCDAO Delegate Incentive Program",
-    id: "39167772932143723025658918622015993797875961063645251007065064214127031243174",
-    time: "Jan 7th, 2025",
-    status: "canceled",
-    votesFor: "1.11B",
-    votesAgainst: "1.11B",
-    totalVotes: {
-      value: "1.11B",
-      total: "7960",
+export function ProposalsTable({ type }: { type: "active" | "all" }) {
+  const {
+    state,
+    proposalVotesState,
+    proposalStatusState,
+    loadMoreData,
+    loadInitialData,
+  } = useProposalData();
+
+  const totalVotes = useCallback(
+    (proposalId: string) => {
+      return (
+        (proposalVotesState?.data?.[proposalId]?.againstVotes ?? 0n) +
+        (proposalVotesState?.data?.[proposalId]?.forVotes ?? 0n) +
+        (proposalVotesState?.data?.[proposalId]?.abstainVotes ?? 0n)
+      );
     },
-  },
-  {
-    proposal:
-      "Enhancing Multichain Governance: Upgrading RARI Governance Token on ArbitrumEnhancing Multichain Governance: Upgrading RARI Governance Token on Arbitrum",
-    id: "39167772932143723025658918622015993797875961063645251007065064214127031243175",
-    time: "Jan 7th, 2025",
-    status: "pending",
-    votesFor: "1.11B",
-    votesAgainst: "1.11B",
-    totalVotes: {
-      value: "1.11B",
-      total: "7960",
-    },
-  },
-];
+    [proposalVotesState]
+  );
 
-interface ProposalsTableProps {
-  caption?: string;
-}
-export function ProposalsTable({ caption }: ProposalsTableProps) {
+  const columns = useMemo<ColumnType<ProposalItem>[]>(
+    () => [
+      {
+        title: "Proposal",
+        key: "description",
+        width: "400px",
+        className: "text-left",
+        render: (record) => (
+          <Link
+            className="line-clamp-1 hover:underline"
+            title={record.description}
+            href={`/proposals/${record.proposalId}`}
+          >
+            {extractTitleFromDescription(record.description)}
+          </Link>
+        ),
+      },
+      {
+        title: "Time",
+        key: "blockTimestamp",
+        width: "200px",
+        render: (record) =>
+          formatTimestampToFriendlyDate(record.blockTimestamp),
+      },
+      {
+        title: "Status",
+        key: "status",
+        width: "200px",
+        render: (record) => {
+          return proposalStatusState?.isFetching ? (
+            <Skeleton className="h-[30px] w-full" />
+          ) : (
+            <ProposalStatus status={proposalStatusState?.data?.[record.id]} />
+          );
+        },
+      },
+      {
+        title: "Votes for",
+        key: "votesFor",
+        width: "200px",
+        render: (record) => {
+          return proposalVotesState?.isFetching ? (
+            <Skeleton className="h-[30px] w-full" />
+          ) : (
+            <VotePercentage
+              status="for"
+              value={proposalVotesState?.data?.[record.id]?.forVotes}
+              total={totalVotes(record.id)}
+            />
+          );
+        },
+      },
+      {
+        title: "Votes against",
+        key: "votesAgainst",
+        width: "200px",
+        render: (record) => {
+          return proposalVotesState?.isFetching ? (
+            <Skeleton className="h-[30px] w-full" />
+          ) : (
+            <VotePercentage
+              status="against"
+              value={proposalVotesState?.data?.[record.id]?.againstVotes}
+              total={totalVotes(record.id)}
+            />
+          );
+        },
+      },
+      {
+        title: "Total votes",
+        key: "totalVotes",
+        width: "200px",
+        render: (record) => {
+          return proposalVotesState?.isFetching ? (
+            <Skeleton className="h-[30px] w-full" />
+          ) : (
+            <VoteTotal
+              totalVotes={totalVotes(record.id)}
+              totalAddresses={100}
+            />
+          );
+        },
+      },
+    ],
+    [proposalVotesState, proposalStatusState, totalVotes]
+  );
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
   return (
     <div className="rounded-[14px] bg-card p-[20px]">
-      <Table>
-        {!!data?.length && (
-          <TableCaption>
-            <Link
-              href="/proposals"
-              className="text-foreground transition-colors hover:text-foreground/80"
-            >
-              {caption || "View all"}
-            </Link>
-          </TableCaption>
-        )}
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[400px] rounded-l-[14px] text-left">
-              Proposal
-            </TableHead>
-            <TableHead className="w-[200px]">Time</TableHead>
-            <TableHead className="w-[200px]">Status</TableHead>
-            <TableHead className="w-[200px]">Votes for</TableHead>
-            <TableHead className="w-[200px]">Votes against</TableHead>
-            <TableHead className="w-[200px] rounded-r-[14px]">
-              Total votes
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-
-        <TableBody>
-          {data.map((value) => (
-            <TableRow key={value.proposal}>
-              <TableCell className="text-left">
-                <Link
-                  className="line-clamp-1 hover:underline"
-                  title={value.proposal}
-                  href={`/proposals/${value.id}`}
-                >
-                  {value.proposal}
-                </Link>
-              </TableCell>
-              <TableCell>{value.time}</TableCell>
-              <TableCell>
-                <ProposalStatus status={value.status} />
-              </TableCell>
-              <TableCell>
-                <VotePercentage status="for" value={value.votesFor} />
-              </TableCell>
-              <TableCell>
-                <VotePercentage status="against" value={value.votesAgainst} />
-              </TableCell>
-              <TableCell>
-                <VoteTotal
-                  value={value.totalVotes.value}
-                  total={value.totalVotes.total}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {!data?.length && <Empty label="No proposals" className="h-[400px]" />}
+      <CustomTable
+        dataSource={state.data}
+        columns={columns as ColumnType<ProposalItem>[]}
+        isLoading={state.isFetching}
+        emptyText="No proposals"
+        rowKey="id"
+        caption={
+          <Caption
+            type={type}
+            data={state.data}
+            currentPage={state.currentPage}
+            loadMoreData={loadMoreData}
+            isLoading={
+              state.isFetching ||
+              proposalVotesState.isFetching ||
+              proposalStatusState.isFetching
+            }
+          />
+        }
+      />
     </div>
   );
 }

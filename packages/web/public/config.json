@@ -4,7 +4,7 @@
   "walletConnectProjectId": "2719448e2ce94fdd269a3c8587123bcc",
   "description": "DeGov is a open-sourced governance platform that allows users to create and participate in decentralized governance.",
   "indexer": {
-    "endpoint": "https://cors.kahub.in/60.214.102.126:4350/graphql"
+    "endpoint": "https://cors.kahub.in/60.214.102.126:4000/graphql"
   },
   "links": {
     "website": "https://www.open-governor.com",
@@ -33,12 +33,12 @@
     }
   },
   "contracts": {
-    "governorContract": "0x9bCF89B951b9880AC1Ec9Ce6b82B2764ca7A532F",
+    "governorContract": "0xF72361096f11d7E4e45046d7a83726b1A9107D5E",
     "governorToken": {
-      "contract": "0xcC43d7e20D4dC29Ca65f3327C9257e1E354f9E08",
+      "contract": "0x80E657f4899eb513EdaBf4677eafe0692f6dcA55",
       "standard": "ERC721"
     },
-    "timeLockContract": "0x527560d6a509ddE7828D598BF31Fc67DA50c8093"
+    "timeLockContract": "0x6ba428686e10583560dE82dF6958A0703CE20E4a"
   },
   "timeLockAssets": {
     "mtk": {

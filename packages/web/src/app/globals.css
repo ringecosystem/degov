@@ -46,6 +46,13 @@ body {
 
     --radius: 0.5rem;
     --skeleton-bg: 0 0% 15%;
+    
+    /* 滚动条变量 */
+    --scrollbar-track: hsl(var(--muted));
+    --scrollbar-thumb: hsl(var(--secondary));
+    --scrollbar-thumb-hover: hsl(var(--border));
+    --scrollbar-width: 8px;
+    --scrollbar-height: 8px;
   }
 }
 
@@ -76,4 +83,35 @@ body {
       @apply !text-white;
     }
   }
+  
+  ::-webkit-scrollbar {
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-height);
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: var(--radius);
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--radius);
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+  }
+  
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+  
+  .custom-scrollbar {
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+  
 }

@@ -1,9 +1,6 @@
 import { GraphQLClient } from "graphql-request";
 
-import type { Config } from "@/types/config";
-
-export function createGraphQLClient(config: Config | null) {
-  const endpoint = config?.indexer?.endpoint;
+export function createGraphQLClient(endpoint: string) {
   if (!endpoint) {
     throw new Error("Indexer endpoint is not configured");
   }
@@ -12,12 +9,12 @@ export function createGraphQLClient(config: Config | null) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function request<T = any, V extends object = object>(
-  config: Config | null,
+  endpoint: string,
   document: string,
   variables?: V
 ): Promise<T> {
   try {
-    const client = createGraphQLClient(config);
+    const client = createGraphQLClient(endpoint);
 
     if (variables) {
       return await client.request<T>(document, variables);

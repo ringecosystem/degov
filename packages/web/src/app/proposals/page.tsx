@@ -14,7 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-
 export default function Proposals() {
   const router = useRouter();
   return (
@@ -62,7 +61,7 @@ export default function Proposals() {
           </Button>
         </div>
       </div>
-      <ProposalsTable caption="View more" />
+      <ProposalsTable type="all" />
     </div>
   );
 }

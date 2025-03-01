@@ -1,12 +1,20 @@
+import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+
 interface VoteTotalProps {
-  value: string;
-  total: string;
+  totalVotes: bigint;
+  totalAddresses: number;
 }
-export function VoteTotal({ value, total }: VoteTotalProps) {
+export function VoteTotal({ totalVotes, totalAddresses }: VoteTotalProps) {
+  const formatTokenAmount = useFormatGovernanceTokenAmount();
+
   return (
     <div className="flex flex-col items-center gap-[4px]">
-      <span className="text-[14px] font-normal text-foreground">{value}</span>
-      <span className="text-[10px] text-muted-foreground">{total} Addresses</span>
+      <span className="text-[14px] font-normal text-foreground">
+        {formatTokenAmount(totalVotes).formatted}
+      </span>
+      <span className="text-[10px] text-muted-foreground">
+        {totalAddresses} Addresses
+      </span>
     </div>
   );
 }
