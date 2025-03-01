@@ -34,7 +34,7 @@ jobs:
         with:
           push: true
           context: packages/indexer
-          file: docker/indexer.Dockerfile
+          file: packages/indexer/docker/Dockerfile
           tags: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/indexer:sha-${{ env.SHA }}
 
       - name: Publish docker image tag
