@@ -106,3 +106,20 @@ type VoteCastGroup @entity {
   blockTimestamp: BigInt!
   transactionHash: String!
 }
+
+type Proposal @entity {
+  id: ID!
+  proposalId: BigInt! # uint256
+  proposer: String! # address
+  targets: [String!]! # address[]
+  values: [String!]! # uint256[] ## [BigInt!]!
+  signatures: [String!]! # string[]
+  calldatas: [String!]! # bytes[]
+  voteStart: BigInt! # uint256
+  voteEnd: BigInt! # uint256
+  description: String! # string
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+  participants: [String!]!
+}

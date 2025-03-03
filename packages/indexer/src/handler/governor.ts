@@ -2,6 +2,7 @@ import { Log } from "../processor";
 import * as igovernorAbi from "../abi/igovernor";
 import { DataHandlerContext } from "@subsquid/evm-processor";
 import {
+  Proposal,
   ProposalCanceled,
   ProposalCreated,
   ProposalExecuted,
@@ -82,6 +83,24 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    const proposal = new Proposal({
+      id: eventLog.id,
+      proposalId: event.proposalId,
+      proposer: event.proposer,
+      targets: event.targets,
+      values: event.values.map((item) => item.toString()),
+      signatures: event.signatures,
+      calldatas: event.calldatas,
+      voteStart: event.voteStart,
+      voteEnd: event.voteEnd,
+      description: event.description,
+      participants: [event.proposer],
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(proposal);
   }
 
   private async storeProposalQueued(eventLog: Log) {
@@ -149,6 +168,19 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(vcg);
+
+    const proposal: Proposal | undefined = await this.ctx.store.findOne(
+      Proposal,
+      {
+        where: {
+          proposalId: event.proposalId,
+        },
+      }
+    );
+    if (proposal) {
+      proposal.participants.push(event.voter);
+      await this.ctx.store.save(proposal);
+    }
   }
 
   private async storeVoteCastWithParams(eventLog: Log) {
@@ -181,5 +213,18 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(vcg);
+
+    const proposal: Proposal | undefined = await this.ctx.store.findOne(
+      Proposal,
+      {
+        where: {
+          proposalId: event.proposalId,
+        },
+      }
+    );
+    if (proposal) {
+      proposal.participants.push(event.voter);
+      await this.ctx.store.save(proposal);
+    }
   }
 }
