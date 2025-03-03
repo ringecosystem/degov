@@ -1,3 +1,5 @@
+
+
 ### === ivotes
 
 type DelegateChanged @entity {
@@ -83,6 +85,23 @@ type VoteCastWithParams @entity {
   weight: BigInt! # uint256
   reason: String! # string
   params: String! # bytes
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+
+### ====== proposal
+
+type VoteCastGroup @entity {
+  id: ID!
+  type: String!
+  voter: String! # address
+  proposalId: BigInt! # uint256
+  support: Int! # uint8
+  weight: BigInt! # uint256
+  reason: String! # string
+  params: String # bytes
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
