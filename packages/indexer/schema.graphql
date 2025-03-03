@@ -123,3 +123,19 @@ type Proposal @entity {
   transactionHash: String!
   participants: [String!]!
 }
+
+type Delegate @entity {
+  id: ID! # tx hash
+  delegator: String! # address
+  fromDelegate: String! # address
+  toDelegate: String! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+
+  fromPreviousVotes: BigInt # uint256
+  fromNewVotes: BigInt # uint256
+
+  toPreviousVotes: BigInt # uint256
+  toNewVotes: BigInt # uint256
+}

@@ -34,7 +34,7 @@ export const processor = new EvmBatchProcessor()
     },
   })
   .setBlockRange({
-    from: 2534100, //# contract crated block
+    from: 2576160, //# contract crated block
     // from: 2536100,
   })
   .addLog({
