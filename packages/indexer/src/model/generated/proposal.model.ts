@@ -1,4 +1,5 @@
-import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, StringColumn as StringColumn_} from "@subsquid/typeorm-store"
+import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, StringColumn as StringColumn_, OneToMany as OneToMany_} from "@subsquid/typeorm-store"
+import {VoteCastGroup} from "./voteCastGroup.model"
 
 @Entity_()
 export class Proposal {
@@ -45,6 +46,6 @@ export class Proposal {
     @StringColumn_({nullable: false})
     transactionHash!: string
 
-    @StringColumn_({array: true, nullable: false})
-    participants!: (string)[]
+    @OneToMany_(() => VoteCastGroup, e => e.proposal)
+    voters!: VoteCastGroup[]
 }

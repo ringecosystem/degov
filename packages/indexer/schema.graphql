@@ -95,9 +95,10 @@ type VoteCastWithParams @entity {
 
 type VoteCastGroup @entity {
   id: ID!
+  proposal: Proposal!
   type: String!
   voter: String! # address
-  proposalId: BigInt! # uint256
+  #proposalId: BigInt! # uint256
   support: Int! # uint8
   weight: BigInt! # uint256
   reason: String! # string
@@ -121,7 +122,7 @@ type Proposal @entity {
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
-  participants: [String!]!
+  voters: [VoteCastGroup!] @derivedFrom(field: "proposal")
 }
 
 type Delegate @entity {

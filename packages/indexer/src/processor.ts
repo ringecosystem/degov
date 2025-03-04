@@ -19,8 +19,8 @@ export const processor = new EvmBatchProcessor()
     url: "wss://rpc.darwinia.network",
 
     // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
-    maxBatchCallSize: 500,
-    // rateLimit: 2,
+    // maxBatchCallSize: 100,
+    // rateLimit: 1,
   })
   .setFinalityConfirmation(75)
   .setFields({
@@ -34,8 +34,8 @@ export const processor = new EvmBatchProcessor()
     },
   })
   .setBlockRange({
-    from: 2576160, //# contract crated block
-    // from: 2536100,
+    // from: 2576160, //# contract crated block
+    from: 2632000,
   })
   .addLog({
     address: [

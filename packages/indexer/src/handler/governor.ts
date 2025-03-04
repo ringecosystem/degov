@@ -95,7 +95,6 @@ export class GovernorHandler {
       voteStart: event.voteStart,
       voteEnd: event.voteEnd,
       description: event.description,
-      participants: [event.proposer],
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
@@ -159,7 +158,7 @@ export class GovernorHandler {
       id: eventLog.id,
       type: "vote-cast-without-params",
       voter: event.voter,
-      proposalId: event.proposalId,
+      // proposalId: event.proposalId,
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -167,7 +166,6 @@ export class GovernorHandler {
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
-    await this.ctx.store.insert(vcg);
 
     const proposal: Proposal | undefined = await this.ctx.store.findOne(
       Proposal,
@@ -178,9 +176,14 @@ export class GovernorHandler {
       }
     );
     if (proposal) {
-      proposal.participants.push(event.voter);
+      const voters = [...(proposal.voters || []), vcg];
+      proposal.voters = voters;
       await this.ctx.store.save(proposal);
+
+      vcg.proposal = proposal;
     }
+
+    await this.ctx.store.insert(vcg);
   }
 
   private async storeVoteCastWithParams(eventLog: Log) {
@@ -203,7 +206,7 @@ export class GovernorHandler {
       id: eventLog.id,
       type: "vote-cast-with-params",
       voter: event.voter,
-      proposalId: event.proposalId,
+      // proposalId: event.proposalId,
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -212,7 +215,6 @@ export class GovernorHandler {
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
-    await this.ctx.store.insert(vcg);
 
     const proposal: Proposal | undefined = await this.ctx.store.findOne(
       Proposal,
@@ -223,8 +225,12 @@ export class GovernorHandler {
       }
     );
     if (proposal) {
-      proposal.participants.push(event.voter);
+      const voters = [...(proposal.voters || []), vcg];
+      proposal.voters = voters;
       await this.ctx.store.save(proposal);
+
+      vcg.proposal = proposal;
     }
+    await this.ctx.store.insert(vcg);
   }
 }
