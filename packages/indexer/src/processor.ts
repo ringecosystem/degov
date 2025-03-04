@@ -17,12 +17,13 @@ export const processor = new EvmBatchProcessor()
   .setRpcEndpoint({
     // url: assertNotNull(process.env.RPC_ETH_HTTP, "No RPC endpoint supplied"),
     url: "wss://rpc.darwinia.network",
+    capacity: 30,
+    maxBatchCallSize: 200,
 
     // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
     // maxBatchCallSize: 100,
-    // rateLimit: 1,
   })
-  .setFinalityConfirmation(75)
+  .setFinalityConfirmation(10)
   .setFields({
     transaction: {
       from: true,
@@ -33,11 +34,9 @@ export const processor = new EvmBatchProcessor()
       transactionHash: true,
     },
   })
-  .setBlockRange({
-    // from: 2576160, //# contract crated block
-    from: 2632000,
-  })
   .addLog({
+    // 2576160 //# contract crated block
+    range: { from: 2632000 },
     address: [
       IGOVERNOR_CONTRACT_ADDRESS, // governorContract
       ITOKEN_CONTRACT_ADDRESS, // token
