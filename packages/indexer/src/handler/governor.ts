@@ -2,11 +2,14 @@ import { Log } from "../processor";
 import * as igovernorAbi from "../abi/igovernor";
 import { DataHandlerContext } from "@subsquid/evm-processor";
 import {
+  Proposal,
   ProposalCanceled,
   ProposalCreated,
   ProposalExecuted,
   ProposalQueued,
   VoteCast,
+  VoteCastGroup,
+  VoteCastWithParams,
 } from "../model";
 
 export class GovernorHandler {
@@ -52,12 +55,20 @@ export class GovernorHandler {
     if (isVoteCast) {
       await this.storeVoteCast(eventLog);
     }
+
+    const isVoteCastWithParams =
+      eventLog.topics.findIndex(
+        (item) => item === igovernorAbi.events.VoteCastWithParams.topic
+      ) != -1;
+    if (isVoteCastWithParams) {
+      await this.storeVoteCastWithParams(eventLog);
+    }
   }
 
   private async storeProposalCreated(eventLog: Log) {
     const event = igovernorAbi.events.ProposalCreated.decode(eventLog);
     const entity = new ProposalCreated({
-      id: event.proposalId.toString(),
+      id: eventLog.id,
       proposalId: event.proposalId,
       proposer: event.proposer,
       targets: event.targets,
@@ -72,12 +83,29 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    const proposal = new Proposal({
+      id: eventLog.id,
+      proposalId: event.proposalId,
+      proposer: event.proposer,
+      targets: event.targets,
+      values: event.values.map((item) => item.toString()),
+      signatures: event.signatures,
+      calldatas: event.calldatas,
+      voteStart: event.voteStart,
+      voteEnd: event.voteEnd,
+      description: event.description,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(proposal);
   }
 
   private async storeProposalQueued(eventLog: Log) {
     const event = igovernorAbi.events.ProposalQueued.decode(eventLog);
     const entity = new ProposalQueued({
-      id: event.proposalId.toString(),
+      id: eventLog.id,
       proposalId: event.proposalId,
       etaSeconds: event.etaSeconds,
       blockNumber: BigInt(eventLog.block.height),
@@ -90,7 +118,7 @@ export class GovernorHandler {
   private async storeProposalExecuted(eventLog: Log) {
     const event = igovernorAbi.events.ProposalExecuted.decode(eventLog);
     const entity = new ProposalExecuted({
-      id: event.proposalId.toString(),
+      id: eventLog.id,
       proposalId: event.proposalId,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
@@ -102,7 +130,7 @@ export class GovernorHandler {
   private async storeProposalCanceled(eventLog: Log) {
     const event = igovernorAbi.events.ProposalCanceled.decode(eventLog);
     const entity = new ProposalCanceled({
-      id: event.proposalId.toString(),
+      id: eventLog.id,
       proposalId: event.proposalId,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
@@ -125,5 +153,84 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    const vcg = new VoteCastGroup({
+      id: eventLog.id,
+      type: "vote-cast-without-params",
+      voter: event.voter,
+      // proposalId: event.proposalId,
+      support: event.support,
+      weight: event.weight,
+      reason: event.reason,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+
+    const proposal: Proposal | undefined = await this.ctx.store.findOne(
+      Proposal,
+      {
+        where: {
+          proposalId: event.proposalId,
+        },
+      }
+    );
+    if (proposal) {
+      const voters = [...(proposal.voters || []), vcg];
+      proposal.voters = voters;
+      await this.ctx.store.save(proposal);
+
+      vcg.proposal = proposal;
+    }
+
+    await this.ctx.store.insert(vcg);
+  }
+
+  private async storeVoteCastWithParams(eventLog: Log) {
+    const event = igovernorAbi.events.VoteCastWithParams.decode(eventLog);
+    const entity = new VoteCastWithParams({
+      id: eventLog.id,
+      voter: event.voter,
+      proposalId: event.proposalId,
+      support: event.support,
+      weight: event.weight,
+      reason: event.reason,
+      params: event.params,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(entity);
+
+    const vcg = new VoteCastGroup({
+      id: eventLog.id,
+      type: "vote-cast-with-params",
+      voter: event.voter,
+      // proposalId: event.proposalId,
+      support: event.support,
+      weight: event.weight,
+      reason: event.reason,
+      params: event.params,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+
+    const proposal: Proposal | undefined = await this.ctx.store.findOne(
+      Proposal,
+      {
+        where: {
+          proposalId: event.proposalId,
+        },
+      }
+    );
+    if (proposal) {
+      const voters = [...(proposal.voters || []), vcg];
+      proposal.voters = voters;
+      await this.ctx.store.save(proposal);
+
+      vcg.proposal = proposal;
+    }
+    await this.ctx.store.insert(vcg);
   }
 }

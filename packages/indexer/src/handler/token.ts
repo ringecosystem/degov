@@ -1,7 +1,7 @@
 import { DataHandlerContext } from "@subsquid/evm-processor";
 import { Log } from "../processor";
 import * as ivotes from "../abi/ivotes";
-import { DelegateChanged, DelegateVotesChanged } from "../model";
+import { Delegate, DelegateChanged, DelegateVotesChanged } from "../model";
 
 export class TokenHandler {
   constructor(private readonly ctx: DataHandlerContext<any, any>) {}
@@ -36,6 +36,17 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    const delegate = new Delegate({
+      id: eventLog.id,
+      delegator: event.delegator,
+      fromDelegate: event.fromDelegate,
+      toDelegate: event.toDelegate,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(delegate);
   }
 
   private async storeDelegateVotesChanged(eventLog: Log) {
@@ -50,5 +61,25 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    const delegate: Delegate | undefined = await this.ctx.store.findOne(
+      Delegate,
+      {
+        where: {
+          transactionHash: eventLog.transactionHash,
+        },
+      }
+    );
+    if (delegate) {
+      if (event.delegate === delegate.fromDelegate) {
+        delegate.fromNewVotes = event.newVotes;
+        delegate.fromPreviousVotes = event.previousVotes;
+      }
+      if (event.delegate === delegate.toDelegate) {
+        delegate.toNewVotes = event.newVotes;
+        delegate.toPreviousVotes = event.previousVotes;
+      }
+      await this.ctx.store.save(delegate);
+    }
   }
 }

@@ -47,6 +47,9 @@ importers:
       '@types/node':
         specifier: ^20.14.8
         version: 20.17.19
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
       typescript:
         specifier: ~5.5.2
         version: 5.5.4

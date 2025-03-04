@@ -1,3 +1,5 @@
+
+
 ### === ivotes
 
 type DelegateChanged @entity {
@@ -86,4 +88,55 @@ type VoteCastWithParams @entity {
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
+}
+
+
+### ====== proposal
+
+type VoteCastGroup @entity {
+  id: ID!
+  proposal: Proposal!
+  type: String!
+  voter: String! # address
+  #proposalId: BigInt! # uint256
+  support: Int! # uint8
+  weight: BigInt! # uint256
+  reason: String! # string
+  params: String # bytes
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type Proposal @entity {
+  id: ID!
+  proposalId: BigInt! # uint256
+  proposer: String! # address
+  targets: [String!]! # address[]
+  values: [String!]! # uint256[] ## [BigInt!]!
+  signatures: [String!]! # string[]
+  calldatas: [String!]! # bytes[]
+  voteStart: BigInt! # uint256
+  voteEnd: BigInt! # uint256
+  description: String! # string
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+  voters: [VoteCastGroup!] @derivedFrom(field: "proposal")
+}
+
+type Delegate @entity {
+  id: ID! # tx hash
+  delegator: String! # address
+  fromDelegate: String! # address
+  toDelegate: String! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+
+  fromPreviousVotes: BigInt # uint256
+  fromNewVotes: BigInt # uint256
+
+  toPreviousVotes: BigInt # uint256
+  toNewVotes: BigInt # uint256
 }

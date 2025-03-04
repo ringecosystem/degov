@@ -20,6 +20,7 @@
     "@subsquid/evm-typegen": "^4.2.0",
     "@subsquid/typeorm-codegen": "^2.0.1",
     "@types/node": "^20.14.8",
-    "typescript": "~5.5.2"
+    "typescript": "~5.5.2",
+    "reflect-metadata": "^0.2.2"
   }
 }
