@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { Button } from "@/components/ui/button";
 import { ProposalState } from "@/types/proposal";
 
@@ -18,7 +20,17 @@ export const ActionGroupDisplay = ({
   canExecute,
 }: ActionGroupDisplayProps) => {
   if (status === ProposalState.Pending) {
-    return <p>Voting starts soon</p>;
+    return (
+      <div className="flex items-center gap-4">
+        <Image
+          src="/assets/image/proposal/action/clock.svg"
+          alt="pending"
+          width={20}
+          height={20}
+        />
+        <p>Voting starts soon</p>
+      </div>
+    );
   }
   if (status === ProposalState.Active) {
     if (isConnected) {
@@ -63,16 +75,56 @@ export const ActionGroupDisplay = ({
     );
   }
   if (status === ProposalState.Executed) {
-    return <p>Proposal executed</p>;
+    return (
+      <div className="flex items-center gap-4">
+        <Image
+          src="/assets/image/proposal/action/check.svg"
+          alt="executed"
+          width={20}
+          height={20}
+        />
+        <p>Proposal executed</p>
+      </div>
+    );
   }
   if (status === ProposalState.Canceled) {
-    return <p>Proposal canceled</p>;
+    return (
+      <div className="flex items-center gap-4">
+        <Image
+          src="/assets/image/proposal/action/cancel.svg"
+          alt="canceled"
+          width={20}
+          height={20}
+        />
+        <p>Proposal canceled</p>
+      </div>
+    );
   }
   if (status === ProposalState.Expired) {
-    return <p>Proposal expired</p>;
+    return (
+      <div className="flex items-center gap-4">
+        <Image
+          src="/assets/image/proposal/action/cancel.svg"
+          alt="expired"
+          width={20}
+          height={20}
+        />
+        <p>Proposal expired</p>
+      </div>
+    );
   }
   if (status === ProposalState.Defeated) {
-    return <p>Proposal defeated</p>;
+    return (
+      <div className="flex items-center gap-4">
+        <Image
+          src="/assets/image/proposal/action/cancel.svg"
+          alt="defeated"
+          width={20}
+          height={20}
+        />
+        <p>Proposal defeated</p>
+      </div>
+    );
   }
 
   return null;

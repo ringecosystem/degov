@@ -268,7 +268,6 @@ export default function ActionGroup({
           isConnected={isConnected}
         />
       )}
-      111
       <Dropdown
         explorerUrl={explorerUrl}
         handleCopyUrl={handleCopyUrl}

@@ -1,6 +1,7 @@
 "use client";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { isNil } from "lodash-es";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo } from "react";
 import { useReadContract } from "wagmi";
@@ -122,7 +123,12 @@ export default function ProposalDetailPage() {
     <>
       <div className="flex w-full flex-col gap-[20px] p-[30px]">
         <div className="flex items-center gap-1 text-[18px] font-extrabold">
-          <span className="text-muted-foreground">Proposals</span>
+          <Link
+            className="text-muted-foreground hover:underline"
+            href="/proposals"
+          >
+            Proposals
+          </Link>
           <span className="text-muted-foreground">/</span>
           <span>Proposal</span>
         </div>
