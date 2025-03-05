@@ -1,10 +1,25 @@
-import { useState } from 'react';
+import { useMemo, useState } from "react";
 
-import { Comments } from './comments';
-import { Description } from './description';
+import type { ProposalItem } from "@/services/graphql/types";
+import { extractTitleAndDescription } from "@/utils";
 
-export const Proposal = () => {
-  const [activeTab, setActiveTab] = useState<'description' | 'comments'>('description');
+import { Comments } from "./comments";
+import { Description } from "./description";
+
+export const Proposal = ({
+  isFetching,
+  data,
+}: {
+  isFetching: boolean;
+  data?: ProposalItem;
+}) => {
+  const [activeTab, setActiveTab] = useState<"description" | "comments">(
+    "description"
+  );
+
+  const description = useMemo(() => {
+    return extractTitleAndDescription(data?.description)?.description;
+  }, [data?.description]);
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
@@ -16,21 +31,21 @@ export const Proposal = () => {
           <div className="flex gap-[32px]">
             <button
               className={`pb-[12px] text-[16px] font-medium ${
-                activeTab === 'description'
-                  ? 'border-b-2 border-primary text-primary'
-                  : 'text-text-secondary hover:text-text-primary'
+                activeTab === "description"
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-text-secondary hover:text-text-primary"
               }`}
-              onClick={() => setActiveTab('description')}
+              onClick={() => setActiveTab("description")}
             >
               Description
             </button>
             <button
               className={`pb-[12px] text-[16px] font-medium ${
-                activeTab === 'comments'
-                  ? 'border-b-2 border-primary text-primary'
-                  : 'text-text-secondary hover:text-text-primary'
+                activeTab === "comments"
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-text-secondary hover:text-text-primary"
               }`}
-              onClick={() => setActiveTab('comments')}
+              onClick={() => setActiveTab("comments")}
             >
               Comments
             </button>
@@ -38,8 +53,10 @@ export const Proposal = () => {
         </div>
         {/* Tab Content */}
         <div className="min-h-[200px]">
-          {activeTab === 'description' && <Description />}
-          {activeTab === 'comments' && <Comments />}
+          {activeTab === "description" && (
+            <Description description={description} isFetching={isFetching} />
+          )}
+          {activeTab === "comments" && <Comments />}
         </div>
       </div>
     </div>

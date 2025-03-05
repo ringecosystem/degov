@@ -8,10 +8,8 @@ import type { ChainId } from "@/types/chain";
 import { TransactionStatus } from "./transaction-status";
 
 import type { WaitForTransactionReceiptErrorType } from "viem";
-import type { Config} from "wagmi";
+import type { Config } from "wagmi";
 import type { WaitForTransactionReceiptData } from "wagmi/query";
-
-
 
 export type SuccessType = (
   data: WaitForTransactionReceiptData<Config, ChainId>
@@ -62,7 +60,6 @@ export function TransactionToast({
     }
 
     if (isSuccess && toastIdRef.current) {
-      onSuccessLatest?.(receipt);
       if (toast.isActive(toastIdRef.current)) {
         toast.update(toastIdRef.current, {
           render: <TransactionStatus status="success" transactionHash={hash} />,
@@ -70,6 +67,9 @@ export function TransactionToast({
           isLoading: false,
           autoClose: 5000,
           closeButton: true,
+          onClose: () => {
+            onSuccessLatest?.(receipt);
+          },
         });
       } else {
         toast.success(
@@ -77,13 +77,15 @@ export function TransactionToast({
           {
             autoClose: 5000,
             closeButton: true,
+            onClose: () => {
+              onSuccessLatest?.(receipt);
+            },
           }
         );
       }
     }
 
     if (isError && toastIdRef.current) {
-      onErrorLatest?.(error);
       if (toast.isActive(toastIdRef.current)) {
         toast.update(toastIdRef.current, {
           render: <TransactionStatus status="failed" transactionHash={hash} />,
@@ -91,6 +93,9 @@ export function TransactionToast({
           isLoading: false,
           autoClose: 5000,
           closeButton: true,
+          onClose: () => {
+            onErrorLatest?.(error);
+          },
         });
       } else {
         toast.error(
@@ -98,6 +103,9 @@ export function TransactionToast({
           {
             autoClose: 5000,
             closeButton: true,
+            onClose: () => {
+              onErrorLatest?.(error);
+            },
           }
         );
       }

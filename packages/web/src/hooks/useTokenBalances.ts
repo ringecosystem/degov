@@ -7,6 +7,7 @@ import type { TokenDetails } from "@/types/config";
 import { formatBigIntForDisplay } from "@/utils/number";
 
 import { useConfig } from "./useConfig";
+import { useGetTokenInfo } from "./useGetTokenInfo";
 
 export interface TokenWithBalance extends TokenDetails {
   rawBalance?: bigint;
@@ -25,7 +26,12 @@ export function useTokenBalances(
 ): UseTokenBalancesReturn {
   const daoConfig = useConfig();
   const timeLockAddress = daoConfig?.contracts?.timeLockContract;
-
+  const { tokenInfo } = useGetTokenInfo(
+    assets.map((v) => ({
+      contract: v.contract,
+      standard: v.standard,
+    }))
+  );
   const contractCalls = useMemo(() => {
     if (!timeLockAddress || isEmpty(assets)) return [];
 
@@ -66,7 +72,8 @@ export function useTokenBalances(
           formattedBalance: formatBigIntForDisplay(rawBalance ?? 0n, 0),
         };
       } else {
-        const decimals = asset.decimals ?? 18;
+        const decimals =
+          tokenInfo[asset.contract as `0x${string}`]?.decimals ?? 18;
         const formattedBalance = rawBalance
           ? formatUnits(rawBalance, decimals)
           : 0;
@@ -82,7 +89,7 @@ export function useTokenBalances(
         };
       }
     });
-  }, [assets, balanceResults]);
+  }, [assets, balanceResults, tokenInfo]);
 
   return {
     assets: assetsWithBalances,

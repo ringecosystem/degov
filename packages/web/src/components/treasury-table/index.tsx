@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useConfig } from "@/hooks/useConfig";
+import { useGetTokenInfo } from "@/hooks/useGetTokenInfo";
 import type { TokenWithBalance } from "@/hooks/useTokenBalances";
 import { formatNumberForDisplay } from "@/utils/number";
 
@@ -84,6 +85,12 @@ export function TreasuryTable({
 }: TreasuryTableProps) {
   const daoConfig = useConfig();
   const [visibleItems, setVisibleItems] = useState(5);
+  const { tokenInfo } = useGetTokenInfo(
+    data.map((v) => ({
+      contract: v?.contract,
+      standard: v.standard,
+    }))
+  );
 
   const totalValue = useMemo(() => {
     if (!prices || isEmpty(prices) || isEmpty(data)) return 0;
@@ -174,14 +181,21 @@ export function TreasuryTable({
 
           <TableBody>
             {displayData?.map((value) => (
-              <TableRow key={value.symbol}>
+              <TableRow
+                key={tokenInfo[value.contract as `0x${string}`]?.symbol}
+              >
                 <TableCell className="text-left">
                   <Asset
                     asset={value}
-                    explorer={daoConfig?.network?.explorer?.url as string}
+                    symbol={tokenInfo[value.contract as `0x${string}`]?.symbol}
+                    explorer={daoConfig?.network?.explorer?.[0] as string}
                   />
                 </TableCell>
-                <TableCell className="text-right">{`${value?.formattedBalance} ${value.symbol}`}</TableCell>
+                <TableCell className="text-right">{`${
+                  value?.formattedBalance
+                } ${
+                  tokenInfo[value.contract as `0x${string}`]?.symbol || "N/A"
+                }`}</TableCell>
                 <TableCell className="text-right">
                   {standard === "ERC20" &&
                   value?.priceId &&

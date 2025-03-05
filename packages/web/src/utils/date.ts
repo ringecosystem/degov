@@ -60,7 +60,7 @@ export function formatTimestampToFriendlyDate(
     return "";
   }
 
-  const date = dayjs.unix(timestampNum);
+  const date = dayjs.unix(timestampNum / 1000);
 
   if (!date.isValid()) {
     console.error(`Invalid date from timestamp: "${timestamp}"`);
@@ -71,4 +71,53 @@ export function formatTimestampToFriendlyDate(
   const suffix = getOrdinalSuffix(day);
 
   return date.format(`MMM D[${suffix}], YYYY`);
+}
+
+/**
+ * Format Unix timestamp (milliseconds) to day and time format
+ * @param timestamp Unix timestamp in milliseconds
+ * @returns formatted date string (e.g. "Tue Feb 25, 09:02 pm")
+ */
+export function formatTimestampToDayTime(timestamp?: number | string): string {
+  if (!timestamp) return "";
+  const timestampNum =
+    typeof timestamp === "string" ? parseInt(timestamp, 10) : timestamp;
+  if (isNaN(timestampNum)) {
+    console.error(`Invalid timestamp: "${timestamp}"`);
+    return "";
+  }
+  // Convert milliseconds to seconds for dayjs.unix()
+  const date = dayjs.unix(timestampNum / 1000);
+  if (!date.isValid()) {
+    console.error(`Invalid date from timestamp: "${timestamp}"`);
+    return "";
+  }
+  return date.format("ddd MMM D, hh:mm a");
+}
+
+/**
+ * Calculate and format the time remaining until a given timestamp
+ * @param endTime Timestamp in milliseconds for the end time
+ * @returns Formatted string like "in 8 days", "in 3 hours", or "ended"
+ */
+export function getTimeRemaining(endTime: number): string {
+  const now = dayjs();
+  const end = dayjs(endTime);
+
+  if (end.isBefore(now)) {
+    return "";
+  }
+
+  const diffDays = end.diff(now, "day");
+  if (diffDays >= 1) {
+    return `in ${diffDays} ${diffDays === 1 ? "day" : "days"}`;
+  }
+
+  const diffHours = end.diff(now, "hour");
+  if (diffHours >= 1) {
+    return `in ${diffHours} ${diffHours === 1 ? "hour" : "hours"}`;
+  }
+
+  const diffMinutes = end.diff(now, "minute");
+  return `in ${diffMinutes} ${diffMinutes === 1 ? "minute" : "minutes"}`;
 }

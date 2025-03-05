@@ -60,7 +60,7 @@ export const Contracts = () => {
                   color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.network?.explorer?.url}/address/${daoConfig?.contracts?.governorContract}`}
+                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.governorContract}`}
                 />
               </div>
             </div>
@@ -85,7 +85,7 @@ export const Contracts = () => {
                   color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.network?.explorer?.url}/address/${daoConfig?.contracts?.governorToken?.contract}`}
+                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.governorToken?.contract}`}
                 />
               </div>
             </div>
@@ -107,7 +107,7 @@ export const Contracts = () => {
                   color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.network?.explorer?.url}/address/${daoConfig?.contracts?.timeLockContract}`}
+                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.timeLockContract}`}
                 />
               </div>
             </div>

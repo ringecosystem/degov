@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import { useState } from "react";
 
-import { VoteType, VoteConfig } from '@/config/vote';
-import { cn } from '@/lib/utils';
+import { VoteType, VoteConfig } from "@/config/vote";
+import { cn } from "@/lib/utils";
 
-import { ResultTable } from './result-table';
+import { ResultTable } from "./result-table";
 export const Result = () => {
   const [activeTab, setActiveTab] = useState(VoteType.For);
-  console.log('Object.values(VoteType)', Object.values(VoteType), activeTab);
 
   const activeTabConfig = VoteConfig[activeTab];
   return (
@@ -21,18 +20,20 @@ export const Result = () => {
           >
             <h5
               className={cn(
-                'text-center text-[18px] font-semibold capitalize',
-                activeTab === voteType ? activeTabConfig.textColor : 'text-foreground',
-                activeTab === voteType ? 'font-semibold' : 'font-normal'
+                "text-center text-[18px] font-semibold capitalize",
+                activeTab === voteType
+                  ? activeTabConfig.textColor
+                  : "text-foreground",
+                activeTab === voteType ? "font-semibold" : "font-normal"
               )}
             >
               {voteType}
             </h5>
             <div
               className={cn(
-                'h-[4px] w-full',
+                "h-[4px] w-full",
                 VoteConfig[voteType].bgColor,
-                activeTab === voteType ? 'visible' : 'invisible'
+                activeTab === voteType ? "visible" : "invisible"
               )}
             />
           </div>
@@ -41,13 +42,13 @@ export const Result = () => {
       <ResultTable
         data={[
           {
-            address: '0x123',
-            vote: 'For'
+            address: "0x123",
+            vote: "For",
           },
           {
-            address: '0x133',
-            vote: 'Against'
-          }
+            address: "0x133",
+            vote: "Against",
+          },
         ]}
       />
     </div>

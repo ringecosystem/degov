@@ -1,4 +1,6 @@
 import Image from "next/image";
+import { useCallback, useEffect, useState } from "react";
+import { useAccount } from "wagmi";
 
 import { AddressWithAvatarFull } from "@/components/address-with-avatar-full";
 import { Button } from "@/components/ui/button";
@@ -11,16 +13,54 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { VoteStatusAction } from "@/components/vote-status";
+import { useMyVotes } from "@/hooks/useMyVotes";
+import { formatShortAddress } from "@/utils/address";
 
 import type { Address } from "viem";
 
 interface VotingProps {
+  proposalId?: string;
   open: boolean;
+  isPending: boolean;
   onOpenChange: (value: boolean) => void;
   address?: Address;
+  onCastVote: ({
+    proposalId,
+    support,
+    reason,
+  }: {
+    proposalId: string;
+    support: number;
+    reason: string;
+  }) => void;
 }
 
-export function Voting({ open, onOpenChange }: VotingProps) {
+export function Voting({
+  proposalId,
+  open,
+  onOpenChange,
+  isPending,
+  onCastVote,
+}: VotingProps) {
+  const { formattedVotes } = useMyVotes();
+  const [support, setSupport] = useState<1 | 2 | 3>(1);
+  const [reason, setReason] = useState("");
+  const { address } = useAccount();
+  useEffect(() => {
+    if (!open) {
+      setSupport(1);
+      setReason("");
+    }
+  }, [open]);
+
+  const handleCastVote = useCallback(() => {
+    onCastVote({
+      proposalId: proposalId as string,
+      support,
+      reason,
+    });
+  }, [onCastVote, proposalId, reason, support]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
@@ -38,17 +78,22 @@ export function Voting({ open, onOpenChange }: VotingProps) {
         <Separator className="my-0 bg-muted-foreground/40" />
         <div className="flex w-[360px] flex-col gap-[20px]">
           <div className="flex items-center gap-[10px]">
-            <AddressWithAvatarFull address="0x1234567890" avatarSize={34} />
+            <AddressWithAvatarFull
+              address={address as Address}
+              avatarSize={34}
+            />
           </div>
 
           <div className="flex items-center justify-between rounded-[4px] border border-muted-foreground p-[10px]">
             <span className="text-[14px]">Voting power</span>
-            <span className="text-[26px] font-semibold">56,487</span>
+            <span className="text-[26px] font-semibold">{formattedVotes}</span>
           </div>
 
           <div className="flex items-center justify-between rounded-[4px] border border-muted-foreground p-[10px]">
             <span className="text-[14px]">Proposal lD</span>
-            <span className="text-[26px] font-semibold">231142...6368</span>
+            <span className="text-[26px] font-semibold">
+              {proposalId ? formatShortAddress(proposalId) : ""}
+            </span>
           </div>
 
           <div className="flex flex-col gap-[20px]">
@@ -56,18 +101,21 @@ export function Voting({ open, onOpenChange }: VotingProps) {
             <div className="flex items-center justify-between gap-[10px]">
               <VoteStatusAction
                 variant="for"
-                type="default"
+                type={support === 1 ? "active" : "default"}
                 className="w-[113px]"
+                onChangeVote={() => setSupport(1)}
               />
               <VoteStatusAction
                 variant="against"
-                type="default"
+                type={support === 2 ? "active" : "default"}
                 className="w-[113px]"
+                onChangeVote={() => setSupport(2)}
               />
               <VoteStatusAction
                 variant="abstain"
-                type="default"
+                type={support === 3 ? "active" : "default"}
                 className="w-[113px]"
+                onChangeVote={() => setSupport(3)}
               />
             </div>
           </div>
@@ -77,11 +125,20 @@ export function Voting({ open, onOpenChange }: VotingProps) {
             <Textarea
               className="rounded-[10px] border border-border/20 bg-card p-[10px]"
               placeholder="Why are you voting this way?"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
             />
           </div>
         </div>
         <Separator className="my-0 bg-muted-foreground/40" />
-        <Button className="rounded-[100px]">Submit</Button>
+        <Button
+          className="rounded-[100px]"
+          onClick={handleCastVote}
+          disabled={!reason || !proposalId}
+          isLoading={isPending}
+        >
+          Submit
+        </Button>
       </DialogContent>
     </Dialog>
   );

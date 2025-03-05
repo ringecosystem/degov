@@ -27,11 +27,14 @@ export function useProposalData() {
   const { refetch, ...proposalsQuery } = useQuery({
     queryKey,
     queryFn: async () => {
+      //   proposalCreateds(orderBy: blockNumber_DESC)
+
       const result = await proposalService.getAllProposals(
         daoConfig?.indexer?.endpoint as string,
         {
           limit: 10,
           offset: (currentPage - 1) * 10,
+          orderBy: "blockTimestamp_DESC_NULLS_LAST",
         }
       );
 

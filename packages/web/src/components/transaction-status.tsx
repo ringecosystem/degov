@@ -27,7 +27,7 @@ export function TransactionStatus({
   transactionHash,
 }: TransactionStatusProps) {
   const daoConfig = useConfig();
-  const explorerUrl = daoConfig?.network?.explorer?.url;
+  const explorerUrl = daoConfig?.network?.explorer?.[0];
   const name = daoConfig?.network?.chain;
 
   return (

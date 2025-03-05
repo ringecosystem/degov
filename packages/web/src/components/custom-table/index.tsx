@@ -29,7 +29,7 @@ export interface CustomTableProps<T> {
   isLoading?: boolean;
   loadingRows?: number;
   loadingHeight?: number;
-  emptyText?: string;
+  emptyText?: React.ReactNode;
   bodyClassName?: string;
   maxHeight?: string;
   onRow?: (

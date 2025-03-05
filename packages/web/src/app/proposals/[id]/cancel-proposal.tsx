@@ -15,9 +15,16 @@ interface DelegateActionProps {
   open: boolean;
   onOpenChange: (value: boolean) => void;
   address?: Address;
+  isLoading?: boolean;
+  onCancelProposal?: () => void;
 }
 
-export function CancelProposal({ open, onOpenChange }: DelegateActionProps) {
+export function CancelProposal({
+  open,
+  onOpenChange,
+  isLoading,
+  onCancelProposal,
+}: DelegateActionProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
@@ -44,11 +51,17 @@ export function CancelProposal({ open, onOpenChange }: DelegateActionProps) {
           <Button
             className="rounded-[100px] border border-border/20 bg-card"
             variant="outline"
+            onClick={() => onOpenChange(false)}
           >
             Close
           </Button>
-          <Button className="rounded-[100px]" variant="destructive">
-            Cancel proposal{" "}
+          <Button
+            className="rounded-[100px]"
+            variant="destructive"
+            isLoading={isLoading}
+            onClick={onCancelProposal}
+          >
+            Cancel proposal
           </Button>
         </div>
       </DialogContent>

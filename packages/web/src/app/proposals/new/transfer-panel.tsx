@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { isEmpty, isObject } from "lodash-es";
+import { isEmpty, isNil, isObject } from "lodash-es";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
@@ -12,6 +12,7 @@ import { TokenSelect } from "@/components/token-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConfig } from "@/hooks/useConfig";
+import { useGetTokenInfo } from "@/hooks/useGetTokenInfo";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
 import { formatBigIntForDisplay } from "@/utils/number";
@@ -89,6 +90,15 @@ export const TransferPanel = ({
     [setValue]
   );
 
+  const baseTokenList = useMemo(() => {
+    return Object.values(daoConfig?.timeLockAssets ?? {}).map((v) => ({
+      contract: v.contract,
+      standard: v.standard,
+    }));
+  }, [daoConfig]);
+
+  const { tokenInfo } = useGetTokenInfo(baseTokenList);
+
   const tokenList = useMemo(() => {
     const nativeToken: TokenInfo = {
       address: "0x0000000000000000000000000000000000000000" as Address,
@@ -107,8 +117,8 @@ export const TransferPanel = ({
       Object.values(daoConfig?.timeLockAssets).forEach((token) => {
         treasuryTokenList.push({
           address: token.contract as Address,
-          symbol: token.symbol,
-          decimals: token.decimals,
+          symbol: tokenInfo[token.contract as `0x${string}`]?.symbol,
+          decimals: tokenInfo[token.contract as `0x${string}`]?.decimals,
           icon: token.logo,
           isNative: false,
         });
@@ -116,7 +126,7 @@ export const TransferPanel = ({
     }
 
     return [nativeToken, ...treasuryTokenList];
-  }, [daoConfig]);
+  }, [daoConfig, tokenInfo]);
 
   const isValueGreaterThanBalance = useMemo(() => {
     const amount = watch("amount");
@@ -241,7 +251,9 @@ export const TransferPanel = ({
               />
               <TokenSelect
                 selectedToken={selectedToken}
-                tokenList={tokenList}
+                tokenList={tokenList?.filter(
+                  (v) => v?.symbol && !isNil(v?.decimals)
+                )}
                 onTokenChange={handleTokenChange}
               />
             </div>
@@ -252,16 +264,6 @@ export const TransferPanel = ({
                 {isLoading ? (
                   <Skeleton className="h-[20px] w-[80px] rounded-[4px]" />
                 ) : (
-                  // <FormattedNumberTooltip
-                  //   value={balance ?? 0n}
-                  //   valueDecimals={selectedToken?.decimals ?? 18}
-                  // >
-                  //   {(formattedValue) => (
-                  //     <span className="text-[14px] text-foreground/50">
-                  //       {formattedValue}
-                  //     </span>
-                  //   )}
-                  // </FormattedNumberTooltip>
                   <span className="text-[14px] text-foreground/50">
                     {formatBigIntForDisplay(
                       balance ?? 0n,

@@ -1,33 +1,60 @@
-// 基础类型定义
-export type ID = string;
-export type BigInt = string;
-export type Address = string;
-
 export type ProposalItem = {
+  blockNumber: string;
+  blockTimestamp: string;
+  calldatas: string[];
+  description: string;
   id: string;
   proposalId: string;
-  blockNumber?: number;
-  blockTimestamp?: number;
-  calldatas?: string[];
-  description?: string;
-  signatures?: string[];
-  targets?: string[];
-  voteEnd?: number;
-  voteStart?: number;
+  proposer: string;
+  signatures: string[];
+  targets: string[];
+  transactionHash: string;
+  values: string[];
+  voteEnd: string;
+  voteStart: string;
 };
 
-// 分页信息类型
-export interface PageInfo {
-  hasNextPage: boolean;
-  endCursor: string;
-}
+export type ProposalResponse = {
+  proposalCreateds: ProposalItem[];
+};
 
-// 提案列表结果类型
-export interface ProposalListResult {
-  proposals: ProposalItem[];
-  pageInfo: PageInfo;
-  totalCount: number;
-  loading: boolean;
-  error: Error | null;
-  fetchNextPage: () => void;
-}
+export type ProposalByIdResponse = {
+  proposalCreatedById: ProposalItem;
+};
+
+// cancel
+export type ProposalCanceledByIdItem = {
+  id: string;
+  blockNumber: string;
+  blockTimestamp: string;
+  proposalId: string;
+  transactionHash: string;
+};
+export type ProposalCanceledByIdResponse = {
+  proposalCanceledById: ProposalCanceledByIdItem;
+};
+
+// Executed
+export type ProposalExecutedByIdItem = {
+  id: string;
+  blockNumber: string;
+  blockTimestamp: string;
+  proposalId: string;
+  transactionHash: string;
+};
+export type ProposalExecutedByIdResponse = {
+  proposalExecutedById: ProposalExecutedByIdItem;
+};
+
+// Queued
+export type ProposalQueuedByIdItem = {
+  id: string;
+  blockNumber: string;
+  blockTimestamp: string;
+  etaSeconds: string;
+  proposalId: string;
+  transactionHash: string;
+};
+export type ProposalQueuedByIdResponse = {
+  proposalQueuedById: ProposalQueuedByIdItem;
+};

@@ -8,16 +8,21 @@ export const sleep = (ms: number): Promise<void> => {
 };
 
 /**
- * from Markdown description extract title
+ * from Markdown description to extract title and rich text content
  * description format is usually `# {title} \n\n{content}`
  * @param description Markdown description text
- * @returns Extracted title
+ * @returns an object containing the extracted title and rich text content
  */
-export function extractTitleFromDescription(description?: string): string {
-  if (!description) return "";
+export function extractTitleAndDescription(description?: string): {
+  title: string;
+  description: string;
+} {
+  if (!description) return { title: "", description: "" };
 
   // match "#" content until newline
   const titleMatch = description.match(/^#\s+(.*?)(?:\n|$)/);
+  let title = "";
+  let content = description;
 
   if (titleMatch && titleMatch[1]) {
     // clean title (remove HTML tags and extra spaces)
@@ -28,15 +33,24 @@ export function extractTitleFromDescription(description?: string): string {
     // handle special case for numeric titles (e.g. "# 1 1" -> "1")
     if (/^[\d\s]+$/.test(cleanTitle)) {
       const firstNumber = cleanTitle.match(/\d+/);
-      return firstNumber ? firstNumber[0] : cleanTitle;
+      title = firstNumber ? firstNumber[0] : cleanTitle;
+    } else {
+      title = cleanTitle;
     }
 
-    return cleanTitle;
+    // remove title part from content, but keep the rest of the rich text format
+    content = description.replace(/^#\s+.*?(?:\n|$)/, "").trim();
+  } else {
+    // if no title is found, use the first 50 characters of the description as title
+    const fallbackTitle = description.replace(/<\/?[^>]+(>|$)/g, "").trim();
+    title =
+      fallbackTitle.length > 50
+        ? `${fallbackTitle.substring(0, 50)}...`
+        : fallbackTitle;
   }
 
-  // if no title is found, return the first 50 characters of description as title
-  const fallbackTitle = description.replace(/<\/?[^>]+(>|$)/g, "").trim();
-  return fallbackTitle.length > 50
-    ? `${fallbackTitle.substring(0, 50)}...`
-    : fallbackTitle;
+  return {
+    title,
+    description: content,
+  };
 }

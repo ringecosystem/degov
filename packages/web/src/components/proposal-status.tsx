@@ -7,7 +7,6 @@ interface ProposalStatusProps {
 }
 
 export function ProposalStatus({ status }: ProposalStatusProps) {
-  console.log("status", status);
   return (
     <span
       className={cn(

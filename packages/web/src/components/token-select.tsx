@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { useCallback } from "react";
 
 import {
   Select,
@@ -28,12 +29,15 @@ export function TokenSelect({
   tokenList: TokenInfo[];
   onTokenChange: (token: TokenInfo) => void;
 }) {
-  const handleTokenChange = (value: string) => {
-    const token = tokenList.find((token) => token.address === value);
-    if (token) {
-      onTokenChange(token);
-    }
-  };
+  const handleTokenChange = useCallback(
+    (value: string) => {
+      const token = tokenList.find((token) => token.address === value);
+      if (token) {
+        onTokenChange(token);
+      }
+    },
+    [tokenList, onTokenChange]
+  );
 
   return (
     <Select value={selectedToken?.address} onValueChange={handleTokenChange}>

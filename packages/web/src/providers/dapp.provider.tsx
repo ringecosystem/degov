@@ -37,7 +37,10 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
       },
     },
     blockExplorers: {
-      default: dappConfig.network?.explorer,
+      default: {
+        name: "Explorer",
+        url: dappConfig.network?.explorer?.[0],
+      },
     },
   };
 

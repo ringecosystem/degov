@@ -5,8 +5,9 @@ import type { TokenDetails } from "@/types/config";
 interface AssetProps {
   asset: TokenDetails;
   explorer: string;
+  symbol: string;
 }
-export const Asset = ({ asset, explorer }: AssetProps) => {
+export const Asset = ({ asset, explorer, symbol }: AssetProps) => {
   return (
     <a
       className="flex items-center gap-[10px] text-[14px] text-foreground transition-opacity hover:underline hover:opacity-80"
@@ -16,13 +17,13 @@ export const Asset = ({ asset, explorer }: AssetProps) => {
     >
       <Image
         src={asset.logo}
-        alt={asset.symbol}
+        alt={symbol || "N/A"}
         className="h-[30px] w-[30px] rounded-full"
         width={30}
         height={30}
       />
       <span className="text-[14px] capitalize text-foreground">
-        {asset.symbol}
+        {symbol || "N/A"}
       </span>
       <Image
         src="/assets/image/external-link.svg"

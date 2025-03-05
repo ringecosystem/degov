@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-import type { FC} from "react";
+import type { FC } from "react";
 
 type VoteVariant = "for" | "against" | "abstain";
 
@@ -59,12 +59,14 @@ interface VoteStatusActionProps {
   variant: VoteStatusActionType;
   className?: string;
   type: "default" | "active";
+  onChangeVote: () => void;
 }
 
 export const VoteStatusAction: FC<VoteStatusActionProps> = ({
   variant,
   className,
   type,
+  onChangeVote,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -83,6 +85,7 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={onChangeVote}
     >
       <Image
         src={isActive ? text[variant].icon : text[variant].defaultIcon}

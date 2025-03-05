@@ -17,7 +17,7 @@ export interface ProposalActionParam {
   params: readonly unknown[];
 }
 
-const calculateDescriptionHash = (description: string) => {
+export const calculateDescriptionHash = (description: string) => {
   return keccak256(stringToBytes(description));
 };
 
@@ -101,7 +101,7 @@ export const useProposal = () => {
       params.targets,
       params.values,
       params.calldatas,
-      params.description ? calculateDescriptionHash(params.description) : "0x",
+      calculateDescriptionHash(params.description ?? "0x"),
     ],
     query: {
       enabled:

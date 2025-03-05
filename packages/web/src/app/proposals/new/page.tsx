@@ -82,7 +82,6 @@ export default function NewProposal() {
   const [tab, setTab] = useState<"edit" | "add" | "preview">("edit");
 
   const { createProposal, isPending, proposalId } = useProposal();
-  console.log("proposalId", proposalId);
 
   const {
     formattedVotes,
@@ -205,7 +204,6 @@ export default function NewProposal() {
       const result = await transformActionsToProposalParams(actions);
       const hash = await createProposal(result.description, result.actions);
       if (hash) {
-        console.log("hash", hash);
         setHash(hash);
       }
       return;

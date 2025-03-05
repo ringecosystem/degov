@@ -18,8 +18,7 @@ import { cn } from "@/lib/utils";
 import { formatShortAddress } from "@/utils/address";
 
 import type { Action } from "./type";
-import type { Address} from "viem";
-
+import type { Address } from "viem";
 
 export interface ActionPanelInfo {
   type: string;
@@ -147,7 +146,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 <TableCell className="w-1/3 text-left">
                   {action.address ? (
                     <a
-                      href={`${daoConfig?.network?.explorer?.url}/address/${action.address}`}
+                      href={`${daoConfig?.network?.explorer?.[0]}/address/${action.address}`}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-[5px] hover:underline font-mono"

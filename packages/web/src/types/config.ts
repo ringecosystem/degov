@@ -18,10 +18,7 @@ interface NetworkInfo {
   logo: string;
   chainId: number;
   rpc: string[];
-  explorer: {
-    name: string;
-    url: string;
-  };
+  explorer: string[];
   nativeToken: NativeToken;
 }
 
@@ -40,8 +37,6 @@ interface TokenDetails {
   logo: string;
   chain: string;
   contract: string;
-  symbol: string;
-  decimals: number;
   standard: string;
   priceId?: string;
 }

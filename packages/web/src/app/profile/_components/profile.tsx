@@ -223,7 +223,7 @@ export const Profile = ({ address }: ProfileProps) => {
         </div>
       </div>
 
-      <ReceivedDelegations />
+      <ReceivedDelegations address={address} />
       <DelegateAction
         address={address}
         open={delegateOpen}

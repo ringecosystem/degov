@@ -11,24 +11,18 @@ import { ProposalsStatusDetail } from "./proposals-status-detail";
 
 export const Overview = () => {
   const daoConfig = useConfig();
-  const {
-    data: totalSupply,
-    isLoading: isTotalSupplyLoading,
-    error,
-  } = useReadContract({
-    address: daoConfig?.contracts?.governorToken?.contract as `0x${string}`,
-    abi: tokenAbi,
-    functionName: "totalSupply",
-    query: {
-      enabled: !!daoConfig?.contracts?.governorToken?.contract,
-    },
-  });
+  const { data: totalSupply, isLoading: isTotalSupplyLoading } =
+    useReadContract({
+      address: daoConfig?.contracts?.governorToken?.contract as `0x${string}`,
+      abi: tokenAbi,
+      functionName: "totalSupply",
+      query: {
+        enabled: !!daoConfig?.contracts?.governorToken?.contract,
+      },
+    });
 
   const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
     useGovernanceToken();
-
-  console.log("isTotalSupplyLoading", isTotalSupplyLoading, error);
-  console.log("isGovernanceTokenLoading", isGovernanceTokenLoading);
 
   return (
     <div className="flex flex-col gap-[20px]">

@@ -137,6 +137,9 @@ importers:
       ethers:
         specifier: ^6.13.5
         version: 6.13.5
+      graphql:
+        specifier: ^16.10.0
+        version: 16.10.0
       graphql-request:
         specifier: ^7.1.2
         version: 7.1.2(graphql@16.10.0)

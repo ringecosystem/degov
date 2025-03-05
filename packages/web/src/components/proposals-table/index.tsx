@@ -2,7 +2,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo } from "react";
 
 import type { ProposalItem } from "@/services/graphql/types";
-import { extractTitleFromDescription } from "@/utils";
+import { extractTitleAndDescription } from "@/utils";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
 
 import { CustomTable } from "../custom-table";
@@ -82,10 +82,10 @@ export function ProposalsTable({ type }: { type: "active" | "all" }) {
         render: (record) => (
           <Link
             className="line-clamp-1 hover:underline"
-            title={record.description}
+            title={extractTitleAndDescription(record.description)?.title}
             href={`/proposals/${record.proposalId}`}
           >
-            {extractTitleFromDescription(record.description)}
+            {extractTitleAndDescription(record.description)?.title}
           </Link>
         ),
       },
