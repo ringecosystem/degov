@@ -121,3 +121,32 @@ export function getTimeRemaining(endTime: number): string {
   const diffMinutes = end.diff(now, "minute");
   return `in ${diffMinutes} ${diffMinutes === 1 ? "minute" : "minutes"}`;
 }
+
+// ... existing code ...
+
+/**
+ * use for proposal comment (例如 "Jan 10, 2025")
+ * @param timestamp Unix time stamp (seconds or milliseconds)
+ * @returns formatted date string
+ */
+export function formatSimpleDate(timestamp?: number | string): string {
+  if (!timestamp) return "";
+
+  const timestampNum =
+    typeof timestamp === "string" ? parseInt(timestamp, 10) : timestamp;
+
+  if (isNaN(timestampNum)) {
+    console.error(`Invalid timestamp: "${timestamp}"`);
+    return "";
+  }
+
+  const isMilliseconds = timestampNum > 10000000000;
+  const date = isMilliseconds ? dayjs(timestampNum) : dayjs.unix(timestampNum);
+
+  if (!date.isValid()) {
+    console.error(`Invalid date from timestamp: "${timestamp}"`);
+    return "";
+  }
+
+  return date.format("MMM D, YYYY");
+}
