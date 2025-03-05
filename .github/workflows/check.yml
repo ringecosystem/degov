@@ -19,7 +19,11 @@ jobs:
         with:
           version: 9
 
-      - name: Check Build
+      - name: Install deps
         run: |
           pnpm install
-          pnpm build:all
+          cd packages/indexer
+          yarn install
+
+      - name: Check Build
+        run: pnpm build:all
