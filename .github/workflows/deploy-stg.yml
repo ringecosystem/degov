@@ -19,7 +19,7 @@ jobs:
           vercel_token: ${{ secrets.VERCEL_TOKEN }}
           vercel_group: itering
           preview_output: true
-          alias_domain: "degov-dev"
+          alias_domain: "degov-stg"
           project_name: "degov"
           script_run: false
           dist_path: .
