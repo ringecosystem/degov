@@ -1,12 +1,10 @@
 "use client";
-import { useIndexerStatus } from "@/hooks/useIndexerStatus";
+import { useBlockSync } from "@/hooks/useBlockSync";
 import { cn } from "@/lib/utils";
 
 import { INDEXER_CONFIG } from "../config/indexer";
-
 export function IndexerStatus() {
-  const { status, syncPercentage, currentBlock, indexedBlock } =
-    useIndexerStatus();
+  const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
 
   return (
     <div className="flex flex-col gap-[10px] rounded-[10px] bg-card p-[10px] shadow-sm">
@@ -24,7 +22,7 @@ export function IndexerStatus() {
           style={{ width: `${syncPercentage}%` }}
         >
           <span className="text-xs text-white">
-            {syncPercentage.toFixed(1)}%
+            {syncPercentage.toFixed(1)}%{" "}
             {<span className="text-xs capitalize text-white">{status}</span>}
           </span>
         </div>
