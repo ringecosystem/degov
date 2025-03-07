@@ -18,13 +18,8 @@
     "chain": "Darwinia",
     "logo": "https://darwinia.network/images/darwinia-logo-black-background-round.svg",
     "chainId": 46,
-    "rpc": [
-      "https://rpc.darwinia.network",
-      "https://darwinia-rpc.dwellir.com"
-    ],
-    "explorer": [
-      "https://explorer.darwinia.network/"
-    ],
+    "rpc": ["https://rpc.darwinia.network", "https://darwinia-rpc.dwellir.com"],
+    "explorer": ["https://explorer.darwinia.network/"],
     "nativeToken": {
       "symbol": "RING",
       "decimals": 18,

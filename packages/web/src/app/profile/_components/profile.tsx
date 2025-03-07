@@ -137,14 +137,15 @@ export const Profile = ({ address }: ProfileProps) => {
                       className="flex w-[160px] flex-col rounded-[10px] border-border/20 bg-card"
                       side="right"
                     >
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
+                      <DropdownMenuItem
+                        className="cursor-pointer py-[10px]"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `${window.location.origin}/profile/${address}`
+                          );
+                        }}
+                      >
                         Copy Profile URL
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
-                        Share To Forecaster
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
-                        Share To Lens
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
