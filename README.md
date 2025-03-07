@@ -1,19 +1,19 @@
 <div align="center">
 
-![logo](docs/DeGov.svg)
+![logo](docs/DeGov.AI.svg)
 
 </div>
 
 # DeGov.AI
 
-DeGov.AI is an open-source onchain DAO governance platform for the Ethereum ecosystem. Inspired by [Tally](https://www.tally.xyz/explore), DeGov.AI integrates the [Governor Framework from OpenZeppelin](https://docs.openzeppelin.com/contracts/4.x/governance) to provide a robust and flexible governance solution for decentralized organizations.
+DeGov.AI is an open-source, on-chain governance platform built for DAOs in the Ethereum ecosystem. It leverages the [Governor Framework from OpenZeppelin](https://docs.openzeppelin.com/contracts/4.x/governance) to deliver a robust, flexible, and transparent governance solution for decentralized organizations.
 
 ## Features
 
 - **Open**: Free and open-source, allowing anyone to set up their DAO's governance.
 - **OpenZeppelin Integration**: Uses OpenZeppelin's governor contracts for a reliable governance foundation.
-- **Onchain Governance**: Executes all actions onchain for transparency and security.
-- **AI Powered**: Utilizes AI technology for improved governance decisions and recommendations.
+- **On-chain Governance**: Executes all actions on-chain for transparency and security.
+- **AI Powered (Planned in the next milestone)**: Utilizes AI technology for improved governance decisions and recommendations.
 
 ## Getting Started
 
