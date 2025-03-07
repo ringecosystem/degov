@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 
 import { Connected } from "./connected";
 
+
 export const ConnectButton = () => {
   const { openConnectModal } = useConnectModal();
   const dappConfig = useConfig();
@@ -16,6 +17,10 @@ export const ConnectButton = () => {
 
   if (isConnecting || isReconnecting) {
     return null;
+  }
+
+  if (isConnected) {
+    /// sign 
   }
 
   if (!isConnected && openConnectModal) {
