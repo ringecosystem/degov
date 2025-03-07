@@ -10,7 +10,7 @@ export function useApi() {
     ['query-nonce'],
     async () => {
 
-    // const response = await axios.post('http://60.214.102.126:3000/api/auth/nonce');
+    // const response = await axios.post('http://httpbin.org/anything');
     // console.log('------->', 'connected', response);
     },
   });
