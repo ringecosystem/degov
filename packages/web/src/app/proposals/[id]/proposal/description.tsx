@@ -1,4 +1,7 @@
+import { useAsync } from "react-use";
+
 import { Skeleton } from "@/components/ui/skeleton";
+import { markdownToHtml } from "@/utils/markdown";
 
 const Loading = () => {
   return (
@@ -18,6 +21,9 @@ export const Description = ({
   description?: string;
   isFetching: boolean;
 }) => {
+  const html = useAsync(async () => {
+    return markdownToHtml(description ?? "");
+  }, [description]);
   return isFetching ? (
     <Loading />
   ) : (
@@ -29,7 +35,7 @@ export const Description = ({
         }}
         className="text-balance"
         dangerouslySetInnerHTML={{
-          __html: description ?? "",
+          __html: html.value ?? "",
         }}
       ></div>
     </div>
