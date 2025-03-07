@@ -1,6 +1,6 @@
 <div align="center">
 
-![logo](doc/DeGov.svg)
+![logo](docs/DeGov.svg)
 
 </div>
 
