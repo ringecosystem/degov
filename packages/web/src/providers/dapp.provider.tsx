@@ -42,6 +42,11 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         url: dappConfig.network?.explorer?.[0],
       },
     },
+    contracts: {
+      multicall3: {
+        address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+      },
+    },
   };
 
   const persister = createSyncStoragePersister({
