@@ -145,6 +145,8 @@ export const CustomPanel = ({
       );
 
       if (method && method.type === "function") {
+        setValue("contractMethod", value);
+
         const calldata = method?.inputs
           ?.filter((input) => input.name)
           .map((input) => ({
@@ -365,7 +367,6 @@ export const CustomPanel = ({
                   control={control}
                   render={({ field }) => (
                     <CallDataInputForm
-                      key={JSON.stringify(field.value)}
                       calldata={field.value || []}
                       onChange={(newCalldata) => {
                         field.onChange([...newCalldata]);

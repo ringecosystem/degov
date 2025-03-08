@@ -78,16 +78,17 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
             info.details = `${action.content.amount} ${daoConfig?.network?.nativeToken?.symbol}`;
             break;
           case "custom":
+            const contractMethod = action?.content?.contractMethod
+              ? action?.content?.contractMethod?.split("-")[0]
+              : "";
             info.address = action.content.target;
             info.value = action.content.value ?? "0";
-            info.details = action?.content?.contractMethod;
+            info.details = contractMethod;
             info.params = action?.content?.calldata?.map((item) => ({
               name: item.name,
               value: item.value,
             }));
-            info.signature = `${
-              action?.content?.contractMethod
-            }(${action?.content?.calldata
+            info.signature = `${contractMethod}(${action?.content?.calldata
               ?.map((item) => `${item.name}`)
               .join(",")})`;
 
@@ -104,7 +105,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
       });
   }, [actions, daoConfig]);
 
-  const RawView = () => {
+  const SummaryView = () => {
     const daoConfig = useConfig();
     return (
       <Table>
@@ -215,7 +216,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
     );
   };
 
-  const SummaryView = () => (
+  const RawView = () => (
     <div className="space-y-[20px]">
       {actionPanelInfo.map((action, index) => (
         <div key={index}>
@@ -229,7 +230,9 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 <h4 className="text-[14px] font-normal text-muted-foreground">
                   Signature:
                 </h4>
-                <p className="font-mono font-semibold">{action.signature}</p>
+                <p className="text-[14px] font-mono font-semibold">
+                  {action.signature}
+                </p>
               </div>
             )}
 
@@ -239,7 +242,10 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                   Calldata:
                 </h4>
                 {action.calldata.map(({ name, value }, cIndex) => (
-                  <div key={cIndex} className="font-mono font-semibold">
+                  <div
+                    key={cIndex}
+                    className="text-[14px] font-mono font-semibold"
+                  >
                     {name}:{" "}
                     {Array.isArray(value) ? `[${value.join(", ")}]` : value}
                   </div>
@@ -252,7 +258,9 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 <h4 className="text-[14px] font-normal text-muted-foreground">
                   Target:
                 </h4>
-                <p className="font-mono font-semibold">{action.address}</p>
+                <p className="text-[14px] font-mono font-semibold">
+                  {action.address}
+                </p>
               </div>
             )}
 
@@ -260,7 +268,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               <h4 className="text-[14px] font-normal text-muted-foreground">
                 Value:
               </h4>
-              <p className="font-mono font-semibold">
+              <p className="text-[14px] font-mono font-semibold">
                 {action.value
                   ? parseUnits(
                       action.value,
@@ -310,8 +318,8 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               )}
             </div>
 
-            {tab === "summary" && <RawView />}
-            {tab === "raw" && <SummaryView />}
+            {tab === "raw" && <RawView />}
+            {tab === "summary" && <SummaryView />}
           </div>
         </div>
       )}
