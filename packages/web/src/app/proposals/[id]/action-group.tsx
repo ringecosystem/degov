@@ -70,15 +70,9 @@ export default function ActionGroup({
     },
   });
 
-  const handleCopyUrl = useCallback(
-    (e: Event) => {
-      e.preventDefault();
-      navigator.clipboard.writeText(
-        `${window.location.origin}/proposals/${id}`
-      );
-    },
-    [id]
-  );
+  const handleCopyUrl = useCallback(() => {
+    navigator.clipboard.writeText(`${window.location.origin}/proposals/${id}`);
+  }, [id]);
   const { cancelProposal, isPending: isCancelling } = useCancelProposal();
 
   const handleCancelProposal = useCallback(async () => {

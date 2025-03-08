@@ -15,7 +15,7 @@ import { abi as GovernorAbi } from "@/config/abi/governor";
 import { useConfig } from "@/hooks/useConfig";
 import { proposalService } from "@/services/graphql";
 import type { ProposalState } from "@/types/proposal";
-import { extractTitleAndDescription } from "@/utils";
+import { extractTitleAndDescription, parseDescription } from "@/utils";
 import { formatShortAddress } from "@/utils/address";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
 
@@ -41,7 +41,22 @@ export default function ProposalDetailPage() {
     enabled: !!id && !!daoConfig?.indexer.endpoint,
   });
 
-  const data = allData?.[0];
+  const data = useMemo(() => {
+    if (allData?.[0]) {
+      const data = {
+        ...allData?.[0],
+      };
+
+      const parsedDescription = parseDescription(data?.description);
+
+      return {
+        ...data,
+        description: parsedDescription.mainText,
+        signatureContent: parsedDescription.signatureContent,
+      };
+    }
+    return undefined;
+  }, [allData]);
 
   const proposalStatus = useReadContract({
     address: daoConfig?.contracts?.governorContract as `0x${string}`,
@@ -210,7 +225,8 @@ export default function ProposalDetailPage() {
         <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px]">
           <div className="space-y-[20px]">
             <Result data={data} isFetching={isFetching} />
-            <ActionsTable />
+            <ActionsTable data={data} isFetching={isFetching} />
+
             <Proposal data={data} isFetching={isFetching} />
           </div>
 

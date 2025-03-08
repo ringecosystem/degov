@@ -31,7 +31,7 @@ export const Result = ({ data, isFetching }: ResultProps) => {
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <h4 className="mb-4 text-xl">Result details</h4>
+      <h4 className="text-[26px] font-semibold">Result details</h4>
       <div className="grid grid-cols-3 border-b border-border/20">
         {voteTypeLabel.map((voteType) => (
           <div

@@ -2,7 +2,6 @@ import { useAsync } from "react-use";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { markdownToHtml } from "@/utils/markdown";
-
 const Loading = () => {
   return (
     <div className="flex flex-col h-[200px] w-full  gap-2">

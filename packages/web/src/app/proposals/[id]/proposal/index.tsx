@@ -33,7 +33,7 @@ export const Proposal = ({
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <h3 className="text-[26px] font-semibold">Proposal</h3>
+      <h4 className="text-[26px] font-semibold">Proposal</h4>
 
       <div className="flex flex-col gap-[20px]">
         <div className="flex flex-col gap-[20px] border-b border-b-border/20">
@@ -62,7 +62,6 @@ export const Proposal = ({
             </div>
           )}
         </div>
-        {/* Tab Content */}
         <div className="min-h-[200px]">
           {activeTab === "description" && (
             <Description description={description} isFetching={isFetching} />
