@@ -1,4 +1,5 @@
 "use client";
+import { capitalize } from "lodash-es";
 import Image from "next/image";
 
 import { useConfig } from "@/hooks/useConfig";
@@ -39,6 +40,7 @@ export const DaoHeader = () => {
               href={value}
               target="_blank"
               rel="noopener noreferrer"
+              title={capitalize(key)}
               className="flex size-[24px] items-center justify-center rounded-full bg-white transition-colors hover:bg-white/80"
               style={{
                 backgroundImage: `url(/assets/image/user_social/${key}.svg)`,
