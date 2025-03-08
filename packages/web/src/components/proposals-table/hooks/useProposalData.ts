@@ -72,7 +72,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
 
   const voteContracts = useMemo(() => {
     const proposalVotesContract = {
-      address: daoConfig?.contracts?.governorContract as `0x${string}`,
+      address: daoConfig?.contracts?.governor as `0x${string}`,
       abi: GovernorAbi,
       functionName: "proposalVotes",
       chainId: daoConfig?.network?.chainId,
@@ -83,7 +83,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
     }));
   }, [
     allProposals,
-    daoConfig?.contracts?.governorContract,
+    daoConfig?.contracts?.governor,
     daoConfig?.network?.chainId,
   ]);
 
@@ -102,7 +102,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
 
   const statusContracts = useMemo(() => {
     const proposalStatusContract = {
-      address: daoConfig?.contracts?.governorContract as `0x${string}`,
+      address: daoConfig?.contracts?.governor as `0x${string}`,
       abi: GovernorAbi,
       functionName: "state",
       chainId: daoConfig?.network?.chainId,
@@ -113,7 +113,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
     }));
   }, [
     allProposals,
-    daoConfig?.contracts?.governorContract,
+    daoConfig?.contracts?.governor,
     daoConfig?.network?.chainId,
   ]);
 

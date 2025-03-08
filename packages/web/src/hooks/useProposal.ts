@@ -78,7 +78,7 @@ export const useProposal = () => {
         });
 
         const data = await writeContractAsync({
-          address: daoConfig?.contracts?.governorContract as `0x${string}`,
+          address: daoConfig?.contracts?.governor as `0x${string}`,
           abi: governorAbi,
           functionName: "propose",
           args: [targets, values, calldatas, description],
@@ -94,7 +94,7 @@ export const useProposal = () => {
   );
 
   const { data: proposalId, isLoading: isLoadingProposalId } = useReadContract({
-    address: daoConfig?.contracts?.governorContract as `0x${string}`,
+    address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: governorAbi,
     functionName: "hashProposal",
     chainId: daoConfig?.network?.chainId,

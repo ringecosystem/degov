@@ -13,7 +13,12 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetch("/config.json")
       .then((response) => response.json())
-      .then((config) => {
+      .then((config: Config) => {
+        const currentNetwork = config.networks[config.deployedChain];
+        config.network = {
+          ...currentNetwork,
+          name: config.deployedChain,
+        };
         setConfig(config);
         setIsLoading(false);
       })

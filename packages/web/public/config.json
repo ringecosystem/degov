@@ -1,11 +1,9 @@
 {
+  "name": "DeGov Test DAO",
   "logo": "/example/logo.svg",
-  "daoName": "DeGov Test DAO",
+  "deployedChain": "darwinia",
   "walletConnectProjectId": "2719448e2ce94fdd269a3c8587123bcc",
   "description": "DeGov is a open-sourced governance platform that allows users to create and participate in decentralized governance.",
-  "indexer": {
-    "endpoint": "https://degov-indexer.vercel.app/graphql"
-  },
   "links": {
     "website": "https://www.open-governor.com",
     "twitter": "https://twitter.com/DarwiniaNetwork",
@@ -14,40 +12,49 @@
     "github": "https://github.com/darwinia-network",
     "email": "example@gmail.com"
   },
-  "network": {
-    "chain": "Darwinia",
-    "logo": "https://darwinia.network/images/darwinia-logo-black-background-round.svg",
-    "chainId": 46,
-    "rpc": ["https://rpc.darwinia.network", "https://darwinia-rpc.dwellir.com"],
-    "explorer": ["https://explorer.darwinia.network/"],
-    "nativeToken": {
-      "symbol": "RING",
-      "decimals": 18,
-      "priceId": "RING"
+  "networks": {
+    "darwinia": {
+      "logo": "https://darwinia.network/images/darwinia-logo-black-background-round.svg",
+      "chainId": 46,
+      "rpc": [
+        "https://rpc.darwinia.network",
+        "https://darwinia-rpc.dwellir.com"
+      ],
+      "explorer": [
+        "https://explorer.darwinia.network/"
+      ],
+      "nativeToken": {
+        "symbol": "RING",
+        "decimals": 18,
+        "priceId": "RING"
+      }
     }
   },
   "contracts": {
-    "governorContract": "0x9bCF89B951b9880AC1Ec9Ce6b82B2764ca7A532F",
+    "governor": "0x9bCF89B951b9880AC1Ec9Ce6b82B2764ca7A532F",
     "governorToken": {
       "contract": "0xcC43d7e20D4dC29Ca65f3327C9257e1E354f9E08",
       "standard": "ERC721"
     },
-    "timeLockContract": "0x527560d6a509ddE7828D598BF31Fc67DA50c8093"
+    "timeLock": "0x527560d6a509ddE7828D598BF31Fc67DA50c8093"
+  },
+  "indexer": {
+    "endpoint": "https://degov-indexer.vercel.app/graphql"
   },
   "timeLockAssets": {
     "mtk": {
-      "logo": "https://staking.ktondao.xyz/images/token/kton.svg",
       "chain": "darwinia",
       "contract": "0x9d633f05Ea918D392bDa0A74bD15E5bcCad324e2",
+      "standard": "ERC20",
       "priceId": "MTK",
-      "standard": "ERC20"
+      "logo": "https://staking.ktondao.xyz/images/token/kton.svg"
     },
     "usdt": {
-      "logo": "https://coingecko.com/coins/usdt/images/1/large/usdt.png",
       "chain": "darwinia",
       "contract": "0x8D71a40566fa4dCEE390Bbf854f63D43d06a90fd",
+      "standard": "ERC721",
       "priceId": "MTK",
-      "standard": "ERC721"
+      "logo": "https://coingecko.com/coins/usdt/images/1/large/usdt.png"
     }
   }
 }

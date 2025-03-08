@@ -56,7 +56,7 @@ export default function ActionGroup({
   const [cancelHash, setCancelHash] = useState<`0x${string}` | null>(null);
   const [cancelProposalOpen, setCancelProposalOpen] = useState(false);
   const { data: hasVoted } = useReadContract({
-    address: daoConfig?.contracts?.governorContract as `0x${string}`,
+    address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
     functionName: "hasVoted",
     args: [id ? BigInt(id) : 0n, address as `0x${string}`],
@@ -64,7 +64,7 @@ export default function ActionGroup({
     query: {
       enabled:
         !!id &&
-        !!daoConfig?.contracts?.governorContract &&
+        !!daoConfig?.contracts?.governor &&
         !!address &&
         !!daoConfig?.network?.chainId,
     },

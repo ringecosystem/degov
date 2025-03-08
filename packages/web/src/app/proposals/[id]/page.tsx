@@ -59,7 +59,7 @@ export default function ProposalDetailPage() {
   }, [allData]);
 
   const proposalStatus = useReadContract({
-    address: daoConfig?.contracts?.governorContract as `0x${string}`,
+    address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
     functionName: "state",
     args: [data?.proposalId ? BigInt(data?.proposalId) : 0n],
@@ -67,13 +67,13 @@ export default function ProposalDetailPage() {
     query: {
       enabled:
         !!data?.proposalId &&
-        !!daoConfig?.contracts?.governorContract &&
+        !!daoConfig?.contracts?.governor &&
         !!daoConfig?.network?.chainId,
     },
   });
 
   const proposalVotes = useReadContract({
-    address: daoConfig?.contracts?.governorContract as `0x${string}`,
+    address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
     functionName: "proposalVotes",
     args: [data?.proposalId ? BigInt(data?.proposalId) : 0n],
@@ -81,7 +81,7 @@ export default function ProposalDetailPage() {
     query: {
       enabled:
         !!data?.proposalId &&
-        !!daoConfig?.contracts?.governorContract &&
+        !!daoConfig?.contracts?.governor &&
         !!daoConfig?.network?.chainId,
     },
   });

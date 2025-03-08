@@ -25,7 +25,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
 
   const currentChain: Chain = {
     id: Number(dappConfig.network?.chainId),
-    name: dappConfig.network?.chain,
+    name: dappConfig.network?.name ?? "",
     nativeCurrency: {
       name: dappConfig.network?.nativeToken?.symbol,
       symbol: dappConfig.network?.nativeToken?.symbol,
@@ -56,7 +56,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   });
 
   const config = createConfig({
-    appName: dappConfig?.daoName,
+    appName: dappConfig?.name,
     projectId: dappConfig?.walletConnectProjectId,
     chain: currentChain,
   });
@@ -70,7 +70,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         <RainbowKitProvider
           theme={dark}
           locale="en-US"
-          appInfo={{ appName: dappConfig?.daoName }}
+          appInfo={{ appName: dappConfig?.name }}
           initialChain={currentChain}
         >
           {children}

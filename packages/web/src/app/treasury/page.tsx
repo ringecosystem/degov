@@ -12,7 +12,7 @@ import { usePriceStore } from "@/store/price";
 
 export default function Treasury() {
   const daoConfig = useConfig();
-  const timeLockAddress = daoConfig?.contracts?.timeLockContract;
+  const timeLockAddress = daoConfig?.contracts?.timeLock;
 
   const tokenInfo = useMemo(() => {
     if (!daoConfig?.timeLockAssets || isEmpty(daoConfig?.timeLockAssets))

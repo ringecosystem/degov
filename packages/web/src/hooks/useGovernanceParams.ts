@@ -17,8 +17,8 @@ interface GovernanceParams {
 
 export function useGovernanceParams() {
   const daoConfig = useConfig();
-  const governorAddress = daoConfig?.contracts?.governorContract as Address;
-  const timeLockAddress = daoConfig?.contracts?.timeLockContract as Address;
+  const governorAddress = daoConfig?.contracts?.governor as Address;
+  const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
 
   const { data: clockData, isLoading: isClockLoading } = useReadContract({
     address: governorAddress as `0x${string}`,

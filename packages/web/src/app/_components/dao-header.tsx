@@ -20,7 +20,7 @@ export const DaoHeader = () => {
             width={35}
             height={35}
           />
-          {config?.daoName}
+          {config?.name}
         </h1>
         <p className="line-clamp-2 text-[14px] text-card-foreground">
           {config?.description}
