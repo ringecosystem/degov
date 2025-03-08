@@ -60,8 +60,13 @@ export default function ActionGroup({
     abi: GovernorAbi,
     functionName: "hasVoted",
     args: [id ? BigInt(id) : 0n, address as `0x${string}`],
+    chainId: daoConfig?.network?.chainId,
     query: {
-      enabled: !!id && !!daoConfig?.contracts?.governorContract && !!address,
+      enabled:
+        !!id &&
+        !!daoConfig?.contracts?.governorContract &&
+        !!address &&
+        !!daoConfig?.network?.chainId,
     },
   });
 

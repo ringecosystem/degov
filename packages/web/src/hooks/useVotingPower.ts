@@ -32,12 +32,14 @@ export function useVotingPower(account?: Address): UseVotingPowerReturn {
             address: tokenAddress,
             abi: tokenAbi,
             functionName: "totalSupply",
+            chainId: daoConfig?.network?.chainId,
           },
           {
             address: tokenAddress,
             abi: tokenAbi,
             functionName: "getVotes",
             args: [account],
+            chainId: daoConfig?.network?.chainId,
           },
         ]
       : [
@@ -45,10 +47,11 @@ export function useVotingPower(account?: Address): UseVotingPowerReturn {
             address: tokenAddress,
             abi: tokenAbi,
             functionName: "totalSupply",
+            chainId: daoConfig?.network?.chainId,
           },
         ],
     query: {
-      enabled: Boolean(tokenAddress),
+      enabled: Boolean(tokenAddress) && Boolean(daoConfig?.network?.chainId),
       refetchInterval: 60_000, // Refetch every minute
     },
   });

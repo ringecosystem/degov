@@ -48,8 +48,12 @@ export default function ProposalDetailPage() {
     abi: GovernorAbi,
     functionName: "state",
     args: [data?.proposalId ? BigInt(data?.proposalId) : 0n],
+    chainId: daoConfig?.network?.chainId,
     query: {
-      enabled: !!data?.proposalId && !!daoConfig?.contracts?.governorContract,
+      enabled:
+        !!data?.proposalId &&
+        !!daoConfig?.contracts?.governorContract &&
+        !!daoConfig?.network?.chainId,
     },
   });
 
@@ -58,8 +62,12 @@ export default function ProposalDetailPage() {
     abi: GovernorAbi,
     functionName: "proposalVotes",
     args: [data?.proposalId ? BigInt(data?.proposalId) : 0n],
+    chainId: daoConfig?.network?.chainId,
     query: {
-      enabled: !!data?.proposalId && !!daoConfig?.contracts?.governorContract,
+      enabled:
+        !!data?.proposalId &&
+        !!daoConfig?.contracts?.governorContract &&
+        !!daoConfig?.network?.chainId,
     },
   });
 

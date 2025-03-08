@@ -45,6 +45,13 @@ export function DelegateAction({
       abi: tokenAbi,
       functionName: "balanceOf",
       args: [account as `0x${string}`],
+      chainId: daoConfig?.network?.chainId,
+      query: {
+        enabled:
+          !!account &&
+          !!daoConfig?.contracts?.governorToken?.contract &&
+          !!daoConfig?.network?.chainId,
+      },
     });
 
   const { delegate, isPending: isPendingDelegate } = useDelegate();

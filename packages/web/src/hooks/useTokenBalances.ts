@@ -42,8 +42,9 @@ export function useTokenBalances(
         abi: asset.standard === "ERC20" ? erc20Abi : erc721Abi,
         functionName: "balanceOf",
         args: [timeLockAddress as `0x${string}`],
+        chainId: daoConfig?.network?.chainId,
       }));
-  }, [assets, timeLockAddress]);
+  }, [assets, timeLockAddress, daoConfig?.network?.chainId]);
 
   const {
     data: balanceResults,
@@ -52,7 +53,10 @@ export function useTokenBalances(
   } = useReadContracts({
     contracts: contractCalls,
     query: {
-      enabled: contractCalls.length > 0 && Boolean(timeLockAddress),
+      enabled:
+        contractCalls.length > 0 &&
+        Boolean(timeLockAddress) &&
+        Boolean(daoConfig?.network?.chainId),
     },
   });
 

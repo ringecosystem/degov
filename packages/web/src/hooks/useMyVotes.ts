@@ -41,8 +41,12 @@ export function useMyVotes(): UseVotesReturn {
     abi: tokenAbi,
     functionName: "getVotes",
     args: [address!],
+    chainId: daoConfig?.network?.chainId,
     query: {
-      enabled: Boolean(address) && Boolean(tokenAddress),
+      enabled:
+        Boolean(address) &&
+        Boolean(tokenAddress) &&
+        Boolean(daoConfig?.network?.chainId),
     },
   });
 

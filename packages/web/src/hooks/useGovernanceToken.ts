@@ -34,16 +34,19 @@ export function useGovernanceToken(): UseGovernanceTokenReturn {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "symbol",
+              chainId: daoConfig?.network?.chainId,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "name",
+              chainId: daoConfig?.network?.chainId,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "decimals",
+              chainId: daoConfig?.network?.chainId,
             },
           ]
         : [
@@ -51,15 +54,17 @@ export function useGovernanceToken(): UseGovernanceTokenReturn {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "symbol",
+              chainId: daoConfig?.network?.chainId,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "name",
+              chainId: daoConfig?.network?.chainId,
             },
           ],
     query: {
-      enabled: Boolean(tokenAddress),
+      enabled: Boolean(tokenAddress) && Boolean(daoConfig?.network?.chainId),
     },
   });
 

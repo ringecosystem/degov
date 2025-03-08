@@ -9,8 +9,6 @@ import { useGovernanceToken } from "./useGovernanceToken";
 
 import type { Address } from "viem";
 
-
-
 export function useAddressVotes(address: Address) {
   const daoConfig = useConfig();
   const tokenAddress = daoConfig?.contracts?.governorToken?.contract as Address;
@@ -26,8 +24,12 @@ export function useAddressVotes(address: Address) {
     abi: tokenAbi,
     functionName: "getVotes",
     args: [address!],
+    chainId: daoConfig?.network?.chainId,
     query: {
-      enabled: Boolean(address) && Boolean(tokenAddress),
+      enabled:
+        Boolean(address) &&
+        Boolean(tokenAddress) &&
+        Boolean(daoConfig?.network?.chainId),
     },
   });
   const formattedVotes =

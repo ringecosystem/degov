@@ -16,8 +16,11 @@ export const Overview = () => {
       address: daoConfig?.contracts?.governorToken?.contract as `0x${string}`,
       abi: tokenAbi,
       functionName: "totalSupply",
+      chainId: daoConfig?.network?.chainId,
       query: {
-        enabled: !!daoConfig?.contracts?.governorToken?.contract,
+        enabled:
+          !!daoConfig?.contracts?.governorToken?.contract &&
+          !!daoConfig?.network?.chainId,
       },
     });
 
