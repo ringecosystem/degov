@@ -3,7 +3,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { isNil } from "lodash-es";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useReadContract } from "wagmi";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -12,9 +12,10 @@ import NotFound from "@/components/not-found";
 import { ProposalStatus } from "@/components/proposal-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { abi as GovernorAbi } from "@/config/abi/governor";
+import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
-import type { ProposalState } from "@/types/proposal";
+import { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
 import { formatShortAddress } from "@/utils/address";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
@@ -26,11 +27,41 @@ import { Proposal } from "./proposal";
 import { Result } from "./result";
 import Status from "./status";
 
+const ACTIVE_STATES: ProposalState[] = [
+  ProposalState.Pending,
+  ProposalState.Active,
+  ProposalState.Succeeded,
+  ProposalState.Queued,
+];
+
 export default function ProposalDetailPage() {
   const daoConfig = useDaoConfig();
   const { id } = useParams();
 
-  const { data: allData, isFetching } = useQuery({
+  const proposalStatus = useReadContract({
+    address: daoConfig?.contracts?.governor as `0x${string}`,
+    abi: GovernorAbi,
+    functionName: "state",
+    args: [id ? BigInt(id as string) : 0n],
+    chainId: daoConfig?.network?.chainId,
+    query: {
+      refetchInterval: DEFAULT_REFETCH_INTERVAL,
+      enabled:
+        !!id &&
+        !!daoConfig?.contracts?.governor &&
+        !!daoConfig?.network?.chainId,
+    },
+  });
+
+  const isActive = useMemo(() => {
+    return ACTIVE_STATES.includes(proposalStatus?.data as ProposalState);
+  }, [proposalStatus?.data]);
+
+  const {
+    data: allData,
+    isFetching,
+    refetch: refetchProposal,
+  } = useQuery({
     queryKey: ["proposal", id],
     queryFn: () =>
       proposalService.getAllProposals(daoConfig?.indexer.endpoint as string, {
@@ -39,6 +70,7 @@ export default function ProposalDetailPage() {
         },
       }),
     enabled: !!id && !!daoConfig?.indexer.endpoint,
+    refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
   });
 
   const data = useMemo(() => {
@@ -58,20 +90,6 @@ export default function ProposalDetailPage() {
     return undefined;
   }, [allData]);
 
-  const proposalStatus = useReadContract({
-    address: daoConfig?.contracts?.governor as `0x${string}`,
-    abi: GovernorAbi,
-    functionName: "state",
-    args: [data?.proposalId ? BigInt(data?.proposalId) : 0n],
-    chainId: daoConfig?.network?.chainId,
-    query: {
-      enabled:
-        !!data?.proposalId &&
-        !!daoConfig?.contracts?.governor &&
-        !!daoConfig?.network?.chainId,
-    },
-  });
-
   const proposalVotes = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
@@ -79,6 +97,7 @@ export default function ProposalDetailPage() {
     args: [data?.proposalId ? BigInt(data?.proposalId) : 0n],
     chainId: daoConfig?.network?.chainId,
     query: {
+      refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       enabled:
         !!data?.proposalId &&
         !!daoConfig?.contracts?.governor &&
@@ -97,6 +116,7 @@ export default function ProposalDetailPage() {
           ),
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
+        refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       },
       {
         queryKey: ["proposalExecutedById", data?.id],
@@ -107,6 +127,7 @@ export default function ProposalDetailPage() {
           ),
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
+        refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       },
       {
         queryKey: ["proposalQueuedById", data?.id],
@@ -117,6 +138,7 @@ export default function ProposalDetailPage() {
           ),
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
+        refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       },
     ],
   });
@@ -138,6 +160,13 @@ export default function ProposalDetailPage() {
       abstainVotes: proposalVotes.data?.[2] ?? 0n,
     };
   }, [proposalVotes.data]);
+
+  const refetchPageData = useCallback(() => {
+    refetchProposal();
+    proposalStatus?.refetch();
+    proposalVotes?.refetch();
+    proposalQueries.forEach((query) => query.refetch());
+  }, [refetchProposal, proposalStatus, proposalVotes, proposalQueries]);
 
   if (!id) {
     return <NotFound />;
@@ -171,6 +200,7 @@ export default function ProposalDetailPage() {
               proposalExecutedById={proposalExecutedById}
               proposalQueuedById={proposalQueuedById}
               isAllQueriesFetching={isAllQueriesFetching}
+              onRefetch={refetchPageData}
             />
           </div>
 
@@ -214,10 +244,8 @@ export default function ProposalDetailPage() {
           <div className="space-y-[20px]">
             <Result data={data} isFetching={isFetching} />
             <ActionsTable data={data} isFetching={isFetching} />
-
             <Proposal data={data} isFetching={isFetching} />
           </div>
-
           <div className="space-y-[20px]">
             <CurrentVotes
               proposalVotesData={proposalVotesData}

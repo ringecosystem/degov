@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useBlockNumber } from "wagmi";
 
+import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { INDEXER_CONFIG } from "@/config/indexer";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { squidStatusService } from "@/services/graphql";
@@ -13,7 +14,7 @@ export function useBlockSync() {
   const { data: currentBlockData } = useBlockNumber({
     watch: true,
     query: {
-      refetchInterval: 10_000,
+      refetchInterval: DEFAULT_REFETCH_INTERVAL,
     },
   });
 
@@ -24,7 +25,7 @@ export function useBlockSync() {
       return squidStatusService.getSquidStatus(daoConfig.indexer.endpoint);
     },
     enabled: !!daoConfig?.indexer?.endpoint,
-    refetchInterval: 10_000,
+    refetchInterval: DEFAULT_REFETCH_INTERVAL,
   });
 
   const currentBlock = currentBlockData ? Number(currentBlockData) : 0;

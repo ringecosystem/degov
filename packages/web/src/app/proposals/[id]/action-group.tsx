@@ -33,6 +33,7 @@ interface ActionGroupProps {
   proposalExecutedById?: ProposalExecutedByIdItem;
   proposalQueuedById?: ProposalQueuedByIdItem;
   isAllQueriesFetching: boolean;
+  onRefetch: () => void;
 }
 
 export default function ActionGroup({
@@ -42,6 +43,7 @@ export default function ActionGroup({
   proposalExecutedById,
   proposalQueuedById,
   isAllQueriesFetching,
+  onRefetch,
 }: ActionGroupProps) {
   const id = data?.proposalId;
   const { isConnected, address } = useAccount();
@@ -75,6 +77,7 @@ export default function ActionGroup({
   const handleCopyUrl = useCallback(() => {
     navigator.clipboard.writeText(`${window.location.origin}/proposals/${id}`);
   }, [id]);
+
   const { cancelProposal, isPending: isCancelling } = useCancelProposal();
 
   const handleCancelProposal = useCallback(async () => {
@@ -108,6 +111,11 @@ export default function ActionGroup({
     data?.values,
   ]);
 
+  const handleCancelProposalSuccess = useCallback(() => {
+    setCancelHash(null);
+    onRefetch();
+  }, [onRefetch]);
+
   const handleCastVote = useCallback(
     async ({
       proposalId,
@@ -140,6 +148,11 @@ export default function ActionGroup({
     [castVote]
   );
 
+  const handleCastVoteSuccess = useCallback(() => {
+    setCastVoteHash(null);
+    onRefetch();
+  }, [onRefetch]);
+
   const handleQueueProposal = useCallback(async () => {
     try {
       const hash = await queueProposal({
@@ -165,6 +178,11 @@ export default function ActionGroup({
     data?.targets,
     data?.values,
   ]);
+
+  const handleQueueProposalSuccess = useCallback(() => {
+    setQueueHash(null);
+    onRefetch();
+  }, [onRefetch]);
 
   const handleExecuteProposal = useCallback(async () => {
     try {
@@ -192,24 +210,10 @@ export default function ActionGroup({
     data?.values,
   ]);
 
-  const handleAction = useCallback(
-    (action: "vote" | "queue" | "execute") => {
-      const isValid = validateBeforeExecution();
-      if (!isValid) return;
-      switch (action) {
-        case "vote":
-          setVoting(true);
-          break;
-        case "queue":
-          handleQueueProposal();
-          break;
-        case "execute":
-          handleExecuteProposal();
-          break;
-      }
-    },
-    [handleQueueProposal, handleExecuteProposal, validateBeforeExecution]
-  );
+  const handleExecuteProposalSuccess = useCallback(() => {
+    setExecuteHash(null);
+    onRefetch();
+  }, [onRefetch]);
 
   const canExecute = useMemo(() => {
     if (status === ProposalState.Queued) {
@@ -229,6 +233,24 @@ export default function ActionGroup({
     return false;
   }, [status, proposalQueuedById, govParams?.timeLockDelay]);
 
+  const handleAction = useCallback(
+    (action: "vote" | "queue" | "execute") => {
+      const isValid = validateBeforeExecution();
+      if (!isValid) return;
+      switch (action) {
+        case "vote":
+          setVoting(true);
+          break;
+        case "queue":
+          handleQueueProposal();
+          break;
+        case "execute":
+          handleExecuteProposal();
+          break;
+      }
+    },
+    [handleQueueProposal, handleExecuteProposal, validateBeforeExecution]
+  );
   const explorerUrl = useMemo(() => {
     let defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${data?.transactionHash}`;
 
@@ -309,28 +331,28 @@ export default function ActionGroup({
       {cancelHash && (
         <TransactionToast
           hash={cancelHash}
-          onSuccess={() => setCancelHash(null)}
+          onSuccess={handleCancelProposalSuccess}
           onError={() => setCancelHash(null)}
         />
       )}
       {castVoteHash && (
         <TransactionToast
           hash={castVoteHash}
-          onSuccess={() => setCastVoteHash(null)}
+          onSuccess={handleCastVoteSuccess}
           onError={() => setCastVoteHash(null)}
         />
       )}
       {queueHash && (
         <TransactionToast
           hash={queueHash}
-          onSuccess={() => setQueueHash(null)}
+          onSuccess={handleQueueProposalSuccess}
           onError={() => setQueueHash(null)}
         />
       )}
       {executeHash && (
         <TransactionToast
           hash={executeHash}
-          onSuccess={() => setExecuteHash(null)}
+          onSuccess={handleExecuteProposalSuccess}
           onError={() => setExecuteHash(null)}
         />
       )}
