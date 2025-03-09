@@ -23,7 +23,6 @@ export const ConnectButton = () => {
     return null;
   }
 
-
   if (!isConnected && openConnectModal) {
     return (
       <Button onClick={openConnectModal} className="rounded-[100px]">
@@ -56,8 +55,7 @@ export const ConnectButton = () => {
     const message = siweMessage.prepareMessage();
     const signature = await signMessageAsync({ message });
 
-
-    const authorizationResponse = proposalsQuery.login({message, signature});
+    const authorizationResponse = proposalsQuery.login({ message, signature });
     const token = authorizationResponse.token;
 
     // all of others api, please set token for header Authorization: Bearer <TOKEN>
