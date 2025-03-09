@@ -225,12 +225,11 @@ export default function ProposalDetailPage() {
             />
             <Status
               data={data}
-              isFetching={isFetching}
               status={proposalStatus?.data as ProposalState}
               proposalCanceledById={proposalCanceledById}
               proposalExecutedById={proposalExecutedById}
               proposalQueuedById={proposalQueuedById}
-              isAllQueriesFetching={isAllQueriesFetching}
+              isLoading={isAllQueriesFetching || isFetching}
             />
           </div>
         </div>

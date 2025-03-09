@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useConfig } from "@/hooks/useConfig";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import type {
@@ -14,6 +15,42 @@ import type {
 } from "@/services/graphql/types";
 import { ProposalState } from "@/types/proposal";
 import { formatTimestampToDayTime, getTimeRemaining } from "@/utils/date";
+
+const StatusSkeleton = () => {
+  const stagesCount = 4;
+  const stages = Array(stagesCount).fill(null);
+
+  return (
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+      <h3 className="text-[18px] text-white">Status</h3>
+      <Separator className="bg-border/20" />
+      <div className="relative">
+        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-white/10" />
+
+        {stages.map((_, index) => (
+          <div
+            key={index}
+            className="mb-6 flex w-full items-center justify-between"
+          >
+            <div className="flex items-center gap-[10px]">
+              <div className="z-10 mr-[13px] h-[28px] w-[28px]">
+                <Skeleton className="h-[28px] w-[28px] rounded-full" />
+              </div>
+              <div className="flex flex-col gap-[5px]">
+                <Skeleton className="h-[10px] w-[60px]" />
+                <Skeleton className="h-[16px] w-[120px]" />
+                {index === 0 && (
+                  <Skeleton className="h-[14px] w-[100px]" />
+                )}{" "}
+              </div>
+            </div>
+            {index < 3 && <Skeleton className="h-[16px] w-[16px]" />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 interface ProposalStage {
   title: string;
@@ -27,13 +64,12 @@ interface ProposalStage {
 }
 
 interface StatusProps {
-  isFetching: boolean;
   data?: ProposalItem;
   status: ProposalState;
   proposalCanceledById?: ProposalCanceledByIdItem;
   proposalExecutedById?: ProposalExecutedByIdItem;
   proposalQueuedById?: ProposalQueuedByIdItem;
-  isAllQueriesFetching: boolean;
+  isLoading?: boolean;
 }
 
 const Status: React.FC<StatusProps> = ({
@@ -42,6 +78,7 @@ const Status: React.FC<StatusProps> = ({
   proposalCanceledById,
   proposalExecutedById,
   proposalQueuedById,
+  isLoading,
 }) => {
   const daoConfig = useConfig();
   const { data: govParams } = useGovernanceParams();
@@ -271,6 +308,10 @@ const Status: React.FC<StatusProps> = ({
     votingPeriodStarted,
     status,
   ]);
+
+  if (isLoading) {
+    return <StatusSkeleton />;
+  }
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
