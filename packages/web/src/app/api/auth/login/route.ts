@@ -23,17 +23,17 @@ export async function POST(request: NextRequest) {
     }
     let fields;
     try {
-      // const siweMessage = new SiweMessage(message);
-      // fields = await siweMessage.verify({ signature });
+      const siweMessage = new SiweMessage(message);
+      fields = await siweMessage.verify({ signature });
 
-      fields = { data: { nonce: "3456789235", address: "0x2376628375284594" } };
+      // fields = { data: { nonce: "3456789235", address: "0x2376628375284594" } };
     } catch (e) {
       return NextResponse.json(Resp.err("invalid message"), { status: 400 });
     }
 
-    // if (fields.data.nonce !== degovNonce) {
-    //   return NextResponse.json(Resp.err("invalid nonce"), { status: 400 });
-    // }
+    if (fields.data.nonce !== degovNonce) {
+      return NextResponse.json(Resp.err("invalid nonce"), { status: 400 });
+    }
 
     const jwtSecretKey = process.env.JWT_SECRET_KEY;
     if (!jwtSecretKey) {
