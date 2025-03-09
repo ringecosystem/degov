@@ -27,3 +27,23 @@ export class Resp<T> {
     return new Resp(1, message, data, undefined);
   }
 }
+
+export interface AuthPayload {
+  address: string;
+}
+
+export interface DUser {
+  id: String;
+  address: String;
+  name?: String;
+  avatar?: String;
+  email?: String;
+  twitter?: String;
+  github?: String;
+  discord?: String;
+  additional?: String;
+  last_login_time: String;
+  ctime?: String;
+  utime?: String;
+}
+
