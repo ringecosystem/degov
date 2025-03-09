@@ -21,7 +21,7 @@ export const ActionGroupDisplay = ({
 }: ActionGroupDisplayProps) => {
   if (status === ProposalState.Pending) {
     return (
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-[10px]">
         <Image
           src="/assets/image/proposal/action/clock.svg"
           alt="pending"
@@ -76,7 +76,7 @@ export const ActionGroupDisplay = ({
   }
   if (status === ProposalState.Executed) {
     return (
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-[10px]">
         <Image
           src="/assets/image/proposal/action/check.svg"
           alt="executed"
@@ -89,7 +89,7 @@ export const ActionGroupDisplay = ({
   }
   if (status === ProposalState.Canceled) {
     return (
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-[10px]">
         <Image
           src="/assets/image/proposal/action/cancel.svg"
           alt="canceled"
@@ -102,7 +102,7 @@ export const ActionGroupDisplay = ({
   }
   if (status === ProposalState.Expired) {
     return (
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-[10px]">
         <Image
           src="/assets/image/proposal/action/cancel.svg"
           alt="expired"
@@ -115,7 +115,7 @@ export const ActionGroupDisplay = ({
   }
   if (status === ProposalState.Defeated) {
     return (
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-[10px]">
         <Image
           src="/assets/image/proposal/action/cancel.svg"
           alt="defeated"

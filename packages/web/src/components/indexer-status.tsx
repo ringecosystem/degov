@@ -1,11 +1,21 @@
 "use client";
-import { useBlockSync } from "@/hooks/useBlockSync";
+import type { BlockSyncStatus } from "@/hooks/useBlockSync";
 import { cn } from "@/lib/utils";
 
 import { INDEXER_CONFIG } from "../config/indexer";
-export function IndexerStatus() {
-  const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
 
+interface IndexerStatusProps {
+  currentBlock: number;
+  indexedBlock: number;
+  syncPercentage: number;
+  status: BlockSyncStatus;
+}
+export function IndexerStatus({
+  currentBlock,
+  indexedBlock,
+  syncPercentage,
+  status,
+}: IndexerStatusProps) {
   return (
     <div className="flex flex-col gap-[10px] rounded-[10px] bg-card p-[10px] shadow-sm">
       <div className="flex justify-between text-xs text-muted-foreground">

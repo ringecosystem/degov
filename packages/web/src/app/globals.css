@@ -18,7 +18,8 @@ body {
     --primary-foreground: 0 0% 9%;
     --secondary: 0 0% 28%;
     --secondary-foreground: 0 0% 100% / 0.8;
-    --muted: 0 0% 14.9%;
+    /* --muted: 0 0% 14.9%; */
+    --muted: 240 3.7% 15.9%;
     --muted-foreground: 0 0% 59%;
     --accent: 0 0% 14.9%;
     --accent-foreground: 0 0% 98%;
