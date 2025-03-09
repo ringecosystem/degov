@@ -1,11 +1,11 @@
 import { useCallback } from "react";
 
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { formatBigIntForDisplay } from "@/utils/number";
 
 export function useFormatGovernanceTokenAmount() {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { data: governanceToken } = useGovernanceToken();
 
   const formatTokenAmount = useCallback(

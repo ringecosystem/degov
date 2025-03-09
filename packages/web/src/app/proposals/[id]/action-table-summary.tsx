@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { CustomTable } from "@/components/custom-table";
 import type { ColumnType } from "@/components/custom-table";
 import { PROPOSAL_ACTIONS } from "@/config/proposals";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { formatFunctionSignature } from "@/utils";
 import { formatShortAddress } from "@/utils/address";
 import { formatBigIntForDisplay } from "@/utils/number";
@@ -20,7 +20,7 @@ export function ActionTableSummary({
   actions,
   isLoading = false,
 }: ActionTableSummaryProps) {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
 
   const data = useMemo(() => {
     return actions.map((action) => {

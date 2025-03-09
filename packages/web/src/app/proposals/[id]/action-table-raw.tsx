@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 import { parseUnits } from "ethers";
 import { useMemo } from "react";
 
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 export interface Action {
   target: string;
@@ -16,7 +16,7 @@ interface ActionTableRawProps {
 }
 
 export function ActionTableRaw({ actions }: ActionTableRawProps) {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
 
   const processedActions = useMemo(() => {
     return actions.map((action) => {

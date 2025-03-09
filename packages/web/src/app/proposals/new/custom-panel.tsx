@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { abiList } from "@/config/contract";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import { isValidAbi } from "@/utils/abi";
 
@@ -43,7 +43,7 @@ export const CustomPanel = ({
   onChange,
   onRemove,
 }: CustomPanelProps) => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
 
   const {
     control,

@@ -8,8 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import useCancelProposal from "@/hooks/useCancelProposal";
 import useCastVote from "@/hooks/useCastVote";
-import { useConfig } from "@/hooks/useConfig";
 import { useContractGuard } from "@/hooks/useContractGuard";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import useExecuteProposal from "@/hooks/useExecute";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import useQueueProposal from "@/hooks/useQueue";
@@ -45,7 +45,7 @@ export default function ActionGroup({
 }: ActionGroupProps) {
   const id = data?.proposalId;
   const { isConnected, address } = useAccount();
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const [voting, setVoting] = useState(false);
   const { data: govParams } = useGovernanceParams();
   const { castVote, isPending: isPendingCastVote } = useCastVote();

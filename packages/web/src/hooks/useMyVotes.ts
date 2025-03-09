@@ -4,7 +4,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { formatBigIntForDisplay } from "@/utils/number";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 import { useGovernanceParams } from "./useGovernanceParams";
 import { useGovernanceToken } from "./useGovernanceToken";
 
@@ -24,7 +24,7 @@ interface UseVotesReturn {
 
 export function useMyVotes(): UseVotesReturn {
   const { address } = useAccount();
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { data: tokenData, isLoading: isTokenLoading } = useGovernanceToken();
   const { data: governanceParams, isLoading: isParamsLoading } =
     useGovernanceParams();

@@ -4,14 +4,14 @@ import { useMemo, useEffect } from "react";
 
 import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { TreasuryTable } from "@/components/treasury-table";
-import { useConfig } from "@/hooks/useConfig";
 import { useCryptoPrices } from "@/hooks/useCryptoPrices";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { TokenWithBalance } from "@/hooks/useTokenBalances";
 import { useTokenBalances } from "@/hooks/useTokenBalances";
 import { usePriceStore } from "@/store/price";
 
 export default function Treasury() {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const timeLockAddress = daoConfig?.contracts?.timeLock;
 
   const tokenInfo = useMemo(() => {

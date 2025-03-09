@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import { useAccount } from "wagmi";
 
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 export function useConnectWalletStatus() {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { address, isConnected, chainId } = useAccount();
 
   const isCorrectNetwork = useMemo(

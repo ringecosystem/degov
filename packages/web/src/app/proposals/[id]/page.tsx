@@ -12,7 +12,7 @@ import NotFound from "@/components/not-found";
 import { ProposalStatus } from "@/components/proposal-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { abi as GovernorAbi } from "@/config/abi/governor";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
@@ -27,7 +27,7 @@ import { Result } from "./result";
 import Status from "./status";
 
 export default function ProposalDetailPage() {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { id } = useParams();
 
   const { data: allData, isFetching } = useQuery({

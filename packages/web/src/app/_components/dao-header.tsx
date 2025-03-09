@@ -2,13 +2,13 @@
 import { capitalize } from "lodash-es";
 import Image from "next/image";
 
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import { Contracts } from "./contracts";
 import { Parameters } from "./parameters";
 
 export const DaoHeader = () => {
-  const config = useConfig();
+  const config = useDaoConfig();
 
   return (
     <div className="grid grid-cols-2 items-end justify-between rounded-[14px] bg-card p-[20px]">

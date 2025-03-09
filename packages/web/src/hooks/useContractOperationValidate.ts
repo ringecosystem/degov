@@ -4,7 +4,7 @@ import { useConfig } from "wagmi";
 
 import { squidStatusService } from "@/services/graphql";
 
-import { useConfig as useDaoConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 
 export function useContractOperationValidate() {
   const config = useConfig();

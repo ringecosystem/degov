@@ -3,7 +3,7 @@ import { useReadContract, useReadContracts } from "wagmi";
 import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as timeLockAbi } from "@/config/abi/timeLock";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
 
@@ -16,7 +16,7 @@ interface GovernanceParams {
 }
 
 export function useGovernanceParams() {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const governorAddress = daoConfig?.contracts?.governor as Address;
   const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
 

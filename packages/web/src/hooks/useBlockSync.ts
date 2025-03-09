@@ -3,12 +3,12 @@ import { useMemo } from "react";
 import { useBlockNumber } from "wagmi";
 
 import { INDEXER_CONFIG } from "@/config/indexer";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { squidStatusService } from "@/services/graphql";
 
 export type BlockSyncStatus = "operational" | "syncing" | "offline";
 export function useBlockSync() {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
 
   const { data: currentBlockData } = useBlockNumber({
     watch: true,

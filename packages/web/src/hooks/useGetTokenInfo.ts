@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { erc20Abi, erc721Abi } from "viem";
 import { useReadContracts } from "wagmi";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 
 import type { Abi } from "viem";
 
@@ -12,7 +12,7 @@ type TokenDetails = {
 };
 
 export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const baseContract = useMemo(() => {
     return tokenList.map((v) => {
       return {

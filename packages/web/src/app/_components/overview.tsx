@@ -2,7 +2,7 @@
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { formatBigIntForDisplay, formatNumberForDisplay } from "@/utils/number";
 
@@ -10,7 +10,7 @@ import { OverviewItem } from "./overview-item";
 import { ProposalsStatusDetail } from "./proposals-status-detail";
 
 export const Overview = () => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
     useReadContract({
       address: daoConfig?.contracts?.governorToken?.contract as `0x${string}`,

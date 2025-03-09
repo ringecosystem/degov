@@ -3,11 +3,11 @@ import { useBalance, useReadContract, useAccount } from "wagmi";
 
 import type { TokenInfo } from "@/components/token-select";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 
 export function useTokenBalance(token: TokenInfo | null) {
   const { address: userAddress } = useAccount();
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { data: nativeBalance, isLoading: isNativeLoading } = useBalance({
     address: userAddress,
     chainId: daoConfig?.network?.chainId,

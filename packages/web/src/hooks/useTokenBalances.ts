@@ -6,7 +6,7 @@ import { useReadContracts } from "wagmi";
 import type { TokenDetails } from "@/types/config";
 import { formatBigIntForDisplay } from "@/utils/number";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 import { useGetTokenInfo } from "./useGetTokenInfo";
 
 export interface TokenWithBalance extends TokenDetails {
@@ -24,7 +24,7 @@ export interface UseTokenBalancesReturn {
 export function useTokenBalances(
   assets: TokenDetails[]
 ): UseTokenBalancesReturn {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const timeLockAddress = daoConfig?.contracts?.timeLock;
   const { tokenInfo } = useGetTokenInfo(
     assets.map((v) => ({

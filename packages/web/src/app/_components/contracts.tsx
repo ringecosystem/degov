@@ -9,10 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ViewOnExplorer } from "@/components/view-on-explorer";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 export const Contracts = () => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PROPOSAL_ACTIONS } from "@/config/proposals";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import { formatShortAddress } from "@/utils/address";
 
@@ -47,7 +47,7 @@ interface ActionsPanelProps {
 }
 
 export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
 
   const [tab, setTab] = useState<"raw" | "summary">("summary");
   const [openParams, setOpenParams] = useState<number[]>([]);
@@ -119,7 +119,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
   }, [actions, daoConfig]);
 
   const SummaryView = () => {
-    const daoConfig = useConfig();
+    const daoConfig = useDaoConfig();
     return (
       <Table>
         <TableHeader>

@@ -5,8 +5,8 @@ import { useAccount, useReadContract, useWriteContract } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
 
-import { useConfig } from "./useConfig";
 import { useContractGuard } from "./useContractGuard";
+import { useDaoConfig } from "./useDaoConfig";
 
 import type { InterfaceAbi } from "ethers";
 export interface ProposalActionParam {
@@ -24,7 +24,7 @@ export const calculateDescriptionHash = (description: string) => {
 };
 
 export const useProposal = () => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { address } = useAccount();
   const { writeContractAsync, isPending } = useWriteContract();
   const { validateBeforeExecution } = useContractGuard();

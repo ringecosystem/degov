@@ -6,7 +6,7 @@ import * as React from "react";
 import { WagmiProvider, deserialize, serialize } from "wagmi";
 
 import { createConfig, queryClient } from "@/config/wagmi";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import "@rainbow-me/rainbowkit/styles.css";
 import type { Chain } from "@rainbow-me/rainbowkit";
@@ -17,7 +17,7 @@ const dark = darkTheme({
 });
 
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
-  const dappConfig = useConfig();
+  const dappConfig = useDaoConfig();
 
   if (!dappConfig) {
     return null;

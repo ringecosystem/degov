@@ -3,10 +3,10 @@ import { useWriteContract } from "wagmi";
 
 import { abi as GovernorAbi } from "@/config/abi/governor";
 
-import { useConfig } from "./useConfig";
 import { useContractGuard } from "./useContractGuard";
+import { useDaoConfig } from "./useDaoConfig";
 export const useCastVote = () => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { writeContractAsync, isPending } = useWriteContract();
   const { validateBeforeExecution } = useContractGuard();
 

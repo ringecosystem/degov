@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, useCallback, useEffect, useMemo } from "react";
 
-
-import { useConfig as useDaoConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { delegateService } from "@/services/graphql";
 import type { DelegateItem } from "@/services/graphql/types";
 

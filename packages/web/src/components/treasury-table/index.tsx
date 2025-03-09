@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGetTokenInfo } from "@/hooks/useGetTokenInfo";
 import type { TokenWithBalance } from "@/hooks/useTokenBalances";
 import { formatNumberForDisplay } from "@/utils/number";
@@ -83,7 +83,7 @@ export function TreasuryTable({
   prices,
   isLoading,
 }: TreasuryTableProps) {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const [visibleItems, setVisibleItems] = useState(5);
   const { tokenInfo } = useGetTokenInfo(
     data.map((v) => ({

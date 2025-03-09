@@ -5,7 +5,7 @@ import React, { useMemo } from "react";
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import type {
   ProposalCanceledByIdItem,
@@ -80,7 +80,7 @@ const Status: React.FC<StatusProps> = ({
   proposalQueuedById,
   isLoading,
 }) => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { data: govParams } = useGovernanceParams();
 
   const votingPeriodStarted = useMemo(() => {

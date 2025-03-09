@@ -2,7 +2,7 @@ import { useReadContracts } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
 
@@ -22,7 +22,7 @@ interface UseVotingPowerReturn {
  * @param account - Optional account address to fetch voting power for
  */
 export function useVotingPower(account?: Address): UseVotingPowerReturn {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const tokenAddress = daoConfig?.contracts?.governorToken?.contract as Address;
 
   const { data, isLoading, error } = useReadContracts({

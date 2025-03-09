@@ -3,13 +3,13 @@ import { useWriteContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 
-import { useConfig } from "./useConfig";
 import { useContractGuard } from "./useContractGuard";
+import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
 
 export const useDelegate = () => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { writeContractAsync, isPending } = useWriteContract();
   const { validateBeforeExecution } = useContractGuard();
   const delegate = useCallback(

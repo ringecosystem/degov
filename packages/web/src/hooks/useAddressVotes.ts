@@ -4,13 +4,13 @@ import { useReadContract } from "wagmi";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { formatBigIntForDisplay } from "@/utils/number";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 import { useGovernanceToken } from "./useGovernanceToken";
 
 import type { Address } from "viem";
 
 export function useAddressVotes(address: Address) {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const tokenAddress = daoConfig?.contracts?.governorToken?.contract as Address;
   const { data: tokenData, isLoading: isTokenLoading } = useGovernanceToken();
 

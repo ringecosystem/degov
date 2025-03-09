@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 import Error from "@/components/error";
-import { ConfigContext } from "@/hooks/useConfig";
+import { ConfigContext } from "@/hooks/useDaoConfig";
 
 import type { Config } from "../types/config";
 

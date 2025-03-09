@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useReadContracts } from "wagmi";
 
 import { abi as GovernorAbi } from "@/config/abi/governor";
-import { useConfig as useDaoConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ProposalItem } from "@/services/graphql/types";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
