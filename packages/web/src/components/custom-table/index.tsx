@@ -32,6 +32,7 @@ export interface CustomTableProps<T> {
   loadingHeight?: number;
   emptyText?: React.ReactNode;
   bodyClassName?: string;
+  tableClassName?: string;
   maxHeight?: string;
   onRow?: (
     record: T,
@@ -49,6 +50,7 @@ export function CustomTable<T extends Record<string, unknown>>({
   loadingHeight = 30,
   emptyText = "No data",
   bodyClassName,
+  tableClassName,
   maxHeight = "calc(100vh-200px)",
   onRow,
 }: CustomTableProps<T>) {
@@ -94,7 +96,7 @@ export function CustomTable<T extends Record<string, unknown>>({
 
   return (
     <div>
-      <Table className="table-fixed">
+      <Table className={cn(tableClassName)}>
         <TableHeader>
           <TableRow>
             {columns.map((column, index) => (
@@ -118,7 +120,7 @@ export function CustomTable<T extends Record<string, unknown>>({
         className={cn("overflow-y-auto custom-scrollbar", bodyClassName)}
         style={{ maxHeight }}
       >
-        <Table className="table-fixed">
+        <Table className={cn(tableClassName)}>
           {caption && !isLoading && !!dataSource?.length && (
             <TableCaption className="pb-0">{caption}</TableCaption>
           )}

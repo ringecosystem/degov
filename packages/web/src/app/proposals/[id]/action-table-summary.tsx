@@ -109,6 +109,7 @@ export function ActionTableSummary({
   return (
     <CustomTable
       columns={columns}
+      tableClassName="table-fixed"
       dataSource={data}
       rowKey={(record) => `${record.target}-${record.calldata}`}
       isLoading={isLoading}

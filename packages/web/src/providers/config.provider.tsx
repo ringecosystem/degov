@@ -14,7 +14,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     fetch("/config.json")
       .then((response) => response.json())
       .then((config: Config) => {
-        const currentNetwork = config.networks[config.deployedChain];
+        const currentNetwork =
+          config.networks[config.deployedChain?.toLowerCase()];
         config.network = {
           ...currentNetwork,
           name: config.deployedChain,
