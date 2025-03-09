@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from "framer-motion";
 import { useCallback, useMemo, useState } from "react";
 
 import { VoteType, VoteConfig, voteTypeLabel } from "@/config/vote";
@@ -34,12 +35,14 @@ export const Result = ({ data, isFetching }: ResultProps) => {
       <h4 className="text-[26px] font-semibold">Result details</h4>
       <div className="grid grid-cols-3 border-b border-border/20">
         {voteTypeLabel.map((voteType) => (
-          <div
+          <motion.div
             key={voteType.value}
             className="flex cursor-pointer flex-col gap-[10px] transition-opacity duration-300 hover:opacity-80"
             onClick={() => handleTabClick(voteType.value)}
+            whileTap={{ scale: 0.98 }}
+            transition={{ duration: 0.1 }}
           >
-            <h5
+            <motion.h5
               className={cn(
                 "text-center text-[18px] font-semibold capitalize",
                 activeTab === voteType.value
@@ -49,23 +52,40 @@ export const Result = ({ data, isFetching }: ResultProps) => {
               )}
             >
               {voteType.label}
-            </h5>
-            <div
+            </motion.h5>
+            <motion.div
+              initial={false}
+              animate={{
+                opacity: activeTab === voteType.value ? 1 : 0,
+                scale: activeTab === voteType.value ? 1 : 0.8,
+              }}
+              transition={{ duration: 0.2 }}
               className={cn(
-                "h-[4px] w-full",
+                "h-[4px] w-full origin-center",
                 VoteConfig[voteType.value].bgColor,
                 activeTab === voteType.value ? "visible" : "invisible"
               )}
             />
-          </div>
+          </motion.div>
         ))}
       </div>
-      <ResultTable
-        data={dataSource}
-        isFetching={isFetching}
-        page={page}
-        setPage={setPage}
-      />
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.1 }}
+        >
+          <ResultTable
+            data={dataSource}
+            isFetching={isFetching}
+            page={page}
+            setPage={setPage}
+          />
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 };

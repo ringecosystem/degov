@@ -182,44 +182,32 @@ export default function ProposalDetailPage() {
             )}
           </h2>
 
-          <div className="flex items-center gap-[20px]">
-            <div className="flex items-center gap-[5px]">
-              <span>Proposed by</span>
-              {isFetching ? (
-                <Skeleton className="h-[24px] w-[24px]" />
-              ) : (
-                !!data?.proposer && (
+          {isFetching ? (
+            <Skeleton className="h-[24px] w-[80%] my-1" /> // 使用单一骨架屏
+          ) : (
+            <div className="flex items-center gap-[20px]">
+              <div className="flex items-center gap-[5px]">
+                <span>Proposed by</span>
+                {!!data?.proposer && (
                   <AddressWithAvatar
                     address={data?.proposer as `0x${string}`}
                     avatarSize={24}
                     className="gap-[5px]"
                   />
-                )
-              )}
-            </div>
-            <div className="h-1 w-1 rounded-full bg-muted-foreground"></div>
-            <div className="flex items-center gap-[5px]">
-              {isFetching ? (
-                <Skeleton className="h-[24px] w-[24px]" />
-              ) : (
-                <>
-                  <span>
-                    ID {formatShortAddress(data?.proposalId as string)}
-                  </span>
-                  <ClipboardIconButton text={id as string} size={14} />
-                </>
-              )}
-            </div>
-            <div className="h-1 w-1 rounded-full bg-muted-foreground"></div>
-            {isFetching ? (
-              <Skeleton className="h-[24px] w-[24px]" />
-            ) : (
+                )}
+              </div>
+              <div className="h-1 w-1 rounded-full bg-muted-foreground"></div>
+              <div className="flex items-center gap-[5px]">
+                <span>ID {formatShortAddress(data?.proposalId as string)}</span>
+                <ClipboardIconButton text={id as string} size={14} />
+              </div>
+              <div className="h-1 w-1 rounded-full bg-muted-foreground"></div>
               <span>
                 Proposed on:{" "}
                 {formatTimestampToFriendlyDate(data?.blockTimestamp)}
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px]">
@@ -231,7 +219,10 @@ export default function ProposalDetailPage() {
           </div>
 
           <div className="space-y-[20px]">
-            <CurrentVotes proposalVotesData={proposalVotesData} />
+            <CurrentVotes
+              proposalVotesData={proposalVotesData}
+              isLoading={proposalVotes?.isFetching}
+            />
             <Status
               data={data}
               isFetching={isFetching}
