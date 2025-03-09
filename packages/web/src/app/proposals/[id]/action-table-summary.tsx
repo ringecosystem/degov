@@ -80,7 +80,9 @@ export function ActionTableSummary({
             target="_blank"
             rel="noreferrer"
           >
-            <span>{formatShortAddress(record.target)}</span>
+            <span className="font-mono">
+              {formatShortAddress(record.target)}
+            </span>
             <Image
               src="/assets/image/external-link.svg"
               alt="external-link"

@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from "framer-motion"; // 添加 framer-motion 导入
 import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { Fragment, useEffect, useMemo, useState } from "react";
@@ -20,6 +21,17 @@ import { formatShortAddress } from "@/utils/address";
 import type { Action } from "./type";
 import type { Address } from "viem";
 
+const buttonVariants = {
+  initial: { opacity: 0, scale: 0.9 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.9 },
+};
+
+const contentVariants = {
+  initial: { opacity: 0, y: 5 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -5 },
+};
 export interface ActionPanelInfo {
   type: string;
   address?: Address;
@@ -29,6 +41,7 @@ export interface ActionPanelInfo {
   signature?: string;
   calldata?: { name: string; value: string | string[] }[];
 }
+
 interface ActionsPanelProps {
   actions: Action[];
 }
@@ -168,47 +181,65 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 </TableCell>
                 <TableCell className="w-1/3 text-left">
                   <div className="flex items-center justify-between gap-2">
-                    <span>{action.details}</span>
+                    <span className="font-mono">{action.details}</span>
                     {action?.params?.length && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => toggleParams(index)}
                         className="text-[14px] text-foreground/40"
+                        asChild
                       >
-                        {action?.params?.length} params
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 transition-transform duration-200",
-                            openParams.includes(index) && "rotate-180"
-                          )}
-                        />
+                        <motion.div whileTap={{ scale: 0.95 }}>
+                          {action?.params?.length} params
+                          <ChevronDown
+                            className={cn(
+                              "h-4 w-4 transition-transform duration-200",
+                              openParams.includes(index) && "rotate-180"
+                            )}
+                          />
+                        </motion.div>
                       </Button>
                     )}
                   </div>
                 </TableCell>
               </TableRow>
-              {action.params && openParams.includes(index) && (
-                <TableRow data-expanded className="border-t-0">
-                  <TableCell colSpan={3} className="pt-0">
-                    {action.params.map((param, pIndex) => (
-                      <div key={pIndex} className="flex gap-2">
-                        <span className="font-medium">{param.name}:</span>
-                        <span
-                          className="font-mono  break-words text-left"
-                          style={{
-                            wordBreak: "break-all",
-                          }}
-                        >
-                          {Array.isArray(param.value)
-                            ? `[${param.value.join(", ")}]`
-                            : param.value}
-                        </span>
-                      </div>
-                    ))}
-                  </TableCell>
-                </TableRow>
-              )}
+              <AnimatePresence>
+                {action.params && openParams.includes(index) && (
+                  <motion.tr
+                    data-expanded
+                    className="border-t-0"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.1 }}
+                  >
+                    <TableCell colSpan={3} className="pt-0">
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.1 }}
+                      >
+                        {action.params.map((param, pIndex) => (
+                          <div key={pIndex} className="flex gap-2">
+                            <span className="font-medium">{param.name}:</span>
+                            <span
+                              className="font-mono break-words text-left"
+                              style={{
+                                wordBreak: "break-all",
+                              }}
+                            >
+                              {Array.isArray(param.value)
+                                ? `[${param.value.join(", ")}]`
+                                : param.value}
+                            </span>
+                          </div>
+                        ))}
+                      </motion.div>
+                    </TableCell>
+                  </motion.tr>
+                )}
+              </AnimatePresence>
             </Fragment>
           ))}
         </TableBody>
@@ -219,7 +250,12 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
   const RawView = () => (
     <div className="space-y-[20px]">
       {actionPanelInfo.map((action, index) => (
-        <div key={index}>
+        <motion.div
+          key={index}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.1, delay: index * 0.05 }}
+        >
           <h3 className="mb-[10px] text-[18px] font-semibold">
             Function {index + 1}
           </h3>
@@ -278,7 +314,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               </p>
             </div>
           </div>
-        </div>
+        </motion.div>
       ))}
     </div>
   );
@@ -295,31 +331,86 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
         <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
           <div className="space-y-[20px]">
             <div className="flex items-center justify-between">
-              <h2 className="text-[26px] font-semibold">Actions</h2>
-              {tab === "summary" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTab("raw")}
-                  className="rounded-full border-border bg-card"
-                >
-                  Raw
-                </Button>
-              )}
-              {tab === "raw" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTab("summary")}
-                  className="rounded-full border-border bg-card"
-                >
-                  Summary
-                </Button>
-              )}
+              <motion.h2
+                className="text-[26px] font-semibold"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.1 }}
+              >
+                Actions
+              </motion.h2>
+
+              <AnimatePresence mode="wait" initial={false}>
+                {tab === "summary" && (
+                  <motion.div
+                    key="raw-button"
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    variants={buttonVariants}
+                    transition={{ duration: 0.1 }}
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTab("raw")}
+                      className="rounded-full border-border bg-card cursor-pointer"
+                      asChild
+                    >
+                      <motion.div whileTap={{ scale: 0.95 }}>Raw</motion.div>
+                    </Button>
+                  </motion.div>
+                )}
+                {tab === "raw" && (
+                  <motion.div
+                    key="summary-button"
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    variants={buttonVariants}
+                    transition={{ duration: 0.1 }}
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTab("summary")}
+                      className="rounded-full border-border bg-card cursor-pointer"
+                      asChild
+                    >
+                      <motion.div whileTap={{ scale: 0.95 }}>
+                        Summary
+                      </motion.div>
+                    </Button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {tab === "raw" && <RawView />}
-            {tab === "summary" && <SummaryView />}
+            <AnimatePresence mode="wait" initial={false}>
+              {tab === "raw" ? (
+                <motion.div
+                  key="raw-content"
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  variants={contentVariants}
+                  transition={{ duration: 0.1, ease: "easeInOut" }}
+                >
+                  <RawView />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="summary-content"
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  variants={contentVariants}
+                  transition={{ duration: 0.1, ease: "easeInOut" }}
+                >
+                  <SummaryView />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       )}
