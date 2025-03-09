@@ -40,6 +40,7 @@
     "framer-motion": "^12.4.10",
     "graphql": "^16.10.0",
     "graphql-request": "^7.1.2",
+    "js-yaml": "^4.1.0",
     "lodash-es": "^4.17.21",
     "lucide-react": "^0.475.0",
     "marked": "^15.0.7",
@@ -62,6 +63,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
