@@ -18,6 +18,7 @@ export interface ColumnType<T> {
   key: string;
   width?: string | number;
   className?: string;
+  style?: React.CSSProperties;
   render?: (value: T, index: number) => React.ReactNode;
 }
 
@@ -92,8 +93,8 @@ export function CustomTable<T extends Record<string, unknown>>({
   }, [columns, loadingRows, loadingHeight]);
 
   return (
-    <>
-      <Table>
+    <div>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             {columns.map((column, index) => (
@@ -117,7 +118,7 @@ export function CustomTable<T extends Record<string, unknown>>({
         className={cn("overflow-y-auto custom-scrollbar", bodyClassName)}
         style={{ maxHeight }}
       >
-        <Table>
+        <Table className="table-fixed">
           {caption && !isLoading && !!dataSource?.length && (
             <TableCaption className="pb-0">{caption}</TableCaption>
           )}
@@ -133,7 +134,10 @@ export function CustomTable<T extends Record<string, unknown>>({
                         <TableCell
                           key={`${getRowKey(record)}-${column.key}`}
                           className={column.className}
-                          style={{ width: column.width }}
+                          style={{
+                            width: column.width,
+                            ...(column?.style || {}),
+                          }}
                         >
                           {renderCell(record, column, index)}
                         </TableCell>
@@ -149,6 +153,6 @@ export function CustomTable<T extends Record<string, unknown>>({
       {!isLoading && dataSource.length === 0 && (
         <Empty label={emptyText} className="h-[300px]" />
       )}
-    </>
+    </div>
   );
 }

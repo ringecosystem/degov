@@ -1,4 +1,5 @@
 "use client";
+import { capitalize } from "lodash-es";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -190,6 +191,7 @@ export const Profile = ({ address }: ProfileProps) => {
               <span
                 className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-white transition-opacity hover:opacity-80"
                 key={social.key}
+                title={capitalize(social.key)}
                 style={{
                   backgroundImage: `url(/assets/image/user_social/${social.key}.svg)`,
                   backgroundRepeat: "no-repeat",

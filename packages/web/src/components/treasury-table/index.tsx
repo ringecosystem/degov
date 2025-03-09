@@ -175,7 +175,9 @@ export function TreasuryTable({
               </TableHead>
               <TableHead className="w-1/4 text-right">Balance</TableHead>
               <TableHead className="w-1/4 text-right">Value</TableHead>
-              <TableHead className="w-1/4 text-right">Network</TableHead>
+              <TableHead className="w-1/4 text-right rounded-r-[14px]">
+                Network
+              </TableHead>
             </TableRow>
           </TableHeader>
 

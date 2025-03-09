@@ -226,15 +226,23 @@ export default function ActionGroup({
   }, [status, proposalQueuedById, govParams?.timeLockDelay]);
 
   const explorerUrl = useMemo(() => {
-    const defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${data?.transactionHash}`;
+    let defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${data?.transactionHash}`;
+
+    if (status === ProposalState.Defeated) {
+      defaultUrl = "";
+    }
+    if (status === ProposalState.Expired) {
+      defaultUrl = "";
+    }
+
     if (status === ProposalState.Queued) {
-      return `${daoConfig?.network?.explorer?.[0]}/tx/${proposalQueuedById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalQueuedById?.transactionHash}`;
     }
     if (status === ProposalState.Executed) {
-      return `${daoConfig?.network?.explorer?.[0]}/tx/${proposalExecutedById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalExecutedById?.transactionHash}`;
     }
     if (status === ProposalState.Canceled) {
-      return `${daoConfig?.network?.explorer?.[0]}/tx/${proposalCanceledById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalCanceledById?.transactionHash}`;
     }
     return defaultUrl;
   }, [

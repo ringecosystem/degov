@@ -6,7 +6,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 
-// 骨架屏组件
 const CurrentVotesSkeleton = () => {
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
