@@ -9,6 +9,7 @@ import { abi as GovernorAbi } from "@/config/abi/governor";
 import useCancelProposal from "@/hooks/useCancelProposal";
 import useCastVote from "@/hooks/useCastVote";
 import { useConfig } from "@/hooks/useConfig";
+import { useContractGuard } from "@/hooks/useContractGuard";
 import useExecuteProposal from "@/hooks/useExecute";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import useQueueProposal from "@/hooks/useQueue";
@@ -55,6 +56,7 @@ export default function ActionGroup({
   const [executeHash, setExecuteHash] = useState<`0x${string}` | null>(null);
   const [cancelHash, setCancelHash] = useState<`0x${string}` | null>(null);
   const [cancelProposalOpen, setCancelProposalOpen] = useState(false);
+  const { validateBeforeExecution } = useContractGuard();
   const { data: hasVoted } = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
@@ -192,6 +194,8 @@ export default function ActionGroup({
 
   const handleAction = useCallback(
     (action: "vote" | "queue" | "execute") => {
+      const isValid = validateBeforeExecution();
+      if (!isValid) return;
       switch (action) {
         case "vote":
           setVoting(true);
@@ -204,7 +208,7 @@ export default function ActionGroup({
           break;
       }
     },
-    [handleQueueProposal, handleExecuteProposal]
+    [handleQueueProposal, handleExecuteProposal, validateBeforeExecution]
   );
 
   const canExecute = useMemo(() => {
@@ -254,6 +258,14 @@ export default function ActionGroup({
     proposalCanceledById?.transactionHash,
   ]);
 
+  const votedSupport = useMemo(() => {
+    if (!address || !hasVoted) return undefined;
+    const voter = data?.voters?.find(
+      (voter) => voter.voter?.toLowerCase() === address?.toLowerCase()
+    );
+    return voter?.support;
+  }, [address, hasVoted, data]);
+
   return (
     <div className="flex items-center justify-end gap-[10px]">
       {isAllQueriesFetching ? (
@@ -261,7 +273,7 @@ export default function ActionGroup({
       ) : (
         <ActionGroupDisplay
           status={status}
-          hasVoted={hasVoted}
+          votedSupport={votedSupport}
           canExecute={canExecute}
           isLoading={
             isPendingCastVote ||
@@ -272,7 +284,6 @@ export default function ActionGroup({
             !!executeHash
           }
           onClick={handleAction}
-          isConnected={isConnected}
         />
       )}
       <Dropdown

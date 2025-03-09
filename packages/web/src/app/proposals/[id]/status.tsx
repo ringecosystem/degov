@@ -158,7 +158,9 @@ const Status: React.FC<StatusProps> = ({
                 height={28}
               />
             ),
-            viewOnExplorer: `${daoConfig?.network?.explorer?.[0]}/tx/${proposalQueuedById?.transactionHash}`,
+            viewOnExplorer: proposalQueuedById?.transactionHash
+              ? `${daoConfig?.network?.explorer?.[0]}/tx/${proposalQueuedById?.transactionHash}`
+              : "",
           },
           {
             title: "Execute proposal",
@@ -173,7 +175,9 @@ const Status: React.FC<StatusProps> = ({
                 height={28}
               />
             ),
-            viewOnExplorer: `${daoConfig?.network?.explorer?.[0]}/tx/${proposalExecutedById?.transactionHash}`,
+            viewOnExplorer: proposalExecutedById?.transactionHash
+              ? `${daoConfig?.network?.explorer?.[0]}/tx/${proposalExecutedById?.transactionHash}`
+              : "",
           },
         ]?.map((v) => {
           if (status === ProposalState.Pending) {
@@ -240,6 +244,9 @@ const Status: React.FC<StatusProps> = ({
               />
             ),
             isActive: true,
+            viewOnExplorer: proposalCanceledById?.transactionHash
+              ? `${daoConfig?.network?.explorer?.[0]}/tx/${proposalCanceledById?.transactionHash}`
+              : "",
           },
         ];
       case ProposalState.Defeated:

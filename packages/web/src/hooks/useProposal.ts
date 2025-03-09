@@ -6,15 +6,17 @@ import { useAccount, useReadContract, useWriteContract } from "wagmi";
 import { abi as governorAbi } from "@/config/abi/governor";
 
 import { useConfig } from "./useConfig";
+import { useContractGuard } from "./useContractGuard";
 
 import type { InterfaceAbi } from "ethers";
-
 export interface ProposalActionParam {
+  type?: "transfer" | "custom";
   target: `0x${string}`;
   value: bigint;
   abi: InterfaceAbi;
   functionName: string;
   params: readonly unknown[];
+  signature?: string;
 }
 
 export const calculateDescriptionHash = (description: string) => {
@@ -25,7 +27,7 @@ export const useProposal = () => {
   const daoConfig = useConfig();
   const { address } = useAccount();
   const { writeContractAsync, isPending } = useWriteContract();
-
+  const { validateBeforeExecution } = useContractGuard();
   const [params, setParams] = useState<{
     targets: `0x${string}`[];
     values: bigint[];
@@ -40,22 +42,31 @@ export const useProposal = () => {
 
   const createProposal = useCallback(
     async (description: string, actions: ProposalActionParam[]) => {
+      const isValid = validateBeforeExecution();
+      if (!isValid) return;
       try {
+        const signatures: string[] = [];
         const targets: `0x${string}`[] = [];
         const values: bigint[] = [];
         const calldatas: `0x${string}`[] = [];
 
         for (const action of actions) {
           const iface = new Interface(action.abi);
-          const func = iface.getFunction(action.functionName);
-          const calldata = iface.encodeFunctionData(
-            func!,
-            action.params
-          ) as `0x${string}`;
+          const func = iface.getFunction(
+            action.signature ?? action.functionName
+          );
+          const calldata =
+            action?.type === "transfer"
+              ? "0x"
+              : (iface.encodeFunctionData(
+                  func!,
+                  action.params
+                ) as `0x${string}`);
 
           targets.push(action.target);
           values.push(action.value);
           calldatas.push(calldata);
+          signatures.push(action.signature ?? "");
         }
 
         if (
@@ -68,20 +79,28 @@ export const useProposal = () => {
           targets.push(address as `0x${string}`);
           values.push(BigInt(0));
           calldatas.push("0x" as `0x${string}`);
+          signatures.push("");
+        }
+
+        let descriptionWithSignature = description;
+        if (signatures.length > 0) {
+          descriptionWithSignature = `${description}\n\n<signature>${JSON.stringify(
+            signatures
+          )}</signature>`;
         }
 
         setParams({
           targets,
           values,
           calldatas,
-          description,
+          description: descriptionWithSignature,
         });
 
         const data = await writeContractAsync({
           address: daoConfig?.contracts?.governor as `0x${string}`,
           abi: governorAbi,
           functionName: "propose",
-          args: [targets, values, calldatas, description],
+          args: [targets, values, calldatas, descriptionWithSignature],
         });
 
         return data;
@@ -90,7 +109,7 @@ export const useProposal = () => {
         throw error;
       }
     },
-    [address, daoConfig, writeContractAsync]
+    [address, daoConfig, writeContractAsync, validateBeforeExecution]
   );
 
   const { data: proposalId, isLoading: isLoadingProposalId } = useReadContract({
