@@ -16,7 +16,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
     return createSiweMessage({
       domain: window.location.host,
       address,
-      statement: "Sign in with Ethereum to the app.",
+      statement: `DeGov.AI wants you to sign in with your Ethereum account: ${address}`,
       uri: window.location.origin,
       version: "1",
       chainId,
