@@ -11,7 +11,6 @@ import { WagmiProvider, deserialize, serialize } from "wagmi";
 
 import { createConfig, queryClient } from "@/config/wagmi";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-
 import "@rainbow-me/rainbowkit/styles.css";
 import { authenticationAdapter } from "@/lib/rainbowkit-auth";
 
@@ -24,6 +23,17 @@ const dark = darkTheme({
 
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   const dappConfig = useDaoConfig();
+
+  // const [isLoading, setIsLoading] = React.useState(true);
+  // const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+
+  // React.useEffect(() => {
+  //   const token = localStorage.getItem("token");
+  //   if (token) {
+
+  //     setIsAuthenticated(true);
+  //   }
+  // }, []);
 
   if (!dappConfig) {
     return null;
@@ -75,12 +85,12 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
       >
         <RainbowKitAuthenticationProvider
           adapter={authenticationAdapter}
-          status="unauthenticated"
+          status="authenticated"
         >
           <RainbowKitProvider
             theme={dark}
             locale="en-US"
-            appInfo={{ appName: dappConfig?.daoName }} //todo: please fix it
+            appInfo={{ appName: dappConfig?.name }}
             initialChain={currentChain}
           >
             {children}
