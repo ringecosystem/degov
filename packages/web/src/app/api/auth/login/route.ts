@@ -1,11 +1,14 @@
-import { headers } from "next/headers";
-import { SiweMessage } from "siwe";
 import { SignJWT } from "jose";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import postgres from "postgres";
+import { SiweMessage } from "siwe";
 
-import { DUser, Resp } from "@/types/api";
+import type { DUser } from "@/types/api";
+import { Resp } from "@/types/api";
+
 import toolkit from "../../common/toolkit";
+
+import type { NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,23 +19,16 @@ export async function POST(request: NextRequest) {
       );
     }
     const { message, signature } = await request.json();
-    const headersList = await headers();
-    const degovNonce = headersList.get("x-degov-nonce");
-    if (!degovNonce) {
-      return NextResponse.json(Resp.err("missing nonce"), { status: 400 });
-    }
+
     let fields;
     try {
       const siweMessage = new SiweMessage(message);
       fields = await siweMessage.verify({ signature });
 
       // fields = { data: { nonce: "3456789235", address: "0x2376628375284594" } };
-    } catch (e) {
+    } catch (err) {
+      console.warn("err", err);
       return NextResponse.json(Resp.err("invalid message"), { status: 400 });
-    }
-
-    if (fields.data.nonce !== degovNonce) {
-      return NextResponse.json(Resp.err("invalid nonce"), { status: 400 });
     }
 
     const jwtSecretKey = process.env.JWT_SECRET_KEY;
@@ -73,7 +69,8 @@ export async function POST(request: NextRequest) {
       where id=${storedUser.id};
     `;
     return NextResponse.json(Resp.ok({ token }));
-  } catch (e: any) {
+  } catch (err) {
+    console.warn("err", err);
     return NextResponse.json(Resp.err("logion failed"), { status: 400 });
   }
 }

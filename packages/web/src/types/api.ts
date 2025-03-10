@@ -46,4 +46,3 @@ export interface DUser {
   ctime?: string;
   utime?: string;
 }
-

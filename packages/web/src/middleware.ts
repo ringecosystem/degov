@@ -1,7 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { headers } from "next/headers";
-import { Resp } from "./types/api";
 import { jwtVerify } from "jose";
+import { headers } from "next/headers";
+import { NextResponse } from "next/server";
+
+import { Resp } from "./types/api";
+
+import type { NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -9,7 +12,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   const method = request.method.toLowerCase();
-  if (method === 'get' && pathname.startsWith("/api/profile/")) {
+  if (method === "get" && pathname.startsWith("/api/profile/")) {
     return NextResponse.next();
   }
 
@@ -48,8 +51,8 @@ async function verifyAuth(): Promise<NextResponse> {
     response.headers.set("x-degov-auth-payload", encodedPayload);
 
     return response;
-  } catch (err: any) {
-    console.error(err);
+  } catch (err) {
+    console.warn("err", err);
     return NextResponse.json(Resp.err("wrong token"), { status: 401 });
   }
 }

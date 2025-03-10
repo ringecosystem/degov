@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
 import * as CryptoJS from "crypto-js";
+import { NextResponse } from "next/server";
+
 import { Resp } from "@/types/api";
 
 export async function POST() {
