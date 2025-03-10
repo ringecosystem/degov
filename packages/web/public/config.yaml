@@ -3,8 +3,8 @@ logo: "/example/logo.svg"
 # The deployedChain value must be one of the chains in the network config
 deployedChain: darwinia
 description:
-  DeGov is a open-sourced governance platform that allows users to create
-  and participate in decentralized governance.
+  This is the development test DAO interface for DeGov users, allowing them to gain firsthand experience creating proposals and 
+  voting on them before deploying their own DeGov instance. The DAO is built on the Darwinia chain, an Ethereum-compatible chain.
 # The following fields in the links are optional and will be used to display basic information about the DAO
 links:
   website: https://ringdao.com/
