@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       utime: new Date().toISOString(),
     };
     await sql`
-    udpate d_user set ${sql(
+    update d_user set ${sql(
       cui,
       "name",
       "avatar",

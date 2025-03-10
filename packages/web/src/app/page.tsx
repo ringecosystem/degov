@@ -1,3 +1,5 @@
+"use client";
+
 import { DaoHeader } from "./_components/dao-header";
 import { Overview } from "./_components/overview";
 import { Proposals } from "./_components/proposals";

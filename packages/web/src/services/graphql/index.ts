@@ -1,3 +1,5 @@
+import { clearToken, getToken } from "@/hooks/useSign";
+
 import { request } from "./client";
 import * as Queries from "./queries";
 import * as Types from "./types";
@@ -88,6 +90,10 @@ export const profileService = {
   getProfile: async (address: string) => {
     const response = await fetch(`/api/profile/${address}`, {
       cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
     });
     const data = await response.json();
     return data;
@@ -109,7 +115,18 @@ export const profileService = {
       method: "POST",
       body: JSON.stringify(profile),
       cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
     });
+    if (response.status === 401) {
+      clearToken();
+      return {
+        code: 401,
+        msg: "Unauthorized",
+      };
+    }
     const data = await response.json();
     return data;
   },

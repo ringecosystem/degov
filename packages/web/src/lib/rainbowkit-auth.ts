@@ -2,11 +2,14 @@
 import { createAuthenticationAdapter } from "@rainbow-me/rainbowkit";
 import { createSiweMessage } from "viem/siwe";
 
+import { clearToken, setToken } from "@/hooks/useSign";
+
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
     const response = await fetch("/api/auth/nonce", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      cache: "no-store",
     });
     const { data } = await response.json();
     return data.nonce;
@@ -31,13 +34,12 @@ export const authenticationAdapter = createAuthenticationAdapter({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ message, signature }),
+      cache: "no-store",
     });
     const response = await verifyRes.json();
 
-    console.log("response", response);
-
-    if (response?.code === 0 && response?.data) {
-      localStorage.setItem("token", response.data);
+    if (response?.code === 0 && response?.data?.token) {
+      setToken(response.data.token);
       return true;
     }
 
@@ -45,6 +47,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
 
   signOut: async () => {
-    localStorage.removeItem("token");
+    clearToken();
   },
 });

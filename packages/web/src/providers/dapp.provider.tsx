@@ -24,17 +24,6 @@ const dark = darkTheme({
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   const dappConfig = useDaoConfig();
 
-  // const [isLoading, setIsLoading] = React.useState(true);
-  // const [isAuthenticated, setIsAuthenticated] = React.useState(false);
-
-  // React.useEffect(() => {
-  //   const token = localStorage.getItem("token");
-  //   if (token) {
-
-  //     setIsAuthenticated(true);
-  //   }
-  // }, []);
-
   if (!dappConfig) {
     return null;
   }
@@ -85,7 +74,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
       >
         <RainbowKitAuthenticationProvider
           adapter={authenticationAdapter}
-          status="authenticated"
+          status="unauthenticated"
         >
           <RainbowKitProvider
             theme={dark}

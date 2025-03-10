@@ -19,13 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 const FormSchema = z.object({
-  displayName: z
+  name: z
     .string()
     .min(2, "Display name must be at least 2 characters")
     .max(50, "Display name cannot exceed 50 characters")
     .trim(),
 
-  delegateStatement: z
+  additional: z
     .string()
     .min(20, "Statement must be at least 20 characters")
     .max(1000, "Statement cannot exceed 1000 characters")
@@ -37,7 +37,7 @@ const FormSchema = z.object({
     .trim()
     .toLowerCase(),
 
-  x: z
+  twitter: z
     .string()
     .regex(/^[A-Za-z0-9_]{4,15}$/, "Please enter a valid X/Twitter handle")
     .transform((val) => val.replace("@", ""))
@@ -72,24 +72,34 @@ const FormSchema = z.object({
 
 type FormData = z.infer<typeof FormSchema>;
 
-export function ProfileForm() {
+export function ProfileForm({
+  onSubmitForm,
+  isLoading,
+}: {
+  onSubmitForm: (data: FormData) => void;
+  isLoading: boolean;
+}) {
   const router = useRouter();
   const form = useForm<FormData>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
-      displayName: "",
-      delegateStatement: "",
+      name: "",
+      additional: "",
       email: "",
-      x: "",
-      telegram: "",
+      twitter: "",
       github: "",
       discord: "",
+      telegram: "",
     },
   });
 
   async function onSubmit(data: FormData) {
     try {
       console.log(data);
+      onSubmitForm({
+        ...data,
+        avatar: "",
+      });
       // TODO: Add API call to save data
     } catch (error) {
       console.error(error);
@@ -111,7 +121,7 @@ export function ProfileForm() {
         >
           <FormField
             control={form.control}
-            name="displayName"
+            name="name"
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-row items-center justify-between gap-[10px]">
@@ -133,7 +143,7 @@ export function ProfileForm() {
 
           <FormField
             control={form.control}
-            name="delegateStatement"
+            name="additional"
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-row items-center justify-between gap-[10px]">
@@ -176,7 +186,7 @@ export function ProfileForm() {
 
           <FormField
             control={form.control}
-            name="x"
+            name="twitter"
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-row items-center justify-between gap-[10px]">
@@ -271,7 +281,7 @@ export function ProfileForm() {
             <Button
               type="submit"
               className="w-[155px] rounded-[100px]"
-              disabled={form.formState.isSubmitting}
+              disabled={form.formState.isSubmitting || isLoading}
             >
               {form.formState.isSubmitting ? "Saving..." : "Save"}
             </Button>

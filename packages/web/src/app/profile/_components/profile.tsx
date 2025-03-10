@@ -1,4 +1,5 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 import { capitalize } from "lodash-es";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -22,6 +23,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAddressVotes } from "@/hooks/useAddressVotes";
+import { profileService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 
 import { ReceivedDelegations } from "./received-delegations";
@@ -32,6 +34,15 @@ interface ProfileProps {
 export const Profile = ({ address }: ProfileProps) => {
   const router = useRouter();
   const { address: account } = useAccount();
+
+  const { data: profileData, isFetching: isProfileLoading } = useQuery({
+    queryKey: ["profile", address],
+    queryFn: () => profileService.getProfile(address),
+    enabled: !!address,
+  });
+
+  console.log("profileData", profileData);
+
   const [open, setOpen] = useState(false);
   const [delegateOpen, setDelegateOpen] = useState(false);
 
