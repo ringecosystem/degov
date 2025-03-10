@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "postinstall": "prisma generate",
-    "vercel-build": "prisma generate && prisma migrate deploy && next build",
-    "dev": "NODE_OPTIONS='--inspect' next dev --turbopack",
+    "prisma:migrate": "prisma generate && prisma migrate deploy",
+    "dev": "pnpm prisma:migrate && NODE_OPTIONS='--inspect' next dev --turbopack",
     "build": "next build",
-    "start": "next start",
+    "start": "pnpm prisma:migrate && next start",
     "lint": "next lint"
   },
   "dependencies": {
