@@ -1,8 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
+import { NextResponse } from "next/server";
 import postgres from "postgres";
 
-import { AuthPayload, DUser, Resp } from "@/types/api";
+import type { AuthPayload, DUser } from "@/types/api";
+import { Resp } from "@/types/api";
+
+import type { NextRequest } from "next/server";
 
 export interface ProfileModifyForm {
   name?: string;
@@ -31,9 +34,9 @@ export async function GET(request: NextRequest) {
       await sql`select * from d_user where address = ${address} limit 1`;
 
     return NextResponse.json(Resp.ok(storedUser));
-  } catch (e: any) {
-    console.log(e);
-    const fullMsg = `${e.message || e}`;
+  } catch (err) {
+    console.warn("err", err);
+    const fullMsg = `${(err as Error)?.message || err}`;
     return NextResponse.json(
       Resp.errWithData("failed to fetch profile", fullMsg),
       { status: 400 }
@@ -95,9 +98,9 @@ export async function POST(request: NextRequest) {
     where id=${cui.id}
     `;
     return NextResponse.json(Resp.ok("success"));
-  } catch (e: any) {
-    console.log(e);
-    const fullMsg = `${e.message || e}`;
+  } catch (err) {
+    console.warn("err", err);
+    const fullMsg = `${(err as Error)?.message || err}`;
     return NextResponse.json(
       Resp.errWithData("failed to update profile", fullMsg),
       { status: 400 }
