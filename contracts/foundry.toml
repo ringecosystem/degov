@@ -1,0 +1,24 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+sender = "0x0f14341A7f464320319025540E8Fe48Ad0fe5aec"
+force = true
+optimizer = true
+auto_detect_remappings = false
+optimizer_runs = 999999
+evm_version = "london"
+bytecode_hash = "ipfs"
+extra_output_files = ["metadata"]
+
+[rpc_endpoints]
+arbitrum-goerli = "https://goerli-rollup.arbitrum.io/rpc"
+arbitrum-sepolia = "https://sepolia-rollup.arbitrum.io/rpc"
+pangolin = "https://pangolin-rpc.darwinia.network"
+crab = "https://crab-rpc.darwinia.network"
+
+[etherscan]
+arbitrum-goerli = { key = "${ETHERSCAN_ARBITRUM_KEY}" }
+arbitrum-sepolia = { key = "${ETHERSCAN_ARBITRUM_KEY}" }
+pangolin = { key = "${ETHERSCAN_DARWINIA_KEY}", url = "https://pangolin.api.subscan.io/api/scan/evm/contract/verifysource" }
+crab = { key = "${ETHERSCAN_DARWINIA_KEY}", url = "https://crab.api.subscan.io/api/scan/evm/contract/verifysource" }
