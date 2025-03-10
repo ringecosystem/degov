@@ -29,18 +29,16 @@ chain:
   #   decimals: 18
   #   priceId: RING
 
-##
-# indexer: https://degov-indexer.vercel.app/graphql
+indexer:
+  endpoint: https://degov-indexer.vercel.app/graphql
+  startBlock: 5873342
+
 contracts:
-  governor:
-    address: "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
-    startBlock: 5873379
+  governor: "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
   governorToken:
     address: "0xbC9f58566810F7e853e1eef1b9957ac82F9971df"
-    startBlock: 5873342
     standard: ERC20
-  timeLock:
-    address: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
+  timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
 
 timeLockAssets:
   FT:
