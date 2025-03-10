@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
 import { AuthPayload, DUser, Resp } from "@/types/api";
 
 export interface ProfileModifyForm {
-  name?: String;
-  avatar?: String;
-  email?: String;
-  twitter?: String;
-  github?: String;
-  discord?: String;
-  additional?: String;
+  name?: string;
+  avatar?: string;
+  email?: string;
+  twitter?: string;
+  github?: string;
+  discord?: string;
+  additional?: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -25,16 +25,17 @@ export async function GET(request: NextRequest) {
         Resp.err("missing database please contact admin")
       );
     }
-    const sql = neon(databaseUrl);
+    const sql = postgres(databaseUrl);
 
     const [storedUser] =
       await sql`select * from d_user where address = ${address} limit 1`;
 
     return NextResponse.json(Resp.ok(storedUser));
   } catch (e: any) {
+    console.log(e);
     const fullMsg = `${e.message || e}`;
     return NextResponse.json(
-      Resp.errWithData("failed to update profile", fullMsg),
+      Resp.errWithData("failed to fetch profile", fullMsg),
       { status: 400 }
     );
   }
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
         Resp.err("missing database please contact admin")
       );
     }
-    const sql = neon(databaseUrl);
+    const sql = postgres(databaseUrl);
 
     const [storedUser] =
       await sql`select * from d_user where address = ${address} limit 1`;
@@ -79,7 +80,8 @@ export async function POST(request: NextRequest) {
       additional: body.additional,
       utime: new Date().toISOString(),
     };
-    await sql`
+    /*
+
       update d_user set
         name=${cui.name},
         avatar=${cui.avatar},
@@ -90,9 +92,24 @@ export async function POST(request: NextRequest) {
         additional=${cui.additional},
         utime=${cui.utime}
       where id=${cui.id}
+      */
+    await sql`
+    udpate d_user set ${sql(
+      cui,
+      "name",
+      "avatar",
+      "email",
+      "twitter",
+      "github",
+      "discord",
+      "additional",
+      "utime"
+    )}
+    where id=${cui.id}
     `;
     return NextResponse.json(Resp.ok("success"));
   } catch (e: any) {
+    console.log(e);
     const fullMsg = `${e.message || e}`;
     return NextResponse.json(
       Resp.errWithData("failed to update profile", fullMsg),

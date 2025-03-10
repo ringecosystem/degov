@@ -33,17 +33,17 @@ export interface AuthPayload {
 }
 
 export interface DUser {
-  id: String;
-  address: String;
-  name?: String;
-  avatar?: String;
-  email?: String;
-  twitter?: String;
-  github?: String;
-  discord?: String;
-  additional?: String;
-  last_login_time: String;
-  ctime?: String;
-  utime?: String;
+  id: string;
+  address: string;
+  name?: string;
+  avatar?: string;
+  email?: string;
+  twitter?: string;
+  github?: string;
+  discord?: string;
+  additional?: string;
+  last_login_time: string;
+  ctime?: string;
+  utime?: string;
 }
 

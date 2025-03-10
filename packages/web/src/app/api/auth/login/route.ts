@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { SiweMessage } from "siwe";
 import { SignJWT } from "jose";
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
 import { DUser, Resp } from "@/types/api";
 import toolkit from "../../common/toolkit";
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       .setExpirationTime("1h")
       .sign(new TextEncoder().encode(jwtSecretKey));
 
-    const sql = neon(databaseUrl);
+    const sql = postgres(databaseUrl);
     const [storedUser] =
       await sql`select * from d_user where address = ${address} limit 1`;
     if (!storedUser) {
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       await sql`
         insert into d_user 
         (id, address, last_login_time)
-        values 
+        values
         (${newUser.id}, ${newUser.address}, ${newUser.last_login_time})
       `;
     }
