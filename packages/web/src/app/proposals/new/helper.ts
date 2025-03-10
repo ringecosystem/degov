@@ -5,6 +5,7 @@ import { abi as tokenAbi } from "@/config/abi/token";
 import type { ProposalActionParam } from "@/hooks/useProposal";
 import { markdownToHtml } from "@/utils/markdown";
 
+import type { CustomContent } from "./schema";
 import type {
   Action,
   CustomAction,
@@ -12,7 +13,7 @@ import type {
   TransferAction,
 } from "./type";
 import type { InterfaceAbi } from "ethers";
-import type { Address} from "viem";
+import type { Address } from "viem";
 
 export const generateProposalAction = (): ProposalAction => {
   return {
@@ -51,6 +52,39 @@ export const generateCustomAction = (): CustomAction => {
   };
 };
 
+/**
+ * 生成函数签名
+ * 可用于生成ABI函数签名或日志记录
+ *
+ * @param methodName 合约方法名称
+ * @param params 参数列表
+ * @param options 配置选项
+ * @returns 函数签名字符串
+ */
+export function generateFunctionSignature(
+  methodName: string | undefined,
+  params: CustomContent["calldata"] | undefined,
+  options: {
+    useTypes?: boolean;
+  } = { useTypes: false }
+): string {
+  if (!methodName) return "";
+
+  const finalMethodName = methodName ? methodName.split("-")[0] : "";
+
+  // Handle case with no parameters
+  if (!params || params.length === 0) {
+    return `${finalMethodName}()`;
+  }
+
+  // Use parameter types or names based on options
+  const paramList = params
+    .map((param) => (options.useTypes ? param.type : param.name))
+    .join(",");
+
+  return `${finalMethodName}(${paramList})`;
+}
+
 export const transformActionsToProposalParams = async (
   actions: Action[],
   decimals: number = 18
@@ -66,8 +100,11 @@ export const transformActionsToProposalParams = async (
     .map((action) => {
       if (action.type === "transfer") {
         return {
+          type: "transfer",
           target: action.content.recipient,
-          value: 0n,
+          value: action.content.amount
+            ? parseUnits(action.content.amount, decimals)
+            : 0n,
           abi: tokenAbi as InterfaceAbi,
           functionName: "transfer",
           params: [
@@ -77,17 +114,26 @@ export const transformActionsToProposalParams = async (
         };
       } else if (action.type === "custom") {
         const customAction = action.content;
+        const signature = generateFunctionSignature(
+          customAction.contractMethod,
+          customAction.calldata,
+          { useTypes: true }
+        );
 
         return {
+          type: "custom",
           target: customAction.target,
           value: customAction.value
             ? parseUnits(customAction.value, decimals)
             : 0n,
           abi: customAction.customAbiContent as InterfaceAbi,
-          functionName: customAction.contractMethod,
+          functionName: customAction.contractMethod
+            ? customAction.contractMethod.split("-")[0]
+            : "",
           params: customAction?.calldata?.map(
             (item) => item.value
           ) as readonly unknown[],
+          signature,
         };
       }
       throw new Error("Invalid action type");

@@ -11,7 +11,7 @@ import type { TokenInfo } from "@/components/token-select";
 import { TokenSelect } from "@/components/token-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGetTokenInfo } from "@/hooks/useGetTokenInfo";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
@@ -55,7 +55,7 @@ export const TransferPanel = ({
   onChange,
   onRemove,
 }: TransferPanelProps) => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(null);
 
   const {

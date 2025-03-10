@@ -7,8 +7,6 @@ import { markdownToHtml } from "@/utils/markdown";
 
 import { ActionsPanel } from "./action-panel";
 
-
-
 import type { ProposalContent } from "./schema";
 import type { Action } from "./type";
 

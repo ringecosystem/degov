@@ -14,12 +14,16 @@ interface NativeToken {
 }
 
 interface NetworkInfo {
-  chain: string;
   logo: string;
   chainId: number;
   rpc: string[];
   explorer: string[];
   nativeToken: NativeToken;
+  name?: string;
+}
+
+interface Networks {
+  [chainName: string]: NetworkInfo;
 }
 
 interface GovernorToken {
@@ -28,9 +32,9 @@ interface GovernorToken {
 }
 
 interface Contracts {
-  governorContract: string;
+  governor: string;
   governorToken: GovernorToken;
-  timeLockContract: string;
+  timeLock: string;
 }
 
 interface TokenDetails {
@@ -44,16 +48,19 @@ interface TokenDetails {
 interface TimelockAssets {
   [key: string]: TokenDetails;
 }
+
 interface Indexer {
   endpoint: string;
 }
 
 interface Config {
+  name: string;
   logo: string;
-  daoName: string;
+  deployedChain: string;
   walletConnectProjectId: string;
   description: string;
   links: Links;
+  networks: Networks;
   network: NetworkInfo;
   contracts: Contracts;
   timeLockAssets: TimelockAssets;
@@ -65,6 +72,7 @@ export type {
   Links,
   NativeToken,
   NetworkInfo,
+  Networks,
   GovernorToken,
   Contracts,
   TokenDetails,

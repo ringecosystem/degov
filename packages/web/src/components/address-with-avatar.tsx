@@ -33,7 +33,10 @@ export function AddressWithAvatar({
           <AddressResolver address={address} showShortAddress>
             {(ensName) => (
               <span
-                className={cn("line-clamp-1 hover:underline", textClassName)}
+                className={cn(
+                  "line-clamp-1 font-mono hover:underline",
+                  textClassName
+                )}
                 title={address}
               >
                 {ensName}

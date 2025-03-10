@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useReadContracts } from "wagmi";
 
 import { abi as GovernorAbi } from "@/config/abi/governor";
-import { useConfig as useDaoConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ProposalItem } from "@/services/graphql/types";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
@@ -72,15 +72,20 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
 
   const voteContracts = useMemo(() => {
     const proposalVotesContract = {
-      address: daoConfig?.contracts?.governorContract as `0x${string}`,
+      address: daoConfig?.contracts?.governor as `0x${string}`,
       abi: GovernorAbi,
       functionName: "proposalVotes",
+      chainId: daoConfig?.network?.chainId,
     } as const;
     return allProposals?.map((item) => ({
       ...proposalVotesContract,
       args: [item.proposalId],
     }));
-  }, [allProposals, daoConfig?.contracts?.governorContract]);
+  }, [
+    allProposals,
+    daoConfig?.contracts?.governor,
+    daoConfig?.network?.chainId,
+  ]);
 
   const {
     data: proposalVotes,
@@ -89,7 +94,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
   } = useReadContracts({
     contracts: voteContracts,
     query: {
-      enabled: allProposals.length > 0,
+      enabled: allProposals.length > 0 && !!daoConfig?.network?.chainId,
       staleTime: 60 * 1000,
       refetchOnWindowFocus: false,
     },
@@ -97,15 +102,20 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
 
   const statusContracts = useMemo(() => {
     const proposalStatusContract = {
-      address: daoConfig?.contracts?.governorContract as `0x${string}`,
+      address: daoConfig?.contracts?.governor as `0x${string}`,
       abi: GovernorAbi,
       functionName: "state",
+      chainId: daoConfig?.network?.chainId,
     } as const;
     return allProposals.map((item) => ({
       ...proposalStatusContract,
       args: [item.proposalId],
     }));
-  }, [allProposals, daoConfig?.contracts?.governorContract]);
+  }, [
+    allProposals,
+    daoConfig?.contracts?.governor,
+    daoConfig?.network?.chainId,
+  ]);
 
   const {
     data: proposalStatuses,
@@ -114,7 +124,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
   } = useReadContracts({
     contracts: statusContracts,
     query: {
-      enabled: allProposals.length > 0,
+      enabled: allProposals.length > 0 && !!daoConfig?.network?.chainId,
       staleTime: 60 * 1000,
       refetchOnWindowFocus: false,
     },

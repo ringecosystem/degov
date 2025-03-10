@@ -1,37 +1,36 @@
 import Image from "next/image";
 import { useState } from "react";
 
+import { VoteType } from "@/config/vote";
 import { cn } from "@/lib/utils";
 
 import type { FC } from "react";
 
-type VoteVariant = "for" | "against" | "abstain";
-
-interface VoteStatusProps {
-  variant: VoteVariant;
-  className?: string;
-}
-
 const text = {
-  for: {
+  [VoteType.For]: {
     label: "For",
     color: "bg-success",
     icon: "/assets/image/proposal/vote-for.svg",
     defaultIcon: "/assets/image/proposal/vote-for-default.svg",
   },
-  against: {
+  [VoteType.Against]: {
     label: "Against",
     color: "bg-danger",
     icon: "/assets/image/proposal/vote-against.svg",
     defaultIcon: "/assets/image/proposal/vote-against-default.svg",
   },
-  abstain: {
+  [VoteType.Abstain]: {
     label: "Abstain",
     color: "bg-muted-foreground",
     icon: "/assets/image/proposal/vote-abstain.svg",
     defaultIcon: "/assets/image/proposal/vote-abstain-default.svg",
   },
 };
+
+interface VoteStatusProps {
+  variant: VoteType;
+  className?: string;
+}
 
 export const VoteStatus: FC<VoteStatusProps> = ({ variant, className }) => {
   return (
@@ -53,10 +52,8 @@ export const VoteStatus: FC<VoteStatusProps> = ({ variant, className }) => {
   );
 };
 
-type VoteStatusActionType = "for" | "against" | "abstain";
-
 interface VoteStatusActionProps {
-  variant: VoteStatusActionType;
+  variant: VoteType;
   className?: string;
   type: "default" | "active";
   onChangeVote: () => void;

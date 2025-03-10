@@ -3,7 +3,6 @@ import { toast } from "react-toastify";
 import { useWaitForTransactionReceipt } from "wagmi";
 
 import { useLatestCallback } from "@/hooks/useLatestCallback";
-import type { ChainId } from "@/types/chain";
 
 import { TransactionStatus } from "./transaction-status";
 
@@ -12,7 +11,7 @@ import type { Config } from "wagmi";
 import type { WaitForTransactionReceiptData } from "wagmi/query";
 
 export type SuccessType = (
-  data: WaitForTransactionReceiptData<Config, ChainId>
+  data: WaitForTransactionReceiptData<Config, number>
 ) => void;
 export type ErrorType = (
   error: WaitForTransactionReceiptErrorType

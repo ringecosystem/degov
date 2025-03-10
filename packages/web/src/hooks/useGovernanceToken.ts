@@ -2,7 +2,7 @@ import { useReadContracts } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
 
@@ -23,7 +23,7 @@ interface UseGovernanceTokenReturn {
  * @param tokenAddress - The address of the governance token contract
  */
 export function useGovernanceToken(): UseGovernanceTokenReturn {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const standard = daoConfig?.contracts?.governorToken?.standard;
   const tokenAddress = daoConfig?.contracts?.governorToken?.contract as Address;
   const { data, isLoading, error } = useReadContracts({
@@ -34,16 +34,19 @@ export function useGovernanceToken(): UseGovernanceTokenReturn {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "symbol",
+              chainId: daoConfig?.network?.chainId,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "name",
+              chainId: daoConfig?.network?.chainId,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "decimals",
+              chainId: daoConfig?.network?.chainId,
             },
           ]
         : [
@@ -51,15 +54,17 @@ export function useGovernanceToken(): UseGovernanceTokenReturn {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "symbol",
+              chainId: daoConfig?.network?.chainId,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "name",
+              chainId: daoConfig?.network?.chainId,
             },
           ],
     query: {
-      enabled: Boolean(tokenAddress),
+      enabled: Boolean(tokenAddress) && Boolean(daoConfig?.network?.chainId),
     },
   });
 

@@ -9,10 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ViewOnExplorer } from "@/components/view-on-explorer";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 export const Contracts = () => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -39,7 +39,7 @@ export const Contracts = () => {
               height={24}
             />
             <span className="text-[16px] font-semibold text-foreground">
-              {daoConfig?.network?.chain}
+              {daoConfig?.network?.name}
             </span>
           </div>
         </div>
@@ -50,17 +50,17 @@ export const Contracts = () => {
             </span>
             <div className="flex w-full items-center justify-between gap-[5px]">
               <span className="text-[14px] font-normal text-foreground">
-                {daoConfig?.contracts?.governorContract}
+                {daoConfig?.contracts?.governor}
               </span>
               <div className="flex items-center gap-[5px]">
                 <ClipboardIconButton
-                  text={daoConfig?.contracts?.governorContract}
+                  text={daoConfig?.contracts?.governor}
                   size={15}
                   strokeWidth={2}
                   color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.governorContract}`}
+                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.governor}`}
                 />
               </div>
             </div>
@@ -97,17 +97,17 @@ export const Contracts = () => {
             </span>
             <div className="flex w-full items-center justify-between gap-[5px]">
               <span className="text-[14px] font-normal text-foreground">
-                {daoConfig?.contracts?.timeLockContract}
+                {daoConfig?.contracts?.timeLock}
               </span>
               <div className="flex items-center gap-[5px]">
                 <ClipboardIconButton
-                  text={daoConfig?.contracts?.timeLockContract}
+                  text={daoConfig?.contracts?.timeLock}
                   size={15}
                   strokeWidth={2}
                   color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.timeLockContract}`}
+                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.timeLock}`}
                 />
               </div>
             </div>

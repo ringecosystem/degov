@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { abi as tokenAbi } from "@/config/abi/token";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useDelegate } from "@/hooks/useDelegate";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { formatBigIntForDisplay } from "@/utils/number";
@@ -33,7 +33,7 @@ export function DelegateAction({
   onOpenChange,
   address,
 }: DelegateActionProps) {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const [hash, setHash] = useState<string | null>(null);
   const { address: account } = useAccount();
   const { data: governanceToken, isLoading: isLoadingGovernanceToken } =
@@ -45,6 +45,13 @@ export function DelegateAction({
       abi: tokenAbi,
       functionName: "balanceOf",
       args: [account as `0x${string}`],
+      chainId: daoConfig?.network?.chainId,
+      query: {
+        enabled:
+          !!account &&
+          !!daoConfig?.contracts?.governorToken?.contract &&
+          !!daoConfig?.network?.chainId,
+      },
     });
 
   const { delegate, isPending: isPendingDelegate } = useDelegate();

@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 type TransactionStatusType = "pending" | "success" | "failed";
 
@@ -26,9 +26,9 @@ export function TransactionStatus({
   status,
   transactionHash,
 }: TransactionStatusProps) {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const explorerUrl = daoConfig?.network?.explorer?.[0];
-  const name = daoConfig?.network?.chain;
+  const name = daoConfig?.network?.name;
 
   return (
     <div className="py-[4px]">
