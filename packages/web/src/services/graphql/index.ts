@@ -74,6 +74,37 @@ export const delegateService = {
   },
 };
 
+export const profileService = {
+  getProfile: async (address: string) => {
+    const response = await fetch(`/api/profile/${address}`, {
+      cache: "no-store",
+    });
+    const data = await response.json();
+    return data;
+  },
+
+  updateProfile: async (
+    address: string,
+    profile: {
+      name?: string;
+      avatar?: string;
+      email?: string;
+      twitter?: string;
+      github?: string;
+      discord?: string;
+      additional?: string;
+    }
+  ) => {
+    const response = await fetch(`/api/profile/${address}`, {
+      method: "POST",
+      body: JSON.stringify(profile),
+      cache: "no-store",
+    });
+    const data = await response.json();
+    return data;
+  },
+};
+
 export { Types };
 
 export { Queries };
