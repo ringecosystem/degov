@@ -18,6 +18,14 @@ export async function POST(request: NextRequest) {
         Resp.err("missing database please contact admin")
       );
     }
+
+    const jwtSecretKey = process.env.JWT_SECRET_KEY;
+    if (!jwtSecretKey) {
+      return NextResponse.json(
+        Resp.err("please contact admin about login issue, missing key")
+      );
+    }
+
     const { message, signature } = await request.json();
 
     let fields;
@@ -29,13 +37,6 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       console.warn("err", err);
       return NextResponse.json(Resp.err("invalid message"), { status: 400 });
-    }
-
-    const jwtSecretKey = process.env.JWT_SECRET_KEY;
-    if (!jwtSecretKey) {
-      return NextResponse.json(
-        Resp.err("please contact admin about login issue, missing key")
-      );
     }
 
     const address = fields.data.address.toLowerCase();
