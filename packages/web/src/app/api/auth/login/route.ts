@@ -6,7 +6,7 @@ import { SiweMessage } from "siwe";
 import type { DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
-import toolkit from "../../common/toolkit";
+import { snowflake } from "../../common/toolkit";
 
 import type { NextRequest } from "next/server";
 
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       await sql`select * from d_user where address = ${address} limit 1`;
     if (!storedUser) {
       const newUser: DUser = {
-        id: toolkit.snowflake.generate(),
+        id: snowflake.generate(),
         address,
         last_login_time: new Date().toISOString(),
       };
