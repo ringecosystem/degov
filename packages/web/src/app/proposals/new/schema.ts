@@ -145,17 +145,15 @@ export const customActionSchema = z.object({
       (val) => !val || (!isNaN(Number(val)) && Number(val) >= 0),
       "Value must be a non-negative number"
     ),
-  customAbiContent: z
-    .array(z.any())
-    .refine((val) => {
-      if (!val) return true;
-      if (Array.isArray(val) && val.length === 0) return false;
-      try {
-        return isValidAbi(val);
-      } catch {
-        return false;
-      }
-    }, "Must be a valid ABI JSON file"),
+  customAbiContent: z.array(z.any()).refine((val) => {
+    if (!val) return true;
+    if (Array.isArray(val) && val.length === 0) return false;
+    try {
+      return isValidAbi(val);
+    } catch {
+      return false;
+    }
+  }, "Must be a valid ABI JSON file"),
 });
 
 export type CustomContent = z.infer<typeof customActionSchema>;

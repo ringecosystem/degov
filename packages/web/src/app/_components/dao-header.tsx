@@ -1,13 +1,14 @@
 "use client";
+import { capitalize } from "lodash-es";
 import Image from "next/image";
 
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import { Contracts } from "./contracts";
 import { Parameters } from "./parameters";
 
 export const DaoHeader = () => {
-  const config = useConfig();
+  const config = useDaoConfig();
 
   return (
     <div className="grid grid-cols-2 items-end justify-between rounded-[14px] bg-card p-[20px]">
@@ -20,7 +21,7 @@ export const DaoHeader = () => {
             width={35}
             height={35}
           />
-          {config?.daoName}
+          {config?.name}
         </h1>
         <p className="line-clamp-2 text-[14px] text-card-foreground">
           {config?.description}
@@ -39,6 +40,7 @@ export const DaoHeader = () => {
               href={value}
               target="_blank"
               rel="noopener noreferrer"
+              title={capitalize(key)}
               className="flex size-[24px] items-center justify-center rounded-full bg-white transition-colors hover:bg-white/80"
               style={{
                 backgroundImage: `url(/assets/image/user_social/${key}.svg)`,

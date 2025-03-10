@@ -1,4 +1,5 @@
 "use client";
+import { capitalize } from "lodash-es";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -137,14 +138,15 @@ export const Profile = ({ address }: ProfileProps) => {
                       className="flex w-[160px] flex-col rounded-[10px] border-border/20 bg-card"
                       side="right"
                     >
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
+                      <DropdownMenuItem
+                        className="cursor-pointer py-[10px]"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `${window.location.origin}/profile/${address}`
+                          );
+                        }}
+                      >
                         Copy Profile URL
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
-                        Share To Forecaster
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
-                        Share To Lens
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -189,6 +191,7 @@ export const Profile = ({ address }: ProfileProps) => {
               <span
                 className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-white transition-opacity hover:opacity-80"
                 key={social.key}
+                title={capitalize(social.key)}
                 style={{
                   backgroundImage: `url(/assets/image/user_social/${social.key}.svg)`,
                   backgroundRepeat: "no-repeat",

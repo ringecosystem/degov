@@ -3,13 +3,14 @@ import { useWriteContract } from "wagmi";
 
 import { abi as GovernorAbi } from "@/config/abi/governor";
 
-import { useConfig } from "./useConfig";
+import { useContractGuard } from "./useContractGuard";
+import { useDaoConfig } from "./useDaoConfig";
 import { calculateDescriptionHash } from "./useProposal";
 
 export const useQueueProposal = () => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const { writeContractAsync, isPending } = useWriteContract();
-
+  const { validateBeforeExecution } = useContractGuard();
   const queueProposal = useCallback(
     async ({
       targets,
@@ -22,12 +23,14 @@ export const useQueueProposal = () => {
       calldatas: `0x${string}`[];
       description: string;
     }) => {
-      if (!daoConfig?.contracts?.governorContract) {
+      if (!daoConfig?.contracts?.governor) {
         throw new Error("Governor contract not found");
       }
+      const isValid = validateBeforeExecution();
+      if (!isValid) return;
 
       return await writeContractAsync({
-        address: daoConfig.contracts.governorContract as `0x${string}`,
+        address: daoConfig.contracts.governor as `0x${string}`,
         abi: GovernorAbi,
         functionName: "queue",
         args: [
@@ -38,7 +41,7 @@ export const useQueueProposal = () => {
         ],
       });
     },
-    [daoConfig, writeContractAsync]
+    [daoConfig, writeContractAsync, validateBeforeExecution]
   );
   return { queueProposal, isPending };
 };

@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { erc20Abi, erc721Abi } from "viem";
 import { useReadContracts } from "wagmi";
 
+import { useDaoConfig } from "./useDaoConfig";
+
 import type { Abi } from "viem";
 
 type TokenDetails = {
@@ -10,6 +12,7 @@ type TokenDetails = {
 };
 
 export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
+  const daoConfig = useDaoConfig();
   const baseContract = useMemo(() => {
     return tokenList.map((v) => {
       return {
@@ -25,6 +28,7 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
       address: `0x${string}`;
       abi: Abi;
       functionName: string;
+      chainId?: number;
     }[] = [];
 
     baseContract.forEach((contract) => {
@@ -32,6 +36,7 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
         address: contract.address,
         abi: contract.abi,
         functionName: "symbol",
+        chainId: daoConfig?.network?.chainId,
       });
     });
 
@@ -41,17 +46,18 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
           address: contract.address,
           abi: contract.abi,
           functionName: "decimals",
+          chainId: daoConfig?.network?.chainId,
         });
       }
     });
 
     return calls;
-  }, [baseContract]);
+  }, [baseContract, daoConfig?.network?.chainId]);
 
   const symbolResults = useReadContracts({
     contracts: contractCalls,
     query: {
-      enabled: contractCalls.length > 0,
+      enabled: contractCalls.length > 0 && !!daoConfig?.network?.chainId,
     },
   });
 

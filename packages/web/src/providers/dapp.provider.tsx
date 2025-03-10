@@ -10,7 +10,7 @@ import * as React from "react";
 import { WagmiProvider, deserialize, serialize } from "wagmi";
 
 import { createConfig, queryClient } from "@/config/wagmi";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import "@rainbow-me/rainbowkit/styles.css";
 import { authenticationAdapter } from "@/lib/rainbowkit-auth";
 
@@ -22,7 +22,8 @@ const dark = darkTheme({
 });
 
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
-  const dappConfig = useConfig();
+  const dappConfig = useDaoConfig();
+
   // const [isLoading, setIsLoading] = React.useState(true);
   // const [isAuthenticated, setIsAuthenticated] = React.useState(false);
 
@@ -40,7 +41,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
 
   const currentChain: Chain = {
     id: Number(dappConfig.network?.chainId),
-    name: dappConfig.network?.chain,
+    name: dappConfig.network?.name ?? "",
     nativeCurrency: {
       name: dappConfig.network?.nativeToken?.symbol,
       symbol: dappConfig.network?.nativeToken?.symbol,
@@ -57,6 +58,11 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         url: dappConfig.network?.explorer?.[0],
       },
     },
+    contracts: {
+      multicall3: {
+        address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+      },
+    },
   };
 
   const persister = createSyncStoragePersister({
@@ -66,7 +72,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   });
 
   const config = createConfig({
-    appName: dappConfig?.daoName,
+    appName: dappConfig?.name,
     projectId: dappConfig?.walletConnectProjectId,
     chain: currentChain,
   });
@@ -84,7 +90,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
           <RainbowKitProvider
             theme={dark}
             locale="en-US"
-            appInfo={{ appName: dappConfig?.daoName }}
+            appInfo={{ appName: dappConfig?.name }}
             initialChain={currentChain}
           >
             {children}

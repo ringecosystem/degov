@@ -2,8 +2,64 @@ import Image from "next/image";
 import { useMemo } from "react";
 
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
+
+const CurrentVotesSkeleton = () => {
+  return (
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+      <h3 className="text-[18px] font-semibold">Current Votes</h3>
+      <Separator className="!my-0 bg-border/20" />
+
+      <div className="flex flex-col gap-[20px]">
+        <div className="flex items-center justify-between gap-[10px]">
+          <div className="flex items-center gap-[5px]">
+            <Skeleton className="h-[20px] w-[20px] rounded-full" />
+            <span className="text-[14px] font-normal">Quorum</span>
+          </div>
+          <Skeleton className="h-[18px] w-[120px]" />
+        </div>
+
+        <div className="flex flex-col gap-[10px]">
+          <div className="flex items-center justify-between gap-[10px]">
+            <div className="flex items-center gap-[5px]">
+              <Skeleton className="h-[20px] w-[20px] rounded-full" />
+              <span className="text-[14px] font-normal">Majority support</span>
+            </div>
+            <Skeleton className="h-[18px] w-[40px]" />
+          </div>
+
+          <Skeleton className="h-[6px] w-full rounded-[2px]" />
+        </div>
+
+        <div className="flex items-center justify-between gap-[10px]">
+          <div className="flex items-center gap-[5px]">
+            <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
+            <span className="text-[14px] font-normal">For</span>
+          </div>
+          <Skeleton className="h-[18px] w-[80px]" />
+        </div>
+
+        <div className="flex items-center justify-between gap-[10px]">
+          <div className="flex items-center gap-[5px]">
+            <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
+            <span className="text-[14px] font-normal">Against</span>
+          </div>
+          <Skeleton className="h-[18px] w-[80px]" />
+        </div>
+
+        <div className="flex items-center justify-between gap-[10px]">
+          <div className="flex items-center gap-[5px]">
+            <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
+            <span className="text-[14px] font-normal">Abstain</span>
+          </div>
+          <Skeleton className="h-[18px] w-[80px]" />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface CurrentVotesProps {
   proposalVotesData: {
@@ -11,8 +67,12 @@ interface CurrentVotesProps {
     forVotes: bigint;
     abstainVotes: bigint;
   };
+  isLoading?: boolean;
 }
-export const CurrentVotes = ({ proposalVotesData }: CurrentVotesProps) => {
+export const CurrentVotes = ({
+  proposalVotesData,
+  isLoading,
+}: CurrentVotesProps) => {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: govParams } = useGovernanceParams();
   const percentage = useMemo(() => {
@@ -40,6 +100,10 @@ export const CurrentVotes = ({ proposalVotesData }: CurrentVotesProps) => {
     const total = proposalVotesData.forVotes + proposalVotesData.abstainVotes;
     return total;
   }, [proposalVotesData]);
+
+  if (isLoading) {
+    return <CurrentVotesSkeleton />;
+  }
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">

@@ -74,6 +74,16 @@ export const delegateService = {
   },
 };
 
+export const squidStatusService = {
+  getSquidStatus: async (endpoint: string) => {
+    const response = await request<Types.SquidStatusResponse>(
+      endpoint,
+      Queries.GET_SQUID_STATUS
+    );
+    return response?.squidStatus;
+  },
+};
+
 export const profileService = {
   getProfile: async (address: string) => {
     const response = await fetch(`/api/profile/${address}`, {

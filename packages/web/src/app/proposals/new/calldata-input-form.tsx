@@ -1,4 +1,3 @@
-
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect } from "react";
@@ -9,7 +8,7 @@ import { Input } from "@/components/ui/input";
 
 import { calldataSchema } from "./schema";
 
-import type { Calldata, CalldataItem} from "./schema";
+import type { Calldata, CalldataItem } from "./schema";
 import type { FieldError, FieldErrors } from "react-hook-form";
 
 interface CallDataInputFormProps {
@@ -33,7 +32,7 @@ export function CallDataInputForm({
     defaultValues: {
       calldataItems: calldata,
     },
-    mode: "onChange",
+    mode: "onBlur",
   });
 
   const isArrayType = useCallback((type: string) => {
@@ -139,7 +138,7 @@ export function CallDataInputForm({
                             getFieldError(index) ? "border-danger" : ""
                           }`}
                           value={arrayValue}
-                          onChange={(e) => {
+                          onBlur={(e) => {
                             const newVal = e.target.value;
                             update(index, {
                               name: fields[index].name,
@@ -179,7 +178,7 @@ export function CallDataInputForm({
                     className={`h-[37px] border-border bg-card  ${
                       getFieldError(index) ? "border-danger" : ""
                     }`}
-                    onChange={(e) => {
+                    onBlur={(e) => {
                       const newVal = e.target.value;
                       update(index, {
                         name: fields[index].name,

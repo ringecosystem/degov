@@ -29,6 +29,7 @@ export type ProposalItem = {
   voteEnd: string;
   voteStart: string;
   voters: ProposalVoterItem[];
+  signatureContent?: string[];
 };
 
 export type ProposalResponse = {
