@@ -3,13 +3,16 @@ import { headers } from "next/headers";
 import { Resp } from "./types/api";
 import { jwtVerify } from "jose";
 
+const SKIP_AUTH_APIS: string[] = ["/api/auth/nonce", "/api/auth/login"];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname.indexOf("/api/auth/") === 0) {
+  const apipath = pathname.toLowerCase();
+  if (SKIP_AUTH_APIS.indexOf(apipath) != -1) {
     return NextResponse.next();
   }
   const method = request.method.toLowerCase();
-  if (method === 'get' && pathname.startsWith("/api/profile/")) {
+  if (method === "get" && apipath.startsWith("/api/profile/")) {
     return NextResponse.next();
   }
 

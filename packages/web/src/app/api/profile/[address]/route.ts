@@ -80,19 +80,6 @@ export async function POST(request: NextRequest) {
       additional: body.additional,
       utime: new Date().toISOString(),
     };
-    /*
-
-      update d_user set
-        name=${cui.name},
-        avatar=${cui.avatar},
-        email=${cui.email},
-        twitter=${cui.twitter},
-        github=${cui.github},
-        discord=${cui.discord},
-        additional=${cui.additional},
-        utime=${cui.utime}
-      where id=${cui.id}
-      */
     await sql`
     udpate d_user set ${sql(
       cui,

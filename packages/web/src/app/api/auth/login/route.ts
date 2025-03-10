@@ -74,6 +74,6 @@ export async function POST(request: NextRequest) {
     `;
     return NextResponse.json(Resp.ok({ token }));
   } catch (e: any) {
-    return NextResponse.json(Resp.err("logion failed"), { status: 400 });
+    return NextResponse.json(Resp.err("login failed"), { status: 400 });
   }
 }
