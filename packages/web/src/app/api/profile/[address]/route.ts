@@ -14,6 +14,8 @@ export interface ProfileModifyForm {
   twitter?: string;
   github?: string;
   discord?: string;
+  telegram?: string;
+  medium?: string;
   additional?: string;
 }
 
@@ -80,6 +82,8 @@ export async function POST(request: NextRequest) {
       twitter: body.twitter,
       github: body.github,
       discord: body.discord,
+      telegram: body.telegram,
+      medium: body.medium,
       additional: body.additional,
       utime: new Date().toISOString(),
     };
@@ -92,6 +96,8 @@ export async function POST(request: NextRequest) {
       "twitter",
       "github",
       "discord",
+      "telegram",
+      "medium",
       "additional",
       "utime"
     )}

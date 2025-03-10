@@ -41,6 +41,8 @@ export interface DUser {
   twitter?: string;
   github?: string;
   discord?: string;
+  telegram?: string;
+  medium?: string;
   additional?: string;
   last_login_time: string;
   ctime?: string;

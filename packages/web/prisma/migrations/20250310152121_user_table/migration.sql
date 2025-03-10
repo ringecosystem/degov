@@ -8,10 +8,12 @@ CREATE TABLE "d_user" (
     "twitter" TEXT,
     "github" TEXT,
     "discord" TEXT,
+    "telegram" TEXT,
+    "medium" TEXT,
     "additional" TEXT,
     "last_login_time" TIMESTAMP(3) NOT NULL,
     "ctime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "utime" TIMESTAMP(3) NOT NULL,
+    "utime" TIMESTAMP(3),
 
     CONSTRAINT "d_user_pkey" PRIMARY KEY ("id")
 );
