@@ -1,39 +1,9 @@
-# <h1 align="center"> Forge Template </h1>
+# <h1 align="center"> DeGov demo contracts addresses </h1>
 
-**Template repository for getting started quickly with Foundry projects**
-
-![Github Actions](https://github.com/hujw77/forge-template/workflows/CI/badge.svg)
-
-## Getting Started
-
-Click "Use this template" on [GitHub](https://github.com/hujw77/forge-template) to create a new repository with this repo as the initial state.
-
-Or, if your repo already exists, run:
-```sh
-forge init
-forge build
-forge test
 ```
-
-## Writing your first test
-
-All you need is to `import forge-std/Test.sol` and then inherit it from your test contract. Forge-std's Test contract comes with a pre-instatiated [cheatcodes environment](https://book.getfoundry.sh/cheatcodes/), the `vm`. It also has support for [ds-test](https://book.getfoundry.sh/reference/ds-test.html)-style logs and assertions. Finally, it supports Hardhat's [console.log](https://github.com/brockelmore/forge-std/blob/master/src/console.sol). The logging functionalities require `-vvvv`.
-
-```solidity
-pragma solidity 0.8.10;
-
-import "forge-std/Test.sol";
-
-contract ContractTest is Test {
-    function testExample() public {
-        vm.roll(100);
-        console.log(1);
-        emit log("hi");
-        assertTrue(true);
-    }
-}
+GTK: 0xbC9f58566810F7e853e1eef1b9957ac82F9971df 
+DGovernor: 0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517
+Timelock: 0x6AB15C6ada9515A8E21321e241013dB457C8576c 
+NFT: 0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A
+FT: 0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f
 ```
-
-## Development
-
-This project uses [Foundry](https://getfoundry.sh). See the [book](https://book.getfoundry.sh/getting-started/installation.html) for instructions on how to install and use Foundry.
