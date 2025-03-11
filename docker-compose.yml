@@ -7,8 +7,10 @@ services:
       POSTGRES_PASSWORD: let-me-in
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d
     ports:
       - "${DEGOV_DB_PORT:-7453}:5432"
+
   indexer:
     image: degov-indexer
     depends_on:
@@ -20,8 +22,22 @@ services:
       - "${DEGOV_INDEXER_PORT:-4350}:4350"
     environment:
       DB_HOST: postgres
-      DB_NAME: postgres
+      DB_NAME: indexer
       DB_USER: postgres
       DB_PASS: let-me-in
       DB_PORT: 5432
       GQL_PORT: 4350
+
+  web:
+    image: degov-web
+    depends_on:
+      - postgres
+    build:
+      context: packages/web
+      dockerfile: docker/Dockerfile
+    ports:
+      - "${DEGOV_WEB_PORT:-3002}:3000"
+    environment:
+      NEXT_PUBLIC_PROJECT_ID: abcdef12345
+      JWT_SECRET_KEY: 575276a8eb83abc2
+      DATABASE_URL: postgresql://postgres:let-me-in@postgres/degov

@@ -1,0 +1,22 @@
+[profile.default]
+solc = "0.8.28"
+src = "src"
+out = "out"
+libs = ["lib"]
+sender = "0x0f14341A7f464320319025540E8Fe48Ad0fe5aec"
+force = true
+optimizer = true
+auto_detect_remappings = false
+optimizer_runs = 999999
+evm_version = "london"
+bytecode_hash = "ipfs"
+extra_output_files = ["metadata"]
+eth_rpc_url  = "https://darwinia-rpc.itering.io"
+
+[rpc_endpoints]
+crab = "https://crab-rpc.darwinia.network"
+darwinia = "https://rpc.darwinia.network"
+
+[etherscan]
+crab = { key = "xxx", url = "https://crab-scan.darwinia.network/api", chain = 44 }
+darwinia = { key = "xxx", url = "https://explorer.darwinia.network/api", chain = 46 }

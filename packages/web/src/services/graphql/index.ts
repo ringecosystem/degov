@@ -1,6 +1,10 @@
+import { clearToken, getToken } from "@/hooks/useSign";
+
 import { request } from "./client";
 import * as Queries from "./queries";
 import * as Types from "./types";
+
+import type { ProfileData } from "./types/profile";
 
 export const proposalService = {
   getAllProposals: async (
@@ -25,6 +29,36 @@ export const proposalService = {
       options
     );
     return response?.proposals ?? [];
+  },
+
+  getProposalTotal: async (endpoint: string) => {
+    const results: string[] = [];
+    const batchSize = 100;
+    let offset = 0;
+    let success = false;
+    while (!success) {
+      const response = await request<Types.ProposalTotalResponse>(
+        endpoint,
+        Queries.GET_ALL_PROPOSALS_TOTAL,
+        {
+          limit: batchSize,
+          offset: offset,
+        }
+      );
+      const batch = response?.proposals ?? [];
+
+      if (batch.length === 0) {
+        success = true;
+        break;
+      }
+      results.push(...batch);
+      if (batch.length < batchSize) {
+        success = true;
+        break;
+      }
+      offset += batchSize;
+    }
+    return results?.length ?? 0;
   },
 
   getProposalCanceledById: async (endpoint: string, id: string) => {
@@ -81,6 +115,46 @@ export const squidStatusService = {
       Queries.GET_SQUID_STATUS
     );
     return response?.squidStatus;
+  },
+};
+
+export const profileService = {
+  getProfile: async (
+    address: string
+  ): Promise<{
+    code: number;
+    data: ProfileData;
+  }> => {
+    const response = await fetch(`/api/profile/${address}`, {
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+    const data = await response.json();
+    return data;
+  },
+
+  updateProfile: async (address: string, profile: Partial<ProfileData>) => {
+    const response = await fetch(`/api/profile/${address}`, {
+      method: "POST",
+      body: JSON.stringify(profile),
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+    if (response.status === 401) {
+      clearToken();
+      return {
+        code: 401,
+        msg: "Unauthorized",
+      };
+    }
+    const data = await response.json();
+    return data;
   },
 };
 

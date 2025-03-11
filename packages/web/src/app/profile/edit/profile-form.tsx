@@ -18,14 +18,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import type { ProfileData } from "@/services/graphql/types/profile";
+
 const FormSchema = z.object({
-  displayName: z
+  name: z
     .string()
     .min(2, "Display name must be at least 2 characters")
     .max(50, "Display name cannot exceed 50 characters")
     .trim(),
 
-  delegateStatement: z
+  delegate_statement: z
     .string()
     .min(20, "Statement must be at least 20 characters")
     .max(1000, "Statement cannot exceed 1000 characters")
@@ -37,7 +39,7 @@ const FormSchema = z.object({
     .trim()
     .toLowerCase(),
 
-  x: z
+  twitter: z
     .string()
     .regex(/^[A-Za-z0-9_]{4,15}$/, "Please enter a valid X/Twitter handle")
     .transform((val) => val.replace("@", ""))
@@ -70,26 +72,40 @@ const FormSchema = z.object({
     .or(z.literal("")),
 });
 
-type FormData = z.infer<typeof FormSchema>;
+export type ProfileFormData = z.infer<typeof FormSchema>;
 
-export function ProfileForm() {
+export function ProfileForm({
+  onSubmitForm,
+  data,
+  isLoading,
+}: {
+  onSubmitForm: (data: ProfileFormData) => void;
+  data?: ProfileData;
+  isLoading: boolean;
+}) {
   const router = useRouter();
-  const form = useForm<FormData>({
+  const form = useForm<ProfileFormData>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
-      displayName: "",
-      delegateStatement: "",
+      name: "",
+      delegate_statement: "",
       email: "",
-      x: "",
-      telegram: "",
+      twitter: "",
       github: "",
       discord: "",
+      telegram: "",
     },
   });
 
-  async function onSubmit(data: FormData) {
+  async function onSubmit({
+    data,
+  }: {
+    data: ProfileFormData;
+    extra: { avatar: string; medium: string };
+  }) {
     try {
       console.log(data);
+      onSubmitForm(data);
       // TODO: Add API call to save data
     } catch (error) {
       console.error(error);
@@ -97,21 +113,31 @@ export function ProfileForm() {
   }
 
   useEffect(() => {
-    return () => {
-      form.reset();
-    };
-  }, [form]);
+    if (data) {
+      form.reset({
+        name: data.name || "",
+        delegate_statement: data.delegate_statement || "",
+        email: data.email || "",
+        twitter: data.twitter || "",
+        github: data.github || "",
+        discord: data.discord || "",
+        telegram: data.telegram || "",
+      });
+    }
+  }, [data, form]);
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
       <Form {...form}>
         <form
-          onSubmit={form.handleSubmit(onSubmit)}
+          onSubmit={form.handleSubmit((data) =>
+            onSubmit({ data, extra: { avatar: "", medium: "" } })
+          )}
           className="w-full space-y-[20px]"
         >
           <FormField
             control={form.control}
-            name="displayName"
+            name="name"
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-row items-center justify-between gap-[10px]">
@@ -133,7 +159,7 @@ export function ProfileForm() {
 
           <FormField
             control={form.control}
-            name="delegateStatement"
+            name="delegate_statement"
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-row items-center justify-between gap-[10px]">
@@ -176,7 +202,7 @@ export function ProfileForm() {
 
           <FormField
             control={form.control}
-            name="x"
+            name="twitter"
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-row items-center justify-between gap-[10px]">
@@ -271,7 +297,7 @@ export function ProfileForm() {
             <Button
               type="submit"
               className="w-[155px] rounded-[100px]"
-              disabled={form.formState.isSubmitting}
+              isLoading={form.formState.isSubmitting || isLoading}
             >
               {form.formState.isSubmitting ? "Saving..." : "Save"}
             </Button>

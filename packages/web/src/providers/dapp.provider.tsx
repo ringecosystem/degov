@@ -1,5 +1,9 @@
 "use client";
-import { darkTheme, RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import {
+  darkTheme,
+  RainbowKitProvider,
+  RainbowKitAuthenticationProvider,
+} from "@rainbow-me/rainbowkit";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as React from "react";
@@ -7,8 +11,9 @@ import { WagmiProvider, deserialize, serialize } from "wagmi";
 
 import { createConfig, queryClient } from "@/config/wagmi";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-
 import "@rainbow-me/rainbowkit/styles.css";
+import { authenticationAdapter } from "@/lib/rainbowkit-auth";
+
 import type { Chain } from "@rainbow-me/rainbowkit";
 
 const dark = darkTheme({
@@ -67,14 +72,19 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         client={queryClient}
         persistOptions={{ persister }}
       >
-        <RainbowKitProvider
-          theme={dark}
-          locale="en-US"
-          appInfo={{ appName: dappConfig?.name }}
-          initialChain={currentChain}
+        <RainbowKitAuthenticationProvider
+          adapter={authenticationAdapter}
+          status="unauthenticated"
         >
-          {children}
-        </RainbowKitProvider>
+          <RainbowKitProvider
+            theme={dark}
+            locale="en-US"
+            appInfo={{ appName: dappConfig?.name }}
+            initialChain={currentChain}
+          >
+            {children}
+          </RainbowKitProvider>
+        </RainbowKitAuthenticationProvider>
       </PersistQueryClientProvider>
     </WagmiProvider>
   );

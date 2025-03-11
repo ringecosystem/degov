@@ -1,8 +1,10 @@
-import { useEnsName } from 'wagmi';
+import { useQuery } from "@tanstack/react-query";
+import { useEnsName } from "wagmi";
 
-import { formatShortAddress } from '@/utils/address';
+import { profileService } from "@/services/graphql";
+import { formatShortAddress } from "@/utils/address";
 
-import type { Address } from 'viem';
+import type { Address } from "viem";
 
 interface AddressResolverProps {
   address: Address;
@@ -13,14 +15,22 @@ interface AddressResolverProps {
 export function AddressResolver({
   address,
   showShortAddress = false,
-  children
+  children,
 }: AddressResolverProps) {
   const { data: ensName } = useEnsName({
     address,
-    chainId: 1
+    chainId: 1,
+  });
+  const { data: profileData } = useQuery({
+    queryKey: ["profile", address],
+    queryFn: () => profileService.getProfile(address),
+    enabled: !!address,
   });
 
-  const displayValue = ensName || (showShortAddress ? formatShortAddress(address) : address);
+  const displayValue =
+    profileData?.data?.name ||
+    ensName ||
+    (showShortAddress ? formatShortAddress(address) : address);
 
   return <>{children(displayValue)}</>;
 }
