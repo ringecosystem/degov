@@ -43,6 +43,7 @@ export interface DUser {
   discord?: string;
   telegram?: string;
   medium?: string;
+  delegate_statement?: string;
   additional?: string;
   last_login_time: string;
   ctime?: string;
