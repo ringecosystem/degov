@@ -13,7 +13,7 @@ links:
   github: https://github.com/ringecosystem/degov
   email: # It's ok to leave it empty
 
-walet:
+wallet:
   walletConnectProjectId: 2719448e2ce94fdd269a3c8587123bcc
 
 # Chain information: these commented fields are optional if this chain can be accessed by viem.

@@ -58,7 +58,7 @@ interface Config {
   logo: string;
   description: string;
   links: Links;
-  walet: Wallet;
+  wallet: Wallet;
   chain: Chain;
   contracts: Contracts;
   timeLockAssets: TimelockAssets;
