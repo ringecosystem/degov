@@ -4,6 +4,8 @@ import { request } from "./client";
 import * as Queries from "./queries";
 import * as Types from "./types";
 
+import type { ProfileData } from "./types/profile";
+
 export const proposalService = {
   getAllProposals: async (
     endpoint: string,
@@ -87,7 +89,12 @@ export const squidStatusService = {
 };
 
 export const profileService = {
-  getProfile: async (address: string) => {
+  getProfile: async (
+    address: string
+  ): Promise<{
+    code: number;
+    data: ProfileData;
+  }> => {
     const response = await fetch(`/api/profile/${address}`, {
       cache: "no-store",
       headers: {
@@ -108,6 +115,8 @@ export const profileService = {
       twitter?: string;
       github?: string;
       discord?: string;
+      medium?: string;
+      telegram?: string;
       additional?: string;
     }
   ) => {

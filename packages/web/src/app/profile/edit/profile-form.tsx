@@ -74,6 +74,7 @@ type FormData = z.infer<typeof FormSchema>;
 
 export function ProfileForm({
   onSubmitForm,
+  data,
   isLoading,
 }: {
   onSubmitForm: (data: FormData) => void;
@@ -99,6 +100,7 @@ export function ProfileForm({
       onSubmitForm({
         ...data,
         avatar: "",
+        medium: "",
       });
       // TODO: Add API call to save data
     } catch (error) {
@@ -281,7 +283,7 @@ export function ProfileForm({
             <Button
               type="submit"
               className="w-[155px] rounded-[100px]"
-              disabled={form.formState.isSubmitting || isLoading}
+              isLoading={form.formState.isSubmitting || isLoading}
             >
               {form.formState.isSubmitting ? "Saving..." : "Save"}
             </Button>
