@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS='--inspect' next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "build": "pnpm generate:config && next build",
+    "start": "pnpm generate:config && next start",
+    "lint": "next lint",
+    "generate:config": "shx cp ../../degov.yml public/config.yml"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.0",
@@ -72,6 +73,7 @@
     "eslint-config-next": "15.1.7",
     "eslint-plugin-import": "^2.31.0",
     "postcss": "^8",
+    "shx": "^0.3.4",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }

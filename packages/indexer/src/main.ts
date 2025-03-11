@@ -1,20 +1,28 @@
 import { TypeormDatabase } from "@subsquid/typeorm-store";
 import { processor } from "./processor";
-import {
-  IGOVERNOR_CONTRACT_ADDRESS,
-  ITOKEN_CONTRACT_ADDRESS,
-} from "./constants";
+import * as indexConfig from "./config";
 import { GovernorHandler } from "./handler/governor";
 import { TokenHandler } from "./handler/token";
 
 processor.run(new TypeormDatabase({ supportHotBlocks: true }), async (ctx) => {
+  const indexLog = indexConfig.indexLog;
+
   for (const c of ctx.blocks) {
     for (const event of c.logs) {
-      if (event.address === IGOVERNOR_CONTRACT_ADDRESS) {
-        await new GovernorHandler(ctx).handle(event);
+      const il = indexLog.contracts.find(
+        (item) => item.address.toLowerCase() === event.address.toLowerCase()
+      );
+      if (!il) {
+        continue;
       }
-      if (event.address === ITOKEN_CONTRACT_ADDRESS) {
-        await new TokenHandler(ctx).handle(event);
+
+      switch (il.name) {
+        case "governor":
+          await new GovernorHandler(ctx).handle(event);
+          break;
+        case "governorToken":
+          await new TokenHandler(ctx).handle(event);
+          break;
       }
     }
   }

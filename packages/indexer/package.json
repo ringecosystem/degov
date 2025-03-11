@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "rm -rf lib && tsc"
+    "generate:config": "zx scripts/generate-config.mjs",
+    "build": "pnpm generate:config && rm -rf lib && tsc"
   },
   "dependencies": {
     "@subsquid/evm-abi": "^0.3.0",
@@ -21,6 +22,8 @@
     "@subsquid/typeorm-codegen": "^2.0.1",
     "@types/node": "^20.14.8",
     "typescript": "~5.5.2",
-    "reflect-metadata": "^0.2.2"
+    "reflect-metadata": "^0.2.2",
+    "zx": "^8.4.0",
+    "viem": "2.x"
   }
 }
