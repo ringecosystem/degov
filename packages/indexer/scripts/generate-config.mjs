@@ -67,7 +67,15 @@ async function writeConfig(indexerConfig) {
 }
 
 async function main() {
-  const content = await fs.readFile("../../degov.yml", "utf-8");
+  // const existsConfig = await fs.pathExists("src/config.ts");
+  // if (existsConfig) {
+  //   if (!$.env["DEGOV_INDEXER_FORCE_GENERATE"]) {
+  //     return;
+  //   }
+  // }
+  const degovConfigPath = $.env["DEGOV_CONFIG_PATH"] ?? '../../degov.yml';
+
+  const content = await fs.readFile(degovConfigPath, "utf-8");
   const degovConfig = YAML.parse(content);
 
   const endpoint = extractEndpoint(degovConfig);

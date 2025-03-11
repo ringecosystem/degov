@@ -2,4 +2,4 @@
 #
 
 s6-envdir /var/run/s6/container_environment
-/bin/sh -f /app/packages/indexer/scripts/start.sh
+/bin/sh -f /app/scripts/start.sh
