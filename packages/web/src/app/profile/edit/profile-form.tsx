@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import type { ProfileData } from "@/services/graphql/types/profile";
 
 const FormSchema = z.object({
   name: z
@@ -26,7 +27,7 @@ const FormSchema = z.object({
     .max(50, "Display name cannot exceed 50 characters")
     .trim(),
 
-  additional: z
+  delegate_statement: z
     .string()
     .min(20, "Statement must be at least 20 characters")
     .max(1000, "Statement cannot exceed 1000 characters")
@@ -71,29 +72,23 @@ const FormSchema = z.object({
     .or(z.literal("")),
 });
 
-export type FormData = z.infer<typeof FormSchema>;
+export type ProfileFormData = z.infer<typeof FormSchema>;
 
 export function ProfileForm({
   onSubmitForm,
   data,
   isLoading,
 }: {
-  onSubmitForm: ({
-    data,
-    extra,
-  }: {
-    data: FormData;
-    extra: { avatar: string; medium: string };
-  }) => void;
-  data: FormData;
+  onSubmitForm: (data: ProfileFormData) => void;
+  data?: ProfileData;
   isLoading: boolean;
 }) {
   const router = useRouter();
-  const form = useForm<FormData>({
+  const form = useForm<ProfileFormData>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
       name: "",
-      additional: "",
+      delegate_statement: "",
       email: "",
       twitter: "",
       github: "",
@@ -105,18 +100,12 @@ export function ProfileForm({
   async function onSubmit({
     data,
   }: {
-    data: FormData;
+    data: ProfileFormData;
     extra: { avatar: string; medium: string };
   }) {
     try {
       console.log(data);
-      onSubmitForm({
-        data,
-        extra: {
-          avatar: "",
-          medium: "",
-        },
-      });
+      onSubmitForm(data);
       // TODO: Add API call to save data
     } catch (error) {
       console.error(error);
@@ -124,11 +113,10 @@ export function ProfileForm({
   }
 
   useEffect(() => {
-    // 当 data 存在且有值时重置表单
     if (data) {
       form.reset({
         name: data.name || "",
-        additional: data.additional || "",
+        delegate_statement: data.delegate_statement || "",
         email: data.email || "",
         twitter: data.twitter || "",
         github: data.github || "",
@@ -171,7 +159,7 @@ export function ProfileForm({
 
           <FormField
             control={form.control}
-            name="additional"
+            name="delegate_statement"
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-row items-center justify-between gap-[10px]">

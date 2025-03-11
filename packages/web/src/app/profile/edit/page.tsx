@@ -14,6 +14,8 @@ import type { ProfileData } from "@/services/graphql/types/profile";
 import { ProfileAvatar } from "./profile-avatar";
 import { ProfileForm } from "./profile-form";
 
+import type { ProfileFormData } from "./profile-form";
+
 export function ProfileEditSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[820px] space-y-[20px] p-[30px]">
@@ -68,16 +70,14 @@ export default function Edit() {
     enabled: !!address,
   });
 
-  // update
-  const { mutate: updateProfile, isPending: isUpdating } = useMutation({
-    mutationFn: (profile: Profile) =>
+  const { mutate: updateProfile } = useMutation({
+    mutationFn: (profile: Partial<ProfileData>) =>
       profileService.updateProfile(address as `0x${string}`, profile),
   });
 
-  const onSubmitForm = useCallback(
-    async (data: FormData) => {
+  const handleSubmitForm = useCallback(
+    async (data: ProfileFormData) => {
       try {
-        console.log("data", data);
         setIsUpdatingProfile(true);
         await updateProfile(data);
         setIsUpdatingProfile(false);
@@ -96,7 +96,6 @@ export default function Edit() {
       try {
         setIsUpdatingAvatar(true);
         await updateProfile({
-          ...(profileData?.data || {}),
           avatar: base64,
         });
         setIsUpdatingAvatar(false);
@@ -123,7 +122,7 @@ export default function Edit() {
       <div className="grid w-full grid-cols-[600px_200px] gap-[20px]">
         <ProfileForm
           data={profileData?.data}
-          onSubmitForm={updateProfile}
+          onSubmitForm={handleSubmitForm}
           isLoading={isUpdatingProfile}
         />
         <ProfileAvatar
