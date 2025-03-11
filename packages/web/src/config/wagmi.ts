@@ -1,7 +1,4 @@
-import {
-  getDefaultWallets,
-  getDefaultConfig
-} from "@rainbow-me/rainbowkit";
+import { getDefaultWallets, getDefaultConfig } from "@rainbow-me/rainbowkit";
 import {
   talismanWallet,
   okxWallet,
@@ -14,12 +11,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { cookieStorage, createStorage } from "wagmi";
 import { mainnet } from "wagmi/chains";
 
-import type {
-  Chain} from "@rainbow-me/rainbowkit";
-
-export const projectId = process.env.NEXT_PUBLIC_PROJECT_ID;
-
-if (!projectId) throw new Error("Project ID is not defined");
+import type { Chain } from "@rainbow-me/rainbowkit";
 
 const { wallets } = getDefaultWallets();
 
