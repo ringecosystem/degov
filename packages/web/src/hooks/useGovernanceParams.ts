@@ -24,9 +24,9 @@ export function useGovernanceParams() {
     address: governorAddress as `0x${string}`,
     abi: governorAbi,
     functionName: "clock" as const,
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     query: {
-      enabled: Boolean(governorAddress) && Boolean(daoConfig?.network?.chainId),
+      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
 
@@ -36,32 +36,32 @@ export function useGovernanceParams() {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
         functionName: "proposalThreshold" as const,
-        chainId: daoConfig?.network?.chainId,
+        chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
         functionName: "quorum" as const,
         args: [clockData ? BigInt(clockData) : BigInt(0)],
-        chainId: daoConfig?.network?.chainId,
+        chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
         functionName: "votingDelay" as const,
-        chainId: daoConfig?.network?.chainId,
+        chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
         functionName: "votingPeriod" as const,
-        chainId: daoConfig?.network?.chainId,
+        chainId: daoConfig?.chain?.id,
       },
       {
         address: timeLockAddress as `0x${string}`,
         abi: timeLockAbi,
         functionName: "getMinDelay" as const,
-        chainId: daoConfig?.network?.chainId,
+        chainId: daoConfig?.chain?.id,
       },
     ],
     query: {
@@ -69,7 +69,7 @@ export function useGovernanceParams() {
       enabled:
         Boolean(governorAddress) &&
         Boolean(clockData) &&
-        Boolean(daoConfig?.network?.chainId),
+        Boolean(daoConfig?.chain?.id),
     },
   });
 

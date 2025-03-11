@@ -116,7 +116,7 @@ export const useProposal = () => {
     address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: governorAbi,
     functionName: "hashProposal",
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     args: [
       params.targets,
       params.values,
@@ -129,7 +129,7 @@ export const useProposal = () => {
         !!params.values.length &&
         !!params.calldatas.length &&
         !!params.description &&
-        !!daoConfig?.network?.chainId,
+        !!daoConfig?.chain?.id,
     },
   });
 

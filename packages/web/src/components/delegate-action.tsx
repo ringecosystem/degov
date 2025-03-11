@@ -41,16 +41,16 @@ export function DelegateAction({
 
   const { data: tokenBalance, isLoading: isLoadingTokenBalance } =
     useReadContract({
-      address: daoConfig?.contracts?.governorToken?.contract as `0x${string}`,
+      address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
       abi: tokenAbi,
       functionName: "balanceOf",
       args: [account as `0x${string}`],
-      chainId: daoConfig?.network?.chainId,
+      chainId: daoConfig?.chain?.id,
       query: {
         enabled:
           !!account &&
-          !!daoConfig?.contracts?.governorToken?.contract &&
-          !!daoConfig?.network?.chainId,
+          !!daoConfig?.contracts?.governorToken?.address &&
+          !!daoConfig?.chain?.id,
       },
     });
 

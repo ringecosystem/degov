@@ -103,8 +103,8 @@ export const TransferPanel = ({
   const tokenList = useMemo(() => {
     const nativeToken: TokenInfo = {
       address: "0x0000000000000000000000000000000000000000" as Address,
-      symbol: daoConfig?.network?.nativeToken?.symbol as string,
-      decimals: daoConfig?.network?.nativeToken?.decimals as number,
+      symbol: daoConfig?.chain?.nativeToken?.symbol as string,
+      decimals: daoConfig?.chain?.nativeToken?.decimals as number,
       icon: daoConfig?.logo as string,
       isNative: true,
     };

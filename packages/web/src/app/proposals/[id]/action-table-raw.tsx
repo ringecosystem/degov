@@ -131,7 +131,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
                 {action.value
                   ? parseUnits(
                       action.value,
-                      daoConfig?.network?.nativeToken?.decimals ?? 18
+                      daoConfig?.chain?.nativeToken?.decimals ?? 18
                     )
                   : "0"}
               </p>

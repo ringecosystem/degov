@@ -29,7 +29,7 @@ export function useMyVotes(): UseVotesReturn {
   const { data: governanceParams, isLoading: isParamsLoading } =
     useGovernanceParams();
 
-  const tokenAddress = daoConfig?.contracts?.governorToken?.contract as Address;
+  const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
 
   const {
     data: votes,
@@ -41,12 +41,12 @@ export function useMyVotes(): UseVotesReturn {
     abi: tokenAbi,
     functionName: "getVotes",
     args: [address!],
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     query: {
       enabled:
         Boolean(address) &&
         Boolean(tokenAddress) &&
-        Boolean(daoConfig?.network?.chainId),
+        Boolean(daoConfig?.chain?.id),
     },
   });
 

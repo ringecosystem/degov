@@ -26,7 +26,7 @@ export const ConnectButton = () => {
     );
   }
 
-  if (Number(chainId) !== Number(dappConfig?.network?.chainId)) {
+  if (Number(chainId) !== Number(dappConfig?.chain?.id)) {
     return (
       <Button variant="destructive" className="cursor-auto rounded-[100px]">
         Error Chain

@@ -88,7 +88,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
           case "transfer":
             info.address = action.content.recipient;
             info.value = action.content.amount ?? "0";
-            info.details = `${action.content.amount} ${daoConfig?.network?.nativeToken?.symbol}`;
+            info.details = `${action.content.amount} ${daoConfig?.chain?.nativeToken?.symbol}`;
             break;
           case "custom":
             const contractMethod = action?.content?.contractMethod
@@ -160,7 +160,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 <TableCell className="w-1/3 text-left">
                   {action.address ? (
                     <a
-                      href={`${daoConfig?.network?.explorer?.[0]}/address/${action.address}`}
+                      href={`${daoConfig?.chain?.explorers?.[0]}/address/${action.address}`}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-[5px] hover:underline font-mono"
@@ -308,7 +308,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 {action.value
                   ? parseUnits(
                       action.value,
-                      daoConfig?.network?.nativeToken?.decimals ?? 18
+                      daoConfig?.chain?.nativeToken?.decimals ?? 18
                     )
                   : "0"}
               </p>

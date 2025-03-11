@@ -29,22 +29,22 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   }
 
   const currentChain: Chain = {
-    id: Number(dappConfig.network?.chainId),
-    name: dappConfig.network?.name ?? "",
+    id: Number(dappConfig.chain?.id),
+    name: dappConfig.chain?.name ?? "",
     nativeCurrency: {
-      name: dappConfig.network?.nativeToken?.symbol,
-      symbol: dappConfig.network?.nativeToken?.symbol,
-      decimals: dappConfig.network?.nativeToken?.decimals,
+      name: dappConfig.chain?.nativeToken?.symbol,
+      symbol: dappConfig.chain?.nativeToken?.symbol,
+      decimals: dappConfig.chain?.nativeToken?.decimals,
     },
     rpcUrls: {
       default: {
-        http: dappConfig.network?.rpc,
+        http: dappConfig.chain?.rpcs,
       },
     },
     blockExplorers: {
       default: {
         name: "Explorer",
-        url: dappConfig.network?.explorer?.[0],
+        url: dappConfig.chain?.explorers?.[0],
       },
     },
     contracts: {
@@ -62,7 +62,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
 
   const config = createConfig({
     appName: dappConfig?.name,
-    projectId: dappConfig?.walletConnectProjectId,
+    projectId: dappConfig?.walet?.walletConnectProjectId,
     chain: currentChain,
   });
 

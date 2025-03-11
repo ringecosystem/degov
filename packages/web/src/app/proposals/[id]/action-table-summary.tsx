@@ -30,8 +30,8 @@ export function ActionTableSummary({
       if (type === "transfer") {
         details = `${formatBigIntForDisplay(
           action?.value ? BigInt(action?.value) : BigInt(0),
-          daoConfig?.network?.nativeToken?.decimals ?? 18
-        )} ${daoConfig?.network?.nativeToken?.symbol}`;
+          daoConfig?.chain?.nativeToken?.decimals ?? 18
+        )} ${daoConfig?.chain?.nativeToken?.symbol}`;
       } else {
         details = action?.signature
           ? formatFunctionSignature(action?.signature)
@@ -75,7 +75,7 @@ export function ActionTableSummary({
         className: "text-left",
         render: (record) => (
           <a
-            href={`${daoConfig?.network?.explorer?.[0]}/address/${record.target}`}
+            href={`${daoConfig?.chain?.explorers?.[0]}/address/${record.target}`}
             className="flex items-center gap-[10px] transition-opacity hover:opacity-80"
             target="_blank"
             rel="noreferrer"

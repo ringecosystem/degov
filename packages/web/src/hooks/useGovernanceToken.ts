@@ -25,7 +25,7 @@ interface UseGovernanceTokenReturn {
 export function useGovernanceToken(): UseGovernanceTokenReturn {
   const daoConfig = useDaoConfig();
   const standard = daoConfig?.contracts?.governorToken?.standard;
-  const tokenAddress = daoConfig?.contracts?.governorToken?.contract as Address;
+  const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
   const { data, isLoading, error } = useReadContracts({
     contracts:
       standard === "ERC20"
@@ -34,19 +34,19 @@ export function useGovernanceToken(): UseGovernanceTokenReturn {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "symbol",
-              chainId: daoConfig?.network?.chainId,
+              chainId: daoConfig?.chain?.id,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "name",
-              chainId: daoConfig?.network?.chainId,
+              chainId: daoConfig?.chain?.id,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "decimals",
-              chainId: daoConfig?.network?.chainId,
+              chainId: daoConfig?.chain?.id,
             },
           ]
         : [
@@ -54,17 +54,17 @@ export function useGovernanceToken(): UseGovernanceTokenReturn {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "symbol",
-              chainId: daoConfig?.network?.chainId,
+              chainId: daoConfig?.chain?.id,
             },
             {
               address: tokenAddress,
               abi: tokenAbi,
               functionName: "name",
-              chainId: daoConfig?.network?.chainId,
+              chainId: daoConfig?.chain?.id,
             },
           ],
     query: {
-      enabled: Boolean(tokenAddress) && Boolean(daoConfig?.network?.chainId),
+      enabled: Boolean(tokenAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
 

@@ -36,7 +36,7 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
         address: contract.address,
         abi: contract.abi,
         functionName: "symbol",
-        chainId: daoConfig?.network?.chainId,
+        chainId: daoConfig?.chain?.id,
       });
     });
 
@@ -46,18 +46,18 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
           address: contract.address,
           abi: contract.abi,
           functionName: "decimals",
-          chainId: daoConfig?.network?.chainId,
+          chainId: daoConfig?.chain?.id,
         });
       }
     });
 
     return calls;
-  }, [baseContract, daoConfig?.network?.chainId]);
+  }, [baseContract, daoConfig?.chain?.id]);
 
   const symbolResults = useReadContracts({
     contracts: contractCalls,
     query: {
-      enabled: contractCalls.length > 0 && !!daoConfig?.network?.chainId,
+      enabled: contractCalls.length > 0 && !!daoConfig?.chain?.id,
     },
   });
 

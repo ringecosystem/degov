@@ -43,13 +43,11 @@ export default function ProposalDetailPage() {
     abi: GovernorAbi,
     functionName: "state",
     args: [id ? BigInt(id as string) : 0n],
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     query: {
       refetchInterval: DEFAULT_REFETCH_INTERVAL,
       enabled:
-        !!id &&
-        !!daoConfig?.contracts?.governor &&
-        !!daoConfig?.network?.chainId,
+        !!id && !!daoConfig?.contracts?.governor && !!daoConfig?.chain?.id,
     },
   });
 
@@ -95,13 +93,13 @@ export default function ProposalDetailPage() {
     abi: GovernorAbi,
     functionName: "proposalVotes",
     args: [data?.proposalId ? BigInt(data?.proposalId) : 0n],
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     query: {
       refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       enabled:
         !!data?.proposalId &&
         !!daoConfig?.contracts?.governor &&
-        !!daoConfig?.network?.chainId,
+        !!daoConfig?.chain?.id,
     },
   });
 

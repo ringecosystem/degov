@@ -13,7 +13,7 @@ export function useBlockSync() {
 
   const { data: currentBlockData } = useBlockNumber({
     watch: true,
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     query: {
       refetchInterval: DEFAULT_REFETCH_INTERVAL,
     },

@@ -15,14 +15,14 @@ export const Overview = () => {
   const daoConfig = useDaoConfig();
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
     useReadContract({
-      address: daoConfig?.contracts?.governorToken?.contract as `0x${string}`,
+      address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
       abi: tokenAbi,
       functionName: "totalSupply",
-      chainId: daoConfig?.network?.chainId,
+      chainId: daoConfig?.chain?.id,
       query: {
         enabled:
-          !!daoConfig?.contracts?.governorToken?.contract &&
-          !!daoConfig?.network?.chainId,
+          !!daoConfig?.contracts?.governorToken?.address &&
+          !!daoConfig?.chain?.id,
       },
     });
 

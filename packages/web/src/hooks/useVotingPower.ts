@@ -23,7 +23,7 @@ interface UseVotingPowerReturn {
  */
 export function useVotingPower(account?: Address): UseVotingPowerReturn {
   const daoConfig = useDaoConfig();
-  const tokenAddress = daoConfig?.contracts?.governorToken?.contract as Address;
+  const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
 
   const { data, isLoading, error } = useReadContracts({
     contracts: account
@@ -32,14 +32,14 @@ export function useVotingPower(account?: Address): UseVotingPowerReturn {
             address: tokenAddress,
             abi: tokenAbi,
             functionName: "totalSupply",
-            chainId: daoConfig?.network?.chainId,
+            chainId: daoConfig?.chain?.id,
           },
           {
             address: tokenAddress,
             abi: tokenAbi,
             functionName: "getVotes",
             args: [account],
-            chainId: daoConfig?.network?.chainId,
+            chainId: daoConfig?.chain?.id,
           },
         ]
       : [
@@ -47,11 +47,11 @@ export function useVotingPower(account?: Address): UseVotingPowerReturn {
             address: tokenAddress,
             abi: tokenAbi,
             functionName: "totalSupply",
-            chainId: daoConfig?.network?.chainId,
+            chainId: daoConfig?.chain?.id,
           },
         ],
     query: {
-      enabled: Boolean(tokenAddress) && Boolean(daoConfig?.network?.chainId),
+      enabled: Boolean(tokenAddress) && Boolean(daoConfig?.chain?.id),
       refetchInterval: 60_000, // Refetch every minute
     },
   });

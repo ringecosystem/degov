@@ -190,7 +190,7 @@ export function TreasuryTable({
                   <Asset
                     asset={value}
                     symbol={tokenInfo[value.contract as `0x${string}`]?.symbol}
-                    explorer={daoConfig?.network?.explorer?.[0] as string}
+                    explorer={daoConfig?.chain?.explorers?.[0] as string}
                   />
                 </TableCell>
                 <TableCell className="text-right">{`${
@@ -208,7 +208,7 @@ export function TreasuryTable({
                     : "N/A"}
                 </TableCell>
                 <TableCell className="text-right">
-                  {value.chain || "N/A"}
+                  {daoConfig?.chain?.name || "N/A"}
                 </TableCell>
               </TableRow>
             ))}

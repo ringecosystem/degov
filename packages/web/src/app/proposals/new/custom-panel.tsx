@@ -383,16 +383,16 @@ export const CustomPanel = ({
                   Value
                 </h4>
                 <label className="text-[14px] text-foreground">
-                  The amount of {daoConfig?.network?.nativeToken?.symbol} you
-                  wish to send the target address ( External Account or Smart
+                  The amount of {daoConfig?.chain?.nativeToken?.symbol} you wish
+                  to send the target address ( External Account or Smart
                   Contract)
                 </label>
                 <div className="flex flex-row gap-[10px]">
                   <span className="inline-flex h-[37px] w-[200px] items-center justify-center truncate rounded-[4px] border border-border bg-[#2E2E2E] px-[10px] text-[14px] text-foreground">
-                    {daoConfig?.network?.nativeToken?.symbol}
+                    {daoConfig?.chain?.nativeToken?.symbol}
                   </span>
                   <Input
-                    placeholder={`${daoConfig?.network?.nativeToken?.symbol} amount`}
+                    placeholder={`${daoConfig?.chain?.nativeToken?.symbol} amount`}
                     className="h-[37px] border-border bg-card"
                     {...register("value")}
                   />

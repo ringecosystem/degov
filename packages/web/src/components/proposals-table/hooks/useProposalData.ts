@@ -75,17 +75,13 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
       address: daoConfig?.contracts?.governor as `0x${string}`,
       abi: GovernorAbi,
       functionName: "proposalVotes",
-      chainId: daoConfig?.network?.chainId,
+      chainId: daoConfig?.chain?.id,
     } as const;
     return allProposals?.map((item) => ({
       ...proposalVotesContract,
       args: [item.proposalId],
     }));
-  }, [
-    allProposals,
-    daoConfig?.contracts?.governor,
-    daoConfig?.network?.chainId,
-  ]);
+  }, [allProposals, daoConfig?.contracts?.governor, daoConfig?.chain?.id]);
 
   const {
     data: proposalVotes,
@@ -94,7 +90,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
   } = useReadContracts({
     contracts: voteContracts,
     query: {
-      enabled: allProposals.length > 0 && !!daoConfig?.network?.chainId,
+      enabled: allProposals.length > 0 && !!daoConfig?.chain?.id,
       staleTime: 60 * 1000,
       refetchOnWindowFocus: false,
     },
@@ -105,17 +101,13 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
       address: daoConfig?.contracts?.governor as `0x${string}`,
       abi: GovernorAbi,
       functionName: "state",
-      chainId: daoConfig?.network?.chainId,
+      chainId: daoConfig?.chain?.id,
     } as const;
     return allProposals.map((item) => ({
       ...proposalStatusContract,
       args: [item.proposalId],
     }));
-  }, [
-    allProposals,
-    daoConfig?.contracts?.governor,
-    daoConfig?.network?.chainId,
-  ]);
+  }, [allProposals, daoConfig?.contracts?.governor, daoConfig?.chain?.id]);
 
   const {
     data: proposalStatuses,
@@ -124,7 +116,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
   } = useReadContracts({
     contracts: statusContracts,
     query: {
-      enabled: allProposals.length > 0 && !!daoConfig?.network?.chainId,
+      enabled: allProposals.length > 0 && !!daoConfig?.chain?.id,
       staleTime: 60 * 1000,
       refetchOnWindowFocus: false,
     },

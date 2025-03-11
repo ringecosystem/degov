@@ -53,7 +53,7 @@ export function useSign() {
         statement: `DeGov.AI wants you to sign in with your Ethereum account: ${address}`,
         uri: window.location.origin,
         version: "1",
-        chainId: daoConfig?.network?.chainId as number,
+        chainId: daoConfig?.chain?.id as number,
         nonce: data.nonce,
       });
 
@@ -85,7 +85,7 @@ export function useSign() {
       setIsLoading(false);
       throw error;
     }
-  }, [address, daoConfig?.network?.chainId, signMessageAsync]);
+  }, [address, daoConfig?.chain?.id, signMessageAsync]);
 
   return {
     signIn,

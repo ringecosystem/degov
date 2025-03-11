@@ -8,8 +8,8 @@ export function useConnectWalletStatus() {
   const { address, isConnected, chainId } = useAccount();
 
   const isCorrectNetwork = useMemo(
-    () => daoConfig?.network?.chainId === chainId,
-    [chainId, daoConfig?.network?.chainId]
+    () => daoConfig?.chain?.id === chainId,
+    [chainId, daoConfig?.chain?.id]
   );
 
   const activeAddress = useMemo(
@@ -20,17 +20,15 @@ export function useConnectWalletStatus() {
   const errorMessage = useMemo(() => {
     if (!isConnected) return "Please connect your wallet";
     if (!isCorrectNetwork)
-      return `Please switch to ${
-        daoConfig?.network?.name || "correct"
-      } network`;
+      return `Please switch to ${daoConfig?.chain?.name || "correct"} network`;
     return undefined;
-  }, [isConnected, isCorrectNetwork, daoConfig?.network?.name]);
+  }, [isConnected, isCorrectNetwork, daoConfig?.chain?.name]);
 
   return {
     activeAddress,
     isConnected,
     isCorrectNetwork,
     errorMessage,
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
   };
 }

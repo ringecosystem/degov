@@ -32,14 +32,14 @@ export const Contracts = () => {
           <span>Contracts</span>
           <div className="flex h-[34px] w-[118px] items-center justify-center gap-[5px] rounded-[100px] bg-[#2E2E2E] px-[10px] py-[5px]">
             <Image
-              src={daoConfig?.network?.logo ?? ""}
+              src={daoConfig?.chain?.logo ?? ""}
               alt="contracts"
               className="size-[24px] rounded-full"
               width={24}
               height={24}
             />
             <span className="text-[16px] font-semibold text-foreground">
-              {daoConfig?.network?.name}
+              {daoConfig?.chain?.name}
             </span>
           </div>
         </div>
@@ -60,7 +60,7 @@ export const Contracts = () => {
                   color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.governor}`}
+                  explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.governor}`}
                 />
               </div>
             </div>
@@ -75,17 +75,17 @@ export const Contracts = () => {
             </span>
             <div className="flex w-full items-center justify-between gap-[5px]">
               <span className="text-[14px] font-normal text-foreground">
-                {daoConfig?.contracts?.governorToken?.contract}
+                {daoConfig?.contracts?.governorToken?.address}
               </span>
               <div className="flex items-center gap-[5px]">
                 <ClipboardIconButton
-                  text={daoConfig?.contracts?.governorToken?.contract}
+                  text={daoConfig?.contracts?.governorToken?.address}
                   size={15}
                   strokeWidth={2}
                   color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.governorToken?.contract}`}
+                  explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.governorToken?.address}`}
                 />
               </div>
             </div>
@@ -107,7 +107,7 @@ export const Contracts = () => {
                   color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.network?.explorer?.[0]}/address/${daoConfig?.contracts?.timeLock}`}
+                  explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.timeLock}`}
                 />
               </div>
             </div>

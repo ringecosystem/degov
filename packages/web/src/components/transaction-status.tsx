@@ -27,8 +27,8 @@ export function TransactionStatus({
   transactionHash,
 }: TransactionStatusProps) {
   const daoConfig = useDaoConfig();
-  const explorerUrl = daoConfig?.network?.explorer?.[0];
-  const name = daoConfig?.network?.name;
+  const explorerUrl = daoConfig?.chain?.explorers?.[0];
+  const name = daoConfig?.chain?.name;
 
   return (
     <div className="py-[4px]">

@@ -25,7 +25,7 @@ export default function Treasury() {
     Object.entries(daoConfig.timeLockAssets).forEach(([, asset]) => {
       const assetWithChainId = {
         ...asset,
-        chainId: daoConfig.network.chainId,
+        chainId: daoConfig.chain.id,
       };
 
       if (asset.standard === "ERC20") {

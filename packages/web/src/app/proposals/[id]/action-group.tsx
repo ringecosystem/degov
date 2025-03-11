@@ -64,13 +64,13 @@ export default function ActionGroup({
     abi: GovernorAbi,
     functionName: "hasVoted",
     args: [id ? BigInt(id) : 0n, address as `0x${string}`],
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     query: {
       enabled:
         !!id &&
         !!daoConfig?.contracts?.governor &&
         !!address &&
-        !!daoConfig?.network?.chainId,
+        !!daoConfig?.chain?.id,
     },
   });
 
@@ -252,7 +252,7 @@ export default function ActionGroup({
     [handleQueueProposal, handleExecuteProposal, validateBeforeExecution]
   );
   const explorerUrl = useMemo(() => {
-    let defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${data?.transactionHash}`;
+    let defaultUrl = `${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`;
 
     if (status === ProposalState.Defeated) {
       defaultUrl = "";
@@ -262,19 +262,19 @@ export default function ActionGroup({
     }
 
     if (status === ProposalState.Queued) {
-      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalQueuedById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalQueuedById?.transactionHash}`;
     }
     if (status === ProposalState.Executed) {
-      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalExecutedById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`;
     }
     if (status === ProposalState.Canceled) {
-      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalCanceledById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalCanceledById?.transactionHash}`;
     }
     return defaultUrl;
   }, [
     data?.transactionHash,
     status,
-    daoConfig?.network?.explorer,
+    daoConfig?.chain?.explorers,
     proposalQueuedById?.transactionHash,
     proposalExecutedById?.transactionHash,
     proposalCanceledById?.transactionHash,

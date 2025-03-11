@@ -17,7 +17,7 @@ export const useDelegate = () => {
       const isValid = validateBeforeExecution();
       if (!isValid) return;
       const hash = await writeContractAsync({
-        address: daoConfig?.contracts?.governorToken?.contract as `0x${string}`,
+        address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
         abi: tokenAbi,
         functionName: "delegate",
         args: [delegatee],
@@ -27,7 +27,7 @@ export const useDelegate = () => {
     },
     [
       writeContractAsync,
-      daoConfig?.contracts?.governorToken?.contract,
+      daoConfig?.contracts?.governorToken?.address,
       validateBeforeExecution,
     ]
   );

@@ -10,10 +10,9 @@ export function useTokenBalance(token: TokenInfo | null) {
   const daoConfig = useDaoConfig();
   const { data: nativeBalance, isLoading: isNativeLoading } = useBalance({
     address: userAddress,
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     query: {
-      enabled:
-        !!token?.isNative && !!userAddress && !!daoConfig?.network?.chainId,
+      enabled: !!token?.isNative && !!userAddress && !!daoConfig?.chain?.id,
     },
   });
 
@@ -22,13 +21,13 @@ export function useTokenBalance(token: TokenInfo | null) {
     address: token?.address,
     functionName: "balanceOf",
     args: [userAddress!],
-    chainId: daoConfig?.network?.chainId,
+    chainId: daoConfig?.chain?.id,
     query: {
       enabled:
         !token?.isNative &&
         !!token?.address &&
         !!userAddress &&
-        !!daoConfig?.network?.chainId,
+        !!daoConfig?.chain?.id,
     },
   });
 

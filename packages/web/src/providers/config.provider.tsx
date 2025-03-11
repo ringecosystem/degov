@@ -13,7 +13,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    fetch("/config.yaml")
+    fetch("/config.yml")
       .then((response) => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
@@ -22,13 +22,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       })
       .then((yamlText) => {
         const config = yaml.load(yamlText) as Config;
+        console.log("config", config);
 
-        const currentNetwork =
-          config.networks[config.deployedChain?.toLowerCase()];
-        config.network = {
-          ...currentNetwork,
-          name: config.deployedChain,
-        };
         setConfig(config);
         setIsLoading(false);
       })

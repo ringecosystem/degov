@@ -109,7 +109,7 @@ const Status: React.FC<StatusProps> = ({
           />
         ),
         address: data?.proposer as `0x${string}`,
-        viewOnExplorer: `${daoConfig?.network?.explorer?.[0]}/tx/${data?.transactionHash}`,
+        viewOnExplorer: `${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`,
       },
       {
         title: "Start voting period",
@@ -159,7 +159,7 @@ const Status: React.FC<StatusProps> = ({
               />
             ),
             viewOnExplorer: proposalQueuedById?.transactionHash
-              ? `${daoConfig?.network?.explorer?.[0]}/tx/${proposalQueuedById?.transactionHash}`
+              ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalQueuedById?.transactionHash}`
               : "",
           },
           {
@@ -176,7 +176,7 @@ const Status: React.FC<StatusProps> = ({
               />
             ),
             viewOnExplorer: proposalExecutedById?.transactionHash
-              ? `${daoConfig?.network?.explorer?.[0]}/tx/${proposalExecutedById?.transactionHash}`
+              ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`
               : "",
           },
         ]?.map((v) => {
@@ -245,7 +245,7 @@ const Status: React.FC<StatusProps> = ({
             ),
             isActive: true,
             viewOnExplorer: proposalCanceledById?.transactionHash
-              ? `${daoConfig?.network?.explorer?.[0]}/tx/${proposalCanceledById?.transactionHash}`
+              ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalCanceledById?.transactionHash}`
               : "",
           },
         ];
@@ -310,7 +310,7 @@ const Status: React.FC<StatusProps> = ({
     proposalCanceledById,
     proposalExecutedById,
     proposalQueuedById,
-    daoConfig?.network?.explorer,
+    daoConfig?.chain?.explorers,
     votingPeriodEnded,
     votingPeriodStarted,
     status,
