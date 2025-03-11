@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { blo } from "blo";
 import { isEmpty, isNil, isObject } from "lodash-es";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -119,7 +120,7 @@ export const TransferPanel = ({
           address: token.contract as Address,
           symbol: tokenInfo[token.contract as `0x${string}`]?.symbol,
           decimals: tokenInfo[token.contract as `0x${string}`]?.decimals,
-          icon: token.logo,
+          icon: token.logo ?? blo(token.contract as `0x${string}`) ?? "",
           isNative: false,
         });
       });

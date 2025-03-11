@@ -1,3 +1,4 @@
+import { blo } from "blo";
 import Image from "next/image";
 
 import type { TokenDetails } from "@/types/config";
@@ -16,7 +17,7 @@ export const Asset = ({ asset, explorer, symbol }: AssetProps) => {
       rel="noreferrer"
     >
       <Image
-        src={asset.logo}
+        src={asset.logo ?? blo(asset.contract as `0x${string}`) ?? ""}
         alt={symbol || "N/A"}
         className="h-[30px] w-[30px] rounded-full"
         width={30}
