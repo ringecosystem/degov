@@ -4,24 +4,20 @@ function extractEndpoint(degovConfig) {
   const { chain } = degovConfig;
 
   const chainKeys = Object.keys(viemChains);
+  const rpcs = [...(chain.rpcs || [])];
 
   const viemChainName = chainKeys.find((item) => {
     const inputChainId = (chain.id ?? chain.chainId).toString();
     return viemChains[item].id.toString() === inputChainId;
   });
-  if (!viemChainName) {
-    console.log("unsupported chain");
-    process.exit(1);
-  }
-  const viemChain = viemChains[viemChainName];
-  const rpcs = [...(chain.rpcs || [])];
-
-  // console.log(viemChain.rpcUrls);
-  if (!rpcs.length) {
-    const defaultViemRpc = viemChain.rpcUrls.default;
-    rpcs.push(...(defaultViemRpc.ws ?? []));
-    rpcs.push(...(defaultViemRpc.webSocket ?? []));
-    rpcs.push(...(defaultViemRpc.http ?? []));
+  if (viemChainName) {
+    const viemChain = viemChains[viemChainName];
+    if (!rpcs.length) {
+      const defaultViemRpc = viemChain.rpcUrls.default;
+      rpcs.push(...(defaultViemRpc.ws ?? []));
+      rpcs.push(...(defaultViemRpc.webSocket ?? []));
+      rpcs.push(...(defaultViemRpc.http ?? []));
+    }
   }
 
   return {
@@ -51,7 +47,7 @@ function extractOthers(degovConfig) {
   const { indexer } = degovConfig;
   return {
     gateway: indexer.gateway,
-  }
+  };
 }
 
 async function writeConfig(indexerConfig) {
