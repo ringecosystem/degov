@@ -6,20 +6,39 @@ import { Resp } from "./types/api";
 
 import type { NextRequest } from "next/server";
 
-const SKIP_AUTH_APIS: string[] = ["/api/auth/nonce", "/api/auth/login"];
+const NEED_AUTH_APIS = [
+  { method: "post", path: "/api/profile/", mode: "prefix" },
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const apipath = pathname.toLowerCase();
-  if (SKIP_AUTH_APIS.indexOf(apipath) != -1) {
-    return NextResponse.next();
-  }
+
   const method = request.method.toLowerCase();
-  if (method === "get" && apipath.startsWith("/api/profile/")) {
-    return NextResponse.next();
+  let needAuth = false;
+  for (const naa of NEED_AUTH_APIS) {
+    if (naa.method != method) {
+      continue;
+    }
+    const mode = naa.mode ?? "full";
+    if (mode === "prefix") {
+      if (apipath.startsWith(naa.path)) {
+        needAuth = true;
+        break;
+      }
+    }
+    if (mode === "full") {
+      if (apipath === naa.path) {
+        needAuth = true;
+        break;
+      }
+    }
+  }
+  if (needAuth) {
+    return await verifyAuth();
   }
 
-  return await verifyAuth();
+  return NextResponse.next();
 }
 
 async function verifyAuth(): Promise<NextResponse> {

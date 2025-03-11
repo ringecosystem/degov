@@ -1,11 +1,9 @@
 import { headers } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import postgres from "postgres";
 
 import type { AuthPayload, DUser } from "@/types/api";
 import { Resp } from "@/types/api";
-
-import type { NextRequest } from "next/server";
 
 export interface ProfileModifyForm {
   name?: string;
