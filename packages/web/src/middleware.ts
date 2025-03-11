@@ -30,7 +30,6 @@ async function verifyAuth(): Promise<NextResponse> {
     return NextResponse.json({ error: "missing token" }, { status: 401 });
   }
   const degovToken = authHeader.split(" ")[1];
-
   const jwtSecretKey = process.env.JWT_SECRET_KEY;
   if (!jwtSecretKey) {
     return NextResponse.json(

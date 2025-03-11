@@ -28,6 +28,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
 
   verify: async ({ message, signature }) => {
+    console.log("message", message);
+    console.log("signature", signature);
+
     const verifyRes = await fetch("/api/auth/login", {
       method: "POST",
       headers: {

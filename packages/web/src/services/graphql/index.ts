@@ -106,20 +106,7 @@ export const profileService = {
     return data;
   },
 
-  updateProfile: async (
-    address: string,
-    profile: {
-      name?: string;
-      avatar?: string;
-      email?: string;
-      twitter?: string;
-      github?: string;
-      discord?: string;
-      medium?: string;
-      telegram?: string;
-      additional?: string;
-    }
-  ) => {
+  updateProfile: async (address: string, profile: Partial<ProfileData>) => {
     const response = await fetch(`/api/profile/${address}`, {
       method: "POST",
       body: JSON.stringify(profile),

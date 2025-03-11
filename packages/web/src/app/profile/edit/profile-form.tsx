@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+
 const FormSchema = z.object({
   name: z
     .string()
@@ -70,14 +71,21 @@ const FormSchema = z.object({
     .or(z.literal("")),
 });
 
-type FormData = z.infer<typeof FormSchema>;
+export type FormData = z.infer<typeof FormSchema>;
 
 export function ProfileForm({
   onSubmitForm,
   data,
   isLoading,
 }: {
-  onSubmitForm: (data: FormData) => void;
+  onSubmitForm: ({
+    data,
+    extra,
+  }: {
+    data: FormData;
+    extra: { avatar: string; medium: string };
+  }) => void;
+  data: FormData;
   isLoading: boolean;
 }) {
   const router = useRouter();
@@ -94,13 +102,20 @@ export function ProfileForm({
     },
   });
 
-  async function onSubmit(data: FormData) {
+  async function onSubmit({
+    data,
+  }: {
+    data: FormData;
+    extra: { avatar: string; medium: string };
+  }) {
     try {
       console.log(data);
       onSubmitForm({
-        ...data,
-        avatar: "",
-        medium: "",
+        data,
+        extra: {
+          avatar: "",
+          medium: "",
+        },
       });
       // TODO: Add API call to save data
     } catch (error) {
@@ -109,16 +124,27 @@ export function ProfileForm({
   }
 
   useEffect(() => {
-    return () => {
-      form.reset();
-    };
-  }, [form]);
+    // 当 data 存在且有值时重置表单
+    if (data) {
+      form.reset({
+        name: data.name || "",
+        additional: data.additional || "",
+        email: data.email || "",
+        twitter: data.twitter || "",
+        github: data.github || "",
+        discord: data.discord || "",
+        telegram: data.telegram || "",
+      });
+    }
+  }, [data, form]);
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
       <Form {...form}>
         <form
-          onSubmit={form.handleSubmit(onSubmit)}
+          onSubmit={form.handleSubmit((data) =>
+            onSubmit({ data, extra: { avatar: "", medium: "" } })
+          )}
           className="w-full space-y-[20px]"
         >
           <FormField

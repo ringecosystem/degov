@@ -1,18 +1,18 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { toast } from "react-toastify";
 import { useAccount } from "wagmi";
 
 import NotFound from "@/components/not-found";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { profileService } from "@/services/graphql";
 import type { ProfileData } from "@/services/graphql/types/profile";
 
 import { ProfileAvatar } from "./profile-avatar";
 import { ProfileForm } from "./profile-form";
-
-import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 
 export function ProfileEditSkeleton() {
   return (
@@ -60,7 +60,8 @@ export function ProfileEditSkeleton() {
 }
 export default function Edit() {
   const { address } = useAccount();
-
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
   const { data: profileData, isFetching: isProfileLoading } = useQuery({
     queryKey: ["profile", address],
     queryFn: () => profileService.getProfile(address as `0x${string}`),
@@ -74,12 +75,39 @@ export default function Edit() {
   });
 
   const onSubmitForm = useCallback(
-    (data: FormData) => {
-      console.log("data", data);
-
-      updateProfile(data);
+    async (data: FormData) => {
+      try {
+        console.log("data", data);
+        setIsUpdatingProfile(true);
+        await updateProfile(data);
+        setIsUpdatingProfile(false);
+      } catch (error) {
+        console.warn(error);
+        toast.error((error as Error)?.message || "Failed to update profile");
+      } finally {
+        setIsUpdatingProfile(false);
+      }
     },
     [updateProfile]
+  );
+
+  const handleAvatarChange = useCallback(
+    async (base64: string) => {
+      try {
+        setIsUpdatingAvatar(true);
+        await updateProfile({
+          ...(profileData?.data || {}),
+          avatar: base64,
+        });
+        setIsUpdatingAvatar(false);
+      } catch (error) {
+        console.warn(error);
+        toast.error((error as Error)?.message || "Failed to update avatar");
+      } finally {
+        setIsUpdatingAvatar(false);
+      }
+    },
+    [updateProfile, profileData]
   );
 
   if (!address) {
@@ -96,9 +124,14 @@ export default function Edit() {
         <ProfileForm
           data={profileData?.data}
           onSubmitForm={updateProfile}
-          isLoading={isUpdating}
+          isLoading={isUpdatingProfile}
         />
-        <ProfileAvatar address={address} />
+        <ProfileAvatar
+          address={address}
+          onAvatarChange={handleAvatarChange}
+          initialAvatar={profileData?.data?.avatar}
+          isLoading={isUpdatingAvatar}
+        />
       </div>
     </div>
   );
