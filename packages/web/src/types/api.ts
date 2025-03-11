@@ -2,9 +2,9 @@ export class Resp<T> {
   code: number;
   message?: string;
   data?: T;
-  additional?: any;
+  additional?: string;
 
-  constructor(code: number, message?: string, data?: T, additional?: any) {
+  constructor(code: number, message?: string, data?: T, additional?: string) {
     this.code = code;
     this.message = message;
     this.data = data;
@@ -15,7 +15,7 @@ export class Resp<T> {
     return new Resp(code, message, data, undefined);
   }
 
-  static ok<J>(data: J, additional?: any): Resp<J> {
+  static ok<J>(data: J, additional?: string): Resp<J> {
     return new Resp(0, undefined, data, additional);
   }
 
