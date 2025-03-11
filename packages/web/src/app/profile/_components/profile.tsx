@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { capitalize } from "lodash-es";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { isAddress, type Address } from "viem";
@@ -25,13 +26,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAddressVotes } from "@/hooks/useAddressVotes";
 import { profileService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
+import {
+  getTwitterLink,
+  getGithubLink,
+  getTelegramLink,
+  getDiscordLink,
+  formatSocialHandle,
+} from "@/utils/social";
 
 import { ReceivedDelegations } from "./received-delegations";
+
 interface ProfileProps {
   address: Address;
 }
 
-// 添加ProfileSkeleton组件
 const ProfileSkeleton = () => {
   return (
     <div className="flex flex-col gap-[30px] p-[30px]">
@@ -101,8 +109,6 @@ export const Profile = ({ address }: ProfileProps) => {
     enabled: !!address,
   });
 
-  console.log("profileData", profileData);
-
   const [open, setOpen] = useState(false);
   const [delegateOpen, setDelegateOpen] = useState(false);
 
@@ -136,31 +142,44 @@ export const Profile = ({ address }: ProfileProps) => {
     router.push("/profile/edit");
   }, [router]);
 
-  const socials = useMemo(() => {
-    if (!profileData) return [];
-    return [
-      {
-        key: "email",
-        value: profileData?.data?.email,
-      },
-      {
-        key: "twitter",
-        value: profileData?.data?.twitter,
-      },
-      {
-        key: "telegram",
-        value: profileData?.data?.telegram,
-      },
-      {
-        key: "github",
-        value: profileData?.data?.github,
-      },
-      {
-        key: "discord",
-        value: profileData?.data?.discord,
-      },
-    ]?.filter((item) => !!item.value);
-  }, [profileData]);
+  const profile = profileData?.data;
+
+  const socialLinks = useMemo(
+    () =>
+      [
+        {
+          name: "Email",
+          value: profile?.email,
+          link: `mailto:${profile?.email}`,
+          displayValue: profile?.email,
+        },
+        {
+          name: "Twitter",
+          value: profile?.twitter,
+          link: getTwitterLink(profile?.twitter),
+          displayValue: formatSocialHandle("twitter", profile?.twitter),
+        },
+        {
+          name: "GitHub",
+          value: profile?.github,
+          link: getGithubLink(profile?.github),
+          displayValue: formatSocialHandle("github", profile?.github),
+        },
+        {
+          name: "Telegram",
+          value: profile?.telegram,
+          link: getTelegramLink(profile?.telegram),
+          displayValue: formatSocialHandle("telegram", profile?.telegram),
+        },
+        {
+          name: "Discord",
+          value: profile?.discord,
+          link: getDiscordLink(profile?.discord),
+          displayValue: formatSocialHandle("discord", profile?.discord),
+        },
+      ]?.filter((item) => !!item.value),
+    [profile]
+  );
 
   const { formattedVotes, isLoading } = useAddressVotes(address);
 
@@ -255,23 +274,26 @@ export const Profile = ({ address }: ProfileProps) => {
           </div>
           <Separator className="bg-border/40" />
           <p className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-foreground">
-            {profileData?.data?.additional || isOwnProfile
+            {profile?.additional || isOwnProfile
               ? "No description yet. Click 'Edit Profile' to add information about yourself."
               : `This delegate hasn't added a description yet.`}
           </p>
 
           <div className="flex items-center gap-[20px]">
-            {socials?.map((social) => (
-              <span
+            {socialLinks.map((social) => (
+              <Link
+                href={social.link || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-white transition-opacity hover:opacity-80"
-                key={social.key}
-                title={capitalize(social.key)}
+                key={social.name}
+                title={capitalize(social.name)}
                 style={{
-                  backgroundImage: `url(/assets/image/user_social/${social.key}.svg)`,
+                  backgroundImage: `url(/assets/image/user_social/${social.name.toLowerCase()}.svg)`,
                   backgroundRepeat: "no-repeat",
                   backgroundPosition: "center",
                 }}
-              ></span>
+              ></Link>
             ))}
           </div>
         </div>
