@@ -7,22 +7,17 @@ import {
   Log as _Log,
   Transaction as _Transaction,
 } from "@subsquid/evm-processor";
-import {
-  IGOVERNOR_CONTRACT_ADDRESS,
-  ITOKEN_CONTRACT_ADDRESS,
-} from "./constants";
+import * as indexConfig from "./config";
+
+const rpcEndpoint = {
+  // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
+  capacity: 30,
+  maxBatchCallSize: 200,
+  url: indexConfig.endpoint.rpcs[0],
+};
 
 export const processor = new EvmBatchProcessor()
-  // .setGateway("https://v2.archive.subsquid.io/network/ethereum-mainnet")
-  .setRpcEndpoint({
-    // url: assertNotNull(process.env.RPC_ETH_HTTP, "No RPC endpoint supplied"),
-    url: "wss://rpc.darwinia.network",
-    capacity: 30,
-    maxBatchCallSize: 200,
-
-    // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
-    // maxBatchCallSize: 100,
-  })
+  .setRpcEndpoint(rpcEndpoint)
   .setFinalityConfirmation(10)
   .setFields({
     transaction: {
@@ -35,14 +30,13 @@ export const processor = new EvmBatchProcessor()
     },
   })
   .addLog({
-    // 2576160 //# contract crated block
-    range: { from: 2632000 },
-    address: [
-      IGOVERNOR_CONTRACT_ADDRESS, // governorContract
-      ITOKEN_CONTRACT_ADDRESS, // token
-    ],
+    range: { from: indexConfig.indexLog.startBlock },
+    address: indexConfig.indexLog.contracts.map((item) => item.address),
   });
-//
+
+if (indexConfig.gateway) {
+  processor.setGateway(indexConfig.gateway);
+}
 
 export type Fields = EvmBatchProcessorFields<typeof processor>;
 export type Block = BlockHeader<Fields>;

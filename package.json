@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev:web": "pnpm --filter @degov/web dev",
+    "start:web": "pnpm --filter @degov/web start",
     "build:web": "pnpm --filter @degov/web build",
     "build:all": "pnpm --filter @degov/* build"
   }

@@ -6,3 +6,6 @@ npm-debug.log
 
 # OS Files
 .DS_Store
+
+
+/src/config.ts
