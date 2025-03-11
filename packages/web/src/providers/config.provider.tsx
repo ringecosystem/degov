@@ -50,7 +50,13 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   if (isLoading) return null;
   if (error)
     return (
-      <div className="flex h-screen w-screen items-center justify-center">
+      <div
+        className="flex items-center justify-center"
+        style={{
+          height: "100dvh",
+          width: "100dvw",
+        }}
+      >
         <ErrorComponent />
       </div>
     );
