@@ -5,7 +5,7 @@ import { Overview } from "./_components/overview";
 import { Proposals } from "./_components/proposals";
 export default function HomePage() {
   return (
-    <div className="flex flex-col gap-[30px] p-[30px]">
+    <div className="flex flex-col gap-[30px]">
       <DaoHeader />
       <Overview />
       <Proposals />

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
 
+import { Alert } from "./alert";
 import { Aside } from "./aside";
 import { Header } from "./header";
 
@@ -43,7 +44,11 @@ export default function RootLayout({
                 <Aside />
                 <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
                   <Header />
-                  <div className="mx-auto w-full flex-1">{children}</div>
+                  <div className="mx-auto w-full flex-1 p-[30px] gap-[20px] flex flex-col">
+                    <Alert />
+
+                    {<div>{children}</div>}
+                  </div>
                 </main>
               </div>
               <ToastContainer

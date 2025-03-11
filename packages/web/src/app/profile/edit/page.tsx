@@ -66,7 +66,7 @@ export default function Edit() {
   const { signIn, isLoading: isSigningIn } = useSign();
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
-  const { data: profileData, isFetching: isProfileLoading } = useQuery({
+  const { data: profileData, isLoading: isProfileLoading } = useQuery({
     queryKey: ["profile", address],
     queryFn: () => profileService.getProfile(address as `0x${string}`),
     enabled: !!address,

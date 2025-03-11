@@ -95,7 +95,7 @@ export const Profile = ({ address }: ProfileProps) => {
   const router = useRouter();
   const { address: account } = useAccount();
 
-  const { data: profileData, isFetching: isProfileLoading } = useQuery({
+  const { data: profileData, isLoading: isProfileLoading } = useQuery({
     queryKey: ["profile", address],
     queryFn: () => profileService.getProfile(address),
     enabled: !!address,

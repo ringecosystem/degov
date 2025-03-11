@@ -23,51 +23,74 @@ import type { ProfileData } from "@/services/graphql/types/profile";
 const FormSchema = z.object({
   name: z
     .string()
-    .min(2, "Display name must be at least 2 characters")
+    .min(5, "Display name must be at least 5 characters")
     .max(50, "Display name cannot exceed 50 characters")
+    .regex(
+      /^[A-Za-z0-9\s\-_]+$/,
+      "Display name can only contain letters, numbers, spaces, hyphens, underscores"
+    )
     .trim(),
 
   delegate_statement: z
     .string()
-    .min(20, "Statement must be at least 20 characters")
-    .max(1000, "Statement cannot exceed 1000 characters")
+    .max(1000, "Delegate statement cannot exceed 1000 characters")
     .trim(),
 
-  email: z
-    .string()
-    .email("Please enter a valid email address")
-    .trim()
-    .toLowerCase(),
+  email: z.string().email("Invalid email address").trim().toLowerCase(),
 
   twitter: z
     .string()
-    .regex(/^[A-Za-z0-9_]{4,15}$/, "Please enter a valid X/Twitter handle")
+    .regex(/^[A-Za-z0-9_]{1,15}$/, "Invalid X name")
     .transform((val) => val.replace("@", ""))
     .optional()
     .or(z.literal("")),
 
   telegram: z
     .string()
-    .regex(/^[A-Za-z0-9_]{5,32}$/, "Please enter a valid Telegram username")
+    .regex(/^[A-Za-z0-9_]{5,32}$/, "Invalid Telegram username")
     .transform((val) => val.replace("@", ""))
     .optional()
     .or(z.literal("")),
 
   github: z
     .string()
-    .regex(
-      /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/,
-      "Please enter a valid GitHub username"
+    .transform((val) => {
+      val = val.trim();
+
+      if (val.startsWith("@https://github.com/")) {
+        return val.substring("@https://github.com/".length);
+      }
+
+      if (val.startsWith("https://github.com/")) {
+        return val.substring("https://github.com/".length);
+      }
+
+      if (val.startsWith("github.com/")) {
+        return val.substring("github.com/".length);
+      }
+
+      if (val.startsWith("@")) {
+        return val.substring(1);
+      }
+
+      return val;
+    })
+    .refine(
+      (val) => {
+        if (val === "") return true;
+
+        return /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(val);
+      },
+      {
+        message: "Invalid GitHub username",
+      }
     )
     .optional()
     .or(z.literal("")),
 
   discord: z
     .string()
-    .regex(
-      /^.{2,32}#[0-9]{4}$/,
-      "Please enter a valid Discord tag (e.g. username#1234)"
-    )
+    .regex(/^.{2,32}#[0-9]{4}$/, "Invalid Discord username")
     .optional()
     .or(z.literal("")),
 });
@@ -78,10 +101,12 @@ export function ProfileForm({
   onSubmitForm,
   data,
   isLoading,
+  onChange,
 }: {
   onSubmitForm: (data: ProfileFormData) => void;
   data?: ProfileData;
   isLoading: boolean;
+  onChange?: () => void;
 }) {
   const router = useRouter();
   const form = useForm<ProfileFormData>({
@@ -95,7 +120,15 @@ export function ProfileForm({
       discord: "",
       telegram: "",
     },
+    mode: "onChange",
   });
+
+  useEffect(() => {
+    const subscription = form.watch(() => {
+      if (onChange) onChange();
+    });
+    return () => subscription.unsubscribe();
+  }, [form, onChange]);
 
   async function onSubmit({
     data,
@@ -104,9 +137,7 @@ export function ProfileForm({
     extra: { avatar: string; medium: string };
   }) {
     try {
-      console.log(data);
       onSubmitForm(data);
-      // TODO: Add API call to save data
     } catch (error) {
       console.error(error);
     }
@@ -146,13 +177,13 @@ export function ProfileForm({
                   </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="Display Name"
+                      placeholder="Enter your name"
                       {...field}
                       className="w-full border-border bg-transparent"
                     />
                   </FormControl>
                 </div>
-                <FormMessage className="ml-[150px]" />
+                <FormMessage className="ml-[150px] text-red-500" />
               </FormItem>
             )}
           />
@@ -168,13 +199,13 @@ export function ProfileForm({
                   </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Your statement that shows your commitment to the community and what you will do for the community."
+                      placeholder="You statement that shows your commitment to the community and what you will do for the community."
                       {...field}
                       className="w-full border-border bg-transparent"
                     />
                   </FormControl>
                 </div>
-                <FormMessage className="ml-[150px]" />
+                <FormMessage className="ml-[150px] text-red-500" />
               </FormItem>
             )}
           />
@@ -195,7 +226,7 @@ export function ProfileForm({
                     />
                   </FormControl>
                 </div>
-                <FormMessage className="ml-[150px]" />
+                <FormMessage className="ml-[150px] text-red-500" />
               </FormItem>
             )}
           />
@@ -215,7 +246,7 @@ export function ProfileForm({
                     />
                   </FormControl>
                 </div>
-                <FormMessage className="ml-[150px]" />
+                <FormMessage className="ml-[150px] text-red-500" />
               </FormItem>
             )}
           />
@@ -235,7 +266,7 @@ export function ProfileForm({
                     />
                   </FormControl>
                 </div>
-                <FormMessage className="ml-[150px]" />
+                <FormMessage className="ml-[150px] text-red-500" />
               </FormItem>
             )}
           />
@@ -249,13 +280,13 @@ export function ProfileForm({
                   <FormLabel className="w-[140px] shrink-0">Github</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="username"
+                      placeholder="username or @https://github.com/username"
                       {...field}
                       className="w-full border-border bg-transparent"
                     />
                   </FormControl>
                 </div>
-                <FormMessage className="ml-[150px]" />
+                <FormMessage className="ml-[150px] text-red-500" />
               </FormItem>
             )}
           />
@@ -275,7 +306,7 @@ export function ProfileForm({
                     />
                   </FormControl>
                 </div>
-                <FormMessage className="ml-[150px]" />
+                <FormMessage className="ml-[150px] text-red-500" />
               </FormItem>
             )}
           />
