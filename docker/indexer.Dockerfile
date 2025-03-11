@@ -12,8 +12,10 @@ COPY . /app
 WORKDIR /app
 
 RUN npm i -g @subsquid/cli \
+  && mv docker/services.d /etc \
+  && rm -rf packages/web \
+  && cd packages/indexer \
   && yarn install \
-  && yarn build \
-  && mv docker/services.d /etc
+  && yarn build
 
 ENTRYPOINT ["/init"]

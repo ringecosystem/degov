@@ -31,6 +31,7 @@ chain:
   #   priceId: RING
 
 indexer:
+  # indexer service endpoint, please refer
   endpoint: https://degov-indexer.vercel.app/graphql
   startBlock: 5873342
 

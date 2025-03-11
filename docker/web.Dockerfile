@@ -5,7 +5,8 @@ COPY . /app
 WORKDIR /app
 
 RUN npm i -g pnpm \
+  && rm -rf packages/indexer \
   && pnpm install \
-  && pnpm build
+  && pnpm build:web
 
-CMD ["pnpm", "start"]
+CMD ["pnpm", "start:web"]

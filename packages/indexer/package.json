@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "generate:config": "zx scripts/generate-config.mjs",
-    "build": "pnpm generate:config && rm -rf lib && tsc"
+    "build": "npm run generate:config && rm -rf lib && tsc"
   },
   "dependencies": {
     "@subsquid/evm-abi": "^0.3.0",
