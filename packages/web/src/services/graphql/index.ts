@@ -158,6 +158,29 @@ export const profileService = {
   },
 };
 
+export const memberService = {
+  getAllMembers: async (): Promise<Types.MemberResponse> => {
+    try {
+      const response = await fetch(`/api/degov/members`, {
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+      });
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error fetching members:", error);
+      return {
+        code: 500,
+        data: [],
+        message: (error as Error)?.message || "Failed to fetch members",
+      };
+    }
+  },
+};
 export { Types };
 
 export { Queries };

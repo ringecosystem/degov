@@ -30,7 +30,7 @@ export const Contracts = () => {
       >
         <div className="flex items-center justify-between text-[16px] font-semibold text-foreground">
           <span>Contracts</span>
-          <div className="flex h-[34px] w-[118px] items-center justify-center gap-[5px] rounded-[100px] bg-[#2E2E2E] px-[10px] py-[5px]">
+          <div className="flex h-[34px]  items-center justify-center gap-[5px] rounded-[100px] bg-[#2E2E2E] px-[10px] py-[5px]">
             <Image
               src={daoConfig?.chain?.logo ?? ""}
               alt="contracts"
@@ -49,7 +49,7 @@ export const Contracts = () => {
               Governor
             </span>
             <div className="flex w-full items-center justify-between gap-[5px]">
-              <span className="text-[14px] font-normal text-foreground">
+              <span className="text-[14px] font-normal text-foreground font-mono">
                 {daoConfig?.contracts?.governor}
               </span>
               <div className="flex items-center gap-[5px]">
@@ -74,7 +74,7 @@ export const Contracts = () => {
               </span>
             </span>
             <div className="flex w-full items-center justify-between gap-[5px]">
-              <span className="text-[14px] font-normal text-foreground">
+              <span className="text-[14px] font-normal text-foreground font-mono">
                 {daoConfig?.contracts?.governorToken?.address}
               </span>
               <div className="flex items-center gap-[5px]">
@@ -96,7 +96,7 @@ export const Contracts = () => {
               TimeLock
             </span>
             <div className="flex w-full items-center justify-between gap-[5px]">
-              <span className="text-[14px] font-normal text-foreground">
+              <span className="text-[14px] font-normal text-foreground font-mono">
                 {daoConfig?.contracts?.timeLock}
               </span>
               <div className="flex items-center gap-[5px]">

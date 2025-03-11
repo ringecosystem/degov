@@ -1,12 +1,14 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { isNumber } from "lodash-es";
+import { useMemo } from "react";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
-import { proposalService } from "@/services/graphql";
+import { useMembersVotingPower } from "@/hooks/useMembersVotingPower";
+import { memberService, proposalService } from "@/services/graphql";
 import { formatBigIntForDisplay, formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
@@ -33,6 +35,20 @@ export const Overview = () => {
     enabled: !!daoConfig?.indexer?.endpoint,
   });
 
+  const { data: members, isLoading: isMembersLoading } = useQuery({
+    queryKey: ["members"],
+    queryFn: () => memberService.getAllMembers(),
+  });
+  const { votingPowerMap, isLoading: isVotingPowerLoading } =
+    useMembersVotingPower(members?.data ?? []);
+
+  const totalVotingPower = useMemo(() => {
+    return Object.values(votingPowerMap).reduce(
+      (acc, curr) => acc + curr.raw,
+      0n
+    );
+  }, [votingPowerMap]);
+
   const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
     useGovernanceToken();
 
@@ -55,14 +71,25 @@ export const Overview = () => {
             </p>
           </div>
         </OverviewItem>
-        <OverviewItem title="Members" icon="/assets/image/members-colorful.svg">
-          <p>{formatNumberForDisplay(1010)[0]}</p>
+        <OverviewItem
+          title="Members"
+          icon="/assets/image/members-colorful.svg"
+          isLoading={isMembersLoading}
+        >
+          <p>{formatNumberForDisplay(members?.data?.length ?? 0)[0]}</p>
         </OverviewItem>
         <OverviewItem
           title="Total voting Power"
           icon="/assets/image/total-vote-colorful.svg"
+          isLoading={isVotingPowerLoading || isMembersLoading}
         >
-          <p>{formatNumberForDisplay(100)[0]}</p>
+          <p>
+            {
+              formatNumberForDisplay(
+                totalVotingPower ? Number(totalVotingPower) : 0
+              )[0]
+            }
+          </p>
         </OverviewItem>
         <OverviewItem
           title="Total Supply"
