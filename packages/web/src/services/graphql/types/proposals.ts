@@ -36,6 +36,10 @@ export type ProposalResponse = {
   proposals: ProposalItem[];
 };
 
+export type ProposalTotalResponse = {
+  proposals: string[];
+};
+
 export type ProposalByIdResponse = {
   proposalCreatedById: ProposalItem;
 };

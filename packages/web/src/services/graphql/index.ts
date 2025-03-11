@@ -31,6 +31,36 @@ export const proposalService = {
     return response?.proposals ?? [];
   },
 
+  getProposalTotal: async (endpoint: string) => {
+    const results: string[] = [];
+    const batchSize = 100;
+    let offset = 0;
+    let success = false;
+    while (!success) {
+      const response = await request<Types.ProposalTotalResponse>(
+        endpoint,
+        Queries.GET_ALL_PROPOSALS_TOTAL,
+        {
+          limit: batchSize,
+          offset: offset,
+        }
+      );
+      const batch = response?.proposals ?? [];
+
+      if (batch.length === 0) {
+        success = true;
+        break;
+      }
+      results.push(...batch);
+      if (batch.length < batchSize) {
+        success = true;
+        break;
+      }
+      offset += batchSize;
+    }
+    return results?.length ?? 0;
+  },
+
   getProposalCanceledById: async (endpoint: string, id: string) => {
     const response = await request<Types.ProposalCanceledByIdResponse>(
       endpoint,

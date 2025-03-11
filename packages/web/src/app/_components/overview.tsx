@@ -1,13 +1,15 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
+import { isNumber } from "lodash-es";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
+import { proposalService } from "@/services/graphql";
 import { formatBigIntForDisplay, formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
-import { ProposalsStatusDetail } from "./proposals-status-detail";
 
 export const Overview = () => {
   const daoConfig = useDaoConfig();
@@ -24,6 +26,13 @@ export const Overview = () => {
       },
     });
 
+  const { data: proposalTotal, isLoading: isProposalTotalLoading } = useQuery({
+    queryKey: ["proposalTotal"],
+    queryFn: () =>
+      proposalService.getProposalTotal(daoConfig?.indexer?.endpoint ?? ""),
+    enabled: !!daoConfig?.indexer?.endpoint,
+  });
+
   const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
     useGovernanceToken();
 
@@ -34,10 +43,16 @@ export const Overview = () => {
         <OverviewItem
           title="Proposals"
           icon="/assets/image/proposals-colorful.svg"
+          isLoading={isProposalTotalLoading}
         >
           <div className="flex items-center gap-[10px]">
-            <p>{formatNumberForDisplay(102314120)[0]}</p>
-            <ProposalsStatusDetail />
+            <p>
+              {
+                formatNumberForDisplay(
+                  isNumber(proposalTotal) ? proposalTotal : 0
+                )[0]
+              }
+            </p>
           </div>
         </OverviewItem>
         <OverviewItem title="Members" icon="/assets/image/members-colorful.svg">
