@@ -18,18 +18,16 @@ walet:
 
 # Chain information: these commented fields are optional if this chain can be accessed by viem.
 chain:
-  chainId: 46
+  id: 46
   logo: https://darwinia.network/images/darwinia-logo-black-background-round.svg
   # name: darwinia
-  # rpc:
+  # rpcs:
   #   - https://rpc.darwinia.network
   #   - https://darwinia-rpc.dwellir.com
-  # explorer:
+  # explorers:
   #   - https://explorer.darwinia.network/
-  # nativeToken:
-  #   symbol: RING
-  #   decimals: 18
-  #   priceId: RING
+  nativeToken:
+    priceId: RING
 
 indexer:
   endpoint: https://degov-indexer.vercel.app/graphql

@@ -9,7 +9,7 @@
     "build": "pnpm generate:config && next build",
     "start": "pnpm generate:config && pnpm prisma:migrate && next start",
     "lint": "next lint",
-    "generate:config": "shx cp ../../degov.yml public/config.yml"
+    "generate:config": "zx scripts/generate-config.mjs"
   },
   "dependencies": {
     "@akashrajpurohit/snowflake-id": "^2",
@@ -83,8 +83,8 @@
     "eslint-plugin-import": "^2.31.0",
     "postcss": "^8",
     "prisma": "^6",
-    "shx": "^0.3.4",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "zx": "^8.4.0"
   }
 }
