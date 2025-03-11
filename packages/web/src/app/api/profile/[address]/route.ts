@@ -16,6 +16,7 @@ export interface ProfileModifyForm {
   discord?: string;
   telegram?: string;
   medium?: string;
+  delegate_statement?: string;
   additional?: string;
 }
 
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
       discord: body.discord,
       telegram: body.telegram,
       medium: body.medium,
+      delegate_statement: body.delegate_statement,
       additional: body.additional,
       utime: new Date().toISOString(),
     };
@@ -98,6 +100,7 @@ export async function POST(request: NextRequest) {
       "discord",
       "telegram",
       "medium",
+      "delegate_statement",
       "additional",
       "utime"
     )}

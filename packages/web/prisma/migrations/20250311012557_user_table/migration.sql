@@ -10,6 +10,7 @@ CREATE TABLE "d_user" (
     "discord" TEXT,
     "telegram" TEXT,
     "medium" TEXT,
+    "delegate_statement" TEXT,
     "additional" TEXT,
     "last_login_time" TIMESTAMP(3) NOT NULL,
     "ctime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
