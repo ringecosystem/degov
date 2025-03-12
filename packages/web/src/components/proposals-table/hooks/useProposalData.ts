@@ -24,10 +24,17 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
       const whereCondition = address
         ? {
             proposer_eq: address?.toLowerCase(),
-            voters_every: {
-              voter_eq: address?.toLowerCase(),
-              support_eq: support ? parseInt(support) : undefined,
-            },
+            OR: [
+              {
+                voters_every: {
+                  voter_eq: address?.toLowerCase(),
+                  support_eq: support ? parseInt(support) : undefined,
+                },
+              },
+              {
+                proposer_eq: address?.toLowerCase(),
+              },
+            ],
           }
         : undefined;
 

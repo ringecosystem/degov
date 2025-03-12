@@ -6,15 +6,16 @@ import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useGovernanceToken } from "@/hooks/useGovernanceToken";
+import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useMembersVotingPower } from "@/hooks/useMembersVotingPower";
 import { memberService, proposalService } from "@/services/graphql";
-import { formatBigIntForDisplay, formatNumberForDisplay } from "@/utils/number";
+import { formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
 
 export const Overview = () => {
   const daoConfig = useDaoConfig();
+  const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
     useReadContract({
       address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
@@ -49,9 +50,6 @@ export const Overview = () => {
     );
   }, [votingPowerMap]);
 
-  const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
-    useGovernanceToken();
-
   return (
     <div className="flex flex-col gap-[20px]">
       <h3 className="text-[18px] font-extrabold">Overview</h3>
@@ -83,25 +81,14 @@ export const Overview = () => {
           icon="/assets/image/total-vote-colorful.svg"
           isLoading={isVotingPowerLoading || isMembersLoading}
         >
-          <p>
-            {
-              formatNumberForDisplay(
-                totalVotingPower ? Number(totalVotingPower) : 0
-              )[0]
-            }
-          </p>
+          <p>{formatTokenAmount(totalVotingPower ?? 0n)?.formatted}</p>
         </OverviewItem>
         <OverviewItem
           title="Total Supply"
-          isLoading={isTotalSupplyLoading || isGovernanceTokenLoading}
+          isLoading={isTotalSupplyLoading}
           icon="/assets/image/delegated-vote-colorful.svg"
         >
-          <p>
-            {formatBigIntForDisplay(
-              totalSupply ?? BigInt(0),
-              governanceToken?.decimals ?? 18
-            )}
-          </p>
+          <p>{formatTokenAmount(totalSupply ?? 0n)?.formatted}</p>
         </OverviewItem>
       </div>
     </div>
