@@ -169,12 +169,14 @@ export function ProposalsTable({
         emptyText="No proposals"
         rowKey="id"
         caption={
-          <Caption
-            type={type}
-            data={state.data}
-            loadMoreData={loadMoreData}
-            isLoading={state.isFetchingNextPage}
-          />
+          state.hasNextPage && (
+            <Caption
+              type={type}
+              data={state.data}
+              loadMoreData={loadMoreData}
+              isLoading={state.isFetchingNextPage}
+            />
+          )
         }
       />
     </div>

@@ -75,17 +75,19 @@ export function DelegationTable({ address }: DelegationTableProps) {
         }
         rowKey="id"
         caption={
-          <div className="flex justify-center items-center">
-            {
-              <button
-                onClick={loadMoreData}
-                className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={state.isFetchingNextPage}
-              >
-                {state.isFetchingNextPage ? "Loading..." : "View more"}
-              </button>
-            }
-          </div>
+          state.hasNextPage && (
+            <div className="flex justify-center items-center">
+              {
+                <button
+                  onClick={loadMoreData}
+                  className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={state.isFetchingNextPage}
+                >
+                  {state.isFetchingNextPage ? "Loading..." : "View more"}
+                </button>
+              }
+            </div>
+          )
         }
       />
     </div>
