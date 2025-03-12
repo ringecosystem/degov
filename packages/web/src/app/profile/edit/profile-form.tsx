@@ -29,14 +29,22 @@ const FormSchema = z.object({
       /^[A-Za-z0-9\s\-_]+$/,
       "Display name can only contain letters, numbers, spaces, hyphens, underscores"
     )
-    .trim(),
+    .trim()
+    .optional()
+    .or(z.literal("")),
 
   delegate_statement: z
     .string()
     .max(1000, "Delegate statement cannot exceed 1000 characters")
     .trim(),
 
-  email: z.string().email("Invalid email address").trim().toLowerCase(),
+  email: z
+    .string()
+    .email("Invalid email address")
+    .trim()
+    .toLowerCase()
+    .optional()
+    .or(z.literal("")),
 
   twitter: z
     .string()
@@ -280,7 +288,7 @@ export function ProfileForm({
                   <FormLabel className="w-[140px] shrink-0">Github</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="username or @https://github.com/username"
+                      placeholder="username or https://github.com/username"
                       {...field}
                       className="w-full border-border bg-transparent"
                     />

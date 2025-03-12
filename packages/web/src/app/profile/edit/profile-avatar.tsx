@@ -166,6 +166,7 @@ export function ProfileAvatar({
             <AddressAvatar
               address={address}
               className="h-[110px] w-[110px] rounded-full"
+              size={110}
             />
           )
         )}
