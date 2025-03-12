@@ -15,6 +15,11 @@ jobs:
   build-indexer:
     name: Build indexer
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - indexer
+          - web
     steps:
       - uses: actions/checkout@v4
 
@@ -32,9 +37,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          context: packages/indexer
-          file: packages/indexer/docker/Dockerfile
-          tags: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/indexer:sha-${{ env.SHA }}
+          file: docker/${{ matrix.image }}.Dockerfile
+          tags: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:sha-${{ env.SHA }}
 
       - name: Publish docker image tag
         if: startsWith(github.ref, 'refs/tags/v')
