@@ -57,7 +57,7 @@ export default function ProposalDetailPage() {
 
   const {
     data: allData,
-    isFetching,
+    isPending,
     refetch: refetchProposal,
   } = useQuery({
     queryKey: ["proposal", id],
@@ -147,9 +147,7 @@ export default function ProposalDetailPage() {
     { data: proposalQueuedById },
   ] = proposalQueries;
 
-  const isAllQueriesFetching = proposalQueries.some(
-    (query) => query.isFetching
-  );
+  const isAllQueriesFetching = proposalQueries.some((query) => query.isPending);
 
   const proposalVotesData = useMemo(() => {
     return {
@@ -185,7 +183,7 @@ export default function ProposalDetailPage() {
 
         <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
           <div className="flex items-center justify-between gap-[20px]">
-            {isFetching ? (
+            {isPending ? (
               <Skeleton className="h-[37px] w-[100px]" />
             ) : (
               <ProposalStatus status={proposalStatus?.data as ProposalState} />
@@ -203,14 +201,14 @@ export default function ProposalDetailPage() {
           </div>
 
           <h2 className="text-[36px] font-extrabold">
-            {isFetching ? (
+            {isPending ? (
               <Skeleton className="h-[36px] w-[200px]" />
             ) : (
               extractTitleAndDescription(data?.description)?.title
             )}
           </h2>
 
-          {isFetching ? (
+          {isPending ? (
             <Skeleton className="h-[24px] w-[80%] my-1" /> // 使用单一骨架屏
           ) : (
             <div className="flex items-center gap-[20px]">
@@ -240,14 +238,14 @@ export default function ProposalDetailPage() {
 
         <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px]">
           <div className="space-y-[20px]">
-            <Result data={data} isFetching={isFetching} />
-            <ActionsTable data={data} isFetching={isFetching} />
-            <Proposal data={data} isFetching={isFetching} />
+            <Result data={data} isFetching={isPending} />
+            <ActionsTable data={data} isFetching={isPending} />
+            <Proposal data={data} isFetching={isPending} />
           </div>
           <div className="space-y-[20px]">
             <CurrentVotes
               proposalVotesData={proposalVotesData}
-              isLoading={proposalVotes?.isFetching}
+              isLoading={proposalVotes?.isPending}
             />
             <Status
               data={data}
@@ -255,7 +253,7 @@ export default function ProposalDetailPage() {
               proposalCanceledById={proposalCanceledById}
               proposalExecutedById={proposalExecutedById}
               proposalQueuedById={proposalQueuedById}
-              isLoading={isAllQueriesFetching || isFetching}
+              isLoading={isAllQueriesFetching || isPending}
             />
           </div>
         </div>
