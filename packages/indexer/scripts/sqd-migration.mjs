@@ -18,6 +18,7 @@ async function main() {
     await $`mv db ${dbBackupDirName}`;
   }
   try {
+    await $`npx sqd codegen`
     await $`npx sqd migration:generate`;
   } finally {
     const existsDbBackup = await fs.pathExists(
