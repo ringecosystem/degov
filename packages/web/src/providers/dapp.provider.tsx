@@ -74,7 +74,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
       >
         <RainbowKitAuthenticationProvider
           adapter={authenticationAdapter}
-          status="authenticated"
+          status="unauthenticated"
         >
           <RainbowKitProvider
             theme={dark}

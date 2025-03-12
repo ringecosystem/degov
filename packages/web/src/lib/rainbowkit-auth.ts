@@ -16,6 +16,8 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
 
   createMessage: ({ nonce, address, chainId }) => {
+    console.log("createMessage", { nonce, address, chainId });
+
     return createSiweMessage({
       domain: window.location.host,
       address,
@@ -40,7 +42,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
       cache: "no-store",
     });
     const response = await verifyRes.json();
-
+    console.log("response", response);
     if (response?.code === 0 && response?.data?.token) {
       setToken(response.data.token);
       return true;
