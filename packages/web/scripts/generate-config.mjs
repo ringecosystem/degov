@@ -19,11 +19,14 @@ function extendChainConfig(degovConfig) {
     stdViemChain.rpcs = defaultViemRpc.http ?? [];
     const defualtViemExplorer = viemChain.blockExplorers.default;
     stdViemChain.explorers = [defualtViemExplorer.url];
+    stdViemChain.contracts = viemChain.contracts;
     const nativeCurrency = viemChain.nativeCurrency;
     stdViemChain.nativeToken = {
       symbol: nativeCurrency.symbol,
       decimals: nativeCurrency.decimals,
     };
+
+    stdViemChain.id = viemChain.id;
   }
   const stdChain = { ...stdViemChain, ...chain };
   if (stdChain.nativeToken) {

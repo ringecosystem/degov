@@ -2,7 +2,7 @@
 import {
   darkTheme,
   RainbowKitProvider,
-  // RainbowKitAuthenticationProvider,
+  RainbowKitAuthenticationProvider,
 } from "@rainbow-me/rainbowkit";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
@@ -12,7 +12,7 @@ import { WagmiProvider, deserialize, serialize } from "wagmi";
 import { createConfig, queryClient } from "@/config/wagmi";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import "@rainbow-me/rainbowkit/styles.css";
-// import { authenticationAdapter } from "@/lib/rainbowkit-auth";
+import { authenticationAdapter } from "@/lib/rainbowkit-auth";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
 
@@ -47,7 +47,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         url: dappConfig.chain?.explorers?.[0],
       },
     },
-    contracts: {
+    contracts: dappConfig?.chain?.contracts ?? {
       multicall3: {
         address: "0xcA11bde05977b3631167028862bE2a173976CA11",
       },
@@ -72,7 +72,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         client={queryClient}
         persistOptions={{ persister }}
       >
-        {/* <RainbowKitAuthenticationProvider
+        <RainbowKitAuthenticationProvider
           adapter={authenticationAdapter}
           status="unauthenticated"
         >
@@ -84,15 +84,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
           >
             {children}
           </RainbowKitProvider>
-        </RainbowKitAuthenticationProvider> */}
-        <RainbowKitProvider
-          theme={dark}
-          locale="en-US"
-          appInfo={{ appName: dappConfig?.name }}
-          initialChain={currentChain}
-        >
-          {children}
-        </RainbowKitProvider>
+        </RainbowKitAuthenticationProvider>
       </PersistQueryClientProvider>
     </WagmiProvider>
   );

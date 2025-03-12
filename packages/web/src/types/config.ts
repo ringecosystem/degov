@@ -1,3 +1,4 @@
+import type { Chain as ViemChain } from "viem";
 interface Links {
   website?: string;
   twitter?: string;
@@ -20,6 +21,7 @@ interface Chain {
   nativeToken: NativeToken;
   id: number;
   logo: string;
+  contracts?: ViemChain["contracts"];
 }
 
 interface Wallet {

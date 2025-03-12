@@ -35,11 +35,9 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
       } else if (address && support) {
         whereCondition = {
           proposer_eq: address?.toLowerCase(),
-          AND: {
-            voters_every: {
-              voter_eq: address?.toLowerCase(),
-              support_eq: support ? parseInt(support) : undefined,
-            },
+          voters_every: {
+            voter_eq: address?.toLowerCase(),
+            support_eq: support ? parseInt(support) : undefined,
           },
         };
       }
