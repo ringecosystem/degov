@@ -39,23 +39,16 @@ export const socialConfig: SocialConfig[] = [
   ),
   createSocialConfig(
     "Discord",
-    "https://discord.gg/BhNbKWWfGV",
+    " https://discord.com/invite/BhNbKWWfGV",
     "/assets/image/social/discord.svg",
     16,
     12
   ),
   createSocialConfig(
     "Github",
-    "https://github.com/ringecosystem/XAccount",
+    "https://github.com/ringecosystem/degov",
     "/assets/image/social/github.svg",
     12,
     14
-  ),
-  createSocialConfig(
-    "Email",
-    "mailto:hello@ringecosystem.com",
-    "/assets/image/social/email.svg",
-    14,
-    10
   ),
 ];
