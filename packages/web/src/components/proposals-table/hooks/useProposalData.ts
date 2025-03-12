@@ -21,22 +21,28 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
   const proposalsQuery = useInfiniteQuery({
     queryKey: ["proposals", daoConfig?.indexer?.endpoint, address, support],
     queryFn: async ({ pageParam }) => {
-      const whereCondition = address
-        ? {
-            proposer_eq: address?.toLowerCase(),
-            OR: [
-              {
-                voters_every: {
-                  voter_eq: address?.toLowerCase(),
-                  support_eq: support ? parseInt(support) : undefined,
-                },
-              },
-              {
-                proposer_eq: address?.toLowerCase(),
-              },
-            ],
-          }
-        : undefined;
+      let whereCondition = {};
+
+      if (address && !support) {
+        whereCondition = {
+          proposer_eq: address?.toLowerCase(),
+          OR: {
+            voters_every: {
+              voter_eq: address?.toLowerCase(),
+            },
+          },
+        };
+      } else if (address && support) {
+        whereCondition = {
+          proposer_eq: address?.toLowerCase(),
+          AND: {
+            voters_every: {
+              voter_eq: address?.toLowerCase(),
+              support_eq: support ? parseInt(support) : undefined,
+            },
+          },
+        };
+      }
 
       const result = await proposalService.getAllProposals(
         daoConfig?.indexer?.endpoint as string,

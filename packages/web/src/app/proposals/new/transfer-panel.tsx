@@ -1,20 +1,16 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { blo } from "blo";
-import { isEmpty, isNil, isObject } from "lodash-es";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { parseUnits, formatUnits, type Address } from "viem";
+import { useBalance } from "wagmi";
 
 import { AddressInputWithResolver } from "@/components/address-input-with-resolver";
 import { ErrorMessage } from "@/components/error-message";
-import type { TokenInfo } from "@/components/token-select";
 import { TokenSelect } from "@/components/token-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useGetTokenInfo } from "@/hooks/useGetTokenInfo";
-import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
 import { formatBigIntForDisplay } from "@/utils/number";
 
@@ -57,13 +53,11 @@ export const TransferPanel = ({
   onRemove,
 }: TransferPanelProps) => {
   const daoConfig = useDaoConfig();
-  const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(null);
 
   const {
     control,
     formState: { errors },
     watch,
-    setValue,
   } = useForm<TransferContent>({
     resolver: zodResolver(transferSchema),
     defaultValues: {
@@ -81,65 +75,29 @@ export const TransferPanel = ({
     return () => subscription.unsubscribe();
   }, [watch, onChange]);
 
-  const { isLoading, balance } = useTokenBalance(selectedToken);
-
-  const handleTokenChange = useCallback(
-    (token: TokenInfo) => {
-      setSelectedToken(token);
-      setValue("amount", ""); // Reset amount when token changes
-    },
-    [setValue]
-  );
-
-  const baseTokenList = useMemo(() => {
-    return Object.values(daoConfig?.timeLockAssets ?? {}).map((v) => ({
-      contract: v.contract,
-      standard: v.standard,
-    }));
-  }, [daoConfig]);
-
-  const { tokenInfo } = useGetTokenInfo(baseTokenList);
-
-  const tokenList = useMemo(() => {
-    const nativeToken: TokenInfo = {
+  const token = useMemo(() => {
+    return {
       address: "0x0000000000000000000000000000000000000000" as Address,
       symbol: daoConfig?.chain?.nativeToken?.symbol as string,
       decimals: daoConfig?.chain?.nativeToken?.decimals as number,
-      icon: daoConfig?.logo as string,
-      isNative: true,
+      icon: "",
     };
+  }, [daoConfig]);
 
-    const treasuryTokenList: TokenInfo[] = [];
-    if (
-      daoConfig?.timeLockAssets &&
-      isObject(daoConfig?.timeLockAssets) &&
-      !isEmpty(daoConfig?.timeLockAssets)
-    ) {
-      Object.values(daoConfig?.timeLockAssets).forEach((token) => {
-        treasuryTokenList.push({
-          address: token.contract as Address,
-          symbol: tokenInfo[token.contract as `0x${string}`]?.symbol,
-          decimals: tokenInfo[token.contract as `0x${string}`]?.decimals,
-          icon: token.logo ?? blo(token.contract as `0x${string}`) ?? "",
-          isNative: false,
-        });
-      });
-    }
-
-    return [nativeToken, ...treasuryTokenList];
-  }, [daoConfig, tokenInfo]);
+  const { data: balance, isLoading } = useBalance({
+    address: daoConfig?.contracts?.timeLock as Address,
+    chainId: daoConfig?.chain?.id,
+    query: {
+      enabled: !!daoConfig?.contracts?.timeLock && !!daoConfig?.chain?.id,
+      gcTime: 0,
+    },
+  });
 
   const isValueGreaterThanBalance = useMemo(() => {
     const amount = watch("amount");
-    if (!balance || !amount || !selectedToken?.decimals) return false;
-    return parseUnits(amount, selectedToken?.decimals ?? 18) > balance;
-  }, [balance, watch, selectedToken?.decimals]);
-
-  useEffect(() => {
-    if (tokenList.length > 0) {
-      setSelectedToken(tokenList[0]);
-    }
-  }, [tokenList]);
+    if (!balance || !amount || !token?.decimals) return false;
+    return parseUnits(amount, token?.decimals ?? 18) > balance.value;
+  }, [balance, watch, token?.decimals]);
 
   const handleAmountChange = useCallback(
     (
@@ -152,16 +110,15 @@ export const TransferPanel = ({
         return;
       }
 
-      // 格式化输入值
-      const formatted = formatNumberInput(value, selectedToken?.decimals ?? 18);
+      const formatted = formatNumberInput(value, token?.decimals ?? 18);
       const numValue = Number(formatted);
       if (isNaN(numValue)) return;
 
-      if (balance && selectedToken?.decimals) {
+      if (balance && token?.decimals) {
         try {
-          const inputUnits = parseUnits(formatted, selectedToken.decimals);
-          if (inputUnits > balance) {
-            const maxValue = formatUnits(balance, selectedToken.decimals);
+          const inputUnits = parseUnits(formatted, token.decimals);
+          if (inputUnits > balance.value) {
+            const maxValue = formatUnits(balance.value, token.decimals);
             onChange(maxValue);
             return;
           }
@@ -172,7 +129,7 @@ export const TransferPanel = ({
 
       onChange(formatted);
     },
-    [selectedToken?.decimals, balance]
+    [token?.decimals, balance]
   );
 
   return (
@@ -250,13 +207,7 @@ export const TransferPanel = ({
                   />
                 )}
               />
-              <TokenSelect
-                selectedToken={selectedToken}
-                tokenList={tokenList?.filter(
-                  (v) => v?.symbol && !isNil(v?.decimals)
-                )}
-                onTokenChange={handleTokenChange}
-              />
+              <TokenSelect tokenList={[token]} />
             </div>
             <div className="flex items-center justify-between gap-[10px]">
               <span className="text-[14px] text-foreground/50"></span>
@@ -267,8 +218,8 @@ export const TransferPanel = ({
                 ) : (
                   <span className="text-[14px] text-foreground/50">
                     {formatBigIntForDisplay(
-                      balance ?? 0n,
-                      selectedToken?.decimals ?? 18
+                      balance?.value ?? 0n,
+                      token.decimals
                     )}
                   </span>
                 )}
