@@ -9,12 +9,13 @@ import type { ProposalItem } from "@/services/graphql/types";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
 
 import type { Address } from "viem";
+
 export type ProposalVotes = {
   againstVotes: bigint;
   forVotes: bigint;
   abstainVotes: bigint;
 };
-
+const pageSize = 1;
 export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
   const daoConfig = useDaoConfig();
   const [currentPage, setCurrentPage] = useState(1);
@@ -47,8 +48,8 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
       const result = await proposalService.getAllProposals(
         daoConfig?.indexer?.endpoint as string,
         {
-          limit: 10,
-          offset: (currentPage - 1) * 10,
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: whereCondition,
         }
@@ -152,25 +153,16 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
   );
 
   const loadMoreData = useCallback(() => {
-    if (!proposalsQuery.isLoading && proposalsQuery.data?.length === 10) {
+    if (!proposalsQuery.isLoading && proposalsQuery.data?.length === pageSize) {
       setCurrentPage((prev) => prev + 1);
     }
-  }, [proposalsQuery.isLoading, proposalsQuery.data?.length]);
+  }, [proposalsQuery.isLoading, proposalsQuery.data]);
 
   const refreshData = useCallback(() => {
     setCurrentPage(1);
     setAllProposals([]);
     refetch();
   }, [refetch]);
-
-  const loadInitialData = useCallback(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-      setAllProposals([]);
-    } else {
-      refetch();
-    }
-  }, [currentPage, refetch]);
 
   useEffect(() => {
     return () => {
@@ -183,8 +175,8 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
     state: {
       data: allProposals,
       currentPage,
-      hasMore: proposalsQuery.data?.length === 10,
-      isFetching: proposalsQuery.isFetching,
+      hasMore: proposalsQuery.data?.length === pageSize,
+      isFetching: proposalsQuery.isRefetching,
       error: proposalsQuery.error,
     },
     proposalVotesState: {
@@ -199,6 +191,5 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
     },
     loadMoreData,
     refreshData,
-    loadInitialData,
   };
 }
