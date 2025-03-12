@@ -1,4 +1,5 @@
 "use client";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +14,7 @@ import { dayjsHumanize } from "@/utils/date";
 export const Parameters = () => {
   const { data: governanceParams, isLoading } = useGovernanceParams();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

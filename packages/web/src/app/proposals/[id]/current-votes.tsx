@@ -1,10 +1,12 @@
 import Image from "next/image";
 import { useMemo } from "react";
+import { useReadContract } from "wagmi";
 
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { abi as governorAbi } from "@/config/abi/governor";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 
 const CurrentVotesSkeleton = () => {
   return (
@@ -68,13 +70,30 @@ interface CurrentVotesProps {
     abstainVotes: bigint;
   };
   isLoading?: boolean;
+  blockTimestamp?: string;
 }
 export const CurrentVotes = ({
   proposalVotesData,
+  blockTimestamp,
   isLoading,
 }: CurrentVotesProps) => {
+  const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-  const { data: govParams } = useGovernanceParams();
+
+  const { data: quorumData, isLoading: isQuorumLoading } = useReadContract({
+    address: daoConfig?.contracts?.governor as `0x${string}`,
+    abi: governorAbi,
+    functionName: "quorum" as const,
+    args: [blockTimestamp ? BigInt(Number(blockTimestamp) / 1000) : BigInt(0)],
+    chainId: daoConfig?.chain?.id,
+    query: {
+      enabled:
+        Boolean(daoConfig?.contracts?.governor) &&
+        Boolean(blockTimestamp) &&
+        Boolean(daoConfig?.chain?.id),
+    },
+  });
+
   const percentage = useMemo(() => {
     const total =
       proposalVotesData.againstVotes +
@@ -126,11 +145,14 @@ export const CurrentVotes = ({
             />
             <span className="text-[14px] font-normal">Quorum</span>
           </div>
-
-          <span>
-            {formatTokenAmount(quorum).formatted} of{" "}
-            {formatTokenAmount(govParams?.quorum ?? 0n).formatted}
-          </span>
+          {isQuorumLoading ? (
+            <Skeleton className="h-[18px] w-[120px]" />
+          ) : (
+            <span>
+              {formatTokenAmount(quorum).formatted} of{" "}
+              {formatTokenAmount(quorumData ?? 0n).formatted}
+            </span>
+          )}
         </div>
 
         <div className="flex flex-col gap-[10px]">
