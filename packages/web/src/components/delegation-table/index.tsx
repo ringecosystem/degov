@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { DelegateItem } from "@/services/graphql/types";
@@ -16,14 +16,8 @@ interface DelegationTableProps {
   address: Address;
 }
 export function DelegationTable({ address }: DelegationTableProps) {
-  console.log(address);
-
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-  const { state, loadMoreData, loadInitialData } = useDelegationData(address);
-
-  useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+  const { state, loadMoreData } = useDelegationData(address);
 
   const columns = useMemo<ColumnType<DelegateItem>[]>(
     () => [
@@ -82,15 +76,15 @@ export function DelegationTable({ address }: DelegationTableProps) {
         rowKey="id"
         caption={
           <div className="flex justify-center items-center">
-            {state.data.length >= 10 * state.currentPage && (
+            {
               <button
                 onClick={loadMoreData}
                 className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={state.isFetching}
               >
-                {state.isFetching ? "Loading..." : "Load More"}
+                {state.isFetching ? "Loading..." : "View more"}
               </button>
-            )}
+            }
           </div>
         }
       />

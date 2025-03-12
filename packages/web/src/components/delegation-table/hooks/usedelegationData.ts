@@ -1,30 +1,24 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { delegateService } from "@/services/graphql";
-import type { DelegateItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
 
-export function useDelegationData(address: Address) {
+export function useDelegationData(address?: Address) {
   const daoConfig = useDaoConfig();
-  const [currentPage, setCurrentPage] = useState(1);
-  const [allDelegates, setAllDelegates] = useState<DelegateItem[]>([]);
 
-  const queryKey = useMemo(
-    () => ["delegates", daoConfig?.indexer?.endpoint, currentPage],
-    [daoConfig?.indexer?.endpoint, currentPage]
-  );
-
-  const { refetch, ...proposalsQuery } = useQuery({
-    queryKey,
-    queryFn: async () => {
+  // Use useInfiniteQuery for pagination
+  const delegatesQuery = useInfiniteQuery({
+    queryKey: ["delegates", daoConfig?.indexer?.endpoint, address],
+    queryFn: async ({ pageParam }) => {
       const result = await delegateService.getAllDelegates(
         daoConfig?.indexer?.endpoint as string,
         {
-          limit: 10,
-          offset: (currentPage - 1) * 10,
+          limit: DEFAULT_PAGE_SIZE,
+          offset: pageParam * DEFAULT_PAGE_SIZE,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: address
             ? { toDelegate_eq: address?.toLowerCase() }
@@ -32,60 +26,48 @@ export function useDelegationData(address: Address) {
         }
       );
 
-      if (Array.isArray(result)) {
-        setAllDelegates((prev) => {
-          if (currentPage === 1) return result;
-
-          const existingIds = new Set(prev.map((p) => p.id));
-          const newDelegates = result.filter((p) => !existingIds.has(p.id));
-          return [...prev, ...newDelegates];
-        });
-        return result;
-      }
-      return [];
+      return result;
     },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages, lastPageParam) => {
+      // If no data or less than page size, no more pages
+      if (!lastPage || lastPage.length < DEFAULT_PAGE_SIZE) {
+        return undefined;
+      }
+      // Return next page number
+      return lastPageParam + 1;
+    },
+    enabled: !!daoConfig?.indexer?.endpoint,
     retryDelay: 10_000,
     retry: 3,
   });
 
+  // Flatten all pages into a single array
+  const flattenedData = useMemo(() => {
+    return delegatesQuery.data?.pages.flat() || [];
+  }, [delegatesQuery.data]);
+
+  // Load more data function
   const loadMoreData = useCallback(() => {
-    if (!proposalsQuery.isLoading && proposalsQuery.data?.length === 10) {
-      setCurrentPage((prev) => prev + 1);
+    if (!delegatesQuery.isFetchingNextPage && delegatesQuery.hasNextPage) {
+      delegatesQuery.fetchNextPage();
     }
-  }, [proposalsQuery.isLoading, proposalsQuery.data?.length]);
+  }, [delegatesQuery]);
 
+  // Refresh data function
   const refreshData = useCallback(() => {
-    setCurrentPage(1);
-    setAllDelegates([]);
-    refetch();
-  }, [refetch]);
-
-  const loadInitialData = useCallback(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-      setAllDelegates([]);
-    } else {
-      refetch();
-    }
-  }, [currentPage, refetch]);
-
-  useEffect(() => {
-    return () => {
-      setAllDelegates([]);
-      setCurrentPage(1);
-    };
-  }, []);
+    delegatesQuery.refetch();
+  }, [delegatesQuery]);
 
   return {
     state: {
-      data: allDelegates,
-      currentPage,
-      hasMore: proposalsQuery.data?.length === 10,
-      isFetching: proposalsQuery.isFetching,
-      error: proposalsQuery.error,
+      data: flattenedData,
+      hasNextPage: delegatesQuery.hasNextPage,
+      isFetching: delegatesQuery.isFetching,
+      isFetchingNextPage: delegatesQuery.isFetchingNextPage,
+      error: delegatesQuery.error,
     },
     loadMoreData,
     refreshData,
-    loadInitialData,
   };
 }

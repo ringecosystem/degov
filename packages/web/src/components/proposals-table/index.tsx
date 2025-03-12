@@ -23,7 +23,6 @@ const Caption = ({
 }: {
   type: "active" | "all";
   data: ProposalItem[];
-  currentPage: number;
   loadMoreData: () => void;
   isLoading: boolean;
 }) => {
@@ -173,7 +172,6 @@ export function ProposalsTable({
           <Caption
             type={type}
             data={state.data}
-            currentPage={state.currentPage}
             loadMoreData={loadMoreData}
             isLoading={state.isFetching}
           />
