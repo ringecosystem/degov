@@ -273,11 +273,16 @@ export const Profile = ({ address }: ProfileProps) => {
             </div>
           </div>
           <Separator className="bg-border/40" />
-          <p className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-foreground">
-            {profile?.additional || isOwnProfile
-              ? "No description yet. Click 'Edit Profile' to add information about yourself."
-              : `This delegate hasn't added a description yet.`}
-          </p>
+
+          {profile?.delegate_statement ? (
+            <p className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-foreground">
+              {profile?.delegate_statement}
+            </p>
+          ) : (
+            <p className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-muted-foreground">
+              No bio provided
+            </p>
+          )}
 
           <div className="flex items-center gap-[20px]">
             {socialLinks.map((social) => (

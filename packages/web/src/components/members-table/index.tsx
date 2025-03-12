@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 import { useMembersVotingPower } from "@/hooks/useMembersVotingPower";
 import { memberService } from "@/services/graphql";
@@ -14,11 +14,19 @@ import type { ColumnType } from "../custom-table";
 
 interface MembersTableProps {
   onDelegate?: (value: Member) => void;
+  itemsPerPage?: number;
 }
-export function MembersTable({ onDelegate }: MembersTableProps) {
+
+export function MembersTable({
+  onDelegate,
+  itemsPerPage = 10,
+}: MembersTableProps) {
+  const [loadedPages, setLoadedPages] = useState(1);
+
   const { data: members, isLoading: isMembersLoading } = useQuery({
     queryKey: ["members"],
     queryFn: () => memberService.getAllMembers(),
+    placeholderData: keepPreviousData,
   });
 
   const { votingPowerMap, isLoading: isVotingPowerLoading } =
@@ -108,77 +116,43 @@ export function MembersTable({ onDelegate }: MembersTableProps) {
     });
   }, [members, votingPowerMap]);
 
+  const totalPages = useMemo(() => {
+    return Math.ceil((sortedMembers.length || 0) / itemsPerPage);
+  }, [sortedMembers, itemsPerPage]);
+
+  const displayedData = useMemo(() => {
+    const itemsToShow = loadedPages * itemsPerPage;
+    return sortedMembers.slice(0, itemsToShow);
+  }, [sortedMembers, loadedPages, itemsPerPage]);
+
+  const shouldShowViewMore = loadedPages < totalPages;
+
+  const handleViewMore = () => {
+    if (loadedPages < totalPages) {
+      setLoadedPages(loadedPages + 1);
+    }
+  };
+
   return (
     <div className="rounded-[14px] bg-card p-[20px]">
       <CustomTable
         tableClassName="table-fixed"
         columns={columns}
-        dataSource={sortedMembers}
+        dataSource={displayedData}
         rowKey="id"
         isLoading={isMembersLoading || isVotingPowerLoading}
         emptyText="No Members"
         caption={
-          <div className="text-foreground transition-colors hover:text-foreground/80">
-            View more
-          </div>
+          shouldShowViewMore ? (
+            <div
+              className="text-foreground transition-colors hover:text-foreground/80 cursor-pointer"
+              onClick={handleViewMore}
+            >
+              View more
+            </div>
+          ) : null
         }
       />
-      {/* <Table>
-        {!!data?.length && (
-          <TableCaption>
-            <Link
-              href="/proposals"
-              className="text-foreground transition-colors hover:text-foreground/80"
-            >
-              {caption || "View more"}
-            </Link>
-          </TableCaption>
-        )}
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[160px] rounded-l-[14px] text-left">
-              Rank
-            </TableHead>
-            <TableHead className="w-[260px] text-left">Member</TableHead>
-            <TableHead>Delegate Statement</TableHead>
-            <TableHead className="w-[200px]">Voting Power</TableHead>
-            <TableHead className="w-[180px] rounded-r-[14px]">Action</TableHead>
-          </TableRow>
-        </TableHeader>
-
-        <TableBody>
-          {data?.map((value) => (
-            <TableRow key={value.rank}>
-              <TableCell className="text-left">
-                <span className="line-clamp-1" title={value.rank}>
-                  {value.rank}
-                </span>
-              </TableCell>
-              <TableCell className="text-left">
-                <AddressWithAvatar address={value.member as `0x${string}`} />
-              </TableCell>
-              <TableCell className="text-left">
-                <span className="line-clamp-1" title={value.delegateStatement}>
-                  {value.delegateStatement}
-                </span>
-              </TableCell>
-              <TableCell>{value.votingPower}</TableCell>
-              <TableCell>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    onDelegate?.(value);
-                  }}
-                  className="h-[30px] rounded-[100px] border border-border bg-card p-[10px]"
-                >
-                  Delegate
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {!data?.length && <Empty label="No Members" className="h-[400px]" />} */}
     </div>
   );
 }

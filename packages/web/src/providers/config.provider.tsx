@@ -22,8 +22,6 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       })
       .then((yamlText) => {
         const config = yaml.load(yamlText) as Config;
-        console.log("config", config);
-
         setConfig(config);
         setIsLoading(false);
       })

@@ -182,9 +182,11 @@ export function TreasuryTable({
           </TableHeader>
 
           <TableBody>
-            {displayData?.map((value) => (
+            {displayData?.map((value, index) => (
               <TableRow
-                key={tokenInfo[value.contract as `0x${string}`]?.symbol}
+                key={
+                  tokenInfo[value.contract as `0x${string}`]?.symbol ?? index
+                }
               >
                 <TableCell className="text-left">
                   <Asset

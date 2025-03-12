@@ -46,8 +46,7 @@ export default function RootLayout({
                   <Header />
                   <div className="mx-auto w-full flex-1 p-[30px] gap-[20px] flex flex-col">
                     <Alert />
-
-                    {<div>{children}</div>}
+                    {children}
                   </div>
                 </main>
               </div>
