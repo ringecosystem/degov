@@ -83,6 +83,7 @@ export default function ProposalDetailPage() {
         ...data,
         description: parsedDescription.mainText,
         signatureContent: parsedDescription.signatureContent,
+        originalDescription: data?.description,
       };
     }
     return undefined;

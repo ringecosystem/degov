@@ -27,7 +27,7 @@ import { Dropdown } from "./dropdown";
 import { Voting } from "./voting";
 
 interface ActionGroupProps {
-  data?: ProposalItem;
+  data?: ProposalItem & { originalDescription: string };
   status?: ProposalState;
   proposalCanceledById?: ProposalCanceledByIdItem;
   proposalExecutedById?: ProposalExecutedByIdItem;
@@ -86,7 +86,7 @@ export default function ActionGroup({
         targets: data?.targets as `0x${string}`[],
         values: data?.values?.map((value) => BigInt(value)) as bigint[],
         calldatas: data?.calldatas as `0x${string}`[],
-        description: data?.description as string,
+        description: data?.originalDescription as string,
       });
       if (hash) {
         setCancelHash(hash as `0x${string}`);
@@ -106,7 +106,7 @@ export default function ActionGroup({
   }, [
     cancelProposal,
     data?.calldatas,
-    data?.description,
+    data?.originalDescription,
     data?.targets,
     data?.values,
   ]);
@@ -159,7 +159,7 @@ export default function ActionGroup({
         targets: data?.targets as `0x${string}`[],
         values: data?.values?.map((value) => BigInt(value)) as bigint[],
         calldatas: data?.calldatas as `0x${string}`[],
-        description: data?.description as string,
+        description: data?.originalDescription as string,
       });
       if (hash) {
         setQueueHash(hash as `0x${string}`);
@@ -174,7 +174,7 @@ export default function ActionGroup({
   }, [
     queueProposal,
     data?.calldatas,
-    data?.description,
+    data?.originalDescription,
     data?.targets,
     data?.values,
   ]);
@@ -190,7 +190,7 @@ export default function ActionGroup({
         targets: data?.targets as `0x${string}`[],
         values: data?.values?.map((value) => BigInt(value)) as bigint[],
         calldatas: data?.calldatas as `0x${string}`[],
-        description: data?.description as string,
+        description: data?.originalDescription as string,
       });
       if (hash) {
         setExecuteHash(hash as `0x${string}`);
@@ -205,7 +205,7 @@ export default function ActionGroup({
   }, [
     executeProposal,
     data?.calldatas,
-    data?.description,
+    data?.originalDescription,
     data?.targets,
     data?.values,
   ]);
