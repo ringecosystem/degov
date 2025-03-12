@@ -1,9 +1,9 @@
-module.exports = class Data1741771104663 {
-    name = 'Data1741771104663'
+module.exports = class Data1741773000593 {
+    name = 'Data1741773000593'
 
     async up(db) {
         await db.query(`CREATE TABLE "delegate_changed" ("id" character varying NOT NULL, "delegator" text NOT NULL, "from_delegate" text NOT NULL, "to_delegate" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_82fcd22b1159cec837a6062982f" PRIMARY KEY ("id"))`)
-        await db.query(`CREATE TABLE "delegate_votes_changed" ("id" character varying NOT NULL, "delegate" text NOT NULL, "previous_votes" numeric NOT NULL, "new_votes" numeric NOT NULL, "block_number" numeric NOT NULL, "s" text, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_a38fef07a3e775591ad1d4de0ad" PRIMARY KEY ("id"))`)
+        await db.query(`CREATE TABLE "delegate_votes_changed" ("id" character varying NOT NULL, "delegate" text NOT NULL, "previous_votes" numeric NOT NULL, "new_votes" numeric NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_a38fef07a3e775591ad1d4de0ad" PRIMARY KEY ("id"))`)
         await db.query(`CREATE TABLE "proposal_canceled" ("id" character varying NOT NULL, "proposal_id" numeric NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_22622253f3a27d143c7fea33d7c" PRIMARY KEY ("id"))`)
         await db.query(`CREATE TABLE "proposal_created" ("id" character varying NOT NULL, "proposal_id" numeric NOT NULL, "proposer" text NOT NULL, "targets" text array NOT NULL, "values" text array NOT NULL, "signatures" text array NOT NULL, "calldatas" text array NOT NULL, "vote_start" numeric NOT NULL, "vote_end" numeric NOT NULL, "description" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_a7f756da7b761d1eda0c80d7de3" PRIMARY KEY ("id"))`)
         await db.query(`CREATE TABLE "proposal_executed" ("id" character varying NOT NULL, "proposal_id" numeric NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_0b159cbdd0cf4c05709dc7b8955" PRIMARY KEY ("id"))`)

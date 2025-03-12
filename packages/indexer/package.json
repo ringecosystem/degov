@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "generate:config": "zx scripts/generate-config.mjs",
+    "migrate:db": "zx scripts/sqd-migration.mjs",
     "build": "npm run generate:config && rm -rf lib && tsc"
   },
   "dependencies": {

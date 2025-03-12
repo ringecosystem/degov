@@ -14,7 +14,7 @@ docker compose up -d || true
 
 if [ "$1" = "force" ]; then
   npx sqd codegen
-  npx sqd migration:generate
+  npm run migrate:db -- --force
 fi
 
 npm run build
