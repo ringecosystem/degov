@@ -1,4 +1,4 @@
-import { useReadContract, useReadContracts } from "wagmi";
+import { useBlockNumber, useReadContracts } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as timeLockAbi } from "@/config/abi/timeLock";
@@ -20,17 +20,13 @@ export function useGovernanceParams() {
   const governorAddress = daoConfig?.contracts?.governor as Address;
   const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
 
-  const { data: clockData, isLoading: isClockLoading } = useReadContract({
-    address: governorAddress as `0x${string}`,
-    abi: governorAbi,
-    functionName: "clock" as const,
-    chainId: daoConfig?.chain?.id,
-    query: {
-      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
-    },
-  });
+  const { data: blockNumber, isPending: isBlockNumberPending } = useBlockNumber(
+    {
+      chainId: daoConfig?.chain?.id,
+    }
+  );
 
-  const { data, isLoading, error } = useReadContracts({
+  const { data, isPending, error } = useReadContracts({
     contracts: [
       {
         address: governorAddress as `0x${string}`,
@@ -42,7 +38,7 @@ export function useGovernanceParams() {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
         functionName: "quorum" as const,
-        args: [clockData ? BigInt(clockData) : BigInt(0)],
+        args: [blockNumber ? BigInt(blockNumber) : BigInt(0)],
         chainId: daoConfig?.chain?.id,
       },
       {
@@ -68,7 +64,7 @@ export function useGovernanceParams() {
       retry: false,
       enabled:
         Boolean(governorAddress) &&
-        Boolean(clockData) &&
+        Boolean(blockNumber) &&
         Boolean(daoConfig?.chain?.id),
     },
   });
@@ -85,7 +81,7 @@ export function useGovernanceParams() {
 
   return {
     data: formattedData,
-    isLoading: isLoading || isClockLoading,
+    isPending: isPending || isBlockNumberPending,
     error: error as Error | null,
   };
 }
