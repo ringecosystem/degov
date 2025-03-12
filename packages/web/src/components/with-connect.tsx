@@ -9,7 +9,16 @@ interface WithConnectProps {
   children: React.ReactNode;
 }
 export function WithConnect({ children }: WithConnectProps) {
-  const { address } = useAccount();
+  const { address, isConnected, isConnecting } = useAccount();
+  console.log(
+    "address",
+    address,
+    "isConnected",
+    isConnected,
+    "isConnecting",
+    isConnecting
+  );
+
   const { openConnectModal } = useConnectModal();
 
   if (!address) {
