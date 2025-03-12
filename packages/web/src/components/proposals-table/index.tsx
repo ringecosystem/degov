@@ -165,7 +165,7 @@ export function ProposalsTable({
       <CustomTable
         dataSource={state.data}
         columns={columns as ColumnType<ProposalItem>[]}
-        isLoading={state.isFetching}
+        isLoading={state.isPending}
         emptyText="No proposals"
         rowKey="id"
         caption={
@@ -173,7 +173,7 @@ export function ProposalsTable({
             type={type}
             data={state.data}
             loadMoreData={loadMoreData}
-            isLoading={state.isFetching}
+            isLoading={state.isFetchingNextPage}
           />
         }
       />

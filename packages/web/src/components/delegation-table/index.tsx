@@ -62,7 +62,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
       <CustomTable
         dataSource={state.data}
         columns={columns as ColumnType<DelegateItem>[]}
-        isLoading={state.isFetching}
+        isLoading={state.isPending}
         emptyText={
           <span>
             You haven&apos;t received delegations from others, and you can
@@ -80,9 +80,9 @@ export function DelegationTable({ address }: DelegationTableProps) {
               <button
                 onClick={loadMoreData}
                 className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={state.isFetching}
+                disabled={state.isFetchingNextPage}
               >
-                {state.isFetching ? "Loading..." : "View more"}
+                {state.isFetchingNextPage ? "Loading..." : "View more"}
               </button>
             }
           </div>

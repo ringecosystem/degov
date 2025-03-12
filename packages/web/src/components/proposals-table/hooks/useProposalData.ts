@@ -156,7 +156,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
     state: {
       data: flattenedData,
       hasNextPage: proposalsQuery.hasNextPage,
-      isFetching: proposalsQuery.isFetching,
+      isPending: proposalsQuery.isPending,
       isFetchingNextPage: proposalsQuery.isFetchingNextPage,
       error: proposalsQuery.error,
     },

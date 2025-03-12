@@ -63,7 +63,7 @@ export function useDelegationData(address?: Address) {
     state: {
       data: flattenedData,
       hasNextPage: delegatesQuery.hasNextPage,
-      isFetching: delegatesQuery.isFetching,
+      isPending: delegatesQuery.isPending,
       isFetchingNextPage: delegatesQuery.isFetchingNextPage,
       error: delegatesQuery.error,
     },

@@ -23,7 +23,7 @@ export function MembersTable({
 }: MembersTableProps) {
   const [loadedPages, setLoadedPages] = useState(1);
 
-  const { data: members, isLoading: isMembersLoading } = useQuery({
+  const { data: members, isPending: isMembersLoading } = useQuery({
     queryKey: ["members"],
     queryFn: () => memberService.getAllMembers(),
     placeholderData: keepPreviousData,
