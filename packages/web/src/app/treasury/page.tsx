@@ -54,7 +54,7 @@ export default function Treasury() {
   const { data: prices, isLoading: isLoadingPrices } = useCryptoPrices();
 
   return (
-    <div className="flex flex-col gap-[20px] p-[30px]">
+    <div className="flex flex-col gap-[20px]">
       <div className="flex items-center gap-[10px]">
         <h3 className="text-[18px] font-extrabold">TimeLock Assets</h3>
         <ClipboardIconButton text={timeLockAddress} size={16} />

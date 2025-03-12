@@ -192,7 +192,7 @@ export const Profile = ({ address }: ProfileProps) => {
   }
 
   return (
-    <div className="flex flex-col gap-[30px] p-[30px]">
+    <div className="flex flex-col gap-[30px]">
       <div className="flex items-center gap-1 text-[18px] font-extrabold">
         <span className="text-muted-foreground">Delegate</span>
         <span className="text-muted-foreground">/</span>
