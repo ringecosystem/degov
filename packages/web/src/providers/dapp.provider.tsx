@@ -1,14 +1,19 @@
 "use client";
-import { darkTheme, RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import {
+  darkTheme,
+  RainbowKitProvider,
+  RainbowKitAuthenticationProvider,
+} from "@rainbow-me/rainbowkit";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as React from "react";
 import { WagmiProvider, deserialize, serialize } from "wagmi";
 
 import { createConfig, queryClient } from "@/config/wagmi";
-import { useConfig } from "@/hooks/useConfig";
-
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import "@rainbow-me/rainbowkit/styles.css";
+import { authenticationAdapter } from "@/lib/rainbowkit-auth";
+
 import type { Chain } from "@rainbow-me/rainbowkit";
 
 const dark = darkTheme({
@@ -17,7 +22,7 @@ const dark = darkTheme({
 });
 
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
-  const dappConfig = useConfig();
+  const dappConfig = useDaoConfig();
 
   if (!dappConfig) {
     return null;
@@ -25,7 +30,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
 
   const currentChain: Chain = {
     id: Number(dappConfig.network?.chainId),
-    name: dappConfig.network?.chain,
+    name: dappConfig.network?.name ?? "",
     nativeCurrency: {
       name: dappConfig.network?.nativeToken?.symbol,
       symbol: dappConfig.network?.nativeToken?.symbol,
@@ -42,6 +47,11 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         url: dappConfig.network?.explorer?.[0],
       },
     },
+    contracts: {
+      multicall3: {
+        address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+      },
+    },
   };
 
   const persister = createSyncStoragePersister({
@@ -51,7 +61,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   });
 
   const config = createConfig({
-    appName: dappConfig?.daoName,
+    appName: dappConfig?.name,
     projectId: dappConfig?.walletConnectProjectId,
     chain: currentChain,
   });
@@ -62,14 +72,19 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         client={queryClient}
         persistOptions={{ persister }}
       >
-        <RainbowKitProvider
-          theme={dark}
-          locale="en-US"
-          appInfo={{ appName: dappConfig?.daoName }}
-          initialChain={currentChain}
+        <RainbowKitAuthenticationProvider
+          adapter={authenticationAdapter}
+          status="unauthenticated"
         >
-          {children}
-        </RainbowKitProvider>
+          <RainbowKitProvider
+            theme={dark}
+            locale="en-US"
+            appInfo={{ appName: dappConfig?.name }}
+            initialChain={currentChain}
+          >
+            {children}
+          </RainbowKitProvider>
+        </RainbowKitAuthenticationProvider>
       </PersistQueryClientProvider>
     </WagmiProvider>
   );

@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { abiList } from "@/config/contract";
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import { isValidAbi } from "@/utils/abi";
 
@@ -43,7 +43,7 @@ export const CustomPanel = ({
   onChange,
   onRemove,
 }: CustomPanelProps) => {
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
 
   const {
     control,
@@ -145,6 +145,8 @@ export const CustomPanel = ({
       );
 
       if (method && method.type === "function") {
+        setValue("contractMethod", value);
+
         const calldata = method?.inputs
           ?.filter((input) => input.name)
           .map((input) => ({
@@ -365,7 +367,6 @@ export const CustomPanel = ({
                   control={control}
                   render={({ field }) => (
                     <CallDataInputForm
-                      key={JSON.stringify(field.value)}
                       calldata={field.value || []}
                       onChange={(newCalldata) => {
                         field.onChange([...newCalldata]);

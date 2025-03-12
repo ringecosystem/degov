@@ -2,7 +2,7 @@
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 
-import { useConfig } from "@/hooks/useConfig";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import { Button } from "../ui/button";
 
@@ -10,7 +10,7 @@ import { Connected } from "./connected";
 
 export const ConnectButton = () => {
   const { openConnectModal } = useConnectModal();
-  const dappConfig = useConfig();
+  const dappConfig = useDaoConfig();
   const { chainId, address, isConnected, isConnecting, isReconnecting } =
     useAccount();
 

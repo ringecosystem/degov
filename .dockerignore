@@ -1,0 +1,10 @@
+
+.env
+.next
+
+.git
+node_modules
+
+# OS Files
+.DS_Store
+

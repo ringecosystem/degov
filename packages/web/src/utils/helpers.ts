@@ -54,3 +54,50 @@ export function extractTitleAndDescription(description?: string): {
     description: content,
   };
 }
+
+// parse description to extract main text and signature content
+export const parseDescription = (
+  text?: string
+): {
+  mainText: string;
+  signatureContent?: string[];
+} => {
+  if (!text) return { mainText: "" };
+
+  const signaturePattern = /<signature>([\s\S]*?)<\/signature>/;
+  const signatureMatch = text.match(signaturePattern);
+
+  if (signatureMatch) {
+    // extract signature content
+    const signatureContent = signatureMatch[1]?.trim();
+
+    // remove signature tag, get main text
+    const mainText = text.replace(signaturePattern, "").trim();
+
+    try {
+      const signatureContentJson = JSON.parse(signatureContent);
+      return {
+        mainText,
+        signatureContent: Array.isArray(signatureContentJson)
+          ? signatureContentJson
+          : [],
+      };
+    } catch (error) {
+      console.error("Failed to parse signature content:", error);
+      return { mainText };
+    }
+  }
+
+  // no signature tag, all as main text
+  return { mainText: text };
+};
+
+export const formatFunctionSignature = (signature: string): string => {
+  if (!signature) return "";
+
+  const match = signature.match(/([^(]+)\(/);
+  if (match) {
+    return `${match[1]}(..)`;
+  }
+  return signature;
+};

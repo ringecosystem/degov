@@ -1,10 +1,11 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { blo } from "blo";
 import Image from "next/image";
-import { useState, useEffect } from "react";
 
 import { cn } from "@/lib/utils";
+import { profileService } from "@/services/graphql";
 
 import type { Address } from "viem";
 
@@ -19,30 +20,13 @@ export const AddressAvatar = ({
   size = 40,
   className,
 }: AddressAvatarProps) => {
-  const [indexedAvatarUrl, setIndexedAvatarUrl] = useState<string | null>(null);
+  const { data: profileData } = useQuery({
+    queryKey: ["profile", address],
+    queryFn: () => profileService.getProfile(address),
+    enabled: !!address,
+  });
 
-  useEffect(() => {
-    let mounted = true;
-
-    const fetchAvatar = async () => {
-      try {
-        const indexedAvatar = await fetchAvatarFromIndex(address);
-        if (indexedAvatar && mounted) {
-          setIndexedAvatarUrl(indexedAvatar);
-        }
-      } catch (error) {
-        console.error("Error fetching avatar:", error);
-      }
-    };
-
-    fetchAvatar();
-
-    return () => {
-      mounted = false;
-    };
-  }, [address]);
-
-  const avatarUrl = indexedAvatarUrl || blo(address as `0x${string}`);
+  const avatarUrl = profileData?.data?.avatar || blo(address as `0x${string}`);
 
   return (
     <Image
@@ -50,15 +34,11 @@ export const AddressAvatar = ({
       alt={`Avatar for ${address}`}
       width={size}
       height={size}
-      className={cn("rounded-full", className)}
+      className={cn("rounded-full flex-shrink-0", className)}
+      style={{
+        width: size,
+        height: size,
+      }}
     />
   );
-};
-
-// fake
-const fetchAvatarFromIndex = async (
-  address: Address
-): Promise<string | null> => {
-  console.warn("fetchAvatarFromIndex", address);
-  return null;
 };

@@ -6,7 +6,7 @@ import { useReadContracts } from "wagmi";
 import type { TokenDetails } from "@/types/config";
 import { formatBigIntForDisplay } from "@/utils/number";
 
-import { useConfig } from "./useConfig";
+import { useDaoConfig } from "./useDaoConfig";
 import { useGetTokenInfo } from "./useGetTokenInfo";
 
 export interface TokenWithBalance extends TokenDetails {
@@ -24,8 +24,8 @@ export interface UseTokenBalancesReturn {
 export function useTokenBalances(
   assets: TokenDetails[]
 ): UseTokenBalancesReturn {
-  const daoConfig = useConfig();
-  const timeLockAddress = daoConfig?.contracts?.timeLockContract;
+  const daoConfig = useDaoConfig();
+  const timeLockAddress = daoConfig?.contracts?.timeLock;
   const { tokenInfo } = useGetTokenInfo(
     assets.map((v) => ({
       contract: v.contract,
@@ -42,8 +42,9 @@ export function useTokenBalances(
         abi: asset.standard === "ERC20" ? erc20Abi : erc721Abi,
         functionName: "balanceOf",
         args: [timeLockAddress as `0x${string}`],
+        chainId: daoConfig?.network?.chainId,
       }));
-  }, [assets, timeLockAddress]);
+  }, [assets, timeLockAddress, daoConfig?.network?.chainId]);
 
   const {
     data: balanceResults,
@@ -52,7 +53,10 @@ export function useTokenBalances(
   } = useReadContracts({
     contracts: contractCalls,
     query: {
-      enabled: contractCalls.length > 0 && Boolean(timeLockAddress),
+      enabled:
+        contractCalls.length > 0 &&
+        Boolean(timeLockAddress) &&
+        Boolean(daoConfig?.network?.chainId),
     },
   });
 

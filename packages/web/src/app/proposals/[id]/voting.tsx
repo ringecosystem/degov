@@ -13,6 +13,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { VoteStatusAction } from "@/components/vote-status";
+import { VoteType } from "@/config/vote";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { formatShortAddress } from "@/utils/address";
 
@@ -43,12 +44,12 @@ export function Voting({
   onCastVote,
 }: VotingProps) {
   const { formattedVotes } = useMyVotes();
-  const [support, setSupport] = useState<1 | 2 | 3>(1);
+  const [support, setSupport] = useState<VoteType>(VoteType.For);
   const [reason, setReason] = useState("");
   const { address } = useAccount();
   useEffect(() => {
     if (!open) {
-      setSupport(1);
+      setSupport(VoteType.For);
       setReason("");
     }
   }, [open]);
@@ -100,22 +101,22 @@ export function Voting({
             <h4 className="text-[14px] font-normal">Vote</h4>
             <div className="flex items-center justify-between gap-[10px]">
               <VoteStatusAction
-                variant="for"
-                type={support === 1 ? "active" : "default"}
+                variant={VoteType.For}
+                type={support === VoteType.For ? "active" : "default"}
                 className="w-[113px]"
-                onChangeVote={() => setSupport(1)}
+                onChangeVote={() => setSupport(VoteType.For)}
               />
               <VoteStatusAction
-                variant="against"
-                type={support === 2 ? "active" : "default"}
+                variant={VoteType.Against}
+                type={support === VoteType.Against ? "active" : "default"}
                 className="w-[113px]"
-                onChangeVote={() => setSupport(2)}
+                onChangeVote={() => setSupport(VoteType.Against)}
               />
               <VoteStatusAction
-                variant="abstain"
-                type={support === 3 ? "active" : "default"}
+                variant={VoteType.Abstain}
+                type={support === VoteType.Abstain ? "active" : "default"}
                 className="w-[113px]"
-                onChangeVote={() => setSupport(3)}
+                onChangeVote={() => setSupport(VoteType.Abstain)}
               />
             </div>
           </div>

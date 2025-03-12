@@ -4,12 +4,12 @@ import { toast } from "react-toastify";
 import { useAccount, useReadContract } from "wagmi";
 
 import { TransactionToast } from "@/components/transaction-toast";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import useCancelProposal from "@/hooks/useCancelProposal";
 import useCastVote from "@/hooks/useCastVote";
-import { useConfig } from "@/hooks/useConfig";
+import { useContractGuard } from "@/hooks/useContractGuard";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import useExecuteProposal from "@/hooks/useExecute";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import useQueueProposal from "@/hooks/useQueue";
@@ -21,9 +21,11 @@ import type {
 } from "@/services/graphql/types";
 import { ProposalState } from "@/types/proposal";
 
+import { ActionGroupDisplay } from "./action-group-display";
 import { CancelProposal } from "./cancel-proposal";
 import { Dropdown } from "./dropdown";
 import { Voting } from "./voting";
+
 interface ActionGroupProps {
   data?: ProposalItem;
   status?: ProposalState;
@@ -31,84 +33,8 @@ interface ActionGroupProps {
   proposalExecutedById?: ProposalExecutedByIdItem;
   proposalQueuedById?: ProposalQueuedByIdItem;
   isAllQueriesFetching: boolean;
+  onRefetch: () => void;
 }
-
-interface ActionProps {
-  status?: ProposalState;
-  isLoading: boolean;
-  isConnected: boolean;
-  hasVoted?: boolean;
-  canExecute: boolean;
-  onClick: (action: "vote" | "queue" | "execute") => void;
-}
-const Action = ({
-  status,
-  isLoading,
-  onClick,
-  isConnected,
-  hasVoted,
-  canExecute,
-}: ActionProps) => {
-  if (status === ProposalState.Pending) {
-    return <p>Voting starts soon</p>;
-  }
-  if (status === ProposalState.Active) {
-    if (isConnected) {
-      if (hasVoted) {
-        return <p>You voted</p>;
-      }
-      return (
-        <Button
-          className="h-[37px] rounded-[100px] focus-visible:ring-0"
-          onClick={() => onClick("vote")}
-          isLoading={isLoading}
-        >
-          Vote Onchain
-        </Button>
-      );
-    }
-    return null;
-  }
-  if (status === ProposalState.Succeeded) {
-    return (
-      isConnected && (
-        <Button
-          className="h-[37px] rounded-[100px] focus-visible:ring-0"
-          isLoading={isLoading}
-          onClick={() => onClick("queue")}
-        >
-          Queue
-        </Button>
-      )
-    );
-  }
-  if (status === ProposalState.Queued) {
-    return (
-      <Button
-        className="h-[37px] rounded-[100px] focus-visible:ring-0"
-        isLoading={isLoading}
-        disabled={!canExecute}
-        onClick={() => onClick("execute")}
-      >
-        Execute
-      </Button>
-    );
-  }
-  if (status === ProposalState.Executed) {
-    return <p>Proposal executed</p>;
-  }
-  if (status === ProposalState.Canceled) {
-    return <p>Proposal canceled</p>;
-  }
-  if (status === ProposalState.Expired) {
-    return <p>Proposal expired</p>;
-  }
-  if (status === ProposalState.Defeated) {
-    return <p>Proposal defeated</p>;
-  }
-
-  return null;
-};
 
 export default function ActionGroup({
   data,
@@ -117,10 +43,11 @@ export default function ActionGroup({
   proposalExecutedById,
   proposalQueuedById,
   isAllQueriesFetching,
+  onRefetch,
 }: ActionGroupProps) {
   const id = data?.proposalId;
   const { isConnected, address } = useAccount();
-  const daoConfig = useConfig();
+  const daoConfig = useDaoConfig();
   const [voting, setVoting] = useState(false);
   const { data: govParams } = useGovernanceParams();
   const { castVote, isPending: isPendingCastVote } = useCastVote();
@@ -131,25 +58,26 @@ export default function ActionGroup({
   const [executeHash, setExecuteHash] = useState<`0x${string}` | null>(null);
   const [cancelHash, setCancelHash] = useState<`0x${string}` | null>(null);
   const [cancelProposalOpen, setCancelProposalOpen] = useState(false);
+  const { validateBeforeExecution } = useContractGuard();
   const { data: hasVoted } = useReadContract({
-    address: daoConfig?.contracts?.governorContract as `0x${string}`,
+    address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
     functionName: "hasVoted",
     args: [id ? BigInt(id) : 0n, address as `0x${string}`],
+    chainId: daoConfig?.network?.chainId,
     query: {
-      enabled: !!id && !!daoConfig?.contracts?.governorContract && !!address,
+      enabled:
+        !!id &&
+        !!daoConfig?.contracts?.governor &&
+        !!address &&
+        !!daoConfig?.network?.chainId,
     },
   });
 
-  const handleCopyUrl = useCallback(
-    (e: Event) => {
-      e.preventDefault();
-      navigator.clipboard.writeText(
-        `${window.location.origin}/proposals/${id}`
-      );
-    },
-    [id]
-  );
+  const handleCopyUrl = useCallback(() => {
+    navigator.clipboard.writeText(`${window.location.origin}/proposals/${id}`);
+  }, [id]);
+
   const { cancelProposal, isPending: isCancelling } = useCancelProposal();
 
   const handleCancelProposal = useCallback(async () => {
@@ -183,6 +111,11 @@ export default function ActionGroup({
     data?.values,
   ]);
 
+  const handleCancelProposalSuccess = useCallback(() => {
+    setCancelHash(null);
+    onRefetch();
+  }, [onRefetch]);
+
   const handleCastVote = useCallback(
     async ({
       proposalId,
@@ -215,6 +148,11 @@ export default function ActionGroup({
     [castVote]
   );
 
+  const handleCastVoteSuccess = useCallback(() => {
+    setCastVoteHash(null);
+    onRefetch();
+  }, [onRefetch]);
+
   const handleQueueProposal = useCallback(async () => {
     try {
       const hash = await queueProposal({
@@ -240,6 +178,11 @@ export default function ActionGroup({
     data?.targets,
     data?.values,
   ]);
+
+  const handleQueueProposalSuccess = useCallback(() => {
+    setQueueHash(null);
+    onRefetch();
+  }, [onRefetch]);
 
   const handleExecuteProposal = useCallback(async () => {
     try {
@@ -267,22 +210,10 @@ export default function ActionGroup({
     data?.values,
   ]);
 
-  const handleAction = useCallback(
-    (action: "vote" | "queue" | "execute") => {
-      switch (action) {
-        case "vote":
-          setVoting(true);
-          break;
-        case "queue":
-          handleQueueProposal();
-          break;
-        case "execute":
-          handleExecuteProposal();
-          break;
-      }
-    },
-    [handleQueueProposal, handleExecuteProposal]
-  );
+  const handleExecuteProposalSuccess = useCallback(() => {
+    setExecuteHash(null);
+    onRefetch();
+  }, [onRefetch]);
 
   const canExecute = useMemo(() => {
     if (status === ProposalState.Queued) {
@@ -302,16 +233,42 @@ export default function ActionGroup({
     return false;
   }, [status, proposalQueuedById, govParams?.timeLockDelay]);
 
+  const handleAction = useCallback(
+    (action: "vote" | "queue" | "execute") => {
+      const isValid = validateBeforeExecution();
+      if (!isValid) return;
+      switch (action) {
+        case "vote":
+          setVoting(true);
+          break;
+        case "queue":
+          handleQueueProposal();
+          break;
+        case "execute":
+          handleExecuteProposal();
+          break;
+      }
+    },
+    [handleQueueProposal, handleExecuteProposal, validateBeforeExecution]
+  );
   const explorerUrl = useMemo(() => {
-    const defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${data?.transactionHash}`;
+    let defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${data?.transactionHash}`;
+
+    if (status === ProposalState.Defeated) {
+      defaultUrl = "";
+    }
+    if (status === ProposalState.Expired) {
+      defaultUrl = "";
+    }
+
     if (status === ProposalState.Queued) {
-      return `${daoConfig?.network?.explorer?.[0]}/tx/${proposalQueuedById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalQueuedById?.transactionHash}`;
     }
     if (status === ProposalState.Executed) {
-      return `${daoConfig?.network?.explorer?.[0]}/tx/${proposalExecutedById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalExecutedById?.transactionHash}`;
     }
     if (status === ProposalState.Canceled) {
-      return `${daoConfig?.network?.explorer?.[0]}/tx/${proposalCanceledById?.transactionHash}`;
+      defaultUrl = `${daoConfig?.network?.explorer?.[0]}/tx/${proposalCanceledById?.transactionHash}`;
     }
     return defaultUrl;
   }, [
@@ -323,14 +280,22 @@ export default function ActionGroup({
     proposalCanceledById?.transactionHash,
   ]);
 
+  const votedSupport = useMemo(() => {
+    if (!address || !hasVoted) return undefined;
+    const voter = data?.voters?.find(
+      (voter) => voter.voter?.toLowerCase() === address?.toLowerCase()
+    );
+    return voter?.support;
+  }, [address, hasVoted, data]);
+
   return (
     <div className="flex items-center justify-end gap-[10px]">
       {isAllQueriesFetching ? (
         <Skeleton className="h-[37px] w-[100px] rounded-[100px]" />
       ) : (
-        <Action
+        <ActionGroupDisplay
           status={status}
-          hasVoted={hasVoted}
+          votedSupport={votedSupport}
           canExecute={canExecute}
           isLoading={
             isPendingCastVote ||
@@ -341,10 +306,8 @@ export default function ActionGroup({
             !!executeHash
           }
           onClick={handleAction}
-          isConnected={isConnected}
         />
       )}
-
       <Dropdown
         explorerUrl={explorerUrl}
         handleCopyUrl={handleCopyUrl}
@@ -365,32 +328,31 @@ export default function ActionGroup({
         isLoading={isCancelling}
         onCancelProposal={handleCancelProposal}
       />
-
       {cancelHash && (
         <TransactionToast
           hash={cancelHash}
-          onSuccess={() => setCancelHash(null)}
+          onSuccess={handleCancelProposalSuccess}
           onError={() => setCancelHash(null)}
         />
       )}
       {castVoteHash && (
         <TransactionToast
           hash={castVoteHash}
-          onSuccess={() => setCastVoteHash(null)}
+          onSuccess={handleCastVoteSuccess}
           onError={() => setCastVoteHash(null)}
         />
       )}
       {queueHash && (
         <TransactionToast
           hash={queueHash}
-          onSuccess={() => setQueueHash(null)}
+          onSuccess={handleQueueProposalSuccess}
           onError={() => setQueueHash(null)}
         />
       )}
       {executeHash && (
         <TransactionToast
           hash={executeHash}
-          onSuccess={() => setExecuteHash(null)}
+          onSuccess={handleExecuteProposalSuccess}
           onError={() => setExecuteHash(null)}
         />
       )}

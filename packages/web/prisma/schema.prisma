@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgres"
+  url      = env("DATABASE_URL")
+}
+
+model d_user {
+  id                 String    @id
+  address            String    @unique
+  name               String?
+  avatar             String?
+  email              String?
+  twitter            String?
+  github             String?
+  discord            String?
+  telegram           String?
+  medium             String?
+  delegate_statement String?
+  additional         String?
+  last_login_time    DateTime
+  ctime              DateTime  @default(now())
+  utime              DateTime? @updatedAt
+}

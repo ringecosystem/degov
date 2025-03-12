@@ -18,6 +18,7 @@ export interface ColumnType<T> {
   key: string;
   width?: string | number;
   className?: string;
+  style?: React.CSSProperties;
   render?: (value: T, index: number) => React.ReactNode;
 }
 
@@ -31,6 +32,7 @@ export interface CustomTableProps<T> {
   loadingHeight?: number;
   emptyText?: React.ReactNode;
   bodyClassName?: string;
+  tableClassName?: string;
   maxHeight?: string;
   onRow?: (
     record: T,
@@ -48,6 +50,7 @@ export function CustomTable<T extends Record<string, unknown>>({
   loadingHeight = 30,
   emptyText = "No data",
   bodyClassName,
+  tableClassName,
   maxHeight = "calc(100vh-200px)",
   onRow,
 }: CustomTableProps<T>) {
@@ -92,8 +95,8 @@ export function CustomTable<T extends Record<string, unknown>>({
   }, [columns, loadingRows, loadingHeight]);
 
   return (
-    <>
-      <Table>
+    <div>
+      <Table className={cn(tableClassName)}>
         <TableHeader>
           <TableRow>
             {columns.map((column, index) => (
@@ -117,7 +120,7 @@ export function CustomTable<T extends Record<string, unknown>>({
         className={cn("overflow-y-auto custom-scrollbar", bodyClassName)}
         style={{ maxHeight }}
       >
-        <Table>
+        <Table className={cn(tableClassName)}>
           {caption && !isLoading && !!dataSource?.length && (
             <TableCaption className="pb-0">{caption}</TableCaption>
           )}
@@ -133,7 +136,10 @@ export function CustomTable<T extends Record<string, unknown>>({
                         <TableCell
                           key={`${getRowKey(record)}-${column.key}`}
                           className={column.className}
-                          style={{ width: column.width }}
+                          style={{
+                            width: column.width,
+                            ...(column?.style || {}),
+                          }}
                         >
                           {renderCell(record, column, index)}
                         </TableCell>
@@ -149,6 +155,6 @@ export function CustomTable<T extends Record<string, unknown>>({
       {!isLoading && dataSource.length === 0 && (
         <Empty label={emptyText} className="h-[300px]" />
       )}
-    </>
+    </div>
   );
 }

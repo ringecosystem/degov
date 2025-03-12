@@ -1,4 +1,6 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
+import { capitalize } from "lodash-es";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -21,6 +23,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAddressVotes } from "@/hooks/useAddressVotes";
+import { profileService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 
 import { ReceivedDelegations } from "./received-delegations";
@@ -28,9 +31,78 @@ interface ProfileProps {
   address: Address;
 }
 
+// 添加ProfileSkeleton组件
+const ProfileSkeleton = () => {
+  return (
+    <div className="flex flex-col gap-[30px] p-[30px]">
+      <div className="flex items-center gap-1 text-[18px] font-extrabold">
+        <span className="text-muted-foreground">Delegate</span>
+        <span className="text-muted-foreground">/</span>
+        <Skeleton className="h-[24px] w-[120px]" />
+      </div>
+
+      <div className="grid grid-cols-[1fr_400px] gap-[20px]">
+        {/* personal info skeleton */}
+        <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+          <div className="flex items-center justify-between gap-[10px]">
+            <div className="flex items-center gap-[20px]">
+              <Skeleton className="size-[70px] rounded-full" />
+              <div>
+                <Skeleton className="mb-2 h-[30px] w-[150px]" />
+                <Skeleton className="h-[20px] w-[120px]" />
+              </div>
+            </div>
+            <div className="flex items-center gap-[20px]">
+              <Skeleton className="h-[40px] w-[100px] rounded-full" />
+            </div>
+          </div>
+          <Separator className="bg-border/40" />
+          <div className="space-y-2">
+            <Skeleton className="h-[16px] w-full" />
+            <Skeleton className="h-[16px] w-5/6" />
+            <Skeleton className="h-[16px] w-4/6" />
+          </div>
+
+          <div className="flex items-center gap-[20px]">
+            {Array(5)
+              .fill(0)
+              .map((_, i) => (
+                <Skeleton key={i} className="size-[24px] rounded-full" />
+              ))}
+          </div>
+        </div>
+
+        {/* Voting Power skeleton */}
+        <div className="flex items-center justify-center gap-[20px] rounded-[14px] bg-card p-[20px]">
+          <Skeleton className="size-[90px]" />
+          <div className="flex flex-col justify-center gap-[10px]">
+            <Skeleton className="h-[20px] w-[120px]" />
+            <Skeleton className="h-[56px] w-[200px]" />
+          </div>
+        </div>
+      </div>
+
+      {/* Received Delegations skeleton */}
+      <div className="rounded-[14px] bg-card p-[20px]">
+        <Skeleton className="h-[30px] w-[200px] mb-4" />
+        <Skeleton className="h-[200px] w-full" />
+      </div>
+    </div>
+  );
+};
+
 export const Profile = ({ address }: ProfileProps) => {
   const router = useRouter();
   const { address: account } = useAccount();
+
+  const { data: profileData, isFetching: isProfileLoading } = useQuery({
+    queryKey: ["profile", address],
+    queryFn: () => profileService.getProfile(address),
+    enabled: !!address,
+  });
+
+  console.log("profileData", profileData);
+
   const [open, setOpen] = useState(false);
   const [delegateOpen, setDelegateOpen] = useState(false);
 
@@ -64,32 +136,40 @@ export const Profile = ({ address }: ProfileProps) => {
     router.push("/profile/edit");
   }, [router]);
 
-  const socials = [
-    {
-      key: "email",
-      value: "l2beat@gmail.com",
-    },
-    {
-      key: "twitter",
-      value: "l2beat",
-    },
-    {
-      key: "telegram",
-      value: "l2beat",
-    },
-    {
-      key: "github",
-      value: "l2beat",
-    },
-    {
-      key: "discord",
-      value: "l2beat",
-    },
-  ];
+  const socials = useMemo(() => {
+    if (!profileData) return [];
+    return [
+      {
+        key: "email",
+        value: profileData?.data?.email,
+      },
+      {
+        key: "twitter",
+        value: profileData?.data?.twitter,
+      },
+      {
+        key: "telegram",
+        value: profileData?.data?.telegram,
+      },
+      {
+        key: "github",
+        value: profileData?.data?.github,
+      },
+      {
+        key: "discord",
+        value: profileData?.data?.discord,
+      },
+    ]?.filter((item) => !!item.value);
+  }, [profileData]);
+
   const { formattedVotes, isLoading } = useAddressVotes(address);
 
   if (!isAddress(address)) {
     return <NotFound />;
+  }
+
+  if (isProfileLoading) {
+    return <ProfileSkeleton />;
   }
 
   return (
@@ -137,14 +217,15 @@ export const Profile = ({ address }: ProfileProps) => {
                       className="flex w-[160px] flex-col rounded-[10px] border-border/20 bg-card"
                       side="right"
                     >
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
+                      <DropdownMenuItem
+                        className="cursor-pointer py-[10px]"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `${window.location.origin}/profile/${address}`
+                          );
+                        }}
+                      >
                         Copy Profile URL
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
-                        Share To Forecaster
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer py-[10px]">
-                        Share To Lens
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -174,14 +255,9 @@ export const Profile = ({ address }: ProfileProps) => {
           </div>
           <Separator className="bg-border/40" />
           <p className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-foreground">
-            L2BEAT is an independent, public goods company who acts as an
-            impartial watchdog for the Ethereum Layer2 ecosystem. Our mission is
-            to provide comprehensive and unbiased analysis and comparative
-            evaluations of Layer 2 solutions . We are committed to the
-            verification and fact-checking of the claims made by each project,
-            with a special focus on the security aspects. What sets L2BEAT apart
-            is our unwavering commitment to delivering accurate and reliable
-            information.
+            {profileData?.data?.additional || isOwnProfile
+              ? "No description yet. Click 'Edit Profile' to add information about yourself."
+              : `This delegate hasn't added a description yet.`}
           </p>
 
           <div className="flex items-center gap-[20px]">
@@ -189,6 +265,7 @@ export const Profile = ({ address }: ProfileProps) => {
               <span
                 className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-white transition-opacity hover:opacity-80"
                 key={social.key}
+                title={capitalize(social.key)}
                 style={{
                   backgroundImage: `url(/assets/image/user_social/${social.key}.svg)`,
                   backgroundRepeat: "no-repeat",

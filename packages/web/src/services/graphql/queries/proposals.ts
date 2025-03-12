@@ -42,6 +42,14 @@ export const GET_ALL_PROPOSALS = gql`
   }
 `;
 
+export const GET_ALL_PROPOSALS_TOTAL = gql`
+  query GetAllProposalsTotal($limit: Int, $offset: Int) {
+    proposals(limit: $limit, offset: $offset) {
+      proposalId
+    }
+  }
+`;
+
 // proposalCanceledById
 export const GET_PROPOSAL_CANCELED_BY_ID = gql`
   query GetProposalCanceledById($id: String!) {

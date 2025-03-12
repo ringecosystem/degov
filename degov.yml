@@ -1,0 +1,55 @@
+name: DeGov Development Test DAO
+logo: "/example/logo.svg"
+description: |
+  This is the development test DAO interface for DeGov users, allowing them to gain 
+  firsthand experience creating proposals and voting on them before deploying 
+  their own DeGov instance. The DAO is built on the Darwinia chain, an Ethereum-compatible chain.
+# The following fields in the links are optional and will be used to display basic information about the DAO
+links:
+  website: https://ringdao.com/
+  twitter: https://x.com/ringecosystem
+  discord: https://discord.com/invite/BhNbKWWfGV
+  telegram: https://t.me/ringecosystem
+  github: https://github.com/ringecosystem/degov
+  email: # It's ok to leave it empty
+
+walet:
+  walletConnectProjectId: 2719448e2ce94fdd269a3c8587123bcc
+
+# Chain information: these commented fields are optional if this chain can be accessed by viem.
+chain:
+  id: 46
+  logo: https://darwinia.network/images/darwinia-logo-black-background-round.svg
+  # name: darwinia
+  # rpcs:
+  #   - https://rpc.darwinia.network
+  #   - https://darwinia-rpc.dwellir.com
+  # explorers:
+  #   - https://explorer.darwinia.network/
+  nativeToken:
+    priceId: RING
+
+indexer:
+  endpoint: https://degov-indexer.vercel.app/graphql
+  startBlock: 5873342
+
+# Core contracts related to the DAO Governance
+contracts:
+  governor: "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
+  governorToken:
+    address: "0xbC9f58566810F7e853e1eef1b9957ac82F9971df"
+    standard: ERC20
+  timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
+
+# The treasury assets information
+timeLockAssets:
+  FT:
+    contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
+    standard: ERC20
+    priceId: FT
+    logo: # Default logo if not provided
+  NFT:
+    contract: "0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A"
+    standard: ERC721
+    priceId: NFT
+    logo: # Default logo if not provided
