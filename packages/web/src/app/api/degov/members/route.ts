@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import postgres from "postgres";
 
 import { Resp } from "@/types/api";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
