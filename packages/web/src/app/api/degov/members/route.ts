@@ -3,7 +3,9 @@ import postgres from "postgres";
 
 import { Resp } from "@/types/api";
 
-export async function GET() {
+import type { NextRequest } from "next/server";
+
+export async function GET(request: NextRequest) {
   try {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
@@ -13,7 +15,26 @@ export async function GET() {
     }
     const sql = postgres(databaseUrl);
 
-    const members = await sql`select * from d_user order by ctime desc`;
+    const nextUrl = request.nextUrl;
+    const inputLimit = nextUrl.searchParams.get("limit");
+    const inputCheckpoint = nextUrl.searchParams.get("checkpoint");
+    const limit = Number(inputLimit ?? 10);
+    let checkpoint = new Date(0).toISOString();
+    if (inputCheckpoint) {
+      try {
+        checkpoint = new Date(inputCheckpoint).toISOString();
+      } catch (e: any) {
+        console.warn(
+          `user provided wrong checkpoint date ${inputCheckpoint} : ${e}`
+        );
+      }
+    }
+
+    const members = await sql`
+    select * from d_user where ctime>${checkpoint}
+    order by ctime desc
+    limit ${limit}
+    `;
 
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
