@@ -40,7 +40,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       });
   }, []);
 
-  if (isLoading) return null;
+  if (isLoading || !config) return null;
   if (error)
     return (
       <div
