@@ -7,6 +7,7 @@
     "prisma:migrate": "pnpm generate:config && prisma generate && prisma migrate deploy",
     "dev": "pnpm generate:config && pnpm prisma:migrate && NODE_OPTIONS='--inspect' next dev --turbopack",
     "build": "pnpm generate:config && next build",
+    "build:vercel": "pnpm build && pnpm prisma:migrate",
     "start": "pnpm generate:config && pnpm prisma:migrate && next start",
     "lint": "next lint",
     "generate:config": "zx scripts/generate-config.mjs"
