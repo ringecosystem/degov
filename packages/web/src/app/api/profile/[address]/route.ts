@@ -77,28 +77,18 @@ export async function POST(request: NextRequest) {
     }
     const cui: DUser = {
       ...(storedUser as unknown as DUser),
-      // name: body.name ?? '',
-      // avatar: body.avatar ?? '',
-      // email: body.email ?? '',
-      // twitter: body.twitter ?? '',
-      // github: body.github ?? '',
-      // discord: body.discord ?? '',
-      // telegram: body.telegram ?? '',
-      // medium: body.medium ?? '',
-      // delegate_statement: body.delegate_statement ?? '',
-      // additional: body.additional ?? '',
+      name: body.name ?? '',
+      avatar: body.avatar ?? '',
+      email: body.email ?? '',
+      twitter: body.twitter ?? '',
+      github: body.github ?? '',
+      discord: body.discord ?? '',
+      telegram: body.telegram ?? '',
+      medium: body.medium ?? '',
+      delegate_statement: body.delegate_statement ?? '',
+      additional: body.additional ?? '',
       utime: new Date().toISOString(),
     };
-    if (body.name) cui.name = body.name;
-    if (body.avatar) cui.avatar = body.avatar;
-    if (body.email) cui.email = body.email;
-    if (body.twitter) cui.twitter = body.twitter;
-    if (body.github) cui.github = body.github;
-    if (body.discord) cui.discord = body.discord;
-    if (body.telegram) cui.telegram = body.telegram;
-    if (body.medium) cui.medium = body.medium;
-    if (body.delegate_statement) cui.delegate_statement = body.delegate_statement;
-    if (body.additional) cui.additional = body.additional;
     await sql`
     update d_user set ${sql(
       cui,
