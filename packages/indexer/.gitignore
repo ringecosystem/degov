@@ -12,3 +12,4 @@
 .env
 
 src/config.ts
+src/model/generated
