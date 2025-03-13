@@ -77,16 +77,16 @@ export async function POST(request: NextRequest) {
     }
     const cui: DUser = {
       ...(storedUser as unknown as DUser),
-      name: body.name,
-      avatar: body.avatar,
-      email: body.email,
-      twitter: body.twitter,
-      github: body.github,
-      discord: body.discord,
-      telegram: body.telegram,
-      medium: body.medium,
-      delegate_statement: body.delegate_statement,
-      additional: body.additional,
+      name: body.name ?? '',
+      avatar: body.avatar ?? '',
+      email: body.email ?? '',
+      twitter: body.twitter ?? '',
+      github: body.github ?? '',
+      discord: body.discord ?? '',
+      telegram: body.telegram ?? '',
+      medium: body.medium ?? '',
+      delegate_statement: body.delegate_statement ?? '',
+      additional: body.additional ?? '',
       utime: new Date().toISOString(),
     };
     await sql`
