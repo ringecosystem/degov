@@ -220,6 +220,7 @@ export default function ActionGroup({
       const queuedBlockTimestamp = proposalQueuedById?.blockTimestamp
         ? BigInt(proposalQueuedById?.blockTimestamp)
         : undefined;
+
       const timeLockDelay = govParams?.timeLockDelay
         ? BigInt(govParams?.timeLockDelay * 1000n)
         : undefined;

@@ -65,25 +65,37 @@ export const proposalService = {
     const response = await request<Types.ProposalCanceledByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_CANCELED_BY_ID,
-      { id }
+      {
+        where: {
+          proposalId_eq: id,
+        },
+      }
     );
-    return response?.proposalCanceledById;
+    return response?.proposalCanceleds?.[0];
   },
   getProposalExecutedById: async (endpoint: string, id: string) => {
     const response = await request<Types.ProposalExecutedByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_EXECUTED_BY_ID,
-      { id }
+      {
+        where: {
+          proposalId_eq: id,
+        },
+      }
     );
-    return response?.proposalExecutedById;
+    return response?.proposalExecuteds?.[0];
   },
   getProposalQueuedById: async (endpoint: string, id: string) => {
     const response = await request<Types.ProposalQueuedByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_QUEUED_BY_ID,
-      { id }
+      {
+        where: {
+          proposalId_eq: id,
+        },
+      }
     );
-    return response?.proposalQueuedById;
+    return response?.proposalQueueds?.[0];
   },
 };
 

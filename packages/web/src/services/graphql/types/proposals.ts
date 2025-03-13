@@ -53,7 +53,7 @@ export type ProposalCanceledByIdItem = {
   transactionHash: string;
 };
 export type ProposalCanceledByIdResponse = {
-  proposalCanceledById: ProposalCanceledByIdItem;
+  proposalCanceleds: ProposalCanceledByIdItem[];
 };
 
 // Executed
@@ -65,7 +65,7 @@ export type ProposalExecutedByIdItem = {
   transactionHash: string;
 };
 export type ProposalExecutedByIdResponse = {
-  proposalExecutedById: ProposalExecutedByIdItem;
+  proposalExecuteds: ProposalExecutedByIdItem[];
 };
 
 // Queued
@@ -78,5 +78,5 @@ export type ProposalQueuedByIdItem = {
   transactionHash: string;
 };
 export type ProposalQueuedByIdResponse = {
-  proposalQueuedById: ProposalQueuedByIdItem;
+  proposalQueueds: ProposalQueuedByIdItem[];
 };

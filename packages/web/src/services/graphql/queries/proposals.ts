@@ -52,8 +52,8 @@ export const GET_ALL_PROPOSALS_TOTAL = gql`
 
 // proposalCanceledById
 export const GET_PROPOSAL_CANCELED_BY_ID = gql`
-  query GetProposalCanceledById($id: String!) {
-    proposalCanceledById(id: $id) {
+  query proposalCanceleds($where: ProposalCanceledWhereInput) {
+    proposalCanceleds(where: $where) {
       id
       blockNumber
       blockTimestamp
@@ -65,8 +65,8 @@ export const GET_PROPOSAL_CANCELED_BY_ID = gql`
 
 // proposalExecutedById
 export const GET_PROPOSAL_EXECUTED_BY_ID = gql`
-  query GetProposalExecutedById($id: String!) {
-    proposalExecutedById(id: $id) {
+  query GetProposalExecutedById($where: ProposalExecutedWhereInput) {
+    proposalExecuteds(where: $where) {
       blockNumber
       blockTimestamp
       id
@@ -78,8 +78,8 @@ export const GET_PROPOSAL_EXECUTED_BY_ID = gql`
 
 // proposalQueuedById
 export const GET_PROPOSAL_QUEUED_BY_ID = gql`
-  query GetProposalQueuedById($id: String!) {
-    proposalQueuedById(id: $id) {
+  query GetProposalQueuedById($where: ProposalQueuedWhereInput) {
+    proposalQueueds(where: $where) {
       blockNumber
       blockTimestamp
       etaSeconds
