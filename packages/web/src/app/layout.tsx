@@ -44,7 +44,7 @@ export default function RootLayout({
                 <Aside />
                 <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
                   <Header />
-                  <div className="mx-auto w-full flex-1 p-[30px] gap-[20px] flex flex-col">
+                  <div className="mx-auto w-full flex-1 p-[30px] gap-[20px] flex flex-col max-w-[1400px]">
                     <Alert />
                     {children}
                   </div>
