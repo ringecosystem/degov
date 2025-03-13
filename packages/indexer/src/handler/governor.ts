@@ -239,9 +239,11 @@ export class GovernorHandler {
       proposal.metricsVotesWeightForSum =
         BigInt(proposal.metricsVotesWeightForSum ?? 0) + votesWeightForSum;
       proposal.metricsVotesWeightAgainstSum =
-        BigInt(proposal.metricsVotesWeightAgainstSum ?? 0) + votesWeightForSum;
+        BigInt(proposal.metricsVotesWeightAgainstSum ?? 0) +
+        votesWeightAgainstSum;
       proposal.metricsVotesWeightAbstainSum =
-        BigInt(proposal.metricsVotesWeightAbstainSum ?? 0) + votesWeightForSum;
+        BigInt(proposal.metricsVotesWeightAbstainSum ?? 0) +
+        votesWeightAbstainSum;
       await this.ctx.store.save(proposal);
 
       vcg.proposal = proposal;
