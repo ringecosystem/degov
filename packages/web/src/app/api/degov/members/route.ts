@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     if (inputCheckpoint) {
       try {
         checkpoint = new Date(inputCheckpoint).toISOString();
-      } catch (e: any) {
+      } catch (e) {
         console.warn(
           `user provided wrong checkpoint date ${inputCheckpoint} : ${e}`
         );
