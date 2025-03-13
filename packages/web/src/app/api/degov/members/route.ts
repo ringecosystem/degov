@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const inputLimit = nextUrl.searchParams.get("limit");
     const inputCheckpoint = nextUrl.searchParams.get("checkpoint");
     const limit = Number(inputLimit ?? 10);
-    let checkpoint = new Date(0).toISOString();
+    let checkpoint = new Date().toISOString();
     if (inputCheckpoint) {
       try {
         checkpoint = new Date(inputCheckpoint).toISOString();
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     const members = await sql`
-    select * from d_user where ctime>${checkpoint}
+    select * from d_user where ctime<${checkpoint}
     order by ctime desc
     limit ${limit}
     `;
