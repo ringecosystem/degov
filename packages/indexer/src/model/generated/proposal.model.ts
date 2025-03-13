@@ -50,14 +50,14 @@ export class Proposal {
     voters!: VoteCastGroup[]
 
     @IntColumn_({nullable: true})
-    votesCount!: number | undefined | null
+    metricsVotesCount!: number | undefined | null
 
     @BigIntColumn_({nullable: true})
-    votesWeightForSum!: bigint | undefined | null
+    metricsVotesWeightForSum!: bigint | undefined | null
 
     @BigIntColumn_({nullable: true})
-    votesWeightAgainstSum!: bigint | undefined | null
+    metricsVotesWeightAgainstSum!: bigint | undefined | null
 
     @BigIntColumn_({nullable: true})
-    votesWeightAbstainSum!: bigint | undefined | null
+    metricsVotesWeightAbstainSum!: bigint | undefined | null
 }

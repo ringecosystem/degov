@@ -234,14 +234,14 @@ export class GovernorHandler {
     if (proposal) {
       const voters = [...(proposal.voters || []), vcg];
       proposal.voters = voters;
-      proposal.votesCount = Number(proposal.votesCount ?? 0) + 1;
+      proposal.metricsVotesCount = Number(proposal.metricsVotesCount ?? 0) + 1;
 
-      proposal.votesWeightForSum =
-        BigInt(proposal.votesWeightForSum ?? 0) + votesWeightForSum;
-      proposal.votesWeightAgainstSum =
-        BigInt(proposal.votesWeightAgainstSum ?? 0) + votesWeightForSum;
-      proposal.votesWeightAbstainSum =
-        BigInt(proposal.votesWeightAbstainSum ?? 0) + votesWeightForSum;
+      proposal.metricsVotesWeightForSum =
+        BigInt(proposal.metricsVotesWeightForSum ?? 0) + votesWeightForSum;
+      proposal.metricsVotesWeightAgainstSum =
+        BigInt(proposal.metricsVotesWeightAgainstSum ?? 0) + votesWeightForSum;
+      proposal.metricsVotesWeightAbstainSum =
+        BigInt(proposal.metricsVotesWeightAbstainSum ?? 0) + votesWeightForSum;
       await this.ctx.store.save(proposal);
 
       vcg.proposal = proposal;

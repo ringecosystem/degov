@@ -124,10 +124,10 @@ type Proposal @entity {
   transactionHash: String!
   voters: [VoteCastGroup!] @derivedFrom(field: "proposal")
 
-  votesCount: Int
-  votesWeightForSum: BigInt
-  votesWeightAgainstSum: BigInt
-  votesWeightAbstainSum: BigInt
+  metricsVotesCount: Int
+  metricsVotesWeightForSum: BigInt
+  metricsVotesWeightAgainstSum: BigInt
+  metricsVotesWeightAbstainSum: BigInt
 }
 
 type Delegate @entity {
