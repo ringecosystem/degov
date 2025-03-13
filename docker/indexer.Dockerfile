@@ -17,6 +17,7 @@ ENV DEGOV_CONFIG_PATH=/app/degov.yml
 
 RUN npm i -g @subsquid/cli \
   && yarn install \
+  && npx sqd codegen \
   && yarn build \
   && yarn cache clean \
   && npm cache clean --force
