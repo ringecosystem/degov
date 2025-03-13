@@ -12,6 +12,7 @@ import {
   VoteCastGroup,
   VoteCastWithParams,
 } from "../model";
+import { MetricsId } from "../types";
 
 export class GovernorHandler {
   constructor(private readonly ctx: DataHandlerContext<any, any>) {}
@@ -263,18 +264,16 @@ export class GovernorHandler {
   }
 
   private async storeGlobalDataMetric(options: DataMetricOptions) {
-    const metricId = "global";
-
     const storedDataMetric: DataMetric | undefined =
       await this.ctx.store.findOne(DataMetric, {
         where: {
-          id: metricId,
+          id: MetricsId.global,
         },
       });
     const dm = storedDataMetric
       ? storedDataMetric
       : new DataMetric({
-          id: metricId,
+          id: MetricsId.global,
         });
     if (!storedDataMetric) {
       await this.ctx.store.insert(dm);
@@ -288,14 +287,11 @@ export class GovernorHandler {
       (dm.votesWithoutParamsCount ?? 0) +
       (options.votesWithoutParamsCount ?? 0);
     dm.votesWeightForSum =
-      BigInt(dm.votesWeightForSum ?? 0) +
-      BigInt(options.votesWeightForSum ?? 0);
+      (dm.votesWeightForSum ?? 0n) + (options.votesWeightForSum ?? 0n);
     dm.votesWeightAgainstSum =
-      BigInt(dm.votesWeightAgainstSum ?? 0) +
-      BigInt(options.votesWeightAgainstSum ?? 0);
+      (dm.votesWeightAgainstSum ?? 0n) + (options.votesWeightAgainstSum ?? 0n);
     dm.votesWeightAbstainSum =
-      BigInt(dm.votesWeightAbstainSum ?? 0) +
-      BigInt(options.votesWeightAbstainSum ?? 0);
+      (dm.votesWeightAbstainSum ?? 0n) + (options.votesWeightAbstainSum ?? 0n);
 
     await this.ctx.store.save(dm);
   }

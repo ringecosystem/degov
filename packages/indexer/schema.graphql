@@ -22,6 +22,17 @@ type DelegateVotesChanged @entity {
   transactionHash: String!
 }
 
+type TokenTransfer @entity {
+  id: ID!
+  from: String!
+  to: String!
+  value: BigInt!
+  standard: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
 ### === igovernor
 
 type ProposalCanceled @entity {
@@ -91,7 +102,7 @@ type VoteCastWithParams @entity {
 }
 
 
-### ====== proposal
+### ====== custom
 
 type VoteCastGroup @entity {
   id: ID!
@@ -130,7 +141,21 @@ type Proposal @entity {
   metricsVotesWeightAbstainSum: BigInt
 }
 
-type Delegate @entity {
+
+type DataMetric @entity {
+  id: ID! # global (or chain id?)
+  proposalsCount: Int
+  votesCount: Int
+  votesWithParamsCount: Int
+  votesWithoutParamsCount: Int
+  votesWeightForSum: BigInt
+  votesWeightAgainstSum: BigInt
+  votesWeightAbstainSum: BigInt
+  powerSum: BigInt
+}
+
+
+type DelegateRolling @entity {
   id: ID! # tx hash
   delegator: String! # address
   fromDelegate: String! # address
@@ -146,15 +171,13 @@ type Delegate @entity {
   toNewVotes: BigInt # uint256
 }
 
-### ====== proposal
+type Delegate @entity {
+  id: ID! # tx hash
+  delegator: String! # address
+  type: String! # delegate or transfer
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
 
-type DataMetric @entity {
-  id: ID! # global (or chain id?)
-  proposalsCount: Int
-  votesCount: Int
-  votesWithParamsCount: Int
-  votesWithoutParamsCount: Int
-  votesWeightForSum: BigInt
-  votesWeightAgainstSum: BigInt
-  votesWeightAbstainSum: BigInt
+  votes: BigInt!
 }

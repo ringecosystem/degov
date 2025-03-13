@@ -29,4 +29,7 @@ export class DataMetric {
 
     @BigIntColumn_({nullable: true})
     votesWeightAbstainSum!: bigint | undefined | null
+
+    @BigIntColumn_({nullable: true})
+    powerSum!: bigint | undefined | null
 }
