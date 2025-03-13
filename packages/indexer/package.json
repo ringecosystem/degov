@@ -4,9 +4,8 @@
   "private": true,
   "scripts": {
     "generate:config": "zx scripts/generate-config.mjs",
-    "codegen": "npx sqd codegen",
     "migrate:db": "zx scripts/sqd-migration.mjs",
-    "build": "npm run generate:config && npm run codegen && rm -rf lib && tsc"
+    "build": "npm run generate:config && rm -rf lib && tsc"
   },
   "dependencies": {
     "@subsquid/evm-abi": "^0.3.0",
