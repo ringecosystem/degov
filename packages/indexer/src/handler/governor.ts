@@ -2,6 +2,7 @@ import { Log } from "../processor";
 import * as igovernorAbi from "../abi/igovernor";
 import { DataHandlerContext } from "@subsquid/evm-processor";
 import {
+  DataMetric,
   Proposal,
   ProposalCanceled,
   ProposalCreated,
@@ -100,6 +101,10 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(proposal);
+
+    await this.storeGlobalDataMetric({
+      proposalsCount: 1,
+    });
   }
 
   private async storeProposalQueued(eventLog: Log) {
@@ -158,7 +163,7 @@ export class GovernorHandler {
       id: eventLog.id,
       type: "vote-cast-without-params",
       voter: event.voter,
-      // proposalId: event.proposalId,
+      refProposalId: event.proposalId,
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -166,24 +171,7 @@ export class GovernorHandler {
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
-
-    const proposal: Proposal | undefined = await this.ctx.store.findOne(
-      Proposal,
-      {
-        where: {
-          proposalId: event.proposalId,
-        },
-      }
-    );
-    if (proposal) {
-      const voters = [...(proposal.voters || []), vcg];
-      proposal.voters = voters;
-      await this.ctx.store.save(proposal);
-
-      vcg.proposal = proposal;
-    }
-
-    await this.ctx.store.insert(vcg);
+    await this.storeVoteCastGroup(vcg);
   }
 
   private async storeVoteCastWithParams(eventLog: Log) {
@@ -206,7 +194,7 @@ export class GovernorHandler {
       id: eventLog.id,
       type: "vote-cast-with-params",
       voter: event.voter,
-      // proposalId: event.proposalId,
+      refProposalId: event.proposalId,
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -215,22 +203,108 @@ export class GovernorHandler {
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
+    await this.storeVoteCastGroup(vcg);
+  }
 
+  private async storeVoteCastGroup(vcg: VoteCastGroup) {
     const proposal: Proposal | undefined = await this.ctx.store.findOne(
       Proposal,
       {
         where: {
-          proposalId: event.proposalId,
+          proposalId: vcg.refProposalId,
         },
       }
     );
+
+    let votesWeightForSum: bigint = 0n;
+    let votesWeightAgainstSum: bigint = 0n;
+    let votesWeightAbstainSum: bigint = 0n;
+    switch (vcg.support) {
+      case 0:
+        votesWeightForSum = BigInt(vcg.weight);
+        break;
+      case 1:
+        votesWeightAgainstSum = BigInt(vcg.weight);
+        break;
+      case 2:
+        votesWeightAbstainSum = BigInt(vcg.weight);
+        break;
+    }
+
     if (proposal) {
       const voters = [...(proposal.voters || []), vcg];
       proposal.voters = voters;
+      proposal.votesCount = Number(proposal.votesCount ?? 0) + 1;
+
+      proposal.votesWeightForSum =
+        BigInt(proposal.votesWeightForSum ?? 0) + votesWeightForSum;
+      proposal.votesWeightAgainstSum =
+        BigInt(proposal.votesWeightAgainstSum ?? 0) + votesWeightForSum;
+      proposal.votesWeightAbstainSum =
+        BigInt(proposal.votesWeightAbstainSum ?? 0) + votesWeightForSum;
       await this.ctx.store.save(proposal);
 
       vcg.proposal = proposal;
     }
+
+    // store votes group
     await this.ctx.store.insert(vcg);
+    // store metric
+    await this.storeGlobalDataMetric({
+      votesCount: 1,
+      votesWithParamsCount: +(vcg.type === "vote-cast-with-params"),
+      votesWithoutParamsCount: +(vcg.type === "vote-cast-without-params"),
+      votesWeightForSum,
+      votesWeightAgainstSum,
+      votesWeightAbstainSum,
+    });
   }
+
+  private async storeGlobalDataMetric(options: DataMetricOptions) {
+    const metricId = "global";
+
+    const storedDataMetric: DataMetric | undefined =
+      await this.ctx.store.findOne(DataMetric, {
+        where: {
+          id: metricId,
+        },
+      });
+    const dm = storedDataMetric
+      ? storedDataMetric
+      : new DataMetric({
+          id: metricId,
+        });
+    if (!storedDataMetric) {
+      await this.ctx.store.insert(dm);
+    }
+    dm.proposalsCount =
+      (dm.proposalsCount ?? 0) + (options.proposalsCount ?? 0);
+    dm.votesCount = (dm.votesCount ?? 0) + (options.votesCount ?? 0);
+    dm.votesWithParamsCount =
+      (dm.votesWithParamsCount ?? 0) + (options.votesWithParamsCount ?? 0);
+    dm.votesWithoutParamsCount =
+      (dm.votesWithoutParamsCount ?? 0) +
+      (options.votesWithoutParamsCount ?? 0);
+    dm.votesWeightForSum =
+      BigInt(dm.votesWeightForSum ?? 0) +
+      BigInt(options.votesWeightForSum ?? 0);
+    dm.votesWeightAgainstSum =
+      BigInt(dm.votesWeightAgainstSum ?? 0) +
+      BigInt(options.votesWeightAgainstSum ?? 0);
+    dm.votesWeightAbstainSum =
+      BigInt(dm.votesWeightAbstainSum ?? 0) +
+      BigInt(options.votesWeightAbstainSum ?? 0);
+
+    await this.ctx.store.save(dm);
+  }
+}
+
+interface DataMetricOptions {
+  proposalsCount?: number;
+  votesCount?: number;
+  votesWithParamsCount?: number;
+  votesWithoutParamsCount?: number;
+  votesWeightForSum?: bigint;
+  votesWeightAgainstSum?: bigint;
+  votesWeightAbstainSum?: bigint;
 }
