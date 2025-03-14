@@ -15,14 +15,16 @@ export async function POST(request: NextRequest) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       return NextResponse.json(
-        Resp.err("missing database please contact admin")
+        Resp.err("missing database please contact admin"),
+        { status: 400 }
       );
     }
 
     const jwtSecretKey = process.env.JWT_SECRET_KEY;
     if (!jwtSecretKey) {
       return NextResponse.json(
-        Resp.err("please contact admin about login issue, missing key")
+        Resp.err("please contact admin about login issue, missing key"),
+        { status: 400 }
       );
     }
 
