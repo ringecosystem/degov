@@ -15,14 +15,10 @@ export const GET_DELEGATES = gql`
     ) {
       blockNumber
       blockTimestamp
-      delegator
       fromDelegate
-      fromNewVotes
-      fromPreviousVotes
       id
+      power
       toDelegate
-      toNewVotes
-      toPreviousVotes
       transactionHash
     }
   }

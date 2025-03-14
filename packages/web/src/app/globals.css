@@ -39,16 +39,15 @@ body {
     --danger: 359 100% 62%;
 
     --pending: var(--warning);
-    --active: 221 83% 60%;
+    --active: 197 100% 50%;
     --succeeded: 132 100% 36%;
-    --executed: 276 100% 44%;
+    --executed: 276 100% 67%;
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
 
     --radius: 0.5rem;
     --skeleton-bg: 0 0% 15%;
     
-    /* 滚动条变量 */
     --scrollbar-track: hsl(var(--muted));
     --scrollbar-thumb: hsl(var(--secondary));
     --scrollbar-thumb-hover: hsl(var(--border));

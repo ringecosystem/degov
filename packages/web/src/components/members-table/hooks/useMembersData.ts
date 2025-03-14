@@ -19,6 +19,10 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
         return undefined;
       }
 
+      if (lastPage.data.length < pageSize) {
+        return undefined;
+      }
+
       const lastItem = lastPage.data[lastPage.data.length - 1];
       if (!lastItem?.ctime) {
         return undefined;
