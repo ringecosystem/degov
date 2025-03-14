@@ -8,7 +8,7 @@ import type { NextRequest } from "next/server";
 export async function POST(request: NextRequest) {
   try {
     const body: string[] = await request.json();
-    if (!body || body.length) {
+    if (!body || !body.length) {
       return NextResponse.json(Resp.err("missing request body"), {
         status: 400,
       });
