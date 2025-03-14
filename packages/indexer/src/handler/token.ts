@@ -2,6 +2,7 @@ import { DataHandlerContext } from "@subsquid/evm-processor";
 import { Log } from "../processor";
 import * as itokens from "../abi/itoken";
 import {
+  Contributor,
   DataMetric,
   Delegate,
   DelegateChanged,
@@ -175,15 +176,15 @@ export class TokenHandler {
     options?: { checkExists?: boolean }
   ) {
     // store delegate
-    const currentDelegateId =
-      `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`.toLowerCase();
-    currentDelegate.id = currentDelegateId;
+    currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
+    currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
+    currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
 
     const storedDelegate: Delegate | undefined = await this.ctx.store.findOne(
       Delegate,
       {
         where: {
-          id: currentDelegateId,
+          id: currentDelegate.id,
         },
       }
     );
@@ -203,6 +204,16 @@ export class TokenHandler {
       await this.ctx.store.save(storedDelegate);
     }
 
+    // store contributor
+    const contributor = new Contributor({
+      id: currentDelegate.toDelegate,
+      blockNumber: currentDelegate.blockNumber,
+      blockTimestamp: currentDelegate.blockTimestamp,
+      transactionHash: currentDelegate.transactionHash,
+      power: currentDelegate.power,
+    });
+    await this.storeContributor(contributor);
+
     // store metrics
     const storedDataMetric: DataMetric | undefined =
       await this.ctx.store.findOne(DataMetric, {
@@ -220,5 +231,25 @@ export class TokenHandler {
     }
     dm.powerSum = (dm.powerSum ?? 0n) + currentDelegate.power;
     await this.ctx.store.save(dm);
+  }
+
+  private async storeContributor(contributor: Contributor) {
+    const storedContributor: Contributor | undefined =
+      await this.ctx.store.findOne(Contributor, {
+        where: {
+          id: contributor.id,
+        },
+      });
+    if (!storedContributor) {
+      await this.ctx.store.insert(storedContributor);
+      return;
+    }
+    storedContributor.blockNumber = contributor.blockNumber;
+    storedContributor.blockTimestamp = contributor.blockTimestamp;
+    storedContributor.transactionHash = contributor.transactionHash;
+
+    storedContributor.power = storedContributor.power + contributor.power;
+
+    await this.ctx.store.save(storedContributor);
   }
 }
