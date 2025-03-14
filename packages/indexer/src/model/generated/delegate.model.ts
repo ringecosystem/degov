@@ -10,10 +10,10 @@ export class Delegate {
     id!: string
 
     @StringColumn_({nullable: false})
-    delegator!: string
+    fromDelegate!: string
 
     @StringColumn_({nullable: false})
-    type!: string
+    toDelegate!: string
 
     @BigIntColumn_({nullable: false})
     blockNumber!: bigint
@@ -25,5 +25,5 @@ export class Delegate {
     transactionHash!: string
 
     @BigIntColumn_({nullable: false})
-    votes!: bigint
+    power!: bigint
 }

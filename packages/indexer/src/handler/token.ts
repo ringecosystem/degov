@@ -81,6 +81,7 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+    // store rolling
     await this.updateDelegateRolling(entity);
   }
 
@@ -93,26 +94,41 @@ export class TokenHandler {
       });
     if (!delegateRolling) return;
 
+    let delegate;
+    let checkExists = false;
     if (options.delegate === delegateRolling.fromDelegate) {
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
+
+      delegate = new Delegate({
+        fromDelegate: delegateRolling.fromDelegate,
+        toDelegate: delegateRolling.fromDelegate,
+        blockNumber: options.blockNumber,
+        blockTimestamp: options.blockTimestamp,
+        transactionHash: options.transactionHash,
+        power: options.newVotes - options.previousVotes,
+      });
+      checkExists = true;
     }
     if (options.delegate === delegateRolling.toDelegate) {
       delegateRolling.toNewVotes = options.newVotes;
       delegateRolling.toPreviousVotes = options.previousVotes;
-    }
-    await this.ctx.store.save(delegateRolling);
 
-    const delegate = new Delegate({
-      id: options.delegate,
-      delegator: options.delegate,
-      blockNumber: options.blockNumber,
-      blockTimestamp: options.blockTimestamp,
-      transactionHash: options.transactionHash,
-      type: "delegate",
-      votes: options.newVotes - options.previousVotes,
-    });
-    await this.storeDelegate(delegate);
+      delegate = new Delegate({
+        fromDelegate: delegateRolling.fromDelegate,
+        toDelegate: delegateRolling.toDelegate,
+        blockNumber: options.blockNumber,
+        blockTimestamp: options.blockTimestamp,
+        transactionHash: options.transactionHash,
+        power: options.newVotes - options.previousVotes,
+      });
+    }
+    if (!delegate) {
+      return;
+    }
+
+    await this.ctx.store.save(delegateRolling);
+    await this.storeDelegate(delegate, { checkExists });
   }
 
   private async storeTokenTransfer(eventLog: Log) {
@@ -135,31 +151,34 @@ export class TokenHandler {
     await this.ctx.store.insert(entity);
 
     const fromDelegate = new Delegate({
-      id: event.from,
-      delegator: event.from,
+      fromDelegate: event.from,
+      toDelegate: event.from,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
-      type: "transfer",
-      votes: isErc721 ? -1n : -event.value,
+      power: isErc721 ? -1n : -event.value,
     });
     const toDelegate = new Delegate({
-      id: event.to,
-      delegator: event.to,
+      fromDelegate: event.to,
+      toDelegate: event.to,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
-      type: "transfer",
-      votes: isErc721 ? 1n : event.value,
+      power: isErc721 ? 1n : event.value,
     });
-    await this.storeDelegate(fromDelegate);
-    await this.storeDelegate(toDelegate);
+    await this.storeDelegate(fromDelegate, { checkExists: true });
+    await this.storeDelegate(toDelegate, { checkExists: true });
   }
 
-  private async storeDelegate(currentDelegate: Delegate) {
+  private async storeDelegate(
+    currentDelegate: Delegate,
+    options?: { checkExists?: boolean }
+  ) {
     // store delegate
-    const currentDelegateId = currentDelegate.id.toLowerCase();
-    currentDelegate.delegator = currentDelegate.delegator.toLowerCase();
+    const currentDelegateId =
+      `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`.toLowerCase();
+    currentDelegate.id = currentDelegateId;
+
     const storedDelegate: Delegate | undefined = await this.ctx.store.findOne(
       Delegate,
       {
@@ -168,19 +187,21 @@ export class TokenHandler {
         },
       }
     );
+
+    // store delegate
     if (!storedDelegate) {
-      if (currentDelegate.type === "transfer") {
+      if (options?.checkExists ?? false) {
         return;
       }
 
       await this.ctx.store.insert(currentDelegate);
-      return;
+    } else {
+      storedDelegate.power = storedDelegate.power + currentDelegate.power;
+      storedDelegate.blockNumber = currentDelegate.blockNumber;
+      storedDelegate.blockTimestamp = currentDelegate.blockTimestamp;
+      storedDelegate.transactionHash = currentDelegate.transactionHash;
+      await this.ctx.store.save(storedDelegate);
     }
-    storedDelegate.votes = storedDelegate.votes + currentDelegate.votes;
-    storedDelegate.blockNumber = currentDelegate.blockNumber;
-    storedDelegate.blockTimestamp = currentDelegate.blockTimestamp;
-    storedDelegate.transactionHash = currentDelegate.transactionHash;
-    await this.ctx.store.save(storedDelegate);
 
     // store metrics
     const storedDataMetric: DataMetric | undefined =
@@ -197,7 +218,7 @@ export class TokenHandler {
     if (!storedDataMetric) {
       await this.ctx.store.insert(dm);
     }
-    dm.powerSum = (dm.powerSum ?? 0n) + currentDelegate.votes;
+    dm.powerSum = (dm.powerSum ?? 0n) + currentDelegate.power;
     await this.ctx.store.save(dm);
   }
 }

@@ -173,11 +173,11 @@ type DelegateRolling @entity {
 
 type Delegate @entity {
   id: ID! # tx hash
-  delegator: String! # address
-  type: String! # delegate or transfer
+  fromDelegate: String! # address
+  toDelegate: String!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
 
-  votes: BigInt!
+  power: BigInt!
 }
