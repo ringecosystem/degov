@@ -12,7 +12,7 @@ RUN corepack enable pnpm \
   && pnpm install \
   && pnpm build:web
 
-## orgnaize stanslone
+## orgnaize standalone
 RUN cd packages/web \
   && cp -r public .next/standalone/packages/web \
   && cd .next \
