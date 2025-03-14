@@ -236,6 +236,12 @@ export class GovernorHandler {
       const voters = [...(proposal.voters || []), vcg];
       proposal.voters = voters;
       proposal.metricsVotesCount = Number(proposal.metricsVotesCount ?? 0) + 1;
+      proposal.metricsVotesWithParamsCount =
+        (proposal.metricsVotesWithParamsCount ?? 0) +
+        +(vcg.type === "vote-cast-with-params");
+      proposal.metricsVotesWithoutParamsCount =
+        (proposal.metricsVotesWithoutParamsCount ?? 0) +
+        +(vcg.type === "vote-cast-without-params");
 
       proposal.metricsVotesWeightForSum =
         BigInt(proposal.metricsVotesWeightForSum ?? 0) + votesWeightForSum;

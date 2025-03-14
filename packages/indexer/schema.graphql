@@ -136,6 +136,8 @@ type Proposal @entity {
   voters: [VoteCastGroup!] @derivedFrom(field: "proposal")
 
   metricsVotesCount: Int
+  metricsVotesWithParamsCount: Int
+  metricsVotesWithoutParamsCount: Int
   metricsVotesWeightForSum: BigInt
   metricsVotesWeightAgainstSum: BigInt
   metricsVotesWeightAbstainSum: BigInt

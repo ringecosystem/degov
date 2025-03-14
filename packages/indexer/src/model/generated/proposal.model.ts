@@ -52,6 +52,12 @@ export class Proposal {
     @IntColumn_({nullable: true})
     metricsVotesCount!: number | undefined | null
 
+    @IntColumn_({nullable: true})
+    metricsVotesWithParamsCount!: number | undefined | null
+
+    @IntColumn_({nullable: true})
+    metricsVotesWithoutParamsCount!: number | undefined | null
+
     @BigIntColumn_({nullable: true})
     metricsVotesWeightForSum!: bigint | undefined | null
 
