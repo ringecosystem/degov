@@ -69,33 +69,6 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
     return proposalsQuery.data?.pages.flat() || [];
   }, [proposalsQuery.data]);
 
-  const voteContracts = useMemo(() => {
-    const proposalVotesContract = {
-      address: daoConfig?.contracts?.governor as `0x${string}`,
-      abi: GovernorAbi,
-      functionName: "proposalVotes",
-      chainId: daoConfig?.chain?.id,
-    } as const;
-
-    return flattenedData.map((item) => ({
-      ...proposalVotesContract,
-      args: [item.proposalId],
-    }));
-  }, [flattenedData, daoConfig?.contracts?.governor, daoConfig?.chain?.id]);
-
-  const {
-    data: proposalVotes,
-    isFetching: proposalVotesLoading,
-    error: proposalVotesError,
-  } = useReadContracts({
-    contracts: voteContracts,
-    query: {
-      enabled: flattenedData.length > 0 && !!daoConfig?.chain?.id,
-      staleTime: 60 * 1000,
-      refetchOnWindowFocus: false,
-    },
-  });
-
   const statusContracts = useMemo(() => {
     const proposalStatusContract = {
       address: daoConfig?.contracts?.governor as `0x${string}`,
@@ -122,21 +95,6 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
       refetchOnWindowFocus: false,
     },
   });
-
-  const formattedVotes = useMemo(
-    () =>
-      flattenedData.reduce((acc, proposal, index) => {
-        if (proposalVotes?.[index]?.result) {
-          acc[proposal.id] = {
-            againstVotes: proposalVotes?.[index].result?.[0] ?? BigInt(0),
-            forVotes: proposalVotes?.[index].result?.[1] ?? BigInt(0),
-            abstainVotes: proposalVotes?.[index].result?.[2] ?? BigInt(0),
-          };
-        }
-        return acc;
-      }, {} as Record<string, ProposalVotes>),
-    [flattenedData, proposalVotes]
-  );
 
   const formattedStatuses = useMemo(
     () =>
@@ -169,11 +127,6 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
       isPending: proposalsQuery.isPending,
       isFetchingNextPage: proposalsQuery.isFetchingNextPage,
       error: proposalsQuery.error,
-    },
-    proposalVotesState: {
-      data: formattedVotes,
-      isFetching: proposalVotesLoading,
-      error: proposalVotesError,
     },
     proposalStatusState: {
       data: formattedStatuses,

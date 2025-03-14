@@ -31,34 +31,12 @@ export const proposalService = {
     return response?.proposals ?? [];
   },
 
-  getProposalTotal: async (endpoint: string) => {
-    const results: string[] = [];
-    const batchSize = 100;
-    let offset = 0;
-    let success = false;
-    while (!success) {
-      const response = await request<Types.ProposalTotalResponse>(
-        endpoint,
-        Queries.GET_ALL_PROPOSALS_TOTAL,
-        {
-          limit: batchSize,
-          offset: offset,
-        }
-      );
-      const batch = response?.proposals ?? [];
-
-      if (batch.length === 0) {
-        success = true;
-        break;
-      }
-      results.push(...batch);
-      if (batch.length < batchSize) {
-        success = true;
-        break;
-      }
-      offset += batchSize;
-    }
-    return results?.length ?? 0;
+  getProposalMetrics: async (endpoint: string) => {
+    const response = await request<Types.ProposalMetricsResponse>(
+      endpoint,
+      Queries.GET_PROPOSAL_METRICS
+    );
+    return response?.dataMetrics?.[0];
   },
 
   getProposalCanceledById: async (endpoint: string, id: string) => {
@@ -171,15 +149,36 @@ export const profileService = {
 };
 
 export const memberService = {
-  getAllMembers: async (): Promise<Types.MemberResponse> => {
+  getMembers: async (
+    checkpoint?: string,
+    limit?: number
+  ): Promise<Types.MemberResponse> => {
     try {
-      const response = await fetch(`/api/degov/members`, {
-        cache: "no-store",
+      const url = new URL("/api/degov/members", window.location.origin);
+
+      if (checkpoint) {
+        url.searchParams.set("checkpoint", checkpoint);
+      }
+
+      if (limit) {
+        url.searchParams.set("limit", limit.toString());
+      }
+
+      const response = await fetch(url.toString(), {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getToken()}`,
         },
       });
+
+      if (response.status === 401) {
+        clearToken();
+        return {
+          code: 401,
+          data: [],
+          message: "Unauthorized",
+        };
+      }
 
       const data = await response.json();
       return data;
@@ -191,6 +190,18 @@ export const memberService = {
         message: (error as Error)?.message || "Failed to fetch members",
       };
     }
+  },
+
+  getMemberTotal: async (): Promise<Types.MemberTotalResponse> => {
+    const response = await fetch(`/api/degov/metrics`, {
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+    const data = await response.json();
+    return data;
   },
 };
 export { Types };

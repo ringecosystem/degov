@@ -28,6 +28,10 @@ export type ProposalItem = {
   values: string[];
   voteEnd: string;
   voteStart: string;
+  metricsVotesWeightAbstainSum: string;
+  metricsVotesWeightAgainstSum: string;
+  metricsVotesWeightForSum: string;
+  metricsVotesCount: string;
   voters: ProposalVoterItem[];
   signatureContent?: string[];
 };
@@ -79,4 +83,19 @@ export type ProposalQueuedByIdItem = {
 };
 export type ProposalQueuedByIdResponse = {
   proposalQueueds: ProposalQueuedByIdItem[];
+};
+
+export type ProposalMetricsItem = {
+  powerSum: string;
+  proposalsCount: string;
+  votesCount: string;
+  votesWeightAbstainSum: string;
+  votesWeightAgainstSum: string;
+  votesWeightForSum: string;
+  votesWithParamsCount: string;
+  votesWithoutParamsCount: string;
+};
+
+export type ProposalMetricsResponse = {
+  dataMetrics: ProposalMetricsItem[];
 };

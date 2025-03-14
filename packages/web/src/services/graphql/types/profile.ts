@@ -19,3 +19,11 @@ export type MemberResponse = {
   data: Member[];
   message: string;
 };
+
+export type MemberTotalResponse = {
+  code: number;
+  data: {
+    member_count: number;
+  };
+  message: string;
+};

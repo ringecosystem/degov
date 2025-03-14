@@ -26,6 +26,10 @@ export const GET_ALL_PROPOSALS = gql`
       values
       voteEnd
       voteStart
+      metricsVotesWeightAbstainSum
+      metricsVotesWeightAgainstSum
+      metricsVotesWeightForSum
+      metricsVotesCount
       voters {
         blockNumber
         blockTimestamp
@@ -86,6 +90,21 @@ export const GET_PROPOSAL_QUEUED_BY_ID = gql`
       id
       proposalId
       transactionHash
+    }
+  }
+`;
+
+export const GET_PROPOSAL_METRICS = gql`
+  query GetProposalMetrics {
+    dataMetrics {
+      powerSum
+      proposalsCount
+      votesCount
+      votesWeightAbstainSum
+      votesWeightAgainstSum
+      votesWeightForSum
+      votesWithParamsCount
+      votesWithoutParamsCount
     }
   }
 `;

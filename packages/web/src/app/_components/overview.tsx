@@ -1,13 +1,12 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { isNumber } from "lodash-es";
-import { useMemo } from "react";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
+import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { useMembersVotingPower } from "@/hooks/useMembersVotingPower";
 import { memberService, proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
 
@@ -26,29 +25,23 @@ export const Overview = () => {
         enabled:
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
+        refetchInterval: DEFAULT_REFETCH_INTERVAL,
       },
     });
 
-  const { data: proposalTotal, isLoading: isProposalTotalLoading } = useQuery({
-    queryKey: ["proposalTotal"],
+  const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
+    queryKey: ["dataMetrics"],
     queryFn: () =>
-      proposalService.getProposalTotal(daoConfig?.indexer?.endpoint ?? ""),
+      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,
+    refetchInterval: DEFAULT_REFETCH_INTERVAL,
   });
 
-  const { data: members, isLoading: isMembersLoading } = useQuery({
-    queryKey: ["members"],
-    queryFn: () => memberService.getAllMembers(),
+  const { data: getMemberTotal, isLoading: isMembersLoading } = useQuery({
+    queryKey: ["getMemberTotal"],
+    queryFn: () => memberService.getMemberTotal(),
+    refetchInterval: DEFAULT_REFETCH_INTERVAL,
   });
-  const { votingPowerMap, isLoading: isVotingPowerLoading } =
-    useMembersVotingPower(members?.data ?? []);
-
-  const totalVotingPower = useMemo(() => {
-    return Object.values(votingPowerMap).reduce(
-      (acc, curr) => acc + curr.raw,
-      0n
-    );
-  }, [votingPowerMap]);
 
   return (
     <div className="flex flex-col gap-[20px]">
@@ -57,13 +50,15 @@ export const Overview = () => {
         <OverviewItem
           title="Proposals"
           icon="/assets/image/proposals-colorful.svg"
-          isLoading={isProposalTotalLoading}
+          isLoading={isProposalMetricsLoading}
         >
           <div className="flex items-center gap-[10px]">
             <p>
               {
                 formatNumberForDisplay(
-                  isNumber(proposalTotal) ? proposalTotal : 0
+                  isNumber(dataMetrics?.proposalsCount)
+                    ? dataMetrics?.proposalsCount
+                    : 0
                 )[0]
               }
             </p>
@@ -74,14 +69,22 @@ export const Overview = () => {
           icon="/assets/image/members-colorful.svg"
           isLoading={isMembersLoading}
         >
-          <p>{formatNumberForDisplay(members?.data?.length ?? 0)[0]}</p>
+          <p>
+            {formatNumberForDisplay(getMemberTotal?.data?.member_count ?? 0)[0]}
+          </p>
         </OverviewItem>
         <OverviewItem
           title="Total voting Power"
           icon="/assets/image/total-vote-colorful.svg"
-          isLoading={isVotingPowerLoading || isMembersLoading}
+          isLoading={isProposalMetricsLoading}
         >
-          <p>{formatTokenAmount(totalVotingPower ?? 0n)?.formatted}</p>
+          <p>
+            {
+              formatTokenAmount(
+                dataMetrics?.powerSum ? BigInt(dataMetrics?.powerSum) : 0n
+              )?.formatted
+            }
+          </p>
         </OverviewItem>
         <OverviewItem
           title="Total Supply"

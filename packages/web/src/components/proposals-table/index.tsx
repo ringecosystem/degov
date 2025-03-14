@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
@@ -59,18 +59,9 @@ export function ProposalsTable({
   address?: Address;
   support?: "1" | "2" | "3";
 }) {
-  const { state, proposalVotesState, proposalStatusState, loadMoreData } =
-    useProposalData(address, support);
-
-  const totalVotes = useCallback(
-    (proposalId: string) => {
-      return (
-        (proposalVotesState?.data?.[proposalId]?.againstVotes ?? 0n) +
-        (proposalVotesState?.data?.[proposalId]?.forVotes ?? 0n) +
-        (proposalVotesState?.data?.[proposalId]?.abstainVotes ?? 0n)
-      );
-    },
-    [proposalVotesState]
+  const { state, proposalStatusState, loadMoreData } = useProposalData(
+    address,
+    support
   );
 
   const columns = useMemo<ColumnType<ProposalItem>[]>(
@@ -114,13 +105,19 @@ export function ProposalsTable({
         key: "votesFor",
         width: "200px",
         render: (record) => {
-          return proposalVotesState?.isFetching ? (
-            <Skeleton className="h-[30px] w-full" />
-          ) : (
+          return (
             <VotePercentage
               status="for"
-              value={proposalVotesState?.data?.[record.id]?.forVotes}
-              total={totalVotes(record.id)}
+              value={
+                record.metricsVotesWeightForSum
+                  ? BigInt(record.metricsVotesWeightForSum)
+                  : 0n
+              }
+              total={
+                record.metricsVotesWeightAgainstSum
+                  ? BigInt(record.metricsVotesWeightAgainstSum)
+                  : 0n
+              }
             />
           );
         },
@@ -130,13 +127,19 @@ export function ProposalsTable({
         key: "votesAgainst",
         width: "200px",
         render: (record) => {
-          return proposalVotesState?.isFetching ? (
-            <Skeleton className="h-[30px] w-full" />
-          ) : (
+          return (
             <VotePercentage
               status="against"
-              value={proposalVotesState?.data?.[record.id]?.againstVotes}
-              total={totalVotes(record.id)}
+              value={
+                record.metricsVotesWeightAgainstSum
+                  ? BigInt(record.metricsVotesWeightAgainstSum)
+                  : 0n
+              }
+              total={
+                record.metricsVotesWeightForSum
+                  ? BigInt(record.metricsVotesWeightForSum)
+                  : 0n
+              }
             />
           );
         },
@@ -146,18 +149,31 @@ export function ProposalsTable({
         key: "totalVotes",
         width: "200px",
         render: (record) => {
-          return proposalVotesState?.isFetching ? (
-            <Skeleton className="h-[30px] w-full" />
-          ) : (
+          const metricsVotesWeightForSum = record?.metricsVotesWeightForSum
+            ? BigInt(record.metricsVotesWeightForSum)
+            : 0n;
+          const metricsVotesWeightAgainstSum =
+            record?.metricsVotesWeightAgainstSum
+              ? BigInt(record.metricsVotesWeightAgainstSum)
+              : 0n;
+          const metricsVotesWeightAbstainSum =
+            record?.metricsVotesWeightAbstainSum
+              ? BigInt(record.metricsVotesWeightAbstainSum)
+              : 0n;
+          return (
             <VoteTotal
-              totalVotes={totalVotes(record.id)}
+              totalVotes={
+                metricsVotesWeightForSum +
+                metricsVotesWeightAgainstSum +
+                metricsVotesWeightAbstainSum
+              }
               totalAddresses={record.voters?.length ?? 0}
             />
           );
         },
       },
     ],
-    [proposalVotesState, proposalStatusState, totalVotes]
+    [proposalStatusState]
   );
 
   return (
