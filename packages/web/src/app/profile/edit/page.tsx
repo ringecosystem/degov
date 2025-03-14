@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount } from "wagmi";
@@ -62,6 +63,7 @@ export function ProfileEditSkeleton() {
   );
 }
 export default function Edit() {
+  const router = useRouter();
   const { address } = useAccount();
   const { signIn, isLoading: isSigningIn } = useSign();
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
@@ -78,7 +80,11 @@ export default function Edit() {
     onSuccess: (data) => {
       switch (data.code) {
         case 0:
-          toast.success("Profile updated successfully");
+          toast.success("Profile updated successfully", {
+            onClose: () => {
+              router.push(`/profile`);
+            },
+          });
           break;
         case 401:
           console.log("401");
