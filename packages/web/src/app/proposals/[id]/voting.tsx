@@ -135,7 +135,7 @@ export function Voting({
         <Button
           className="rounded-[100px]"
           onClick={handleCastVote}
-          disabled={!reason || !proposalId}
+          disabled={!proposalId}
           isLoading={isPending}
         >
           Submit
