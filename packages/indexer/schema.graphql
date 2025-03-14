@@ -22,6 +22,17 @@ type DelegateVotesChanged @entity {
   transactionHash: String!
 }
 
+type TokenTransfer @entity {
+  id: ID!
+  from: String!
+  to: String!
+  value: BigInt!
+  standard: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
 ### === igovernor
 
 type ProposalCanceled @entity {
@@ -91,14 +102,14 @@ type VoteCastWithParams @entity {
 }
 
 
-### ====== proposal
+### ====== custom
 
 type VoteCastGroup @entity {
   id: ID!
   proposal: Proposal!
   type: String!
   voter: String! # address
-  #proposalId: BigInt! # uint256
+  refProposalId: BigInt! # uint256
   support: Int! # uint8
   weight: BigInt! # uint256
   reason: String! # string
@@ -123,9 +134,30 @@ type Proposal @entity {
   blockTimestamp: BigInt!
   transactionHash: String!
   voters: [VoteCastGroup!] @derivedFrom(field: "proposal")
+
+  metricsVotesCount: Int
+  metricsVotesWithParamsCount: Int
+  metricsVotesWithoutParamsCount: Int
+  metricsVotesWeightForSum: BigInt
+  metricsVotesWeightAgainstSum: BigInt
+  metricsVotesWeightAbstainSum: BigInt
 }
 
-type Delegate @entity {
+
+type DataMetric @entity {
+  id: ID! # global (or chain id?)
+  proposalsCount: Int
+  votesCount: Int
+  votesWithParamsCount: Int
+  votesWithoutParamsCount: Int
+  votesWeightForSum: BigInt
+  votesWeightAgainstSum: BigInt
+  votesWeightAbstainSum: BigInt
+  powerSum: BigInt
+}
+
+
+type DelegateRolling @entity {
   id: ID! # tx hash
   delegator: String! # address
   fromDelegate: String! # address
@@ -139,4 +171,15 @@ type Delegate @entity {
 
   toPreviousVotes: BigInt # uint256
   toNewVotes: BigInt # uint256
+}
+
+type Delegate @entity {
+  id: ID! # tx hash
+  fromDelegate: String! # address
+  toDelegate: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+
+  power: BigInt!
 }

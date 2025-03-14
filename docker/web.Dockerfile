@@ -12,6 +12,12 @@ RUN corepack enable pnpm \
   && pnpm install \
   && pnpm build:web
 
+## orgnaize standalone
+RUN cd packages/web \
+  && cp -r public .next/standalone/packages/web \
+  && cd .next \
+  && cp -r static standalone/packages/web/.next
+
 FROM base AS runner
 WORKDIR /app
 
@@ -20,10 +26,7 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/packages/web/public ./public
-
 COPY --from=builder --chown=nextjs:nodejs /app/packages/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/packages/web/.next/static ./.next/static
 
 USER nextjs
 

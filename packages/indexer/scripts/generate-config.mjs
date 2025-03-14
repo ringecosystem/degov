@@ -35,6 +35,7 @@ function extractIndexLog(degovConfig) {
     return {
       name: item,
       address: addr,
+      standard: c.standard,
     };
   });
   return {
@@ -61,6 +62,7 @@ async function writeConfig(indexerConfig) {
     )}`;
     codes.push(code);
   }
+  codes.push('');
   const configCode = codes.join("\n\n");
   console.log(configCode);
   await fs.writeFile("src/config.ts", configCode, "utf-8");

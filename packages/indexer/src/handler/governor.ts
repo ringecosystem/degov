@@ -2,6 +2,7 @@ import { Log } from "../processor";
 import * as igovernorAbi from "../abi/igovernor";
 import { DataHandlerContext } from "@subsquid/evm-processor";
 import {
+  DataMetric,
   Proposal,
   ProposalCanceled,
   ProposalCreated,
@@ -11,6 +12,7 @@ import {
   VoteCastGroup,
   VoteCastWithParams,
 } from "../model";
+import { MetricsId } from "../types";
 
 export class GovernorHandler {
   constructor(private readonly ctx: DataHandlerContext<any, any>) {}
@@ -100,6 +102,10 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(proposal);
+
+    await this.storeGlobalDataMetric({
+      proposalsCount: 1,
+    });
   }
 
   private async storeProposalQueued(eventLog: Log) {
@@ -158,7 +164,7 @@ export class GovernorHandler {
       id: eventLog.id,
       type: "vote-cast-without-params",
       voter: event.voter,
-      // proposalId: event.proposalId,
+      refProposalId: event.proposalId,
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -166,24 +172,7 @@ export class GovernorHandler {
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
-
-    const proposal: Proposal | undefined = await this.ctx.store.findOne(
-      Proposal,
-      {
-        where: {
-          proposalId: event.proposalId,
-        },
-      }
-    );
-    if (proposal) {
-      const voters = [...(proposal.voters || []), vcg];
-      proposal.voters = voters;
-      await this.ctx.store.save(proposal);
-
-      vcg.proposal = proposal;
-    }
-
-    await this.ctx.store.insert(vcg);
+    await this.storeVoteCastGroup(vcg);
   }
 
   private async storeVoteCastWithParams(eventLog: Log) {
@@ -206,7 +195,7 @@ export class GovernorHandler {
       id: eventLog.id,
       type: "vote-cast-with-params",
       voter: event.voter,
-      // proposalId: event.proposalId,
+      refProposalId: event.proposalId,
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -215,22 +204,111 @@ export class GovernorHandler {
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
+    await this.storeVoteCastGroup(vcg);
+  }
 
+  private async storeVoteCastGroup(vcg: VoteCastGroup) {
     const proposal: Proposal | undefined = await this.ctx.store.findOne(
       Proposal,
       {
         where: {
-          proposalId: event.proposalId,
+          proposalId: vcg.refProposalId,
         },
       }
     );
+
+    let votesWeightForSum: bigint = 0n;
+    let votesWeightAgainstSum: bigint = 0n;
+    let votesWeightAbstainSum: bigint = 0n;
+    switch (vcg.support) {
+      case 0:
+        votesWeightForSum = BigInt(vcg.weight);
+        break;
+      case 1:
+        votesWeightAgainstSum = BigInt(vcg.weight);
+        break;
+      case 2:
+        votesWeightAbstainSum = BigInt(vcg.weight);
+        break;
+    }
+
     if (proposal) {
       const voters = [...(proposal.voters || []), vcg];
       proposal.voters = voters;
+      proposal.metricsVotesCount = Number(proposal.metricsVotesCount ?? 0) + 1;
+      proposal.metricsVotesWithParamsCount =
+        (proposal.metricsVotesWithParamsCount ?? 0) +
+        +(vcg.type === "vote-cast-with-params");
+      proposal.metricsVotesWithoutParamsCount =
+        (proposal.metricsVotesWithoutParamsCount ?? 0) +
+        +(vcg.type === "vote-cast-without-params");
+
+      proposal.metricsVotesWeightForSum =
+        BigInt(proposal.metricsVotesWeightForSum ?? 0) + votesWeightForSum;
+      proposal.metricsVotesWeightAgainstSum =
+        BigInt(proposal.metricsVotesWeightAgainstSum ?? 0) +
+        votesWeightAgainstSum;
+      proposal.metricsVotesWeightAbstainSum =
+        BigInt(proposal.metricsVotesWeightAbstainSum ?? 0) +
+        votesWeightAbstainSum;
       await this.ctx.store.save(proposal);
 
       vcg.proposal = proposal;
     }
+
+    // store votes group
     await this.ctx.store.insert(vcg);
+    // store metric
+    await this.storeGlobalDataMetric({
+      votesCount: 1,
+      votesWithParamsCount: +(vcg.type === "vote-cast-with-params"),
+      votesWithoutParamsCount: +(vcg.type === "vote-cast-without-params"),
+      votesWeightForSum,
+      votesWeightAgainstSum,
+      votesWeightAbstainSum,
+    });
   }
+
+  private async storeGlobalDataMetric(options: DataMetricOptions) {
+    const storedDataMetric: DataMetric | undefined =
+      await this.ctx.store.findOne(DataMetric, {
+        where: {
+          id: MetricsId.global,
+        },
+      });
+    const dm = storedDataMetric
+      ? storedDataMetric
+      : new DataMetric({
+          id: MetricsId.global,
+        });
+    if (!storedDataMetric) {
+      await this.ctx.store.insert(dm);
+    }
+    dm.proposalsCount =
+      (dm.proposalsCount ?? 0) + (options.proposalsCount ?? 0);
+    dm.votesCount = (dm.votesCount ?? 0) + (options.votesCount ?? 0);
+    dm.votesWithParamsCount =
+      (dm.votesWithParamsCount ?? 0) + (options.votesWithParamsCount ?? 0);
+    dm.votesWithoutParamsCount =
+      (dm.votesWithoutParamsCount ?? 0) +
+      (options.votesWithoutParamsCount ?? 0);
+    dm.votesWeightForSum =
+      (dm.votesWeightForSum ?? 0n) + (options.votesWeightForSum ?? 0n);
+    dm.votesWeightAgainstSum =
+      (dm.votesWeightAgainstSum ?? 0n) + (options.votesWeightAgainstSum ?? 0n);
+    dm.votesWeightAbstainSum =
+      (dm.votesWeightAbstainSum ?? 0n) + (options.votesWeightAbstainSum ?? 0n);
+
+    await this.ctx.store.save(dm);
+  }
+}
+
+interface DataMetricOptions {
+  proposalsCount?: number;
+  votesCount?: number;
+  votesWithParamsCount?: number;
+  votesWithoutParamsCount?: number;
+  votesWeightForSum?: bigint;
+  votesWeightAgainstSum?: bigint;
+  votesWeightAbstainSum?: bigint;
 }

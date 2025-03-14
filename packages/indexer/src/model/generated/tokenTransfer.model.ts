@@ -1,8 +1,8 @@
 import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, StringColumn as StringColumn_, BigIntColumn as BigIntColumn_} from "@subsquid/typeorm-store"
 
 @Entity_()
-export class Delegate {
-    constructor(props?: Partial<Delegate>) {
+export class TokenTransfer {
+    constructor(props?: Partial<TokenTransfer>) {
         Object.assign(this, props)
     }
 
@@ -10,10 +10,16 @@ export class Delegate {
     id!: string
 
     @StringColumn_({nullable: false})
-    fromDelegate!: string
+    from!: string
 
     @StringColumn_({nullable: false})
-    toDelegate!: string
+    to!: string
+
+    @BigIntColumn_({nullable: false})
+    value!: bigint
+
+    @StringColumn_({nullable: false})
+    standard!: string
 
     @BigIntColumn_({nullable: false})
     blockNumber!: bigint
@@ -23,7 +29,4 @@ export class Delegate {
 
     @StringColumn_({nullable: false})
     transactionHash!: string
-
-    @BigIntColumn_({nullable: false})
-    power!: bigint
 }

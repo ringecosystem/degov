@@ -1,4 +1,4 @@
-import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, StringColumn as StringColumn_, OneToMany as OneToMany_} from "@subsquid/typeorm-store"
+import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, StringColumn as StringColumn_, OneToMany as OneToMany_, IntColumn as IntColumn_} from "@subsquid/typeorm-store"
 import {VoteCastGroup} from "./voteCastGroup.model"
 
 @Entity_()
@@ -48,4 +48,22 @@ export class Proposal {
 
     @OneToMany_(() => VoteCastGroup, e => e.proposal)
     voters!: VoteCastGroup[]
+
+    @IntColumn_({nullable: true})
+    metricsVotesCount!: number | undefined | null
+
+    @IntColumn_({nullable: true})
+    metricsVotesWithParamsCount!: number | undefined | null
+
+    @IntColumn_({nullable: true})
+    metricsVotesWithoutParamsCount!: number | undefined | null
+
+    @BigIntColumn_({nullable: true})
+    metricsVotesWeightForSum!: bigint | undefined | null
+
+    @BigIntColumn_({nullable: true})
+    metricsVotesWeightAgainstSum!: bigint | undefined | null
+
+    @BigIntColumn_({nullable: true})
+    metricsVotesWeightAbstainSum!: bigint | undefined | null
 }
