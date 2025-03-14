@@ -241,7 +241,7 @@ export class TokenHandler {
         },
       });
     if (!storedContributor) {
-      await this.ctx.store.insert(storedContributor);
+      await this.ctx.store.insert(contributor);
       return;
     }
     storedContributor.blockNumber = contributor.blockNumber;
