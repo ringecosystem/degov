@@ -80,6 +80,10 @@ export default function ActionGroup({
 
   const { cancelProposal, isPending: isCancelling } = useCancelProposal();
 
+  const handleShowCancelDialog = useCallback(() => {
+    setCancelProposalOpen(true);
+  }, []);
+
   const handleCancelProposal = useCallback(async () => {
     try {
       const hash = await cancelProposal({
@@ -312,8 +316,7 @@ export default function ActionGroup({
       <Dropdown
         explorerUrl={explorerUrl}
         handleCopyUrl={handleCopyUrl}
-        handleCancelProposal={handleCancelProposal}
-        isLoading={isCancelling}
+        handleCancelProposal={handleShowCancelDialog}
         showCancel={status === ProposalState.Pending && isConnected}
       />
       <Voting
