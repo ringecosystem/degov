@@ -203,8 +203,6 @@ export default function NewProposal() {
 
       const result = await transformActionsToProposalParams(actions);
 
-      console.log("result", result);
-
       const hash = await createProposal(result.description, result.actions);
       if (hash) {
         setHash(hash);
