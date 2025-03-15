@@ -1,4 +1,5 @@
 import { type Abi } from "viem";
+import { createPublicClient, custom, getContract } from "viem";
 
 // Add these types
 type AbiParameter = {
@@ -26,63 +27,30 @@ type AbiEventItem = {
 
 export type AbiItem = AbiFunctionItem | AbiEventItem;
 
-// Add this validation function
-export const isValidAbi = (json: unknown): json is Abi => {
-  if (!Array.isArray(json)) {
+const dummyClient = createPublicClient({
+  transport: custom({
+    request: async () => {
+      throw new Error(
+        "This is a dummy client, does not execute actual requests"
+      );
+    },
+  }),
+});
+
+// Validate ABI JSON
+export const isValidAbi = (abiJson: Abi | readonly unknown[]) => {
+  if (!abiJson || !Array.isArray(abiJson) || !abiJson.length) return false;
+
+  try {
+    // Try to create a contract instance with the ABI
+    getContract({
+      abi: abiJson, // Input ABI JSON
+      address: "0x0000000000000000000000000000000000000000", // Virtual address
+      client: dummyClient,
+    });
+    return true;
+  } catch (error) {
+    console.warn("error", error);
     return false;
   }
-
-  return json.every((item) => {
-    // Check basic structure
-    if (
-      !item ||
-      typeof item !== "object" ||
-      !("type" in item) ||
-      !("name" in item)
-    ) {
-      return false;
-    }
-
-    // Validate function items
-    if (item.type === "function") {
-      return (
-        typeof item.name === "string" &&
-        Array.isArray(item.inputs) &&
-        Array.isArray(item.outputs) &&
-        typeof item.stateMutability === "string" &&
-        ["pure", "view", "nonpayable", "payable"].includes(
-          item.stateMutability
-        ) &&
-        item.inputs.every(
-          (input: unknown) =>
-            typeof input === "object" &&
-            input !== null &&
-            "name" in input &&
-            "type" in input
-        ) &&
-        item.outputs.every(
-          (output: unknown) =>
-            typeof output === "object" && output !== null && "type" in output
-        )
-      );
-    }
-
-    // Validate event items
-    if (item.type === "event") {
-      return (
-        typeof item.name === "string" &&
-        Array.isArray(item.inputs) &&
-        item.inputs.every(
-          (input: unknown) =>
-            typeof input === "object" &&
-            input !== null &&
-            "name" in input &&
-            "type" in input &&
-            ("indexed" in input ? typeof input.indexed === "boolean" : true)
-        )
-      );
-    }
-
-    return false;
-  });
 };

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 
@@ -8,9 +9,16 @@ import type { AbiItem } from "viem";
 interface FileUploaderProps {
   className?: string;
   onUpload: (jsonContent: AbiItem[]) => void;
+  isUploaded?: boolean;
+  isError?: boolean;
 }
 
-export const FileUploader = ({ className, onUpload }: FileUploaderProps) => {
+export const FileUploader = ({
+  className,
+  onUpload,
+  isUploaded,
+  isError,
+}: FileUploaderProps) => {
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       const file = acceptedFiles[0];
@@ -41,7 +49,7 @@ export const FileUploader = ({ className, onUpload }: FileUploaderProps) => {
     <div
       {...getRootProps()}
       className={cn(
-        "flex h-[137px] w-full cursor-pointer flex-col items-center justify-center gap-[10px] rounded-[4px] border border-border/20 bg-card p-[10px] transition-opacity hover:opacity-80",
+        "relative flex h-[137px] w-full cursor-pointer flex-col items-center justify-center gap-[10px] rounded-[4px] border border-border/20 bg-card p-[10px] transition-opacity hover:opacity-80",
         className
       )}
     >
@@ -53,11 +61,33 @@ export const FileUploader = ({ className, onUpload }: FileUploaderProps) => {
       ) : (
         <>
           <p className="text-[18px] font-normal text-foreground">
-            Drag and drop your ABI file
+            Drag and drop your ABl file
           </p>
-          <p className="text-[14px] text-foreground">
-            Or click to browse your files
+          <p className="text-[14px] text-muted-foreground">
+            Or click to browse your json files
           </p>
+          {isError && (
+            <p className="flex items-center gap-[4px] text-[14px] text-foreground">
+              <Image
+                src="/assets/image/proposal/action/error.svg"
+                alt="abi-file"
+                width={16}
+                height={16}
+              />
+              Must be a valid abi json file.
+            </p>
+          )}
+          {isUploaded && (
+            <p className="absolute left-[10px] bottom-[10px] flex items-center gap-[4px] text-[14px] text-foreground">
+              <Image
+                src="/assets/image/proposal/action/check.svg"
+                alt="abi-file"
+                width={16}
+                height={16}
+              />
+              ABI file uploaded
+            </p>
+          )}
         </>
       )}
     </div>

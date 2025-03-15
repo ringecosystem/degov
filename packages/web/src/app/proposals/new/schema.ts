@@ -146,7 +146,7 @@ export const customActionSchema = z.object({
       "Value must be a non-negative number"
     ),
   customAbiContent: z.array(z.any()).refine((val) => {
-    if (!val) return true;
+    if (!val) return false;
     if (Array.isArray(val) && val.length === 0) return false;
     try {
       return isValidAbi(val);

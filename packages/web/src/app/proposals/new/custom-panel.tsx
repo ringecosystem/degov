@@ -81,19 +81,14 @@ export const CustomPanel = ({
     (value: string) => {
       setValue("contractType", value);
       setValue("contractMethod", "");
+      setValue("customAbiContent", []);
       setValue("calldata", []);
 
       // Reset ABI related fields
       if (value !== "custom") {
         const abi = abiList.find((item) => item.name === value)?.abi as Abi;
         if (isValidAbi(abi)) {
-          const abiJson = abi?.filter(
-            (item) =>
-              item.type === "function" &&
-              (item.stateMutability === "nonpayable" ||
-                item.stateMutability === "payable")
-          );
-          setValue("customAbiContent", abiJson ?? undefined);
+          setValue("customAbiContent", [...abi]);
         } else {
           setValue("customAbiContent", [], {
             shouldValidate: true,
@@ -110,13 +105,7 @@ export const CustomPanel = ({
     (jsonContent: AbiItem[]) => {
       console.log("jsonContent", jsonContent);
       if (isValidAbi(jsonContent)) {
-        const filteredAbi = jsonContent?.filter(
-          (item) =>
-            item.type === "function" &&
-            (item.stateMutability === "nonpayable" ||
-              item.stateMutability === "payable")
-        );
-        setValue("customAbiContent", filteredAbi, {
+        setValue("customAbiContent", jsonContent, {
           shouldValidate: true,
           shouldDirty: true,
         });
@@ -294,16 +283,20 @@ export const CustomPanel = ({
                 <FileUploader
                   onUpload={handleUploadAbi}
                   className={`${errors?.customAbiContent && "border-danger"}`}
+                  isError={!!errors.customAbiContent}
+                  isUploaded={isValidAbi(watch("customAbiContent"))}
                 />
-                {errors.customAbiContent && (
-                  <ErrorMessage message={errors.customAbiContent.message} />
-                )}
               </div>
             )}
 
             {/* Method Selection */}
             {watch("customAbiContent") &&
-              !!watch("customAbiContent")?.length && (
+              !!watch("customAbiContent")?.filter(
+                (item) =>
+                  item?.type === "function" &&
+                  (item.stateMutability === "nonpayable" ||
+                    item.stateMutability === "payable")
+              )?.length && (
                 <div className="flex flex-col gap-[10px]">
                   <label className="text-[14px] text-foreground">
                     Contract method
