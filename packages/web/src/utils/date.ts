@@ -125,7 +125,7 @@ export function getTimeRemaining(endTime: number): string {
 // ... existing code ...
 
 /**
- * use for proposal comment (例如 "Jan 10, 2025")
+ * use for proposal comment ("Jan 10, 2025")
  * @param timestamp Unix time stamp (seconds or milliseconds)
  * @returns formatted date string
  */

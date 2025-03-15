@@ -222,10 +222,10 @@ export class GovernorHandler {
     let votesWeightAbstainSum: bigint = 0n;
     switch (vcg.support) {
       case 0:
-        votesWeightForSum = BigInt(vcg.weight);
+        votesWeightAgainstSum = BigInt(vcg.weight);
         break;
       case 1:
-        votesWeightAgainstSum = BigInt(vcg.weight);
+        votesWeightForSum = BigInt(vcg.weight);
         break;
       case 2:
         votesWeightAbstainSum = BigInt(vcg.weight);

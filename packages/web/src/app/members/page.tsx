@@ -11,7 +11,6 @@ export default function Members() {
   const [address, setAddress] = useState<Address | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const handleDelegate = useCallback((value: Member) => {
-    console.log(value);
     setAddress(value.address as `0x${string}`);
     setOpen(true);
   }, []);

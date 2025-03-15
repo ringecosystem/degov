@@ -27,7 +27,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         width: "33.3%",
         render: (record) => (
           <AddressWithAvatar
-            address={record.delegator as `0x${string}`}
+            address={record?.fromDelegate as `0x${string}`}
             avatarSize={30}
           />
         ),
@@ -44,14 +44,8 @@ export function DelegationTable({ address }: DelegationTableProps) {
         key: "votes",
         width: "33.3%",
         render: (record) => {
-          const toNewVotes = record?.toNewVotes
-            ? BigInt(record?.toNewVotes)
-            : 0n;
-          const toPreviousVotes = record?.toPreviousVotes
-            ? BigInt(record?.toPreviousVotes)
-            : 0n;
-          const votes = toNewVotes - toPreviousVotes;
-          return formatTokenAmount(votes).formatted;
+          return formatTokenAmount(record?.power ? BigInt(record?.power) : 0n)
+            .formatted;
         },
       },
     ],

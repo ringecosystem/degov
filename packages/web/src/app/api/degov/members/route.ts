@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       return NextResponse.json(
-        Resp.err("missing database please contact admin")
+        Resp.err("missing database please contact admin"),
+        { status: 400 }
       );
     }
     const sql = postgres(databaseUrl);

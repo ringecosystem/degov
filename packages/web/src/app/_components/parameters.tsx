@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,11 +13,23 @@ import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import { dayjsHumanize } from "@/utils/date";
 
 export const Parameters = () => {
-  const { data: governanceParams, isLoading } = useGovernanceParams();
+  const [open, setOpen] = useState(false);
+  const {
+    data: governanceParams,
+    isQuorumFetching,
+    isStaticLoading,
+    refetchClock,
+  } = useGovernanceParams();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
+  useEffect(() => {
+    if (open) {
+      refetchClock();
+    }
+  }, [open, refetchClock]);
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
@@ -39,7 +52,7 @@ export const Parameters = () => {
               Proposal threshold
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isLoading ? (
+              {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : governanceParams?.proposalThreshold ? (
                 formatTokenAmount(governanceParams?.proposalThreshold)
@@ -55,7 +68,7 @@ export const Parameters = () => {
               Quorum needed
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isLoading ? (
+              {isQuorumFetching ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : governanceParams?.quorum ? (
                 formatTokenAmount(governanceParams?.quorum)?.formatted
@@ -70,7 +83,7 @@ export const Parameters = () => {
               Proposal delay
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isLoading ? (
+              {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : governanceParams?.votingDelay ? (
                 dayjsHumanize(Number(governanceParams?.votingDelay))
@@ -85,7 +98,7 @@ export const Parameters = () => {
               Voting period
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isLoading ? (
+              {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : governanceParams?.votingPeriod ? (
                 dayjsHumanize(Number(governanceParams?.votingPeriod))
@@ -100,7 +113,7 @@ export const Parameters = () => {
               TimeLock delay
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isLoading ? (
+              {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : governanceParams?.timeLockDelay ? (
                 dayjsHumanize(Number(governanceParams?.timeLockDelay))

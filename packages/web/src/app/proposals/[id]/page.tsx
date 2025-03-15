@@ -107,34 +107,40 @@ export default function ProposalDetailPage() {
   const proposalQueries = useQueries({
     queries: [
       {
-        queryKey: ["proposalCanceledById", data?.id],
-        queryFn: () =>
-          proposalService.getProposalCanceledById(
+        queryKey: ["proposalCanceledById", data?.proposalId],
+        queryFn: async () => {
+          const result = await proposalService.getProposalCanceledById(
             daoConfig?.indexer?.endpoint as string,
             data?.proposalId as string
-          ),
+          );
+          return result ?? null;
+        },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
         refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       },
       {
-        queryKey: ["proposalExecutedById", data?.id],
-        queryFn: () =>
-          proposalService.getProposalExecutedById(
+        queryKey: ["proposalExecutedById", data?.proposalId],
+        queryFn: async () => {
+          const result = await proposalService.getProposalExecutedById(
             daoConfig?.indexer?.endpoint as string,
             data?.proposalId as string
-          ),
+          );
+          return result ?? null;
+        },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
         refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       },
       {
-        queryKey: ["proposalQueuedById", data?.id],
-        queryFn: () =>
-          proposalService.getProposalQueuedById(
+        queryKey: ["proposalQueuedById", data?.proposalId],
+        queryFn: async () => {
+          const result = await proposalService.getProposalQueuedById(
             daoConfig?.indexer?.endpoint as string,
             data?.proposalId as string
-          ),
+          );
+          return result ?? null;
+        },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
         refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
@@ -209,7 +215,7 @@ export default function ProposalDetailPage() {
         </h2>
 
         {isPending ? (
-          <Skeleton className="h-[24px] w-[80%] my-1" /> // 使用单一骨架屏
+          <Skeleton className="h-[24px] w-[80%] my-1" />
         ) : (
           <div className="flex items-center gap-[20px]">
             <div className="flex items-center gap-[5px]">

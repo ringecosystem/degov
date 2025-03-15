@@ -7,7 +7,7 @@ import { Resp } from "./types/api";
 import type { NextRequest } from "next/server";
 
 const NEED_AUTH_APIS = [
-  { method: "post", path: "/api/profile/", mode: "prefix" },
+  { method: "post", path: "/api/profile/0x", mode: "prefix" },
 ];
 
 export async function middleware(request: NextRequest) {

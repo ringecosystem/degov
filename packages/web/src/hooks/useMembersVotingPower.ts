@@ -15,7 +15,7 @@ export function useMembersVotingPower(members: Member[] | undefined) {
   const memberAddresses = useMemo(() => {
     if (!members) return [];
     return members
-      .filter((member) => member.address && member.address.startsWith("0x"))
+      ?.filter((member) => member.address && member.address.startsWith("0x"))
       .map((member) => member.address as Address);
   }, [members]);
 

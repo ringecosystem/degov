@@ -68,7 +68,7 @@ export const Contracts = () => {
 
           <div className="flex flex-col gap-[10px]">
             <span className="inline-flex items-center gap-[5px] text-[14px] font-normal text-foreground/50">
-              Token
+              Governor Token
               <span className="inline-block leading-none rounded-[10px] bg-muted-foreground p-[5px] text-[#202224] text-[12px] font-semibold">
                 {daoConfig?.contracts?.governorToken?.standard}
               </span>

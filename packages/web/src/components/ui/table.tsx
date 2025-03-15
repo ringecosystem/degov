@@ -32,14 +32,7 @@ const TableBody = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <tbody
-    ref={ref}
-    className={cn(
-      "border-b-[1px] border-b-secondary [&_tr:last-child]:border-0",
-      className
-    )}
-    {...props}
-  />
+  <tbody ref={ref} className={cn(className)} {...props} />
 ));
 TableBody.displayName = "TableBody";
 
@@ -65,7 +58,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b-[1px] border-b-secondary transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      "border-b-[1px] border-b-secondary transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted last:border-b-0",
       className
     )}
     {...props}

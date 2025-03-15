@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useReadContract, useReadContracts } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
@@ -7,43 +8,28 @@ import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
 
-interface GovernanceParams {
+interface StaticGovernanceParams {
   proposalThreshold: bigint;
-  quorum: bigint;
   votingDelay: bigint;
   votingPeriod: bigint;
   timeLockDelay: bigint;
 }
 
-export function useGovernanceParams() {
+interface GovernanceParams extends StaticGovernanceParams {
+  quorum: bigint;
+}
+
+export function useStaticGovernanceParams() {
   const daoConfig = useDaoConfig();
   const governorAddress = daoConfig?.contracts?.governor as Address;
   const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
 
-  const { data: clockData, isLoading: isClockLoading } = useReadContract({
-    address: governorAddress as `0x${string}`,
-    abi: governorAbi,
-    functionName: "clock" as const,
-    chainId: daoConfig?.chain?.id,
-    query: {
-      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
-      staleTime: 0,
-    },
-  });
-
-  const { data, isLoading, error } = useReadContracts({
+  const { data, isLoading, error, isFetching } = useReadContracts({
     contracts: [
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
         functionName: "proposalThreshold" as const,
-        chainId: daoConfig?.chain?.id,
-      },
-      {
-        address: governorAddress as `0x${string}`,
-        abi: governorAbi,
-        functionName: "quorum" as const,
-        args: [clockData ? BigInt(clockData) : BigInt(0)],
         chainId: daoConfig?.chain?.id,
       },
       {
@@ -67,6 +53,59 @@ export function useGovernanceParams() {
     ],
     query: {
       retry: false,
+      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
+    },
+  });
+
+  const formattedData: StaticGovernanceParams | null = data
+    ? {
+        proposalThreshold: data[0]?.result as bigint,
+        votingDelay: data[1]?.result as bigint,
+        votingPeriod: data[2]?.result as bigint,
+        timeLockDelay: data[3]?.result as bigint,
+      }
+    : null;
+
+  return {
+    data: formattedData,
+    isLoading,
+    isFetching,
+    error: error as Error | null,
+  };
+}
+
+export function useQuorum() {
+  const daoConfig = useDaoConfig();
+  const governorAddress = daoConfig?.contracts?.governor as Address;
+
+  const {
+    data: clockData,
+    isLoading: isClockLoading,
+    isFetching: isClockFetching,
+    refetch: refetchClock,
+  } = useReadContract({
+    address: governorAddress as `0x${string}`,
+    abi: governorAbi,
+    functionName: "clock" as const,
+    chainId: daoConfig?.chain?.id,
+    query: {
+      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
+      staleTime: 0,
+    },
+  });
+
+  const {
+    data: quorumData,
+    isLoading: isQuorumLoading,
+    error: quorumError,
+    isFetching: isQuorumFetching,
+  } = useReadContract({
+    address: governorAddress as `0x${string}`,
+    abi: governorAbi,
+    functionName: "quorum" as const,
+    args: [clockData ? BigInt(clockData) : BigInt(0)],
+    chainId: daoConfig?.chain?.id,
+    query: {
       enabled:
         Boolean(governorAddress) &&
         Boolean(clockData) &&
@@ -74,19 +113,45 @@ export function useGovernanceParams() {
     },
   });
 
-  const formattedData: GovernanceParams | null = data
-    ? {
-        proposalThreshold: data[0]?.result as bigint,
-        quorum: data[1]?.result as bigint,
-        votingDelay: data[2]?.result as bigint,
-        votingPeriod: data[3]?.result as bigint,
-        timeLockDelay: data[4]?.result as bigint,
-      }
-    : null;
+  return {
+    quorum: quorumData as bigint | undefined,
+    clockData: clockData as bigint | undefined,
+    isLoading: isClockLoading || isQuorumLoading,
+    isFetching: isClockFetching || isQuorumFetching,
+    error: quorumError as Error | null,
+    refetchClock,
+  };
+}
+
+export function useGovernanceParams() {
+  const staticParams = useStaticGovernanceParams();
+  const {
+    quorum,
+    isLoading: isQuorumLoading,
+    isFetching: isQuorumFetching,
+    error: quorumError,
+    refetchClock,
+  } = useQuorum();
+
+  const formattedData: GovernanceParams | null = useMemo(() => {
+    return {
+      proposalThreshold: staticParams.data?.proposalThreshold ?? 0n,
+      votingDelay: staticParams.data?.votingDelay ?? 0n,
+      votingPeriod: staticParams.data?.votingPeriod ?? 0n,
+      timeLockDelay: staticParams.data?.timeLockDelay ?? 0n,
+      quorum: quorum ?? 0n,
+    };
+  }, [staticParams.data, quorum]);
 
   return {
     data: formattedData,
-    isLoading: isLoading || isClockLoading,
-    error: error as Error | null,
+    isQuorumLoading,
+    isQuorumFetching,
+    isStaticLoading: staticParams.isLoading,
+    isStaticFetching: staticParams.isFetching,
+    isLoading: staticParams.isLoading || isQuorumLoading,
+    isFetching: staticParams.isFetching || isQuorumFetching,
+    error: staticParams.error || quorumError,
+    refetchClock,
   };
 }

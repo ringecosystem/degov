@@ -5,7 +5,7 @@ import postgres from "postgres";
 import type { AuthPayload, DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
-import type { NextRequest} from "next/server";
+import type { NextRequest } from "next/server";
 
 export interface ProfileModifyForm {
   name?: string;
@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       return NextResponse.json(
-        Resp.err("missing database please contact admin")
+        Resp.err("missing database please contact admin"),
+        { status: 400 }
       );
     }
     const sql = postgres(databaseUrl);
@@ -65,7 +66,8 @@ export async function POST(request: NextRequest) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       return NextResponse.json(
-        Resp.err("missing database please contact admin")
+        Resp.err("missing database please contact admin"),
+        { status: 400 }
       );
     }
     const sql = postgres(databaseUrl);
@@ -77,16 +79,16 @@ export async function POST(request: NextRequest) {
     }
     const cui: DUser = {
       ...(storedUser as unknown as DUser),
-      name: body.name ?? '',
-      avatar: body.avatar ?? '',
-      email: body.email ?? '',
-      twitter: body.twitter ?? '',
-      github: body.github ?? '',
-      discord: body.discord ?? '',
-      telegram: body.telegram ?? '',
-      medium: body.medium ?? '',
-      delegate_statement: body.delegate_statement ?? '',
-      additional: body.additional ?? '',
+      name: body.name ?? "",
+      avatar: body.avatar ?? "",
+      email: body.email ?? "",
+      twitter: body.twitter ?? "",
+      github: body.github ?? "",
+      discord: body.discord ?? "",
+      telegram: body.telegram ?? "",
+      medium: body.medium ?? "",
+      delegate_statement: body.delegate_statement ?? "",
+      additional: body.additional ?? "",
       utime: new Date().toISOString(),
     };
     await sql`

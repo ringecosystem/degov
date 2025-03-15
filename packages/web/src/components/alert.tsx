@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { useState, useEffect } from "react";
 
+import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
+
 import type { ReactNode } from "react";
 
 interface AlertProps {
@@ -40,7 +42,7 @@ const Alert = ({ message, closable = false, duration }: AlertProps) => {
           animate="visible"
           exit="exit"
           variants={alertVariants}
-          transition={{ duration: 0.35, ease: "easeOut" }}
+          transition={{ duration: DEFAULT_ANIMATION_DURATION, ease: "easeOut" }}
           onAnimationComplete={(definition) => {
             if (definition === "exit") {
             }

@@ -21,7 +21,7 @@ export const ReplacePanel = ({
     <div
       className={cn(
         "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]",
-        !visible && "hidden"
+        visible ? "animate-in fade-in duration-300" : "hidden"
       )}
     >
       <header className="flex items-center justify-between">

@@ -31,7 +31,12 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
   }, [actions]);
 
   return (
-    <div className={cn("flex flex-col gap-[10px]", !visible && "hidden")}>
+    <div
+      className={cn(
+        "flex flex-col gap-[10px]",
+        visible ? "animate-in fade-in duration-300" : "hidden"
+      )}
+    >
       <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
         <header className="flex flex-col">
           <h2 className="text-[26px] font-semibold">

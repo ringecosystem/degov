@@ -53,7 +53,7 @@ export const Aside = () => {
 
   return (
     <aside
-      className="h-auto flex-shrink-0 border-r border-border bg-background transition-all duration-300"
+      className="h-auto flex-shrink-0 border-r border-[#474747] bg-background transition-all duration-300"
       style={{ width: currentWidth }}
     >
       <div

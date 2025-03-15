@@ -1,14 +1,10 @@
 export type DelegateItem = {
   blockNumber: string;
   blockTimestamp: string;
-  delegator: string;
   fromDelegate: string;
-  fromNewVotes?: string;
-  fromPreviousVotes?: string;
   id: string;
+  power: string;
   toDelegate: string;
-  toNewVotes?: string;
-  toPreviousVotes?: string;
   transactionHash: string;
 };
 
