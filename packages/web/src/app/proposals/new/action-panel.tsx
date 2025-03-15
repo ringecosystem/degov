@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { PROPOSAL_ACTIONS } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
@@ -212,7 +213,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.1 }}
+                    transition={{ duration: DEFAULT_ANIMATION_DURATION }}
                   >
                     <TableCell colSpan={3} className="pt-0">
                       <motion.div
@@ -254,7 +255,10 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
           key={index}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.1, delay: index * 0.05 }}
+          transition={{
+            duration: DEFAULT_ANIMATION_DURATION,
+            delay: index * 0.05,
+          }}
         >
           <h3 className="mb-[10px] text-[18px] font-semibold">
             Function {index + 1}
@@ -335,7 +339,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 className="text-[26px] font-semibold"
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.1 }}
+                transition={{ duration: DEFAULT_ANIMATION_DURATION }}
               >
                 Actions
               </motion.h2>
@@ -348,7 +352,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                     animate="animate"
                     exit="exit"
                     variants={buttonVariants}
-                    transition={{ duration: 0.1 }}
+                    transition={{ duration: DEFAULT_ANIMATION_DURATION }}
                   >
                     <Button
                       variant="outline"
@@ -368,7 +372,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                     animate="animate"
                     exit="exit"
                     variants={buttonVariants}
-                    transition={{ duration: 0.1 }}
+                    transition={{ duration: DEFAULT_ANIMATION_DURATION }}
                   >
                     <Button
                       variant="outline"
@@ -394,7 +398,10 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                   animate="animate"
                   exit="exit"
                   variants={contentVariants}
-                  transition={{ duration: 0.1, ease: "easeInOut" }}
+                  transition={{
+                    duration: DEFAULT_ANIMATION_DURATION,
+                    ease: "easeInOut",
+                  }}
                 >
                   <RawView />
                 </motion.div>
@@ -405,7 +412,10 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                   animate="animate"
                   exit="exit"
                   variants={contentVariants}
-                  transition={{ duration: 0.1, ease: "easeInOut" }}
+                  transition={{
+                    duration: DEFAULT_ANIMATION_DURATION,
+                    ease: "easeInOut",
+                  }}
                 >
                   <SummaryView />
                 </motion.div>

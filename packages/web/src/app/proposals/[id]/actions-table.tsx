@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "framer-motion"; // 导入 framer-motion
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import type { ProposalItem } from "@/services/graphql/types";
 
 import { ActionTableRaw } from "./action-table-raw";
@@ -49,7 +50,7 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
           className="text-[26px] font-semibold"
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.1 }}
+          transition={{ duration: DEFAULT_ANIMATION_DURATION }}
         >
           Actions
         </motion.h4>
@@ -62,7 +63,7 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
               animate="animate"
               exit="exit"
               variants={buttonVariants}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: DEFAULT_ANIMATION_DURATION }}
             >
               <Button
                 variant="outline"
@@ -81,7 +82,7 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
               animate="animate"
               exit="exit"
               variants={buttonVariants}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: DEFAULT_ANIMATION_DURATION }}
             >
               <Button
                 variant="outline"
@@ -105,7 +106,10 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
             animate="animate"
             exit="exit"
             variants={contentVariants}
-            transition={{ duration: 0.1, ease: "easeInOut" }}
+            transition={{
+              duration: DEFAULT_ANIMATION_DURATION,
+              ease: "easeInOut",
+            }}
           >
             <ActionTableSummary actions={actions} isLoading={isFetching} />
           </motion.div>
@@ -116,7 +120,10 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
             animate="animate"
             exit="exit"
             variants={contentVariants}
-            transition={{ duration: 0.1, ease: "easeInOut" }}
+            transition={{
+              duration: DEFAULT_ANIMATION_DURATION,
+              ease: "easeInOut",
+            }}
           >
             <ActionTableRaw actions={actions} />
           </motion.div>

@@ -8,11 +8,9 @@ import { ErrorMessage } from "@/components/error-message";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-
 import { proposalSchema } from "./schema";
 
-import type { ProposalContent} from "./schema";
-
+import type { ProposalContent } from "./schema";
 
 interface ProposalPanelProps {
   visible: boolean;
@@ -61,7 +59,7 @@ export const ProposalPanel = ({
       ref={ref}
       className={cn(
         "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]",
-        !visible && "hidden"
+        visible ? "animate-in fade-in duration-300" : "hidden"
       )}
       onSubmit={handleSubmit(onSubmit)}
     >

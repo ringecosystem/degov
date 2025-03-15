@@ -25,7 +25,6 @@ import { WithConnect } from "@/components/with-connect";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useProposal } from "@/hooks/useProposal";
 
-import { NewProposalAction } from "./action";
 import { CustomPanel } from "./custom-panel";
 import {
   generateCustomAction,
@@ -37,6 +36,7 @@ import { PreviewPanel } from "./preview-panel";
 import { ProposalPanel } from "./proposal-panel";
 import { ReplacePanel } from "./replace-panel";
 import { proposalSchema, customActionSchema, transferSchema } from "./schema";
+import { Sidebar } from "./sidebar";
 import { TransferPanel } from "./transfer-panel";
 
 import type { ProposalContent, TransferContent, CustomContent } from "./schema";
@@ -271,35 +271,15 @@ export default function NewProposal() {
         </header>
 
         <div className="flex gap-[30px]">
-          <aside className="flex w-[300px] flex-shrink-0 flex-col gap-[10px] rounded-[14px]">
-            {actions.map((action) => (
-              <NewProposalAction
-                key={action.id}
-                type={action.type}
-                onSwitch={() => handleSwitchAction(action.id)}
-                active={action.id === actionUuid && tab === "edit"}
-                error={!validationState.get(action.id)}
-              />
-            ))}
-            <NewProposalAction
-              type="preview"
-              onSwitch={() => setTab("preview")}
-              active={tab === "preview"}
-            />
-
-            <Button
-              className="gap-[5px] rounded-[100px]"
-              onClick={handleAddAction}
-            >
-              <Image
-                src="/assets/image/proposal/plus.svg"
-                alt="plus"
-                width={16}
-                height={16}
-              />
-              <span>Add Action</span>
-            </Button>
-          </aside>
+          <Sidebar
+            actions={actions}
+            actionUuid={actionUuid}
+            tab={tab}
+            validationState={validationState}
+            onSwitchAction={handleSwitchAction}
+            onAddAction={handleAddAction}
+            onSetTab={setTab}
+          />
           <main className="flex-1">
             {actions.map((action) => {
               return (
@@ -343,7 +323,6 @@ export default function NewProposal() {
                 </Fragment>
               );
             })}
-
             <ReplacePanel
               visible={tab === "add"}
               index={actions.length}

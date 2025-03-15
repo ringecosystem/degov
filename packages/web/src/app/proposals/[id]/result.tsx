@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useCallback, useMemo, useState } from "react";
 
+import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { VoteType, VoteConfig, voteTypeLabel } from "@/config/vote";
 import { cn } from "@/lib/utils";
 import type { ProposalItem } from "@/services/graphql/types";
@@ -40,7 +41,7 @@ export const Result = ({ data, isFetching }: ResultProps) => {
             className="flex cursor-pointer flex-col gap-[10px] transition-opacity duration-300 hover:opacity-80"
             onClick={() => handleTabClick(voteType.value)}
             whileTap={{ scale: 0.98 }}
-            transition={{ duration: 0.1 }}
+            transition={{ duration: DEFAULT_ANIMATION_DURATION }}
           >
             <motion.h5
               className={cn(
@@ -59,7 +60,7 @@ export const Result = ({ data, isFetching }: ResultProps) => {
                 opacity: activeTab === voteType.value ? 1 : 0,
                 scale: activeTab === voteType.value ? 1 : 0.8,
               }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: DEFAULT_ANIMATION_DURATION }}
               className={cn(
                 "h-[4px] w-full origin-center",
                 VoteConfig[voteType.value].bgColor,
@@ -76,7 +77,7 @@ export const Result = ({ data, isFetching }: ResultProps) => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.1 }}
+          transition={{ duration: DEFAULT_ANIMATION_DURATION }}
         >
           <ResultTable
             data={dataSource}

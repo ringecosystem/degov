@@ -186,7 +186,7 @@ export const CustomPanel = ({
     <div
       className={cn(
         "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] pb-[50px]",
-        !visible && "hidden"
+        visible ? "animate-in fade-in duration-300" : "hidden"
       )}
     >
       <div className="flex items-center justify-between">
