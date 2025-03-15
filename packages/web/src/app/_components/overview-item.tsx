@@ -24,7 +24,13 @@ export const OverviewItem = ({
       <div className="flex flex-col gap-[10px]">
         <p className="!m-0 text-[14px] text-card-foreground">{title}</p>
         <div className="!m-0 text-[28px] font-bold text-white">
-          {isLoading ? <Skeleton className="h-[28px] w-[50px]" /> : children}
+          {isLoading ? (
+            <div className="h-[42px] w-[50px] flex flex-col justify-center">
+              <Skeleton className="h-[32px] w-[50px]" />
+            </div>
+          ) : (
+            children
+          )}
         </div>
       </div>
       <Image
