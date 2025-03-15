@@ -53,15 +53,13 @@ export const Overview = () => {
           isLoading={isProposalMetricsLoading}
         >
           <div className="flex items-center gap-[10px]">
-            <p>
-              {
-                formatNumberForDisplay(
-                  isNumber(dataMetrics?.proposalsCount)
-                    ? dataMetrics?.proposalsCount
-                    : 0
-                )[0]
-              }
-            </p>
+            {
+              formatNumberForDisplay(
+                isNumber(dataMetrics?.proposalsCount)
+                  ? dataMetrics?.proposalsCount
+                  : 0
+              )[0]
+            }
           </div>
         </OverviewItem>
         <OverviewItem
@@ -69,29 +67,25 @@ export const Overview = () => {
           icon="/assets/image/members-colorful.svg"
           isLoading={isMembersLoading}
         >
-          <p>
-            {formatNumberForDisplay(getMemberTotal?.data?.member_count ?? 0)[0]}
-          </p>
+          {formatNumberForDisplay(getMemberTotal?.data?.member_count ?? 0)[0]}
         </OverviewItem>
         <OverviewItem
           title="Total voting Power"
           icon="/assets/image/total-vote-colorful.svg"
           isLoading={isProposalMetricsLoading}
         >
-          <p>
-            {
-              formatTokenAmount(
-                dataMetrics?.powerSum ? BigInt(dataMetrics?.powerSum) : 0n
-              )?.formatted
-            }
-          </p>
+          {
+            formatTokenAmount(
+              dataMetrics?.powerSum ? BigInt(dataMetrics?.powerSum) : 0n
+            )?.formatted
+          }
         </OverviewItem>
         <OverviewItem
           title="Total Supply"
           isLoading={isTotalSupplyLoading}
           icon="/assets/image/delegated-vote-colorful.svg"
         >
-          <p>{formatTokenAmount(totalSupply ?? 0n)?.formatted}</p>
+          {formatTokenAmount(totalSupply ?? 0n)?.formatted}
         </OverviewItem>
       </div>
     </div>
