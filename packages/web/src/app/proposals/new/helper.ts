@@ -53,13 +53,14 @@ export const generateCustomAction = (): CustomAction => {
 };
 
 /**
- * 生成函数签名
- * 可用于生成ABI函数签名或日志记录
+ * generateFunctionSignature
  *
- * @param methodName 合约方法名称
- * @param params 参数列表
- * @param options 配置选项
- * @returns 函数签名字符串
+ * generate function signature
+ *
+ * @param methodName contract method name
+ * @param params parameter list
+ * @param options options
+ * @returns function signature string
  */
 export function generateFunctionSignature(
   methodName: string | undefined,
