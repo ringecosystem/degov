@@ -52,6 +52,16 @@ const StatusSkeleton = () => {
   );
 };
 
+type ProposalStageKey =
+  | "publish"
+  | "start"
+  | "end"
+  | "queue"
+  | "execute"
+  | "cancel"
+  | "defeated"
+  | "expired";
+
 interface ProposalStage {
   title: string;
   icon: React.ReactNode;
@@ -61,6 +71,7 @@ interface ProposalStage {
   address?: `0x${string}`;
   viewOnExplorer?: string;
   remaining?: string;
+  key?: ProposalStageKey;
 }
 
 interface StatusProps {
@@ -98,6 +109,7 @@ const Status: React.FC<StatusProps> = ({
   const stages: ProposalStage[] = useMemo(() => {
     const baseStages = [
       {
+        key: "publish" as ProposalStageKey,
         title: "Publish onChain",
         timestamp: formatTimestampToDayTime(data?.blockTimestamp),
         icon: (
@@ -112,6 +124,7 @@ const Status: React.FC<StatusProps> = ({
         viewOnExplorer: `${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`,
       },
       {
+        key: "start" as ProposalStageKey,
         title: "Start voting period",
         timestamp: formatTimestampToDayTime(String(votingPeriodStarted)),
         icon: (
@@ -124,6 +137,7 @@ const Status: React.FC<StatusProps> = ({
         ),
       },
       {
+        key: "end" as ProposalStageKey,
         title: "End voting period",
         timestamp: formatTimestampToDayTime(String(votingPeriodEnded)),
         icon: (
@@ -146,6 +160,7 @@ const Status: React.FC<StatusProps> = ({
         return [
           ...baseStages,
           {
+            key: "queue" as ProposalStageKey,
             title: "Queue proposal",
             timestamp: proposalQueuedById?.blockTimestamp
               ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
@@ -163,6 +178,7 @@ const Status: React.FC<StatusProps> = ({
               : "",
           },
           {
+            key: "execute" as ProposalStageKey,
             title: "Execute proposal",
             timestamp: proposalExecutedById?.blockTimestamp
               ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
@@ -205,16 +221,29 @@ const Status: React.FC<StatusProps> = ({
           }
 
           if (status === ProposalState.Queued) {
+            let title = v.title;
+            if (v.key === "queue") {
+              title = "Proposal queued";
+            }
             return {
               ...v,
-              isActive: v.title !== "Execute proposal",
+              title,
+              isActive: title !== "Execute proposal",
             };
           }
 
           if (status === ProposalState.Executed) {
+            let title = v.title;
+            if (v.key === "queue") {
+              title = "Proposal queued";
+            }
+            if (v.key === "execute") {
+              title = "Proposal executed";
+            }
             return {
               ...v,
-              isActive: true,
+              title,
+              isActive: title !== "Execute proposal",
             };
           }
 
@@ -231,6 +260,7 @@ const Status: React.FC<StatusProps> = ({
           })),
 
           {
+            key: "cancel" as ProposalStageKey,
             title: "Proposal canceled",
             timestamp: formatTimestampToDayTime(
               proposalCanceledById?.blockTimestamp
@@ -256,6 +286,7 @@ const Status: React.FC<StatusProps> = ({
             isActive: true,
           })),
           {
+            key: "defeated" as ProposalStageKey,
             title: "Proposal defeated",
             icon: (
               <Image
@@ -275,7 +306,8 @@ const Status: React.FC<StatusProps> = ({
             isActive: true,
           })),
           {
-            title: "Queue proposal",
+            key: "expired" as ProposalStageKey,
+            title: "Proposal expired",
             timestamp: proposalQueuedById?.blockTimestamp
               ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
               : "",
@@ -290,6 +322,7 @@ const Status: React.FC<StatusProps> = ({
             isActive: true,
           },
           {
+            key: "execute" as ProposalStageKey,
             title: "Execute proposal",
             icon: (
               <Image
