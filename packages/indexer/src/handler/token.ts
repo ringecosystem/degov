@@ -103,7 +103,7 @@ export class TokenHandler {
 
       delegate = new Delegate({
         fromDelegate: delegateRolling.fromDelegate,
-        toDelegate: delegateRolling.fromDelegate,
+        toDelegate: delegateRolling.toDelegate,
         blockNumber: options.blockNumber,
         blockTimestamp: options.blockTimestamp,
         transactionHash: options.transactionHash,
@@ -116,7 +116,7 @@ export class TokenHandler {
       delegateRolling.toPreviousVotes = options.previousVotes;
 
       delegate = new Delegate({
-        fromDelegate: delegateRolling.fromDelegate,
+        fromDelegate: delegateRolling.toDelegate,
         toDelegate: delegateRolling.toDelegate,
         blockNumber: options.blockNumber,
         blockTimestamp: options.blockTimestamp,
