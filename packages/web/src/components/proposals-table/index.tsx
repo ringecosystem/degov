@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
@@ -61,7 +62,8 @@ export function ProposalsTable({
 }) {
   const { state, proposalStatusState, loadMoreData } = useProposalData(
     address,
-    support
+    support,
+    type === "active" ? 8 : DEFAULT_PAGE_SIZE
   );
 
   const columns = useMemo<ColumnType<ProposalItem>[]>(

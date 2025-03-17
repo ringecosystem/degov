@@ -18,6 +18,7 @@ interface UseVotesReturn {
   formattedProposalThreshold?: string;
   hasEnoughVotes: boolean;
   isLoading: boolean;
+  isFetching: boolean;
   error: Error | null;
   refetch: () => Promise<QueryObserverResult<bigint, ReadContractErrorType>>;
 }
@@ -34,6 +35,7 @@ export function useMyVotes(): UseVotesReturn {
   const {
     data: votes,
     isLoading: isVotesLoading,
+    isFetching: isFetchingVotes,
     error,
     refetch,
   } = useReadContract({
@@ -73,6 +75,7 @@ export function useMyVotes(): UseVotesReturn {
     hasEnoughVotes,
     refetch,
     isLoading: isVotesLoading || isTokenLoading || isParamsLoading,
+    isFetching: isFetchingVotes,
     error,
   };
 }
