@@ -97,6 +97,7 @@ export const GET_PROPOSAL_QUEUED_BY_ID = gql`
 export const GET_PROPOSAL_METRICS = gql`
   query GetProposalMetrics {
     dataMetrics {
+      memberCount
       powerSum
       proposalsCount
       votesCount

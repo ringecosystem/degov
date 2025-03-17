@@ -86,6 +86,7 @@ export type ProposalQueuedByIdResponse = {
 };
 
 export type ProposalMetricsItem = {
+  memberCount: number;
   powerSum: string;
   proposalsCount: string;
   votesCount: string;
