@@ -97,6 +97,7 @@ export class TokenHandler {
 
     let delegate;
     let cleanFromDelegated = false;
+    let delegateToSelf = false;
     if (options.delegate === delegateRolling.fromDelegate) {
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
@@ -123,6 +124,7 @@ export class TokenHandler {
         transactionHash: options.transactionHash,
         power: options.newVotes - options.previousVotes,
       });
+      delegateToSelf = true;
     }
     if (!delegate) {
       return;
@@ -131,6 +133,7 @@ export class TokenHandler {
     await this.ctx.store.save(delegateRolling);
     await this.storeDelegate(delegate, {
       cleanFromDelegated,
+      delegateToSelf,
     });
   }
 
@@ -175,17 +178,21 @@ export class TokenHandler {
 
   private async storeDelegate(
     currentDelegate: Delegate,
-    options?: { cleanFromDelegated?: boolean }
+    options?: { cleanFromDelegated?: boolean, delegateToSelf?: boolean }
   ) {
     // store delegate
     const zeroAddress = "0x0000000000000000000000000000000000000000";
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
 
-    let isFirstDelegate = false;
+    let isDelegateToSelf = options?.delegateToSelf ?? false;
     if (currentDelegate.fromDelegate === zeroAddress) {
       currentDelegate.fromDelegate = currentDelegate.toDelegate;
-      isFirstDelegate = true;
+      isDelegateToSelf = true;
+    }
+    // transfer from zero address
+    if (currentDelegate.fromDelegate === zeroAddress) {
+      return;
     }
 
     const isSelfDelegate =
@@ -228,7 +235,7 @@ export class TokenHandler {
     } else {
       // store delegate
       if (!storedDelegateFromWithTo) {
-        if (!storedDelegateToWithTo && !isFirstDelegate) {
+        if (!storedDelegateToWithTo && !isDelegateToSelf) {
           return;
         }
 

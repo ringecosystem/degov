@@ -31,8 +31,8 @@ chain:
 
 indexer:
   endpoint: https://degov-indexer.vercel.app/graphql
-  startBlock: 5873342
-  # startBlock: 5897577
+  # startBlock: 5873342
+  startBlock: 5897577
 
 # Core contracts related to the DAO Governance
 contracts:
