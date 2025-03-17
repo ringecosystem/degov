@@ -70,7 +70,7 @@ export const Overview = () => {
           {formatNumberForDisplay(getMemberTotal?.data?.member_count ?? 0)[0]}
         </OverviewItem>
         <OverviewItem
-          title="Total voting Power"
+          title="Total Voting Power"
           icon="/assets/image/total-vote-colorful.svg"
           isLoading={isProposalMetricsLoading}
         >

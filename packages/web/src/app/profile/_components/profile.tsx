@@ -194,7 +194,7 @@ export const Profile = ({ address }: ProfileProps) => {
   return (
     <div className="flex flex-col gap-[30px]">
       <div className="flex items-center gap-1 text-[18px] font-extrabold">
-        <span className="text-muted-foreground">Delegate</span>
+        <span className="text-muted-foreground">Profile</span>
         <span className="text-muted-foreground">/</span>
         <AddressResolver address={address as `0x${string}`} showShortAddress>
           {(value) => <span>{value}</span>}
@@ -280,7 +280,8 @@ export const Profile = ({ address }: ProfileProps) => {
             </p>
           ) : (
             <p className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-muted-foreground">
-              No bio provided
+              No delegate statement found, please create one to attract more
+              votes.
             </p>
           )}
 
