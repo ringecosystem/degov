@@ -58,7 +58,7 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         className: "text-left",
         render: (record) => (
           <span
-            className="line-clamp-1"
+            className="line-clamp-1 break-words"
             title={profilePullData?.[record.id]?.delegate_statement || "-"}
           >
             {profilePullData?.[record.id]?.delegate_statement || "-"}
