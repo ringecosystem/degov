@@ -195,7 +195,7 @@ export class TokenHandler {
       return;
     }
 
-    const isFromeDelegateSameWithToDeletate =
+    const isFromDelegateSameWithToDeletate =
       currentDelegate.fromDelegate === currentDelegate.toDelegate;
     currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
 
@@ -207,7 +207,7 @@ export class TokenHandler {
       });
 
     let storedDelegateToWithTo: Delegate | undefined;
-    if (isFromeDelegateSameWithToDeletate) {
+    if (isFromDelegateSameWithToDeletate) {
       storedDelegateToWithTo = storedDelegateFromWithTo;
     } else {
       const toWithToDelegateId = `${currentDelegate.toDelegate}_${currentDelegate.toDelegate}`;
