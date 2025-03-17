@@ -32,4 +32,7 @@ export class DataMetric {
 
     @BigIntColumn_({nullable: true})
     powerSum!: bigint | undefined | null
+
+    @IntColumn_({nullable: true})
+    memberCount!: number | undefined | null
 }

@@ -240,16 +240,35 @@ export class TokenHandler {
           id: contributor.id,
         },
       });
-    if (!storedContributor) {
-      await this.ctx.store.insert(contributor);
+
+    // update stored contributor
+    if (storedContributor) {
+      storedContributor.blockNumber = contributor.blockNumber;
+      storedContributor.blockTimestamp = contributor.blockTimestamp;
+      storedContributor.transactionHash = contributor.transactionHash;
+
+      storedContributor.power = storedContributor.power + contributor.power;
+
+      await this.ctx.store.save(storedContributor);
       return;
     }
-    storedContributor.blockNumber = contributor.blockNumber;
-    storedContributor.blockTimestamp = contributor.blockTimestamp;
-    storedContributor.transactionHash = contributor.transactionHash;
 
-    storedContributor.power = storedContributor.power + contributor.power;
+    // save new contributor
+    await this.ctx.store.insert(contributor);
 
-    await this.ctx.store.save(storedContributor);
+    // increase metrics for memberCount
+    const storedDataMetric: DataMetric | undefined =
+      await this.ctx.store.findOne(DataMetric, {
+        where: {
+          id: MetricsId.global,
+        },
+      });
+    const dm = storedDataMetric
+      ? storedDataMetric
+      : new DataMetric({
+          id: MetricsId.global,
+        });
+    dm.memberCount = (dm.memberCount ?? 0) + 1;
+    await this.ctx.store.save(dm);
   }
 }

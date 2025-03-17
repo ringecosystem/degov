@@ -154,6 +154,7 @@ type DataMetric @entity {
   votesWeightAgainstSum: BigInt
   votesWeightAbstainSum: BigInt
   powerSum: BigInt
+  memberCount: Int
 }
 
 
