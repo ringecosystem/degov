@@ -15,7 +15,11 @@ export type ProposalVotes = {
   abstainVotes: bigint;
 };
 
-export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
+export function useProposalData(
+  address?: Address,
+  support?: "1" | "2" | "3",
+  pageSize: number = DEFAULT_PAGE_SIZE
+) {
   const daoConfig = useDaoConfig();
 
   const proposalsQuery = useInfiniteQuery({
@@ -44,8 +48,8 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
       const result = await proposalService.getAllProposals(
         daoConfig?.indexer?.endpoint as string,
         {
-          limit: DEFAULT_PAGE_SIZE,
-          offset: pageParam * DEFAULT_PAGE_SIZE,
+          limit: pageSize,
+          offset: pageParam * pageSize,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: whereCondition,
         }
@@ -55,7 +59,7 @@ export function useProposalData(address?: Address, support?: "1" | "2" | "3") {
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages, lastPageParam) => {
-      if (!lastPage || lastPage.length < DEFAULT_PAGE_SIZE) {
+      if (!lastPage || lastPage.length < pageSize) {
         return undefined;
       }
       return lastPageParam + 1;

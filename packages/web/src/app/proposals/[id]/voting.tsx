@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { VoteStatusAction } from "@/components/vote-status";
 import { VoteType } from "@/config/vote";
@@ -43,16 +44,19 @@ export function Voting({
   isPending,
   onCastVote,
 }: VotingProps) {
-  const { formattedVotes } = useMyVotes();
+  const { formattedVotes, refetch, isFetching } = useMyVotes();
   const [support, setSupport] = useState<VoteType>(VoteType.For);
   const [reason, setReason] = useState("");
   const { address } = useAccount();
+
   useEffect(() => {
     if (!open) {
       setSupport(VoteType.For);
       setReason("");
+    } else {
+      refetch();
     }
-  }, [open]);
+  }, [open, refetch]);
 
   const handleCastVote = useCallback(() => {
     onCastVote({
@@ -87,7 +91,13 @@ export function Voting({
 
           <div className="flex items-center justify-between rounded-[4px] border border-muted-foreground p-[10px]">
             <span className="text-[14px]">Voting power</span>
-            <span className="text-[26px] font-semibold">{formattedVotes}</span>
+            {isFetching ? (
+              <Skeleton className="h-[36px] w-[100px]" />
+            ) : (
+              <span className="text-[26px] font-semibold">
+                {formattedVotes}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center justify-between rounded-[4px] border border-muted-foreground p-[10px]">
