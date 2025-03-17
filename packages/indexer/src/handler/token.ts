@@ -182,8 +182,10 @@ export class TokenHandler {
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
 
+    let isFirstDelegate = false;
     if (currentDelegate.fromDelegate === zeroAddress) {
       currentDelegate.fromDelegate = currentDelegate.toDelegate;
+      isFirstDelegate = true;
     }
 
     const isSelfDelegate =
@@ -226,7 +228,7 @@ export class TokenHandler {
     } else {
       // store delegate
       if (!storedDelegateFromWithTo) {
-        if (!storedDelegateToWithTo) {
+        if (!storedDelegateToWithTo && !isFirstDelegate) {
           return;
         }
 
