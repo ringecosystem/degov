@@ -23,7 +23,13 @@ export function useProposalData(
   const daoConfig = useDaoConfig();
 
   const proposalsQuery = useInfiniteQuery({
-    queryKey: ["proposals", daoConfig?.indexer?.endpoint, address, support],
+    queryKey: [
+      "proposals",
+      daoConfig?.indexer?.endpoint,
+      address,
+      support,
+      pageSize,
+    ],
     queryFn: async ({ pageParam }) => {
       let whereCondition = {};
 

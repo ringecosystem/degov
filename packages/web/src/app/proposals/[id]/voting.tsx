@@ -44,7 +44,7 @@ export function Voting({
   isPending,
   onCastVote,
 }: VotingProps) {
-  const { formattedVotes, refetch, isFetching } = useMyVotes();
+  const { formattedVotes, votes, refetch, isFetching } = useMyVotes();
   const [support, setSupport] = useState<VoteType>(VoteType.For);
   const [reason, setReason] = useState("");
   const { address } = useAccount();
@@ -70,7 +70,7 @@ export function Voting({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
         <DialogHeader className="flex w-full flex-row items-center justify-between">
-          <DialogTitle className="text-[18px] font-normal">Voting</DialogTitle>
+          <DialogTitle className="text-[18px] font-bold">Voting</DialogTitle>
           <Image
             src="/assets/image/close.svg"
             alt="close"
@@ -145,7 +145,7 @@ export function Voting({
         <Button
           className="rounded-[100px]"
           onClick={handleCastVote}
-          disabled={!proposalId}
+          disabled={!proposalId || !votes || votes === BigInt(0)}
           isLoading={isPending}
         >
           Submit
