@@ -96,7 +96,8 @@ export class TokenHandler {
     if (!delegateRolling) return;
 
     let delegate;
-    let checkExists = false;
+    let checkToIsDelegated = false;
+    let cleanFromDelegated = false;
     if (options.delegate === delegateRolling.fromDelegate) {
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
@@ -109,7 +110,8 @@ export class TokenHandler {
         transactionHash: options.transactionHash,
         power: options.newVotes - options.previousVotes,
       });
-      checkExists = true;
+      checkToIsDelegated = true;
+      cleanFromDelegated = true;
     }
     if (options.delegate === delegateRolling.toDelegate) {
       delegateRolling.toNewVotes = options.newVotes;
@@ -129,7 +131,10 @@ export class TokenHandler {
     }
 
     await this.ctx.store.save(delegateRolling);
-    await this.storeDelegate(delegate, { checkExists });
+    await this.storeDelegate(delegate, {
+      checkToIsDelegated,
+      cleanFromDelegated,
+    });
   }
 
   private async storeTokenTransfer(eventLog: Log) {
@@ -167,41 +172,77 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
       power: isErc721 ? 1n : event.value,
     });
-    await this.storeDelegate(fromDelegate, { checkExists: true });
-    await this.storeDelegate(toDelegate, { checkExists: true });
+    await this.storeDelegate(fromDelegate, { checkToIsDelegated: true });
+    await this.storeDelegate(toDelegate, { checkToIsDelegated: true });
   }
 
   private async storeDelegate(
     currentDelegate: Delegate,
-    options?: { checkExists?: boolean }
+    options?: { checkToIsDelegated?: boolean; cleanFromDelegated?: boolean }
   ) {
     // store delegate
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
+    const isSelfDelegate =
+      currentDelegate.fromDelegate === currentDelegate.toDelegate;
     currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
 
-    const storedDelegate: Delegate | undefined = await this.ctx.store.findOne(
-      Delegate,
-      {
+    const storedDelegateFromWithTo: Delegate | undefined =
+      await this.ctx.store.findOne(Delegate, {
         where: {
           id: currentDelegate.id,
         },
-      }
-    );
-
-    // store delegate
-    if (!storedDelegate) {
-      if (options?.checkExists ?? false) {
-        return;
-      }
-
-      await this.ctx.store.insert(currentDelegate);
+      });
+    let storedDelegateToWithTo: Delegate | undefined;
+    if (isSelfDelegate) {
+      storedDelegateToWithTo = storedDelegateFromWithTo;
     } else {
-      storedDelegate.power = storedDelegate.power + currentDelegate.power;
-      storedDelegate.blockNumber = currentDelegate.blockNumber;
-      storedDelegate.blockTimestamp = currentDelegate.blockTimestamp;
-      storedDelegate.transactionHash = currentDelegate.transactionHash;
-      await this.ctx.store.save(storedDelegate);
+      const toWithToDelegateId = `${currentDelegate.toDelegate}_${currentDelegate.toDelegate}`;
+      storedDelegateToWithTo = await this.ctx.store.findOne(Delegate, {
+        where: {
+          id: toWithToDelegateId,
+        },
+      });
+    }
+
+    let enableStoreContributor = false;
+    // clean from delegate
+    if (options?.cleanFromDelegated ?? false) {
+      const cleanFromDelegatedId = `${currentDelegate.fromDelegate}_${currentDelegate.fromDelegate}`;
+      const storedDelegateFromWithFrom: Delegate | undefined =
+        await this.ctx.store.findOne(Delegate, {
+          where: {
+            id: cleanFromDelegatedId,
+          },
+        });
+      if (storedDelegateFromWithFrom) {
+        await this.ctx.store.remove(Delegate, cleanFromDelegatedId);
+        enableStoreContributor = true;
+      }
+    } else {
+      // store delegate
+      if (!storedDelegateFromWithTo) {
+        const checkToIsDelegated = options?.checkToIsDelegated ?? false;
+        if (checkToIsDelegated) {
+          if (!storedDelegateToWithTo) {
+            return;
+          }
+        }
+        await this.ctx.store.insert(currentDelegate);
+      } else {
+        // store "to" delegate power
+        storedDelegateFromWithTo.power =
+          storedDelegateFromWithTo.power + currentDelegate.power;
+        storedDelegateFromWithTo.blockNumber = currentDelegate.blockNumber;
+        storedDelegateFromWithTo.blockTimestamp =
+          currentDelegate.blockTimestamp;
+        storedDelegateFromWithTo.transactionHash =
+          currentDelegate.transactionHash;
+        await this.ctx.store.save(storedDelegateFromWithTo);
+      }
+    }
+    if (!enableStoreContributor) {
+      return;
     }
 
     // store contributor
