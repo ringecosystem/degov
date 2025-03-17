@@ -85,6 +85,7 @@ export const delegateService = {
       offset?: number;
       orderBy?: string;
       where?: {
+        power_gt?: number;
         toDelegate_eq?: string;
       };
     } = {}
