@@ -25,6 +25,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         title: "Delegator",
         key: "delegator",
         width: "33.3%",
+        className: "text-left",
         render: (record) => (
           <AddressWithAvatar
             address={record?.fromDelegate as `0x${string}`}
