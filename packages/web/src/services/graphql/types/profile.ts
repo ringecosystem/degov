@@ -27,3 +27,9 @@ export type MemberTotalResponse = {
   };
   message: string;
 };
+
+export type ProfilePullResponse = {
+  code: number;
+  data: Member[];
+  message: string;
+};

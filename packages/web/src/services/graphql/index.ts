@@ -108,6 +108,30 @@ export const squidStatusService = {
   },
 };
 
+export const contributorService = {
+  getAllContributors: async (
+    endpoint: string,
+    options: {
+      limit: number;
+      offset: number;
+    } = {
+      limit: 10,
+      offset: 0,
+    }
+  ) => {
+    const response = await request<Types.ContributorResponse>(
+      endpoint,
+      Queries.GET_CONTRIBUTORS,
+      {
+        limit: options?.limit,
+        offset: options?.offset,
+        orderBy: "power_DESC",
+      }
+    );
+    return response?.contributors ?? [];
+  },
+};
+
 export const profileService = {
   getProfile: async (
     address: string
@@ -192,6 +216,15 @@ export const memberService = {
     }
   },
 
+  // ### [degov] Profile pull
+  // POST https://degov-dev.vercel.app/api/profile/pull
+  // Content-Type: application/json
+
+  // [
+  //   "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+  //   "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9"
+  // ]
+
   getMemberTotal: async (): Promise<Types.MemberTotalResponse> => {
     const response = await fetch(`/api/degov/metrics`, {
       cache: "no-store",
@@ -199,6 +232,18 @@ export const memberService = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${getToken()}`,
       },
+    });
+    const data = await response.json();
+    return data;
+  },
+
+  // ### [degov] Profile pull
+  getProfilePull: async (
+    addresses: string[]
+  ): Promise<Types.ProfilePullResponse> => {
+    const response = await fetch(`/api/profile/pull`, {
+      method: "POST",
+      body: JSON.stringify(addresses),
     });
     const data = await response.json();
     return data;

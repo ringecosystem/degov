@@ -1,47 +1,49 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
-import { useMembersVotingPower } from "@/hooks/useMembersVotingPower";
-import { memberService } from "@/services/graphql";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { contributorService, memberService } from "@/services/graphql";
+import type { ContributorItem, Member } from "@/services/graphql/types";
 
 export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
+  const daoConfig = useDaoConfig();
   const membersQuery = useInfiniteQuery({
     queryKey: ["members", pageSize],
     queryFn: async ({ pageParam }) => {
-      const result = await memberService.getMembers(pageParam, pageSize);
+      const result = await contributorService.getAllContributors(
+        daoConfig?.indexer?.endpoint ?? "",
+        {
+          limit: pageSize,
+          offset: Number(pageParam),
+        }
+      );
 
       return result;
     },
-    initialPageParam: new Date().toISOString(),
-    getNextPageParam: (lastPage) => {
-      if (!lastPage?.data || lastPage.data.length === 0) {
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages, lastPageParam) => {
+      // If no data or less than page size, no more pages
+      if (!lastPage || lastPage.length < DEFAULT_PAGE_SIZE) {
         return undefined;
       }
-
-      if (lastPage.data.length < pageSize) {
-        return undefined;
-      }
-
-      const lastItem = lastPage.data[lastPage.data.length - 1];
-      if (!lastItem?.ctime) {
-        return undefined;
-      }
-
-      return lastItem.ctime;
+      // Return next page number
+      return lastPageParam + 1;
     },
     retryDelay: 10_000,
     retry: 3,
   });
 
-  const flattenedData = useMemo(() => {
+  const flattenedData = useMemo<ContributorItem[]>(() => {
     if (!membersQuery.data) return [];
 
     const allMembers = new Map();
 
-    membersQuery.data.pages.forEach((page) => {
-      if (page?.data) {
-        page.data.forEach((member) => {
+    console.log("membersQuery.data", membersQuery.data);
+
+    membersQuery?.data?.pages?.forEach((page) => {
+      if (page) {
+        page?.forEach((member) => {
           if (!allMembers.has(member.id)) {
             allMembers.set(member.id, member);
           }
@@ -52,22 +54,30 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
     return Array.from(allMembers.values());
   }, [membersQuery.data]);
 
-  const { votingPowerMap, isLoading: isVotingPowerLoading } =
-    useMembersVotingPower(flattenedData);
-  console.log("votingPowerMap", votingPowerMap);
+  const { data: profilePullData, isLoading: isProfilePullLoading } = useQuery({
+    queryKey: [
+      "profilePull",
+      flattenedData?.map((member) => member.id?.toLowerCase()),
+    ],
+    queryFn: () =>
+      memberService.getProfilePull(
+        flattenedData?.map((member) => member.id?.toLowerCase())
+      ),
+    enabled: !!flattenedData?.length,
+  });
 
-  const sortedMembers = useMemo(() => {
-    if (flattenedData.length === 0) return [];
+  const filterData = useMemo(() => {
+    if (!flattenedData?.length || !profilePullData?.data?.length) return {};
 
-    return [...flattenedData].sort((a, b) => {
-      const aVotingPower = votingPowerMap[a.address.toLowerCase()]?.raw || 0n;
-      const bVotingPower = votingPowerMap[b.address.toLowerCase()]?.raw || 0n;
-
-      if (bVotingPower > aVotingPower) return 1;
-      if (bVotingPower < aVotingPower) return -1;
-      return 0;
+    const obj: Record<string, Member | undefined> = {};
+    flattenedData?.forEach((member) => {
+      const profilePull = profilePullData?.data?.find(
+        (item) => item.address === member.id
+      );
+      obj[member.id] = profilePull;
     });
-  }, [flattenedData, votingPowerMap]);
+    return obj;
+  }, [flattenedData, profilePullData]);
 
   const loadMoreData = useCallback(() => {
     if (!membersQuery.isFetchingNextPage && membersQuery.hasNextPage) {
@@ -81,15 +91,15 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
 
   return {
     state: {
-      data: sortedMembers,
+      data: flattenedData,
       hasNextPage: membersQuery.hasNextPage,
       isPending: membersQuery.isPending,
       isFetchingNextPage: membersQuery.isFetchingNextPage,
       error: membersQuery.error,
     },
-    votingPowerState: {
-      data: votingPowerMap,
-      isLoading: isVotingPowerLoading,
+    profilePullState: {
+      data: filterData,
+      isLoading: isProfilePullLoading,
     },
     loadMoreData,
     refreshData,

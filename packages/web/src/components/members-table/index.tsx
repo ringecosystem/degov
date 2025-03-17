@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
-import type { Member } from "@/services/graphql/types";
+import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import type { ContributorItem } from "@/services/graphql/types";
 
 import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
@@ -12,18 +13,23 @@ import { useMembersData } from "./hooks/useMembersData";
 import type { ColumnType } from "../custom-table";
 
 interface MembersTableProps {
-  onDelegate?: (value: Member) => void;
+  onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
 }
 
 export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
+  const formatTokenAmount = useFormatGovernanceTokenAmount();
+
   const {
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
-    votingPowerState: { data: votingPowerMap, isLoading: isVotingPowerLoading },
+    profilePullState: {
+      data: profilePullData,
+      isLoading: isProfilePullLoading,
+    },
     loadMoreData,
   } = useMembersData(pageSize);
 
-  const columns = useMemo<ColumnType<Member>[]>(
+  const columns = useMemo<ColumnType<ContributorItem>[]>(
     () => [
       {
         title: "Rank",
@@ -42,7 +48,7 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         width: "260px",
         className: "text-left",
         render: (record) => (
-          <AddressWithAvatar address={record.address as `0x${string}`} />
+          <AddressWithAvatar address={record?.id as `0x${string}`} />
         ),
       },
       {
@@ -51,8 +57,11 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         width: "200px",
         className: "text-left",
         render: (record) => (
-          <span className="line-clamp-1" title={record.delegate_statement}>
-            {record.delegate_statement || "-"}
+          <span
+            className="line-clamp-1"
+            title={profilePullData?.[record.id]?.delegate_statement || "-"}
+          >
+            {profilePullData?.[record.id]?.delegate_statement || "-"}
           </span>
         ),
       },
@@ -62,14 +71,20 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         width: "200px",
         className: "text-right",
         render: (record) =>
-          isVotingPowerLoading ? (
+          isProfilePullLoading ? (
             <Skeleton className="h-[30px] w-[100px]" />
           ) : (
             <span
               className="line-clamp-1"
-              title={votingPowerMap[record.address.toLowerCase()]?.formatted}
+              title={
+                formatTokenAmount(record?.power ? BigInt(record?.power) : 0n)
+                  ?.formatted
+              }
             >
-              {votingPowerMap[record.address.toLowerCase()]?.formatted || "0"}
+              {
+                formatTokenAmount(record?.power ? BigInt(record?.power) : 0n)
+                  ?.formatted
+              }
             </span>
           ),
       },
@@ -91,7 +106,7 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         ),
       },
     ],
-    [onDelegate, votingPowerMap, isVotingPowerLoading]
+    [onDelegate, profilePullData, isProfilePullLoading, formatTokenAmount]
   );
 
   return (
@@ -101,7 +116,7 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         columns={columns}
         dataSource={members}
         rowKey="id"
-        isLoading={isPending || isVotingPowerLoading}
+        isLoading={isPending}
         emptyText="No Members"
         caption={
           hasNextPage ? (
