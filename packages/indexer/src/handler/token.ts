@@ -199,7 +199,7 @@ export class TokenHandler {
       currentDelegate.fromDelegate === currentDelegate.toDelegate;
     currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
 
-    const storedDelegateFromWithTo: Delegate | undefined =
+    let storedDelegateFromWithTo: Delegate | undefined =
       await this.ctx.store.findOne(Delegate, {
         where: {
           id: currentDelegate.id,
@@ -251,9 +251,8 @@ export class TokenHandler {
         // store "to" delegate power
         if (options?.isDelegatedToSelf ?? false) {
           // withdraw the delegate
-          if (storedDelegateToWithTo && storedDelegateToWithTo.power === 0n) {
-            storedDelegateFromWithTo.fromDelegate =
-              storedDelegateToWithTo.toDelegate;
+          if (storedDelegateToWithTo) {
+            storedDelegateFromWithTo = storedDelegateToWithTo;
           }
         }
         storedDelegateFromWithTo.power =
