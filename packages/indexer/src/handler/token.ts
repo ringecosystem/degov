@@ -97,7 +97,6 @@ export class TokenHandler {
 
     let delegate;
     let cleanFromDelegated = false;
-    let delegateToSelf = false;
     if (options.delegate === delegateRolling.fromDelegate) {
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
@@ -124,7 +123,6 @@ export class TokenHandler {
         transactionHash: options.transactionHash,
         power: options.newVotes - options.previousVotes,
       });
-      delegateToSelf = true;
     }
     if (!delegate) {
       return;
@@ -133,7 +131,6 @@ export class TokenHandler {
     await this.ctx.store.save(delegateRolling);
     await this.storeDelegate(delegate, {
       cleanFromDelegated,
-      delegateToSelf,
     });
   }
 
@@ -178,14 +175,14 @@ export class TokenHandler {
 
   private async storeDelegate(
     currentDelegate: Delegate,
-    options?: { cleanFromDelegated?: boolean, delegateToSelf?: boolean }
+    options?: { cleanFromDelegated?: boolean }
   ) {
     // store delegate
     const zeroAddress = "0x0000000000000000000000000000000000000000";
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
 
-    let isDelegateToSelf = options?.delegateToSelf ?? false;
+    let isDelegateToSelf = false;
     if (currentDelegate.fromDelegate === zeroAddress) {
       currentDelegate.fromDelegate = currentDelegate.toDelegate;
       isDelegateToSelf = true;
@@ -229,7 +226,13 @@ export class TokenHandler {
           },
         });
       if (storedDelegateFromWithFrom) {
-        await this.ctx.store.remove(Delegate, cleanFromDelegatedId);
+        storedDelegateFromWithFrom.power = 0n;
+        storedDelegateFromWithFrom.blockNumber = currentDelegate.blockNumber;
+        storedDelegateFromWithFrom.blockTimestamp =
+          currentDelegate.blockTimestamp;
+        storedDelegateFromWithFrom.transactionHash =
+          currentDelegate.transactionHash;
+        await this.ctx.store.save(storedDelegateFromWithFrom);
         enableStoreContributor = true;
       }
     } else {
