@@ -11,7 +11,7 @@ export const DaoHeader = () => {
   const config = useDaoConfig();
 
   return (
-    <div className="grid grid-cols-2 items-end justify-between rounded-[14px] bg-card p-[20px]">
+    <div className="grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-card p-[20px]">
       <div className="flex flex-col gap-[10px]">
         <h1 className="flex items-center gap-[10px] text-[26px] font-extrabold">
           <Image
