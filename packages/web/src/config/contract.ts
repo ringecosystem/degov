@@ -3,7 +3,6 @@ import erc20Abi from "@/assets/abi/erc20.json";
 import erc721Abi from "@/assets/abi/erc721.json";
 import igovernorAbi from "@/assets/abi/igovernor.json";
 import ownable2stepAbi from "@/assets/abi/ownable2step.json";
-import pausableAbi from "@/assets/abi/pausable.json";
 import upgradeabilityAbi from "@/assets/abi/uupsupgradeable.json";
 
 import type { Abi } from "viem";
@@ -33,11 +32,6 @@ export const abiList = [
     name: "ownable2step",
     abi: ownable2stepAbi as Abi,
     label: "Ownable2Step",
-  },
-  {
-    name: "pausable",
-    abi: pausableAbi as Abi,
-    label: "Pausable",
   },
   {
     name: "upgradeability",
