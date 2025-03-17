@@ -19,6 +19,8 @@ export function useMembersVotingPower(members: Member[] | undefined) {
       .map((member) => member.address as Address);
   }, [members]);
 
+  console.log("memberAddresses", memberAddresses);
+
   const votesContracts = useMemo(() => {
     return {
       address: daoConfig?.contracts?.governorToken?.address as Address,
@@ -44,6 +46,8 @@ export function useMembersVotingPower(members: Member[] | undefined) {
         Boolean(daoConfig?.chain?.id),
     },
   });
+
+  console.log("votesData", votesData);
 
   const votingPowerMap = useMemo(() => {
     const result: Record<string, { formatted: string; raw: bigint }> = {};

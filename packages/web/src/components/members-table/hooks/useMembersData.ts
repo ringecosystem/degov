@@ -54,6 +54,7 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
 
   const { votingPowerMap, isLoading: isVotingPowerLoading } =
     useMembersVotingPower(flattenedData);
+  console.log("votingPowerMap", votingPowerMap);
 
   const sortedMembers = useMemo(() => {
     if (flattenedData.length === 0) return [];
