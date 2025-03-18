@@ -396,7 +396,7 @@ const recordsFor_0xa23d90f = [
 ];
 
 test("testTokens", () => {
-  const records = recordsFor_0xa23d90f;
+  const records = recordsFor_0xf25f97f;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -418,7 +418,8 @@ test("testTokens", () => {
             toDelegate: entry.to,
             power: entry.value,
           };
-          ds.pushTransfer([transferDelegateFrom, transferDelegateTo]);
+          ds.pushDelegator(transferDelegateFrom);
+          ds.pushDelegator(transferDelegateTo);
           break;
         case "delegatechanged":
           cdg = {
@@ -453,7 +454,7 @@ test("testTokens", () => {
             toDelegate =
               cdg.delegator === cdg.toDelegate ? cdg.delegator : cdg.toDelegate;
           }
-          const isFirstDelegate = cdg.fromDelegate === zeroAddress;
+          const isFirstDelegateToSelf = cdg.fromDelegate === zeroAddress;
           const cdelegate = {
             ...cdg,
             fromDelegate,
@@ -461,7 +462,7 @@ test("testTokens", () => {
             power: entry.newVotes - entry.previousVotes,
           };
           console.log("--------> ", cdg, cdelegate);
-          ds.pushDelegator(cdelegate, { isFirstDelegate });
+          ds.pushDelegator(cdelegate, { isFirstDelegateToSelf });
           break;
         default:
           throw new Error(`wrong method: ${method}`);
@@ -491,45 +492,46 @@ dsfn.getDelegates = function () {
 };
 
 dsfn.pushDelegator = function (delegator, options) {
-  const isFirstDelegate = options && options.isFirstDelegate;
+  const isFirstDelegateToSelf = options && options.isFirstDelegateToSelf;
   delegator.id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
-  const storedDelegator = this.delegates.find(
+  const delegateToWithToId = `${delegator.toDelegate}_${delegator.toDelegate}`;
+
+  const storedDelegateFromWithTo = this.delegates.find(
     (item) => item.id === delegator.id
   );
-  const toWithToId = `${delegator.toDelegate}_${delegator.toDelegate}`;
-  const storedDelegatorToWithTo = this.delegates.find(
-    (item) => item.id === toWithToId
+  const storedDelegateToWithTo = this.delegates.find(
+    (item) => item.id === delegateToWithToId
   );
-  if (!storedDelegator) {
-    if (isFirstDelegate) {
+  if (!storedDelegateFromWithTo) {
+    if (isFirstDelegateToSelf) {
       this.delegates.push(delegator);
     }
-    if (storedDelegatorToWithTo) {
+    if (storedDelegateToWithTo) {
       this.delegates.push(delegator);
     }
     return;
   }
-  storedDelegator.power += delegator.power;
+  storedDelegateFromWithTo.power += delegator.power;
   if (
-    storedDelegator.power === 0n &&
-    storedDelegator.fromDelegate !== storedDelegator.toDelegate
+    storedDelegateFromWithTo.power === 0n &&
+    storedDelegateFromWithTo.fromDelegate !== storedDelegateFromWithTo.toDelegate
   ) {
     this.delegates = this.delegates.filter(
-      (item) => item.id !== storedDelegator.id
+      (item) => item.id !== storedDelegateFromWithTo.id
     );
   }
 };
 
-dsfn.pushTransfer = function (delegators) {
-  for (const delegator of delegators) {
-    const id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
-    const storedDelegator = this.delegates.find((item) => item.id === id);
-    if (!storedDelegator) {
-      console.log(
-        `skipped transfer ${delegator.fromDelegate} -> ${delegator.toDelegate} (${delegator.power})`
-      );
-      continue;
-    }
-    storedDelegator.power += delegator.power;
-  }
-};
+// dsfn.pushTransfer = function (delegators) {
+//   for (const delegator of delegators) {
+//     const id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
+//     const storedDelegator = this.delegates.find((item) => item.id === id);
+//     if (!storedDelegator) {
+//       console.log(
+//         `skipped transfer ${delegator.fromDelegate} -> ${delegator.toDelegate} (${delegator.power})`
+//       );
+//       continue;
+//     }
+//     storedDelegator.power += delegator.power;
+//   }
+// };
