@@ -10,9 +10,11 @@ import * as indexConfig from "./config";
 
 const rpcEndpoint = {
   // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
-  capacity: 30,
-  maxBatchCallSize: 200,
+  // capacity: 30,
+  // maxBatchCallSize: 200,
   url: indexConfig.endpoint.rpcs[0],
+  // rateLimit: 10000,
+  // maxBatchCallSize: 1000,
 };
 
 export const processor = new EvmBatchProcessor()
