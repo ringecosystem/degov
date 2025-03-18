@@ -7,7 +7,7 @@ import { abi as tokenAbi } from "@/config/abi/token";
 import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { proposalService } from "@/services/graphql";
+import { memberService, proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
@@ -37,6 +37,12 @@ export const Overview = () => {
     refetchInterval: DEFAULT_REFETCH_INTERVAL,
   });
 
+  const { data: getMemberTotal, isLoading: isMembersLoading } = useQuery({
+    queryKey: ["getMemberTotal"],
+    queryFn: () => memberService.getMemberTotal(),
+    refetchInterval: DEFAULT_REFETCH_INTERVAL,
+  });
+
   return (
     <div className="flex flex-col gap-[20px]">
       <h3 className="text-[18px] font-extrabold">Overview</h3>
@@ -59,9 +65,9 @@ export const Overview = () => {
         <OverviewItem
           title="Members"
           icon="/assets/image/members-colorful.svg"
-          isLoading={isProposalMetricsLoading}
+          isLoading={isMembersLoading}
         >
-          {formatNumberForDisplay(dataMetrics?.memberCount ?? 0)[0]}
+          {formatNumberForDisplay(getMemberTotal?.data?.member_count ?? 0)[0]}
         </OverviewItem>
         <OverviewItem
           title="Total Voting Power"
