@@ -514,24 +514,11 @@ dsfn.pushDelegator = function (delegator, options) {
   storedDelegateFromWithTo.power += delegator.power;
   if (
     storedDelegateFromWithTo.power === 0n &&
-    storedDelegateFromWithTo.fromDelegate !== storedDelegateFromWithTo.toDelegate
+    storedDelegateFromWithTo.fromDelegate !==
+      storedDelegateFromWithTo.toDelegate
   ) {
     this.delegates = this.delegates.filter(
       (item) => item.id !== storedDelegateFromWithTo.id
     );
   }
 };
-
-// dsfn.pushTransfer = function (delegators) {
-//   for (const delegator of delegators) {
-//     const id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
-//     const storedDelegator = this.delegates.find((item) => item.id === id);
-//     if (!storedDelegator) {
-//       console.log(
-//         `skipped transfer ${delegator.fromDelegate} -> ${delegator.toDelegate} (${delegator.power})`
-//       );
-//       continue;
-//     }
-//     storedDelegator.power += delegator.power;
-//   }
-// };

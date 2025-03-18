@@ -101,6 +101,7 @@ export class TokenHandler {
     if (options.delegate === delegateRolling.fromDelegate) {
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
+      // retuning power to self
       if (
         delegateRolling.delegator === delegateRolling.toDelegate &&
         delegateRolling.fromDelegate !== zeroAddress
@@ -108,6 +109,7 @@ export class TokenHandler {
         fromDelegate = delegateRolling.delegator;
         toDelegate = delegateRolling.fromDelegate;
       } else {
+        // delegate to other
         fromDelegate = delegateRolling.fromDelegate;
         toDelegate = delegateRolling.delegator;
       }
@@ -204,16 +206,20 @@ export class TokenHandler {
 
     // store delegate
     let enableStoreContributor = false;
+    // no from-to delegate record, insert it.
     if (!storedDelegateFromWithTo) {
+      // store first delegate
       if (isFirstDelegateToSelf) {
         await this.ctx.store.insert(currentDelegate);
         enableStoreContributor = true;
       }
+      // indicates that this user has a delegate record
       if (storedDelegateToWithTo) {
         await this.ctx.store.insert(currentDelegate);
         enableStoreContributor = true;
       }
     } else {
+      // should keep delegate self record
       if (
         storedDelegateFromWithTo.power === 0n &&
         storedDelegateFromWithTo.fromDelegate !==
@@ -221,6 +227,7 @@ export class TokenHandler {
       ) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
       } else {
+        // update delegate
         storedDelegateFromWithTo.power += currentDelegate.power;
         await this.ctx.store.save(storedDelegateFromWithTo);
       }
