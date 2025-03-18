@@ -189,7 +189,6 @@ export class TokenHandler {
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
     currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
-    const delegateToWithToId = `${currentDelegate.toDelegate}_${currentDelegate.toDelegate}`;
 
     let storedDelegateFromWithTo: Delegate | undefined =
       await this.ctx.store.findOne(Delegate, {
@@ -207,6 +206,7 @@ export class TokenHandler {
         await this.ctx.store.insert(currentDelegate);
         enableStoreContributor = true;
       } else {
+        const delegateToWithToId = `${currentDelegate.toDelegate}_${currentDelegate.toDelegate}`;
         let storedDelegateToWithTo: Delegate | undefined =
           await this.ctx.store.findOne(Delegate, {
             where: {

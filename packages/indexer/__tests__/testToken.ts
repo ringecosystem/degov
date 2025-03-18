@@ -494,7 +494,6 @@ dsfn.getDelegates = function () {
 dsfn.pushDelegator = function (delegator, options) {
   const isFirstDelegateToSelf = options && options.isFirstDelegateToSelf;
   delegator.id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
-  const delegateToWithToId = `${delegator.toDelegate}_${delegator.toDelegate}`;
 
   const storedDelegateFromWithTo = this.delegates.find(
     (item) => item.id === delegator.id
@@ -503,6 +502,7 @@ dsfn.pushDelegator = function (delegator, options) {
     if (isFirstDelegateToSelf) {
       this.delegates.push(delegator);
     } else {
+      const delegateToWithToId = `${delegator.toDelegate}_${delegator.toDelegate}`;
       const storedDelegateToWithTo = this.delegates.find(
         (item) => item.id === delegateToWithToId
       );
