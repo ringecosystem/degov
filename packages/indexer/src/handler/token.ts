@@ -197,12 +197,6 @@ export class TokenHandler {
           id: currentDelegate.id,
         },
       });
-    let storedDelegateToWithTo: Delegate | undefined =
-      await this.ctx.store.findOne(Delegate, {
-        where: {
-          id: delegateToWithToId,
-        },
-      });
 
     // store delegate
     let enableStoreContributor = false;
@@ -212,11 +206,18 @@ export class TokenHandler {
       if (isFirstDelegateToSelf) {
         await this.ctx.store.insert(currentDelegate);
         enableStoreContributor = true;
-      }
-      // indicates that this user has a delegate record
-      if (storedDelegateToWithTo) {
-        await this.ctx.store.insert(currentDelegate);
-        enableStoreContributor = true;
+      } else {
+        let storedDelegateToWithTo: Delegate | undefined =
+          await this.ctx.store.findOne(Delegate, {
+            where: {
+              id: delegateToWithToId,
+            },
+          });
+        // indicates that this user has a delegate record
+        if (storedDelegateToWithTo) {
+          await this.ctx.store.insert(currentDelegate);
+          enableStoreContributor = true;
+        }
       }
     } else {
       // should keep delegate self record

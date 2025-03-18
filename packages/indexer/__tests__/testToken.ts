@@ -499,15 +499,16 @@ dsfn.pushDelegator = function (delegator, options) {
   const storedDelegateFromWithTo = this.delegates.find(
     (item) => item.id === delegator.id
   );
-  const storedDelegateToWithTo = this.delegates.find(
-    (item) => item.id === delegateToWithToId
-  );
   if (!storedDelegateFromWithTo) {
     if (isFirstDelegateToSelf) {
       this.delegates.push(delegator);
-    }
-    if (storedDelegateToWithTo) {
-      this.delegates.push(delegator);
+    } else {
+      const storedDelegateToWithTo = this.delegates.find(
+        (item) => item.id === delegateToWithToId
+      );
+      if (storedDelegateToWithTo) {
+        this.delegates.push(delegator);
+      }
     }
     return;
   }
