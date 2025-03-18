@@ -15,8 +15,14 @@ export const GET_CONTRIBUTORS = gql`
     $limit: Int
     $offset: Int
     $orderBy: [ContributorOrderByInput!]
+    $where: ContributorWhereInput
   ) {
-    contributors(limit: $limit, offset: $offset, orderBy: $orderBy) {
+    contributors(
+      limit: $limit
+      offset: $offset
+      orderBy: $orderBy
+      where: $where
+    ) {
       blockNumber
       blockTimestamp
       id

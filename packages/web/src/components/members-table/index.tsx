@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import type { ContributorItem } from "@/services/graphql/types";
+import type { Member } from "@/services/graphql/types";
 
 import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
@@ -13,11 +14,14 @@ import { useMembersData } from "./hooks/useMembersData";
 import type { ColumnType } from "../custom-table";
 
 interface MembersTableProps {
-  onDelegate?: (value: ContributorItem) => void;
+  onDelegate?: (value: Member) => void;
   pageSize?: number;
 }
 
-export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
+export function MembersTable({
+  onDelegate,
+  pageSize = DEFAULT_PAGE_SIZE,
+}: MembersTableProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
   const {
@@ -29,26 +33,15 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
     loadMoreData,
   } = useMembersData(pageSize);
 
-  const columns = useMemo<ColumnType<ContributorItem>[]>(
+  const columns = useMemo<ColumnType<Member>[]>(
     () => [
-      {
-        title: "Rank",
-        key: "rank",
-        width: "160px",
-        className: "text-left",
-        render: (_record, index) => (
-          <span className="line-clamp-1" title={(index + 1).toString()}>
-            {index + 1}
-          </span>
-        ),
-      },
       {
         title: "Member",
         key: "member",
         width: "260px",
         className: "text-left",
         render: (record) => (
-          <AddressWithAvatar address={record?.id as `0x${string}`} />
+          <AddressWithAvatar address={record?.address as `0x${string}`} />
         ),
       },
       {
@@ -59,9 +52,9 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         render: (record) => (
           <span
             className="line-clamp-1 break-words"
-            title={profilePullData?.[record.id]?.delegate_statement || "-"}
+            title={record?.delegate_statement || "-"}
           >
-            {profilePullData?.[record.id]?.delegate_statement || "-"}
+            {record?.delegate_statement || "-"}
           </span>
         ),
       },
@@ -70,23 +63,20 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         key: "votingPower",
         width: "200px",
         className: "text-right",
-        render: (record) =>
-          isProfilePullLoading ? (
+        render: (record) => {
+          const power = profilePullData?.[record?.address]?.power;
+
+          return isProfilePullLoading ? (
             <Skeleton className="h-[30px] w-[100px]" />
           ) : (
             <span
               className="line-clamp-1"
-              title={
-                formatTokenAmount(record?.power ? BigInt(record?.power) : 0n)
-                  ?.formatted
-              }
+              title={formatTokenAmount(power ? BigInt(power) : 0n)?.formatted}
             >
-              {
-                formatTokenAmount(record?.power ? BigInt(record?.power) : 0n)
-                  ?.formatted
-              }
+              {formatTokenAmount(power ? BigInt(power) : 0n)?.formatted}
             </span>
-          ),
+          );
+        },
       },
       {
         title: "Action",
