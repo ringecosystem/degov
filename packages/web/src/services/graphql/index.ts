@@ -115,9 +115,15 @@ export const contributorService = {
     options: {
       limit: number;
       offset: number;
+      where?: {
+        id_in?: string[];
+      };
     } = {
       limit: 10,
       offset: 0,
+      where: {
+        id_in: [],
+      },
     }
   ) => {
     const response = await request<Types.ContributorResponse>(
@@ -127,6 +133,7 @@ export const contributorService = {
         limit: options?.limit,
         offset: options?.offset,
         orderBy: "power_DESC",
+        where: options?.where,
       }
     );
     return response?.contributors ?? [];

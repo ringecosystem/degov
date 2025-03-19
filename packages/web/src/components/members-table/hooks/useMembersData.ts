@@ -8,44 +8,43 @@ import type { ContributorItem, Member } from "@/services/graphql/types";
 
 export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
   const daoConfig = useDaoConfig();
+
   const membersQuery = useInfiniteQuery({
     queryKey: ["members", pageSize],
     queryFn: async ({ pageParam }) => {
-      const result = await contributorService.getAllContributors(
-        daoConfig?.indexer?.endpoint ?? "",
-        {
-          limit: pageSize,
-          offset: Number(pageParam),
-        }
-      );
+      const result = await memberService.getMembers(pageParam, pageSize);
 
       return result;
     },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages, lastPageParam) => {
-      // If no data or less than page size, no more pages
-      if (!lastPage || lastPage.length < DEFAULT_PAGE_SIZE) {
+    initialPageParam: new Date().toISOString(),
+    getNextPageParam: (lastPage) => {
+      if (!lastPage?.data || lastPage.data.length === 0) {
         return undefined;
       }
-      // Return next page number
-      return lastPageParam + 1;
+
+      if (lastPage.data.length < pageSize) {
+        return undefined;
+      }
+
+      const lastItem = lastPage.data[lastPage.data.length - 1];
+      if (!lastItem?.ctime) {
+        return undefined;
+      }
+
+      return lastItem.ctime;
     },
     retryDelay: 10_000,
     retry: 3,
   });
 
-  const flattenedData = useMemo<ContributorItem[]>(() => {
+  const flattenedData = useMemo<Member[]>(() => {
     if (!membersQuery.data) return [];
-
     const allMembers = new Map();
-
-    console.log("membersQuery.data", membersQuery.data);
-
     membersQuery?.data?.pages?.forEach((page) => {
       if (page) {
-        page?.forEach((member) => {
-          if (!allMembers.has(member.id)) {
-            allMembers.set(member.id, member);
+        page?.data?.forEach((member) => {
+          if (!allMembers.has(member?.address)) {
+            allMembers.set(member.address, member);
           }
         });
       }
@@ -54,30 +53,49 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
     return Array.from(allMembers.values());
   }, [membersQuery.data]);
 
-  const { data: profilePullData, isLoading: isProfilePullLoading } = useQuery({
+  const contributorsQuery = useQuery({
     queryKey: [
-      "profilePull",
-      flattenedData?.map((member) => member.id?.toLowerCase()),
+      "contributors",
+      flattenedData?.length,
+      flattenedData?.map((member) => member?.address?.toLowerCase()),
     ],
-    queryFn: () =>
-      memberService.getProfilePull(
-        flattenedData?.map((member) => member.id?.toLowerCase())
-      ),
+    queryFn: async () => {
+      const result = await contributorService.getAllContributors(
+        daoConfig?.indexer?.endpoint ?? "",
+        {
+          limit: flattenedData?.length,
+          offset: 0,
+          where: {
+            id_in: flattenedData?.map((member) =>
+              member?.address?.toLowerCase()
+            ),
+          },
+        }
+      );
+
+      return result;
+    },
+
     enabled: !!flattenedData?.length,
+
+    retryDelay: 10_000,
+    retry: 3,
   });
 
   const filterData = useMemo(() => {
-    if (!flattenedData?.length || !profilePullData?.data?.length) return {};
+    if (!flattenedData?.length || !contributorsQuery.data?.length) return {};
 
-    const obj: Record<string, Member | undefined> = {};
+    const obj: Record<string, ContributorItem | undefined> = {};
     flattenedData?.forEach((member) => {
-      const profilePull = profilePullData?.data?.find(
-        (item) => item.address === member.id
+      const contributor = contributorsQuery.data?.find(
+        (item) => item.id === member.address
       );
-      obj[member.id] = profilePull;
+      if (member.address) {
+        obj[member.address] = contributor;
+      }
     });
     return obj;
-  }, [flattenedData, profilePullData]);
+  }, [flattenedData, contributorsQuery.data]);
 
   const loadMoreData = useCallback(() => {
     if (!membersQuery.isFetchingNextPage && membersQuery.hasNextPage) {
@@ -99,7 +117,7 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
     },
     profilePullState: {
       data: filterData,
-      isLoading: isProfilePullLoading,
+      isLoading: contributorsQuery.isLoading,
     },
     loadMoreData,
     refreshData,
