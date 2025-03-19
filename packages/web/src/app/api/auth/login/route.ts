@@ -63,14 +63,15 @@ export async function POST(request: NextRequest) {
         values
         (${newUser.id}, ${newUser.address}, ${newUser.last_login_time})
       `;
+    } else {
+      storedUser.last_login_time = new Date().toISOString();
+      await sql`
+        update d_user set 
+        last_login_time=${storedUser.last_login_time}, 
+        utime=${storedUser.last_login_time} 
+        where id=${storedUser.id};
+      `;
     }
-    storedUser.last_login_time = new Date().toISOString();
-    await sql`
-      update d_user set 
-      last_login_time=${storedUser.last_login_time}, 
-      utime=${storedUser.last_login_time} 
-      where id=${storedUser.id};
-    `;
     return NextResponse.json(Resp.ok({ token }));
   } catch (err) {
     console.warn("err", err);
