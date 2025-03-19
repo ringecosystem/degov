@@ -27,4 +27,11 @@ processor.run(new TypeormDatabase({ supportHotBlocks: true }), async (ctx) => {
       }
     }
   }
+
+  const resp = await fetch("https://httpbin.org/anything", {
+    method: "POST",
+    body: JSON.stringify(ctx.blocks.map((item) => item.header)),
+    headers: { "Content-Type": "application/json" },
+  });
+  console.log(resp);
 });

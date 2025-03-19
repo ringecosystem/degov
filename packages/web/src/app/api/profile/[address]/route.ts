@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import postgres from "postgres";
 
-import type { AuthPayload, DUser } from "@/types/api";
+import type { AuthPayload, DAvatar, DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
 import type { NextRequest } from "next/server";
@@ -34,8 +34,12 @@ export async function GET(request: NextRequest) {
     }
     const sql = postgres(databaseUrl);
 
-    const [storedUser] =
-      await sql`select * from d_user where address = ${address} limit 1`;
+    const [storedUser] = await sql`
+      select u.*, a.avatar from d_user as u
+      left join d_avatar as a on u.id = a.id
+      where u.address = ${address}
+      limit 1
+      `;
 
     return NextResponse.json(Resp.ok(storedUser));
   } catch (err) {
@@ -77,10 +81,9 @@ export async function POST(request: NextRequest) {
     if (!storedUser) {
       return NextResponse.json(Resp.err("unreachable, qed"));
     }
-    const cui: DUser = {
+    const duser: DUser = {
       ...(storedUser as unknown as DUser),
       name: body.name ?? "",
-      avatar: body.avatar ?? "",
       email: body.email ?? "",
       twitter: body.twitter ?? "",
       github: body.github ?? "",
@@ -93,9 +96,8 @@ export async function POST(request: NextRequest) {
     };
     await sql`
     update d_user set ${sql(
-      cui,
+      duser,
       "name",
-      "avatar",
       "email",
       "twitter",
       "github",
@@ -106,8 +108,28 @@ export async function POST(request: NextRequest) {
       "additional",
       "utime"
     )}
-    where id=${cui.id}
+    where id=${duser.id}
     `;
+    if (body.avatar) {
+      const [storedAvatar] =
+        await sql`select * from d_avatar where id = ${duser.id} limit 1`;
+      const davatar: DAvatar = {
+        id: duser.id,
+        avatar: body.avatar ?? "",
+        ctime: new Date().toISOString(),
+        utime: new Date().toISOString(),
+      };
+      if (storedAvatar) {
+        await sql`
+        update d_avatar set ${sql(davatar, "avatar", "utime")}
+        where id=${davatar.id}
+        `;
+      } else {
+        await sql`
+        insert into d_avatar ${sql(davatar, "id", "avatar", "utime")}
+        `;
+      }
+    }
     return NextResponse.json(Resp.ok("success"));
   } catch (err) {
     console.warn("err", err);

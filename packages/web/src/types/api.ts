@@ -49,3 +49,10 @@ export interface DUser {
   ctime?: string;
   utime?: string;
 }
+
+export interface DAvatar {
+  id: string;
+  avatar: string;
+  ctime: string;
+  utime?: string;
+}
