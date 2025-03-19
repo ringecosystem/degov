@@ -312,7 +312,7 @@ export class TokenHandler {
               method: "sync.user.power",
               body: {
                 address: storedContributor.id,
-                power: storedContributor.power,
+                power: storedContributor.power.toString(),
               },
             },
           ]),
