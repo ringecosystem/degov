@@ -56,12 +56,6 @@ importers:
       typescript:
         specifier: ~5.5.2
         version: 5.5.4
-      viem:
-        specifier: 2.x
-        version: 2.23.9(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@3.24.2)
-      zx:
-        specifier: ^8.4.0
-        version: 8.4.0
 
   packages/web:
     dependencies:
