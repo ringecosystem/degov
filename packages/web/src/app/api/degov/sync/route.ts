@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const settedSyncToken = process.env.DEGOV_AUTH_SYNC_TOKEN;
+    const settedSyncToken = process.env.DEGOV_SYNC_AUTH_TOKEN;
     if (!settedSyncToken) {
       return NextResponse.json(
         Resp.err("missing sync token please contact admin"),

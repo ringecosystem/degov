@@ -268,13 +268,14 @@ export class TokenHandler {
   }
 
   private async storeContributor(contributor: Contributor) {
-    const storedContributor: Contributor | undefined =
+    let storedContributor: Contributor | undefined =
       await this.ctx.store.findOne(Contributor, {
         where: {
           id: contributor.id,
         },
       });
 
+    let storeMemberMetrics = false;
     // update stored contributor
     if (storedContributor) {
       storedContributor.blockNumber = contributor.blockNumber;
@@ -284,12 +285,48 @@ export class TokenHandler {
       storedContributor.power = storedContributor.power + contributor.power;
 
       await this.ctx.store.save(storedContributor);
-      return;
+    } else {
+      storeMemberMetrics = true;
+      // save new contributor
+      await this.ctx.store.insert(contributor);
+      storedContributor = contributor;
     }
 
-    // save new contributor
-    await this.ctx.store.insert(contributor);
+    // sync user power
+    const syncEndpoint = process.env.DEGOV_SYNC_ENDPOINT;
+    const syncAuthToken = process.env.DEGOV_SYNC_AUTH_TOKEN;
+    if (syncEndpoint && syncAuthToken) {
+      try {
+        const controller = new AbortController();
+        const signal = controller.signal;
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
+        await fetch(syncEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-degov-sync-token": syncAuthToken,
+          },
+          body: JSON.stringify([
+            {
+              method: "sync.user.power",
+              body: {
+                address: storedContributor.id,
+                power: storedContributor.power,
+              },
+            },
+          ]),
+          signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (error) {
+        this.ctx.log.error(`'failed to sync user power: ${error}`);
+      }
+    }
+
+    if (!storeMemberMetrics) {
+      return;
+    }
     // increase metrics for memberCount
     const storedDataMetric: DataMetric | undefined =
       await this.ctx.store.findOne(DataMetric, {
