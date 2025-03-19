@@ -245,7 +245,7 @@ const recordsFor_0xf25f97f = [
       method: "DelegateChanged",
       delegator: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
       fromDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
-      toDelegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      toDelegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
     },
     {
       method: "DelegateVotesChanged",
@@ -255,7 +255,7 @@ const recordsFor_0xf25f97f = [
     },
     {
       method: "DelegateVotesChanged",
-      delegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      delegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
       previousVotes: 0n,
       newVotes: 20000000000000000000n,
     },
@@ -398,7 +398,7 @@ const recordsFor_0xa23d90f = [
       method: "DelegateChanged",
       delegator: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
       fromDelegate: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
-      toDelegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      toDelegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
     },
     {
       method: "DelegateVotesChanged",
@@ -408,7 +408,7 @@ const recordsFor_0xa23d90f = [
     },
     {
       method: "DelegateVotesChanged",
-      delegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      delegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
       previousVotes: 0n,
       newVotes: 30000000000000000000n,
     },
@@ -417,12 +417,12 @@ const recordsFor_0xa23d90f = [
     {
       method: "DelegateChanged",
       delegator: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
-      fromDelegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      fromDelegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
       toDelegate: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
     },
     {
       method: "DelegateVotesChanged",
-      delegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      delegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
       previousVotes: 30000000000000000000n,
       newVotes: 0n,
     },
@@ -473,10 +473,48 @@ const recordsFor_0xa23d90f = [
       newVotes: 30000000000000000000n,
     },
   ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+      fromDelegate: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+      toDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      txHash:
+        "0x016dd67b54377c76a624cd21e4ae794e058cc2f2f82e0a40d9585ce132c91bd6",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+      previousVotes: 30000000000000000000n,
+      newVotes: 0n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      previousVotes: 45000000000000000000n,
+      newVotes: 75000000000000000000n,
+    },
+  ],
+  [
+    {
+      method: "Transfer",
+      value: "5000000000000000000",
+      from: "0xabcf7060a68f62624f7569ada9d78b5a5db0782a",
+      to: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+      txHash:
+        "0xcf2ba4ee36326c7b4bb3d16c984f1b9a635c29b8f720e2b3293a3fc789416f95",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      previousVotes: 55000000000000000000n,
+      newVotes: 60000000000000000000n,
+    },
+  ],
 ];
 
 test("testTokens", () => {
-  const records = recordsFor_0xf25f97f;
+  const records = recordsFor_0xa23d90f;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -486,20 +524,11 @@ test("testTokens", () => {
       const method = entry.method.toLowerCase();
       switch (method) {
         case "transfer":
-          const transferDelegateFrom = {
-            delegator: entry.from,
-            fromDelegate: entry.from,
-            toDelegate: entry.from,
-            power: -entry.value,
-          };
-          const transferDelegateTo = {
-            delegator: entry.to,
-            fromDelegate: entry.to,
-            toDelegate: entry.to,
-            power: entry.value,
-          };
-          ds.pushDelegator(transferDelegateFrom);
-          ds.pushDelegator(transferDelegateTo);
+          ds.pushTransfer({
+            from: entry.from,
+            to: entry.to,
+            value: entry.value,
+          });
           break;
         case "delegatechanged":
           cdg = {
@@ -554,6 +583,7 @@ test("testTokens", () => {
     }
   }
   console.log("ds: ", ds.getDelegates());
+  console.log("mapping: ", ds.getMapping());
 });
 
 // interface Delegate {
@@ -573,6 +603,10 @@ const dsfn = DelegateStorage.prototype;
 
 dsfn.getDelegates = function () {
   return this.delegates;
+};
+
+dsfn.getMapping = function () {
+  return this.delegateMapping;
 };
 
 dsfn.pushDelegator = function (delegator, options) {
@@ -605,5 +639,36 @@ dsfn.pushDelegator = function (delegator, options) {
     this.delegates = this.delegates.filter(
       (item) => item.id !== storedDelegateFromWithTo.id
     );
+  }
+};
+
+dsfn.pushTransfer = function (transfer) {
+  const { from, to, value } = transfer;
+
+  const fromDelegateMapping = this.delegates.find(
+    (item) =>
+      item.fromDelegate === from && item.fromDelegate !== item.toDelegate
+  );
+  const toDelegateMapping = this.delegates.find(
+    (item) => item.fromDelegate === to && item.fromDelegate !== item.toDelegate
+  );
+
+  if (fromDelegateMapping) {
+    const transferFromDelegateFrom = {
+      delegator: from,
+      fromDelegate: fromDelegateMapping.fromDelegate,
+      toDelegate: fromDelegateMapping.toDelegate,
+      power: -value,
+    };
+    this.pushDelegator(transferFromDelegateFrom);
+  }
+  if (toDelegateMapping) {
+    const transferDelegateTo = {
+      delegator: to,
+      fromDelegate: toDelegateMapping.fromDelegate,
+      toDelegate: toDelegateMapping.toDelegate,
+      power: value,
+    };
+    this.pushDelegator(transferDelegateTo);
   }
 };
