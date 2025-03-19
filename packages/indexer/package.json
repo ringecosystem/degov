@@ -3,12 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "generate:config": "zx scripts/generate-config.mjs",
     "codegen:abi": "npx squid-evm-typegen src/abi ./abi/*.json",
     "codegen:schema": "npx sqd codegen",
     "codegen": "pnpm codegen:abi && pnpm codegen:schema",
     "migrate:db": "zx scripts/sqd-migration.mjs",
-    "build": "npm run generate:config && rm -rf lib && tsc"
+    "build": "rm -rf lib && tsc"
   },
   "dependencies": {
     "@subsquid/evm-abi": "^0.3.0",
