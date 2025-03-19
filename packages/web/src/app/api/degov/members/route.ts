@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     let checkpoint = 0;
     if (inputCheckpoint) {
       try {
-        checkpoint = Number(inputCheckpoint);
+        checkpoint = Number(inputCheckpoint) || 0;
       } catch (e) {
         console.warn(
           `user provided wrong checkpoint date ${inputCheckpoint} : ${e}`
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     )
     SELECT * FROM ranked_members
     WHERE rn > ${checkpoint}
-    ORDER BY rn;
+    ORDER BY rn
     LIMIT ${limit}
     `;
 
