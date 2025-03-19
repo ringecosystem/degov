@@ -1,30 +1,57 @@
 import { TypeormDatabase } from "@subsquid/typeorm-store";
 import { processor } from "./processor";
-import * as indexConfig from "./config";
+import { DegovConfig, DegovConfigIndexLog, DegovConfigNanny } from "./config";
 import { GovernorHandler } from "./handler/governor";
 import { TokenHandler } from "./handler/token";
-import { DegovIndexLog } from "./types";
 
-processor.run(new TypeormDatabase({ supportHotBlocks: true }), async (ctx) => {
-  const indexLog: DegovIndexLog = indexConfig.indexLog;
+async function main() {
+  const nanny = new DegovConfigNanny();
+  const config = await nanny.load();
+  processIndex(config);
+}
 
-  for (const c of ctx.blocks) {
-    for (const event of c.logs) {
-      const indexContract = indexLog.contracts.find(
-        (item) => item.address.toLowerCase() === event.address.toLowerCase()
-      );
-      if (!indexContract) {
-        continue;
-      }
+function processIndex(config: DegovConfig) {
+  const indexLog: DegovConfigIndexLog = config.indexLog;
+  processor
+    .setRpcEndpoint({
+      // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
+      capacity: 30,
+      maxBatchCallSize: 200,
+      url: config.endpoint.rpcs[0],
+    })
+    .setFinalityConfirmation(10)
+    .addLog({
+      range: { from: indexLog.startBlock },
+      address: indexLog.contracts.map((item) => item.address),
+    });
+  if (config.gateway) {
+    processor.setGateway(config.gateway);
+  }
 
-      switch (indexContract.name) {
-        case "governor":
-          await new GovernorHandler(ctx).handle(event);
-          break;
-        case "governorToken":
-          await new TokenHandler(ctx, indexContract).handle(event);
-          break;
+  processor.run(
+    new TypeormDatabase({ supportHotBlocks: true }),
+    async (ctx) => {
+      for (const c of ctx.blocks) {
+        for (const event of c.logs) {
+          const indexContract = indexLog.contracts.find(
+            (item) => item.address.toLowerCase() === event.address.toLowerCase()
+          );
+          if (!indexContract) {
+            continue;
+          }
+
+          switch (indexContract.name) {
+            case "governor":
+              await new GovernorHandler(ctx).handle(event);
+              break;
+            case "governorToken":
+              await new TokenHandler(ctx, indexContract).handle(event);
+              break;
+          }
+        }
       }
     }
-  }
-});
+  );
+}
+
+main().then(() => console.log("done"));
