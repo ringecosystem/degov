@@ -166,7 +166,7 @@ export class TokenHandler {
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
-      power: isErc721 ? -1n : -event.value,
+      power: -(isErc721 ? 1n : event.value),
     });
     const toDelegate = new Delegate({
       fromDelegate: event.to,
@@ -220,6 +220,8 @@ export class TokenHandler {
         }
       }
     } else {
+      // update delegate
+      storedDelegateFromWithTo.power += currentDelegate.power;
       // should keep delegate self record
       if (
         storedDelegateFromWithTo.power === 0n &&
@@ -228,8 +230,6 @@ export class TokenHandler {
       ) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
       } else {
-        // update delegate
-        storedDelegateFromWithTo.power += currentDelegate.power;
         await this.ctx.store.save(storedDelegateFromWithTo);
       }
       enableStoreContributor = true;
