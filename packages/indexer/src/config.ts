@@ -1,36 +1,3 @@
-// export const endpoint = {
-//   "id": 46,
-//   "logo": "https://darwinia.network/images/darwinia-logo-black-background-round.svg",
-//   "nativeToken": {
-//     "priceId": "RING"
-//   },
-//   "rpcs": [
-//     "wss://rpc.darwinia.network",
-//     "https://rpc.darwinia.network"
-//   ]
-// }
-
-// export const indexLog = {
-//   "startBlock": 5873342,
-//   "contracts": [
-//     {
-//       "name": "governor",
-//       "address": "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
-//     },
-//     {
-//       "name": "governorToken",
-//       "address": "0xbC9f58566810F7e853e1eef1b9957ac82F9971df",
-//       "standard": "ERC20"
-//     },
-//     {
-//       "name": "timeLock",
-//       "address": "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
-//     }
-//   ]
-// }
-
-// export const gateway = undefined
-
 import { setTimeout } from "timers/promises";
 import { promises as fs } from "fs";
 import * as path from "path";

@@ -4,29 +4,30 @@ FROM node:22-alpine AS base
 
 FROM base AS builder
 
-WORKDIR /app
-COPY . .
+COPY . /code
+
+ENV DEGOV_CONFIG_PATH=/app/degov.yml
 
 RUN corepack enable pnpm \
-  && rm -rf packages/indexer \
+  && mv /code/packages/web /app \
+  && mv /code/degov.yml /app \
+  && rm -rf /code \
+  && cd /app \
   && pnpm install \
-  && pnpm build:web
-
-## orgnaize standalone
-RUN cd packages/web \
-  && cp -r public .next/standalone/packages/web \
-  && cd .next \
-  && cp -r static standalone/packages/web/.next
+  && pnpm build
 
 FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV DEGOV_CONFIG_PATH=/app/degov.yml
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder --chown=nextjs:nodejs /app/packages/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone .
+COPY --from=builder --chown=nextjs:nodejs /app/public .next/standalone
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static .next/standalone
 
 USER nextjs
 
@@ -35,5 +36,5 @@ EXPOSE 3000
 ENV PORT=3000
 
 ENV HOSTNAME="0.0.0.0"
-CMD ["node", "packages/web/server.js"]
+CMD ["node", "server.js"]
 
