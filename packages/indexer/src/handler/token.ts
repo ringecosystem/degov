@@ -222,6 +222,9 @@ export class TokenHandler {
     } else {
       // update delegate
       storedDelegateFromWithTo.power += currentDelegate.power;
+      storedDelegateFromWithTo.blockNumber = currentDelegate.blockNumber;
+      storedDelegateFromWithTo.blockTimestamp = currentDelegate.blockTimestamp; 
+      storedDelegateFromWithTo.transactionHash = currentDelegate.transactionHash;
       // should keep delegate self record
       if (
         storedDelegateFromWithTo.power === 0n &&

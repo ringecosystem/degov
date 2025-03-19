@@ -40,7 +40,6 @@ services:
     ports:
       - "${DEGOV_WEB_PORT:-3002}:3000"
     environment:
-      NEXT_PUBLIC_PROJECT_ID: abcdef12345
       JWT_SECRET_KEY: 575276a8eb83abc2
       DATABASE_URL: postgresql://postgres:let-me-in@postgres/degov
       DEGOV_SYNC_AUTH_TOKEN: 69a61f05a147f65fe27a654cd5b98e07
