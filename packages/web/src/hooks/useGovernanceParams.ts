@@ -53,6 +53,7 @@ export function useStaticGovernanceParams() {
     ],
     query: {
       retry: false,
+      staleTime: 24 * 60 * 60 * 1000,
       enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
