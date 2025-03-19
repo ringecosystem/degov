@@ -36,6 +36,17 @@ export function MembersTable({
   const columns = useMemo<ColumnType<Member>[]>(
     () => [
       {
+        title: "Rank",
+        key: "rank",
+        width: "160px",
+        className: "text-left",
+        render: (record) => (
+          <span className="line-clamp-1" title={record?.rn?.toString()}>
+            {record?.rn}
+          </span>
+        ),
+      },
+      {
         title: "Member",
         key: "member",
         width: "260px",
