@@ -22,7 +22,15 @@ export function useProposalData(
 ) {
   const daoConfig = useDaoConfig();
 
-  const proposalsQuery = useInfiniteQuery({
+  const {
+    data,
+    hasNextPage,
+    isPending,
+    isFetchingNextPage,
+    error,
+    fetchNextPage,
+    refetch,
+  } = useInfiniteQuery({
     queryKey: [
       "proposals",
       daoConfig?.indexer?.endpoint,
@@ -76,8 +84,8 @@ export function useProposalData(
   });
 
   const flattenedData = useMemo(() => {
-    return proposalsQuery.data?.pages.flat() || [];
-  }, [proposalsQuery.data]);
+    return data?.pages.flat() || [];
+  }, [data]);
 
   const statusContracts = useMemo(() => {
     const proposalStatusContract = {
@@ -121,22 +129,22 @@ export function useProposalData(
   );
 
   const loadMoreData = useCallback(() => {
-    if (!proposalsQuery.isFetchingNextPage && proposalsQuery.hasNextPage) {
-      proposalsQuery.fetchNextPage();
+    if (!isFetchingNextPage && hasNextPage) {
+      fetchNextPage();
     }
-  }, [proposalsQuery]);
+  }, [isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const refreshData = useCallback(() => {
-    proposalsQuery.refetch();
-  }, [proposalsQuery]);
+    refetch();
+  }, [refetch]);
 
   return {
     state: {
       data: flattenedData,
-      hasNextPage: proposalsQuery.hasNextPage,
-      isPending: proposalsQuery.isPending,
-      isFetchingNextPage: proposalsQuery.isFetchingNextPage,
-      error: proposalsQuery.error,
+      hasNextPage,
+      isPending,
+      isFetchingNextPage,
+      error,
     },
     proposalStatusState: {
       data: formattedStatuses,

@@ -30,7 +30,7 @@ export const Overview = () => {
     });
 
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics"],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,

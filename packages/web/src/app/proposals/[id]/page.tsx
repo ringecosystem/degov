@@ -60,7 +60,7 @@ export default function ProposalDetailPage() {
     isPending,
     refetch: refetchProposal,
   } = useQuery({
-    queryKey: ["proposal", id],
+    queryKey: ["proposal", id, daoConfig?.indexer?.endpoint],
     queryFn: () =>
       proposalService.getAllProposals(daoConfig?.indexer.endpoint as string, {
         where: {
@@ -104,10 +104,30 @@ export default function ProposalDetailPage() {
     },
   });
 
-  const proposalQueries = useQueries({
+  const [
+    {
+      data: proposalCanceledById,
+      isPending: isProposalCanceledByIdPending,
+      refetch: refetchProposalCanceledById,
+    },
+    {
+      data: proposalExecutedById,
+      isPending: isProposalExecutedByIdPending,
+      refetch: refetchProposalExecutedById,
+    },
+    {
+      data: proposalQueuedById,
+      isPending: isProposalQueuedByIdPending,
+      refetch: refetchProposalQueuedById,
+    },
+  ] = useQueries({
     queries: [
       {
-        queryKey: ["proposalCanceledById", data?.proposalId],
+        queryKey: [
+          "proposalCanceledById",
+          data?.proposalId,
+          daoConfig?.indexer?.endpoint,
+        ],
         queryFn: async () => {
           const result = await proposalService.getProposalCanceledById(
             daoConfig?.indexer?.endpoint as string,
@@ -120,7 +140,11 @@ export default function ProposalDetailPage() {
         refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       },
       {
-        queryKey: ["proposalExecutedById", data?.proposalId],
+        queryKey: [
+          "proposalExecutedById",
+          data?.proposalId,
+          daoConfig?.indexer?.endpoint,
+        ],
         queryFn: async () => {
           const result = await proposalService.getProposalExecutedById(
             daoConfig?.indexer?.endpoint as string,
@@ -133,7 +157,11 @@ export default function ProposalDetailPage() {
         refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
       },
       {
-        queryKey: ["proposalQueuedById", data?.proposalId],
+        queryKey: [
+          "proposalQueuedById",
+          data?.proposalId,
+          daoConfig?.indexer?.endpoint,
+        ],
         queryFn: async () => {
           const result = await proposalService.getProposalQueuedById(
             daoConfig?.indexer?.endpoint as string,
@@ -148,13 +176,11 @@ export default function ProposalDetailPage() {
     ],
   });
 
-  const [
-    { data: proposalCanceledById },
-    { data: proposalExecutedById },
-    { data: proposalQueuedById },
-  ] = proposalQueries;
-
-  const isAllQueriesFetching = proposalQueries.some((query) => query.isPending);
+  const isAllQueriesFetching = [
+    isProposalCanceledByIdPending,
+    isProposalExecutedByIdPending,
+    isProposalQueuedByIdPending,
+  ].some((query) => query);
 
   const proposalVotesData = useMemo(() => {
     return {
@@ -168,8 +194,19 @@ export default function ProposalDetailPage() {
     refetchProposal();
     proposalStatus?.refetch();
     proposalVotes?.refetch();
-    proposalQueries.forEach((query) => query.refetch());
-  }, [refetchProposal, proposalStatus, proposalVotes, proposalQueries]);
+    [
+      refetchProposalCanceledById,
+      refetchProposalExecutedById,
+      refetchProposalQueuedById,
+    ].forEach((query) => query());
+  }, [
+    refetchProposal,
+    proposalStatus,
+    proposalVotes,
+    refetchProposalCanceledById,
+    refetchProposalExecutedById,
+    refetchProposalQueuedById,
+  ]);
 
   if (!id) {
     return <NotFound />;

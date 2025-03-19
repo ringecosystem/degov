@@ -11,7 +11,15 @@ export function useDelegationData(address?: Address) {
   const daoConfig = useDaoConfig();
 
   // Use useInfiniteQuery for pagination
-  const delegatesQuery = useInfiniteQuery({
+  const {
+    data,
+    hasNextPage,
+    isPending,
+    isFetchingNextPage,
+    error,
+    fetchNextPage,
+    refetch,
+  } = useInfiniteQuery({
     queryKey: ["delegates", daoConfig?.indexer?.endpoint, address],
     queryFn: async ({ pageParam }) => {
       const result = await delegateService.getAllDelegates(
@@ -44,28 +52,28 @@ export function useDelegationData(address?: Address) {
 
   // Flatten all pages into a single array
   const flattenedData = useMemo(() => {
-    return delegatesQuery.data?.pages.flat() || [];
-  }, [delegatesQuery.data]);
+    return data?.pages.flat() || [];
+  }, [data]);
 
   // Load more data function
   const loadMoreData = useCallback(() => {
-    if (!delegatesQuery.isFetchingNextPage && delegatesQuery.hasNextPage) {
-      delegatesQuery.fetchNextPage();
+    if (!isFetchingNextPage && hasNextPage) {
+      fetchNextPage();
     }
-  }, [delegatesQuery]);
+  }, [isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   // Refresh data function
   const refreshData = useCallback(() => {
-    delegatesQuery.refetch();
-  }, [delegatesQuery]);
+    refetch();
+  }, [refetch]);
 
   return {
     state: {
       data: flattenedData,
-      hasNextPage: delegatesQuery.hasNextPage,
-      isPending: delegatesQuery.isPending,
-      isFetchingNextPage: delegatesQuery.isFetchingNextPage,
-      error: delegatesQuery.error,
+      hasNextPage,
+      isPending,
+      isFetchingNextPage,
+      error,
     },
     loadMoreData,
     refreshData,
