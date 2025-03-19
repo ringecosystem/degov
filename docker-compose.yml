@@ -11,22 +11,22 @@ services:
     ports:
       - "${DEGOV_DB_PORT:-7453}:5432"
 
-  # indexer:
-  #   image: degov-indexer
-  #   depends_on:
-  #     - postgres
-  #   build:
-  #     context: .
-  #     dockerfile: docker/indexer.Dockerfile
-  #   ports:
-  #     - "${DEGOV_INDEXER_PORT:-4350}:4350"
-  #   environment:
-  #     DB_HOST: postgres
-  #     DB_NAME: indexer
-  #     DB_USER: postgres
-  #     DB_PASS: let-me-in
-  #     DB_PORT: 5432
-  #     GQL_PORT: 4350
+  indexer:
+    image: degov-indexer
+    depends_on:
+      - postgres
+    build:
+      context: .
+      dockerfile: docker/indexer.Dockerfile
+    ports:
+      - "${DEGOV_INDEXER_PORT:-4350}:4350"
+    environment:
+      DB_HOST: postgres
+      DB_NAME: indexer
+      DB_USER: postgres
+      DB_PASS: let-me-in
+      DB_PORT: 5432
+      GQL_PORT: 4350
 
   web:
     image: degov-web
