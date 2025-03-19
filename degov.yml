@@ -32,7 +32,8 @@ chain:
 indexer:
   endpoint: https://degov-indexer.vercel.app/graphql
   startBlock: 5873342
-  # startBlock: 5897510
+  # if set this, indexer rpc will be use this first
+  rpc: wss://rpc.darwinia.network
 
 # Core contracts related to the DAO Governance
 contracts:

@@ -10,14 +10,14 @@ import {
   DelegateVotesChanged,
   TokenTransfer,
 } from "../model";
-import { DegovIndexLogContract, MetricsId } from "../types";
+import { MetricsId, DegovConfigIndexLogContract } from "../config";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 export class TokenHandler {
   constructor(
     private readonly ctx: DataHandlerContext<any, any>,
-    private readonly indexContract: DegovIndexLogContract
+    private readonly indexContract: DegovConfigIndexLogContract
   ) {}
 
   async handle(eventLog: Log) {

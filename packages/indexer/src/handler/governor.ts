@@ -12,7 +12,7 @@ import {
   VoteCastGroup,
   VoteCastWithParams,
 } from "../model";
-import { MetricsId } from "../types";
+import { MetricsId } from "../config";
 
 export class GovernorHandler {
   constructor(private readonly ctx: DataHandlerContext<any, any>) {}
