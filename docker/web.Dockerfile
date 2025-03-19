@@ -15,6 +15,8 @@ RUN corepack enable pnpm \
 ## orgnaize standalone
 RUN cd packages/web \
   && cp -r public .next/standalone/packages/web \
+  && cp -r prisma .next/standalone/packages/web \
+  && cp -r scripts .next/standalone/packages/web \
   && cd .next \
   && cp -r static standalone/packages/web/.next
 
@@ -28,6 +30,9 @@ RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/packages/web/.next/standalone ./
 
+RUN npm i -g prisma \
+  && npm cache clean --force
+
 USER nextjs
 
 EXPOSE 3000
@@ -35,5 +40,5 @@ EXPOSE 3000
 ENV PORT=3000
 
 ENV HOSTNAME="0.0.0.0"
-CMD ["node", "packages/web/server.js"]
 
+ENTRYPOINT [ "/app/packages/web/scripts/entrypoint.sh" ]

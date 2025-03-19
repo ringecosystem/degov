@@ -1,7 +1,10 @@
-import { Resp } from "@/types/api";
 import { headers } from "next/headers";
+import { NextResponse } from "next/server";
 import postgres from "postgres";
-import { NextResponse, type NextRequest } from "next/server";
+
+import { Resp } from "@/types/api";
+
+import type { NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {

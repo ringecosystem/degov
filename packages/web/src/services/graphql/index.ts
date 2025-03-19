@@ -189,7 +189,7 @@ export const memberService = {
       const url = new URL("/api/degov/members", window.location.origin);
 
       if (checkpoint) {
-        url.searchParams.set("checkpoint", checkpoint);
+        url.searchParams.set("checkpoint", checkpoint.toString());
       }
 
       if (limit) {

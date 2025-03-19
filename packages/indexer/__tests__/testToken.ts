@@ -180,6 +180,26 @@ const recordsFor_0xf25f97f = [
       newVotes: 30000000000000000000n,
     },
   ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      fromDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      toDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488"
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      previousVotes: 25000000000000000000n,
+      newVotes: 0n
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+      previousVotes: 20000000000000000000n,
+      newVotes: 45000000000000000000n
+    }
+  ]
 ];
 
 // 0x92e9fb99e99d79bc47333e451e7c6490dbf24b22
