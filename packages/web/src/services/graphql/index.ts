@@ -182,7 +182,7 @@ export const profileService = {
 
 export const memberService = {
   getMembers: async (
-    checkpoint?: string,
+    checkpoint?: number,
     limit?: number
   ): Promise<Types.MemberResponse> => {
     try {

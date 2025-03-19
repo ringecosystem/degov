@@ -16,7 +16,7 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
 
       return result;
     },
-    initialPageParam: new Date().toISOString(),
+    initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       if (!lastPage?.data || lastPage.data.length === 0) {
         return undefined;
@@ -27,11 +27,11 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
       }
 
       const lastItem = lastPage.data[lastPage.data.length - 1];
-      if (!lastItem?.ctime) {
+      if (!lastItem?.rn) {
         return undefined;
       }
 
-      return lastItem.ctime;
+      return lastItem.rn;
     },
     retryDelay: 10_000,
     retry: 3,
