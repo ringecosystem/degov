@@ -51,6 +51,7 @@ export default function RootLayout({
                 </main>
               </div>
               <ToastContainer
+                pauseOnFocusLoss={false}
                 theme="dark"
                 className="w-auto text-[14px] md:w-[380px]"
               />
