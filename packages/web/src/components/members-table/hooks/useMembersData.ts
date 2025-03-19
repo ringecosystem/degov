@@ -6,7 +6,15 @@ import { memberService } from "@/services/graphql";
 import type { Member } from "@/services/graphql/types";
 
 export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
-  const membersQuery = useInfiniteQuery({
+  const {
+    data,
+    hasNextPage,
+    isPending,
+    isFetchingNextPage,
+    error,
+    fetchNextPage,
+    refetch,
+  } = useInfiniteQuery({
     queryKey: ["members", pageSize],
     queryFn: async ({ pageParam }) => {
       const result = await memberService.getMembers(pageParam, pageSize);
@@ -35,9 +43,9 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
   });
 
   const flattenedData = useMemo<Member[]>(() => {
-    if (!membersQuery.data) return [];
+    if (!data) return [];
     const allMembers = new Map();
-    membersQuery?.data?.pages?.forEach((page) => {
+    data?.pages?.forEach((page) => {
       if (page) {
         page?.data?.forEach((member) => {
           if (!allMembers.has(member?.address)) {
@@ -48,25 +56,25 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
     });
 
     return Array.from(allMembers.values());
-  }, [membersQuery.data]);
+  }, [data]);
 
   const loadMoreData = useCallback(() => {
-    if (!membersQuery.isFetchingNextPage && membersQuery.hasNextPage) {
-      membersQuery.fetchNextPage();
+    if (!isFetchingNextPage && hasNextPage) {
+      fetchNextPage();
     }
-  }, [membersQuery]);
+  }, [isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const refreshData = useCallback(() => {
-    membersQuery.refetch();
-  }, [membersQuery]);
+    refetch();
+  }, [refetch]);
 
   return {
     state: {
       data: flattenedData,
-      hasNextPage: membersQuery.hasNextPage,
-      isPending: membersQuery.isPending,
-      isFetchingNextPage: membersQuery.isFetchingNextPage,
-      error: membersQuery.error,
+      hasNextPage,
+      isPending,
+      isFetchingNextPage,
+      error,
     },
 
     loadMoreData,
