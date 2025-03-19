@@ -97,14 +97,27 @@ export class TokenHandler {
       });
     if (!delegateRolling) return;
 
+    /*
+    // delegate change b to c
+     {
+       method: "DelegateChanged",
+       delegator: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+       fromDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+       toDelegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+     }
+    */
+    const isDelegateChangeToAnother =
+      delegateRolling.delegator !== delegateRolling.fromDelegate &&
+      delegateRolling.delegator !== delegateRolling.toDelegate;
     let fromDelegate, toDelegate;
     if (options.delegate === delegateRolling.fromDelegate) {
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
       // retuning power to self
       if (
-        delegateRolling.delegator === delegateRolling.toDelegate &&
-        delegateRolling.fromDelegate !== zeroAddress
+        (delegateRolling.delegator === delegateRolling.toDelegate &&
+          delegateRolling.fromDelegate !== zeroAddress) ||
+        isDelegateChangeToAnother
       ) {
         fromDelegate = delegateRolling.delegator;
         toDelegate = delegateRolling.fromDelegate;
@@ -223,8 +236,9 @@ export class TokenHandler {
       // update delegate
       storedDelegateFromWithTo.power += currentDelegate.power;
       storedDelegateFromWithTo.blockNumber = currentDelegate.blockNumber;
-      storedDelegateFromWithTo.blockTimestamp = currentDelegate.blockTimestamp; 
-      storedDelegateFromWithTo.transactionHash = currentDelegate.transactionHash;
+      storedDelegateFromWithTo.blockTimestamp = currentDelegate.blockTimestamp;
+      storedDelegateFromWithTo.transactionHash =
+        currentDelegate.transactionHash;
       // should keep delegate self record
       if (
         storedDelegateFromWithTo.power === 0n &&

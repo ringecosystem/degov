@@ -19,7 +19,7 @@ const rpcEndpoint = {
 
 export const processor = new EvmBatchProcessor()
   .setRpcEndpoint(rpcEndpoint)
-  .setFinalityConfirmation(10)
+  .setFinalityConfirmation(20)
   .setFields({
     transaction: {
       from: true,
