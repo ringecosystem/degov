@@ -1,14 +1,11 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { contributorService, memberService } from "@/services/graphql";
-import type { ContributorItem, Member } from "@/services/graphql/types";
+import { memberService } from "@/services/graphql";
+import type { Member } from "@/services/graphql/types";
 
 export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
-  const daoConfig = useDaoConfig();
-
   const membersQuery = useInfiniteQuery({
     queryKey: ["members", pageSize],
     queryFn: async ({ pageParam }) => {
@@ -53,50 +50,6 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
     return Array.from(allMembers.values());
   }, [membersQuery.data]);
 
-  const contributorsQuery = useQuery({
-    queryKey: [
-      "contributors",
-      flattenedData?.length,
-      flattenedData?.map((member) => member?.address?.toLowerCase()),
-    ],
-    queryFn: async () => {
-      const result = await contributorService.getAllContributors(
-        daoConfig?.indexer?.endpoint ?? "",
-        {
-          limit: flattenedData?.length,
-          offset: 0,
-          where: {
-            id_in: flattenedData?.map((member) =>
-              member?.address?.toLowerCase()
-            ),
-          },
-        }
-      );
-
-      return result;
-    },
-
-    enabled: !!flattenedData?.length,
-
-    retryDelay: 10_000,
-    retry: 3,
-  });
-
-  const filterData = useMemo(() => {
-    if (!flattenedData?.length || !contributorsQuery.data?.length) return {};
-
-    const obj: Record<string, ContributorItem | undefined> = {};
-    flattenedData?.forEach((member) => {
-      const contributor = contributorsQuery.data?.find(
-        (item) => item.id === member.address
-      );
-      if (member.address) {
-        obj[member.address] = contributor;
-      }
-    });
-    return obj;
-  }, [flattenedData, contributorsQuery.data]);
-
   const loadMoreData = useCallback(() => {
     if (!membersQuery.isFetchingNextPage && membersQuery.hasNextPage) {
       membersQuery.fetchNextPage();
@@ -115,10 +68,7 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
       isFetchingNextPage: membersQuery.isFetchingNextPage,
       error: membersQuery.error,
     },
-    profilePullState: {
-      data: filterData,
-      isLoading: contributorsQuery.isLoading,
-    },
+
     loadMoreData,
     refreshData,
   };

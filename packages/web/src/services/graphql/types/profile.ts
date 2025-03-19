@@ -12,6 +12,7 @@ export type Member = {
   ctime: string;
   utime: string;
   last_login_time: string;
+  power: string;
   rn?: number;
 } & ProfileData;
 
