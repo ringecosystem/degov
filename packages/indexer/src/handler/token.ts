@@ -182,18 +182,28 @@ export class TokenHandler {
         },
       }
     );
-    const storedFromDelegate: Delegate | undefined = storedFromDelegates.find(
+    let storedFromDelegate: Delegate | undefined = storedFromDelegates.find(
       (item) => item.fromDelegate !== item.toDelegate
     );
+    if (!storedFromDelegate) {
+      storedFromDelegate = storedFromDelegates.find(
+        (item) => item.fromDelegate === item.toDelegate
+      );
+    }
 
     const storedToDelegates: Delegate[] = await this.ctx.store.find(Delegate, {
       where: {
         fromDelegate: event.to,
       },
     });
-    const storedToDelegate: Delegate | undefined = storedToDelegates.find(
+    let storedToDelegate: Delegate | undefined = storedToDelegates.find(
       (item) => item.fromDelegate !== item.toDelegate
     );
+    if (!storedToDelegate) {
+      storedToDelegate = storedToDelegates.find(
+        (item) => item.fromDelegate === item.toDelegate
+      );
+    }
 
     if (storedFromDelegate) {
       const fromDelegate = new Delegate({

@@ -514,7 +514,7 @@ const recordsFor_0xa23d90f = [
 ];
 
 test("testTokens", () => {
-  const records = recordsFor_0xa23d90f;
+  const records = recordsFor_0xf25f97f;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -645,28 +645,43 @@ dsfn.pushDelegator = function (delegator, options) {
 dsfn.pushTransfer = function (transfer) {
   const { from, to, value } = transfer;
 
-  const fromDelegateMapping = this.delegates.find(
-    (item) =>
-      item.fromDelegate === from && item.fromDelegate !== item.toDelegate
+  const fromDelegateMapping = this.delegates.filter(
+    (item) => item.fromDelegate === from // && item.fromDelegate !== item.toDelegate
   );
-  const toDelegateMapping = this.delegates.find(
-    (item) => item.fromDelegate === to && item.fromDelegate !== item.toDelegate
+  const toDelegateMapping = this.delegates.filter(
+    (item) => item.fromDelegate === to // && item.fromDelegate !== item.toDelegate
   );
+  let betterFromDelegateMapping = fromDelegateMapping.find(
+    (item) => item.fromDelegate !== item.toDelegate
+  );
+  if (!betterFromDelegateMapping) {
+    betterFromDelegateMapping = fromDelegateMapping.find(
+      (item) => item.fromDelegate === item.toDelegate
+    );
+  }
+  let betterToDelegateMapping = toDelegateMapping.find(
+    (item) => item.fromDelegate !== item.toDelegate
+  );
+  if (!betterToDelegateMapping) {
+    betterToDelegateMapping = toDelegateMapping.find(
+      (item) => item.fromDelegate === item.toDelegate
+    );
+  }
 
-  if (fromDelegateMapping) {
+  if (betterFromDelegateMapping) {
     const transferFromDelegateFrom = {
       delegator: from,
-      fromDelegate: fromDelegateMapping.fromDelegate,
-      toDelegate: fromDelegateMapping.toDelegate,
+      fromDelegate: betterFromDelegateMapping.fromDelegate,
+      toDelegate: betterFromDelegateMapping.toDelegate,
       power: -value,
     };
     this.pushDelegator(transferFromDelegateFrom);
   }
-  if (toDelegateMapping) {
+  if (betterToDelegateMapping) {
     const transferDelegateTo = {
       delegator: to,
-      fromDelegate: toDelegateMapping.fromDelegate,
-      toDelegate: toDelegateMapping.toDelegate,
+      fromDelegate: betterToDelegateMapping.fromDelegate,
+      toDelegate: betterToDelegateMapping.toDelegate,
       power: value,
     };
     this.pushDelegator(transferDelegateTo);
