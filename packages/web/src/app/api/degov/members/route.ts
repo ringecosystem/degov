@@ -20,10 +20,10 @@ export async function GET(request: NextRequest) {
     const inputLimit = nextUrl.searchParams.get("limit");
     const inputCheckpoint = nextUrl.searchParams.get("checkpoint");
     const limit = Number(inputLimit ?? 10);
-    let checkpoint = new Date().toISOString();
+    let checkpoint = 0;
     if (inputCheckpoint) {
       try {
-        checkpoint = new Date(inputCheckpoint).toISOString();
+        checkpoint = Number(inputCheckpoint);
       } catch (e) {
         console.warn(
           `user provided wrong checkpoint date ${inputCheckpoint} : ${e}`
@@ -32,9 +32,23 @@ export async function GET(request: NextRequest) {
     }
 
     const members = await sql`
-    select * from d_user where ctime<${checkpoint}
-    order by ctime desc
-    limit ${limit}
+    WITH ranked_members AS (
+      SELECT
+        u.*,
+        a.image as avatar,
+        ROW_NUMBER() OVER (
+          ORDER BY 
+          CASE WHEN u.power = '' THEN NULL ELSE u.power END DESC NULLS LAST, 
+          u.ctime DESC
+        ) AS rn
+      FROM d_user AS u
+      LEFT JOIN d_avatar AS a ON u.id = a.id
+      ORDER BY u.power desc, u.ctime DESC
+    )
+    SELECT * FROM ranked_members
+    WHERE rn > ${checkpoint}
+    ORDER BY rn;
+    LIMIT ${limit}
     `;
 
     return NextResponse.json(Resp.ok(members));

@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const sql = postgres(databaseUrl);
 
     const [storedUser] = await sql`
-      select u.*, a.avatar from d_user as u
+      select u.*, a.image as avatar from d_user as u
       left join d_avatar as a on u.id = a.id
       where u.address = ${address}
       limit 1

@@ -36,7 +36,7 @@ export interface DUser {
   id: string;
   address: string;
   name?: string;
-  avatar?: string;
+  power?: string;
   email?: string;
   twitter?: string;
   github?: string;

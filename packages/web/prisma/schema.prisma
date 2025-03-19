@@ -10,7 +10,7 @@ datasource db {
 model d_user {
   id                 String    @id
   address            String    @unique
-  power              BigInt?
+  power              String?
   name               String?
   email              String?
   twitter            String?

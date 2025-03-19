@@ -2,7 +2,7 @@
 CREATE TABLE "d_user" (
     "id" TEXT NOT NULL,
     "address" TEXT NOT NULL,
-    "power" BIGINT,
+    "power" TEXT,
     "name" TEXT,
     "email" TEXT,
     "twitter" TEXT,
