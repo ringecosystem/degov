@@ -13,7 +13,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    fetch("/config.yml")
+    fetch("/degov.yml")
       .then((response) => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);

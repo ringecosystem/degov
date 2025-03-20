@@ -40,7 +40,7 @@ function extendChainConfig(degovConfig) {
 
 async function writeConfig(degovConfig) {
   const configCode = YAML.stringify(degovConfig);
-  await fs.writeFile("public/config.yml", configCode, "utf-8");
+  await fs.writeFile("public/degov.yml", configCode, "utf-8");
 }
 
 async function main() {

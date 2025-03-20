@@ -42,3 +42,4 @@ next-env.d.ts
 
 public/config.yaml
 public/config.yml
+public/degov.yml
