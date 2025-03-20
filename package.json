@@ -1,5 +1,6 @@
 {
-  "name": "degov",
+  "name": "@degov/root",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev:web": "pnpm --filter @degov/web dev",
