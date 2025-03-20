@@ -33,7 +33,7 @@ export function MembersTable({
       {
         title: "Rank",
         key: "rank",
-        width: "160px",
+        width: "100px",
         className: "text-left",
         render: (record) => (
           <span className="line-clamp-1" title={record?.rn?.toString()}>
@@ -53,7 +53,7 @@ export function MembersTable({
       {
         title: "Delegate Statement",
         key: "delegateStatement",
-        width: "200px",
+        width: "260px",
         className: "text-left",
         render: (record) => (
           <span
