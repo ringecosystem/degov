@@ -119,8 +119,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
       });
   }, [actions, daoConfig]);
 
-  const SummaryView = () => {
-    const daoConfig = useDaoConfig();
+  const SummaryView = useMemo(() => {
     return (
       <Table>
         <TableHeader>
@@ -246,82 +245,84 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
         </TableBody>
       </Table>
     );
-  };
+  }, [actionPanelInfo, openParams, daoConfig?.chain?.explorers]);
 
-  const RawView = () => (
-    <div className="space-y-[20px]">
-      {actionPanelInfo.map((action, index) => (
-        <motion.div
-          key={index}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{
-            duration: DEFAULT_ANIMATION_DURATION,
-            delay: index * 0.05,
-          }}
-        >
-          <h3 className="mb-[10px] text-[18px] font-semibold">
-            Function {index + 1}
-          </h3>
+  const RawView = useMemo(() => {
+    return (
+      <div className="space-y-[20px]">
+        {actionPanelInfo.map((action, index) => (
+          <motion.div
+            key={index}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: DEFAULT_ANIMATION_DURATION,
+              delay: index * 0.05,
+            }}
+          >
+            <h3 className="mb-[10px] text-[18px] font-semibold">
+              Function {index + 1}
+            </h3>
 
-          <div className="space-y-[20px] rounded-[4px] border p-[20px]">
-            {action.type === "custom" && (
+            <div className="space-y-[20px] rounded-[4px] border p-[20px]">
+              {action.type === "custom" && (
+                <div>
+                  <h4 className="text-[14px] font-normal text-muted-foreground">
+                    Signature:
+                  </h4>
+                  <p className="text-[14px] font-mono font-semibold">
+                    {action.signature}
+                  </p>
+                </div>
+              )}
+
+              {action.calldata && (
+                <div>
+                  <h4 className="text-[14px] font-normal text-muted-foreground">
+                    Calldata:
+                  </h4>
+                  {action.calldata.map(({ name, value }, cIndex) => (
+                    <div
+                      key={cIndex}
+                      className="text-[14px] font-mono font-semibold"
+                    >
+                      {name}:{" "}
+                      {Array.isArray(value) ? `[${value.join(", ")}]` : value}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {action.address && (
+                <div>
+                  <h4 className="text-[14px] font-normal text-muted-foreground">
+                    Target:
+                  </h4>
+                  <p className="text-[14px] font-mono font-semibold">
+                    {action.address}
+                  </p>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-[14px] font-normal text-muted-foreground">
-                  Signature:
+                  Value:
                 </h4>
                 <p className="text-[14px] font-mono font-semibold">
-                  {action.signature}
+                  {action.value
+                    ? parseUnits(
+                        action.value,
+                        daoConfig?.chain?.nativeToken?.decimals ?? 18
+                      )
+                    : "0"}
                 </p>
               </div>
-            )}
-
-            {action.calldata && (
-              <div>
-                <h4 className="text-[14px] font-normal text-muted-foreground">
-                  Calldata:
-                </h4>
-                {action.calldata.map(({ name, value }, cIndex) => (
-                  <div
-                    key={cIndex}
-                    className="text-[14px] font-mono font-semibold"
-                  >
-                    {name}:{" "}
-                    {Array.isArray(value) ? `[${value.join(", ")}]` : value}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {action.address && (
-              <div>
-                <h4 className="text-[14px] font-normal text-muted-foreground">
-                  Target:
-                </h4>
-                <p className="text-[14px] font-mono font-semibold">
-                  {action.address}
-                </p>
-              </div>
-            )}
-
-            <div>
-              <h4 className="text-[14px] font-normal text-muted-foreground">
-                Value:
-              </h4>
-              <p className="text-[14px] font-mono font-semibold">
-                {action.value
-                  ? parseUnits(
-                      action.value,
-                      daoConfig?.chain?.nativeToken?.decimals ?? 18
-                    )
-                  : "0"}
-              </p>
             </div>
-          </div>
-        </motion.div>
-      ))}
-    </div>
-  );
+          </motion.div>
+        ))}
+      </div>
+    );
+  }, [actionPanelInfo, daoConfig?.chain?.nativeToken?.decimals]);
 
   useEffect(() => {
     return () => {
@@ -403,7 +404,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                     ease: "easeInOut",
                   }}
                 >
-                  <RawView />
+                  {RawView}
                 </motion.div>
               ) : (
                 <motion.div
@@ -417,7 +418,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                     ease: "easeInOut",
                   }}
                 >
-                  <SummaryView />
+                  {SummaryView}
                 </motion.div>
               )}
             </AnimatePresence>

@@ -5,6 +5,7 @@ import { FlatCompat } from "@eslint/eslintrc";
 import pluginQuery from '@tanstack/eslint-plugin-query'
 import typescriptEslintPlugin from "@typescript-eslint/eslint-plugin";
 import importPlugin from "eslint-plugin-import";
+import reactCompiler from 'eslint-plugin-react-compiler'
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,8 +21,10 @@ const eslintConfig = [
     plugins: {
       import: importPlugin,
       "@typescript-eslint": typescriptEslintPlugin,
+      'react-compiler': reactCompiler,
     },
     rules: {
+      'react-compiler/react-compiler': 'error',
       "import/order": [
         "error",
         {
