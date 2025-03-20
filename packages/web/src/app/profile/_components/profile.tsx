@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { isAddress, type Address } from "viem";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
@@ -23,7 +23,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { abi as tokenAbi } from "@/config/abi/token";
 import { useAddressVotes } from "@/hooks/useAddressVotes";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { profileService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 import {
@@ -44,7 +48,7 @@ const ProfileSkeleton = () => {
   return (
     <div className="flex flex-col gap-[30px] p-[30px]">
       <div className="flex items-center gap-1 text-[18px] font-extrabold">
-        <span className="text-muted-foreground">Delegate</span>
+        <span className="text-muted-foreground">Profile</span>
         <span className="text-muted-foreground">/</span>
         <Skeleton className="h-[24px] w-[120px]" />
       </div>
@@ -81,11 +85,21 @@ const ProfileSkeleton = () => {
         </div>
 
         {/* Voting Power skeleton */}
-        <div className="flex items-center justify-center gap-[20px] rounded-[14px] bg-card p-[20px]">
-          <Skeleton className="size-[90px]" />
+        <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] py-[40px]">
           <div className="flex flex-col justify-center gap-[10px]">
-            <Skeleton className="h-[20px] w-[120px]" />
-            <Skeleton className="h-[56px] w-[200px]" />
+            <span className="text-[18px] font-semibold leading-none text-muted-foreground/80 flex items-center gap-[5px]">
+              <Skeleton className="size-[24px]" />
+              <Skeleton className="h-[18px] w-[150px]" />
+            </span>
+            <Skeleton className="h-[56px] w-[280px]" />
+          </div>
+
+          <div className="flex flex-col justify-center gap-[10px]">
+            <Skeleton className="h-[14px] w-[140px]" />
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-[34px] w-[150px]" />
+              <Skeleton className="h-[24px] w-[60px]" />
+            </div>
           </div>
         </div>
       </div>
@@ -100,7 +114,13 @@ const ProfileSkeleton = () => {
 };
 
 export const Profile = ({ address }: ProfileProps) => {
+  const [open, setOpen] = useState(false);
+  const [delegateOpen, setDelegateOpen] = useState(false);
+  const daoConfig = useDaoConfig();
   const router = useRouter();
+  const formatTokenAmount = useFormatGovernanceTokenAmount();
+  const { data: governanceToken } = useGovernanceToken();
+
   const { address: account } = useAccount();
 
   const { data: profileData, isLoading: isProfileLoading } = useQuery({
@@ -109,8 +129,21 @@ export const Profile = ({ address }: ProfileProps) => {
     enabled: !!address,
   });
 
-  const [open, setOpen] = useState(false);
-  const [delegateOpen, setDelegateOpen] = useState(false);
+  // get governance token
+  const { data: tokenBalance, isLoading: isLoadingTokenBalance } =
+    useReadContract({
+      address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
+      abi: tokenAbi,
+      functionName: "balanceOf",
+      args: [address as `0x${string}`],
+      chainId: daoConfig?.chain?.id,
+      query: {
+        enabled:
+          !!address &&
+          !!daoConfig?.contracts?.governorToken?.address &&
+          !!daoConfig?.chain?.id,
+      },
+    });
 
   const isOwnProfile = useMemo(() => {
     if (!account || !address) return false;
@@ -305,23 +338,42 @@ export const Profile = ({ address }: ProfileProps) => {
         </div>
 
         {/* Voting Power */}
-        <div className="flex items-center justify-center gap-[20px] rounded-[14px] bg-card p-[20px]">
-          <Image
-            src="/assets/image/power.svg"
-            alt="voting-power"
-            className="size-[90px]"
-            width={90}
-            height={90}
-          />
+        <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] py-[40px]">
           <div className="flex flex-col justify-center gap-[10px]">
-            <span className="text-[18px] font-semibold leading-none text-muted-foreground/80">
-              Voting Power
+            <span className="text-[18px] font-semibold leading-none text-muted-foreground/80 flex items-center gap-[5px]">
+              <Image
+                src="/assets/image/power.svg"
+                alt="voting-power"
+                className="size-[24px]"
+                width={24}
+                height={24}
+              />
+              Total Voting Power
             </span>
+
             {isLoading ? (
-              <Skeleton className="h-[56px] w-[200px]" />
+              <Skeleton className="h-[56px] w-[280px]" />
             ) : (
               <span className="text-[56px] font-extrabold leading-none text-foreground">
                 {formattedVotes}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col justify-center gap-[10px]">
+            <span className="text-[14px] font-normal leading-none text-muted-foreground/80 flex items-center gap-[5px]">
+              Governance Balance
+            </span>
+
+            {isLoadingTokenBalance ? (
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-[34px] w-[150px]" />
+                <Skeleton className="h-[24px] w-[60px]" />
+              </div>
+            ) : (
+              <span className="text-[26px] font-semibold leading-none text-foreground">
+                {tokenBalance ? formatTokenAmount(tokenBalance)?.formatted : 0}{" "}
+                {governanceToken?.symbol}
               </span>
             )}
           </div>
