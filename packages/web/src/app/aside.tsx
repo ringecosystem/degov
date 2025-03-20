@@ -101,7 +101,14 @@ export const Aside = () => {
           <Nav collapsed={collapsed} />
         </div>
 
-        <footer className="space-y-[16px]">
+        <footer
+          className=" space-y-[16px] fixed bottom-[20px] left-0  duration-300"
+          style={{
+            width: `calc(${currentWidth}px`,
+            paddingLeft: currentPadding,
+            paddingRight: currentPadding,
+          }}
+        >
           {collapsed ? (
             <div className="flex justify-center">
               <Tooltip>
