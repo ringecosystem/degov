@@ -137,7 +137,7 @@ export class TokenHandler {
           ? delegateRolling.delegator
           : delegateRolling.toDelegate;
     }
-    const isFirstDelegateToSelf = delegateRolling.fromDelegate === zeroAddress;
+    // const isFirstDelegateToSelf = delegateRolling.fromDelegate === zeroAddress;
 
     const delegate = new Delegate({
       fromDelegate,
@@ -150,7 +150,7 @@ export class TokenHandler {
 
     await this.ctx.store.save(delegateRolling);
     await this.storeDelegate(delegate, {
-      isFirstDelegateToSelf,
+      // isFirstDelegateToSelf,
     });
   }
 
@@ -229,11 +229,8 @@ export class TokenHandler {
     }
   }
 
-  private async storeDelegate(
-    currentDelegate: Delegate,
-    options?: { isFirstDelegateToSelf?: boolean }
-  ) {
-    const isFirstDelegateToSelf = options?.isFirstDelegateToSelf ?? false;
+  private async storeDelegate(currentDelegate: Delegate, options?: {}) {
+    // const isFirstDelegateToSelf = options?.isFirstDelegateToSelf ?? false;
 
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
@@ -247,27 +244,30 @@ export class TokenHandler {
       });
 
     // store delegate
-    let enableStoreContributor = false;
+    // let enableStoreContributor = false;
     // no from-to delegate record, insert it.
     if (!storedDelegateFromWithTo) {
       // store first delegate
-      if (isFirstDelegateToSelf) {
-        await this.ctx.store.insert(currentDelegate);
-        enableStoreContributor = true;
-      } else {
-        const delegateToWithToId = `${currentDelegate.toDelegate}_${currentDelegate.toDelegate}`;
-        let storedDelegateToWithTo: Delegate | undefined =
-          await this.ctx.store.findOne(Delegate, {
-            where: {
-              id: delegateToWithToId,
-            },
-          });
-        // indicates that this user has a delegate record
-        if (storedDelegateToWithTo) {
-          await this.ctx.store.insert(currentDelegate);
-          enableStoreContributor = true;
-        }
-      }
+      // if (isFirstDelegateToSelf) {
+      //   await this.ctx.store.insert(currentDelegate);
+      //   enableStoreContributor = true;
+      // } else {
+      //   const delegateToWithToId = `${currentDelegate.toDelegate}_${currentDelegate.toDelegate}`;
+      //   let storedDelegateToWithTo: Delegate | undefined =
+      //     await this.ctx.store.findOne(Delegate, {
+      //       where: {
+      //         id: delegateToWithToId,
+      //       },
+      //     });
+      //   // indicates that this user has a delegate record
+      //   if (storedDelegateToWithTo) {
+      //     await this.ctx.store.insert(currentDelegate);
+      //     enableStoreContributor = true;
+      //   }
+      // }
+
+      await this.ctx.store.insert(currentDelegate);
+      // enableStoreContributor = true;
     } else {
       // update delegate
       storedDelegateFromWithTo.power += currentDelegate.power;
@@ -285,11 +285,11 @@ export class TokenHandler {
       } else {
         await this.ctx.store.save(storedDelegateFromWithTo);
       }
-      enableStoreContributor = true;
+      // enableStoreContributor = true;
     }
-    if (!enableStoreContributor) {
-      return;
-    }
+    // if (!enableStoreContributor) {
+    //   return;
+    // }
 
     // store contributor
     const contributor = new Contributor({

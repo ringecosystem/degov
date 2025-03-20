@@ -293,6 +293,7 @@ const recordsFor_0x92e9fb9 = [
     },
     {
       method: "DelegateVotesChanged",
+      delegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
       previousVotes: 30000000000000000000n,
       newVotes: 0n,
     },
@@ -349,6 +350,28 @@ const recordsFor_0x92e9fb9 = [
       value: 25000000000000000000n,
       from: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
       to: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22,",
+    },
+  ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+      fromDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      toDelegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+      txHash:
+        "0x075578bbdbf39b366fb962208b473520df0d975ee0389f1dceb3fa23d3e4f95e",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      previousVotes: 75000000000000000000n,
+      newVotes: 55000000000000000000n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+      previousVotes: 0n,
+      newVotes: 20000000000000000000n,
     },
   ],
 ];
@@ -498,7 +521,7 @@ const recordsFor_0xa23d90f = [
   [
     {
       method: "Transfer",
-      value: "5000000000000000000",
+      value: 5000000000000000000n,
       from: "0xabcf7060a68f62624f7569ada9d78b5a5db0782a",
       to: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
       txHash:
@@ -514,7 +537,7 @@ const recordsFor_0xa23d90f = [
 ];
 
 test("testTokens", () => {
-  const records = recordsFor_0xf25f97f;
+  const records = recordsFor_0xa23d90f;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -545,6 +568,7 @@ test("testTokens", () => {
             // );
             break;
           }
+          // let checkSelfDelegate = false;
           let fromDelegate, toDelegate;
           const isDelegateChangeToAnother =
             cdg.delegator !== cdg.fromDelegate &&
@@ -561,13 +585,14 @@ test("testTokens", () => {
               fromDelegate = cdg.fromDelegate;
               toDelegate = cdg.delegator;
             }
+            // checkSelfDelegate = true;
           }
           if (entry.delegate === cdg.toDelegate) {
             fromDelegate = cdg.delegator;
             toDelegate =
               cdg.delegator === cdg.toDelegate ? cdg.delegator : cdg.toDelegate;
           }
-          const isFirstDelegateToSelf = cdg.fromDelegate === zeroAddress;
+          // const isFirstDelegateToSelf = cdg.fromDelegate === zeroAddress;
           const cdelegate = {
             ...cdg,
             fromDelegate,
@@ -575,7 +600,10 @@ test("testTokens", () => {
             power: entry.newVotes - entry.previousVotes,
           };
           console.log("--------> ", cdg, cdelegate);
-          ds.pushDelegator(cdelegate, { isFirstDelegateToSelf });
+          ds.pushDelegator(cdelegate, {
+            // isFirstDelegateToSelf,
+            // checkSelfDelegate,
+          });
           break;
         default:
           throw new Error(`wrong method: ${method}`);
@@ -583,7 +611,6 @@ test("testTokens", () => {
     }
   }
   console.log("ds: ", ds.getDelegates());
-  console.log("mapping: ", ds.getMapping());
 });
 
 // interface Delegate {
@@ -605,29 +632,30 @@ dsfn.getDelegates = function () {
   return this.delegates;
 };
 
-dsfn.getMapping = function () {
-  return this.delegateMapping;
-};
-
 dsfn.pushDelegator = function (delegator, options) {
-  const isFirstDelegateToSelf = options && options.isFirstDelegateToSelf;
+  // const isFirstDelegateToSelf = options && options.isFirstDelegateToSelf;
+  // const checkSelfDelegate = options && options.checkSelfDelegate;
   delegator.id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
 
   const storedDelegateFromWithTo = this.delegates.find(
     (item) => item.id === delegator.id
   );
   if (!storedDelegateFromWithTo) {
-    if (isFirstDelegateToSelf) {
-      this.delegates.push(delegator);
-    } else {
-      const delegateToWithToId = `${delegator.toDelegate}_${delegator.toDelegate}`;
-      const storedDelegateToWithTo = this.delegates.find(
-        (item) => item.id === delegateToWithToId
-      );
-      if (storedDelegateToWithTo) {
-        this.delegates.push(delegator);
-      }
-    }
+    // if (isFirstDelegateToSelf) {
+    //   this.delegates.push(delegator);
+    // } else {
+    // const delegateToWithToId = `${delegator.toDelegate}_${delegator.toDelegate}`;
+    // let enableStoreDelegate = true;
+    // if (checkSelfDelegate) {
+    //   const storedDelegateToWithTo = this.delegates.find(
+    //     (item) => item.id === delegateToWithToId
+    //   );
+    //   enableStoreDelegate = !!storedDelegateToWithTo;
+    // }
+    // if (enableStoreDelegate) {
+    this.delegates.push(delegator);
+    // }
+    // }
     return;
   }
   storedDelegateFromWithTo.power += delegator.power;
@@ -669,6 +697,7 @@ dsfn.pushTransfer = function (transfer) {
   }
 
   if (betterFromDelegateMapping) {
+    console.log("better from mapping ====>", betterFromDelegateMapping);
     const transferFromDelegateFrom = {
       delegator: from,
       fromDelegate: betterFromDelegateMapping.fromDelegate,
@@ -678,6 +707,7 @@ dsfn.pushTransfer = function (transfer) {
     this.pushDelegator(transferFromDelegateFrom);
   }
   if (betterToDelegateMapping) {
+    console.log("better to mapping ====>", betterToDelegateMapping);
     const transferDelegateTo = {
       delegator: to,
       fromDelegate: betterToDelegateMapping.fromDelegate,
