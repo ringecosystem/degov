@@ -173,24 +173,60 @@ export class TokenHandler {
     });
     await this.ctx.store.insert(entity);
 
-    const fromDelegate = new Delegate({
-      fromDelegate: event.from,
-      toDelegate: event.from,
-      blockNumber: BigInt(eventLog.block.height),
-      blockTimestamp: BigInt(eventLog.block.timestamp),
-      transactionHash: eventLog.transactionHash,
-      power: -(isErc721 ? 1n : event.value),
+    // store delegate
+    const storedFromDelegates: Delegate[] = await this.ctx.store.find(
+      Delegate,
+      {
+        where: {
+          fromDelegate: event.from,
+        },
+      }
+    );
+    let storedFromDelegate: Delegate | undefined = storedFromDelegates.find(
+      (item) => item.fromDelegate !== item.toDelegate
+    );
+    if (!storedFromDelegate) {
+      storedFromDelegate = storedFromDelegates.find(
+        (item) => item.fromDelegate === item.toDelegate
+      );
+    }
+
+    const storedToDelegates: Delegate[] = await this.ctx.store.find(Delegate, {
+      where: {
+        fromDelegate: event.to,
+      },
     });
-    const toDelegate = new Delegate({
-      fromDelegate: event.to,
-      toDelegate: event.to,
-      blockNumber: BigInt(eventLog.block.height),
-      blockTimestamp: BigInt(eventLog.block.timestamp),
-      transactionHash: eventLog.transactionHash,
-      power: isErc721 ? 1n : event.value,
-    });
-    await this.storeDelegate(fromDelegate);
-    await this.storeDelegate(toDelegate);
+    let storedToDelegate: Delegate | undefined = storedToDelegates.find(
+      (item) => item.fromDelegate !== item.toDelegate
+    );
+    if (!storedToDelegate) {
+      storedToDelegate = storedToDelegates.find(
+        (item) => item.fromDelegate === item.toDelegate
+      );
+    }
+
+    if (storedFromDelegate) {
+      const fromDelegate = new Delegate({
+        fromDelegate: storedFromDelegate.fromDelegate,
+        toDelegate: storedFromDelegate.toDelegate,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+        power: -(isErc721 ? 1n : event.value),
+      });
+      await this.storeDelegate(fromDelegate);
+    }
+    if (storedToDelegate) {
+      const toDelegate = new Delegate({
+        fromDelegate: storedToDelegate.fromDelegate,
+        toDelegate: storedToDelegate.toDelegate,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+        power: isErc721 ? 1n : event.value,
+      });
+      await this.storeDelegate(toDelegate);
+    }
   }
 
   private async storeDelegate(
