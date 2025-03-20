@@ -555,7 +555,6 @@ test("testTokens", () => {
           break;
         case "delegatechanged":
           cdg = {
-            // id: `${entry.fromDelegate}-${entry.toDelegate}`,
             delegator: entry.delegator,
             fromDelegate: entry.fromDelegate,
             toDelegate: entry.toDelegate,
@@ -568,7 +567,6 @@ test("testTokens", () => {
             // );
             break;
           }
-          // let checkSelfDelegate = false;
           let fromDelegate, toDelegate;
           const isDelegateChangeToAnother =
             cdg.delegator !== cdg.fromDelegate &&
@@ -585,14 +583,12 @@ test("testTokens", () => {
               fromDelegate = cdg.fromDelegate;
               toDelegate = cdg.delegator;
             }
-            // checkSelfDelegate = true;
           }
           if (entry.delegate === cdg.toDelegate) {
             fromDelegate = cdg.delegator;
             toDelegate =
               cdg.delegator === cdg.toDelegate ? cdg.delegator : cdg.toDelegate;
           }
-          // const isFirstDelegateToSelf = cdg.fromDelegate === zeroAddress;
           const cdelegate = {
             ...cdg,
             fromDelegate,
@@ -600,10 +596,7 @@ test("testTokens", () => {
             power: entry.newVotes - entry.previousVotes,
           };
           console.log("--------> ", cdg, cdelegate);
-          ds.pushDelegator(cdelegate, {
-            // isFirstDelegateToSelf,
-            // checkSelfDelegate,
-          });
+          ds.pushDelegator(cdelegate);
           break;
         default:
           throw new Error(`wrong method: ${method}`);
@@ -612,16 +605,6 @@ test("testTokens", () => {
   }
   console.log("ds: ", ds.getDelegates());
 });
-
-// interface Delegate {
-//   id: string;
-//   fromDelegate: string;
-//   toDelegate: string;
-//   blockNumber: BigInt;
-//   blockTimestamp: BigInt;
-//   transactionHash: string;
-//   power: BigInt;
-// }
 
 function DelegateStorage() {
   this.delegates = [];
@@ -633,29 +616,13 @@ dsfn.getDelegates = function () {
 };
 
 dsfn.pushDelegator = function (delegator, options) {
-  // const isFirstDelegateToSelf = options && options.isFirstDelegateToSelf;
-  // const checkSelfDelegate = options && options.checkSelfDelegate;
   delegator.id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
 
   const storedDelegateFromWithTo = this.delegates.find(
     (item) => item.id === delegator.id
   );
   if (!storedDelegateFromWithTo) {
-    // if (isFirstDelegateToSelf) {
-    //   this.delegates.push(delegator);
-    // } else {
-    // const delegateToWithToId = `${delegator.toDelegate}_${delegator.toDelegate}`;
-    // let enableStoreDelegate = true;
-    // if (checkSelfDelegate) {
-    //   const storedDelegateToWithTo = this.delegates.find(
-    //     (item) => item.id === delegateToWithToId
-    //   );
-    //   enableStoreDelegate = !!storedDelegateToWithTo;
-    // }
-    // if (enableStoreDelegate) {
     this.delegates.push(delegator);
-    // }
-    // }
     return;
   }
   storedDelegateFromWithTo.power += delegator.power;
@@ -674,10 +641,10 @@ dsfn.pushTransfer = function (transfer) {
   const { from, to, value } = transfer;
 
   const fromDelegateMapping = this.delegates.filter(
-    (item) => item.fromDelegate === from // && item.fromDelegate !== item.toDelegate
+    (item) => item.fromDelegate === from
   );
   const toDelegateMapping = this.delegates.filter(
-    (item) => item.fromDelegate === to // && item.fromDelegate !== item.toDelegate
+    (item) => item.fromDelegate === to
   );
   let betterFromDelegateMapping = fromDelegateMapping.find(
     (item) => item.fromDelegate !== item.toDelegate
