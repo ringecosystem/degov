@@ -218,10 +218,7 @@ export function TreasuryTable({
         </Table>
       )}
       {!data?.length && (
-        <Empty
-          label="The types of assets for the DAO timelock are configured in the service configuration file during initial setup. If no assets are displayed here, you may need to update your configuration file and restart the service."
-          className="h-[400px]"
-        />
+        <Empty label="TNo assets have been configured" className="h-[400px]" />
       )}
     </div>
   );
