@@ -91,4 +91,6 @@ under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 
-By using this software, you agree to abide by the terms of this license. For commercial hosting inquiries and governance participation, please visit [RingDAO Discussion](https://github.com/orgs/ringecosystem/discussions).
+By using this software, you agree to abide by the terms of this license. For 
+commercial hosting inquiries and governance participation, please visit 
+[RingDAO Discussion](https://github.com/orgs/ringecosystem/discussions).

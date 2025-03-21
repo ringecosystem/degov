@@ -14,10 +14,19 @@ DeGov.AI is an open-source, on-chain governance platform built for DAOs in the E
 - **OpenZeppelin Integration**: Uses OpenZeppelin's governor contracts for a reliable governance foundation.
 - **On-chain Governance**: Executes all actions on-chain for transparency and security.
 - **AI Powered (Planned in the next milestone)**: Utilizes AI technology for improved governance decisions and recommendations.
+## Setting Up Your DeGov Instance
 
-## Getting Started
+The easiest way to deploy your own DeGov instance is by using the [DeGov Launcher](https://github.com/ringecosystem/degov-launcher). This tool simplifies the setup process, allowing you to quickly configure and launch your governance platform.
 
-TODO
+## DAOs Powered by DeGov.AI
+
+Here are some examples of DAOs utilizing DeGov.AI for their governance needs:
+
+- [RingDAO](https://gov.ringdao.com)
+- [KtonDAO](https://ktondao-gov.ringdao.com/)
+- [DcDAO](https://dcdao-gov.ringdao.com/)
+
+please feel free to add your DAO to the list by submitting a pull request.
 
 ## Contributing
 
