@@ -72,9 +72,11 @@ function TableSkeleton({
 interface TreasuryTableProps {
   data: TokenWithBalance[];
   caption?: string;
+  isNativeToken?: boolean;
   standard?: "ERC20" | "ERC721";
   prices?: Record<string, number>;
   isLoading?: boolean;
+  onTotalValueChange?: (totalValue: number) => void;
 }
 export function TreasuryTable({
   data,
@@ -82,6 +84,8 @@ export function TreasuryTable({
   standard,
   prices,
   isLoading,
+  isNativeToken,
+  onTotalValueChange,
 }: TreasuryTableProps) {
   const daoConfig = useDaoConfig();
   const [visibleItems, setVisibleItems] = useState(5);
@@ -136,24 +140,14 @@ export function TreasuryTable({
   const hasMoreItems = data.length > visibleItems;
 
   useEffect(() => {
+    onTotalValueChange?.(totalValue);
+  }, [totalValue, onTotalValueChange]);
+
+  useEffect(() => {
     return () => setVisibleItems(5);
   }, []);
   return (
     <div className="rounded-[14px] bg-card p-[20px]">
-      {standard === "ERC20" && (
-        <div className="flex items-center gap-[20px] mb-[20px]">
-          <span className="text-[26px] font-semibold leading-normal text-muted-foreground">
-            Total Value
-          </span>
-          {isLoading ? (
-            <Skeleton className="h-[36px] w-[100px]" />
-          ) : (
-            <p className="text-[36px] font-semibold leading-normal">
-              {formatNumberForDisplay(totalValue ?? 0)?.[0]} USD
-            </p>
-          )}
-        </div>
-      )}
       {isLoading ? (
         <TableSkeleton standard={standard} />
       ) : (
@@ -195,11 +189,14 @@ export function TreasuryTable({
                     explorer={daoConfig?.chain?.explorers?.[0] as string}
                   />
                 </TableCell>
-                <TableCell className="text-right">{`${
-                  value?.formattedBalance
-                } ${
-                  tokenInfo[value.contract as `0x${string}`]?.symbol || "N/A"
-                }`}</TableCell>
+                <TableCell className="text-right">
+                  {isNativeToken
+                    ? `${value?.formattedBalance} ${daoConfig?.chain?.nativeToken?.symbol}`
+                    : `${value?.formattedBalance} ${
+                        tokenInfo[value.contract as `0x${string}`]?.symbol ||
+                        "N/A"
+                      }`}
+                </TableCell>
                 <TableCell className="text-right">
                   {standard === "ERC20" &&
                   value?.priceId &&
