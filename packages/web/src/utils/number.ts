@@ -14,21 +14,24 @@ export function formatNumberForDisplay(num: number): [string, string] {
 
   const absNum = Math.abs(num);
 
-  // Full format (using Intl.NumberFormat for localized formatting)
-  const longFormat = new Intl.NumberFormat().format(num);
+  // Full format (using Intl.NumberFormat for localized formatting with 2 decimal places)
+  const longFormat = new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
 
-  // Abbreviated format
+  // Abbreviated format with 2 decimal places
   let shortFormat = "";
   if (absNum >= 1e12) {
-    shortFormat = (num / 1e12).toFixed(0) + "T";
+    shortFormat = (num / 1e12).toFixed(2) + "T";
   } else if (absNum >= 1e9) {
-    shortFormat = (num / 1e9).toFixed(0) + "B";
+    shortFormat = (num / 1e9).toFixed(2) + "B";
   } else if (absNum >= 1e6) {
-    shortFormat = (num / 1e6).toFixed(0) + "M";
+    shortFormat = (num / 1e6).toFixed(2) + "M";
   } else if (absNum >= 1e3) {
-    shortFormat = (num / 1e3).toFixed(0) + "K";
+    shortFormat = (num / 1e3).toFixed(2) + "K";
   } else {
-    shortFormat = longFormat; // If less than 1000, it's the same as the full format
+    shortFormat = num.toFixed(2);
   }
 
   return [shortFormat, longFormat];
