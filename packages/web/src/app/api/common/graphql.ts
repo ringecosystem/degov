@@ -1,7 +1,7 @@
-// export interface Contri
+import type { ContributorItem } from "@/services/graphql/types";
 
-import { ContributorItem } from "@/services/graphql/types";
 import { degovConfig } from "./config";
+
 
 export function inspectContributor(
   address: string

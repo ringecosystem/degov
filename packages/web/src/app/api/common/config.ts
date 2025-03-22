@@ -1,7 +1,9 @@
-import path from "path";
 import fs from "fs";
+import path from "path";
+
 import yaml from "js-yaml";
-import { Config } from "@/types/config";
+
+import type { Config } from "@/types/config";
 
 let cachedConfig: Config | undefined = undefined;
 

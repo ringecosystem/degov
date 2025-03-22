@@ -6,8 +6,8 @@ import { SiweMessage } from "siwe";
 import type { DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
-import { snowflake } from "../../common/toolkit";
 import * as graphql from "../../common/graphql";
+import { snowflake } from "../../common/toolkit";
 
 import type { NextRequest } from "next/server";
 
