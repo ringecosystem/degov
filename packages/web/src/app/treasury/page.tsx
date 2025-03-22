@@ -30,7 +30,7 @@ export default function Treasury() {
       chainId: daoConfig?.chain?.id,
       contract: "0x0000000000000000000000000000000000000000" as `0x${string}`,
       standard: "ERC20",
-      logo: "",
+      logo: daoConfig?.chain?.logo ?? "",
     };
     if (!daoConfig?.timeLockAssets || isEmpty(daoConfig?.timeLockAssets))
       return {

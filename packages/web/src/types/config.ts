@@ -12,6 +12,7 @@ interface NativeToken {
   symbol: string;
   decimals: number;
   priceId: string;
+  logo?: string | null;
 }
 
 interface Chain {

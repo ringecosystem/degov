@@ -28,6 +28,7 @@ chain:
   #   - https://explorer.darwinia.network/
   nativeToken:
     priceId: RING
+    logo:
 
 indexer:
   endpoint: https://degov-indexer.vercel.app/graphql
