@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import postgres from "postgres";
 
 import { Resp } from "@/types/api";
+
+import { databaseConnection } from "../../common/database";
 
 import type { NextRequest } from "next/server";
 
@@ -14,14 +15,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      return NextResponse.json(
-        Resp.err("missing database please contact admin"),
-        { status: 400 }
-      );
-    }
-    const sql = postgres(databaseUrl);
+    const sql = databaseConnection();
 
     const members = await sql`select * from d_user where address in ${sql(
       body

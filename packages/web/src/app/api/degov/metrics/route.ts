@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
-import postgres from "postgres";
 
 import { Resp } from "@/types/api";
 
+import { databaseConnection } from "../../common/database";
+
 export async function GET() {
   try {
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      return NextResponse.json(
-        Resp.err("missing database please contact admin"),
-        { status: 400 }
-      );
-    }
-    const sql = postgres(databaseUrl);
+    const sql = databaseConnection();
 
     const [memberCount] = await sql`select count(1) as c from d_user`;
 
