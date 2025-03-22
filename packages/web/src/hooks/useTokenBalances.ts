@@ -13,6 +13,7 @@ export interface TokenWithBalance extends TokenDetails {
   rawBalance?: bigint;
   balance?: string;
   formattedBalance?: string;
+  chainId?: number;
 }
 
 export interface UseTokenBalancesReturn {

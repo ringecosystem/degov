@@ -1,6 +1,6 @@
 "use client";
 import BigNumber from "bignumber.js";
-import { isEmpty } from "lodash-es";
+import { isNil } from "lodash-es";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Empty } from "@/components/ui/empty";
@@ -76,7 +76,6 @@ interface TreasuryTableProps {
   standard?: "ERC20" | "ERC721";
   prices?: Record<string, number>;
   isLoading?: boolean;
-  onTotalValueChange?: (totalValue: number) => void;
 }
 export function TreasuryTable({
   data,
@@ -84,8 +83,6 @@ export function TreasuryTable({
   standard,
   prices,
   isLoading,
-  isNativeToken,
-  onTotalValueChange,
 }: TreasuryTableProps) {
   const daoConfig = useDaoConfig();
   const [visibleItems, setVisibleItems] = useState(5);
@@ -96,36 +93,32 @@ export function TreasuryTable({
     }))
   );
 
-  const totalValue = useMemo(() => {
-    if (!prices || isEmpty(prices) || isEmpty(data)) return 0;
-
-    return data.reduce((total, asset) => {
-      const priceValue = asset.priceId
-        ? prices[asset.priceId.toLowerCase()]
-        : 0;
-      const price =
-        priceValue === undefined || priceValue === null ? 0 : priceValue;
-
-      const balance = asset.balance || "0";
-
-      try {
-        const value = new BigNumber(price).multipliedBy(balance).toNumber();
-        return total + (isNaN(value) || !isFinite(value) ? 0 : value);
-      } catch (error) {
-        console.warn(`calculate asset value error: ${asset.priceId}`, error);
-        return total;
+  const tokenInfoWithNativeToken = useMemo<
+    Record<
+      `0x${string}`,
+      {
+        symbol: string;
+        decimals: number;
       }
-    }, 0);
-  }, [prices, data]);
+    >
+  >(() => {
+    return {
+      "0x0000000000000000000000000000000000000000": {
+        symbol: daoConfig?.chain?.nativeToken?.symbol || "",
+        decimals: daoConfig?.chain?.nativeToken?.decimals || 18,
+      },
+      ...(tokenInfo || {}),
+    };
+  }, [tokenInfo, daoConfig?.chain?.nativeToken]);
 
   const calculateAssetValue = useCallback(
     (asset: TokenWithBalance): number => {
       if (!prices || !asset.priceId) return 0;
 
-      const price = prices[asset.priceId.toLowerCase()] || 0;
-      const balance = asset.balance || "0";
+      const price = prices[asset?.priceId?.toLowerCase()] || 0;
+      const formattedBalance = asset?.formattedBalance || "0";
 
-      return new BigNumber(price).multipliedBy(balance).toNumber();
+      return new BigNumber(price).multipliedBy(formattedBalance).toNumber();
     },
     [prices]
   );
@@ -138,10 +131,6 @@ export function TreasuryTable({
     setVisibleItems((prev) => prev + 5);
   }, []);
   const hasMoreItems = data.length > visibleItems;
-
-  useEffect(() => {
-    onTotalValueChange?.(totalValue);
-  }, [totalValue, onTotalValueChange]);
 
   useEffect(() => {
     return () => setVisibleItems(5);
@@ -179,28 +168,30 @@ export function TreasuryTable({
             {displayData?.map((value, index) => (
               <TableRow
                 key={
-                  tokenInfo[value.contract as `0x${string}`]?.symbol ?? index
+                  tokenInfoWithNativeToken[value.contract as `0x${string}`]
+                    ?.symbol ?? index
                 }
               >
                 <TableCell className="text-left">
                   <Asset
                     asset={value}
-                    symbol={tokenInfo[value.contract as `0x${string}`]?.symbol}
+                    symbol={
+                      tokenInfoWithNativeToken[value.contract as `0x${string}`]
+                        ?.symbol
+                    }
                     explorer={daoConfig?.chain?.explorers?.[0] as string}
                   />
                 </TableCell>
                 <TableCell className="text-right">
-                  {isNativeToken
-                    ? `${value?.formattedBalance} ${daoConfig?.chain?.nativeToken?.symbol}`
-                    : `${value?.formattedBalance} ${
-                        tokenInfo[value.contract as `0x${string}`]?.symbol ||
-                        "N/A"
-                      }`}
+                  {`${value?.formattedBalance} ${
+                    tokenInfoWithNativeToken[value.contract as `0x${string}`]
+                      ?.symbol ?? "N/A"
+                  }`}
                 </TableCell>
                 <TableCell className="text-right">
                   {standard === "ERC20" &&
                   value?.priceId &&
-                  prices?.[value.priceId.toLowerCase()]
+                  !isNil(prices?.[value.priceId.toLowerCase()])
                     ? `${
                         formatNumberForDisplay(calculateAssetValue(value))?.[0]
                       } USD`
