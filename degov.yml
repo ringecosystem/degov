@@ -1,34 +1,57 @@
-name: Darwinia Community DAO
-logo: https://raw.githubusercontent.com/darwinia-network/devops/refs/heads/main/assets/dcdao/dcdao-head.svg
+name: DeGov Development Test DAO
+logo: "/example/logo.svg"
 description: |
-  Darwinia Community DAO(DCDAO) is a community self-organized workgroup(WG) contributing to the growth of the Darwinia community.
+  This is the development test DAO interface for DeGov users, allowing them to gain 
+  firsthand experience creating proposals and voting on them before deploying 
+  their own DeGov instance. The DAO is built on the Darwinia chain, an Ethereum-compatible chain.
+# The following fields in the links are optional and will be used to display basic information about the DAO
 links:
-  website: https://dcdao.notion.site/Darwinia-Community-DAO-1050ffdf6df34617bb90bb683ffc6bd5?pvs=4
-  twitter: https://twitter.com/Official_DCDAO
+  website: https://ringdao.com/
+  twitter: https://x.com/ringecosystem
+  discord: https://discord.com/invite/BhNbKWWfGV
+  telegram: https://t.me/ringecosystem
+  github: https://github.com/ringecosystem/degov
+  email: # It's ok to leave it empty
 
 wallet:
-  walletConnectProjectId: b23beccaae95544d0a4cdee932487c17
+  walletConnectProjectId: 2719448e2ce94fdd269a3c8587123bcc
 
+# Chain information: these commented fields are optional if this chain can be accessed by viem.
 chain:
   id: 46
   logo: https://darwinia.network/images/darwinia-logo-black-background-round.svg
-  rpcs:
-    - https://rpc.darwinia.network
-  explorers:
-    - https://explorer.darwinia.network/
+  # name: darwinia
+  # rpcs:
+  #   - https://rpc.darwinia.network
+  #   - https://darwinia-rpc.dwellir.com
+  # explorers:
+  #   - https://explorer.darwinia.network/
   nativeToken:
-    symbol: RING
     priceId: RING
-    decimals: 18
 
 indexer:
-  endpoint: https://dcdao-gov.ringdao.com/indexer/graphql
-  startBlock: 2740508
+  endpoint: https://degov-indexer.vercel.app/graphql
+  startBlock: 5873342
+  # if set this, indexer rpc will be use this first
   rpc: wss://rpc.darwinia.network
 
+# Core contracts related to the DAO Governance
 contracts:
-  governor: "0x234179ae929D886fceA83a6D04af69A86134AA3B"
+  governor: "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
   governorToken:
-    address: "0x21D4A3c5390D098073598d30FD49d32F9d9E355E"
+    address: "0xbC9f58566810F7e853e1eef1b9957ac82F9971df"
+    standard: ERC20
+  timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
+
+# The treasury assets information
+timeLockAssets:
+  FT:
+    contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
+    standard: ERC20
+    priceId: FT
+    logo: # Default logo if not provided
+  NFT:
+    contract: "0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A"
     standard: ERC721
-  timeLock: "0x5881f5CF92bf616fdD10eA82DF8f9e709EC5a81D"
+    priceId: NFT
+    logo: # Default logo if not provided
