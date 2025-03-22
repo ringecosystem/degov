@@ -52,7 +52,7 @@ export interface DUser {
 
 export interface DAvatar {
   id: string;
-  avatar: string;
+  image: string;
   ctime: string;
   utime?: string;
 }

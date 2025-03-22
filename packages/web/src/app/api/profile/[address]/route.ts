@@ -115,18 +115,18 @@ export async function POST(request: NextRequest) {
         await sql`select * from d_avatar where id = ${duser.id} limit 1`;
       const davatar: DAvatar = {
         id: duser.id,
-        avatar: body.avatar ?? "",
+        image: body.avatar ?? "",
         ctime: new Date().toISOString(),
         utime: new Date().toISOString(),
       };
       if (storedAvatar) {
         await sql`
-        update d_avatar set ${sql(davatar, "avatar", "utime")}
+        update d_avatar set ${sql(davatar, "image", "utime")}
         where id=${davatar.id}
         `;
       } else {
         await sql`
-        insert into d_avatar ${sql(davatar, "id", "avatar", "utime")}
+        insert into d_avatar ${sql(davatar, "id", "image", "utime")}
         `;
       }
     }
