@@ -1,9 +1,10 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import postgres from "postgres";
 
 import type { AuthPayload, DAvatar, DUser } from "@/types/api";
 import { Resp } from "@/types/api";
+
+import { databaseConnection } from "../../common/database";
 
 import type { NextRequest } from "next/server";
 
@@ -25,14 +26,7 @@ export async function GET(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const address = pathname.replace("/api/profile/", "").toLowerCase();
 
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      return NextResponse.json(
-        Resp.err("missing database please contact admin"),
-        { status: 400 }
-      );
-    }
-    const sql = postgres(databaseUrl);
+    const sql = databaseConnection();
 
     const [storedUser] = await sql`
       select u.*, a.image as avatar from d_user as u
@@ -74,7 +68,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const sql = postgres(databaseUrl);
+    const sql = databaseConnection();
 
     const [storedUser] =
       await sql`select * from d_user where address = ${address} limit 1`;
@@ -115,18 +109,18 @@ export async function POST(request: NextRequest) {
         await sql`select * from d_avatar where id = ${duser.id} limit 1`;
       const davatar: DAvatar = {
         id: duser.id,
-        avatar: body.avatar ?? "",
+        image: body.avatar ?? "",
         ctime: new Date().toISOString(),
         utime: new Date().toISOString(),
       };
       if (storedAvatar) {
         await sql`
-        update d_avatar set ${sql(davatar, "avatar", "utime")}
+        update d_avatar set ${sql(davatar, "image", "utime")}
         where id=${davatar.id}
         `;
       } else {
         await sql`
-        insert into d_avatar ${sql(davatar, "id", "avatar", "utime")}
+        insert into d_avatar ${sql(davatar, "id", "image", "utime")}
         `;
       }
     }

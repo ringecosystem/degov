@@ -1,21 +1,13 @@
 import { NextResponse } from "next/server";
-import postgres from "postgres";
 
 import { Resp } from "@/types/api";
+
+import { databaseConnection } from "../../common/database";
 
 import type { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      return NextResponse.json(
-        Resp.err("missing database please contact admin"),
-        { status: 400 }
-      );
-    }
-    const sql = postgres(databaseUrl);
-
     const nextUrl = request.nextUrl;
     const inputLimit = nextUrl.searchParams.get("limit");
     const inputCheckpoint = nextUrl.searchParams.get("checkpoint");
@@ -31,6 +23,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const sql = databaseConnection();
     const members = await sql`
     WITH ranked_members AS (
       SELECT
@@ -54,9 +47,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
     console.warn("err", err);
-    const fullMsg = `${(err as Error)?.message || err}`;
+    const message = err instanceof Error ? err.message : "unknown error";
     return NextResponse.json(
-      Resp.errWithData("failed to fetch members", fullMsg),
+      Resp.errWithData("failed to fetch members", message),
       { status: 400 }
     );
   }

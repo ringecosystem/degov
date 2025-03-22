@@ -37,10 +37,9 @@ services:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
-    network_mode: host
     ports:
       - "0.0.0.0:${DEGOV_WEB_PORT:-3002}:3000"
     environment:
       JWT_SECRET_KEY: 575276a8eb83abc2
-      DATABASE_URL: postgresql://postgres:let-me-in@postgres/degov
+      DATABASE_URL: postgresql://postgres:let-me-in@postgres:5432/degov
       DEGOV_SYNC_AUTH_TOKEN: 69a61f05a147f65fe27a654cd5b98e07

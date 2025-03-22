@@ -40,13 +40,19 @@ function processIndex(config: DegovConfig) {
             continue;
           }
 
-          switch (indexContract.name) {
-            case "governor":
-              await new GovernorHandler(ctx).handle(event);
-              break;
-            case "governorToken":
-              await new TokenHandler(ctx, indexContract).handle(event);
-              break;
+          try {
+            switch (indexContract.name) {
+              case "governor":
+                await new GovernorHandler(ctx).handle(event);
+                break;
+              case "governorToken":
+                await new TokenHandler(ctx, indexContract).handle(event);
+                break;
+            }
+          } finally {
+            ctx.log.warn(
+              `unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}`
+            );
           }
         }
       }

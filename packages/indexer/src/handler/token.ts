@@ -1,6 +1,7 @@
 import { DataHandlerContext } from "@subsquid/evm-processor";
 import { Log } from "../processor";
-import * as itokens from "../abi/itoken";
+import * as itokenerc20 from "../abi/itokenerc20";
+import * as itokenerc721 from "../abi/itokenerc721";
 import {
   Contributor,
   DataMetric,
@@ -20,10 +21,24 @@ export class TokenHandler {
     private readonly indexContract: DegovConfigIndexLogContract
   ) {}
 
+  private contractStandard() {
+    const contractStandard = (
+      this.indexContract.standard ?? "erc20"
+    ).toLowerCase();
+    return contractStandard;
+  }
+
+  private itokenAbi() {
+    const contractStandard = this.contractStandard();
+    const isErc721 = contractStandard === "erc721";
+    return isErc721 ? itokenerc721 : itokenerc20;
+  }
+
   async handle(eventLog: Log) {
+    const itokenAbi = this.itokenAbi();
     const isDelegateChanged =
       eventLog.topics.findIndex(
-        (item) => item === itokens.events.DelegateChanged.topic
+        (item) => item === itokenAbi.events.DelegateChanged.topic
       ) != -1;
     if (isDelegateChanged) {
       await this.storeDelegateChanged(eventLog);
@@ -31,7 +46,7 @@ export class TokenHandler {
 
     const isDelegateVotesChanged =
       eventLog.topics.findIndex(
-        (item) => item === itokens.events.DelegateVotesChanged.topic
+        (item) => item === itokenAbi.events.DelegateVotesChanged.topic
       ) != -1;
     if (isDelegateVotesChanged) {
       await this.storeDelegateVotesChanged(eventLog);
@@ -39,15 +54,22 @@ export class TokenHandler {
 
     const isTokenTransfer =
       eventLog.topics.findIndex(
-        (item) => item === itokens.events.Transfer.topic
+        (item) => item === itokenAbi.events.Transfer.topic
       ) != -1;
     if (isTokenTransfer) {
       await this.storeTokenTransfer(eventLog);
     }
+
+    // console.log('---------->', eventLog.topics, [
+    //   itokenAbi.events.DelegateChanged.topic,
+    //   itokenAbi.events.DelegateVotesChanged.topic,
+    //   itokenAbi.events.Transfer.topic,
+    // ]);
   }
 
   private async storeDelegateChanged(eventLog: Log) {
-    const event = itokens.events.DelegateChanged.decode(eventLog);
+    const itokenAbi = this.itokenAbi();
+    const event = itokenAbi.events.DelegateChanged.decode(eventLog);
     const entity = new DelegateChanged({
       id: eventLog.id,
       delegator: event.delegator,
@@ -73,12 +95,14 @@ export class TokenHandler {
   }
 
   private async storeDelegateVotesChanged(eventLog: Log) {
-    const event = itokens.events.DelegateVotesChanged.decode(eventLog);
+    const itokenAbi = this.itokenAbi();
+    const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
     const entity = new DelegateVotesChanged({
       id: eventLog.id,
       delegate: event.delegate,
-      previousVotes: event.previousVotes,
-      newVotes: event.newVotes,
+      previousVotes:
+        "previousVotes" in event ? event.previousVotes : event.previousBalance,
+      newVotes: "newVotes" in event ? event.newVotes : event.newBalance,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
@@ -152,17 +176,16 @@ export class TokenHandler {
   }
 
   private async storeTokenTransfer(eventLog: Log) {
-    const contractStandard = (
-      this.indexContract.standard ?? "erc20"
-    ).toLowerCase();
+    const contractStandard = this.contractStandard();
     const isErc721 = contractStandard === "erc721";
+    const itokenAbi = this.itokenAbi();
 
-    const event = itokens.events.Transfer.decode(eventLog);
+    const event = itokenAbi.events.Transfer.decode(eventLog);
     const entity = new TokenTransfer({
       id: eventLog.id,
       from: event.from,
       to: event.to,
-      value: event.value,
+      value: "value" in event ? event.value : event.tokenId,
       standard: contractStandard,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
@@ -209,7 +232,7 @@ export class TokenHandler {
         blockNumber: BigInt(eventLog.block.height),
         blockTimestamp: BigInt(eventLog.block.timestamp),
         transactionHash: eventLog.transactionHash,
-        power: -(isErc721 ? 1n : event.value),
+        power: -(isErc721 ? 1n : "value" in event ? event.value : 0n),
       });
       await this.storeDelegate(fromDelegate);
     }
@@ -220,7 +243,7 @@ export class TokenHandler {
         blockNumber: BigInt(eventLog.block.height),
         blockTimestamp: BigInt(eventLog.block.timestamp),
         transactionHash: eventLog.transactionHash,
-        power: isErc721 ? 1n : event.value,
+        power: isErc721 ? 1n : "value" in event ? event.value : 0n,
       });
       await this.storeDelegate(toDelegate);
     }
