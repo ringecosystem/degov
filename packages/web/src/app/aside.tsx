@@ -101,7 +101,7 @@ export const Aside = () => {
           <Nav collapsed={collapsed} />
         </div>
 
-        <footer className="space-y-[16px]">
+        <footer className="space-y-[16px]  duration-300">
           {collapsed ? (
             <div className="flex justify-center">
               <Tooltip>

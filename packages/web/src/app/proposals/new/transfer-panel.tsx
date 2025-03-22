@@ -80,7 +80,7 @@ export const TransferPanel = ({
       address: "0x0000000000000000000000000000000000000000" as Address,
       symbol: daoConfig?.chain?.nativeToken?.symbol as string,
       decimals: daoConfig?.chain?.nativeToken?.decimals as number,
-      icon: "",
+      icon: daoConfig?.chain?.logo ?? "",
     };
   }, [daoConfig]);
 

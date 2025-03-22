@@ -23,6 +23,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       .then((yamlText) => {
         const config = yaml.load(yamlText) as Config;
         setConfig(config);
+        document.title = `${config.name} - Powered by DeGov.AI`;
         setIsLoading(false);
       })
       .catch((err) => {
