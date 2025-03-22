@@ -7,6 +7,7 @@ import type { DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
 import { snowflake } from "../../common/toolkit";
+import * as graphql from "../../common/graphql";
 
 import type { NextRequest } from "next/server";
 
@@ -52,17 +53,26 @@ export async function POST(request: NextRequest) {
     const [storedUser] =
       await sql`select * from d_user where address = ${address} limit 1`;
     if (!storedUser) {
+      const contributor = await graphql.inspectContributor(address);
+      let power = "0";
+      if (contributor) {
+        power = contributor.power;
+      }
+      const hexPower = `0x${BigInt(power).toString(16).padStart(64, "0")}`;
+
       const newUser: DUser = {
         id: snowflake.generate(),
         address,
+        power: hexPower,
         last_login_time: new Date().toISOString(),
       };
-      await sql`
-        insert into d_user 
-        (id, address, last_login_time)
-        values
-        (${newUser.id}, ${newUser.address}, ${newUser.last_login_time})
-      `;
+      await sql`insert into d_user ${sql(
+        newUser,
+        "id",
+        "address",
+        "last_login_time",
+        "power"
+      )}`;
     } else {
       storedUser.last_login_time = new Date().toISOString();
       await sql`
