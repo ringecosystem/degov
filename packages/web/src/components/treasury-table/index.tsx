@@ -80,6 +80,7 @@ interface TreasuryTableProps {
 export function TreasuryTable({
   data,
   caption,
+  isNativeToken,
   standard,
   prices,
   isLoading,
@@ -175,6 +176,7 @@ export function TreasuryTable({
                 <TableCell className="text-left">
                   <Asset
                     asset={value}
+                    isNativeToken={isNativeToken}
                     symbol={
                       tokenInfoWithNativeToken[value.contract as `0x${string}`]
                         ?.symbol
