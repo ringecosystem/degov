@@ -536,8 +536,39 @@ const recordsFor_0xa23d90f = [
   ],
 ];
 
+const recordsFor_0xebd9a48 = [
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0xebd9A48eD1128375EB4383ED4d53478B4FD85a8D",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xebd9A48eD1128375EB4383ED4d53478B4FD85a8D",
+      txHash:
+        "0x895438ac4b84fe8d26e603e1cd507cc0ff4008ed97b63034ac4d25bee7c69cec",
+    },
+  ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0xC1c8F6Ef43b39C279417E361969d535F2a20b92e",
+      fromDelegate: "0xebd9A48eD1128375EB4383ED4d53478B4FD85a8D",
+      toDelegate: "0xebd9A48eD1128375EB4383ED4d53478B4FD85a8D",
+    },
+  ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0xC1c8F6Ef43b39C279417E361969d535F2a20b92e",
+      fromDelegate: "0xebd9A48eD1128375EB4383ED4d53478B4FD85a8D",
+      toDelegate: "0xebd9A48eD1128375EB4383ED4d53478B4FD85a8D",
+      txHash:
+        "0x04c523df8a0208637ed2d848a97e117207f5c98382d41dbb037476a5c8593239",
+    },
+  ],
+];
+
 test("testTokens", () => {
-  const records = recordsFor_0xa23d90f;
+  const records = recordsFor_0xebd9a48;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -548,16 +579,16 @@ test("testTokens", () => {
       switch (method) {
         case "transfer":
           ds.pushTransfer({
-            from: entry.from,
-            to: entry.to,
+            from: entry.from.toLowerCase(),
+            to: entry.to.toLowerCase(),
             value: entry.value,
           });
           break;
         case "delegatechanged":
           cdg = {
-            delegator: entry.delegator,
-            fromDelegate: entry.fromDelegate,
-            toDelegate: entry.toDelegate,
+            delegator: entry.delegator.toLowerCase(),
+            fromDelegate: entry.fromDelegate.toLowerCase(),
+            toDelegate: entry.toDelegate.toLowerCase(),
           };
           break;
         case "delegatevoteschanged":
@@ -571,7 +602,7 @@ test("testTokens", () => {
           const isDelegateChangeToAnother =
             cdg.delegator !== cdg.fromDelegate &&
             cdg.delegator !== cdg.toDelegate;
-          if (entry.delegate === cdg.fromDelegate) {
+          if (entry.delegate.toLowerCase() === cdg.fromDelegate) {
             if (
               (cdg.delegator === cdg.toDelegate &&
                 cdg.fromDelegate !== zeroAddress) ||
@@ -584,7 +615,7 @@ test("testTokens", () => {
               toDelegate = cdg.delegator;
             }
           }
-          if (entry.delegate === cdg.toDelegate) {
+          if (entry.delegate.toLowerCase() === cdg.toDelegate) {
             fromDelegate = cdg.delegator;
             toDelegate =
               cdg.delegator === cdg.toDelegate ? cdg.delegator : cdg.toDelegate;
