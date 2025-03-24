@@ -23,8 +23,8 @@ The easiest way to deploy your own DeGov instance is by using the [DeGov Launche
 Here are some examples of DAOs utilizing DeGov.AI for their governance needs:
 
 - [RingDAO](https://gov.ringdao.com)
-- [KtonDAO](https://ktondao-gov.ringdao.com/)
-- [DcDAO](https://dcdao-gov.ringdao.com/)
+- [KtonDAO](https://gov.ktondao.xyz)
+- [DcDAO](https://guild-gov.ringdao.com)
 
 please feel free to add your DAO to the list by submitting a pull request.
 
