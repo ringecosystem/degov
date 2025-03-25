@@ -7,6 +7,7 @@ import {
   DataMetric,
   Delegate,
   DelegateChanged,
+  DelegateMapping,
   DelegateRolling,
   DelegateVotesChanged,
   TokenTransfer,
@@ -80,6 +81,18 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    // store delegate mapping
+    await this.ctx.store.remove(DelegateMapping, entity.delegator);
+    const currentDelegateMapping = new DelegateMapping({
+      id: entity.delegator,
+      from: entity.delegator,
+      to: entity.toDelegate,
+      blockNumber: entity.blockNumber,
+      blockTimestamp: entity.blockTimestamp,
+      transactionHash: entity.transactionHash,
+    });
+    await this.ctx.store.insert(currentDelegateMapping);
 
     // store delegate rolling
     const delegateRolling = new DelegateRolling({
@@ -194,55 +207,38 @@ export class TokenHandler {
     await this.ctx.store.insert(entity);
 
     // store delegate
-    const storedFromDelegates: Delegate[] = await this.ctx.store.find(
-      Delegate,
-      {
+    const storedFromDelegate: DelegateMapping | undefined =
+      await this.ctx.store.findOne(DelegateMapping, {
         where: {
-          fromDelegate: event.from,
+          from: entity.from,
         },
-      }
-    );
-    let storedFromDelegate: Delegate | undefined = storedFromDelegates.find(
-      (item) => item.fromDelegate !== item.toDelegate
-    );
-    if (!storedFromDelegate) {
-      storedFromDelegate = storedFromDelegates.find(
-        (item) => item.fromDelegate === item.toDelegate
-      );
-    }
+      });
 
-    const storedToDelegates: Delegate[] = await this.ctx.store.find(Delegate, {
-      where: {
-        fromDelegate: event.to,
-      },
-    });
-    let storedToDelegate: Delegate | undefined = storedToDelegates.find(
-      (item) => item.fromDelegate !== item.toDelegate
-    );
-    if (!storedToDelegate) {
-      storedToDelegate = storedToDelegates.find(
-        (item) => item.fromDelegate === item.toDelegate
-      );
-    }
+    const storedToDelegate: DelegateMapping | undefined =
+      await this.ctx.store.findOne(DelegateMapping, {
+        where: {
+          from: entity.to,
+        },
+      });
 
     if (storedFromDelegate) {
       const fromDelegate = new Delegate({
-        fromDelegate: storedFromDelegate.fromDelegate,
-        toDelegate: storedFromDelegate.toDelegate,
-        blockNumber: BigInt(eventLog.block.height),
-        blockTimestamp: BigInt(eventLog.block.timestamp),
-        transactionHash: eventLog.transactionHash,
+        fromDelegate: storedFromDelegate.from,
+        toDelegate: storedFromDelegate.to,
+        blockNumber: entity.blockNumber,
+        blockTimestamp: entity.blockTimestamp,
+        transactionHash: entity.transactionHash,
         power: -(isErc721 ? 1n : "value" in event ? event.value : 0n),
       });
       await this.storeDelegate(fromDelegate);
     }
     if (storedToDelegate) {
       const toDelegate = new Delegate({
-        fromDelegate: storedToDelegate.fromDelegate,
-        toDelegate: storedToDelegate.toDelegate,
-        blockNumber: BigInt(eventLog.block.height),
-        blockTimestamp: BigInt(eventLog.block.timestamp),
-        transactionHash: eventLog.transactionHash,
+        fromDelegate: storedToDelegate.from,
+        toDelegate: storedToDelegate.to,
+        blockNumber: entity.blockNumber,
+        blockTimestamp: entity.blockTimestamp,
+        transactionHash: entity.transactionHash,
         power: isErc721 ? 1n : "value" in event ? event.value : 0n,
       });
       await this.storeDelegate(toDelegate);
@@ -272,9 +268,10 @@ export class TokenHandler {
         currentDelegate.transactionHash;
       // should keep delegate self record
       if (
-        storedDelegateFromWithTo.power === 0n &&
-        storedDelegateFromWithTo.fromDelegate !==
-          storedDelegateFromWithTo.toDelegate
+        storedDelegateFromWithTo.power === 0n
+        // &&
+        // storedDelegateFromWithTo.fromDelegate !==
+        //   storedDelegateFromWithTo.toDelegate
       ) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
       } else {

@@ -1302,9 +1302,7 @@ dsfn.pushDelegator = function (delegator, options) {
     return;
   }
   storedDelegateFromWithTo.power += delegator.power;
-  if (
-    storedDelegateFromWithTo.power === 0n
-  ) {
+  if (storedDelegateFromWithTo.power === 0n) {
     this.delegates = this.delegates.filter(
       (item) => item.id !== storedDelegateFromWithTo.id
     );
@@ -1341,5 +1339,4 @@ dsfn.pushTransfer = function (transfer) {
     };
     this.pushDelegator(transferDelegateTo);
   }
-
 };

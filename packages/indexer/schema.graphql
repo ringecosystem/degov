@@ -194,3 +194,13 @@ type Contributor @entity {
 
   power: BigInt!
 }
+
+type DelegateMapping @entity {
+  id: ID! # from
+  from: String! # address
+  to: String! # address
+  
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
