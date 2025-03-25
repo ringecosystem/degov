@@ -24,25 +24,6 @@ export const getDaoConfigServer = async (): Promise<Config> => {
       continue;
     }
   }
-
-  if (!yamlText) {
-    try {
-      const response = await fetch("/degov.yml", {
-        next: { revalidate: 0 },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      yamlText = await response.text();
-      console.log("Successfully fetched config via HTTP");
-    } catch (e) {
-      console.error("Failed to fetch config:", e);
-      error = e as Error;
-    }
-  }
-
   if (!yamlText) {
     console.warn("Failed to load config, using default:", error);
     return {
