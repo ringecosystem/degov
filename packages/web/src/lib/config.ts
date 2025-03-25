@@ -27,7 +27,7 @@ export const getDaoConfigServer = async (): Promise<Config> => {
   if (!yamlText) {
     console.warn("Failed to load config, using default:", error);
     return {
-      name: "DeGov",
+      name: "DeGov1",
     } as Config;
   }
 
