@@ -42,11 +42,6 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export const metadata: Metadata = {
-  title: "DeGov.AI",
-  description: "DeGov.AI - DAO governance platform powered by DeGov.AI",
-};
-
 export default function RootLayout({
   children,
 }: Readonly<{
