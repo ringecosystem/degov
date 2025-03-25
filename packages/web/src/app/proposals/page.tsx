@@ -15,10 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
-
 export default function Proposals() {
+  useDocumentTitle();
+
   const router = useRouter();
   const [support, setSupport] = useState<"all" | "1" | "2" | "3">("all");
   const { isConnected, address } = useAccount();

@@ -37,7 +37,7 @@ type TokenTransfer @entity {
 
 type ProposalCanceled @entity {
   id: ID!
-  proposalId: BigInt! # uint256
+  proposalId: String! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
@@ -45,7 +45,7 @@ type ProposalCanceled @entity {
 
 type ProposalCreated @entity {
   id: ID!
-  proposalId: BigInt! # uint256
+  proposalId: String! # uint256
   proposer: String! # address
   targets: [String!]! # address[]
   values: [String!]! # uint256[] ## [BigInt!]!
@@ -61,7 +61,7 @@ type ProposalCreated @entity {
 
 type ProposalExecuted @entity {
   id: ID!
-  proposalId: BigInt! # uint256
+  proposalId: String! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
@@ -69,7 +69,7 @@ type ProposalExecuted @entity {
 
 type ProposalQueued @entity {
   id: ID!
-  proposalId: BigInt! # uint256
+  proposalId: String! # uint256
   etaSeconds: BigInt! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
@@ -79,7 +79,7 @@ type ProposalQueued @entity {
 type VoteCast @entity {
   id: ID!
   voter: String! # address
-  proposalId: BigInt! # uint256
+  proposalId: String! # uint256
   support: Int! # uint8
   weight: BigInt! # uint256
   reason: String! # string
@@ -91,7 +91,7 @@ type VoteCast @entity {
 type VoteCastWithParams @entity {
   id: ID!
   voter: String! # address
-  proposalId: BigInt! # uint256
+  proposalId: String! # uint256
   support: Int! # uint8
   weight: BigInt! # uint256
   reason: String! # string
@@ -109,7 +109,7 @@ type VoteCastGroup @entity {
   proposal: Proposal!
   type: String!
   voter: String! # address
-  refProposalId: BigInt! # uint256
+  refProposalId: String! # uint256
   support: Int! # uint8
   weight: BigInt! # uint256
   reason: String! # string
@@ -121,7 +121,7 @@ type VoteCastGroup @entity {
 
 type Proposal @entity {
   id: ID!
-  proposalId: BigInt! # uint256
+  proposalId: String! # uint256
   proposer: String! # address
   targets: [String!]! # address[]
   values: [String!]! # uint256[] ## [BigInt!]!

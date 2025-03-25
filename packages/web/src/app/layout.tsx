@@ -3,7 +3,6 @@ import "./globals.css";
 import { ToastContainer } from "react-toastify";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { getDaoConfigServer } from "@/lib/config";
 import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
 
@@ -23,18 +22,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const config = await getDaoConfigServer();
-  const daoName = config?.name || "DeGov";
+export const metadata: Metadata = {
+  title: "DeGov",
+  description: "DAO governance platform powered by DeGov.AI",
+};
 
-  return {
-    title: {
-      template: `%s | ${daoName} - Powered by DeGov.AI`,
-      default: `${daoName} - Powered by DeGov.AI`,
-    },
-    description: `${daoName} - DAO governance platform powered by DeGov.AI`,
-  };
-}
 export default function RootLayout({
   children,
 }: Readonly<{

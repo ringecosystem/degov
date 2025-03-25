@@ -3,11 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { DelegateAction } from "@/components/delegate-action";
 import { MembersTable } from "@/components/members-table";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import type { Member } from "@/services/graphql/types";
 
 import type { Address } from "viem";
 
 export default function Members() {
+  useDocumentTitle();
   const [address, setAddress] = useState<Address | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const handleDelegate = useCallback((value: Member) => {
