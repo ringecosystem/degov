@@ -5,33 +5,41 @@ import { DECIMAL } from "@/config/base";
 /**
  * Formats a number according to its magnitude, returning both abbreviated and full formats.
  * @param {number} num - The number to format.
+ * @param {number} decimals - Number of decimal places
  * @returns {[string, string]} - An array containing shortFormat and longFormat.
  */
-export function formatNumberForDisplay(num: number): [string, string] {
+export function formatNumberForDisplay(
+  num: number,
+  decimals: number = 2
+): [string, string] {
   if (typeof num !== "number") {
     throw new Error("Invalid input: Input must be a number.");
   }
 
+  if (decimals < 0 || !Number.isInteger(decimals)) {
+    throw new Error("Invalid decimals: Must be a non-negative integer.");
+  }
+
   const absNum = Math.abs(num);
 
-  // Full format (using Intl.NumberFormat for localized formatting with 2 decimal places)
+  // Full format with specified decimal places
   const longFormat = new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   }).format(num);
 
-  // Abbreviated format with 2 decimal places
+  // Abbreviated format with specified decimal places
   let shortFormat = "";
   if (absNum >= 1e12) {
-    shortFormat = (num / 1e12).toFixed(2) + "T";
+    shortFormat = (num / 1e12).toFixed(decimals) + "T";
   } else if (absNum >= 1e9) {
-    shortFormat = (num / 1e9).toFixed(2) + "B";
+    shortFormat = (num / 1e9).toFixed(decimals) + "B";
   } else if (absNum >= 1e6) {
-    shortFormat = (num / 1e6).toFixed(2) + "M";
+    shortFormat = (num / 1e6).toFixed(decimals) + "M";
   } else if (absNum >= 1e3) {
-    shortFormat = (num / 1e3).toFixed(2) + "K";
+    shortFormat = (num / 1e3).toFixed(decimals) + "K";
   } else {
-    shortFormat = num.toFixed(2);
+    shortFormat = num.toFixed(decimals);
   }
 
   return [shortFormat, longFormat];

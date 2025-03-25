@@ -57,7 +57,8 @@ export const Overview = () => {
               formatNumberForDisplay(
                 isNumber(dataMetrics?.proposalsCount)
                   ? dataMetrics?.proposalsCount
-                  : 0
+                  : 0,
+                0
               )[0]
             }
           </div>
@@ -67,7 +68,12 @@ export const Overview = () => {
           icon="/assets/image/members-colorful.svg"
           isLoading={isMembersLoading}
         >
-          {formatNumberForDisplay(getMemberTotal?.data?.member_count ?? 0)[0]}
+          {
+            formatNumberForDisplay(
+              getMemberTotal?.data?.member_count ?? 0,
+              0
+            )[0]
+          }
         </OverviewItem>
         <OverviewItem
           title="Total Voting Power"
