@@ -1,4 +1,4 @@
-import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, StringColumn as StringColumn_, BigIntColumn as BigIntColumn_, IntColumn as IntColumn_} from "@subsquid/typeorm-store"
+import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, StringColumn as StringColumn_, IntColumn as IntColumn_, BigIntColumn as BigIntColumn_} from "@subsquid/typeorm-store"
 
 @Entity_()
 export class VoteCastWithParams {
@@ -12,8 +12,8 @@ export class VoteCastWithParams {
     @StringColumn_({nullable: false})
     voter!: string
 
-    @BigIntColumn_({nullable: false})
-    proposalId!: bigint
+    @StringColumn_({nullable: false})
+    proposalId!: string
 
     @IntColumn_({nullable: false})
     support!: number

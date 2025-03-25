@@ -67,11 +67,15 @@ export class GovernorHandler {
     }
   }
 
+  private stdProposalId(proposalId: bigint): string {
+    return `0x${proposalId.toString(16)}`;
+  }
+
   private async storeProposalCreated(eventLog: Log) {
     const event = igovernorAbi.events.ProposalCreated.decode(eventLog);
     const entity = new ProposalCreated({
       id: eventLog.id,
-      proposalId: event.proposalId,
+      proposalId: this.stdProposalId(event.proposalId),
       proposer: event.proposer,
       targets: event.targets,
       values: event.values.map((item) => item.toString()),
@@ -88,7 +92,7 @@ export class GovernorHandler {
 
     const proposal = new Proposal({
       id: eventLog.id,
-      proposalId: event.proposalId,
+      proposalId: this.stdProposalId(event.proposalId),
       proposer: event.proposer,
       targets: event.targets,
       values: event.values.map((item) => item.toString()),
@@ -112,7 +116,7 @@ export class GovernorHandler {
     const event = igovernorAbi.events.ProposalQueued.decode(eventLog);
     const entity = new ProposalQueued({
       id: eventLog.id,
-      proposalId: event.proposalId,
+      proposalId: this.stdProposalId(event.proposalId),
       etaSeconds: event.etaSeconds,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
@@ -125,7 +129,7 @@ export class GovernorHandler {
     const event = igovernorAbi.events.ProposalExecuted.decode(eventLog);
     const entity = new ProposalExecuted({
       id: eventLog.id,
-      proposalId: event.proposalId,
+      proposalId: this.stdProposalId(event.proposalId),
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
@@ -137,7 +141,7 @@ export class GovernorHandler {
     const event = igovernorAbi.events.ProposalCanceled.decode(eventLog);
     const entity = new ProposalCanceled({
       id: eventLog.id,
-      proposalId: event.proposalId,
+      proposalId: this.stdProposalId(event.proposalId),
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
@@ -150,7 +154,7 @@ export class GovernorHandler {
     const entity = new VoteCast({
       id: eventLog.id,
       voter: event.voter,
-      proposalId: event.proposalId,
+      proposalId: this.stdProposalId(event.proposalId),
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -164,7 +168,7 @@ export class GovernorHandler {
       id: eventLog.id,
       type: "vote-cast-without-params",
       voter: event.voter,
-      refProposalId: event.proposalId,
+      refProposalId: this.stdProposalId(event.proposalId),
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -180,7 +184,7 @@ export class GovernorHandler {
     const entity = new VoteCastWithParams({
       id: eventLog.id,
       voter: event.voter,
-      proposalId: event.proposalId,
+      proposalId: this.stdProposalId(event.proposalId),
       support: event.support,
       weight: event.weight,
       reason: event.reason,
@@ -195,7 +199,7 @@ export class GovernorHandler {
       id: eventLog.id,
       type: "vote-cast-with-params",
       voter: event.voter,
-      refProposalId: event.proposalId,
+      refProposalId: this.stdProposalId(event.proposalId),
       support: event.support,
       weight: event.weight,
       reason: event.reason,
