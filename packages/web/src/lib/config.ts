@@ -1,4 +1,4 @@
-import fs from "fs";
+import { promises as fs } from "fs";
 import path from "path";
 
 import yaml from "js-yaml";
@@ -12,29 +12,58 @@ export const getDaoConfigServer = async (): Promise<Config> => {
   ];
 
   let yamlText: string | null = null;
-  let error: Error | null = null;
+  let lastError: Error | null = null;
 
-  for (const configPath of possiblePaths) {
-    try {
-      yamlText = await fs.readFileSync(configPath, "utf8");
-      console.log(`Successfully read config from ${configPath}`);
-      break;
-    } catch (e) {
-      error = e as Error;
-      continue;
-    }
+  const results = await Promise.allSettled(
+    possiblePaths.map(async (configPath) => {
+      try {
+        const content = await fs.readFile(configPath, "utf8");
+        return { path: configPath, content };
+      } catch (e) {
+        lastError = e as Error;
+        return null;
+      }
+    })
+  );
+
+  const successfulResult = results
+    .filter(
+      (
+        result
+      ): result is PromiseFulfilledResult<{
+        path: string;
+        content: string;
+      } | null> => result.status === "fulfilled"
+    )
+    .map((result) => result.value)
+    .find((result) => result !== null);
+
+  if (successfulResult) {
+    yamlText = successfulResult.content;
+    console.log(`Successfully read config from ${successfulResult.path}`);
   }
+
   if (!yamlText) {
-    console.warn("Failed to load config, using default:", error);
+    console.warn("Failed to load config from all paths:", lastError);
     return {
       name: "DeGov1",
     } as Config;
   }
 
   try {
-    return yaml.load(yamlText) as Config;
+    const config = yaml.load(yamlText) as Config;
+
+    if (!config || typeof config !== "object") {
+      throw new Error("Invalid config format: must be an object");
+    }
+
+    if (!config.name || typeof config.name !== "string") {
+      throw new Error("Invalid config: missing or invalid 'name' property");
+    }
+
+    return config;
   } catch (e) {
-    console.error("Failed to parse YAML:", e);
+    console.error("Failed to parse YAML or validate config:", e);
     throw e;
   }
 };
