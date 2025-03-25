@@ -16,14 +16,11 @@ import {
 } from "@/components/ui/tooltip";
 import { useCryptoPrices } from "@/hooks/useCryptoPrices";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import type { TokenWithBalance } from "@/hooks/useTokenBalances";
 import { useTokenBalances } from "@/hooks/useTokenBalances";
 import { formatBigIntForDisplay, formatNumberForDisplay } from "@/utils";
 
 export default function Treasury() {
-  useDocumentTitle();
-
   const daoConfig = useDaoConfig();
 
   const timeLockAddress = daoConfig?.contracts?.timeLock;
