@@ -11,24 +11,22 @@ const defaultConfig = {
 
 export const getDaoConfigServer = (): Config => {
   try {
-    const configPaths = [
-      path.join(process.cwd(), "degov.yml"),
-      path.join(process.cwd(), "public", "degov.yml"),
-      "/degov.yml",
-      path.join(process.cwd(), "..", "degov.yml"),
-      path.join(process.cwd(), "..", "..", "degov.yml"),
-    ];
+    const degovConfigPath = process.env.DEGOV_CONFIG_PATH;
+    if (!degovConfigPath) {
+      return defaultConfig as Config;
+    }
+    const filePath = path.isAbsolute(degovConfigPath)
+      ? degovConfigPath
+      : path.join(process.cwd(), degovConfigPath);
 
     let yamlText: string | undefined;
 
-    for (const configPath of configPaths) {
-      try {
-        yamlText = fs.readFileSync(configPath, "utf8");
-        console.log(`[Config] Loaded from ${configPath}`);
-        break;
-      } catch {
-        continue;
-      }
+    try {
+      yamlText = fs.readFileSync(filePath, "utf8");
+      console.log(`[Config] Loaded from ${filePath}`);
+    } catch {
+      console.log("[Config] Using default config");
+      return defaultConfig as Config;
     }
 
     if (!yamlText) {
