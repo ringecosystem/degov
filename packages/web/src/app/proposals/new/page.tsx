@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { WithConnect } from "@/components/with-connect";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useProposal } from "@/hooks/useProposal";
 
@@ -72,6 +73,8 @@ const PublishButton = ({
 };
 
 export default function NewProposal() {
+  useDocumentTitle();
+
   const panelRefs = useRef<Map<string, HTMLFormElement>>(new Map());
   const router = useRouter();
   const [actions, setActions] = useImmer<Action[]>(DEFAULT_ACTIONS);

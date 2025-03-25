@@ -1,9 +1,13 @@
 "use client";
 
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+
 import { DaoHeader } from "./_components/dao-header";
 import { Overview } from "./_components/overview";
 import { Proposals } from "./_components/proposals";
+
 export default function HomePage() {
+  useDocumentTitle();
   return (
     <div className="flex flex-col gap-[30px]">
       <DaoHeader />

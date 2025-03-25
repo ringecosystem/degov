@@ -9,6 +9,7 @@ import { useAccount } from "wagmi";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useSign } from "@/hooks/useSign";
 import { profileService } from "@/services/graphql";
 import type { ProfileData } from "@/services/graphql/types/profile";
@@ -63,6 +64,7 @@ export function ProfileEditSkeleton() {
   );
 }
 export default function Edit() {
+  useDocumentTitle();
   const router = useRouter();
   const { address } = useAccount();
   const { signIn, isLoading: isSigningIn } = useSign();
