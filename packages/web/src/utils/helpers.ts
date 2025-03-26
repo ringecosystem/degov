@@ -101,3 +101,33 @@ export const formatFunctionSignature = (signature: string): string => {
   }
   return signature;
 };
+
+/**
+ * Recursively process all standard properties in an object, converting them to uppercase
+ * Handles all possible cases of missing properties or nested objects
+ * @param obj The object to process
+ * @returns A copy of the processed object
+ */
+export function processStandardProperties<T>(obj: T): T {
+  // If input is not an object or is null, return it directly
+  if (typeof obj !== "object" || obj === null) {
+    return obj;
+  }
+
+  // Create a shallow copy of the object to avoid modifying the original
+  const result = Array.isArray(obj) ? ([...obj] as unknown as T) : { ...obj };
+
+  // Iterate over all properties of the object
+  Object.entries(result as Record<string, unknown>).forEach(([key, value]) => {
+    if (key === "standard" && typeof value === "string") {
+      // If the standard property is a string, convert it to uppercase
+      (result as Record<string, unknown>)[key] = value.toUpperCase();
+    } else if (typeof value === "object" && value !== null) {
+      // If the property is a nested object or array, recursively process it
+      (result as Record<string, unknown>)[key] =
+        processStandardProperties(value);
+    }
+  });
+
+  return result;
+}

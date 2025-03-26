@@ -155,7 +155,11 @@ export function TreasuryTable({
           <TableHeader>
             <TableRow>
               <TableHead className="w-1/4 rounded-l-[14px] text-left">
-                {standard === "ERC20" ? "ERC-20 Assets" : "ERC-721 Assets"}
+                {isNativeToken
+                  ? "Native Assets"
+                  : standard === "ERC20"
+                  ? "ERC-20 Assets"
+                  : "ERC-721 Assets"}
               </TableHead>
               <TableHead className="w-1/4 text-right">Balance</TableHead>
               <TableHead className="w-1/4 text-right">Value</TableHead>
