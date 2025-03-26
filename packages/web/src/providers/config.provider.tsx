@@ -6,6 +6,7 @@ import ErrorComponent from "@/components/error";
 import { ConfigContext } from "@/hooks/useDaoConfig";
 
 import type { Config } from "../types/config";
+import { processStandardProperties } from "@/utils";
 
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<Config | null>(null);
@@ -22,7 +23,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       })
       .then((yamlText) => {
         const config = yaml.load(yamlText) as Config;
-        setConfig(config);
+
+        setConfig(processStandardProperties(config));
         setIsLoading(false);
       })
       .catch((err) => {
