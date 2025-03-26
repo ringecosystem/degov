@@ -18,7 +18,6 @@ interface NavProps {
 
 export const Nav = ({ collapsed = false }: NavProps) => {
   const pathname = usePathname();
-  console.log("pathname", pathname);
 
   return (
     <nav className="space-y-2">
