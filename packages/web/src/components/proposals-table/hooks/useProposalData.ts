@@ -103,7 +103,7 @@ export function useProposalData(
 
   const {
     data: proposalStatuses,
-    isFetching: proposalStatusesLoading,
+    isLoading: proposalStatusesLoading,
     error: proposalStatusesError,
   } = useReadContracts({
     contracts: statusContracts,

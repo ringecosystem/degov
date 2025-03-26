@@ -14,7 +14,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
@@ -36,8 +35,6 @@ const ACTIVE_STATES: ProposalState[] = [
 ];
 
 export default function ProposalDetailPage() {
-  useDocumentTitle();
-
   const daoConfig = useDaoConfig();
 
   const { id } = useParams();

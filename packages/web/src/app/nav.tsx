@@ -25,7 +25,9 @@ export const Nav = ({ collapsed = false }: NavProps) => {
         {routes.map((route) => {
           const isActive =
             pathname === route.pathname ||
-            pathname.startsWith(route.pathname + "/");
+            pathname.startsWith(route.pathname + "/") ||
+            (pathname.startsWith("/proposal") &&
+              route.pathname === "/proposals");
 
           return (
             <Tooltip key={route.key}>

@@ -11,6 +11,7 @@ import {
 } from "react";
 import { toast } from "react-toastify";
 import { useImmer } from "use-immer";
+import { toHex } from "viem";
 
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import type { SuccessType } from "@/components/transaction-toast";
@@ -22,7 +23,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { WithConnect } from "@/components/with-connect";
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useProposal } from "@/hooks/useProposal";
 
@@ -73,8 +73,6 @@ const PublishButton = ({
 };
 
 export default function NewProposal() {
-  useDocumentTitle();
-
   const panelRefs = useRef<Map<string, HTMLFormElement>>(new Map());
   const router = useRouter();
   const [actions, setActions] = useImmer<Action[]>(DEFAULT_ACTIONS);
@@ -224,7 +222,8 @@ export default function NewProposal() {
 
   const handlePublishSuccess: SuccessType = useCallback(() => {
     if (proposalId) {
-      router.push(`/proposals/${proposalId}`);
+      const hexProposalId = toHex(BigInt(proposalId));
+      router.push(`/proposal/${hexProposalId}`);
     }
   }, [proposalId, router]);
 
