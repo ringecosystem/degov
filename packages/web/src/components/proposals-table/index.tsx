@@ -77,7 +77,7 @@ export function ProposalsTable({
           <Link
             className="line-clamp-1 hover:underline"
             title={extractTitleAndDescription(record.description)?.title}
-            href={`/proposals/${record.proposalId}`}
+            href={`/proposal/${record.proposalId}`}
           >
             {extractTitleAndDescription(record.description)?.title}
           </Link>

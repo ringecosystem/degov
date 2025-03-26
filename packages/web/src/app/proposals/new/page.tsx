@@ -223,7 +223,7 @@ export default function NewProposal() {
   const handlePublishSuccess: SuccessType = useCallback(() => {
     if (proposalId) {
       const hexProposalId = toHex(BigInt(proposalId));
-      router.push(`/proposals/${hexProposalId}`);
+      router.push(`/proposal/${hexProposalId}`);
     }
   }, [proposalId, router]);
 
