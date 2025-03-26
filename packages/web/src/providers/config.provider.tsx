@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 
 import ErrorComponent from "@/components/error";
 import { ConfigContext } from "@/hooks/useDaoConfig";
+import { processStandardProperties } from "@/utils";
 
 import type { Config } from "../types/config";
-import { processStandardProperties } from "@/utils";
 
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<Config | null>(null);
