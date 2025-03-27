@@ -39,7 +39,6 @@ function processIndex(config: DegovConfig) {
           if (!indexContract) {
             continue;
           }
-          ctx.store.remove
 
           try {
             switch (indexContract.name) {
