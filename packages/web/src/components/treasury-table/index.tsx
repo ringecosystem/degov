@@ -212,7 +212,12 @@ export function TreasuryTable({
         </Table>
       )}
       {!data?.length && (
-        <Empty label="TNo assets have been configured" className="h-[400px]" />
+        <Empty
+          label="No assets have been configured"
+          style={{
+            height: 24 * 6,
+          }}
+        />
       )}
     </div>
   );

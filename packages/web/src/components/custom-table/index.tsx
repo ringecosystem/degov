@@ -153,7 +153,12 @@ export function CustomTable<T extends Record<string, unknown>>({
       </div>
 
       {!isLoading && dataSource.length === 0 && (
-        <Empty label={emptyText} className="h-[300px]" />
+        <Empty
+          label={emptyText}
+          style={{
+            height: loadingHeight * 4,
+          }}
+        />
       )}
     </div>
   );
