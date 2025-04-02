@@ -9,6 +9,7 @@ import { DAppProvider } from "@/providers/dapp.provider";
 
 import { Alert } from "./alert";
 import { Aside } from "./aside";
+import { DemoTips } from "./demo-tips";
 import { Header } from "./header";
 
 import type { Metadata } from "next";
@@ -60,6 +61,7 @@ export default function RootLayout({
                 <main className="flex min-w-0 flex-1 flex-col overflow-y-auto h-dvh">
                   <Header />
                   <div className="mx-auto w-full flex-1 p-[30px] gap-[20px] flex flex-col max-w-[1400px]">
+                    <DemoTips />
                     <Alert />
                     {children}
                   </div>
