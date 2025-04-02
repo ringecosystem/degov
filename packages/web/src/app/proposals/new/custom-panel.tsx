@@ -6,6 +6,7 @@ import { useForm, Controller } from "react-hook-form";
 import { isAddress, type Abi, type AbiItem } from "viem";
 import { useBytecode } from "wagmi";
 
+import { AddressInputWithResolver } from "@/components/address-input-with-resolver";
 import { ErrorMessage } from "@/components/error-message";
 import { FileUploader } from "@/components/file-uploader";
 import { Button } from "@/components/ui/button";
@@ -214,9 +215,19 @@ export const CustomPanel = ({
             Target contract address
           </label>
 
-          <Input
+          {/* <Input
             id="target"
             {...register("target")}
+            placeholder="Enter the target address..."
+            className={cn(
+              "border-border/20 bg-card",
+              errors.target && "border-danger"
+            )}
+          /> */}
+          <AddressInputWithResolver
+            id="target"
+            value={watch("target")}
+            onChange={(value) => setValue("target", value as Address)}
             placeholder="Enter the target address..."
             className={cn(
               "border-border/20 bg-card",

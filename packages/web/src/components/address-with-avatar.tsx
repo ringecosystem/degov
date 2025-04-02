@@ -14,6 +14,7 @@ interface AddressWithAvatarProps {
   avatarSize?: number;
   className?: string;
   textClassName?: string;
+  customLink?: (address: `0x${string}`) => string;
 }
 
 export function AddressWithAvatar({
@@ -21,12 +22,15 @@ export function AddressWithAvatar({
   avatarSize = 30,
   className,
   textClassName,
+  customLink,
 }: AddressWithAvatarProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Link
-          href={`/profile/${address}`}
+          href={customLink ? customLink(address) : `/profile/${address}`}
+          target={!!customLink ? "_blank" : undefined}
+          rel={!!customLink ? "noopener noreferrer" : undefined}
           className={cn("inline-flex items-center gap-[10px]", className)}
         >
           <AddressAvatar address={address} size={avatarSize} />

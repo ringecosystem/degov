@@ -3,6 +3,7 @@ import { isAddress } from "viem";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import { Input } from "@/components/ui/input";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 
 import type { Address } from "viem";
@@ -22,6 +23,7 @@ export function AddressInputWithResolver({
   className,
   id,
 }: AddressInputWithResolverProps) {
+  const dappConfig = useDaoConfig();
   const isInvalidAddress = !!value && !isAddress(value);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -38,6 +40,9 @@ export function AddressInputWithResolver({
         <div className="relative flex h-[40px] items-center rounded-[4px] border border-border/20 bg-card">
           <AddressWithAvatar
             address={value as Address}
+            customLink={(address) =>
+              `${dappConfig?.chain?.explorers?.[0]}/address/${address}`
+            }
             avatarSize={24}
             className="text-sm"
           />
