@@ -2,11 +2,11 @@
 import Image from "next/image";
 
 import AlertUI from "@/components/alert";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useIsDemoDao } from "@/hooks/useIsDemoDao";
 export function DemoTips() {
-  const daoConfig = useDaoConfig();
+  const isDemoDao = useIsDemoDao();
   return (
-    daoConfig?.name === "DeGov Development Test DAO" && (
+    isDemoDao && (
       <AlertUI
         message={
           <span className="flex items-center gap-[10px] bg-success p-[20px] rounded-[14px]">

@@ -3,10 +3,11 @@ import Image from "next/image";
 
 import AlertUI from "@/components/alert";
 import { useBlockSync } from "@/hooks/useBlockSync";
-
+import { useIsDemoDao } from "@/hooks/useIsDemoDao";
 export function Alert() {
+  const isDemoDao = useIsDemoDao();
   const { status } = useBlockSync();
-
+  if (isDemoDao) return null;
   return status !== "operational" ? (
     <AlertUI
       message={
