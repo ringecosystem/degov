@@ -30,7 +30,7 @@ export const transferSchema = z.object({
     .string()
     .min(1, "Amount is required")
     .refine(
-      (val) => !isNaN(Number(val)) && Number(val) >= 0,
+      (val) => !isNaN(Number(val)) && Number(val) > 0,
       "Amount must be greater than 0"
     ),
 });
