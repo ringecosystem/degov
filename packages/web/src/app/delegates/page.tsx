@@ -25,7 +25,7 @@ export default function Members() {
   return (
     <div className="flex flex-col gap-[30px]">
       <div className="flex items-center justify-between gap-[20px]">
-        <h3 className="text-[18px] font-extrabold">Members</h3>
+        <h3 className="text-[18px] font-extrabold">Delegates</h3>
       </div>
       <MembersTable onDelegate={handleDelegate} />
       <DelegateAction address={address} open={open} onOpenChange={setOpen} />

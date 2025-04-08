@@ -42,8 +42,8 @@ export function MembersTable({
         ),
       },
       {
-        title: "Member",
-        key: "member",
+        title: "Name",
+        key: "name",
         width: "260px",
         className: "text-left",
         render: (record) => (
@@ -110,7 +110,7 @@ export function MembersTable({
         dataSource={members}
         rowKey="id"
         isLoading={isPending}
-        emptyText="No Members"
+        emptyText="No Delegates"
         caption={
           hasNextPage ? (
             <div

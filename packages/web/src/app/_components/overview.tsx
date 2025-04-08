@@ -64,7 +64,7 @@ export const Overview = () => {
           </div>
         </OverviewItem>
         <OverviewItem
-          title="Members"
+          title="Delegates"
           icon="/assets/image/members-colorful.svg"
           isLoading={isMembersLoading}
         >
