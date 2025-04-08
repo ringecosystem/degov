@@ -14,8 +14,6 @@ interface ActionsTableProps {
 }
 
 export function ActionsTable({ data, isFetching }: ActionsTableProps) {
-  console.log("data", data);
-
   const [tab, setTab] = useState<"summary" | "raw">("summary");
 
   const actions = useMemo(() => {
