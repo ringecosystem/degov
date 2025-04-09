@@ -17,6 +17,16 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
   const [tab, setTab] = useState<"summary" | "raw">("summary");
 
   const actions = useMemo(() => {
+    // If the proposal is a self-proposal and value is 0, return an empty array
+    if (
+      data?.targets?.length === 1 &&
+      data?.calldatas?.length === 1 &&
+      data?.calldatas?.[0] === "0x" &&
+      data?.proposer?.toLowerCase() === data?.targets?.[0]?.toLowerCase() &&
+      data?.values?.[0] === "0"
+    ) {
+      return [];
+    }
     if (data) {
       return data?.calldatas?.map((calldata, index) => {
         return {
