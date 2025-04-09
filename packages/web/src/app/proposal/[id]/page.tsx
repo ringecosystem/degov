@@ -270,14 +270,17 @@ export default function ProposalDetailPage() {
               <ClipboardIconButton text={id as string} size={14} />
             </div>
             <div className="h-1 w-1 rounded-full bg-muted-foreground"></div>
-            <Link
-              href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
-              target="_blank"
-              rel="noreferrer"
-              className="hover:underline"
-            >
-              Proposed on: {formatTimestampToFriendlyDate(data?.blockTimestamp)}
-            </Link>
+            <span className="text-foreground">
+              Proposed on:{" "}
+              <Link
+                href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#00BAFF] hover:underline"
+              >
+                {formatTimestampToFriendlyDate(data?.blockTimestamp)}
+              </Link>
+            </span>
           </div>
         )}
       </div>
