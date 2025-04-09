@@ -70,9 +70,9 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
 
     const obj: Record<string, Member | undefined> = {};
     flattenedData?.forEach((member) => {
-      const profilePull = profilePullData?.data?.find(
-        (item) => item.address === member.id
-      );
+      const profilePull = Array.isArray(profilePullData?.data)
+        ? profilePullData?.data?.find((item) => item.address === member.id)
+        : undefined;
       obj[member.id] = profilePull;
     });
     return obj;

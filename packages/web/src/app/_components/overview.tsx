@@ -68,12 +68,7 @@ export const Overview = () => {
           icon="/assets/image/members-colorful.svg"
           isLoading={isMembersLoading}
         >
-          {
-            formatNumberForDisplay(
-              getMemberTotal?.data?.member_count ?? 0,
-              0
-            )[0]
-          }
+          {formatNumberForDisplay(dataMetrics?.memberCount ?? 0, 0)[0]}
         </OverviewItem>
         <OverviewItem
           title="Total Voting Power"

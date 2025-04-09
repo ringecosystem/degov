@@ -3,15 +3,15 @@ import { useCallback, useEffect, useState } from "react";
 
 import { DelegateAction } from "@/components/delegate-action";
 import { MembersTable } from "@/components/members-table";
-import type { Member } from "@/services/graphql/types";
+import type { ContributorItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
 
 export default function Members() {
   const [address, setAddress] = useState<Address | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const handleDelegate = useCallback((value: Member) => {
-    setAddress(value?.address as `0x${string}`);
+  const handleDelegate = useCallback((value: ContributorItem) => {
+    setAddress(value?.id as `0x${string}`);
     setOpen(true);
   }, []);
 
