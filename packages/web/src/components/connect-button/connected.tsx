@@ -1,6 +1,6 @@
 import { ChevronDown, Power } from "lucide-react";
 import { useCallback } from "react";
-
+import Image from "next/image";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useDisconnectWallet } from "@/hooks/useDisconnectWallet";
 import { formatShortAddress } from "@/utils";
-
+import Link from "next/link";
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
 import ClipboardIconButton from "../clipboard-icon-button";
@@ -59,7 +59,22 @@ export const Connected = ({ address }: ConnectedProps) => {
           <ClipboardIconButton text={address} size={20} />
         </div>
         <DropdownMenuSeparator className="my-[20px] bg-border/20" />
-        <div className="flex items-center justify-center">
+        <div className="flex flex-col justify-center gap-[20px]">
+          <Button
+            asChild
+            className="w-full gap-[10px] rounded-[100px] border-border bg-card"
+            variant="outline"
+          >
+            <Link href="/profile">
+              <Image
+                src="/assets/image/profile.svg"
+                alt="profile"
+                width={20}
+                height={20}
+              />
+              <span className="text-[14px]">Profile</span>
+            </Link>
+          </Button>
           <Button
             onClick={handleDisconnect}
             className="w-full gap-[10px] rounded-[100px] border-border bg-card"
