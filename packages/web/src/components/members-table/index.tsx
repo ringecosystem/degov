@@ -43,8 +43,8 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         ),
       },
       {
-        title: "Member",
-        key: "member",
+        title: "Name",
+        key: "name",
         width: "260px",
         className: "text-left",
         render: (record) => (
