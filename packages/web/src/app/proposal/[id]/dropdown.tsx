@@ -9,14 +9,12 @@ import {
 
 interface DropdownProps {
   showCancel: boolean;
-  explorerUrl: string;
   handleCopyUrl: (e: Event) => void;
   handleCancelProposal: () => void;
 }
 
 export const Dropdown = ({
   showCancel,
-  explorerUrl,
   handleCopyUrl,
   handleCancelProposal,
 }: DropdownProps) => {
@@ -47,19 +45,7 @@ export const Dropdown = ({
           />
           <span>Copy URL</span>
         </DropdownMenuItem>
-        {explorerUrl ? (
-          <DropdownMenuItem asChild className="cursor-pointer p-[10px]">
-            <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
-              <Image
-                src="/assets/image/proposal/explorer.svg"
-                alt="block"
-                width={20}
-                height={20}
-              />
-              <span>View on Block Explorer</span>
-            </a>
-          </DropdownMenuItem>
-        ) : null}
+
         {showCancel && (
           <DropdownMenuItem
             className="cursor-pointer p-[10px]"

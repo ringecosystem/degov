@@ -236,8 +236,6 @@ export default function ProposalDetailPage() {
           <ActionGroup
             data={data}
             status={proposalStatus?.data as ProposalState}
-            proposalCanceledById={proposalCanceledById}
-            proposalExecutedById={proposalExecutedById}
             proposalQueuedById={proposalQueuedById}
             isAllQueriesFetching={isAllQueriesFetching}
             onRefetch={refetchPageData}
@@ -272,8 +270,16 @@ export default function ProposalDetailPage() {
               <ClipboardIconButton text={id as string} size={14} />
             </div>
             <div className="h-1 w-1 rounded-full bg-muted-foreground"></div>
-            <span>
-              Proposed on: {formatTimestampToFriendlyDate(data?.blockTimestamp)}
+            <span className="text-foreground">
+              Proposed on:{" "}
+              <Link
+                href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#00BAFF] hover:underline"
+              >
+                {formatTimestampToFriendlyDate(data?.blockTimestamp)}
+              </Link>
             </span>
           </div>
         )}

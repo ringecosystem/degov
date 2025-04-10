@@ -14,8 +14,6 @@ import useExecuteProposal from "@/hooks/useExecute";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import useQueueProposal from "@/hooks/useQueue";
 import type {
-  ProposalCanceledByIdItem,
-  ProposalExecutedByIdItem,
   ProposalItem,
   ProposalQueuedByIdItem,
 } from "@/services/graphql/types";
@@ -29,8 +27,6 @@ import { Voting } from "./voting";
 interface ActionGroupProps {
   data?: ProposalItem & { originalDescription: string };
   status?: ProposalState;
-  proposalCanceledById?: ProposalCanceledByIdItem;
-  proposalExecutedById?: ProposalExecutedByIdItem;
   proposalQueuedById?: ProposalQueuedByIdItem;
   isAllQueriesFetching: boolean;
   onRefetch: () => void;
@@ -39,8 +35,6 @@ interface ActionGroupProps {
 export default function ActionGroup({
   data,
   status,
-  proposalCanceledById,
-  proposalExecutedById,
   proposalQueuedById,
   isAllQueriesFetching,
   onRefetch,
@@ -256,34 +250,6 @@ export default function ActionGroup({
     },
     [handleQueueProposal, handleExecuteProposal, validateBeforeExecution]
   );
-  const explorerUrl = useMemo(() => {
-    let defaultUrl = `${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`;
-
-    if (status === ProposalState.Defeated) {
-      defaultUrl = "";
-    }
-    if (status === ProposalState.Expired) {
-      defaultUrl = "";
-    }
-
-    if (status === ProposalState.Queued) {
-      defaultUrl = `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalQueuedById?.transactionHash}`;
-    }
-    if (status === ProposalState.Executed) {
-      defaultUrl = `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`;
-    }
-    if (status === ProposalState.Canceled) {
-      defaultUrl = `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalCanceledById?.transactionHash}`;
-    }
-    return defaultUrl;
-  }, [
-    data?.transactionHash,
-    status,
-    daoConfig?.chain?.explorers,
-    proposalQueuedById?.transactionHash,
-    proposalExecutedById?.transactionHash,
-    proposalCanceledById?.transactionHash,
-  ]);
 
   const votedSupport = useMemo(() => {
     if (!address || !hasVoted) return undefined;
@@ -314,7 +280,6 @@ export default function ActionGroup({
         />
       )}
       <Dropdown
-        explorerUrl={explorerUrl}
         handleCopyUrl={handleCopyUrl}
         handleCancelProposal={handleShowCancelDialog}
         showCancel={status === ProposalState.Pending && isConnected}
