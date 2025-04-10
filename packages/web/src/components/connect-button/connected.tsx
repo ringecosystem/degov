@@ -1,6 +1,8 @@
 import { ChevronDown, Power } from "lucide-react";
-import { useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { useCallback } from "react";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +11,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useDisconnectWallet } from "@/hooks/useDisconnectWallet";
 import { formatShortAddress } from "@/utils";
-import Link from "next/link";
+
+
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
 import ClipboardIconButton from "../clipboard-icon-button";
