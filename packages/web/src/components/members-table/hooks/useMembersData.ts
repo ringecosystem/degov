@@ -9,7 +9,7 @@ import type { ContributorItem, Member } from "@/services/graphql/types";
 export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
   const daoConfig = useDaoConfig();
   const membersQuery = useInfiniteQuery({
-    queryKey: ["members", pageSize],
+    queryKey: ["members", pageSize, daoConfig?.indexer?.endpoint],
     queryFn: async ({ pageParam }) => {
       const result = await contributorService.getAllContributors(
         daoConfig?.indexer?.endpoint ?? "",
@@ -57,6 +57,7 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
     queryKey: [
       "profilePull",
       flattenedData?.map((member) => member.id?.toLowerCase()),
+      daoConfig?.indexer?.endpoint,
     ],
     queryFn: () =>
       memberService.getProfilePull(
@@ -78,22 +79,25 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
     return obj;
   }, [flattenedData, profilePullData]);
 
+  const { isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
+    membersQuery;
+
   const loadMoreData = useCallback(() => {
-    if (!membersQuery.isFetchingNextPage && membersQuery.hasNextPage) {
-      membersQuery.fetchNextPage();
+    if (!isFetchingNextPage && hasNextPage) {
+      fetchNextPage();
     }
-  }, [membersQuery]);
+  }, [isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const refreshData = useCallback(() => {
-    membersQuery.refetch();
-  }, [membersQuery]);
+    refetch();
+  }, [refetch]);
 
   return {
     state: {
       data: flattenedData,
       hasNextPage: membersQuery.hasNextPage,
       isPending: membersQuery.isPending,
-      isFetchingNextPage: membersQuery.isFetchingNextPage,
+      isFetchingNextPage,
       error: membersQuery.error,
     },
     profilePullState: {
