@@ -12,8 +12,8 @@ export const routes = [
     pathname: '/proposals'
   },
   {
-    key: 'members',
-    pathname: '/members'
+    key: 'delegates',
+    pathname: '/delegates'
   },
   {
     key: 'profile',

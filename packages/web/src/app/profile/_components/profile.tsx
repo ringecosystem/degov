@@ -166,7 +166,7 @@ export const Profile = ({ address }: ProfileProps) => {
       if (value === "myself") {
         setDelegateOpen(true);
       } else {
-        router.push("/members");
+        router.push("/delegates");
       }
     },
     [router]
@@ -301,7 +301,7 @@ export const Profile = ({ address }: ProfileProps) => {
                 </Button>
               ) : null}
               <Button className="rounded-full" onClick={handleDelegate}>
-                Delegate
+                Join as Delegate
               </Button>
             </div>
           </div>

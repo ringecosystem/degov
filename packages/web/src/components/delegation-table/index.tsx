@@ -62,7 +62,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
           <span>
             You haven&apos;t received delegations from others, and you can
             delegate to yourself or others{" "}
-            <a href="/members" className="font-semibold underline">
+            <a href="/delegates" className="font-semibold underline">
               here
             </a>
             .
