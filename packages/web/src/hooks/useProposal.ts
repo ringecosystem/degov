@@ -10,7 +10,7 @@ import { useDaoConfig } from "./useDaoConfig";
 
 import type { InterfaceAbi } from "ethers";
 export interface ProposalActionParam {
-  type?: "transfer" | "custom";
+  type?: "transfer" | "custom" | "xaccount";
   target: `0x${string}`;
   value: bigint;
   abi: InterfaceAbi;

@@ -4,6 +4,7 @@ export type ProposalActionType =
   | "proposal"
   | "transfer"
   | "custom"
+  | "xaccount"
   | "preview"
   | "add";
 
@@ -18,6 +19,7 @@ export const PROPOSAL_ACTIONS = {
   transfer: "/assets/image/transfer-outline.svg",
   custom: "/assets/image/custom-outline.svg",
   preview: "/assets/image/preview-outline.svg",
+  xaccount: "/assets/image/cross-chain-outline.svg",
 } as const;
 
 export const getDisplayText = (status: ProposalState) => {

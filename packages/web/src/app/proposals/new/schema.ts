@@ -157,3 +157,46 @@ export const customActionSchema = z.object({
 });
 
 export type CustomContent = z.infer<typeof customActionSchema>;
+
+export const transactionSchema = z.object({
+  from: z
+    .string()
+    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
+  to: z
+    .string()
+    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
+  value: z.string(),
+  calldata: z.string(),
+});
+
+export type TransactionContent = z.infer<typeof transactionSchema>;
+
+export const crossChainCallParamsSchema = z.object({
+  toChainId: z.string(),
+  toDapp: z
+    .string()
+    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
+  message: z.string(),
+  params: z.string(),
+});
+
+export const crossChainCallSchema = z.object({
+  port: z
+    .string()
+    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
+  value: z.string(),
+  function: z.string(),
+  params: crossChainCallParamsSchema,
+});
+
+export type CrossChainCallContent = z.infer<typeof crossChainCallSchema>;
+
+export const xaccountSchema = z.object({
+  sourceChainId: z.number(),
+  targetChainId: z.number(),
+  crossChainCallHash: z.string(),
+  transaction: transactionSchema,
+  crossChainCall: crossChainCallSchema,
+});
+
+export type XAccountContent = z.infer<typeof xaccountSchema>;

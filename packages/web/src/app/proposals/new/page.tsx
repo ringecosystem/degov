@@ -31,16 +31,28 @@ import {
   generateCustomAction,
   generateProposalAction,
   generateTransferAction,
+  generateXAccountAction,
   transformActionsToProposalParams,
 } from "./helper";
 import { PreviewPanel } from "./preview-panel";
 import { ProposalPanel } from "./proposal-panel";
 import { ReplacePanel } from "./replace-panel";
-import { proposalSchema, customActionSchema, transferSchema } from "./schema";
+import {
+  proposalSchema,
+  customActionSchema,
+  transferSchema,
+  xaccountSchema,
+} from "./schema";
 import { Sidebar } from "./sidebar";
 import { TransferPanel } from "./transfer-panel";
+import { XAccountPanel } from "./xaccount-panel";
 
-import type { ProposalContent, TransferContent, CustomContent } from "./schema";
+import type {
+  ProposalContent,
+  TransferContent,
+  CustomContent,
+  XAccountContent,
+} from "./schema";
 import type { Action } from "./type";
 
 const DEFAULT_ACTIONS: Action[] = [generateProposalAction()];
@@ -124,7 +136,7 @@ export default function NewProposal() {
   );
 
   const handleReplaceAction = useCallback(
-    (type: "transfer" | "custom") => {
+    (type: "transfer" | "custom" | "xaccount") => {
       if (type === "transfer") {
         const transferAction = generateTransferAction();
         setActions([...actions, transferAction]);
@@ -133,6 +145,10 @@ export default function NewProposal() {
         const customAction = generateCustomAction();
         setActions([...actions, customAction]);
         setActionUuid(customAction.id);
+      } else if (type === "xaccount") {
+        const xaccountAction = generateXAccountAction();
+        setActions([...actions, xaccountAction]);
+        setActionUuid(xaccountAction.id);
       }
       setTab("edit");
     },
@@ -156,6 +172,18 @@ export default function NewProposal() {
       setActions((draft) => {
         const action = draft.find((action) => action.id === actionUuid);
         if (action?.type === "custom") {
+          action.content = content;
+        }
+      });
+    },
+    [setActions, actionUuid]
+  );
+
+  const handleXAccountContentChange = useCallback(
+    (content: XAccountContent) => {
+      setActions((draft) => {
+        const action = draft.find((action) => action.id === actionUuid);
+        if (action?.type === "xaccount") {
           action.content = content;
         }
       });
@@ -188,6 +216,9 @@ export default function NewProposal() {
           value: action.content?.value,
         });
 
+        state.set(action.id, result.success);
+      } else if (action.type === "xaccount") {
+        const result = xaccountSchema.safeParse(action.content);
         state.set(action.id, result.success);
       }
     });
@@ -317,6 +348,17 @@ export default function NewProposal() {
                       )}
                       content={action?.content as CustomContent}
                       onChange={handleCustomContentChange}
+                      onRemove={handleRemoveAction}
+                    />
+                  )}
+
+                  {action?.type === "xaccount" && (
+                    <XAccountPanel
+                      visible={tab === "edit" && action.id === actionUuid}
+                      index={actions.findIndex(
+                        (action) => action.id === actionUuid
+                      )}
+                      onChange={handleXAccountContentChange}
                       onRemove={handleRemoveAction}
                     />
                   )}
