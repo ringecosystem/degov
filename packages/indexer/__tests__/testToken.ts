@@ -1188,8 +1188,64 @@ const recordsFor_0xebd9a48 = [
   ],
 ];
 
+// 0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE
+const recordsFor_0x9Fc3d61 = [
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      blockNumber: "5966610",
+    },
+  ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB",
+      fromDelegate: "0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB",
+      toDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      blockNumber: "5983939",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB",
+      previousVotes: 65000000000000000000n,
+      newVotes: 35000000000000000000n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      previousVotes: 0n,
+      newVotes: 30000000000000000000,
+    },
+  ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB",
+      fromDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      toDelegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      txHash:
+        "0x842829165341e8ccf3caa65008d80696f56fcfbcfe9de7c2d7c7f01125de39d7",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      previousVotes: 30000000000000000000n,
+      newVotes: 0n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      previousVotes: 20000000000000000000n,
+      newVotes: 50000000000000000000n,
+    },
+  ],
+];
+
 test("testTokens", () => {
-  const records = recordsFor_0xebd9a48;
+  const records = recordsFor_0x9Fc3d61;
 
   const ds = new DelegateStorage();
   for (const record of records) {
