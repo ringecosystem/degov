@@ -8,6 +8,7 @@ import { useBalance } from "wagmi";
 
 import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { TreasuryTable } from "@/components/treasury-table";
+import { SafeTable } from "@/components/treasury-table/safe-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -217,6 +218,7 @@ export default function Treasury() {
         data={erc721Assets}
         isLoading={isLoading721Balances}
       />
+      <SafeTable />
     </div>
   );
 }

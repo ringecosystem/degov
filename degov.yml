@@ -56,3 +56,10 @@ timeLockAssets:
     standard: ERC721
     priceId: NFT
     logo: # Default logo if not provided
+safe:
+  Test DAO Safe(Arbitrum):
+    chainId: 42161
+    link: https://app.safe.global/home?safe=arb1:0x80d180621B2f875269216f19A499e6fB9402776C
+  Test DAO Safe(Sepolia):
+    chainId: 11155111
+    link: https://app.safe.global/home?safe=sep:0x80d180621B2f875269216f19A499e6fB9402776C

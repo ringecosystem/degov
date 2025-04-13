@@ -16,7 +16,7 @@ export const Asset = ({
   isNativeToken,
 }: AssetProps) => {
   return isNativeToken ? (
-    <span className="flex items-center gap-[10px] text-[14px] text-foreground transition-opacity hover:underline hover:opacity-80">
+    <span className="flex items-center gap-[10px] text-[14px] text-foreground transition-opacity hover:opacity-80">
       <Image
         src={asset.logo || blo(asset.contract as `0x${string}`) || ""}
         alt={symbol || "N/A"}

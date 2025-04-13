@@ -56,6 +56,15 @@ interface Indexer {
   startBlock: number;
 }
 
+interface SafeItem {
+  chainId: number;
+  link: string;
+}
+
+interface SafeConfig {
+  [name: string]: SafeItem;
+}
+
 interface Config {
   name: string;
   logo: string;
@@ -66,6 +75,7 @@ interface Config {
   contracts: Contracts;
   timeLockAssets: TimelockAssets;
   indexer: Indexer;
+  safe?: SafeConfig;
 }
 
 export type {
@@ -79,4 +89,6 @@ export type {
   TokenDetails,
   TimelockAssets,
   Indexer,
+  SafeItem,
+  SafeConfig,
 };
