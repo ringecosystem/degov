@@ -1,6 +1,8 @@
 "use client";
 import BigNumber from "bignumber.js";
 import { isNil } from "lodash-es";
+import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Empty } from "@/components/ui/empty";
@@ -13,11 +15,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useChainInfo } from "@/hooks/useChainInfo";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGetTokenInfo } from "@/hooks/useGetTokenInfo";
 import type { TokenWithBalance } from "@/hooks/useTokenBalances";
 import { formatNumberForDisplay } from "@/utils/number";
 
+import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 
 import { Asset } from "./asset";
@@ -86,6 +90,7 @@ export function TreasuryTable({
   isLoading,
 }: TreasuryTableProps) {
   const daoConfig = useDaoConfig();
+  const chainData = useChainInfo();
   const [visibleItems, setVisibleItems] = useState(5);
   const { tokenInfo } = useGetTokenInfo(
     data.map((v) => ({
@@ -93,6 +98,12 @@ export function TreasuryTable({
       standard: v.standard,
     }))
   );
+
+  const chain = useMemo(() => {
+    return chainData?.chainInfo?.[
+      daoConfig?.chain?.id ? String(daoConfig?.chain?.id) : ""
+    ];
+  }, [chainData, daoConfig?.chain?.id]);
 
   const tokenInfoWithNativeToken = useMemo<
     Record<
@@ -204,7 +215,30 @@ export function TreasuryTable({
                     : "N/A"}
                 </TableCell>
                 <TableCell className="text-right">
-                  {daoConfig?.chain?.name || "N/A"}
+                  <Button
+                    size="sm"
+                    className="inline-flex w-auto  items-center gap-[5px] px-[10px] py-[5px] rounded-[30px] bg-[#474747] text-foreground hover:bg-[#474747]/80 "
+                    asChild
+                  >
+                    <Link
+                      href={daoConfig?.chain?.explorers?.[0] as string}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {chain?.icon && (
+                        <Image
+                          src={chain?.icon ?? ""}
+                          alt="chain-icon"
+                          className="flex-shrink-0"
+                          width={20}
+                          height={20}
+                        />
+                      )}
+                      <span className="text-[14px]">
+                        {daoConfig?.chain?.name || "N/A"}
+                      </span>
+                    </Link>
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}

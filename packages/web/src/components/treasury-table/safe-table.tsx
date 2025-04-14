@@ -1,6 +1,4 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
-import { isObject } from "lodash-es";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,96 +13,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useChainInfo } from "@/hooks/useChainInfo";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import { Button } from "../ui/button";
-import { Skeleton } from "../ui/skeleton";
 
 import { Asset } from "./safe-asset";
-
-function TableSkeleton() {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-1/3 rounded-l-[14px] text-left">
-            Name
-          </TableHead>
-          <TableHead className="w-1/3 text-center">Network</TableHead>
-          <TableHead className="w-1/3 rounded-r-[14px] text-right">
-            Action
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {Array.from({ length: 5 }).map((_, index) => (
-          <TableRow key={index}>
-            <TableCell className="text-left">
-              <div className="flex items-center gap-[10px]">
-                <Skeleton className="h-6 w-[100px]" />
-              </div>
-            </TableCell>
-            <TableCell className="text-center">
-              <div className="flex items-center gap-[10px] justify-end">
-                <Skeleton className="h-6 w-[80px]" />
-              </div>
-            </TableCell>
-            <TableCell className="text-right">
-              <div className="flex items-center gap-[10px] justify-end">
-                <Skeleton className="h-6 w-[100px]" />
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
+import { TableSkeleton } from "./table-skeleton";
 
 interface SafeTableProps {
   caption?: string;
 }
+
 export function SafeTable({ caption }: SafeTableProps) {
   const daoConfig = useDaoConfig();
-
-  const service = useQuery({
-    queryKey: ["chain-info"],
-    queryFn: () =>
-      fetch(
-        "https://raw.githubusercontent.com/Koniverse/SubWallet-ChainList/master/packages/chain-list/src/data/ChainInfo.json"
-      ).then((res) => res.json()),
-    staleTime: 1000 * 60 * 60 * 24,
-  });
-
-  const flatChainInfo = useMemo(() => {
-    if (isObject(service?.data)) {
-      const chainInfo = Object.values(service?.data || {});
-      const obj: Record<
-        string,
-        {
-          name: string;
-          blockExplorer: string;
-          chainId: string;
-          icon: string;
-        }
-      > = {};
-      chainInfo
-        ?.filter((v) => !!v?.evmInfo)
-        .forEach((v) => {
-          obj[v?.evmInfo?.evmChainId] = {
-            name: v.name,
-            blockExplorer: v.evmInfo.blockExplorer,
-            chainId: v.evmInfo.evmChainId,
-            icon: v.icon,
-          };
-        });
-      return obj;
-    }
-    return {};
-  }, [service.data]);
+  const { chainInfo: flatChainInfo, isFetching } = useChainInfo();
+  const [visibleItems, setVisibleItems] = useState(5);
 
   const data = useMemo(() => {
-    return Object.keys(daoConfig?.safe || {}).map((v) => {
+    if (!daoConfig?.safe) return [];
+
+    return Object.keys(daoConfig.safe).map((v) => {
       const explorer =
         flatChainInfo?.[daoConfig?.safe?.[v]?.chainId ?? ""]?.blockExplorer;
       return {
@@ -122,10 +51,6 @@ export function SafeTable({ caption }: SafeTableProps) {
     });
   }, [daoConfig?.safe, flatChainInfo]);
 
-  console.log("data", data);
-
-  const [visibleItems, setVisibleItems] = useState(5);
-
   const displayData = useMemo(() => {
     return data.slice(0, visibleItems);
   }, [data, visibleItems]);
@@ -133,14 +58,16 @@ export function SafeTable({ caption }: SafeTableProps) {
   const handleViewMore = useCallback(() => {
     setVisibleItems((prev) => prev + 5);
   }, []);
+
   const hasMoreItems = data.length > visibleItems;
 
   useEffect(() => {
     return () => setVisibleItems(5);
   }, []);
+
   return (
     <div className="rounded-[14px] bg-card p-[20px]">
-      {service?.isFetching ? (
+      {isFetching ? (
         <TableSkeleton />
       ) : (
         <Table>
@@ -176,7 +103,7 @@ export function SafeTable({ caption }: SafeTableProps) {
                     explorer={value?.addressExplorer ?? ""}
                   />
                 </TableCell>
-                <TableCell className="text-center flex  justify-center">
+                <TableCell className="text-center flex justify-center">
                   <Button
                     size="sm"
                     className="flex items-center gap-[5px] px-[10px] py-[5px] rounded-[30px] bg-[#474747] text-foreground hover:bg-[#474747]/80 "
