@@ -35,12 +35,13 @@ function TableSkeleton({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-1/4 rounded-l-[14px] text-left">
+          <TableHead className="w-1/3 rounded-l-[14px] text-left">
             {standard === "ERC20" ? "ERC-20 Assets" : "ERC-721 Assets"}
           </TableHead>
-          <TableHead className="w-1/4 text-right">Balance</TableHead>
-          <TableHead className="w-1/4 text-right">Value</TableHead>
-          <TableHead className="w-1/4 text-right">Network</TableHead>
+          <TableHead className="w-1/3 text-center">Balance</TableHead>
+          <TableHead className="w-1/3 text-right rounded-r-[14px]">
+            Value
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -51,14 +52,9 @@ function TableSkeleton({
                 <Skeleton className="h-6 w-[100px]" />
               </div>
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="text-center">
               <div className="flex items-center gap-[10px] justify-end">
                 <Skeleton className="h-6 w-[80px]" />
-              </div>
-            </TableCell>
-            <TableCell className="text-right">
-              <div className="flex items-center gap-[10px] justify-end">
-                <Skeleton className="h-6 w-[100px]" />
               </div>
             </TableCell>
             <TableCell className="text-right">
@@ -90,7 +86,6 @@ export function TreasuryTable({
   isLoading,
 }: TreasuryTableProps) {
   const daoConfig = useDaoConfig();
-  const chainData = useChainInfo();
   const [visibleItems, setVisibleItems] = useState(5);
   const { tokenInfo } = useGetTokenInfo(
     data.map((v) => ({
@@ -98,12 +93,6 @@ export function TreasuryTable({
       standard: v.standard,
     }))
   );
-
-  const chain = useMemo(() => {
-    return chainData?.chainInfo?.[
-      daoConfig?.chain?.id ? String(daoConfig?.chain?.id) : ""
-    ];
-  }, [chainData, daoConfig?.chain?.id]);
 
   const tokenInfoWithNativeToken = useMemo<
     Record<
@@ -165,17 +154,16 @@ export function TreasuryTable({
           )}
           <TableHeader>
             <TableRow>
-              <TableHead className="w-1/4 rounded-l-[14px] text-left">
+              <TableHead className="w-1/3 rounded-l-[14px] text-left">
                 {isNativeToken
                   ? "Native Assets"
                   : standard === "ERC20"
                   ? "ERC-20 Assets"
                   : "ERC-721 Assets"}
               </TableHead>
-              <TableHead className="w-1/4 text-right">Balance</TableHead>
-              <TableHead className="w-1/4 text-right">Value</TableHead>
-              <TableHead className="w-1/4 text-right rounded-r-[14px]">
-                Network
+              <TableHead className="w-1/3 text-center">Balance</TableHead>
+              <TableHead className="w-1/3 text-right rounded-r-[14px]">
+                Value
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -199,7 +187,7 @@ export function TreasuryTable({
                     explorer={daoConfig?.chain?.explorers?.[0] as string}
                   />
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-center">
                   {`${value?.formattedBalance} ${
                     tokenInfoWithNativeToken[value.contract as `0x${string}`]
                       ?.symbol ?? "N/A"
@@ -213,32 +201,6 @@ export function TreasuryTable({
                         formatNumberForDisplay(calculateAssetValue(value))?.[0]
                       } USD`
                     : "N/A"}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    className="inline-flex w-auto  items-center gap-[5px] px-[10px] py-[5px] rounded-[30px] bg-[#474747] text-foreground hover:bg-[#474747]/80 "
-                    asChild
-                  >
-                    <Link
-                      href={daoConfig?.chain?.explorers?.[0] as string}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {chain?.icon && (
-                        <Image
-                          src={chain?.icon ?? ""}
-                          alt="chain-icon"
-                          className="flex-shrink-0"
-                          width={20}
-                          height={20}
-                        />
-                      )}
-                      <span className="text-[14px]">
-                        {daoConfig?.chain?.name || "N/A"}
-                      </span>
-                    </Link>
-                  </Button>
                 </TableCell>
               </TableRow>
             ))}
