@@ -31,25 +31,22 @@ export function SafeTable({ caption }: SafeTableProps) {
   const [visibleItems, setVisibleItems] = useState(5);
 
   const data = useMemo(() => {
-    if (!daoConfig?.safe) return [];
+    if (!daoConfig?.safes) return [];
 
-    return Object.keys(daoConfig.safe).map((v) => {
-      const explorer =
-        flatChainInfo?.[daoConfig?.safe?.[v]?.chainId ?? ""]?.blockExplorer;
+    return (daoConfig.safes || []).map((v) => {
+      const explorer = flatChainInfo?.[v.chainId ?? ""]?.blockExplorer;
       return {
-        name: v,
-        address: daoConfig?.safe?.[v]?.link.split(":")[2],
-        chainId: daoConfig?.safe?.[v]?.chainId,
-        link: daoConfig?.safe?.[v]?.link,
+        name: v.name,
+        address: v.link.split(":")[2],
+        chainId: v.chainId,
+        link: v.link,
         blockExplorer: explorer,
-        addressExplorer: `${explorer}/address/${
-          daoConfig?.safe?.[v]?.link.split(":")[2]
-        }`,
-        chainIcon: flatChainInfo?.[daoConfig?.safe?.[v]?.chainId ?? ""]?.icon,
-        chainName: flatChainInfo?.[daoConfig?.safe?.[v]?.chainId ?? ""]?.name,
+        addressExplorer: `${explorer}/address/${v.link.split(":")[2]}`,
+        chainIcon: flatChainInfo?.[v.chainId ?? ""]?.icon,
+        chainName: flatChainInfo?.[v.chainId ?? ""]?.name,
       };
     });
-  }, [daoConfig?.safe, flatChainInfo]);
+  }, [daoConfig?.safes, flatChainInfo]);
 
   const displayData = useMemo(() => {
     return data.slice(0, visibleItems);

@@ -1,8 +1,6 @@
 "use client";
 import BigNumber from "bignumber.js";
 import { isNil } from "lodash-es";
-import Image from "next/image";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Empty } from "@/components/ui/empty";
@@ -15,13 +13,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useChainInfo } from "@/hooks/useChainInfo";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGetTokenInfo } from "@/hooks/useGetTokenInfo";
 import type { TokenWithBalance } from "@/hooks/useTokenBalances";
 import { formatNumberForDisplay } from "@/utils/number";
 
-import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 
 import { Asset } from "./asset";

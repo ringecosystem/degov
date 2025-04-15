@@ -41,15 +41,14 @@ interface Contracts {
 }
 
 interface TokenDetails {
+  name: string;
   contract: string;
   standard: string;
   priceId?: string;
   logo: string | null;
 }
 
-interface TimelockAssets {
-  [key: string]: TokenDetails;
-}
+type TimelockAssets = TokenDetails[];
 
 interface Indexer {
   endpoint: string;
@@ -57,13 +56,12 @@ interface Indexer {
 }
 
 interface SafeItem {
+  name: string;
   chainId: number;
   link: string;
 }
 
-interface SafeConfig {
-  [name: string]: SafeItem;
-}
+type SafeConfig = SafeItem[];
 
 interface Config {
   name: string;
@@ -75,7 +73,7 @@ interface Config {
   contracts: Contracts;
   timeLockAssets: TimelockAssets;
   indexer: Indexer;
-  safe?: SafeConfig;
+  safes?: SafeConfig;
 }
 
 export type {

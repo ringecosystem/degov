@@ -29,6 +29,7 @@ export default function Treasury() {
   const tokenInfo = useMemo(() => {
     const nativeAsset: TokenWithBalance = {
       ...daoConfig?.chain?.nativeToken,
+      name: daoConfig?.chain?.nativeToken.symbol ?? "",
       chainId: daoConfig?.chain?.id,
       contract: "0x0000000000000000000000000000000000000000" as `0x${string}`,
       standard: "ERC20",
@@ -218,7 +219,11 @@ export default function Treasury() {
         data={erc721Assets}
         isLoading={isLoading721Balances}
       />
-      <SafeTable />
+
+      <div className="flex flex-col gap-[20px]">
+        <h3 className="text-[18px] font-extrabold">Safe Assets</h3>
+        <SafeTable />
+      </div>
     </div>
   );
 }
