@@ -32,7 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const daoName = config?.name || "DeGov";
   const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
   const siteUrl = "https://degov-dev.vercel.app";
-  const ogImageUrl = `${siteUrl}/assets/image/og-new.png`;
+  const ogImageUrl = `${siteUrl}/assets/image/og.png`;
 
   return {
     title: {
@@ -50,8 +50,8 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [
         {
           url: ogImageUrl,
-          width: 586,
-          height: 120,
+          width: 512,
+          height: 512,
           alt: `${daoName} - DAO governance platform`,
         },
       ],
