@@ -1,12 +1,10 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastContainer } from "react-toastify";
-
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getDaoConfigServer } from "@/lib/config";
 import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
-
 import { Alert } from "./alert";
 import { Aside } from "./aside";
 import { DemoTips } from "./demo-tips";
@@ -32,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const daoName = config?.name || "DeGov";
   const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
   const siteUrl = "https://degov-dev.vercel.app";
-  const ogImageUrl = `${siteUrl}/assets/image/logo.svg`;
+  const ogImageUrl = `${siteUrl}/api/og`;
 
   return {
     title: {
@@ -50,8 +48,8 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [
         {
           url: ogImageUrl,
-          width: 1280,
-          height: 260,
+          width: 1200,
+          height: 630,
           alt: `${daoName} - DAO governance platform`,
         },
       ],
