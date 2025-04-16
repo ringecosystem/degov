@@ -1,10 +1,12 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastContainer } from "react-toastify";
+
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getDaoConfigServer } from "@/lib/config";
 import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
+
 import { Alert } from "./alert";
 import { Aside } from "./aside";
 import { DemoTips } from "./demo-tips";

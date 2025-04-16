@@ -1,5 +1,5 @@
+import Image from "next/image";
 import { ImageResponse } from "next/og";
-
 export async function GET() {
   return new ImageResponse(
     (
@@ -15,7 +15,7 @@ export async function GET() {
           alignItems: "center",
         }}
       >
-        <img
+        <Image
           src="https://degov-dev.vercel.app/assets/image/logo.svg"
           alt="Logo"
           width="200"
