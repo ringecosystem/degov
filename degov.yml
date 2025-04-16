@@ -46,20 +46,21 @@ contracts:
 
 # The treasury assets information
 timeLockAssets:
-  FT:
+  - name: FT
     contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
     standard: ERC20
     priceId: FT
     logo: # Default logo if not provided
-  NFT:
+  - name: NFT
     contract: "0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A"
     standard: ERC721
     priceId: NFT
     logo: # Default logo if not provided
-safe:
-  Test DAO Safe(Arbitrum):
+
+safes:
+  - name: Test DAO Safe(Arbitrum)
     chainId: 42161
     link: https://app.safe.global/home?safe=arb1:0x80d180621B2f875269216f19A499e6fB9402776C
-  Test DAO Safe(Sepolia):
+  - name: Test DAO Safe(Sepolia)
     chainId: 11155111
     link: https://app.safe.global/home?safe=sep:0x80d180621B2f875269216f19A499e6fB9402776C
