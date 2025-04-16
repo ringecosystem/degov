@@ -31,8 +31,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const config = await getDaoConfigServer();
   const daoName = config?.name || "DeGov";
   const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
-  const siteUrl = "https://degov.ai";
-  const ogImageUrl = `/assets/image/logo.svg`;
+  const siteUrl = "https://degov-dev.vercel.app";
+  const ogImageUrl = `${siteUrl}/assets/image/logo.svg`;
 
   return {
     title: {
