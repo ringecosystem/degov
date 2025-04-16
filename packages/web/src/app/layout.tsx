@@ -50,8 +50,8 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [
         {
           url: ogImageUrl,
-          width: 1000,
-          height: 600,
+          width: 2080,
+          height: 1280,
           alt: `${daoName} - DAO governance platform`,
         },
       ],
