@@ -1,11 +1,14 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 import type { ReactNode } from "react";
 interface OverviewItemProps {
   title: string;
   icon: string;
+  link?: string;
   isLoading?: boolean;
   children: ReactNode;
 }
@@ -13,13 +16,20 @@ interface OverviewItemProps {
 export const OverviewItem = ({
   title,
   icon,
+  link,
   children,
   isLoading,
 }: OverviewItemProps) => {
+  const Component = link ? Link : "div";
   return (
-    <div
-      className="flex w-full items-center justify-between rounded-[14px] bg-card p-[20px]"
+    <Component
+      className={cn(
+        "flex w-full items-center justify-between rounded-[14px] bg-card p-[20px]",
+        link && "cursor-pointer",
+        link && "hover:bg-card/80 transition-colors"
+      )}
       style={{ aspectRatio: "342/105" }}
+      href={link ?? ""}
     >
       <div className="flex flex-col gap-[10px]">
         <p className="!m-0 text-[14px] text-card-foreground">{title}</p>
@@ -40,6 +50,6 @@ export const OverviewItem = ({
         width={60}
         height={60}
       />
-    </div>
+    </Component>
   );
 };
