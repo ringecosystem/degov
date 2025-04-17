@@ -2,6 +2,7 @@ import { isAddress } from "viem";
 import { z } from "zod";
 
 import { isValidAbi } from "@/utils/abi";
+import { generateHash } from "@/utils/helpers";
 
 /**
  * Proposal content schema
@@ -191,12 +192,23 @@ export const crossChainCallSchema = z.object({
 
 export type CrossChainCallContent = z.infer<typeof crossChainCallSchema>;
 
-export const xaccountSchema = z.object({
-  sourceChainId: z.number(),
-  targetChainId: z.number(),
-  crossChainCallHash: z.string(),
-  transaction: transactionSchema,
-  crossChainCall: crossChainCallSchema,
-});
+export const xaccountSchema = z
+  .object({
+    sourceChainId: z.number(),
+    targetChainId: z.number(),
+    crossChainCallHash: z.string(),
+    transaction: transactionSchema,
+    crossChainCall: crossChainCallSchema,
+  })
+  .refine(
+    (data) => {
+      const calculatedHash = generateHash(data.crossChainCall);
+      return calculatedHash === data.crossChainCallHash;
+    },
+    {
+      message: "Cross-chain call hash verification failed",
+      path: ["crossChainCallHash"],
+    }
+  );
 
 export type XAccountContent = z.infer<typeof xaccountSchema>;
