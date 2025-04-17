@@ -59,6 +59,7 @@ interface Indexer {
 interface Config {
   name: string;
   logo: string;
+  siteUrl: string;
   description: string;
   links: Links;
   wallet: Wallet;
