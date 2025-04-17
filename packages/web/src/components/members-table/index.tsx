@@ -7,6 +7,7 @@ import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 import { useMembersData } from "./hooks/useMembersData";
 
@@ -56,14 +57,29 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
         key: "delegateStatement",
         width: "200px",
         className: "text-left",
-        render: (record) => (
-          <span
-            className="line-clamp-1 break-words"
-            title={profilePullData?.[record.id]?.delegate_statement || "-"}
-          >
-            {profilePullData?.[record.id]?.delegate_statement || "-"}
-          </span>
-        ),
+        render: (record) => {
+          if (!profilePullData?.[record.id]?.delegate_statement) {
+            return "-";
+          }
+
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="line-clamp-1 break-words">
+                  {profilePullData?.[record.id]?.delegate_statement || "-"}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent
+                className="w-[300px]"
+                style={{
+                  wordBreak: "break-word",
+                }}
+              >
+                {profilePullData?.[record.id]?.delegate_statement || "-"}
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
       },
       {
         title: "Voting Power",
