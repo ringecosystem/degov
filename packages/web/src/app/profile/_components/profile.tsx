@@ -308,7 +308,12 @@ export const Profile = ({ address }: ProfileProps) => {
           <Separator className="bg-border/40" />
 
           {profile?.delegate_statement ? (
-            <p className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-foreground">
+            <p
+              className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-foreground"
+              style={{
+                wordBreak: "break-word",
+              }}
+            >
               {profile?.delegate_statement}
             </p>
           ) : (
