@@ -43,6 +43,7 @@ export const Overview = () => {
       <div className="grid grid-cols-2 gap-[20px] xl:grid-cols-4">
         <OverviewItem
           title="Proposals"
+          link={`/proposals`}
           icon="/assets/image/proposals-colorful.svg"
           isLoading={isProposalMetricsLoading}
         >
@@ -59,6 +60,7 @@ export const Overview = () => {
         </OverviewItem>
         <OverviewItem
           title="Delegates"
+          link={`/delegates`}
           icon="/assets/image/members-colorful.svg"
           isLoading={isProposalMetricsLoading}
         >
