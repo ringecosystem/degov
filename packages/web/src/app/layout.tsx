@@ -30,13 +30,40 @@ export const fetchCache = "force-no-store";
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getDaoConfigServer();
   const daoName = config?.name || "DeGov";
+  const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
+  const siteUrl = config?.siteUrl;
+  const ogImageUrl = `${siteUrl}/assets/image/og.png`;
 
   return {
     title: {
       template: `%s | ${daoName} - Powered by DeGov.AI`,
       default: `${daoName} - Powered by DeGov.AI`,
     },
-    description: `${daoName} - DAO governance platform powered by DeGov.AI`,
+    description,
+    metadataBase: new URL(siteUrl),
+    openGraph: {
+      type: "website",
+      siteName: daoName,
+      title: `${daoName} - Powered by DeGov.AI`,
+      description,
+      url: siteUrl,
+      images: [
+        {
+          url: ogImageUrl,
+          width: 512,
+          height: 512,
+          alt: `${daoName} - DAO governance platform`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary",
+      site: "@ai_degov",
+      creator: "@ai_degov",
+      title: `${daoName} - Powered by DeGov.AI`,
+      description,
+      images: [ogImageUrl],
+    },
     other: {
       timestamp: Date.now(),
     },
