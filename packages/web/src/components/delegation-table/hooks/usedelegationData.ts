@@ -29,7 +29,7 @@ export function useDelegationData(address?: Address) {
           offset: pageParam * DEFAULT_PAGE_SIZE,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: address
-            ? { toDelegate_eq: address?.toLowerCase(), power_gt: 0 }
+            ? { toDelegate_eq: address?.toLowerCase() }
             : undefined,
         }
       );
