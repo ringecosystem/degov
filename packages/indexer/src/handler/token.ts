@@ -105,6 +105,22 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(delegateRolling);
+
+    // store self delegate
+    if (
+      entity.fromDelegate !== zeroAddress &&
+      entity.delegator === entity.toDelegate
+    ) {
+      const selfDelegate = new Delegate({
+        fromDelegate: entity.delegator,
+        toDelegate: entity.toDelegate,
+        blockNumber: entity.blockNumber,
+        blockTimestamp: entity.blockTimestamp,
+        transactionHash: entity.transactionHash,
+        power: 0n,
+      });
+      await this.storeDelegate(selfDelegate);
+    }
   }
 
   private async storeDelegateVotesChanged(eventLog: Log) {
@@ -268,10 +284,9 @@ export class TokenHandler {
         currentDelegate.transactionHash;
       // should keep delegate self record
       if (
-        storedDelegateFromWithTo.power === 0n
-        // &&
-        // storedDelegateFromWithTo.fromDelegate !==
-        //   storedDelegateFromWithTo.toDelegate
+        storedDelegateFromWithTo.power === 0n &&
+        storedDelegateFromWithTo.fromDelegate !==
+          storedDelegateFromWithTo.toDelegate
       ) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
       } else {
