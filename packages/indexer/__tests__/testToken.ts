@@ -1268,6 +1268,17 @@ test("testTokens", () => {
             toDelegate: entry.toDelegate.toLowerCase(),
           };
           ds.pushMapping(cdg);
+          if (
+            cdg.fromDelegate === zeroAddress &&
+            cdg.delegator === cdg.toDelegate
+          ) {
+            const cdelegate = {
+              fromDelegate: cdg.delegator,
+              toDelegate: cdg.toDelegate,
+              power: 0n,
+            };
+            ds.pushDelegator(cdelegate);
+          }
           break;
         case "delegatevoteschanged":
           if (!cdg) {
@@ -1314,7 +1325,7 @@ test("testTokens", () => {
   }
 
   const dss = ds.getDelegates();
-  console.log("ds: ", dss);
+  console.log("delegates: ", dss);
   if (!dss.length) {
     console.log("mapping: ", ds.getMapping());
   }
@@ -1358,7 +1369,11 @@ dsfn.pushDelegator = function (delegator, options) {
     return;
   }
   storedDelegateFromWithTo.power += delegator.power;
-  if (storedDelegateFromWithTo.power === 0n) {
+  if (
+    storedDelegateFromWithTo.power === 0n &&
+    storedDelegateFromWithTo.fromDelegate !==
+      storedDelegateFromWithTo.toDelegate
+  ) {
     this.delegates = this.delegates.filter(
       (item) => item.id !== storedDelegateFromWithTo.id
     );
