@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { ContributorItem } from "@/services/graphql/types";
 
@@ -10,7 +11,6 @@ import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 import { useMembersData } from "./hooks/useMembersData";
-import { DEFAULT_PAGE_SIZE } from "@/config/base";
 
 import type { ColumnType } from "../custom-table";
 interface MembersTableProps {
