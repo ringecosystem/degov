@@ -43,7 +43,7 @@ export function useDelegationData(address?: Address) {
         return undefined;
       }
       // Return next page number
-      return lastPageParam + 1;
+      return lastPageParam + DEFAULT_PAGE_SIZE;
     },
     enabled: !!daoConfig?.indexer?.endpoint,
     retryDelay: 10_000,

@@ -76,7 +76,7 @@ export function useProposalData(
       if (!lastPage || lastPage.length < pageSize) {
         return undefined;
       }
-      return lastPageParam + 1;
+      return lastPageParam + pageSize;
     },
     enabled: !!daoConfig?.indexer?.endpoint,
     retryDelay: 10_000,

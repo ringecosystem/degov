@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { ContributorItem } from "@/services/graphql/types";
 
@@ -12,13 +13,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { useMembersData } from "./hooks/useMembersData";
 
 import type { ColumnType } from "../custom-table";
-
 interface MembersTableProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
 }
 
-export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
+export function MembersTable({
+  onDelegate,
+  pageSize = DEFAULT_PAGE_SIZE,
+}: MembersTableProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
   const {
