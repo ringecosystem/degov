@@ -22,7 +22,13 @@ export const DaoHeader = () => {
             height={35}
           />
           {config?.name}
+          <div className="px-2.5 py-[5px] bg-white rounded-[10px] inline-flex justify-start items-center gap-2.5">
+            <div className="justify-start text-neutral-800 text-xs font-semibold font-['SF_UI_Display']">
+              {config?.chain?.name}
+            </div>
+          </div>
         </h1>
+
         <p className="line-clamp-2 text-[14px] text-card-foreground">
           {config?.description}
         </p>
