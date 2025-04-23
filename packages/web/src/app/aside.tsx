@@ -15,6 +15,8 @@ import { socialConfig } from "@/config/social";
 import { useBlockSync } from "@/hooks/useBlockSync";
 import { cn } from "@/lib/utils";
 
+import packageInfo from "../../package.json";
+
 import { Nav } from "./nav";
 
 const SIDEBAR_WIDTH = {
@@ -141,10 +143,17 @@ export const Aside = () => {
               <Tooltip key={social.name}>
                 <TooltipTrigger asChild>
                   <a
-                    href={social.url}
+                    href={
+                      social.name === "Github"
+                        ? `${social.url}v${packageInfo.version}`
+                        : social.url
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="relative flex h-[24px] w-[24px] items-center justify-center rounded-full bg-card transition-opacity duration-300 hover:opacity-80"
+                    className={cn(
+                      "relative flex h-[24px]  items-center justify-center w-[24px] rounded-[36px] bg-card transition-opacity duration-300 hover:opacity-80",
+                      social.name === "Github" && "px-[5px] w-auto gap-[5px]"
+                    )}
                   >
                     <Image
                       src={social.assetPath}
@@ -153,6 +162,11 @@ export const Aside = () => {
                       height={social?.height || 24}
                       className="object-contain"
                     />
+                    {social.name === "Github" && (
+                      <span className="text-xs text-muted-foreground">
+                        {packageInfo.version}
+                      </span>
+                    )}
                   </a>
                 </TooltipTrigger>
                 <TooltipContent

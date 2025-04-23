@@ -29,7 +29,7 @@ export const OverviewItem = ({
         link && "hover:bg-card/80 transition-colors"
       )}
       style={{ aspectRatio: "342/105" }}
-      href={link ?? ""}
+      href={link ?? (null as unknown as string)}
     >
       <div className="flex flex-col gap-[10px]">
         <p className="!m-0 text-[14px] text-card-foreground">{title}</p>
