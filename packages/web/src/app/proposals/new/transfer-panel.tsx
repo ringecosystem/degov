@@ -58,6 +58,7 @@ export const TransferPanel = ({
     control,
     formState: { errors },
     watch,
+    setValue,
   } = useForm<TransferContent>({
     resolver: zodResolver(transferSchema),
     defaultValues: {
@@ -131,6 +132,21 @@ export const TransferPanel = ({
     },
     [token?.decimals, balance]
   );
+
+  const handleMaxAmount = useCallback(() => {
+    if (!balance || !token?.decimals) return;
+    const maxValue = formatUnits(balance.value, token.decimals);
+
+    setValue("amount", maxValue, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+
+    onChange({
+      recipient: content?.recipient as Address,
+      amount: maxValue,
+    });
+  }, [balance, token?.decimals, setValue, onChange, content?.recipient]);
 
   return (
     <div
@@ -209,8 +225,8 @@ export const TransferPanel = ({
               />
               <TokenSelect tokenList={[token]} />
             </div>
-            <div className="flex items-center justify-between gap-[10px]">
-              <span className="text-[14px] text-foreground/50"></span>
+            <div className="flex items-center justify-end gap-[10px]">
+              {/* <span className="text-[14px] text-foreground/50"></span> */}
               <span className="inline-flex flex-shrink-0 items-center gap-[5px] text-[14px] text-foreground/50">
                 Balance:
                 {isLoading ? (
@@ -224,6 +240,14 @@ export const TransferPanel = ({
                   </span>
                 )}
               </span>
+              <button
+                className="px-2.5 py-0.5 rounded-[100px] outline outline-1 outline-offset-[-1px] outline-neutral-400 inline-flex justify-center items-center gap-2.5 appearance-none hover:opacity-80 transition-opacity duration-200"
+                onClick={handleMaxAmount}
+              >
+                <span className="justify-start text-neutral-400 text-sm font-normal">
+                  Max
+                </span>
+              </button>
             </div>
           </div>
           {errors.amount && <ErrorMessage message={errors.amount.message} />}
