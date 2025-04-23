@@ -38,7 +38,7 @@ export function MembersTable({
       {
         title: "Rank",
         key: "rank",
-        width: "160px",
+        width: "70px",
         className: "text-left",
         render: (_record, index) => (
           <span className="line-clamp-1" title={(index + 1).toString()}>
@@ -49,7 +49,7 @@ export function MembersTable({
       {
         title: "Name",
         key: "name",
-        width: "260px",
+        width: "200px",
         className: "text-left",
         render: (record) => (
           <AddressWithAvatar address={record?.id as `0x${string}`} />
@@ -58,7 +58,7 @@ export function MembersTable({
       {
         title: "Delegate Statement",
         key: "delegateStatement",
-        width: "200px",
+        width: "470px",
         className: "text-left",
         render: (record) => {
           if (!profilePullData?.[record.id]?.delegate_statement) {
@@ -87,7 +87,7 @@ export function MembersTable({
       {
         title: "Voting Power",
         key: "votingPower",
-        width: "200px",
+        width: "120px",
         className: "text-right",
         render: (record) =>
           isProfilePullLoading ? (
@@ -110,7 +110,7 @@ export function MembersTable({
       {
         title: "Action",
         key: "action",
-        width: "180px",
+        width: "140px",
         className: "text-right",
         render: (record) => (
           <Button
