@@ -180,7 +180,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     // Delegating to someone else
     return {
       type: "other",
-      displayText: `Delegating ${formattedVotes ?? "0.00"} voting power to`,
+      displayText: `Delegating ${formattedVotes ?? "0.00"} voting power to `,
       buttonText: "Change Delegate",
       to: latestDelegation.to,
     };
