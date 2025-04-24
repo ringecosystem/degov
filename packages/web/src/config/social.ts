@@ -25,30 +25,30 @@ function createSocialConfig(
 export const socialConfig: SocialConfig[] = [
   createSocialConfig(
     "X",
-    "https://x.com/ringecosystem",
+    "https://x.com/ai_degov",
     "/assets/image/social/x.svg",
     12,
     12
   ),
   createSocialConfig(
     "Telegram",
-    "https://t.me/ringecosystem",
+    "https://t.me/DeGov_AI",
     "/assets/image/social/telegram.svg",
     12,
     10
   ),
   createSocialConfig(
-    "Discord",
-    " https://discord.com/invite/BhNbKWWfGV",
-    "/assets/image/social/discord.svg",
-    16,
-    12
+    "Email",
+    "mailto:support@degov.ai",
+    "/assets/image/social/email.svg",
+    13.333,
+    10
   ),
   createSocialConfig(
     "Github",
-    "https://github.com/ringecosystem/degov",
+    "https://github.com/ringecosystem/degov/tree/",
     "/assets/image/social/github.svg",
-    12,
-    14
+    10.714,
+    12.857
   ),
 ];
