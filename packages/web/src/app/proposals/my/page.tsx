@@ -6,7 +6,6 @@ import { useAccount } from "wagmi";
 
 import { ProposalsTable } from "@/components/proposals-table";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -17,13 +16,10 @@ import {
 } from "@/components/ui/select";
 import { WithConnect } from "@/components/with-connect";
 
-import type { CheckedState } from "@radix-ui/react-checkbox";
 export default function Proposals() {
   const router = useRouter();
   const [support, setSupport] = useState<"all" | "1" | "2" | "3">("all");
   const { isConnected, address } = useAccount();
-
-  const [isMyProposals, setIsMyProposals] = useState<CheckedState>(false);
 
   return (
     <WithConnect>
@@ -33,40 +29,24 @@ export default function Proposals() {
 
           <div className="flex items-center gap-[20px]">
             {isConnected && (
-              <>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="my-proposals"
-                    checked={isMyProposals}
-                    onCheckedChange={setIsMyProposals}
-                  />
-                  <label
-                    htmlFor="my-proposals"
-                    className="cursor-pointer text-[14px] font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    My Proposals
-                  </label>
-                </div>
-                <Select
-                  value={support}
-                  onValueChange={(value) =>
-                    setSupport(value as "all" | "1" | "2" | "3")
-                  }
-                  disabled={!isMyProposals}
-                >
-                  <SelectTrigger className="w-[130px] rounded-[100px] border border-border px-[10px]">
-                    <SelectValue placeholder="Select Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="1">Vote For</SelectItem>
-                      <SelectItem value="0">Vote Against</SelectItem>
-                      <SelectItem value="2">Vote Abstain</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </>
+              <Select
+                value={support}
+                onValueChange={(value) =>
+                  setSupport(value as "all" | "1" | "2" | "3")
+                }
+              >
+                <SelectTrigger className="w-[130px] rounded-[100px] border border-border px-[10px]">
+                  <SelectValue placeholder="Select Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="1">Vote For</SelectItem>
+                    <SelectItem value="0">Vote Against</SelectItem>
+                    <SelectItem value="2">Vote Abstain</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             )}
 
             <Button
