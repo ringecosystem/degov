@@ -13,6 +13,7 @@ import { AddressResolver } from "@/components/address-resolver";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { DelegateAction } from "@/components/delegate-action";
 import { DelegateSelector } from "@/components/delegate-selector";
+import { ChangeDelegate } from "@/app/profile/_components/change-delegate";
 import NotFound from "@/components/not-found";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +29,7 @@ import { useAddressVotes } from "@/hooks/useAddressVotes";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
-import { profileService } from "@/services/graphql";
+import { delegateService, profileService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 import {
   getTwitterLink,
@@ -42,16 +43,24 @@ import { ReceivedDelegations } from "./received-delegations";
 
 interface ProfileProps {
   address: Address;
+  isDelegate?: boolean;
 }
 
-const ProfileSkeleton = () => {
+const ProfileSkeleton = ({ isDelegate }: { isDelegate: boolean }) => {
   return (
     <div className="flex flex-col gap-[30px] p-[30px]">
-      <div className="flex items-center gap-1 text-[18px] font-extrabold">
-        <span className="text-muted-foreground">Profile</span>
-        <span className="text-muted-foreground">/</span>
-        <Skeleton className="h-[24px] w-[120px]" />
-      </div>
+      {isDelegate ? (
+        <div className="flex items-center gap-1 text-[18px] font-extrabold">
+          <Link
+            href="/delegates"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            Delegates
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <Skeleton className="h-[24px] w-[120px]" />
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-[1fr_400px] gap-[20px]">
         {/* personal info skeleton */}
@@ -113,9 +122,10 @@ const ProfileSkeleton = () => {
   );
 };
 
-export const Profile = ({ address }: ProfileProps) => {
+export const Profile = ({ address, isDelegate }: ProfileProps) => {
   const [open, setOpen] = useState(false);
   const [delegateOpen, setDelegateOpen] = useState(false);
+  const [changeDelegateOpen, setChangeDelegateOpen] = useState(false);
   const daoConfig = useDaoConfig();
   const router = useRouter();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
@@ -128,6 +138,52 @@ export const Profile = ({ address }: ProfileProps) => {
     queryFn: () => profileService.getProfile(address),
     enabled: !!address,
   });
+
+  // getDelegateMappings
+  const { data: delegateMappings, isLoading: isDelegateMappingsLoading } =
+    useQuery({
+      queryKey: ["delegateMappings", address],
+      queryFn: () =>
+        delegateService.getDelegateMappings(
+          daoConfig?.indexer?.endpoint as string,
+          { where: { from_eq: address?.toLowerCase() } }
+        ),
+      enabled: !!address,
+    });
+
+  const { formattedVotes, isLoading } = useAddressVotes(address);
+
+  const delegationStatus = useMemo(() => {
+    if (!delegateMappings || delegateMappings.length === 0) {
+      return {
+        type: "none",
+        displayText: "Haven't delegated yet",
+        buttonText: "Join as Delegate",
+      };
+    }
+
+    const latestDelegation = delegateMappings[0];
+
+    // Check if delegating to self
+    if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
+      return {
+        type: "self",
+        displayText: `Delegating ${formattedVotes} voting power to himself`,
+        buttonText: "Change Delegate",
+      };
+    }
+
+    // Delegating to someone else
+    return {
+      type: "other",
+      to: latestDelegation.to,
+      displayText: `Delegating ${formattedVotes} voting power to`,
+      buttonText: "Change Delegate",
+    };
+  }, [delegateMappings, address, formattedVotes]);
+
+  console.log("delegateMappings", delegateMappings);
+  console.log("delegationStatus", delegationStatus);
 
   // get governance token
   const { data: tokenBalance, isLoading: isLoadingTokenBalance } =
@@ -214,25 +270,30 @@ export const Profile = ({ address }: ProfileProps) => {
     [profile]
   );
 
-  const { formattedVotes, isLoading } = useAddressVotes(address);
-
   if (!isAddress(address)) {
     return <NotFound />;
   }
 
   if (isProfileLoading) {
-    return <ProfileSkeleton />;
+    return <ProfileSkeleton isDelegate={!!isDelegate} />;
   }
 
   return (
     <div className="flex flex-col gap-[30px]">
-      <div className="flex items-center gap-1 text-[18px] font-extrabold">
-        <span className="text-muted-foreground">Profile</span>
-        <span className="text-muted-foreground">/</span>
-        <AddressResolver address={address as `0x${string}`} showShortAddress>
-          {(value) => <span>{value}</span>}
-        </AddressResolver>
-      </div>
+      {isDelegate ? (
+        <div className="flex items-center gap-1 text-[18px] font-extrabold">
+          <Link
+            href="/delegates"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            Delegates
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <AddressResolver address={address as `0x${string}`} showShortAddress>
+            {(value) => <span>{value}</span>}
+          </AddressResolver>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-[1fr_400px] gap-[20px]">
         {/* personal info */}
@@ -288,6 +349,23 @@ export const Profile = ({ address }: ProfileProps) => {
                   </span>
                   <ClipboardIconButton text={address} className="size-[16px]" />
                 </div>
+                {isDelegateMappingsLoading ? (
+                  <Skeleton className="h-[24px] w-[120px]" />
+                ) : delegationStatus?.type === "other" ? (
+                  <span className="text-[14px] text-foreground font-semibold">
+                    {delegationStatus?.displayText}
+                    <AddressResolver
+                      address={delegationStatus?.to as `0x${string}`}
+                      showShortAddress
+                    >
+                      {(value) => <span>{value}</span>}
+                    </AddressResolver>
+                  </span>
+                ) : (
+                  <span className="text-[14px] text-foreground font-semibold">
+                    {delegationStatus?.displayText}
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-[20px]">
@@ -301,7 +379,7 @@ export const Profile = ({ address }: ProfileProps) => {
                 </Button>
               ) : null}
               <Button className="rounded-full" onClick={handleDelegate}>
-                Join as Delegate
+                {isDelegate ? "Delegate" : delegationStatus?.buttonText}
               </Button>
             </div>
           </div>
@@ -394,6 +472,11 @@ export const Profile = ({ address }: ProfileProps) => {
       <DelegateSelector
         open={open}
         onOpenChange={setOpen}
+        onSelect={handleSelect}
+      />
+      <ChangeDelegate
+        open={changeDelegateOpen}
+        onOpenChange={setChangeDelegateOpen}
         onSelect={handleSelect}
       />
     </div>

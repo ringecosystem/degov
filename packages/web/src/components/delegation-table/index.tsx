@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-
+import Link from "next/link";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { DelegateItem } from "@/services/graphql/types";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
@@ -11,13 +11,14 @@ import { useDelegationData } from "./hooks/usedelegationData";
 
 import type { ColumnType } from "../custom-table";
 import type { Address } from "viem";
-
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 interface DelegationTableProps {
   address: Address;
 }
 export function DelegationTable({ address }: DelegationTableProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { state, loadMoreData } = useDelegationData(address);
+  const daoConfig = useDaoConfig();
 
   const columns = useMemo<ColumnType<DelegateItem>[]>(
     () => [
@@ -37,8 +38,16 @@ export function DelegationTable({ address }: DelegationTableProps) {
         title: "Delegation Date",
         key: "delegationDate",
         width: "33.3%",
-        render: (record) =>
-          formatTimestampToFriendlyDate(record.blockTimestamp),
+        render: (record) => (
+          <Link
+            href={`${daoConfig?.chain?.explorers?.[0]}/tx/${record?.transactionHash}`}
+            className="text-[#00BAFF] hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {formatTimestampToFriendlyDate(record.blockTimestamp)}
+          </Link>
+        ),
       },
       {
         title: "Votes",
