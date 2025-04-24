@@ -8,12 +8,12 @@ import { useCallback, useMemo, useState } from "react";
 import { isAddress, type Address } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 
+import { ChangeDelegate } from "@/app/profile/_components/change-delegate";
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { DelegateAction } from "@/components/delegate-action";
 import { DelegateSelector } from "@/components/delegate-selector";
-import { ChangeDelegate } from "@/app/profile/_components/change-delegate";
 import NotFound from "@/components/not-found";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +39,7 @@ import {
   formatSocialHandle,
 } from "@/utils/social";
 
+import { JoinDelegate } from "./join-delegate";
 import { ReceivedDelegations } from "./received-delegations";
 
 interface ProfileProps {
@@ -130,7 +131,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   const router = useRouter();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: governanceToken } = useGovernanceToken();
-
+  const [joinDelegateOpen, setJoinDelegateOpen] = useState(false);
   const { address: account } = useAccount();
 
   const { data: profileData, isLoading: isProfileLoading } = useQuery({
@@ -142,7 +143,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   // getDelegateMappings
   const { data: delegateMappings, isLoading: isDelegateMappingsLoading } =
     useQuery({
-      queryKey: ["delegateMappings", address],
+      queryKey: ["delegateMappings", address, daoConfig?.indexer?.endpoint],
       queryFn: () =>
         delegateService.getDelegateMappings(
           daoConfig?.indexer?.endpoint as string,
@@ -168,22 +169,22 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
       return {
         type: "self",
-        displayText: `Delegating ${formattedVotes} voting power to himself`,
+        displayText: `Delegating ${
+          formattedVotes ?? "0.00"
+        } voting power to himself`,
         buttonText: "Change Delegate",
+        to: latestDelegation.to,
       };
     }
 
     // Delegating to someone else
     return {
       type: "other",
-      to: latestDelegation.to,
-      displayText: `Delegating ${formattedVotes} voting power to`,
+      displayText: `Delegating ${formattedVotes ?? "0.00"} voting power to`,
       buttonText: "Change Delegate",
+      to: latestDelegation.to,
     };
   }, [delegateMappings, address, formattedVotes]);
-
-  console.log("delegateMappings", delegateMappings);
-  console.log("delegationStatus", delegationStatus);
 
   // get governance token
   const { data: tokenBalance, isLoading: isLoadingTokenBalance } =
@@ -209,12 +210,26 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   }, [address, account]);
 
   const handleDelegate = useCallback(() => {
-    if (!isOwnProfile) {
-      setDelegateOpen(true);
+    if (isDelegate) {
+      if (!isOwnProfile) {
+        setDelegateOpen(true);
+      } else {
+        setOpen(true);
+      }
     } else {
-      setOpen(true);
+      switch (delegationStatus.type) {
+        case "none":
+          setJoinDelegateOpen(true);
+          break;
+        case "self":
+          setChangeDelegateOpen(true);
+          break;
+        case "other":
+          setChangeDelegateOpen(true);
+          break;
+      }
     }
-  }, [isOwnProfile]);
+  }, [isOwnProfile, delegationStatus.type]);
 
   const handleSelect = useCallback(
     (value: "myself" | "else") => {
@@ -227,6 +242,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     },
     [router]
   );
+
   const handleEditProfile = useCallback(() => {
     router.push("/profile/edit");
   }, [router]);
@@ -350,7 +366,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
                   <ClipboardIconButton text={address} className="size-[16px]" />
                 </div>
                 {isDelegateMappingsLoading ? (
-                  <Skeleton className="h-[24px] w-[120px]" />
+                  <Skeleton className="h-[24px] w-[120px] mt-2" />
                 ) : delegationStatus?.type === "other" ? (
                   <span className="text-[14px] text-foreground font-semibold">
                     {delegationStatus?.displayText}
@@ -478,6 +494,13 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
         open={changeDelegateOpen}
         onOpenChange={setChangeDelegateOpen}
         onSelect={handleSelect}
+        to={delegationStatus.to ?? ""}
+      />
+      <JoinDelegate
+        open={joinDelegateOpen}
+        onOpenChange={setJoinDelegateOpen}
+        amount={tokenBalance ? formatTokenAmount(tokenBalance)?.formatted : 0}
+        symbol={governanceToken?.symbol ?? ""}
       />
     </div>
   );

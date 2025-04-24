@@ -1,5 +1,7 @@
-import { useMemo } from "react";
 import Link from "next/link";
+import { useMemo } from "react";
+
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { DelegateItem } from "@/services/graphql/types";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
@@ -11,7 +13,7 @@ import { useDelegationData } from "./hooks/usedelegationData";
 
 import type { ColumnType } from "../custom-table";
 import type { Address } from "viem";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
+
 interface DelegationTableProps {
   address: Address;
 }
@@ -59,7 +61,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         },
       },
     ],
-    [formatTokenAmount]
+    [formatTokenAmount, daoConfig?.chain?.explorers]
   );
   return (
     <div className="rounded-[14px] bg-card p-[20px]">
