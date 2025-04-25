@@ -4,7 +4,7 @@ import { capitalize } from "lodash-es";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { isAddress, type Address } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { WithConnect } from "@/components/with-connect";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useAddressVotes } from "@/hooks/useAddressVotes";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -49,7 +50,9 @@ interface ProfileProps {
 
 export const Profile = ({ address, isDelegate }: ProfileProps) => {
   const [open, setOpen] = useState(false);
+  const { isConnected } = useAccount();
   const [delegateOpen, setDelegateOpen] = useState(false);
+  const [showConnectPrompt, setShowConnectPrompt] = useState(false);
   const [changeDelegateOpen, setChangeDelegateOpen] = useState(false);
   const daoConfig = useDaoConfig();
   const router = useRouter();
@@ -134,6 +137,10 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
 
   const handleDelegate = useCallback(() => {
     if (isDelegate) {
+      if (!isConnected) {
+        setShowConnectPrompt(true);
+        return;
+      }
       if (!isOwnProfile) {
         setDelegateOpen(true);
       } else {
@@ -152,7 +159,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
           break;
       }
     }
-  }, [isOwnProfile, isDelegate, delegationStatus.type]);
+  }, [isOwnProfile, isDelegate, delegationStatus.type, isConnected]);
 
   const handleSelect = useCallback(
     (value: "myself" | "else") => {
@@ -209,12 +216,50 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     [profile]
   );
 
+  useEffect(() => {
+    if (isConnected) {
+      setShowConnectPrompt(false);
+    }
+  }, [isConnected]);
+
+  useEffect(() => {
+    return () => {
+      setShowConnectPrompt(false);
+    };
+  }, []);
+
   if (!isAddress(address)) {
     return <NotFound />;
   }
 
   if (isProfileLoading) {
     return <ProfileSkeleton isDelegate={!!isDelegate} />;
+  }
+
+  if (showConnectPrompt) {
+    return (
+      <WithConnect>
+        <div className="flex flex-col gap-[30px]">
+          {isDelegate ? (
+            <div className="flex items-center gap-1 text-[18px] font-extrabold">
+              <Link
+                href="/delegates"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Delegates
+              </Link>
+              <span className="text-muted-foreground">/</span>
+              <AddressResolver
+                address={address as `0x${string}`}
+                showShortAddress
+              >
+                {(value) => <span>{value}</span>}
+              </AddressResolver>
+            </div>
+          ) : null}
+        </div>
+      </WithConnect>
+    );
   }
 
   return (
@@ -292,12 +337,19 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
                   <Skeleton className="h-[24px] w-[120px] mt-2" />
                 ) : delegationStatus?.type === "other" ? (
                   <span className="text-[14px] text-foreground font-semibold">
-                    {delegationStatus?.displayText}
+                    {delegationStatus?.displayText}{" "}
                     <AddressResolver
                       address={delegationStatus?.to as `0x${string}`}
                       showShortAddress
                     >
-                      {(value) => <span>{value}</span>}
+                      {(value) => (
+                        <Link
+                          href={`/delegate/${delegationStatus?.to}`}
+                          className="text-[#00BAFF] hover:underline"
+                        >
+                          {value}
+                        </Link>
+                      )}
                     </AddressResolver>
                   </span>
                 ) : (
