@@ -80,38 +80,6 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
 
   const { formattedVotes, isLoading } = useAddressVotes(address);
 
-  const delegationStatus = useMemo(() => {
-    if (!delegateMappings || delegateMappings.length === 0) {
-      return {
-        type: "none",
-        displayText: "Haven't delegated yet",
-        buttonText: "Join as Delegate",
-      };
-    }
-
-    const latestDelegation = delegateMappings[0];
-
-    // Check if delegating to self
-    if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
-      return {
-        type: "self",
-        displayText: `Delegating ${
-          formattedVotes ?? "0.00"
-        } voting power to himself`,
-        buttonText: "Change Delegate",
-        to: latestDelegation.to,
-      };
-    }
-
-    // Delegating to someone else
-    return {
-      type: "other",
-      displayText: `Delegating ${formattedVotes ?? "0.00"} voting power to `,
-      buttonText: "Change Delegate",
-      to: latestDelegation.to,
-    };
-  }, [delegateMappings, address, formattedVotes]);
-
   // get governance token
   const { data: tokenBalance, isLoading: isLoadingTokenBalance } =
     useReadContract({
@@ -127,6 +95,39 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
           !!daoConfig?.chain?.id,
       },
     });
+
+  const delegationStatus = useMemo(() => {
+    const balance = tokenBalance
+      ? formatTokenAmount(tokenBalance)?.formatted
+      : 0;
+    if (!delegateMappings || delegateMappings.length === 0) {
+      return {
+        type: "none",
+        displayText: "Haven't delegated yet",
+        buttonText: "Join as Delegate",
+      };
+    }
+
+    const latestDelegation = delegateMappings[0];
+
+    // Check if delegating to self
+    if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
+      return {
+        type: "self",
+        displayText: `Delegating ${balance ?? "0.00"} voting power to himself`,
+        buttonText: "Change Delegate",
+        to: latestDelegation.to,
+      };
+    }
+
+    // Delegating to someone else
+    return {
+      type: "other",
+      displayText: `Delegating ${balance ?? "0.00"} voting power to `,
+      buttonText: "Change Delegate",
+      to: latestDelegation.to,
+    };
+  }, [delegateMappings, address, tokenBalance, formatTokenAmount]);
 
   const isOwnProfile = useMemo(() => {
     if (!account || !address) return false;
