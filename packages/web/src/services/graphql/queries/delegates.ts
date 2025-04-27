@@ -23,3 +23,16 @@ export const GET_DELEGATES = gql`
     }
   }
 `;
+
+export const GET_DELEGATE_MAPPINGS = gql`
+  query GetDelegateMappings($where: DelegateMappingWhereInput!) {
+    delegateMappings(where: $where) {
+      blockNumber
+      blockTimestamp
+      from
+      id
+      to
+      transactionHash
+    }
+  }
+`;

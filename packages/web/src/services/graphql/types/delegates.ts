@@ -11,3 +11,16 @@ export type DelegateItem = {
 export type DelegateResponse = {
   delegates: DelegateItem[];
 };
+
+export type DelegateMappingItem = {
+  blockNumber: string;
+  blockTimestamp: string;
+  from: string;
+  id: string;
+  to: string;
+  transactionHash: string;
+};
+
+export type DelegateMappingResponse = {
+  delegateMappings: DelegateMappingItem[];
+};

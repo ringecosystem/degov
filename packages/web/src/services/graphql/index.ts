@@ -97,6 +97,25 @@ export const delegateService = {
     );
     return response?.delegates ?? [];
   },
+  getDelegateMappings: async (
+    endpoint: string,
+    options: {
+      where: {
+        from_eq: string;
+      };
+    } = {
+      where: {
+        from_eq: "",
+      },
+    }
+  ) => {
+    const response = await request<Types.DelegateMappingResponse>(
+      endpoint,
+      Queries.GET_DELEGATE_MAPPINGS,
+      options
+    );
+    return response?.delegateMappings ?? [];
+  },
 };
 
 export const squidStatusService = {
