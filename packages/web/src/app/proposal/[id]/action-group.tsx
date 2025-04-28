@@ -222,8 +222,8 @@ export default function ActionGroup({
       const timeLockDelay = govParams?.timeLockDelay
         ? BigInt(govParams?.timeLockDelay * 1000n)
         : undefined;
-
-      if (!queuedBlockTimestamp || !timeLockDelay) return false;
+      if (!queuedBlockTimestamp) return false;
+      if (!timeLockDelay) return true;
 
       return (
         BigInt(new Date().getTime()) > queuedBlockTimestamp + timeLockDelay
