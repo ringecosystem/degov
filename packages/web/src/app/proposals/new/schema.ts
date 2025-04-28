@@ -14,7 +14,12 @@ export const proposalSchema = z.object({
   markdown: z
     .string()
     .min(1, "Proposal description is required")
-    .refine((val) => val !== "\u200B", "Proposal description is required"),
+    .refine((val) => {
+      console.log("val", val);
+
+      if (val === "" || val === "<p></p>") return false;
+      return true;
+    }, "Proposal description is required"),
 });
 
 export type ProposalContent = z.infer<typeof proposalSchema>;

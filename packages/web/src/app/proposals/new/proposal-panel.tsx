@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react";
 import { Controller } from "react-hook-form";
 import { useForm } from "react-hook-form";
 
-import { Editor } from "@/components/editor";
+import { Editor } from "@/components/editor2";
 import { ErrorMessage } from "@/components/error-message";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ export const ProposalPanel = ({
     resolver: zodResolver(proposalSchema),
     defaultValues: {
       title: content.title || "",
-      markdown: content.markdown || "\u200B",
+      markdown: content.markdown || "",
     },
     mode: "onChange",
   });
@@ -89,14 +89,13 @@ export const ProposalPanel = ({
           render={({ field }) => (
             <>
               <Editor
-                markdown={field.value}
+                value={field.value}
                 onChange={(newValue) => {
-                  const sanitizedValue = newValue === "" ? "\u200B" : newValue;
-                  field.onChange(sanitizedValue);
+                  field.onChange(newValue);
                 }}
                 placeholder="Enter the description of your proposal"
                 className={cn(
-                  "border-border/20 bg-card",
+                  "border border-border/20 bg-card",
                   errors.markdown && "border-red-500"
                 )}
               />

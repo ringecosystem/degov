@@ -3,7 +3,6 @@ import { parseUnits } from "viem";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 import type { ProposalActionParam } from "@/hooks/useProposal";
-import { markdownToHtml } from "@/utils/markdown";
 
 import type { CustomContent } from "./schema";
 import type {
@@ -91,7 +90,7 @@ export const transformActionsToProposalParams = async (
   decimals: number = 18
 ): Promise<{ description: string; actions: ProposalActionParam[] }> => {
   const proposalAction = actions.find((action) => action.type === "proposal");
-  const html = await markdownToHtml(proposalAction?.content.markdown ?? "");
+  const html = proposalAction?.content.markdown ?? "";
   const description = proposalAction
     ? `# ${proposalAction.content.title}\n\n${html}`
     : "";

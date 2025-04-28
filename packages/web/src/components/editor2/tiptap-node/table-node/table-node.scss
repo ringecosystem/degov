@@ -1,0 +1,55 @@
+.ProseMirror table {
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    margin: 1rem 0;
+    overflow: hidden;
+  }
+    
+  .ProseMirror table td,
+  .ProseMirror table th {
+    border: 2px solid var(--border-color, #ced4da);
+    padding: 0.5rem;
+    position: relative;
+    min-width: 1em;
+    vertical-align: top;
+  }
+    
+  .ProseMirror table th {
+    background-color: var(--th-background, rgba(236, 236, 236, 0.4));
+    font-weight: bold;
+  }
+    
+  .ProseMirror table .selectedCell:after {
+    background: var(--selected-cell-background, rgba(200, 200, 255, 0.4));
+    content: "";
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    position: absolute;
+    z-index: 2;
+  }
+    
+  .ProseMirror table .column-resize-handle {
+    background-color: var(--resize-handle-color, #adf);
+    bottom: -2px;
+    position: absolute;
+    right: -2px;
+    pointer-events: none;
+    top: 0;
+    width: 4px;
+  }
+    
+  .ProseMirror table p {
+    margin: 0;
+  }
+    
+  /* 使用CSS变量确保暗色主题兼容 */
+  html.dark .ProseMirror table {
+    --border-color: #4a5568;
+    --th-background: rgba(45, 55, 72, 0.4);
+    --selected-cell-background: rgba(49, 130, 206, 0.4);
+    --resize-handle-color: #4299e1;
+  }

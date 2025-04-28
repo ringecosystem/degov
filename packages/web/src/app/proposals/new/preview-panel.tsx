@@ -3,7 +3,6 @@ import { useAccount } from "wagmi";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import { cn } from "@/lib/utils";
-import { markdownToHtml } from "@/utils/markdown";
 
 import { ActionsPanel } from "./action-panel";
 
@@ -27,7 +26,7 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
       actions[0]?.type === "proposal"
         ? (actions[0]?.content as ProposalContent).markdown
         : "";
-    return { title, html: await markdownToHtml(html) };
+    return { title, html: html };
   }, [actions]);
 
   return (
