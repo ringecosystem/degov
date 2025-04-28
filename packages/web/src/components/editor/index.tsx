@@ -1,87 +1,347 @@
-import {
-  BlockTypeSelect,
-  BoldItalicUnderlineToggles,
-  CodeToggle,
-  CreateLink,
-  diffSourcePlugin,
-  InsertTable,
-  linkDialogPlugin,
-  linkPlugin,
-  listsPlugin,
-  ListsToggle,
-  markdownShortcutPlugin,
-  MDXEditor,
-  quotePlugin,
-  Separator,
-  tablePlugin,
-  thematicBreakPlugin,
-  toolbarPlugin,
-  UndoRedo,
-} from "@mdxeditor/editor";
-import { headingsPlugin, DiffSourceToggleWrapper } from "@mdxeditor/editor";
+"use client";
 
-import "@mdxeditor/editor/style.css";
-import "./index.css";
+import * as React from "react";
+import { EditorContent, EditorContext, useEditor } from "@tiptap/react";
+import Placeholder from "@tiptap/extension-placeholder";
+
+// --- Tiptap Core Extensions ---
+import { StarterKit } from "@tiptap/starter-kit";
+import { Image } from "@tiptap/extension-image";
+import { TaskItem } from "@tiptap/extension-task-item";
+import { TaskList } from "@tiptap/extension-task-list";
+import { TextAlign } from "@tiptap/extension-text-align";
+import { Typography } from "@tiptap/extension-typography";
+import { Highlight } from "@tiptap/extension-highlight";
+import { Subscript } from "@tiptap/extension-subscript";
+import { Superscript } from "@tiptap/extension-superscript";
+import { Underline } from "@tiptap/extension-underline";
+
+// --- Table Extensions ---
+import Table from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+
+// --- Custom Extensions ---
+import { Link } from "./tiptap-extension/link-extension";
+import { Selection } from "./tiptap-extension/selection-extension";
+import { TrailingNode } from "./tiptap-extension/trailing-node-extension";
+
+// --- UI Primitives ---
+import { Button } from "./tiptap-ui-primitive/button";
+import { Spacer } from "./tiptap-ui-primitive/spacer";
+import {
+  Toolbar,
+  ToolbarGroup,
+  ToolbarSeparator,
+} from "./tiptap-ui-primitive/toolbar";
+
+// --- Tiptap Node ---
+import "./_keyframe-animations.scss";
+import "./_variables.scss";
+import "./tiptap-node/code-block-node/code-block-node.scss";
+import "./tiptap-node/list-node/list-node.scss";
+import "./tiptap-node/image-node/image-node.scss";
+import "./tiptap-node/paragraph-node/paragraph-node.scss";
+import "./tiptap-node/table-node/table-node.scss";
+
+// --- Tiptap UI ---
+import { HeadingDropdownMenu } from "./tiptap-ui/heading-dropdown-menu";
+import { ListDropdownMenu } from "./tiptap-ui/list-dropdown-menu";
+import { NodeButton } from "./tiptap-ui/node-button";
+
+import { LinkPopover, LinkContent, LinkButton } from "./tiptap-ui/link-popover";
+import { MarkButton } from "./tiptap-ui/mark-button";
+import { TextAlignButton } from "./tiptap-ui/text-align-button";
+import { UndoRedoButton } from "./tiptap-ui/undo-redo-button";
+import { TableDropdownMenu } from "./tiptap-ui/table-dropdown-menu";
+
+// --- Icons ---
+import { ArrowLeftIcon } from "./tiptap-icons/arrow-left-icon";
+import { HighlighterIcon } from "./tiptap-icons/highlighter-icon";
+import { LinkIcon } from "./tiptap-icons/link-icon";
+
+// --- Hooks ---
+import { useMobile } from "./hooks/use-mobile";
+import { useWindowSize } from "./hooks/use-window-size";
+
+// --- Styles ---
+import "./editor.scss";
+import { TextAlignDropdownMenu } from "./tiptap-ui/text-align-dropdown-menu";
 import { cn } from "@/lib/utils";
 
+// --- Table Dropdown Menu Component ---
+const MainToolbarContent = ({
+  onLinkClick,
+  isMobile,
+}: {
+  onLinkClick: () => void;
+  isMobile: boolean;
+}) => {
+  return (
+    <>
+      <ToolbarGroup>
+        <UndoRedoButton action="undo" />
+        <UndoRedoButton action="redo" />
+      </ToolbarGroup>
+
+      <ToolbarSeparator />
+
+      <ToolbarGroup>
+        <HeadingDropdownMenu levels={[1, 2, 3, 4, 5, 6]} />
+        <ListDropdownMenu types={["bulletList", "orderedList", "taskList"]} />
+        <TextAlignDropdownMenu />
+        <NodeButton type="codeBlock" />
+        <NodeButton type="blockquote" />
+      </ToolbarGroup>
+
+      <ToolbarSeparator />
+
+      <ToolbarGroup>
+        <TableDropdownMenu />
+      </ToolbarGroup>
+
+      <ToolbarSeparator />
+
+      <ToolbarGroup>
+        <MarkButton type="bold" />
+        <MarkButton type="italic" />
+        <MarkButton type="strike" />
+        <MarkButton type="code" />
+        <MarkButton type="underline" />
+
+        {!isMobile ? <LinkPopover /> : <LinkButton onClick={onLinkClick} />}
+      </ToolbarGroup>
+
+      {/* <ToolbarSeparator /> */}
+
+      {/* <ToolbarGroup>
+        <TextAlignButton align="left" />
+        <TextAlignButton align="center" />
+        <TextAlignButton align="right" />
+        <TextAlignButton align="justify" />
+      </ToolbarGroup> */}
+
+      <ToolbarSeparator />
+
+      <Spacer />
+
+      {isMobile && <ToolbarSeparator />}
+    </>
+  );
+};
+
+const MobileToolbarContent = ({
+  type,
+  onBack,
+}: {
+  type: "highlighter" | "link";
+  onBack: () => void;
+}) => (
+  <>
+    <ToolbarGroup>
+      <Button data-style="ghost" onClick={onBack}>
+        <ArrowLeftIcon className="tiptap-button-icon" />
+        {type === "highlighter" ? (
+          <HighlighterIcon className="tiptap-button-icon" />
+        ) : (
+          <LinkIcon className="tiptap-button-icon" />
+        )}
+      </Button>
+    </ToolbarGroup>
+
+    <ToolbarSeparator />
+
+    {<LinkContent />}
+  </>
+);
+
 interface EditorProps {
-  markdown: string;
-  placeholder?: string;
-  onChange: (markdown: string) => void;
-  onBlur?: () => void;
+  value?: string;
+  onChange?: (html: string) => void;
   className?: string;
+  placeholder?: string;
 }
 
 export function Editor({
-  markdown,
-  placeholder,
+  value,
   onChange,
-  onBlur,
   className,
+  placeholder,
 }: EditorProps) {
-  return (
-    <div
-      className={cn("rounded-[7px] border border-border/20 bg-card", className)}
-    >
-      <MDXEditor
-        markdown={markdown || "\u200B"}
-        placeholder={placeholder}
-        plugins={[
-          headingsPlugin(),
-          quotePlugin(),
-          listsPlugin(),
-          thematicBreakPlugin(),
-          markdownShortcutPlugin(),
-          tablePlugin(),
-          linkPlugin(),
-          linkDialogPlugin(),
-          diffSourcePlugin(),
-          toolbarPlugin({
-            toolbarClassName: "!rounded-b-none !border-b-0",
-            toolbarContents: () => (
-              <>
-                <DiffSourceToggleWrapper>
-                  <UndoRedo />
-                  <BoldItalicUnderlineToggles />
-                  <Separator />
-                  <BlockTypeSelect />
-                  <Separator />
-                  <ListsToggle />
-                  <CreateLink />
-                  <CodeToggle />
-                  <Separator />
-                  <InsertTable />
-                </DiffSourceToggleWrapper>
-              </>
-            ),
-          }),
-        ]}
-        onChange={onChange}
-        onBlur={onBlur}
-        contentEditableClassName={
-          "prose max-h-[500px] overflow-y-auto min-h-[200px]"
+  console.log("value", value);
+
+  const isMobile = useMobile();
+  const windowSize = useWindowSize();
+  const [mobileView, setMobileView] = React.useState<
+    "main" | "highlighter" | "link"
+  >("main");
+  const [rect, setRect] = React.useState<
+    Pick<DOMRect, "x" | "y" | "width" | "height">
+  >({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  });
+  const toolbarRef = React.useRef<HTMLDivElement>(null);
+
+  // 用于存储初始内容的引用值
+  const initialContent = React.useRef(value);
+
+  const editor = useEditor({
+    autofocus: true,
+    immediatelyRender: false,
+    content: value,
+    editorProps: {
+      attributes: {
+        autocomplete: "off",
+        autocorrect: "off",
+        autocapitalize: "off",
+        "aria-label": "Main content area, start typing to enter text.",
+      },
+    },
+    extensions: [
+      StarterKit,
+      Placeholder.configure({
+        placeholder: placeholder,
+      }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Underline,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Highlight.configure({ multicolor: true }),
+      Image,
+      Typography,
+      Superscript,
+      Subscript,
+
+      // Table extensions
+      Table.configure({
+        resizable: true,
+        lastColumnResizable: true,
+        allowTableNodeSelection: true,
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
+
+      Selection,
+
+      TrailingNode,
+      Link.configure({ openOnClick: false }),
+    ],
+    onUpdate: ({ editor }) => {
+      if (onChange) {
+        onChange(editor.getHTML());
+      }
+    },
+  });
+
+  React.useEffect(() => {
+    if (editor && value !== undefined && value !== initialContent.current) {
+      if (editor.getHTML() !== value) {
+        editor.commands.setContent(value);
+        initialContent.current = value;
+      }
+    }
+  }, [editor, value]);
+
+  React.useEffect(() => {
+    const updateRect = () => {
+      setRect(document.body.getBoundingClientRect());
+    };
+
+    updateRect();
+
+    const resizeObserver = new ResizeObserver(updateRect);
+    resizeObserver.observe(document.body);
+
+    window.addEventListener("scroll", updateRect);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("scroll", updateRect);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const checkCursorVisibility = () => {
+      if (!editor || !toolbarRef.current) return;
+
+      const { state, view } = editor;
+      if (!view.hasFocus()) return;
+
+      const { from } = state.selection;
+      const cursorCoords = view.coordsAtPos(from);
+
+      if (windowSize.height < rect.height) {
+        if (cursorCoords && toolbarRef.current) {
+          const toolbarHeight =
+            toolbarRef.current.getBoundingClientRect().height;
+          const isEnoughSpace =
+            windowSize.height - cursorCoords.top - toolbarHeight > 0;
+
+          // If not enough space, scroll until the cursor is the middle of the screen
+          if (!isEnoughSpace) {
+            const scrollY =
+              cursorCoords.top - windowSize.height / 2 + toolbarHeight;
+            window.scrollTo({
+              top: scrollY,
+              behavior: "smooth",
+            });
+          }
         }
-      />
-    </div>
+      }
+    };
+
+    checkCursorVisibility();
+  }, [editor, rect.height, windowSize.height]);
+
+  React.useEffect(() => {
+    document.documentElement.classList.add("dark");
+  }, []);
+
+  React.useEffect(() => {
+    if (!isMobile && mobileView !== "main") {
+      setMobileView("main");
+    }
+  }, [isMobile, mobileView]);
+
+  return (
+    <EditorContext.Provider value={{ editor }}>
+      <div className={cn("tiptap-editor-container", className)}>
+        <Toolbar
+          ref={toolbarRef}
+          style={
+            isMobile
+              ? {
+                  bottom: `calc(100% - ${windowSize.height - rect.y}px)`,
+                }
+              : {}
+          }
+        >
+          {mobileView === "main" ? (
+            <MainToolbarContent
+              onLinkClick={() => setMobileView("link")}
+              isMobile={isMobile}
+            />
+          ) : (
+            <MobileToolbarContent
+              type={mobileView === "highlighter" ? "highlighter" : "link"}
+              onBack={() => setMobileView("main")}
+            />
+          )}
+        </Toolbar>
+
+        <div className="content-wrapper">
+          <EditorContent
+            editor={editor}
+            role="presentation"
+            className="simple-editor-content"
+          />
+        </div>
+      </div>
+    </EditorContext.Provider>
   );
 }

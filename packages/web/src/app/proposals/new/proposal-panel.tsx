@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react";
 import { Controller } from "react-hook-form";
 import { useForm } from "react-hook-form";
 
-import { Editor } from "@/components/editor2";
+import { Editor } from "@/components/editor";
 import { ErrorMessage } from "@/components/error-message";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";

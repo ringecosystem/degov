@@ -15,10 +15,13 @@ export const proposalSchema = z.object({
     .string()
     .min(1, "Proposal description is required")
     .refine((val) => {
-      console.log("val", val);
+      if (!val) return false;
+      const cleanContent = val
+        .replace(/<[^>]*>/g, "")
+        .replace(/\u200B/g, "")
+        .replace(/\s/g, "");
 
-      if (val === "" || val === "<p></p>") return false;
-      return true;
+      return cleanContent.length > 0;
     }, "Proposal description is required"),
 });
 
