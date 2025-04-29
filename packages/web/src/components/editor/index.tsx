@@ -6,6 +6,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 
 // --- Tiptap Core Extensions ---
 import { StarterKit } from "@tiptap/starter-kit";
+import { Markdown } from "tiptap-markdown";
 import { Image } from "@tiptap/extension-image";
 import { TaskItem } from "@tiptap/extension-task-item";
 import { TaskList } from "@tiptap/extension-task-list";
@@ -24,6 +25,7 @@ import TableHeader from "@tiptap/extension-table-header";
 
 // --- Custom Extensions ---
 import { Link } from "./tiptap-extension/link-extension";
+import { MarkdownPaste } from "./tiptap-extension/markdown-extension";
 import { Selection } from "./tiptap-extension/selection-extension";
 import { TrailingNode } from "./tiptap-extension/trailing-node-extension";
 
@@ -169,8 +171,6 @@ export function Editor({
   className,
   placeholder,
 }: EditorProps) {
-  console.log("value", value);
-
   const isMobile = useMobile();
   const windowSize = useWindowSize();
   const [mobileView, setMobileView] = React.useState<
@@ -203,6 +203,9 @@ export function Editor({
     },
     extensions: [
       StarterKit,
+      Markdown.configure({
+        transformPastedText: true,
+      }),
       Placeholder.configure({
         placeholder: placeholder,
       }),
@@ -229,6 +232,7 @@ export function Editor({
       Selection,
 
       TrailingNode,
+      MarkdownPaste,
       Link.configure({ openOnClick: false }),
     ],
     onUpdate: ({ editor }) => {

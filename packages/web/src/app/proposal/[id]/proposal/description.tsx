@@ -1,4 +1,9 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
+import { useMemo } from "react";
+
+marked.use();
 const Loading = () => {
   return (
     <div className="flex flex-col h-[200px] w-full  gap-4">
@@ -17,6 +22,12 @@ export const Description = ({
   description?: string;
   isFetching: boolean;
 }) => {
+  const sanitizedHtml = useMemo(() => {
+    const html = marked.parse(description ?? "") as string;
+    if (!html) return "";
+    return DOMPurify.sanitize(html);
+  }, [description]);
+
   return isFetching ? (
     <Loading />
   ) : (
@@ -28,7 +39,7 @@ export const Description = ({
         }}
         className="text-balance"
         dangerouslySetInnerHTML={{
-          __html: description ?? "",
+          __html: sanitizedHtml,
         }}
       ></div>
     </div>
