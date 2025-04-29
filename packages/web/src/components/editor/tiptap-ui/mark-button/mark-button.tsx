@@ -1,12 +1,12 @@
 "use client";
 
-import * as React from "react";
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import * as React from "react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- Icons ---
+import { isMarkInSchema } from "../../lib/tiptap-utils";
 import { BoldIcon } from "../../tiptap-icons/bold-icon";
 import { Code2Icon } from "../../tiptap-icons/code2-icon";
 import { ItalicIcon } from "../../tiptap-icons/italic-icon";
@@ -14,12 +14,10 @@ import { StrikeIcon } from "../../tiptap-icons/strike-icon";
 import { SubscriptIcon } from "../../tiptap-icons/subscript-icon";
 import { SuperscriptIcon } from "../../tiptap-icons/superscript-icon";
 import { UnderlineIcon } from "../../tiptap-icons/underline-icon";
-
-// --- Lib ---
-import { isMarkInSchema } from "../../lib/tiptap-utils";
-
 // --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { Button } from "../../tiptap-ui-primitive/button";
+
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 export type Mark =
   | "bold"

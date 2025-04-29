@@ -1,20 +1,18 @@
 "use client";
 
-import * as React from "react";
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import * as React from "react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- Icons ---
+import { isNodeInSchema } from "../../lib/tiptap-utils";
 import { BlockQuoteIcon } from "../../tiptap-icons/block-quote-icon";
 import { CodeBlockIcon } from "../../tiptap-icons/code-block-icon";
-
-// --- Lib ---
-import { isNodeInSchema } from "../../lib/tiptap-utils";
-
 // --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { Button } from "../../tiptap-ui-primitive/button";
+
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 export type NodeType = "codeBlock" | "blockquote";
 

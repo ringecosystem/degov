@@ -1,24 +1,22 @@
 "use client";
 
+import { type Editor } from "@tiptap/react";
 import * as React from "react";
-import { useEditor, type Editor } from "@tiptap/react";
 
 // --- Icons ---
-import { ChevronDownIcon } from "../../tiptap-icons/chevron-down-icon";
 // import { TextAlignLeftIcon } from "../../tiptap-icons/text-align-left-icon";
 // import { TextAlignCenterIcon } from "../../tiptap-icons/text-align-center-icon";
 // import { TextAlignRightIcon } from "../../tiptap-icons/text-align-right-icon";
 // import { TextAlignJustifyIcon } from "../../tiptap-icons/text-align-justify-icon";
-import { AlignLeftIcon } from "../../tiptap-icons/align-left-icon";
-import { AlignCenterIcon } from "../../tiptap-icons/align-center-icon";
-import { AlignRightIcon } from "../../tiptap-icons/align-right-icon";
-import { AlignJustifyIcon } from "../../tiptap-icons/align-justify-icon";
-
-// --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
+import { AlignCenterIcon } from "../../tiptap-icons/align-center-icon";
+import { AlignJustifyIcon } from "../../tiptap-icons/align-justify-icon";
+// --- Hooks ---
+import { AlignLeftIcon } from "../../tiptap-icons/align-left-icon";
+import { AlignRightIcon } from "../../tiptap-icons/align-right-icon";
+import { ChevronDownIcon } from "../../tiptap-icons/chevron-down-icon";
 // --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { Button } from "../../tiptap-ui-primitive/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -26,9 +24,10 @@ import {
   DropdownMenuItem,
   DropdownMenuGroup,
 } from "../../tiptap-ui-primitive/dropdown-menu";
-
 // --- Text Align Button ---
 import { TextAlignButton } from "../text-align-button";
+
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 type Align = "left" | "center" | "right" | "justify";
 
@@ -49,7 +48,6 @@ export interface TextAlignDropdownMenuProps extends Omit<ButtonProps, "type"> {
 export function TextAlignDropdownMenu({
   editor: providedEditor,
   aligns = ["left", "center", "right", "justify"],
-  hideWhenUnavailable = false,
   onOpenChange,
   ...props
 }: TextAlignDropdownMenuProps) {

@@ -1,19 +1,19 @@
 "use client";
 
-import * as React from "react";
 import { type Editor, type ChainedCommands } from "@tiptap/react";
+import * as React from "react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- Icons ---
 import { AlignCenterIcon } from "../../tiptap-icons/align-center-icon";
 import { AlignJustifyIcon } from "../../tiptap-icons/align-justify-icon";
 import { AlignLeftIcon } from "../../tiptap-icons/align-left-icon";
 import { AlignRightIcon } from "../../tiptap-icons/align-right-icon";
-
 // --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { Button } from "../../tiptap-ui-primitive/button";
+
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 export type TextAlign = "left" | "center" | "right" | "justify";
 

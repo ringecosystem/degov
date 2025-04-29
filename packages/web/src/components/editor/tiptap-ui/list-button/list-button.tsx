@@ -1,21 +1,19 @@
 "use client";
 
-import * as React from "react";
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import * as React from "react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- Icons ---
+import { isNodeInSchema } from "../../lib/tiptap-utils";
 import { ListIcon } from "../../tiptap-icons/list-icon";
 import { ListOrderedIcon } from "../../tiptap-icons/list-ordered-icon";
 import { ListTodoIcon } from "../../tiptap-icons/list-todo-icon";
-
-// --- Lib ---
-import { isNodeInSchema } from "../../lib/tiptap-utils";
-
 // --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { Button } from "../../tiptap-ui-primitive/button";
+
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 export type ListType = "bulletList" | "orderedList" | "taskList";
 

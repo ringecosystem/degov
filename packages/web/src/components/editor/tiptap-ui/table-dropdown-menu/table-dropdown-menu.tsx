@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Editor } from "@tiptap/react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { ChevronDownIcon } from "../../tiptap-icons/chevron-down-icon";
+import { Button } from "../../tiptap-ui-primitive/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -16,8 +15,9 @@ import {
   DropdownMenuItem,
 } from "../../tiptap-ui-primitive/dropdown-menu";
 
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 // --- Icons ---
-import { ChevronDownIcon } from "../../tiptap-icons/chevron-down-icon";
+import type { Editor } from "@tiptap/react";
 
 export interface TableDropdownMenuProps extends Omit<ButtonProps, "type"> {
   /**
@@ -36,17 +36,13 @@ export const TableDropdownMenu = React.forwardRef<
   HTMLButtonElement,
   TableDropdownMenuProps
 >(
-  (
-    {
-      editor: providedEditor,
-      hideWhenUnavailable = false,
-      onOpenChange,
-      className = "",
-      children,
-      ...props
-    },
-    ref
-  ) => {
+  ({
+    editor: providedEditor,
+    onOpenChange,
+    className = "",
+    children,
+    ...props
+  }) => {
     const editor = useTiptapEditor(providedEditor);
     const [isOpen, setIsOpen] = React.useState(false);
 
@@ -102,16 +98,6 @@ export const TableDropdownMenu = React.forwardRef<
     const deleteTable = React.useCallback(() => {
       if (!editor) return;
       editor.chain().focus().deleteTable().run();
-    }, [editor]);
-
-    const toggleHeaderColumn = React.useCallback(() => {
-      if (!editor) return;
-      editor.chain().focus().toggleHeaderColumn().run();
-    }, [editor]);
-
-    const toggleHeaderRow = React.useCallback(() => {
-      if (!editor) return;
-      editor.chain().focus().toggleHeaderRow().run();
     }, [editor]);
 
     const mergeOrSplit = React.useCallback(() => {

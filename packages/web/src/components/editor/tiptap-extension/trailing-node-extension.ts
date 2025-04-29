@@ -1,5 +1,6 @@
-import { Extension } from "@tiptap/react"
 import { Plugin, PluginKey } from "@tiptap/pm/state"
+import { Extension } from "@tiptap/react"
+
 import type { Node, NodeType } from "@tiptap/pm/model"
 
 function nodeEqualsType({

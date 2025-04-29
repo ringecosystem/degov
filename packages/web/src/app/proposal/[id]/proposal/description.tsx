@@ -1,7 +1,8 @@
-import { Skeleton } from "@/components/ui/skeleton";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useMemo } from "react";
+
+import { Skeleton } from "@/components/ui/skeleton";
 
 marked.use();
 const Loading = () => {

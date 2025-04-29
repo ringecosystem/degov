@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
+
 import { Comments } from "./comments";
 import { Description } from "./description";
 

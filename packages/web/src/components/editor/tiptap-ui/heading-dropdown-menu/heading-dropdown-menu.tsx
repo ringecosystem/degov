@@ -1,28 +1,16 @@
 "use client";
 
-import * as React from "react";
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import * as React from "react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- Icons ---
+import { isNodeInSchema } from "../../lib/tiptap-utils";
 import { ChevronDownIcon } from "../../tiptap-icons/chevron-down-icon";
 import { HeadingIcon } from "../../tiptap-icons/heading-icon";
-
-// --- Lib ---
-import { isNodeInSchema } from "../../lib/tiptap-utils";
-
 // --- Tiptap UI ---
-import {
-  HeadingButton,
-  headingIcons,
-  type Level,
-  getFormattedHeadingName,
-} from "../heading-button/heading-button";
-
-// --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { Button } from "../../tiptap-ui-primitive/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -30,6 +18,14 @@ import {
   DropdownMenuItem,
   DropdownMenuGroup,
 } from "../../tiptap-ui-primitive/dropdown-menu";
+import {
+  HeadingButton,
+  headingIcons,
+  type Level,
+  getFormattedHeadingName,
+} from "../heading-button/heading-button";
+
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 export interface HeadingDropdownMenuProps extends Omit<ButtonProps, "type"> {
   editor?: Editor | null;

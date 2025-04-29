@@ -1,6 +1,6 @@
-import { Extension, isNodeSelection } from "@tiptap/react"
 import { Plugin, PluginKey } from "@tiptap/pm/state"
 import { Decoration, DecorationSet } from "@tiptap/pm/view"
+import { Extension, isNodeSelection } from "@tiptap/react"
 
 export const Selection = Extension.create({
   name: "selection",

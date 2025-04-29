@@ -1,6 +1,4 @@
 "use client";
-
-import * as React from "react";
 import {
   autoUpdate,
   flip,
@@ -8,7 +6,6 @@ import {
   FloatingList,
   FloatingPortal,
   offset,
-  Placement,
   shift,
   useClick,
   useDismiss,
@@ -20,8 +17,12 @@ import {
   useRole,
   useTypeahead,
 } from "@floating-ui/react";
+import * as React from "react";
+
 import "./dropdown-menu.scss";
 import { Separator } from "../separator";
+
+import type { Placement } from "@floating-ui/react";
 
 interface DropdownMenuOptions {
   initialOpen?: boolean;

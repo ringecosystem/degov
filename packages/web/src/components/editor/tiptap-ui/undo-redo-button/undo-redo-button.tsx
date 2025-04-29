@@ -1,17 +1,17 @@
 "use client";
 
-import * as React from "react";
 import { type Editor } from "@tiptap/react";
+import * as React from "react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- Icons ---
 import { Redo2Icon } from "../../tiptap-icons/redo2-icon";
 import { Undo2Icon } from "../../tiptap-icons/undo2-icon";
-
 // --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { Button } from "../../tiptap-ui-primitive/button";
+
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 export type HistoryAction = "undo" | "redo";
 

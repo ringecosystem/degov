@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+
 import { Separator } from "../separator";
 import "./toolbar.scss";
 
@@ -239,6 +240,7 @@ export const Toolbar = React.forwardRef<HTMLDivElement, ToolbarProps>(
 
     return (
       <div
+        // eslint-disable-next-line react-compiler/react-compiler
         ref={mergeRefs([toolbarRef, ref])}
         role="toolbar"
         aria-label="toolbar"
@@ -263,6 +265,7 @@ export const ToolbarGroup = React.forwardRef<HTMLDivElement, BaseProps>(
 
     return (
       <div
+        // eslint-disable-next-line react-compiler/react-compiler
         ref={mergeRefs([groupRef, ref])}
         role="group"
         className={`tiptap-toolbar-group ${className || ""}`}
@@ -285,6 +288,7 @@ export const ToolbarSeparator = React.forwardRef<HTMLDivElement, BaseProps>(
 
     return (
       <Separator
+        // eslint-disable-next-line react-compiler/react-compiler
         ref={mergeRefs([separatorRef, ref])}
         orientation="vertical"
         decorative

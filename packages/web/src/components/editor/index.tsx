@@ -1,35 +1,47 @@
 "use client";
 
-import * as React from "react";
-import { EditorContent, EditorContext, useEditor } from "@tiptap/react";
-import Placeholder from "@tiptap/extension-placeholder";
-
-// --- Tiptap Core Extensions ---
-import { StarterKit } from "@tiptap/starter-kit";
-import { Markdown } from "tiptap-markdown";
+import { Highlight } from "@tiptap/extension-highlight";
 import { Image } from "@tiptap/extension-image";
+import Placeholder from "@tiptap/extension-placeholder";
+import { Subscript } from "@tiptap/extension-subscript";
+import { Superscript } from "@tiptap/extension-superscript";
+import Table from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
 import { TaskItem } from "@tiptap/extension-task-item";
 import { TaskList } from "@tiptap/extension-task-list";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { Typography } from "@tiptap/extension-typography";
-import { Highlight } from "@tiptap/extension-highlight";
-import { Subscript } from "@tiptap/extension-subscript";
-import { Superscript } from "@tiptap/extension-superscript";
 import { Underline } from "@tiptap/extension-underline";
+import { EditorContent, EditorContext, useEditor } from "@tiptap/react";
+import { StarterKit } from "@tiptap/starter-kit";
+import * as React from "react";
+// --- Tiptap Core Extensions ---
+import { Markdown } from "tiptap-markdown";
 
-// --- Table Extensions ---
-import Table from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
+import { cn } from "@/lib/utils";
 
+// --- Hooks ---
+import { useMobile } from "./hooks/use-mobile";
+import { useWindowSize } from "./hooks/use-window-size";
 // --- Custom Extensions ---
 import { Link } from "./tiptap-extension/link-extension";
 import { MarkdownPaste } from "./tiptap-extension/markdown-extension";
 import { Selection } from "./tiptap-extension/selection-extension";
 import { TrailingNode } from "./tiptap-extension/trailing-node-extension";
-
 // --- UI Primitives ---
+import { ArrowLeftIcon } from "./tiptap-icons/arrow-left-icon";
+import { HighlighterIcon } from "./tiptap-icons/highlighter-icon";
+import { LinkIcon } from "./tiptap-icons/link-icon";
+import { HeadingDropdownMenu } from "./tiptap-ui/heading-dropdown-menu";
+import { LinkPopover, LinkContent, LinkButton } from "./tiptap-ui/link-popover";
+import { ListDropdownMenu } from "./tiptap-ui/list-dropdown-menu";
+import { MarkButton } from "./tiptap-ui/mark-button";
+import { NodeButton } from "./tiptap-ui/node-button";
+import { TableDropdownMenu } from "./tiptap-ui/table-dropdown-menu";
+import { TextAlignDropdownMenu } from "./tiptap-ui/text-align-dropdown-menu";
+import { UndoRedoButton } from "./tiptap-ui/undo-redo-button";
 import { Button } from "./tiptap-ui-primitive/button";
 import { Spacer } from "./tiptap-ui-primitive/spacer";
 import {
@@ -37,7 +49,6 @@ import {
   ToolbarGroup,
   ToolbarSeparator,
 } from "./tiptap-ui-primitive/toolbar";
-
 // --- Tiptap Node ---
 import "./_keyframe-animations.scss";
 import "./_variables.scss";
@@ -46,31 +57,8 @@ import "./tiptap-node/list-node/list-node.scss";
 import "./tiptap-node/image-node/image-node.scss";
 import "./tiptap-node/paragraph-node/paragraph-node.scss";
 import "./tiptap-node/table-node/table-node.scss";
-
-// --- Tiptap UI ---
-import { HeadingDropdownMenu } from "./tiptap-ui/heading-dropdown-menu";
-import { ListDropdownMenu } from "./tiptap-ui/list-dropdown-menu";
-import { NodeButton } from "./tiptap-ui/node-button";
-
-import { LinkPopover, LinkContent, LinkButton } from "./tiptap-ui/link-popover";
-import { MarkButton } from "./tiptap-ui/mark-button";
-import { TextAlignButton } from "./tiptap-ui/text-align-button";
-import { UndoRedoButton } from "./tiptap-ui/undo-redo-button";
-import { TableDropdownMenu } from "./tiptap-ui/table-dropdown-menu";
-
-// --- Icons ---
-import { ArrowLeftIcon } from "./tiptap-icons/arrow-left-icon";
-import { HighlighterIcon } from "./tiptap-icons/highlighter-icon";
-import { LinkIcon } from "./tiptap-icons/link-icon";
-
-// --- Hooks ---
-import { useMobile } from "./hooks/use-mobile";
-import { useWindowSize } from "./hooks/use-window-size";
-
 // --- Styles ---
 import "./editor.scss";
-import { TextAlignDropdownMenu } from "./tiptap-ui/text-align-dropdown-menu";
-import { cn } from "@/lib/utils";
 
 // --- Table Dropdown Menu Component ---
 const MainToolbarContent = ({

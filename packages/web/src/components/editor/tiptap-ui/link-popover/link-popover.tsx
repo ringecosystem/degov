@@ -1,28 +1,26 @@
 "use client";
 
-import * as React from "react";
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import * as React from "react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- Icons ---
+import { isMarkInSchema } from "../../lib/tiptap-utils";
 import { CornerDownLeftIcon } from "../../tiptap-icons/corner-down-left-icon";
 import { ExternalLinkIcon } from "../../tiptap-icons/external-link-icon";
 import { LinkIcon } from "../../tiptap-icons/link-icon";
 import { TrashIcon } from "../../tiptap-icons/trash-icon";
-
-// --- Lib ---
-import { isMarkInSchema } from "../../lib/tiptap-utils";
-
 // --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
+import { Button } from "../../tiptap-ui-primitive/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "../../tiptap-ui-primitive/popover";
 import { Separator } from "../../tiptap-ui-primitive/separator";
+
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 // --- Styles ---
 import "./link-popover.scss";

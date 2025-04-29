@@ -1,19 +1,23 @@
 "use client";
 
-import * as React from "react";
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import * as React from "react";
 
 // --- Hooks ---
 import { useTiptapEditor } from "../../hooks/use-tiptap-editor";
-
 // --- Icons ---
+import { isNodeInSchema } from "../../lib/tiptap-utils";
 import { ChevronDownIcon } from "../../tiptap-icons/chevron-down-icon";
 import { ListIcon } from "../../tiptap-icons/list-icon";
-
-// --- Lib ---
-import { isNodeInSchema } from "../../lib/tiptap-utils";
-
 // --- Tiptap UI ---
+import { Button } from "../../tiptap-ui-primitive/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+} from "../../tiptap-ui-primitive/dropdown-menu";
 import {
   ListButton,
   canToggleList,
@@ -22,15 +26,7 @@ import {
   type ListType,
 } from "../list-button/list-button";
 
-// --- UI Primitives ---
-import { Button, ButtonProps } from "../../tiptap-ui-primitive/button";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-} from "../../tiptap-ui-primitive/dropdown-menu";
+import type { ButtonProps } from "../../tiptap-ui-primitive/button";
 
 export interface ListDropdownMenuProps extends Omit<ButtonProps, "type"> {
   /**

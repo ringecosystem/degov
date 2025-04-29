@@ -1,5 +1,3 @@
-import * as React from "react";
-import type { Placement } from "@floating-ui/react";
 import {
   useFloating,
   autoUpdate,
@@ -15,6 +13,9 @@ import {
   limitShift,
   FloatingPortal,
 } from "@floating-ui/react";
+import * as React from "react";
+
+import type { Placement } from "@floating-ui/react";
 import "./popover.scss";
 
 type PopoverContextValue = ReturnType<typeof usePopover> & {
@@ -149,8 +150,10 @@ const PopoverTrigger = React.forwardRef<HTMLElement, TriggerElementProps>(
     const context = usePopoverContext();
     const childrenRef = React.isValidElement(children)
       ? parseInt(React.version, 10) >= 19
-        ? (children.props as any).ref
-        : (children as any).ref
+        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (children.props as any).ref
+        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (children as any).ref
       : undefined;
     const ref = useMergeRefs([context.refs.setReference, propRef, childrenRef]);
 
@@ -160,6 +163,7 @@ const PopoverTrigger = React.forwardRef<HTMLElement, TriggerElementProps>(
         context.getReferenceProps({
           ref,
           ...props,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...(children.props as any),
           "data-state": context.open ? "open" : "closed",
         })
