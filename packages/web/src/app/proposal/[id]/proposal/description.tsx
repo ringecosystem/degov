@@ -32,7 +32,7 @@ export const Description = ({
   return isFetching ? (
     <Loading />
   ) : (
-    <div className="prose">
+    <div className="markdown-body">
       <div
         style={{
           whiteSpace: "wrap",

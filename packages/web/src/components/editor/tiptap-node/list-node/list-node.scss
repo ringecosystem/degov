@@ -3,7 +3,7 @@
   --tt-checklist-bg-active-color: var(--tt-gray-light-a-900);
   --tt-checklist-border-color: var(--tt-gray-light-a-200);
   --tt-checklist-border-active-color: var(--tt-gray-light-a-900);
-  --tt-checklist-check-icon-color: var(--white);
+  --tt-checklist-check-icon-color: #fff;
   --tt-checklist-text-active: var(--tt-gray-light-a-500);
 
   .dark & {
@@ -11,7 +11,7 @@
     --tt-checklist-bg-active-color: var(--tt-gray-dark-a-900);
     --tt-checklist-border-color: var(--tt-gray-dark-a-200);
     --tt-checklist-border-active-color: var(--tt-gray-dark-a-900);
-    --tt-checklist-check-icon-color: var(--black);
+    --tt-checklist-check-icon-color: #000;
     --tt-checklist-text-active: var(--tt-gray-dark-a-500);
   }
 }

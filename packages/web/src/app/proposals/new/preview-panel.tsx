@@ -54,7 +54,7 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
           </div>
         </header>
         <div
-          className="prose"
+          className="markdown-body"
           dangerouslySetInnerHTML={{
             __html: proposalContent?.value?.html || "",
           }}
