@@ -283,11 +283,7 @@ export class TokenHandler {
       storedDelegateFromWithTo.transactionHash =
         currentDelegate.transactionHash;
       // should keep delegate self record
-      if (
-        storedDelegateFromWithTo.power === 0n &&
-        storedDelegateFromWithTo.fromDelegate !==
-          storedDelegateFromWithTo.toDelegate
-      ) {
+      if (storedDelegateFromWithTo.power === 0n) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
       } else {
         await this.ctx.store.save(storedDelegateFromWithTo);

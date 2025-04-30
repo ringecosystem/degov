@@ -1242,8 +1242,27 @@ const recordsFor_0x9Fc3d61 = [
       newVotes: 50000000000000000000n,
     },
   ],
+  // [
+  //   {
+  //     method: "DelegateChanged",
+  //     delegator: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     fromDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     toDelegate: "0xaFc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //   },
+  //   {
+  //     method: "DelegateVotesChanged",
+  //     delegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     previousVotes: 0n,
+  //     newVotes: 0n,
+  //   },
+  //   {
+  //     method: "DelegateVotesChanged",
+  //     delegate: "0xaFc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     previousVotes: 0n,
+  //     newVotes: 0n,
+  //   },
+  // ],
 ];
-
 
 test("testTokens", () => {
   const records = recordsFor_0x9Fc3d61;
@@ -1327,9 +1346,7 @@ test("testTokens", () => {
 
   const dss = ds.getDelegates();
   console.log("delegates: ", dss);
-  if (!dss.length) {
-    console.log("mapping: ", ds.getMapping());
-  }
+  console.log("mapping: ", ds.getMapping());
 });
 
 function DelegateStorage() {
@@ -1370,11 +1387,7 @@ dsfn.pushDelegator = function (delegator, options) {
     return;
   }
   storedDelegateFromWithTo.power += delegator.power;
-  if (
-    storedDelegateFromWithTo.power === 0n &&
-    storedDelegateFromWithTo.fromDelegate !==
-      storedDelegateFromWithTo.toDelegate
-  ) {
+  if (storedDelegateFromWithTo.power === 0n) {
     this.delegates = this.delegates.filter(
       (item) => item.id !== storedDelegateFromWithTo.id
     );
