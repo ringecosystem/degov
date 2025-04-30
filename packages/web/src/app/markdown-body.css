@@ -1373,6 +1373,9 @@
   .markdown-body .highlight pre:has(+.zeroclipboard-container) {
     min-height: 52px;
   }
+  .markdown-body ul[data-type="taskList"] li p,  .markdown-body ol[data-type="taskList"] li p {
+    margin: 0;
+  }
 
   .markdown-body {
     --tt-checklist-bg-color: var(--tt-gray-light-a-100);
