@@ -12,6 +12,7 @@ interface OverviewProps {
   isLoadingTokenBalance?: boolean;
   delegationStatusText?: React.ReactNode;
   isDelegateMappingsLoading?: boolean;
+  isOwnProfile?: boolean;
 }
 export const Overview = ({
   address,
@@ -19,6 +20,7 @@ export const Overview = ({
   isLoadingTokenBalance,
   delegationStatusText,
   isDelegateMappingsLoading,
+  isOwnProfile,
 }: OverviewProps) => {
   const { formattedVotes, isLoading } = useAddressVotes(address);
 
@@ -35,7 +37,12 @@ export const Overview = ({
         value: delegationStatusText,
         isLoading: isDelegateMappingsLoading,
       },
-      { title: "My Proposals", value: "100", isLoading },
+      {
+        title: "My Proposals",
+        value: "100",
+        isLoading,
+        link: isOwnProfile ? "/proposals?type=my" : undefined,
+      },
     ];
   }, [
     formattedVotes,
@@ -44,6 +51,7 @@ export const Overview = ({
     isLoadingTokenBalance,
     delegationStatusText,
     isDelegateMappingsLoading,
+    isOwnProfile,
   ]);
   return (
     <div className="grid grid-cols-4 gap-[20px] w-full">
@@ -53,6 +61,7 @@ export const Overview = ({
           title={item.title}
           value={item.value}
           isLoading={item.isLoading}
+          link={item.link}
         />
       ))}
     </div>

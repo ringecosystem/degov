@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { ProposalsTable } from "@/components/proposals-table";
@@ -17,12 +17,50 @@ import {
 } from "@/components/ui/select";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
-export default function Proposals() {
+
+function ProposalsContent() {
   const router = useRouter();
-  const [support, setSupport] = useState<"all" | "1" | "2" | "3">("all");
+  const searchParams = useSearchParams();
+  const typeParam = searchParams.get("type");
+  const supportParam = searchParams.get("support");
+
+  const [support, setSupport] = useState<"all" | "1" | "2" | "3">(
+    (supportParam as "all" | "1" | "2" | "3") || "all"
+  );
   const { isConnected, address } = useAccount();
 
-  const [isMyProposals, setIsMyProposals] = useState<CheckedState>(false);
+  const [isMyProposals, setIsMyProposals] = useState<CheckedState>(
+    typeParam === "my"
+  );
+
+  // Update URL when filters change
+  const updateUrlParams = (myProposals: boolean, supportValue: string) => {
+    const params = new URLSearchParams(searchParams);
+
+    if (myProposals) {
+      params.set("type", "my");
+    } else {
+      params.delete("type");
+    }
+
+    if (supportValue !== "all") {
+      params.set("support", supportValue);
+    } else {
+      params.delete("support");
+    }
+
+    router.replace(`/proposals?${params.toString()}`);
+  };
+
+  const handleMyProposalsChange = (checked: CheckedState) => {
+    setIsMyProposals(checked);
+    updateUrlParams(!!checked, support);
+  };
+
+  const handleSupportChange = (value: "all" | "1" | "2" | "3") => {
+    setSupport(value);
+    updateUrlParams(!!isMyProposals, value);
+  };
 
   return (
     <div className="flex flex-col gap-[30px]">
@@ -36,7 +74,7 @@ export default function Proposals() {
                 <Checkbox
                   id="my-proposals"
                   checked={isMyProposals}
-                  onCheckedChange={setIsMyProposals}
+                  onCheckedChange={handleMyProposalsChange}
                 />
                 <label
                   htmlFor="my-proposals"
@@ -47,9 +85,7 @@ export default function Proposals() {
               </div>
               <Select
                 value={support}
-                onValueChange={(value) =>
-                  setSupport(value as "all" | "1" | "2" | "3")
-                }
+                onValueChange={handleSupportChange}
                 disabled={!isMyProposals}
               >
                 <SelectTrigger className="w-[130px] rounded-[100px] border border-border px-[10px]">
@@ -88,5 +124,23 @@ export default function Proposals() {
         support={support === "all" ? undefined : support}
       />
     </div>
+  );
+}
+
+export default function Proposals() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col gap-[30px]">
+          <div className="flex items-center justify-between gap-[20px]">
+            <h3 className="text-[18px] font-extrabold">Onchain Proposals</h3>
+            <div className="w-[300px] h-[40px] animate-pulse bg-gray-700 rounded-[100px]"></div>
+          </div>
+          <div className="w-full h-[400px] animate-pulse bg-gray-800 rounded-md"></div>
+        </div>
+      }
+    >
+      <ProposalsContent />
+    </Suspense>
   );
 }

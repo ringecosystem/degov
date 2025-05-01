@@ -1,4 +1,3 @@
-
 import Image from "next/image";
 import Link from "next/link";
 
@@ -8,7 +7,6 @@ import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { ProfileData } from "@/services/graphql/types/profile";
 import { formatShortAddress } from "@/utils";
-
 
 import { Overview } from "./overview";
 import { SocialLinks } from "./social-links";
@@ -110,6 +108,7 @@ export const User = ({
       <Overview
         address={address}
         tokenBalance={tokenBalance}
+        isOwnProfile={isOwnProfile}
         isLoadingTokenBalance={isLoadingTokenBalance}
         delegationStatusText={delegationStatusText}
         isDelegateMappingsLoading={isDelegateMappingsLoading}
