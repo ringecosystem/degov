@@ -1,7 +1,7 @@
 
 /* variables for markdown-body.css */
 .markdown-body {
-    --base-size-16: 1rem;
+    --base-size-16: 0.25rem;
     --base-size-24: 1.5rem;
     --base-size-4: 0.25rem;
     --base-size-40: 2.5rem;
