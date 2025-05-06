@@ -24,6 +24,6 @@ jobs:
           script_run: false
           dist_path: .
           enable_notify_slack: true
-          slack_channel: public-ringdao-apps
+          slack_channel: public-degov
           slack_webhook: ${{ secrets.SLACK_INCOMING_WEBHOOK_URL }}
 
