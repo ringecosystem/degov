@@ -1264,8 +1264,22 @@ const recordsFor_0x9Fc3d61 = [
   // ],
 ];
 
+// 0xb25805118F1b471844687A1D1374ffb18207De6c
+const recordsFor_0xb258051 = [
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0xb25805118F1b471844687A1D1374ffb18207De6c",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xb25805118F1b471844687A1D1374ffb18207De6c",
+      blockNumber: "6608398",
+      txHash: "0xb1272dcd1a95f7b26823f452a09dfe6294482aa6d6bbf147cd86880e3aeba17d",
+    },
+  ],
+];
+
 test("testTokens", () => {
-  const records = recordsFor_0x9Fc3d61;
+  const records = recordsFor_0xb258051;
 
   const ds = new DelegateStorage();
   for (const record of records) {
