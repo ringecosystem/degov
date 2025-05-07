@@ -108,7 +108,7 @@ export class TokenHandler {
 
     // store self delegate
     if (
-      entity.fromDelegate !== zeroAddress &&
+      entity.fromDelegate === zeroAddress &&
       entity.delegator === entity.toDelegate
     ) {
       const selfDelegate = new Delegate({
@@ -282,7 +282,7 @@ export class TokenHandler {
       storedDelegateFromWithTo.blockTimestamp = currentDelegate.blockTimestamp;
       storedDelegateFromWithTo.transactionHash =
         currentDelegate.transactionHash;
-      // should keep delegate self record
+      // Remove delegate record if power is zero
       if (storedDelegateFromWithTo.power === 0n) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
       } else {
