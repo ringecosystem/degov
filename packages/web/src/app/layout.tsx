@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "./markdown-body.css";
 import { ToastContainer } from "react-toastify";
 
 import { TooltipProvider } from "@/components/ui/tooltip";

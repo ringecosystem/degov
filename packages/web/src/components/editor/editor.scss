@@ -1,0 +1,79 @@
+.tiptap-editor-container {
+  --tt-toolbar-height: 44px;
+  --tt-theme-text: var(--tt-gray-light-900);
+
+  .dark & {
+    --tt-theme-text: var(--tt-gray-dark-900);
+  }
+}
+
+.tiptap-editor-container {
+  font-family: "Inter", sans-serif;
+  color: var(--tt-theme-text);
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.tiptap-editor-container, 
+.tiptap-editor-container .tiptap-root, 
+.tiptap-editor-container .tiptap-app {
+  height: 100%;
+  background-color: var(--tt-bg-color);
+}
+
+.tiptap-editor-container {
+  overflow: hidden;
+}
+
+.tiptap-editor-container .content-wrapper {
+  // height: calc(100% - var(--tt-toolbar-height));
+  max-height: 500px;
+  min-height: 200px;
+  padding: 1rem;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    display: block;
+    width: 0.5rem;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--tt-scrollbar-color);
+    border-radius: 4px;
+  }
+
+  /* Firefox scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--tt-scrollbar-color) transparent;
+}
+
+.simple-editor-content {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.simple-editor-content .tiptap.ProseMirror {
+  padding:4px;
+}
+
+@media screen and (max-width: 480px) {
+  .simple-editor-content .tiptap.ProseMirror {
+    padding: 1rem 1.5rem;
+  }
+}
+
+/* 只在编辑器为空时的第一行显示placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

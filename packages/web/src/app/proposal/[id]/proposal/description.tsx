@@ -1,7 +1,10 @@
-import { useAsync } from "react-use";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
+import { useMemo } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { markdownToHtml } from "@/utils/markdown";
+
+marked.use();
 const Loading = () => {
   return (
     <div className="flex flex-col h-[200px] w-full  gap-4">
@@ -20,13 +23,16 @@ export const Description = ({
   description?: string;
   isFetching: boolean;
 }) => {
-  const html = useAsync(async () => {
-    return markdownToHtml(description ?? "");
+  const sanitizedHtml = useMemo(() => {
+    const html = marked.parse(description ?? "") as string;
+    if (!html) return "";
+    return DOMPurify.sanitize(html);
   }, [description]);
+
   return isFetching ? (
     <Loading />
   ) : (
-    <div className="prose">
+    <div className="markdown-body">
       <div
         style={{
           whiteSpace: "wrap",
@@ -34,7 +40,7 @@ export const Description = ({
         }}
         className="text-balance"
         dangerouslySetInnerHTML={{
-          __html: html.value ?? "",
+          __html: sanitizedHtml,
         }}
       ></div>
     </div>
