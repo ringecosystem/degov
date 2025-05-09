@@ -1242,10 +1242,44 @@ const recordsFor_0x9Fc3d61 = [
       newVotes: 50000000000000000000n,
     },
   ],
+  // [
+  //   {
+  //     method: "DelegateChanged",
+  //     delegator: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     fromDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     toDelegate: "0xaFc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //   },
+  //   {
+  //     method: "DelegateVotesChanged",
+  //     delegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     previousVotes: 0n,
+  //     newVotes: 0n,
+  //   },
+  //   {
+  //     method: "DelegateVotesChanged",
+  //     delegate: "0xaFc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     previousVotes: 0n,
+  //     newVotes: 0n,
+  //   },
+  // ],
+];
+
+// 0xb25805118F1b471844687A1D1374ffb18207De6c
+const recordsFor_0xb258051 = [
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0xb25805118F1b471844687A1D1374ffb18207De6c",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xb25805118F1b471844687A1D1374ffb18207De6c",
+      blockNumber: "6608398",
+      txHash: "0xb1272dcd1a95f7b26823f452a09dfe6294482aa6d6bbf147cd86880e3aeba17d",
+    },
+  ],
 ];
 
 test("testTokens", () => {
-  const records = recordsFor_0x9Fc3d61;
+  const records = recordsFor_0xb258051;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -1326,9 +1360,7 @@ test("testTokens", () => {
 
   const dss = ds.getDelegates();
   console.log("delegates: ", dss);
-  if (!dss.length) {
-    console.log("mapping: ", ds.getMapping());
-  }
+  console.log("mapping: ", ds.getMapping());
 });
 
 function DelegateStorage() {
@@ -1369,11 +1401,7 @@ dsfn.pushDelegator = function (delegator, options) {
     return;
   }
   storedDelegateFromWithTo.power += delegator.power;
-  if (
-    storedDelegateFromWithTo.power === 0n &&
-    storedDelegateFromWithTo.fromDelegate !==
-      storedDelegateFromWithTo.toDelegate
-  ) {
+  if (storedDelegateFromWithTo.power === 0n) {
     this.delegates = this.delegates.filter(
       (item) => item.id !== storedDelegateFromWithTo.id
     );
