@@ -1,4 +1,9 @@
-import type { CustomContent, ProposalContent, TransferContent } from "./schema";
+import type {
+  CustomContent,
+  ProposalContent,
+  TransferContent,
+  XAccountContent,
+} from "./schema";
 
 export interface ProposalAction {
   id: string;
@@ -23,4 +28,15 @@ export interface AddAction {
   type: "add";
 }
 
-export type Action = ProposalAction | TransferAction | CustomAction | AddAction;
+export interface XAccountAction {
+  id: string;
+  type: "xaccount";
+  content: XAccountContent;
+}
+
+export type Action =
+  | ProposalAction
+  | TransferAction
+  | CustomAction
+  | AddAction
+  | XAccountAction;

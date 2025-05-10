@@ -7,7 +7,7 @@ import { NewProposalAction } from "./action";
 interface ReplacePanelProps {
   index: number;
   visible: boolean;
-  onReplace: (type: "transfer" | "custom") => void;
+  onReplace: (type: "transfer" | "custom" | "xaccount") => void;
   onRemove: (index: number) => void;
 }
 
@@ -46,6 +46,11 @@ export const ReplacePanel = ({
           onSwitch={() => onReplace("transfer")}
         />
         <NewProposalAction type="custom" onSwitch={() => onReplace("custom")} />
+        <NewProposalAction
+          type="xaccount"
+          onSwitch={() => onReplace("xaccount")}
+          tip="XAccount is the mechanism that enables cross-chain governance in degov. It allows users to construct and send governance calls in the source chain and then execute them in the target chain."
+        />
       </div>
     </div>
   );

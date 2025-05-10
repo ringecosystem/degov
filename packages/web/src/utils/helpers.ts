@@ -1,3 +1,5 @@
+import { keccak256, toUtf8Bytes } from "ethers";
+
 /**
  * Pauses the execution for a specified number of milliseconds.
  * @param ms The number of milliseconds to pause.
@@ -102,6 +104,68 @@ export const formatFunctionSignature = (signature: string): string => {
   return signature;
 };
 
+export function extractMethodNameFromSignature(
+  signature: string
+): string | undefined {
+  const match = signature.match(/^([a-zA-Z0-9_]+)\(/);
+  return match ? match[1] : undefined;
+}
+
+interface ParamEntry {
+  name: string;
+  value: string;
+}
+
+/**
+ * parse solidity function signature and match params, return {name: type, value: paramValue}[]
+ */
+export function parseSolidityFunctionParams(
+  funcSignature: string,
+  params: Record<string, string>
+): ParamEntry[] {
+  const paramTypesMatch = funcSignature.match(/\(([^)]*)\)/);
+  if (!paramTypesMatch) {
+    throw new Error("Invalid function signature");
+  }
+
+  const paramParts = paramTypesMatch[1].split(",").map((s) => s.trim());
+
+  const paramTypes = paramParts.map((part) => {
+    const typeMatch = part.match(/^(bytes|bytes|address|u?int\d+)/);
+    return typeMatch ? typeMatch[1] : "unknown";
+  });
+
+  const paramValues = Object.values(params);
+
+  return paramTypes.map((type, index) => ({
+    name: type,
+    value: paramValues[index],
+  }));
+}
+
+export function simplifyFunctionSignature(fullSignature: string): string {
+  // remove modifiers (e.g. `external payable`)
+  const signatureWithoutModifiers = fullSignature.replace(
+    /\)\s*(external|public|private|internal|payable)*\s*$/,
+    ")"
+  );
+
+  // extract function name and params part
+  const [funcName, paramsPart] = signatureWithoutModifiers.split("(");
+  const params = paramsPart.split(")")[0];
+
+  // handle no params case
+  if (!params) return `${funcName.trim()}()`;
+
+  // split params and extract type
+  const simplifiedParams = params
+    .split(",")
+    .map((param) => param.trim().split(/\s+/)[0]) // get first word (type)
+    .join(",");
+
+  return `${funcName.trim()}(${simplifiedParams})`;
+}
+
 /**
  * Recursively process all standard properties in an object, converting them to uppercase
  * Handles all possible cases of missing properties or nested objects
@@ -130,4 +194,26 @@ export function processStandardProperties<T>(obj: T): T {
   });
 
   return result;
+}
+
+/**
+ * Generates a keccak256 hash of any serializable object or value.
+ *
+ * @param data The data to hash (any serializable object or value)
+ * @param stringify Custom stringify function (default: JSON.stringify)
+ * @returns The keccak256 hash of the input data formatted according to options
+ */
+export function generateHash<T>(
+  data: T,
+  stringify?: (data: T) => string
+): string {
+  try {
+    const dataString = stringify ? stringify(data) : JSON.stringify(data);
+    // Generate keccak256 hash
+    const hash = keccak256(toUtf8Bytes(dataString));
+    return hash;
+  } catch (error) {
+    console.error("Error generating hash:", error);
+    return "";
+  }
 }

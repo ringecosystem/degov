@@ -17,6 +17,10 @@ import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { PROPOSAL_ACTIONS } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
+import {
+  extractMethodNameFromSignature,
+  parseSolidityFunctionParams,
+} from "@/utils";
 import { formatShortAddress } from "@/utils/address";
 
 import type { Action } from "./type";
@@ -77,6 +81,8 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               action?.content.calldata?.length,
             ];
             return condition.every((item) => item);
+          case "xaccount":
+            return !!Object.keys(action?.content).length;
           default:
             return true;
         }
@@ -113,6 +119,25 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               };
             });
 
+            break;
+
+          case "xaccount":
+            info.address = action.content?.crossChainCall?.port;
+            info.details = extractMethodNameFromSignature(
+              action.content?.crossChainCall?.function ?? ""
+            );
+            info.params = Object.entries(
+              action.content?.crossChainCall?.params ?? {}
+            ).map(([key, value]) => ({
+              name: key,
+              value: value,
+            }));
+            info.signature = action.content?.crossChainCall?.function;
+            info.calldata = parseSolidityFunctionParams(
+              action.content?.crossChainCall?.function ?? "",
+              action?.content?.crossChainCall?.params ?? {}
+            );
+            info.value = action.content?.crossChainCall?.value ?? "0";
             break;
         }
         return info;
@@ -187,7 +212,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                         variant="ghost"
                         size="sm"
                         onClick={() => toggleParams(index)}
-                        className="text-[14px] text-foreground/40"
+                        className="text-[14px] text-foreground/40 cursor-pointer"
                         asChild
                       >
                         <motion.div whileTap={{ scale: 0.95 }}>
@@ -265,19 +290,20 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
             </h3>
 
             <div className="space-y-[20px] rounded-[4px] border p-[20px]">
-              {action.type === "custom" && (
-                <div>
-                  <h4 className="text-[14px] font-normal text-muted-foreground">
-                    Signature:
-                  </h4>
-                  <p className="text-[14px] font-mono font-semibold">
-                    {action.signature}
-                  </p>
-                </div>
-              )}
+              {action.type === "custom" ||
+                (action.type === "xaccount" && (
+                  <div>
+                    <h4 className="text-[14px] font-normal text-muted-foreground">
+                      Signature:
+                    </h4>
+                    <p className="text-[14px] font-mono font-semibold">
+                      {action.signature}
+                    </p>
+                  </div>
+                ))}
 
               {action.calldata && (
-                <div>
+                <div className="w-full">
                   <h4 className="text-[14px] font-normal text-muted-foreground">
                     Calldata:
                   </h4>
@@ -285,6 +311,9 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                     <div
                       key={cIndex}
                       className="text-[14px] font-mono font-semibold"
+                      style={{
+                        wordBreak: "break-all",
+                      }}
                     >
                       {name}:{" "}
                       {Array.isArray(value) ? `[${value.join(", ")}]` : value}
@@ -304,7 +333,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 </div>
               )}
 
-              <div>
+              <div className="w-full">
                 <h4 className="text-[14px] font-normal text-muted-foreground">
                   Value:
                 </h4>

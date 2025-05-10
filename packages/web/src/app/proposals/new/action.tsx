@@ -1,9 +1,15 @@
 import Image from "next/image";
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { PROPOSAL_ACTIONS, type ProposalActionType } from "@/config/proposals";
 import { cn } from "@/lib/utils";
 interface NewProposalActionProps {
   type: Omit<ProposalActionType, "add">;
+  tip?: string;
   onSwitch?: (type: Omit<ProposalActionType, "add">) => void;
   active?: boolean;
   error?: boolean;
@@ -14,6 +20,7 @@ export const NewProposalAction = ({
   onSwitch,
   active,
   error,
+  tip,
 }: NewProposalActionProps) => {
   if (type === "proposal") {
     return (
@@ -79,6 +86,44 @@ export const NewProposalAction = ({
           height={24}
         />
         <span className="text-[14px] font-normal text-foreground">Custom</span>
+        {error && (
+          <span className="absolute right-[20px] top-1/2 h-[10px] w-[10px] -translate-y-1/2 rounded-full bg-danger"></span>
+        )}
+      </div>
+    );
+  }
+  if (type === "xaccount") {
+    return (
+      <div
+        className={cn(
+          "relative flex cursor-pointer items-center gap-[10px] rounded-[14px] border border-border/20 bg-card px-[20px] py-[15px] transition-opacity hover:opacity-80",
+          active && "border-border"
+        )}
+        onClick={() => onSwitch?.("custom")}
+      >
+        <Image
+          src={PROPOSAL_ACTIONS["xaccount"]}
+          alt="xaccount"
+          width={24}
+          height={24}
+        />
+        <span className="text-[14px] font-normal text-foreground flex items-center gap-[5px]">
+          XAccount Cross-chain
+          {tip && (
+            <Tooltip>
+              <TooltipTrigger>
+                <Image
+                  className="text-[12px] text-muted-foreground"
+                  src="/assets/image/question.svg"
+                  alt="question"
+                  width={20}
+                  height={20}
+                />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[300px]">{tip}</TooltipContent>
+            </Tooltip>
+          )}
+        </span>
         {error && (
           <span className="absolute right-[20px] top-1/2 h-[10px] w-[10px] -translate-y-1/2 rounded-full bg-danger"></span>
         )}

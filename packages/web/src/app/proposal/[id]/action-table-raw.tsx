@@ -3,6 +3,7 @@ import { parseUnits } from "ethers";
 import { useMemo } from "react";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { simplifyFunctionSignature } from "@/utils";
 
 export interface Action {
   target: string;
@@ -21,23 +22,34 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
   const processedActions = useMemo(() => {
     return actions.map((action) => {
       let inferredType = "transfer";
+      const isXAccount =
+        action?.signature ===
+        "send(uint256 toChainId, address toDapp, bytes calldata message, bytes calldata params) external payable";
+
       if (action.calldata === "0x" || !action.calldata) {
         inferredType = "transfer";
       } else {
-        inferredType = "custom";
+        inferredType = isXAccount ? "xaccount" : "custom";
       }
 
       let parsedCalldata: { name: string; value: string | string[] }[] = [];
-      if (inferredType === "custom" && action.signature) {
+      if (
+        (inferredType === "custom" || inferredType === "xaccount") &&
+        action.signature
+      ) {
         try {
-          const iface = new ethers.Interface([`function ${action.signature}`]);
+          const signature = isXAccount
+            ? simplifyFunctionSignature(action.signature)
+            : action.signature;
+
+          const iface = new ethers.Interface([`function ${signature}`]);
           const decoded = iface.decodeFunctionData(
-            action.signature.split("(")[0],
+            signature.split("(")[0],
             action.calldata
           );
 
           const paramTypes =
-            action.signature
+            signature
               .match(/\((.*)\)/)?.[1]
               .split(",")
               .filter(Boolean) || [];
@@ -81,7 +93,8 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
           </h3>
 
           <div className="space-y-[20px] rounded-[4px] border p-[20px]">
-            {action.inferredType === "custom" && (
+            {(action.inferredType === "custom" ||
+              action.inferredType === "xaccount") && (
               <div>
                 <h4 className="text-[14px] font-normal text-muted-foreground">
                   Signature:
@@ -90,12 +103,15 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
                   className="font-mono text-[14px]"
                   style={{ wordWrap: "break-word" }}
                 >
-                  {action.signature}
+                  {action.inferredType === "xaccount"
+                    ? simplifyFunctionSignature(action.signature ?? "")
+                    : action.signature}
                 </p>
               </div>
             )}
 
-            {action.inferredType === "custom" &&
+            {(action.inferredType === "custom" ||
+              action.inferredType === "xaccount") &&
               action.parsedCalldata.length > 0 && (
                 <div>
                   <h4 className="text-[14px] font-normal text-muted-foreground">

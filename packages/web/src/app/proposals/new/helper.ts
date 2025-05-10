@@ -1,16 +1,19 @@
 import { v4 as uuidv4 } from "uuid";
 import { parseUnits } from "viem";
 
+import { abi as multiPortAbi } from "@/config/abi/multiPort";
 import { abi as tokenAbi } from "@/config/abi/token";
 import type { ProposalActionParam } from "@/hooks/useProposal";
+import { extractMethodNameFromSignature } from "@/utils";
 import { markdownToHtml } from "@/utils/markdown";
 
-import type { CustomContent } from "./schema";
+import type { CustomContent, XAccountContent } from "./schema";
 import type {
   Action,
   CustomAction,
   ProposalAction,
   TransferAction,
+  XAccountAction,
 } from "./type";
 import type { InterfaceAbi } from "ethers";
 import type { Address } from "viem";
@@ -52,6 +55,13 @@ export const generateCustomAction = (): CustomAction => {
   };
 };
 
+export const generateXAccountAction = (): XAccountAction => {
+  return {
+    id: uuidv4(),
+    type: "xaccount",
+    content: {} as XAccountContent,
+  };
+};
 /**
  * generateFunctionSignature
  *
@@ -97,7 +107,12 @@ export const transformActionsToProposalParams = async (
     : "";
 
   const proposalActions: ProposalActionParam[] = actions
-    .filter((action) => action.type === "transfer" || action.type === "custom")
+    .filter(
+      (action) =>
+        action.type === "transfer" ||
+        action.type === "custom" ||
+        action.type === "xaccount"
+    )
     .map((action) => {
       if (action.type === "transfer") {
         return {
@@ -135,6 +150,21 @@ export const transformActionsToProposalParams = async (
             (item) => item.value
           ) as readonly unknown[],
           signature,
+        };
+      } else if (action.type === "xaccount") {
+        return {
+          type: "xaccount",
+          target: action.content?.crossChainCall?.port,
+          value: action.content?.crossChainCall?.value
+            ? BigInt(action.content?.crossChainCall?.value)
+            : 0n,
+          abi: multiPortAbi as InterfaceAbi,
+          functionName:
+            extractMethodNameFromSignature(
+              action.content?.crossChainCall?.function ?? ""
+            ) ?? "",
+          params: Object.values(action.content?.crossChainCall?.params),
+          signature: action.content?.crossChainCall?.function ?? "",
         };
       }
       throw new Error("Invalid action type");
