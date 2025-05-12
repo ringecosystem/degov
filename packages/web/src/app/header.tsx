@@ -1,8 +1,9 @@
 "use client";
 import { Search } from "lucide-react";
-import { SearchModal } from "@/components/search-modal";
-import { ConnectButton } from "@/components/connect-button";
 import React from "react";
+
+import { ConnectButton } from "@/components/connect-button";
+import { SearchModal } from "@/components/search-modal";
 export const Header = () => {
   const [open, setOpen] = React.useState(false);
   return (

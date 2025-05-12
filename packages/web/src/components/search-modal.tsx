@@ -1,4 +1,7 @@
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import * as React from "react";
+
 import {
   Dialog,
   DialogContent,
@@ -8,12 +11,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { proposalService, Types } from "@/services/graphql";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { extractTitleAndDescription } from "@/utils";
-import { useRouter } from "next/navigation";
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import type { Types } from "@/services/graphql";
+import { proposalService } from "@/services/graphql";
+import { extractTitleAndDescription } from "@/utils";
 
 interface SearchModalProps {
   children?: React.ReactNode;
@@ -32,7 +34,7 @@ export function SearchModal({
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery({
-      queryKey: ["proposals-search", search],
+      queryKey: ["proposals-search", search, daoConfig?.indexer?.endpoint],
       queryFn: async ({ pageParam = 0 }) =>
         proposalService.getProposalsByDescription(
           daoConfig?.indexer?.endpoint ?? "",
