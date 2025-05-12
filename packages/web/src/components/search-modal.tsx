@@ -1,0 +1,138 @@
+import * as React from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useQuery } from "@tanstack/react-query";
+import { proposalService, Types } from "@/services/graphql";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { extractTitleAndDescription } from "@/utils";
+import { useRouter } from "next/navigation";
+interface SearchModalProps {
+  children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function SearchModal({
+  children,
+  open = false,
+  onOpenChange,
+}: SearchModalProps) {
+  const router = useRouter();
+  const daoConfig = useDaoConfig();
+  const [search, setSearch] = React.useState("");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["proposals", search],
+    queryFn: () =>
+      proposalService.getProposalsByDescription(
+        daoConfig?.indexer?.endpoint ?? "",
+        {
+          where: {
+            description_containsInsensitive: search,
+          },
+        }
+      ),
+    enabled: !!search && open,
+  });
+
+  const renderSkeletons = () => {
+    return Array(5)
+      .fill(0)
+      .map((_, i) => (
+        <div key={i} className="py-[10px] border-b border-b-[#474747]">
+          <Skeleton className="h-[20px] w-full bg-[#2E2E2E]" />
+        </div>
+      ));
+  };
+
+  React.useEffect(() => {
+    if (!open) {
+      setSearch("");
+    }
+  }, [open]);
+
+  const handleSelect = React.useCallback(
+    (item: Types.ProposalItem) => {
+      router.push(`/proposal/${item.proposalId}`);
+      onOpenChange?.(false);
+    },
+    [router, onOpenChange]
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className="sm:max-w-[800px] p-[20px] border-none shadow-lg flex flex-col gap-[20px] !rounded-[26px] bg-[#202224] backdrop-blur">
+        <DialogHeader className="hidden">
+          <DialogTitle>Search Proposals</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center gap-[10px]">
+          <Input
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[14px] border border-[#474747] h-[36px] rounded-[19px] px-[17px] py-[9px]"
+          />
+          <button
+            onClick={() => onOpenChange?.(false)}
+            className="rounded-full flex items-center justify-center focus:outline-none"
+          >
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="text-muted-foreground"
+            >
+              <path
+                d="M6 18L18 6M6 6L18 18"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto max-h-[50vh]">
+          {isLoading ? (
+            renderSkeletons()
+          ) : data && data?.length > 0 ? (
+            <div>
+              {data?.map((item, i) => (
+                <div
+                  key={i}
+                  onClick={() => {
+                    handleSelect(item);
+                  }}
+                  className="flex text-[14px] py-[10px] border-b border-b-[#474747] hover:bg-[#2E2E2E] transition-colors cursor-pointer"
+                >
+                  <div
+                    className="flex-1 line-clamp-1"
+                    title={extractTitleAndDescription(item.description)?.title}
+                  >
+                    {extractTitleAndDescription(item.description)?.title}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-muted-foreground">
+              {search ? "No results found." : "Start typing to search..."}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

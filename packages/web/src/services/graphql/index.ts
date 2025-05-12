@@ -30,7 +30,24 @@ export const proposalService = {
     );
     return response?.proposals ?? [];
   },
-
+  getProposalsByDescription: async (
+    endpoint: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      orderBy?: string;
+      where?: {
+        description_containsInsensitive?: string;
+      };
+    } = {}
+  ) => {
+    const response = await request<Types.ProposalResponse>(
+      endpoint,
+      Queries.GET_PROPOSALS_BY_DESCRIPTION,
+      options
+    );
+    return response?.proposals ?? [];
+  },
   getProposalMetrics: async (endpoint: string) => {
     const response = await request<Types.ProposalMetricsResponse>(
       endpoint,
