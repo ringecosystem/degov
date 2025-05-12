@@ -8,11 +8,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { proposalService, Types } from "@/services/graphql";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { extractTitleAndDescription } from "@/utils";
 import { useRouter } from "next/navigation";
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
+
 interface SearchModalProps {
   children?: React.ReactNode;
   open?: boolean;
@@ -28,19 +30,34 @@ export function SearchModal({
   const daoConfig = useDaoConfig();
   const [search, setSearch] = React.useState("");
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["proposals", search],
-    queryFn: () =>
-      proposalService.getProposalsByDescription(
-        daoConfig?.indexer?.endpoint ?? "",
-        {
-          where: {
-            description_containsInsensitive: search,
-          },
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useInfiniteQuery({
+      queryKey: ["proposals-search", search],
+      queryFn: async ({ pageParam = 0 }) =>
+        proposalService.getProposalsByDescription(
+          daoConfig?.indexer?.endpoint ?? "",
+          {
+            where: {
+              description_containsInsensitive: search,
+            },
+            limit: DEFAULT_PAGE_SIZE,
+            offset: pageParam * DEFAULT_PAGE_SIZE,
+            orderBy: "blockTimestamp_DESC_NULLS_LAST",
+          }
+        ),
+      initialPageParam: 0,
+      getNextPageParam: (lastPage, allPages, lastPageParam) => {
+        if (!lastPage || lastPage.length < DEFAULT_PAGE_SIZE) {
+          return undefined;
         }
-      ),
-    enabled: !!search && open,
-  });
+        return lastPageParam + 1;
+      },
+      enabled: !!search && open && !!daoConfig?.indexer?.endpoint,
+    });
+
+  const flattenedData = React.useMemo(() => {
+    return data?.pages.flat() || [];
+  }, [data]);
 
   const renderSkeletons = () => {
     return Array(5)
@@ -51,6 +68,12 @@ export function SearchModal({
         </div>
       ));
   };
+
+  const loadMoreData = React.useCallback(() => {
+    if (!isFetchingNextPage && hasNextPage) {
+      fetchNextPage();
+    }
+  }, [isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   React.useEffect(() => {
     if (!open) {
@@ -107,15 +130,15 @@ export function SearchModal({
         <div className="overflow-y-auto max-h-[50vh]">
           {isLoading ? (
             renderSkeletons()
-          ) : data && data?.length > 0 ? (
+          ) : flattenedData && flattenedData.length > 0 ? (
             <div>
-              {data?.map((item, i) => (
+              {flattenedData.map((item, i) => (
                 <div
                   key={i}
                   onClick={() => {
                     handleSelect(item);
                   }}
-                  className="flex text-[14px] py-[10px] border-b border-b-[#474747] hover:bg-[#2E2E2E] transition-colors cursor-pointer"
+                  className="flex text-[14px] py-[10px] border-b border-b-[#474747] last:border-b-0 hover:bg-[#2E2E2E] transition-colors cursor-pointer"
                 >
                   <div
                     className="flex-1 line-clamp-1"
@@ -125,6 +148,18 @@ export function SearchModal({
                   </div>
                 </div>
               ))}
+
+              {hasNextPage && (
+                <div className="flex justify-center items-center py-4">
+                  <button
+                    onClick={loadMoreData}
+                    className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isFetchingNextPage}
+                  >
+                    {isFetchingNextPage ? "Loading..." : "Load more"}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="py-6 text-center text-muted-foreground">
