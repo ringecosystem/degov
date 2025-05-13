@@ -39,7 +39,7 @@ export function JoinDelegate({
   }, [delegate, onOpenChange, address]);
   return (
     <>
-      <Dialog open={true} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
           <DialogHeader className="flex w-full flex-row items-center justify-between">
             <DialogTitle className="text-[18px] font-extrabold">
