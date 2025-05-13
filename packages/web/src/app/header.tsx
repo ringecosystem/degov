@@ -14,7 +14,7 @@ export const Header = () => {
         >
           <Search className="h-[15px] w-[15px] text-white/50" />
           <input
-            placeholder="Search proposals on DeGov"
+            placeholder="Search proposals on this DAO"
             className="h-full flex-1 appearance-none bg-transparent outline-none"
             readOnly
             onClick={() => setOpen(true)}
