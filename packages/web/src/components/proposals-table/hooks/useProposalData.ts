@@ -63,7 +63,7 @@ export function useProposalData(
         daoConfig?.indexer?.endpoint as string,
         {
           limit: pageSize,
-          offset: pageParam * pageSize,
+          offset: pageParam,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: whereCondition,
         }

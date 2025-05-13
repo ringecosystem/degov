@@ -28,7 +28,7 @@ chain:
   # explorers:
   #   - https://explorer.darwinia.network/
   nativeToken:
-    priceId: RING
+    priceId: darwinia-network-native-token
     logo:
 
 indexer:

@@ -1,6 +1,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import * as React from "react";
+import { useDebounce } from "react-use";
 
 import {
   Dialog,
@@ -31,19 +32,31 @@ export function SearchModal({
   const router = useRouter();
   const daoConfig = useDaoConfig();
   const [search, setSearch] = React.useState("");
+  const [debouncedSearch, setDebouncedValue] = React.useState("");
 
+  useDebounce(
+    () => {
+      setDebouncedValue(search);
+    },
+    300,
+    [search]
+  );
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery({
-      queryKey: ["proposals-search", search, daoConfig?.indexer?.endpoint],
+      queryKey: [
+        "proposals-search",
+        debouncedSearch,
+        daoConfig?.indexer?.endpoint,
+      ],
       queryFn: async ({ pageParam = 0 }) =>
         proposalService.getProposalsByDescription(
           daoConfig?.indexer?.endpoint ?? "",
           {
             where: {
-              description_containsInsensitive: search,
+              description_containsInsensitive: debouncedSearch,
             },
             limit: DEFAULT_PAGE_SIZE,
-            offset: pageParam * DEFAULT_PAGE_SIZE,
+            offset: pageParam,
             orderBy: "blockTimestamp_DESC_NULLS_LAST",
           }
         ),
@@ -52,9 +65,9 @@ export function SearchModal({
         if (!lastPage || lastPage.length < DEFAULT_PAGE_SIZE) {
           return undefined;
         }
-        return lastPageParam + 1;
+        return lastPageParam + DEFAULT_PAGE_SIZE;
       },
-      enabled: !!search && open && !!daoConfig?.indexer?.endpoint,
+      enabled: !!debouncedSearch && open && !!daoConfig?.indexer?.endpoint,
     });
 
   const flattenedData = React.useMemo(() => {
