@@ -4,6 +4,7 @@ import BigNumber from "bignumber.js";
 import { isEmpty, isUndefined } from "lodash-es";
 import Image from "next/image";
 import { useMemo } from "react";
+import { formatUnits } from "viem";
 import { useBalance } from "wagmi";
 
 import ClipboardIconButton from "@/components/clipboard-icon-button";
@@ -35,17 +36,21 @@ export default function Treasury() {
       standard: "ERC20",
       logo: daoConfig?.chain?.logo ?? "",
     };
+    const ids = new Set<string>();
+
+    if (daoConfig?.chain?.nativeToken?.priceId) {
+      ids.add(daoConfig?.chain?.nativeToken?.priceId.toLowerCase());
+    }
     if (!daoConfig?.timeLockAssets || isEmpty(daoConfig?.timeLockAssets))
       return {
         nativeAsset,
         erc20Assets: [],
         erc721Assets: [],
-        priceIds: [],
+        priceIds: ids,
       };
 
     const erc20: TokenWithBalance[] = [];
     const erc721: TokenWithBalance[] = [];
-    const ids = new Set<string>();
 
     if (daoConfig?.chain?.nativeToken?.priceId) {
       ids.add(daoConfig?.chain?.nativeToken?.priceId.toLowerCase());
@@ -90,6 +95,10 @@ export default function Treasury() {
         rawBalance: nativeTokenBalance?.value,
         balance: nativeTokenBalance?.value?.toString(),
         formattedBalance: formatBigIntForDisplay(
+          nativeTokenBalance?.value ?? 0n,
+          daoConfig?.chain?.nativeToken?.decimals ?? 18
+        ),
+        formattedRawBalance: formatUnits(
           nativeTokenBalance?.value ?? 0n,
           daoConfig?.chain?.nativeToken?.decimals ?? 18
         ),
