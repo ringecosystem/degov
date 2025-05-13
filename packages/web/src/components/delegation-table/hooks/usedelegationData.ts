@@ -26,7 +26,7 @@ export function useDelegationData(address?: Address) {
         daoConfig?.indexer?.endpoint as string,
         {
           limit: DEFAULT_PAGE_SIZE,
-          offset: pageParam * DEFAULT_PAGE_SIZE,
+          offset: pageParam,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: address
             ? { toDelegate_eq: address?.toLowerCase() }

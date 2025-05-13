@@ -43,7 +43,7 @@ export function SearchModal({
               description_containsInsensitive: search,
             },
             limit: DEFAULT_PAGE_SIZE,
-            offset: pageParam * DEFAULT_PAGE_SIZE,
+            offset: pageParam,
             orderBy: "blockTimestamp_DESC_NULLS_LAST",
           }
         ),
