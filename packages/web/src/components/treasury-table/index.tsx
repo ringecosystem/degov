@@ -113,9 +113,10 @@ export function TreasuryTable({
       if (!prices || !asset.priceId) return 0;
 
       const price = prices[asset?.priceId?.toLowerCase()] || 0;
-      const formattedBalance = asset?.formattedBalance || "0";
 
-      return new BigNumber(price).multipliedBy(formattedBalance).toNumber();
+      return new BigNumber(price)
+        .multipliedBy(asset?.formattedRawBalance ?? "0")
+        .toNumber();
     },
     [prices]
   );
