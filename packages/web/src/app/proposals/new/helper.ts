@@ -101,7 +101,7 @@ export const transformActionsToProposalParams = async (
   decimals: number = 18
 ): Promise<{ description: string; actions: ProposalActionParam[] }> => {
   const proposalAction = actions.find((action) => action.type === "proposal");
-  const html = await markdownToHtml(proposalAction?.content.markdown ?? "");
+  const html = proposalAction?.content.markdown ?? "";
   const description = proposalAction
     ? `# ${proposalAction.content.title}\n\n${html}`
     : "";

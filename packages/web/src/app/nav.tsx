@@ -27,7 +27,9 @@ export const Nav = ({ collapsed = false }: NavProps) => {
             pathname === route.pathname ||
             pathname.startsWith(route.pathname + "/") ||
             (pathname.startsWith("/proposal") &&
-              route.pathname === "/proposals");
+              route.pathname === "/proposals") ||
+            (pathname.startsWith("/delegate") &&
+              route.pathname === "/delegates");
 
           return (
             <Tooltip key={route.key}>

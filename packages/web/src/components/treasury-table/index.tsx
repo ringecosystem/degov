@@ -31,12 +31,13 @@ function TableSkeleton({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-1/4 rounded-l-[14px] text-left">
+          <TableHead className="w-1/3 rounded-l-[14px] text-left">
             {standard === "ERC20" ? "ERC-20 Assets" : "ERC-721 Assets"}
           </TableHead>
-          <TableHead className="w-1/4 text-right">Balance</TableHead>
-          <TableHead className="w-1/4 text-right">Value</TableHead>
-          <TableHead className="w-1/4 text-right">Network</TableHead>
+          <TableHead className="w-1/3 text-center">Balance</TableHead>
+          <TableHead className="w-1/3 text-right rounded-r-[14px]">
+            Value
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -47,14 +48,9 @@ function TableSkeleton({
                 <Skeleton className="h-6 w-[100px]" />
               </div>
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="text-center">
               <div className="flex items-center gap-[10px] justify-end">
                 <Skeleton className="h-6 w-[80px]" />
-              </div>
-            </TableCell>
-            <TableCell className="text-right">
-              <div className="flex items-center gap-[10px] justify-end">
-                <Skeleton className="h-6 w-[100px]" />
               </div>
             </TableCell>
             <TableCell className="text-right">
@@ -117,9 +113,10 @@ export function TreasuryTable({
       if (!prices || !asset.priceId) return 0;
 
       const price = prices[asset?.priceId?.toLowerCase()] || 0;
-      const formattedBalance = asset?.formattedBalance || "0";
 
-      return new BigNumber(price).multipliedBy(formattedBalance).toNumber();
+      return new BigNumber(price)
+        .multipliedBy(asset?.formattedRawBalance ?? "0")
+        .toNumber();
     },
     [prices]
   );
@@ -154,17 +151,16 @@ export function TreasuryTable({
           )}
           <TableHeader>
             <TableRow>
-              <TableHead className="w-1/4 rounded-l-[14px] text-left">
+              <TableHead className="w-1/3 rounded-l-[14px] text-left">
                 {isNativeToken
                   ? "Native Assets"
                   : standard === "ERC20"
                   ? "ERC-20 Assets"
                   : "ERC-721 Assets"}
               </TableHead>
-              <TableHead className="w-1/4 text-right">Balance</TableHead>
-              <TableHead className="w-1/4 text-right">Value</TableHead>
-              <TableHead className="w-1/4 text-right rounded-r-[14px]">
-                Network
+              <TableHead className="w-1/3 text-center">Balance</TableHead>
+              <TableHead className="w-1/3 text-right rounded-r-[14px]">
+                Value
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -188,7 +184,7 @@ export function TreasuryTable({
                     explorer={daoConfig?.chain?.explorers?.[0] as string}
                   />
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-center">
                   {`${value?.formattedBalance} ${
                     tokenInfoWithNativeToken[value.contract as `0x${string}`]
                       ?.symbol ?? "N/A"
@@ -202,9 +198,6 @@ export function TreasuryTable({
                         formatNumberForDisplay(calculateAssetValue(value))?.[0]
                       } USD`
                     : "N/A"}
-                </TableCell>
-                <TableCell className="text-right">
-                  {daoConfig?.chain?.name || "N/A"}
                 </TableCell>
               </TableRow>
             ))}

@@ -28,7 +28,7 @@ export function AddressWithAvatar({
     <Tooltip>
       <TooltipTrigger asChild>
         <Link
-          href={customLink ? customLink(address) : `/profile/${address}`}
+          href={customLink ? customLink(address) : `/delegate/${address}`}
           target={!!customLink ? "_blank" : undefined}
           rel={!!customLink ? "noopener noreferrer" : undefined}
           className={cn("inline-flex items-center gap-[10px]", className)}

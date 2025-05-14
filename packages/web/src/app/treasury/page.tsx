@@ -4,10 +4,12 @@ import BigNumber from "bignumber.js";
 import { isEmpty, isUndefined } from "lodash-es";
 import Image from "next/image";
 import { useMemo } from "react";
+import { formatUnits } from "viem";
 import { useBalance } from "wagmi";
 
 import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { TreasuryTable } from "@/components/treasury-table";
+import { SafeTable } from "@/components/treasury-table/safe-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -28,22 +30,27 @@ export default function Treasury() {
   const tokenInfo = useMemo(() => {
     const nativeAsset: TokenWithBalance = {
       ...daoConfig?.chain?.nativeToken,
+      name: daoConfig?.chain?.nativeToken.symbol ?? "",
       chainId: daoConfig?.chain?.id,
       contract: "0x0000000000000000000000000000000000000000" as `0x${string}`,
       standard: "ERC20",
       logo: daoConfig?.chain?.logo ?? "",
     };
+    const ids = new Set<string>();
+
+    if (daoConfig?.chain?.nativeToken?.priceId) {
+      ids.add(daoConfig?.chain?.nativeToken?.priceId.toLowerCase());
+    }
     if (!daoConfig?.timeLockAssets || isEmpty(daoConfig?.timeLockAssets))
       return {
         nativeAsset,
         erc20Assets: [],
         erc721Assets: [],
-        priceIds: [],
+        priceIds: ids,
       };
 
     const erc20: TokenWithBalance[] = [];
     const erc721: TokenWithBalance[] = [];
-    const ids = new Set<string>();
 
     if (daoConfig?.chain?.nativeToken?.priceId) {
       ids.add(daoConfig?.chain?.nativeToken?.priceId.toLowerCase());
@@ -88,6 +95,10 @@ export default function Treasury() {
         rawBalance: nativeTokenBalance?.value,
         balance: nativeTokenBalance?.value?.toString(),
         formattedBalance: formatBigIntForDisplay(
+          nativeTokenBalance?.value ?? 0n,
+          daoConfig?.chain?.nativeToken?.decimals ?? 18
+        ),
+        formattedRawBalance: formatUnits(
           nativeTokenBalance?.value ?? 0n,
           daoConfig?.chain?.nativeToken?.decimals ?? 18
         ),
@@ -217,6 +228,11 @@ export default function Treasury() {
         data={erc721Assets}
         isLoading={isLoading721Balances}
       />
+
+      <div className="flex flex-col gap-[20px]">
+        <h3 className="text-[18px] font-extrabold">Safe Assets</h3>
+        <SafeTable />
+      </div>
     </div>
   );
 }

@@ -28,7 +28,7 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
         return undefined;
       }
       // Return next page number
-      return lastPageParam + 1;
+      return lastPageParam + pageSize;
     },
     retryDelay: 10_000,
     retry: 3,

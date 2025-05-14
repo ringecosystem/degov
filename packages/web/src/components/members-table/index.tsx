@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { ContributorItem } from "@/services/graphql/types";
 
@@ -7,17 +8,20 @@ import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 import { useMembersData } from "./hooks/useMembersData";
 
 import type { ColumnType } from "../custom-table";
-
 interface MembersTableProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
 }
 
-export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
+export function MembersTable({
+  onDelegate,
+  pageSize = DEFAULT_PAGE_SIZE,
+}: MembersTableProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
   const {
@@ -34,7 +38,7 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
       {
         title: "Rank",
         key: "rank",
-        width: "160px",
+        width: "70px",
         className: "text-left",
         render: (_record, index) => (
           <span className="line-clamp-1" title={(index + 1).toString()}>
@@ -45,7 +49,7 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
       {
         title: "Name",
         key: "name",
-        width: "260px",
+        width: "200px",
         className: "text-left",
         render: (record) => (
           <AddressWithAvatar address={record?.id as `0x${string}`} />
@@ -54,21 +58,36 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
       {
         title: "Delegate Statement",
         key: "delegateStatement",
-        width: "200px",
+        width: "470px",
         className: "text-left",
-        render: (record) => (
-          <span
-            className="line-clamp-1 break-words"
-            title={profilePullData?.[record.id]?.delegate_statement || "-"}
-          >
-            {profilePullData?.[record.id]?.delegate_statement || "-"}
-          </span>
-        ),
+        render: (record) => {
+          if (!profilePullData?.[record.id]?.delegate_statement) {
+            return "-";
+          }
+
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="line-clamp-1 break-words">
+                  {profilePullData?.[record.id]?.delegate_statement || "-"}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent
+                className="w-[300px]"
+                style={{
+                  wordBreak: "break-word",
+                }}
+              >
+                {profilePullData?.[record.id]?.delegate_statement || "-"}
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
       },
       {
         title: "Voting Power",
         key: "votingPower",
-        width: "200px",
+        width: "120px",
         className: "text-right",
         render: (record) =>
           isProfilePullLoading ? (
@@ -91,7 +110,7 @@ export function MembersTable({ onDelegate, pageSize = 10 }: MembersTableProps) {
       {
         title: "Action",
         key: "action",
-        width: "180px",
+        width: "140px",
         className: "text-right",
         render: (record) => (
           <Button

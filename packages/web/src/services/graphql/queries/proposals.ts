@@ -46,6 +46,25 @@ export const GET_ALL_PROPOSALS = gql`
   }
 `;
 
+export const GET_PROPOSALS_BY_DESCRIPTION = gql`
+  query GetProposalsByDescription(
+    $limit: Int
+    $offset: Int
+    $orderBy: [ProposalOrderByInput!]
+    $where: ProposalWhereInput
+  ) {
+    proposals(
+      limit: $limit
+      offset: $offset
+      orderBy: $orderBy
+      where: $where
+    ) {
+      proposalId
+      description
+    }
+  }
+`;
+
 export const GET_ALL_PROPOSALS_TOTAL = gql`
   query GetAllProposalsTotal($limit: Int, $offset: Int) {
     proposals(limit: $limit, offset: $offset) {

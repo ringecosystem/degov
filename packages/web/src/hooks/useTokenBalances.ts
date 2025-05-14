@@ -13,7 +13,9 @@ export interface TokenWithBalance extends TokenDetails {
   rawBalance?: bigint;
   balance?: string;
   formattedBalance?: string;
+  formattedRawBalance?: string;
   chainId?: number;
+  decimals?: number;
 }
 
 export interface UseTokenBalancesReturn {
@@ -75,6 +77,7 @@ export function useTokenBalances(
           rawBalance,
           balance: rawBalance ? rawBalance.toString() : "0",
           formattedBalance: formatBigIntForDisplay(rawBalance ?? 0n, 0),
+          formattedRawBalance: formatUnits(rawBalance ?? 0n, 0),
         };
       } else {
         const decimals =
@@ -91,6 +94,7 @@ export function useTokenBalances(
             rawBalance ?? 0n,
             decimals ?? 18
           ),
+          formattedRawBalance: formatUnits(rawBalance ?? 0n, decimals ?? 18),
         };
       }
     });

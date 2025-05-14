@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { useMemo } from "react";
 
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { DelegateItem } from "@/services/graphql/types";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
@@ -18,6 +20,7 @@ interface DelegationTableProps {
 export function DelegationTable({ address }: DelegationTableProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { state, loadMoreData } = useDelegationData(address);
+  const daoConfig = useDaoConfig();
 
   const columns = useMemo<ColumnType<DelegateItem>[]>(
     () => [
@@ -37,8 +40,16 @@ export function DelegationTable({ address }: DelegationTableProps) {
         title: "Delegation Date",
         key: "delegationDate",
         width: "33.3%",
-        render: (record) =>
-          formatTimestampToFriendlyDate(record.blockTimestamp),
+        render: (record) => (
+          <Link
+            href={`${daoConfig?.chain?.explorers?.[0]}/tx/${record?.transactionHash}`}
+            className="text-[#00BAFF] hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {formatTimestampToFriendlyDate(record.blockTimestamp)}
+          </Link>
+        ),
       },
       {
         title: "Votes",
@@ -50,7 +61,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         },
       },
     ],
-    [formatTokenAmount]
+    [formatTokenAmount, daoConfig?.chain?.explorers]
   );
   return (
     <div className="rounded-[14px] bg-card p-[20px]">
@@ -58,16 +69,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         dataSource={state.data}
         columns={columns as ColumnType<DelegateItem>[]}
         isLoading={state.isPending}
-        emptyText={
-          <span>
-            You haven&apos;t received delegations from others, and you can
-            delegate to yourself or others{" "}
-            <a href="/delegates" className="font-semibold underline">
-              here
-            </a>
-            .
-          </span>
-        }
+        emptyText={<span>You haven&#39;t received any delegation yet.</span>}
         rowKey="id"
         caption={
           state.hasNextPage && (

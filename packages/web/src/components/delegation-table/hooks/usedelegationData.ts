@@ -26,10 +26,10 @@ export function useDelegationData(address?: Address) {
         daoConfig?.indexer?.endpoint as string,
         {
           limit: DEFAULT_PAGE_SIZE,
-          offset: pageParam * DEFAULT_PAGE_SIZE,
+          offset: pageParam,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: address
-            ? { toDelegate_eq: address?.toLowerCase(), power_gt: 0 }
+            ? { toDelegate_eq: address?.toLowerCase() }
             : undefined,
         }
       );
@@ -43,7 +43,7 @@ export function useDelegationData(address?: Address) {
         return undefined;
       }
       // Return next page number
-      return lastPageParam + 1;
+      return lastPageParam + DEFAULT_PAGE_SIZE;
     },
     enabled: !!daoConfig?.indexer?.endpoint,
     retryDelay: 10_000,

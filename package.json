@@ -1,11 +1,14 @@
 {
   "name": "@degov/root",
-  "version": "0.2.0",
+  "version": "0.3.2",
   "private": true,
   "scripts": {
     "dev:web": "pnpm --filter @degov/web dev",
     "start:web": "pnpm --filter @degov/web start",
     "build:web": "pnpm --filter @degov/web build",
     "build:all": "pnpm --filter @degov/* build"
+  },
+  "dependencies": {
+    "github-markdown-css": "^5.8.1"
   }
 }

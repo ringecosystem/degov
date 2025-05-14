@@ -25,6 +25,7 @@ import {
 import { WithConnect } from "@/components/with-connect";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useProposal } from "@/hooks/useProposal";
+import { useUnsavedChangesAlert } from "@/hooks/useUnsavedChangesAlert";
 
 import { CustomPanel } from "./custom-panel";
 import {
@@ -93,6 +94,22 @@ export default function NewProposal() {
   const [publishWarningOpen, setPublishWarningOpen] = useState(false);
   const [hash, setHash] = useState<string | null>(null);
   const [tab, setTab] = useState<"edit" | "add" | "preview">("edit");
+
+  const initialActionsRef = useRef<string>(JSON.stringify(DEFAULT_ACTIONS));
+
+  const actionsChanged = useMemo(() => {
+    const currentActionsJson = JSON.stringify(actions);
+
+    console.log("currentActionsJson", currentActionsJson);
+    console.log("initialActionsRef", initialActionsRef.current);
+    return currentActionsJson !== initialActionsRef.current;
+  }, [actions]);
+
+  const { resetChanges } = useUnsavedChangesAlert({
+    hasChanges: actionsChanged,
+    message:
+      "Please confirm that you want to leave this page. If you leave this page, your changes will be lost.",
+  });
 
   const { createProposal, isPending, proposalId } = useProposal();
 
@@ -238,6 +255,7 @@ export default function NewProposal() {
       const hash = await createProposal(result.description, result.actions);
       if (hash) {
         setHash(hash);
+        resetChanges();
       }
       return;
     } catch (error) {
@@ -249,7 +267,7 @@ export default function NewProposal() {
     } finally {
       setPublishLoading(false);
     }
-  }, [actions, createProposal, hasEnoughVotes]);
+  }, [actions, createProposal, hasEnoughVotes, resetChanges]);
 
   const handlePublishSuccess: SuccessType = useCallback(() => {
     if (proposalId) {

@@ -1188,8 +1188,98 @@ const recordsFor_0xebd9a48 = [
   ],
 ];
 
+// 0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE
+const recordsFor_0x9Fc3d61 = [
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      blockNumber: "5966610",
+    },
+  ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB",
+      fromDelegate: "0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB",
+      toDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      blockNumber: "5983939",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB",
+      previousVotes: 65000000000000000000n,
+      newVotes: 35000000000000000000n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      previousVotes: 0n,
+      newVotes: 30000000000000000000,
+    },
+  ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB",
+      fromDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      toDelegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      txHash:
+        "0x842829165341e8ccf3caa65008d80696f56fcfbcfe9de7c2d7c7f01125de39d7",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+      previousVotes: 30000000000000000000n,
+      newVotes: 0n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
+      previousVotes: 20000000000000000000n,
+      newVotes: 50000000000000000000n,
+    },
+  ],
+  // [
+  //   {
+  //     method: "DelegateChanged",
+  //     delegator: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     fromDelegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     toDelegate: "0xaFc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //   },
+  //   {
+  //     method: "DelegateVotesChanged",
+  //     delegate: "0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     previousVotes: 0n,
+  //     newVotes: 0n,
+  //   },
+  //   {
+  //     method: "DelegateVotesChanged",
+  //     delegate: "0xaFc3d617873c95D8dd8DbBDb8377A16cf11376eE",
+  //     previousVotes: 0n,
+  //     newVotes: 0n,
+  //   },
+  // ],
+];
+
+// 0xb25805118F1b471844687A1D1374ffb18207De6c
+const recordsFor_0xb258051 = [
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0xb25805118F1b471844687A1D1374ffb18207De6c",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xb25805118F1b471844687A1D1374ffb18207De6c",
+      blockNumber: "6608398",
+      txHash: "0xb1272dcd1a95f7b26823f452a09dfe6294482aa6d6bbf147cd86880e3aeba17d",
+    },
+  ],
+];
+
 test("testTokens", () => {
-  const records = recordsFor_0xebd9a48;
+  const records = recordsFor_0xb258051;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -1212,6 +1302,17 @@ test("testTokens", () => {
             toDelegate: entry.toDelegate.toLowerCase(),
           };
           ds.pushMapping(cdg);
+          if (
+            cdg.fromDelegate === zeroAddress &&
+            cdg.delegator === cdg.toDelegate
+          ) {
+            const cdelegate = {
+              fromDelegate: cdg.delegator,
+              toDelegate: cdg.toDelegate,
+              power: 0n,
+            };
+            ds.pushDelegator(cdelegate);
+          }
           break;
         case "delegatevoteschanged":
           if (!cdg) {
@@ -1258,10 +1359,8 @@ test("testTokens", () => {
   }
 
   const dss = ds.getDelegates();
-  console.log("ds: ", dss);
-  if (!dss.length) {
-    console.log("mapping: ", ds.getMapping());
-  }
+  console.log("delegates: ", dss);
+  console.log("mapping: ", ds.getMapping());
 });
 
 function DelegateStorage() {

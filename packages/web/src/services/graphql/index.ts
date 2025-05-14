@@ -30,7 +30,24 @@ export const proposalService = {
     );
     return response?.proposals ?? [];
   },
-
+  getProposalsByDescription: async (
+    endpoint: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      orderBy?: string;
+      where?: {
+        description_containsInsensitive?: string;
+      };
+    } = {}
+  ) => {
+    const response = await request<Types.ProposalResponse>(
+      endpoint,
+      Queries.GET_PROPOSALS_BY_DESCRIPTION,
+      options
+    );
+    return response?.proposals ?? [];
+  },
   getProposalMetrics: async (endpoint: string) => {
     const response = await request<Types.ProposalMetricsResponse>(
       endpoint,
@@ -96,6 +113,25 @@ export const delegateService = {
       options
     );
     return response?.delegates ?? [];
+  },
+  getDelegateMappings: async (
+    endpoint: string,
+    options: {
+      where: {
+        from_eq: string;
+      };
+    } = {
+      where: {
+        from_eq: "",
+      },
+    }
+  ) => {
+    const response = await request<Types.DelegateMappingResponse>(
+      endpoint,
+      Queries.GET_DELEGATE_MAPPINGS,
+      options
+    );
+    return response?.delegateMappings ?? [];
   },
 };
 
