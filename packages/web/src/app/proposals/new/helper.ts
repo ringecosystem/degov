@@ -5,7 +5,6 @@ import { abi as multiPortAbi } from "@/config/abi/multiPort";
 import { abi as tokenAbi } from "@/config/abi/token";
 import type { ProposalActionParam } from "@/hooks/useProposal";
 import { extractMethodNameFromSignature } from "@/utils";
-import { markdownToHtml } from "@/utils/markdown";
 
 import type { CustomContent, XAccountContent } from "./schema";
 import type {
