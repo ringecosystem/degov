@@ -13,7 +13,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useDelegate } from "@/hooks/useDelegate";
 
-
 interface JoinDelegateProps {
   open: boolean;
   onOpenChange: (value: boolean) => void;
@@ -57,12 +56,12 @@ export function JoinDelegate({
           </DialogHeader>
           <Separator className="my-0 bg-muted-foreground/40" />
           <p className="text-[14px] text-foreground font-semibold">
-            You are going to participate in the delegation by converting your
+            You are going to participate in the delegation by converting your{" "}
             {amount} {symbol} to voting power. Please continue if you want to
             proceed.
           </p>
           <Separator className="my-0 bg-muted-foreground/40" />
-          <div className="flex flex-col gap-[20px]">
+          <div className="grid grid-cols-2 gap-[20px]">
             <Button
               className=" rounded-[100px] border-border bg-card"
               variant="outline"
@@ -71,7 +70,7 @@ export function JoinDelegate({
               Cancel
             </Button>
             <Button
-              className="rounded-[100px] border-border bg-card"
+              className="w-full rounded-[100px]"
               isLoading={isPendingDelegate}
               onClick={handleDelegate}
             >
