@@ -39,7 +39,7 @@ export const Overview = ({
       },
       {
         title: "My Proposals",
-        value: "100",
+        value: "View All",
         isLoading,
         link: isOwnProfile ? "/proposals?type=my" : undefined,
       },

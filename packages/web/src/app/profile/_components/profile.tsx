@@ -178,7 +178,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
           {(value) => (
             <Link
               href={`/delegate/${delegationStatus?.to}`}
-              className="text-[#00BAFF] hover:underline"
+              className="hover:underline"
             >
               {value}
             </Link>
