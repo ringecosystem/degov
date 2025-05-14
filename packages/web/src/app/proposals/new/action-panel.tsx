@@ -178,7 +178,9 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                       height={24}
                     />
                     <span className="text-[14px] capitalize">
-                      {action.type}
+                      {action.type === "xaccount"
+                        ? "XAccount Cross-chain"
+                        : action.type}
                     </span>
                   </div>
                 </TableCell>

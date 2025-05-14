@@ -109,7 +109,7 @@ export const XAccountPanel = ({
             href={xaccountLink}
             target="_blank"
             rel="noreferrer"
-            className="text-[#00BAFF] underline"
+            className="underline"
           >
             XAccount
           </Link>{" "}
