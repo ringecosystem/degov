@@ -74,7 +74,11 @@ export function ActionTableSummary({
               height={24}
               className="rounded-full"
             />
-            <span className="text-[14px] capitalize">{record.type}</span>
+            <span className="text-[14px] capitalize">
+              {record.type === "xAccount"
+                ? "XAccount Cross-chain"
+                : record.type}
+            </span>
           </div>
         ),
       },
