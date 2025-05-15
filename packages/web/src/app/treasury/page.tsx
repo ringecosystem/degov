@@ -162,7 +162,7 @@ export default function Treasury() {
     <div className="flex flex-col gap-[20px]">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-[10px]">
-          <h3 className="text-[18px] font-extrabold">TimeLock Assets</h3>
+          <h3 className="text-[18px] font-extrabold">Treasury Assets</h3>
           <ClipboardIconButton text={timeLockAddress} size={16} />
         </div>
         {

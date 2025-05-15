@@ -206,7 +206,7 @@ export function TreasuryTable({
       )}
       {!data?.length && (
         <Empty
-          label="No assets have been configured"
+          label="No assets found"
           style={{
             height: 24 * 6,
           }}
