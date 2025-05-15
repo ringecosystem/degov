@@ -106,7 +106,7 @@ export const XAccountPanel = ({
         <p className="text-[14px] font-normal">
           The cross-chain governance capability in degov relies on the{" "}
           <Link
-            href={xaccountLink}
+            href="https://github.com/ringecosystem/XAccount"
             target="_blank"
             rel="noreferrer"
             className="underline"
