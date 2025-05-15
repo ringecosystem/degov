@@ -6,12 +6,10 @@ import {
   proposalSchema,
   transferSchema,
 } from "./schema";
+import { xaccountSchema } from "./schema";
 
-import type {
-  CustomContent,
-  ProposalContent,
-  TransferContent} from "./schema";
-
+import type { CustomContent, ProposalContent, TransferContent } from "./schema";
+import type { XAccountContent } from "./schema";
 
 export const validateProposal = (data: ProposalContent) => {
   const result = proposalSchema.safeParse(data);
@@ -59,4 +57,20 @@ export const isValidCustom = (
   data: CustomContent
 ): data is z.infer<typeof customActionSchema> => {
   return customActionSchema.safeParse(data).success;
+};
+
+export const validateXAccount = (data: XAccountContent) => {
+  const result = xaccountSchema.safeParse(data);
+
+  return {
+    success: result.success,
+    data: result.success ? result.data : null,
+    errors: result.success ? null : result.error.flatten(),
+  };
+};
+
+export const isValidXAccount = (
+  data: XAccountContent
+): data is z.infer<typeof xaccountSchema> => {
+  return xaccountSchema.safeParse(data).success;
 };

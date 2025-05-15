@@ -24,7 +24,15 @@ export function ActionTableSummary({
 
   const data = useMemo(() => {
     return actions.map((action) => {
-      const type = action?.calldata === "0x" ? "transfer" : "custom";
+      const isXAccount =
+        action?.signature ===
+        "send(uint256 toChainId, address toDapp, bytes calldata message, bytes calldata params) external payable";
+      const type =
+        action?.calldata === "0x"
+          ? "transfer"
+          : isXAccount
+          ? "xAccount"
+          : "custom";
 
       let details = "";
       if (type === "transfer") {
@@ -57,14 +65,20 @@ export function ActionTableSummary({
           <div className="flex items-center gap-[10px]">
             <Image
               src={
-                PROPOSAL_ACTIONS[record.type as keyof typeof PROPOSAL_ACTIONS]
+                PROPOSAL_ACTIONS[
+                  record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS
+                ]
               }
               alt={record.type}
               width={24}
               height={24}
               className="rounded-full"
             />
-            <span className="text-[14px] capitalize">{record.type}</span>
+            <span className="text-[14px] capitalize">
+              {record.type === "xAccount"
+                ? "XAccount Cross-chain"
+                : record.type}
+            </span>
           </div>
         ),
       },
