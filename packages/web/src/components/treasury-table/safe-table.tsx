@@ -154,7 +154,7 @@ export function SafeTable({ caption }: SafeTableProps) {
       )}
       {!data?.length && (
         <Empty
-          label="No assets have been configured"
+          label="No assets found"
           style={{
             height: 24 * 6,
           }}
