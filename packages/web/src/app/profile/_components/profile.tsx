@@ -102,9 +102,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     // Delegating to someone else
     return {
       type: "other",
-      displayText: `${balance ?? "0.00"} ${governanceToken?.symbol} to ${
-        latestDelegation.to
-      }`,
+      displayText: `${balance ?? "0.00"} ${governanceToken?.symbol} to`,
       buttonText: "Change Delegate",
       to: latestDelegation.to,
     };
@@ -178,7 +176,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
           {(value) => (
             <Link
               href={`/delegate/${delegationStatus?.to}`}
-              className="hover:underline"
+              className="hover:underline ml-1"
             >
               {value}
             </Link>

@@ -23,6 +23,7 @@ function ProposalsContent() {
   const searchParams = useSearchParams();
   const typeParam = searchParams.get("type");
   const supportParam = searchParams.get("support");
+  const addressParam = searchParams.get("address");
 
   const [support, setSupport] = useState<"all" | "1" | "2" | "3">(
     (supportParam as "all" | "1" | "2" | "3") || "all"
@@ -39,8 +40,14 @@ function ProposalsContent() {
 
     if (myProposals) {
       params.set("type", "my");
+      // Remove address param when using "my proposals"
+      params.delete("address");
     } else {
       params.delete("type");
+      // Keep address param if it exists in URL
+      if (addressParam) {
+        params.set("address", addressParam);
+      }
     }
 
     if (supportValue !== "all") {
@@ -120,7 +127,9 @@ function ProposalsContent() {
       </div>
       <ProposalsTable
         type="all"
-        address={isMyProposals ? address : undefined}
+        address={
+          isMyProposals ? address : (addressParam as `0x${string}` | undefined)
+        }
         support={support === "all" ? undefined : support}
       />
     </div>

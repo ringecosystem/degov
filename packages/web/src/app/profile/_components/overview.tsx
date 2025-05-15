@@ -20,7 +20,6 @@ export const Overview = ({
   isLoadingTokenBalance,
   delegationStatusText,
   isDelegateMappingsLoading,
-  isOwnProfile,
 }: OverviewProps) => {
   const { formattedVotes, isLoading } = useAddressVotes(address);
 
@@ -41,7 +40,7 @@ export const Overview = ({
         title: "My Proposals",
         value: "View All",
         isLoading,
-        link: isOwnProfile ? "/proposals?type=my" : undefined,
+        link: `/proposals?address=${address}`,
       },
     ];
   }, [
@@ -51,7 +50,7 @@ export const Overview = ({
     isLoadingTokenBalance,
     delegationStatusText,
     isDelegateMappingsLoading,
-    isOwnProfile,
+    address,
   ]);
   return (
     <div className="grid grid-cols-4 gap-[20px] w-full">
