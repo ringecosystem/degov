@@ -43,7 +43,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         render: (record) => (
           <Link
             href={`${daoConfig?.chain?.explorers?.[0]}/tx/${record?.transactionHash}`}
-            className="text-[#00BAFF] hover:underline"
+            className="hover:underline"
             target="_blank"
             rel="noopener noreferrer"
           >

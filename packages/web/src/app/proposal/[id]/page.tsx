@@ -276,7 +276,7 @@ export default function ProposalDetailPage() {
                 href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#00BAFF] hover:underline"
+                className="hover:underline"
               >
                 {formatTimestampToFriendlyDate(data?.blockTimestamp)}
               </Link>
