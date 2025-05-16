@@ -13,6 +13,7 @@ import { formatShortAddress } from "@/utils/address";
 interface AddressWithAvatarFullProps {
   address: `0x${string}`;
   avatarSize?: number;
+  link?: string;
   className?: string;
   textClassName?: string;
 }
@@ -20,38 +21,40 @@ interface AddressWithAvatarFullProps {
 export function AddressWithAvatarFull({
   address,
   avatarSize = 34,
+  link,
   className,
   textClassName,
 }: AddressWithAvatarFullProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Link
-          href={`/profile/${address}`}
-          className={cn(
-            "inline-flex items-center gap-[10px] hover:underline",
-            className
-          )}
-        >
-          <AddressAvatar address={address} size={avatarSize} />
-          <AddressResolver address={address} showShortAddress>
-            {(ensName) => (
-              <span
-                className={cn(
-                  "line-clamp-1 text-[16px] font-semibold",
-                  textClassName
-                )}
-                title={address}
-              >
-                {ensName}
-              </span>
+        <div className="flex items-center gap-[10px]">
+          <Link
+            href={link ?? `/profile/${address}`}
+            className={cn(
+              "inline-flex items-center gap-[10px] hover:underline",
+              className
             )}
-          </AddressResolver>
-
-          <span className="text-[14px] font-normal hover:underline">
+          >
+            <AddressAvatar address={address} size={avatarSize} />
+            <AddressResolver address={address} showShortAddress>
+              {(ensName) => (
+                <span
+                  className={cn(
+                    "line-clamp-1 text-[16px] font-semibold",
+                    textClassName
+                  )}
+                  title={address}
+                >
+                  {ensName}
+                </span>
+              )}
+            </AddressResolver>
+          </Link>
+          <span className="text-[14px] font-normal">
             ({formatShortAddress(address)})
           </span>
-        </Link>
+        </div>
       </TooltipTrigger>
 
       <TooltipContent>

@@ -14,7 +14,10 @@ export const Comment = ({ comment }: CommentProps) => {
   return (
     <div className="flex flex-col gap-[20px] border-b border-border/20 p-[20px] last:border-b-0">
       <div className="flex items-center justify-between gap-[10px]">
-        <AddressWithAvatarFull address={comment.voter} />
+        <AddressWithAvatarFull
+          address={comment.voter}
+          link={`/delegate/${comment.voter}`}
+        />
 
         <div className="flex items-center gap-[10px]">
           <a

@@ -1,7 +1,5 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
-import { capitalize } from "lodash-es";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,40 +7,21 @@ import { isAddress, type Address } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 
 import { ChangeDelegate } from "@/app/profile/_components/change-delegate";
-import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
-import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { DelegateAction } from "@/components/delegate-action";
 import { DelegateSelector } from "@/components/delegate-selector";
 import NotFound from "@/components/not-found";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
 import { abi as tokenAbi } from "@/config/abi/token";
-import { useAddressVotes } from "@/hooks/useAddressVotes";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { delegateService, profileService } from "@/services/graphql";
-import { formatShortAddress } from "@/utils/address";
-import {
-  getTwitterLink,
-  getGithubLink,
-  getTelegramLink,
-  getDiscordLink,
-  formatSocialHandle,
-} from "@/utils/social";
 
 import { JoinDelegate } from "./join-delegate";
 import { ReceivedDelegations } from "./received-delegations";
 import { ProfileSkeleton } from "./skeleton";
+import { User } from "./user";
 interface ProfileProps {
   address: Address;
   isDelegate?: boolean;
@@ -78,8 +57,6 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
       enabled: !!address,
     });
 
-  const { formattedVotes, isLoading } = useAddressVotes(address);
-
   // get governance token
   const { data: tokenBalance, isLoading: isLoadingTokenBalance } =
     useReadContract({
@@ -114,7 +91,9 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
       return {
         type: "self",
-        displayText: `Delegating ${balance ?? "0.00"} voting power to himself`,
+        displayText: `${balance ?? "0.00"} ${
+          governanceToken?.symbol
+        } to Self`,
         buttonText: "Change Delegate",
         to: latestDelegation.to,
       };
@@ -123,11 +102,17 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     // Delegating to someone else
     return {
       type: "other",
-      displayText: `Delegating ${balance ?? "0.00"} voting power to `,
+      displayText: `${balance ?? "0.00"} ${governanceToken?.symbol} to`,
       buttonText: "Change Delegate",
       to: latestDelegation.to,
     };
-  }, [delegateMappings, address, tokenBalance, formatTokenAmount]);
+  }, [
+    delegateMappings,
+    address,
+    tokenBalance,
+    formatTokenAmount,
+    governanceToken,
+  ]);
 
   const isOwnProfile = useMemo(() => {
     if (!account || !address) return false;
@@ -180,42 +165,28 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
 
   const profile = profileData?.data;
 
-  const socialLinks = useMemo(
-    () =>
-      [
-        {
-          name: "Email",
-          value: profile?.email,
-          link: `mailto:${profile?.email}`,
-          displayValue: profile?.email,
-        },
-        {
-          name: "Twitter",
-          value: profile?.twitter,
-          link: getTwitterLink(profile?.twitter),
-          displayValue: formatSocialHandle("twitter", profile?.twitter),
-        },
-        {
-          name: "GitHub",
-          value: profile?.github,
-          link: getGithubLink(profile?.github),
-          displayValue: formatSocialHandle("github", profile?.github),
-        },
-        {
-          name: "Telegram",
-          value: profile?.telegram,
-          link: getTelegramLink(profile?.telegram),
-          displayValue: formatSocialHandle("telegram", profile?.telegram),
-        },
-        {
-          name: "Discord",
-          value: profile?.discord,
-          link: getDiscordLink(profile?.discord),
-          displayValue: formatSocialHandle("discord", profile?.discord),
-        },
-      ]?.filter((item) => !!item.value),
-    [profile]
-  );
+  const delegationStatusText = useMemo(() => {
+    return delegationStatus?.type === "other" ? (
+      <span className="flex items-center">
+        {delegationStatus?.displayText}{" "}
+        <AddressResolver
+          address={delegationStatus?.to as `0x${string}`}
+          showShortAddress
+        >
+          {(value) => (
+            <Link
+              href={`/delegate/${delegationStatus?.to}`}
+              className="hover:underline ml-1"
+            >
+              {value}
+            </Link>
+          )}
+        </AddressResolver>
+      </span>
+    ) : (
+      <span>{delegationStatus?.displayText}</span>
+    );
+  }, [delegationStatus]);
 
   useEffect(() => {
     if (isConnected) {
@@ -264,7 +235,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   }
 
   return (
-    <div className="flex flex-col gap-[30px]">
+    <div className="flex flex-col gap-[20px]">
       {isDelegate ? (
         <div className="flex items-center gap-1 text-[18px] font-extrabold">
           <Link
@@ -280,180 +251,21 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-[1fr_400px] gap-[20px]">
-        {/* personal info */}
-        <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-          <div className="flex items-center justify-between gap-[10px]">
-            <div className="flex items-center gap-[20px]">
-              <AddressAvatar
-                address={address as `0x${string}`}
-                className="size-[70px]"
-              />
-              <div>
-                <div className="flex items-center gap-[5px]">
-                  <AddressResolver
-                    address={address as `0x${string}`}
-                    showShortAddress
-                  >
-                    {(value) => (
-                      <span className="text-[26px] font-semibold">{value}</span>
-                    )}
-                  </AddressResolver>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger>
-                      <span className="flex size-[24px] cursor-pointer items-center justify-center transition-opacity hover:opacity-80">
-                        <Image
-                          src="/assets/image/share.svg"
-                          alt="delegate-link"
-                          className="size-[16px]"
-                          width={16}
-                          height={16}
-                        />
-                      </span>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      className="flex w-[160px] flex-col rounded-[10px] border-border/20 bg-card"
-                      side="right"
-                    >
-                      <DropdownMenuItem
-                        className="cursor-pointer py-[10px]"
-                        onClick={() => {
-                          navigator.clipboard.writeText(
-                            `${window.location.origin}/profile/${address}`
-                          );
-                        }}
-                      >
-                        Copy Profile URL
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <div className="flex items-center gap-[5px]">
-                  <span className="text-[14px] text-white/40">
-                    {formatShortAddress(address)}
-                  </span>
-                  <ClipboardIconButton text={address} className="size-[16px]" />
-                </div>
-                {isDelegateMappingsLoading ? (
-                  <Skeleton className="h-[24px] w-[120px] mt-2" />
-                ) : delegationStatus?.type === "other" ? (
-                  <span className="text-[14px] text-foreground font-semibold">
-                    {delegationStatus?.displayText}{" "}
-                    <AddressResolver
-                      address={delegationStatus?.to as `0x${string}`}
-                      showShortAddress
-                    >
-                      {(value) => (
-                        <Link
-                          href={`/delegate/${delegationStatus?.to}`}
-                          className="text-[#00BAFF] hover:underline"
-                        >
-                          {value}
-                        </Link>
-                      )}
-                    </AddressResolver>
-                  </span>
-                ) : (
-                  <span className="text-[14px] text-foreground font-semibold">
-                    {delegationStatus?.displayText}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-[20px]">
-              {isOwnProfile ? (
-                <Button
-                  className="rounded-full border-border bg-card"
-                  variant="outline"
-                  onClick={handleEditProfile}
-                >
-                  Edit Profile
-                </Button>
-              ) : null}
-              <Button className="rounded-full" onClick={handleDelegate}>
-                {isDelegate ? "Delegate" : delegationStatus?.buttonText}
-              </Button>
-            </div>
-          </div>
-          <Separator className="bg-border/40" />
-
-          {profile?.delegate_statement ? (
-            <p
-              className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-foreground"
-              style={{
-                wordBreak: "break-word",
-              }}
-            >
-              {profile?.delegate_statement}
-            </p>
-          ) : (
-            <p className="mb-0 line-clamp-2 text-[14px] font-normal leading-normal text-muted-foreground">
-              No delegate statement found, please create one to attract more
-              votes.
-            </p>
-          )}
-
-          <div className="flex items-center gap-[20px]">
-            {socialLinks.map((social) => (
-              <Link
-                href={social.link || "#"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-white transition-opacity hover:opacity-80"
-                key={social.name}
-                title={capitalize(social.name)}
-                style={{
-                  backgroundImage: `url(/assets/image/user_social/${social.name.toLowerCase()}.svg)`,
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "center",
-                }}
-              ></Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Voting Power */}
-        <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] py-[40px]">
-          <div className="flex flex-col justify-center gap-[10px]">
-            <span className="text-[18px] font-semibold leading-none text-muted-foreground/80 flex items-center gap-[5px]">
-              <Image
-                src="/assets/image/power.svg"
-                alt="voting-power"
-                className="size-[24px]"
-                width={24}
-                height={24}
-              />
-              Total Voting Power
-            </span>
-
-            {isLoading ? (
-              <Skeleton className="h-[56px] w-[280px]" />
-            ) : (
-              <span className="text-[56px] font-extrabold leading-none text-foreground">
-                {formattedVotes}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col justify-center gap-[10px]">
-            <span className="text-[14px] font-normal leading-none text-muted-foreground/80 flex items-center gap-[5px]">
-              Governance Balance
-            </span>
-
-            {isLoadingTokenBalance ? (
-              <div className="flex items-center gap-2">
-                <Skeleton className="h-[34px] w-[150px]" />
-                <Skeleton className="h-[24px] w-[60px]" />
-              </div>
-            ) : (
-              <span className="text-[26px] font-semibold leading-none text-foreground">
-                {tokenBalance ? formatTokenAmount(tokenBalance)?.formatted : 0}{" "}
-                {governanceToken?.symbol}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+      <User
+        address={address}
+        profile={profile}
+        isOwnProfile={isOwnProfile}
+        isDelegate={isDelegate}
+        buttonText={delegationStatus?.buttonText}
+        onEditProfile={handleEditProfile}
+        onDelegate={handleDelegate}
+        tokenBalance={`${
+          tokenBalance ? formatTokenAmount(tokenBalance)?.formatted : 0
+        } ${governanceToken?.symbol}`}
+        isLoadingTokenBalance={isLoadingTokenBalance}
+        delegationStatusText={delegationStatusText}
+        isDelegateMappingsLoading={isDelegateMappingsLoading}
+      />
 
       <ReceivedDelegations address={address} />
       <DelegateAction
