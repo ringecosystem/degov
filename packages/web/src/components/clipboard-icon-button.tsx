@@ -10,17 +10,18 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-
 interface ClipboardIconButtonProps {
   text?: string;
   size?: string | number;
   color?: string;
   className?: string;
   strokeWidth?: number;
+  copyText?: string;
 }
 
 const ClipboardIconButton = ({
   text = "",
+  copyText = "Copy to clipboard",
   size,
   color,
   className,
@@ -101,7 +102,7 @@ const ClipboardIconButton = ({
         </div>
       </TooltipTrigger>
       <TooltipContent>
-        {copied ? "Copied!" : "Copy to clipboard"}
+        {copied ? "Copied!" : copyText || "Copy to clipboard"}
       </TooltipContent>
     </Tooltip>
   );

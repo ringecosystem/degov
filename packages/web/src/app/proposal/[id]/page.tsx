@@ -17,7 +17,6 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
-import { formatShortAddress } from "@/utils/address";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
 
 import ActionGroup from "./action-group";
@@ -242,41 +241,40 @@ export default function ProposalDetailPage() {
           />
         </div>
 
-        <h2 className="text-[36px] font-extrabold">
+        <h2 className="text-[36px] font-extrabold flex items-center gap-[10px]">
           {isPending ? (
             <Skeleton className="h-[36px] w-[200px]" />
           ) : (
             extractTitleAndDescription(data?.description)?.title
           )}
+          <ClipboardIconButton
+            text={`${window.location.origin}/proposal/${id}`}
+            size={20}
+            copyText="Copy link"
+          />
         </h2>
 
         {isPending ? (
           <Skeleton className="h-[24px] w-[80%] my-1" />
         ) : (
-          <div className="flex items-center gap-[20px]">
+          <div className="flex items-center gap-[5px]">
             <div className="flex items-center gap-[5px]">
               <span>Proposed by</span>
               {!!data?.proposer && (
                 <AddressWithAvatar
                   address={data?.proposer as `0x${string}`}
                   avatarSize={24}
-                  className="gap-[5px]"
+                  className="gap-[5px] font-semibold"
                 />
               )}
             </div>
-            <div className="h-1 w-1 rounded-full bg-muted-foreground"></div>
-            <div className="flex items-center gap-[5px]">
-              <span>ID {formatShortAddress(data?.proposalId as string)}</span>
-              <ClipboardIconButton text={id as string} size={14} />
-            </div>
-            <div className="h-1 w-1 rounded-full bg-muted-foreground"></div>
             <span className="text-foreground">
-              Proposed on:{" "}
+              On{" "}
               <Link
                 href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
                 target="_blank"
                 rel="noreferrer"
-                className="hover:underline"
+                className="hover:underline font-semibold"
               >
                 {formatTimestampToFriendlyDate(data?.blockTimestamp)}
               </Link>

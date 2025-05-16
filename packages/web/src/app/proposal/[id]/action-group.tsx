@@ -68,10 +68,6 @@ export default function ActionGroup({
     },
   });
 
-  const handleCopyUrl = useCallback(() => {
-    navigator.clipboard.writeText(`${window.location.origin}/proposals/${id}`);
-  }, [id]);
-
   const { cancelProposal, isPending: isCancelling } = useCancelProposal();
 
   const handleShowCancelDialog = useCallback(() => {
@@ -280,7 +276,6 @@ export default function ActionGroup({
         />
       )}
       <Dropdown
-        handleCopyUrl={handleCopyUrl}
         handleCancelProposal={handleShowCancelDialog}
         showCancel={status === ProposalState.Pending && isConnected}
       />
