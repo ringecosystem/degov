@@ -250,6 +250,7 @@ export default function ProposalDetailPage() {
           <ClipboardIconButton
             text={`${window.location.origin}/proposal/${id}`}
             size={20}
+            copyText="Copy link"
           />
         </h2>
 
