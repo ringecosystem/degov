@@ -93,7 +93,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
         type: "self",
         displayText: `${balance ?? "0.00"} ${
           governanceToken?.symbol
-        } to himself`,
+        } to Self`,
         buttonText: "Change Delegate",
         to: latestDelegation.to,
       };
