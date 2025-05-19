@@ -17,7 +17,7 @@ export const OverviewItem = ({
   return link ? (
     <Link
       href={link}
-      className="p-[10px] flex flex-col gap-[10px] rounded-[14px] bg-[#2E2E2E] hover:opacity-80 transition-opacity"
+      className="p-[10px] flex flex-col gap-[10px] rounded-[14px] bg-card-background hover:opacity-80 transition-opacity"
     >
       <h5 className="text-[12px] font-normal leading-normal text-foreground">
         {title}
@@ -31,7 +31,7 @@ export const OverviewItem = ({
       )}
     </Link>
   ) : (
-    <div className="p-[10px] flex flex-col gap-[10px] rounded-[14px] bg-[#2E2E2E]">
+    <div className="p-[10px] flex flex-col gap-[10px] rounded-[14px] bg-card-background">
       <h5 className="text-[12px] font-normal leading-normal text-foreground">
         {title}
       </h5>

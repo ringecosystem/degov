@@ -36,7 +36,7 @@ export const VoteStatus: FC<VoteStatusProps> = ({ variant, className }) => {
   return (
     <div
       className={cn(
-        "t flex items-center gap-x-2 rounded-full px-4 py-2 text-base font-medium text-white transition-opacity hover:opacity-80",
+        "t flex items-center gap-x-2 rounded-full px-4 py-2 text-base font-medium text-foreground transition-opacity hover:opacity-80",
         text[variant].color,
         className
       )}
@@ -47,7 +47,7 @@ export const VoteStatus: FC<VoteStatusProps> = ({ variant, className }) => {
         width={20}
         height={20}
       />
-      <span>{text[variant].label}</span>
+      <span className="text-white">{text[variant].label}</span>
     </div>
   );
 };
@@ -73,7 +73,7 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
     <div
       className={cn(
         "t flex cursor-pointer items-center gap-x-2 rounded-full px-4 py-2 text-base font-medium",
-        isActive ? "text-white" : "text-muted-foreground",
+        isActive ? "text-foreground" : "text-muted-foreground",
         isActive ? text[variant].color : "bg-transparent",
         isActive
           ? "border border-transparent"
@@ -90,7 +90,9 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
         width={20}
         height={20}
       />
-      <span>{text[variant].label}</span>
+      <span className={cn(isActive && "text-white")}>
+        {text[variant].label}
+      </span>
     </div>
   );
 };

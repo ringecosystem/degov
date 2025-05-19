@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
-import { PROPOSAL_ACTIONS } from "@/config/proposals";
+import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import {
@@ -168,12 +168,23 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                   <div className="flex items-center gap-[10px]">
                     <Image
                       src={
+                        PROPOSAL_ACTIONS_LIGHT[
+                          action.type as keyof typeof PROPOSAL_ACTIONS_LIGHT
+                        ]
+                      }
+                      alt={action.type || ""}
+                      className="h-[24px] w-[24px] rounded-full block dark:hidden"
+                      width={24}
+                      height={24}
+                    />
+                    <Image
+                      src={
                         PROPOSAL_ACTIONS[
                           action.type as keyof typeof PROPOSAL_ACTIONS
                         ]
                       }
                       alt={action.type || ""}
-                      className="h-[24px] w-[24px] rounded-full"
+                      className="h-[24px] w-[24px] rounded-full hidden dark:block"
                       width={24}
                       height={24}
                     />
@@ -196,10 +207,18 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                         ? formatShortAddress(action.address)
                         : "No address"}
                       <Image
+                        src="/assets/image/light/external-link.svg"
+                        alt="external-link"
+                        width={16}
+                        height={16}
+                        className="dark:hidden"
+                      />
+                      <Image
                         src="/assets/image/external-link.svg"
                         alt="external-link"
                         width={16}
                         height={16}
+                        className="hidden dark:block"
                       />
                     </a>
                   ) : (

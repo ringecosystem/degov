@@ -115,11 +115,18 @@ function ProposalsContent() {
             onClick={() => router.push("/proposals/new")}
           >
             <Image
+              src="/assets/image/light/plus.svg"
+              alt="plus"
+              width={20}
+              height={20}
+              className="size-[20px] block dark:hidden"
+            />
+            <Image
               src="/assets/image/plus.svg"
               alt="plus"
               width={20}
               height={20}
-              className="size-[20px]"
+              className="size-[20px] hidden dark:block"
             />
             New Proposal
           </Button>

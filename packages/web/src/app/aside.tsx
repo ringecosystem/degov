@@ -55,7 +55,7 @@ export const Aside = () => {
 
   return (
     <aside
-      className="h-auto flex-shrink-0 border-r border-[#474747] bg-background transition-all duration-300"
+      className="h-auto flex-shrink-0 border-r border-gray-1 bg-background transition-all duration-300"
       style={{ width: currentWidth }}
     >
       <div
@@ -80,23 +80,43 @@ export const Aside = () => {
             href="/"
           >
             {collapsed ? (
-              <Image
-                src="/assets/image/logo-simple.svg"
-                alt="logo"
-                width={32}
-                height={32}
-                priority
-                className="h-[32px] w-[32px]"
-              />
+              <>
+                <Image
+                  src="/assets/image/logo-simple.svg"
+                  alt="logo"
+                  width={32}
+                  height={32}
+                  priority
+                  className="h-[32px] w-[32px] hidden dark:block"
+                />
+                <Image
+                  src="/assets/image/light/logo-simple.svg"
+                  alt="logo"
+                  width={32}
+                  height={32}
+                  priority
+                  className="h-[32px] w-[32px] block dark:hidden"
+                />
+              </>
             ) : (
-              <Image
-                src="/assets/image/logo.svg"
-                alt="logo"
-                width={128}
-                height={26}
-                priority
-                className="h-[26px] w-[128px]"
-              />
+              <>
+                <Image
+                  src="/assets/image/logo.svg"
+                  alt="logo"
+                  width={128}
+                  height={26}
+                  priority
+                  className="h-[26px] w-[128px] hidden dark:block"
+                />
+                <Image
+                  src="/assets/image/light/logo.svg"
+                  alt="logo"
+                  width={128}
+                  height={26}
+                  priority
+                  className="h-[26px] w-[128px] block dark:hidden"
+                />
+              </>
             )}
           </Link>
 
@@ -156,12 +176,20 @@ export const Aside = () => {
                     )}
                   >
                     <Image
+                      src={social.lightAssetPath}
+                      alt={social.name}
+                      width={social?.width || 24}
+                      height={social?.height || 24}
+                      className="object-contain block dark:hidden"
+                    />
+                    <Image
                       src={social.assetPath}
                       alt={social.name}
                       width={social?.width || 24}
                       height={social?.height || 24}
-                      className="object-contain"
+                      className="object-contain hidden dark:block"
                     />
+
                     {social.name === "Github" && (
                       <span className="text-xs text-muted-foreground">
                         {packageInfo.version}

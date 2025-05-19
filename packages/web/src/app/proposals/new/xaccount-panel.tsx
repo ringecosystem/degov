@@ -93,10 +93,18 @@ export const XAccountPanel = ({
           onClick={() => onRemove(index)}
         >
           <Image
+            src="/assets/image/light/proposal/close.svg"
+            alt="plus"
+            width={16}
+            height={16}
+            className="block dark:hidden"
+          />
+          <Image
             src="/assets/image/proposal/close.svg"
             alt="plus"
             width={16}
             height={16}
+            className="hidden dark:block"
           />
           <span>Remove action</span>
         </Button>
@@ -121,10 +129,18 @@ export const XAccountPanel = ({
           <Button className="rounded-[100px] bg-foreground" asChild>
             <Link href={xaccountLink} target="_blank" rel="noreferrer">
               <Image
+                src="/assets/image/light/proposal/plus.svg"
+                alt="plus"
+                width={20}
+                height={20}
+                className="dark:hidden"
+              />
+              <Image
                 src="/assets/image/proposal/plus.svg"
                 alt="plus"
                 width={20}
                 height={20}
+                className="hidden dark:block"
               />
               Generate Action on XAccount Box
             </Link>
@@ -158,7 +174,7 @@ export const XAccountPanel = ({
               <h3 className="text-[18px] font-semibold">Action Details</h3>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   from
                 </div>
                 <div
@@ -172,7 +188,7 @@ export const XAccountPanel = ({
               </div>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   to
                 </div>
                 <div
@@ -186,7 +202,7 @@ export const XAccountPanel = ({
               </div>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   value
                 </div>
                 <div
@@ -200,7 +216,7 @@ export const XAccountPanel = ({
               </div>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   calldata
                 </div>
                 <div
@@ -221,7 +237,7 @@ export const XAccountPanel = ({
               </h3>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   target contract address
                 </div>
                 <div
@@ -235,7 +251,7 @@ export const XAccountPanel = ({
               </div>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   value
                 </div>
                 <div
@@ -249,7 +265,7 @@ export const XAccountPanel = ({
               </div>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   contract method
                 </div>
                 <div
@@ -272,7 +288,7 @@ export const XAccountPanel = ({
               </p>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   toChainId
                 </div>
                 <div
@@ -286,7 +302,7 @@ export const XAccountPanel = ({
               </div>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   toDapp
                 </div>
                 <div
@@ -300,7 +316,7 @@ export const XAccountPanel = ({
               </div>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   message
                 </div>
                 <div
@@ -314,7 +330,7 @@ export const XAccountPanel = ({
               </div>
 
               <div className="flex gap-[10px] items-start">
-                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-[#2E2E2E]">
+                <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
                   params
                 </div>
                 <div

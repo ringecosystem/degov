@@ -1,6 +1,7 @@
 type SocialConfig = {
   name: string;
   url: string;
+  lightAssetPath: string;
   assetPath: string;
   width?: number;
   height?: number;
@@ -9,6 +10,7 @@ type SocialConfig = {
 function createSocialConfig(
   name: string,
   url: string,
+  lightAssetPath: string,
   assetPath: string,
   width?: number,
   height?: number
@@ -16,6 +18,7 @@ function createSocialConfig(
   return {
     name,
     url,
+    lightAssetPath,
     assetPath,
     width,
     height,
@@ -26,6 +29,7 @@ export const socialConfig: SocialConfig[] = [
   createSocialConfig(
     "X",
     "https://x.com/ai_degov",
+    "/assets/image/light/social/x.svg",
     "/assets/image/social/x.svg",
     12,
     12
@@ -33,6 +37,7 @@ export const socialConfig: SocialConfig[] = [
   createSocialConfig(
     "Telegram",
     "https://t.me/DeGov_AI",
+    "/assets/image/light/social/telegram.svg",
     "/assets/image/social/telegram.svg",
     12,
     10
@@ -40,6 +45,7 @@ export const socialConfig: SocialConfig[] = [
   createSocialConfig(
     "Email",
     "mailto:support@degov.ai",
+    "/assets/image/light/social/email.svg",
     "/assets/image/social/email.svg",
     13.333,
     10
@@ -47,6 +53,7 @@ export const socialConfig: SocialConfig[] = [
   createSocialConfig(
     "Github",
     "https://github.com/ringecosystem/degov/tree/",
+    "/assets/image/light/social/github.svg",
     "/assets/image/social/github.svg",
     10.714,
     12.857

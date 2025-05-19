@@ -47,7 +47,7 @@ export const ProposalsStatusDetail = () => {
                   <span
                     className={`size-[10px] rounded-full ${item.color}`}
                   ></span>
-                  <span className="text-[14px] text-white/50">
+                  <span className="text-[14px] text-foreground/50">
                     {item.title}
                   </span>
                 </div>

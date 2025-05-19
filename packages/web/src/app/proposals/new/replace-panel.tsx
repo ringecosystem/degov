@@ -32,10 +32,18 @@ export const ReplacePanel = ({
           onClick={() => onRemove(index)}
         >
           <Image
+            src="/assets/image/light/proposal/close.svg"
+            alt="plus"
+            width={16}
+            height={16}
+            className="block dark:hidden"
+          />
+          <Image
             src="/assets/image/proposal/close.svg"
             alt="plus"
             width={16}
             height={16}
+            className="hidden dark:block"
           />
           <span>Remove action</span>
         </Button>

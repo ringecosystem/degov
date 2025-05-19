@@ -21,9 +21,16 @@ export function Empty({
       style={style}
     >
       <Image
+        src="/assets/image/light/empty.svg"
+        alt="empty"
+        className="size-[60px] dark:hidden"
+        width={60}
+        height={60}
+      />
+      <Image
         src="/assets/image/empty.svg"
         alt="empty"
-        className="size-[60px]"
+        className="size-[60px] hidden dark:block"
         width={60}
         height={60}
       />

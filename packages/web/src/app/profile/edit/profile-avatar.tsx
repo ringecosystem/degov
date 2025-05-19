@@ -172,8 +172,8 @@ export function ProfileAvatar({
         )}
 
         {isProcessing && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent border-white"></div>
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent border-foreground"></div>
           </div>
         )}
       </div>

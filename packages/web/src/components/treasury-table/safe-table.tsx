@@ -103,7 +103,7 @@ export function SafeTable({ caption }: SafeTableProps) {
                 <TableCell className="text-center flex justify-center">
                   <Button
                     size="sm"
-                    className="flex items-center gap-[5px] px-[10px] py-[5px] rounded-[30px] bg-[#474747] text-foreground hover:bg-[#474747]/80 "
+                    className="flex items-center gap-[5px] px-[10px] py-[5px] rounded-[30px] bg-gray-1 text-foreground hover:bg-gray-1/80 "
                     asChild
                   >
                     <Link

@@ -24,19 +24,23 @@ export const ActionGroupDisplay = ({
         return {
           label: "For",
           value: VoteType.For,
+
           icon: "/assets/image/proposal/action/check.svg",
+          lightIcon: "/assets/image/light/proposal/action/check.svg",
         };
       case VoteType.Against:
         return {
           label: "Against",
           value: VoteType.Against,
           icon: "/assets/image/proposal/action/error.svg",
+          lightIcon: "/assets/image/light/proposal/action/error.svg",
         };
       case VoteType.Abstain:
         return {
           label: "Abstain",
           value: VoteType.Abstain,
           icon: "/assets/image/proposal/action/cancel.svg",
+          lightIcon: "/assets/image/light/proposal/action/cancel.svg",
         };
       default:
         return null;
@@ -47,11 +51,20 @@ export const ActionGroupDisplay = ({
     return (
       <div className="flex items-center gap-[10px]">
         <Image
+          src="/assets/image/light/proposal/action/clock.svg"
+          alt="pending"
+          width={20}
+          height={20}
+          className="dark:hidden"
+        />
+        <Image
           src="/assets/image/proposal/action/clock.svg"
           alt="pending"
           width={20}
           height={20}
+          className="hidden dark:block"
         />
+
         <p>Voting starts soon</p>
       </div>
     );
@@ -61,10 +74,18 @@ export const ActionGroupDisplay = ({
       return (
         <p className="flex items-center gap-[10px] text-[14px] font-normal">
           <Image
-            src={voteInfo.icon}
+            src={voteInfo.lightIcon}
             alt={voteInfo.label}
             width={20}
             height={20}
+            className="dark:hidden"
+          />
+          <Image
+            alt={voteInfo.label}
+            src={voteInfo.icon}
+            width={20}
+            height={20}
+            className="hidden dark:block"
           />
           You voted {voteInfo.label}
         </p>
@@ -107,10 +128,18 @@ export const ActionGroupDisplay = ({
     return (
       <div className="flex items-center gap-[10px]">
         <Image
+          src="/assets/image/light/proposal/action/check.svg"
+          alt="executed"
+          width={20}
+          height={20}
+          className="dark:hidden"
+        />
+        <Image
           src="/assets/image/proposal/action/check.svg"
           alt="executed"
           width={20}
           height={20}
+          className="hidden dark:block"
         />
         <p>Proposal executed</p>
       </div>
@@ -120,10 +149,18 @@ export const ActionGroupDisplay = ({
     return (
       <div className="flex items-center gap-[10px]">
         <Image
+          src="/assets/image/light/proposal/action/cancel.svg"
+          alt="canceled"
+          width={20}
+          height={20}
+          className="dark:hidden"
+        />
+        <Image
           src="/assets/image/proposal/action/cancel.svg"
           alt="canceled"
           width={20}
           height={20}
+          className="hidden dark:block"
         />
         <p>Proposal canceled</p>
       </div>
@@ -133,10 +170,18 @@ export const ActionGroupDisplay = ({
     return (
       <div className="flex items-center gap-[10px]">
         <Image
+          src="/assets/image/light/proposal/action/cancel.svg"
+          alt="expired"
+          width={20}
+          height={20}
+          className="dark:hidden"
+        />
+        <Image
           src="/assets/image/proposal/action/cancel.svg"
           alt="expired"
           width={20}
           height={20}
+          className="hidden dark:block"
         />
         <p>Proposal expired</p>
       </div>
@@ -146,10 +191,18 @@ export const ActionGroupDisplay = ({
     return (
       <div className="flex items-center gap-[10px]">
         <Image
+          src="/assets/image/light/proposal/action/cancel.svg"
+          alt="defeated"
+          width={20}
+          height={20}
+          className="dark:hidden"
+        />
+        <Image
           src="/assets/image/proposal/action/cancel.svg"
           alt="defeated"
           width={20}
           height={20}
+          className="hidden dark:block"
         />
         <p>Proposal defeated</p>
       </div>

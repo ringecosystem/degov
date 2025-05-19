@@ -162,7 +162,9 @@ export default function Treasury() {
     <div className="flex flex-col gap-[20px]">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-[10px]">
-          <h3 className="text-[18px] font-extrabold">Treasury Assets</h3>
+          <h3 className="text-[18px] font-extrabold text-foreground">
+            Treasury Assets
+          </h3>
           <ClipboardIconButton text={timeLockAddress} size={16} />
         </div>
         {
@@ -190,10 +192,18 @@ export default function Treasury() {
                   >
                     <span className="gap-[10px] text-[14px] font-normal leading-normal text-foreground flex items-center">
                       <Image
+                        src="/assets/image/light/warning.svg"
+                        alt="warning"
+                        width={20}
+                        height={20}
+                        className="dark:hidden"
+                      />
+                      <Image
                         src="/assets/image/warning.svg"
                         alt="warning"
                         width={20}
                         height={20}
+                        className="hidden dark:block"
                       />
                       Token price data is not available at this time
                     </span>

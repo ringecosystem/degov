@@ -75,10 +75,18 @@ const PublishButton = ({
       isLoading={isLoading}
     >
       <Image
+        src="/assets/image/light/proposal/plus.svg"
+        alt="plus"
+        width={16}
+        height={16}
+        className="block dark:hidden"
+      />
+      <Image
         src="/assets/image/proposal/plus.svg"
         alt="plus"
         width={16}
         height={16}
+        className="hidden dark:block"
       />
       <span>Publish</span>
     </Button>
@@ -309,10 +317,18 @@ export default function NewProposal() {
               isLoading={publishLoading || isPending || isLoading}
             >
               <Image
+                src="/assets/image/light/proposal/plus.svg"
+                alt="plus"
+                width={16}
+                height={16}
+                className="block dark:hidden"
+              />
+              <Image
                 src="/assets/image/proposal/plus.svg"
                 alt="plus"
                 width={16}
                 height={16}
+                className="hidden dark:block"
               />
               <span>Publish</span>
             </Button>

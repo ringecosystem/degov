@@ -1,5 +1,5 @@
 "use client";
-import { darkTheme, RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as React from "react";
@@ -7,14 +7,10 @@ import { WagmiProvider, deserialize, serialize } from "wagmi";
 
 import { createConfig, queryClient } from "@/config/wagmi";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useRainbowKitTheme } from "@/hooks/useRainbowKitTheme";
 import "@rainbow-me/rainbowkit/styles.css";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
-
-const dark = darkTheme({
-  borderRadius: "medium",
-  accentColor: "hsl(var(--nextui-primary-500))",
-});
 
 const persister = createSyncStoragePersister({
   serialize,
@@ -23,6 +19,7 @@ const persister = createSyncStoragePersister({
 });
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   const dappConfig = useDaoConfig();
+  const rainbowKitTheme = useRainbowKitTheme();
   const currentChain: Chain = React.useMemo(() => {
     return {
       id: Number(dappConfig?.chain?.id),
@@ -70,7 +67,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         persistOptions={{ persister }}
       >
         <RainbowKitProvider
-          theme={dark}
+          theme={rainbowKitTheme}
           locale="en-US"
           appInfo={{ appName: dappConfig?.name }}
           initialChain={currentChain}

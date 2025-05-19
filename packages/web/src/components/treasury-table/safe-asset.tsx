@@ -25,9 +25,16 @@ export const Asset = ({ link, explorer, symbol }: AssetProps) => {
         {symbol || "N/A"}
       </span>
       <Image
+        src="/assets/image/light/external-link.svg"
+        alt="external-link"
+        className="h-[16px] w-[16px] dark:hidden"
+        width={16}
+        height={16}
+      />
+      <Image
         src="/assets/image/external-link.svg"
         alt="external-link"
-        className="h-[16px] w-[16px]"
+        className="h-[16px] w-[16px] hidden dark:block"
         width={16}
         height={16}
       />
