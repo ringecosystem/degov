@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 interface ClipboardIconButtonProps {
   text?: string;
   size?: string | number;
-  color?: string;
   className?: string;
   strokeWidth?: number;
   copyText?: string;
@@ -23,7 +22,6 @@ const ClipboardIconButton = ({
   text = "",
   copyText = "Copy to clipboard",
   size,
-  color,
   className,
   strokeWidth = 1,
 }: ClipboardIconButtonProps) => {
