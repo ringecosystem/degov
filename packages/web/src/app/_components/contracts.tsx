@@ -57,7 +57,6 @@ export const Contracts = () => {
                   text={daoConfig?.contracts?.governor}
                   size={15}
                   strokeWidth={2}
-                  color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
                   explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.governor}`}
@@ -82,7 +81,6 @@ export const Contracts = () => {
                   text={daoConfig?.contracts?.governorToken?.address}
                   size={15}
                   strokeWidth={2}
-                  color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
                   explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.governorToken?.address}`}
@@ -104,7 +102,6 @@ export const Contracts = () => {
                   text={daoConfig?.contracts?.timeLock}
                   size={15}
                   strokeWidth={2}
-                  color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
                   explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.timeLock}`}

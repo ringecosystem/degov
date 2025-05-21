@@ -82,7 +82,6 @@ const ClipboardIconButton = ({
           <Check
             strokeWidth={strokeWidth}
             size={size}
-            color={color}
             className={cn(
               "text-muted-foreground hover:text-muted-foreground/80",
               className,
@@ -92,9 +91,8 @@ const ClipboardIconButton = ({
           <Copy
             strokeWidth={strokeWidth}
             size={size}
-            color={color}
             className={cn(
-              "text-muted-foreground hover:text-muted-foreground/80",
+              "text-muted-foreground  hover:text-muted-foreground/80",
               className,
               copied ? "hidden" : "block"
             )}
