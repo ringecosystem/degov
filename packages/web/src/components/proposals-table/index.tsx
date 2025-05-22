@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
-import { formatTimestampToFriendlyDate } from "@/utils/date";
+import { formatTimeAgo } from "@/utils/date";
 
 import { CustomTable } from "../custom-table";
 import { ProposalStatus } from "../proposal-status";
@@ -84,11 +84,16 @@ export function ProposalsTable({
         ),
       },
       {
-        title: "Time",
+        title: "Date",
         key: "blockTimestamp",
         width: "200px",
-        render: (record) =>
-          formatTimestampToFriendlyDate(record.blockTimestamp),
+        render: (record) => {
+          const timestamp = record.blockTimestamp
+            ? Number(record.blockTimestamp) * 1000
+            : undefined;
+
+          return timestamp ? formatTimeAgo(timestamp.toString()) : "";
+        },
       },
       {
         title: "Status",

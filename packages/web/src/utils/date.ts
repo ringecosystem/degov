@@ -1,4 +1,4 @@
-import dayjs from "dayjs";
+import dayjs, { unix } from "dayjs";
 import duration, { type DurationUnitType } from "dayjs/plugin/duration";
 import relativeTime from "dayjs/plugin/relativeTime";
 dayjs.extend(duration);
@@ -149,4 +149,9 @@ export function formatSimpleDate(timestamp?: number | string): string {
   }
 
   return date.format("MMM D, YYYY");
+}
+
+export function formatTimeAgo(timestamp: string) {
+  const date = unix(Number(timestamp));
+  return dayjs().from(date);
 }
