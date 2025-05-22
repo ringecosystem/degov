@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useDisconnectWallet } from "@/hooks/useDisconnectWallet";
 import { formatShortAddress } from "@/utils";
 
@@ -23,6 +24,7 @@ interface ConnectedProps {
 
 export const Connected = ({ address }: ConnectedProps) => {
   const { disconnectWallet } = useDisconnectWallet();
+  const daoConfig = useDaoConfig();
 
   const handleDisconnect = useCallback(() => {
     disconnectWallet(address);
@@ -48,7 +50,7 @@ export const Connected = ({ address }: ConnectedProps) => {
         className="rounded-[26px] border-border/20 bg-card p-[20px] shadow-2xl"
         align="end"
       >
-        <div className="flex items-center gap-[10px]">
+        <div className="flex items-center gap-[8px]">
           <AddressAvatar address={address} className="rounded-full" />
           <Tooltip>
             <TooltipTrigger asChild>
@@ -59,6 +61,26 @@ export const Connected = ({ address }: ConnectedProps) => {
             <TooltipContent>{address}</TooltipContent>
           </Tooltip>
           <ClipboardIconButton text={address} size={20} />
+          <Link
+            href={`${daoConfig?.chain?.explorers?.[0]}/address/${address}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Image
+              src="/assets/image/light/external-link.svg"
+              alt="external link"
+              width={22}
+              height={20}
+              className="block dark:hidden flex-shrink-0 mt-[2px]"
+            />
+            <Image
+              src="/assets/image/external-link.svg"
+              alt="external link"
+              width={22}
+              height={20}
+              className="hidden dark:block flex-shrink-0 mt-[2px]"
+            />
+          </Link>
         </div>
         <DropdownMenuSeparator className="my-[20px] bg-border/20" />
         <div className="flex flex-col justify-center gap-[20px]">
