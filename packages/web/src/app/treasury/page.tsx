@@ -227,17 +227,22 @@ export default function Treasury() {
         isLoading={isLoadingNativeTokenBalances || isLoadingPrices}
       />
 
-      <TreasuryTable
-        standard="ERC20"
-        data={erc20Assets}
-        prices={prices}
-        isLoading={isLoadingBalances || isLoadingPrices}
-      />
-      <TreasuryTable
-        standard="ERC721"
-        data={erc721Assets}
-        isLoading={isLoading721Balances}
-      />
+      {erc20Assets?.length ? (
+        <TreasuryTable
+          standard="ERC20"
+          data={erc20Assets}
+          prices={prices}
+          isLoading={isLoadingBalances || isLoadingPrices}
+        />
+      ) : null}
+
+      {erc721Assets?.length ? (
+        <TreasuryTable
+          standard="ERC721"
+          data={erc721Assets}
+          isLoading={isLoading721Balances}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-[20px]">
         <h3 className="text-[18px] font-extrabold">Safe Assets</h3>
