@@ -76,10 +76,18 @@ export const Sidebar = ({
           onClick={onAddAction}
         >
           <Image
+            src="/assets/image/light/proposal/plus.svg"
+            alt="plus"
+            width={16}
+            height={16}
+            className="dark:hidden"
+          />
+          <Image
             src="/assets/image/proposal/plus.svg"
             alt="plus"
             width={16}
             height={16}
+            className="hidden dark:block"
           />
           <span>Add Action</span>
         </Button>

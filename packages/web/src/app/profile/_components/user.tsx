@@ -58,7 +58,7 @@ export const User = ({
                   </span>
                 )}
               </AddressResolver>
-              <span className="text-[14px] text-white/40">
+              <span className="text-[14px] text-foreground/40">
                 {formatShortAddress(address)}
               </span>
               <ClipboardIconButton text={address} className="size-[16px]" />
@@ -68,10 +68,18 @@ export const User = ({
                 rel="noreferrer"
               >
                 <Image
+                  src="/assets/image/light/external-link.svg"
+                  alt="external-link"
+                  width={16}
+                  height={16}
+                  className="dark:hidden"
+                />
+                <Image
                   src="/assets/image/external-link.svg"
                   alt="external-link"
                   width={16}
                   height={16}
+                  className="hidden dark:block"
                 />
               </Link>
             </div>

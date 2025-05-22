@@ -18,6 +18,12 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        "card-background": {
+          DEFAULT: "hsl(var(--card-background))",
+        },
+        "gray-1": {
+          DEFAULT: "hsl(var(--gray-1))",
+        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",

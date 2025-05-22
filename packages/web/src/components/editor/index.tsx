@@ -291,10 +291,6 @@ export function Editor({
   }, [editor, rect.height, windowSize.height]);
 
   React.useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
-  React.useEffect(() => {
     if (!isMobile && mobileView !== "main") {
       setMobileView("main");
     }

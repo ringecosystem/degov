@@ -30,7 +30,7 @@ export const Contracts = () => {
       >
         <div className="flex items-center justify-between text-[16px] font-semibold text-foreground">
           <span>Contracts</span>
-          <div className="flex h-[34px]  items-center justify-center gap-[5px] rounded-[100px] bg-[#2E2E2E] px-[10px] py-[5px]">
+          <div className="flex h-[34px]  items-center justify-center gap-[5px] rounded-[100px] bg-card-background px-[10px] py-[5px]">
             <Image
               src={daoConfig?.chain?.logo ?? ""}
               alt="contracts"
@@ -57,7 +57,6 @@ export const Contracts = () => {
                   text={daoConfig?.contracts?.governor}
                   size={15}
                   strokeWidth={2}
-                  color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
                   explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.governor}`}
@@ -69,7 +68,7 @@ export const Contracts = () => {
           <div className="flex flex-col gap-[10px]">
             <span className="inline-flex items-center gap-[5px] text-[14px] font-normal text-foreground/50">
               Governor Token
-              <span className="inline-block leading-none rounded-[10px] bg-muted-foreground p-[5px] text-[#202224] text-[12px] font-semibold">
+              <span className="inline-block leading-none rounded-[10px] bg-muted-foreground p-[5px] text-card text-[12px] font-semibold">
                 {daoConfig?.contracts?.governorToken?.standard}
               </span>
             </span>
@@ -82,7 +81,6 @@ export const Contracts = () => {
                   text={daoConfig?.contracts?.governorToken?.address}
                   size={15}
                   strokeWidth={2}
-                  color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
                   explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.governorToken?.address}`}
@@ -104,7 +102,6 @@ export const Contracts = () => {
                   text={daoConfig?.contracts?.timeLock}
                   size={15}
                   strokeWidth={2}
-                  color="rgba(255, 255, 255, 0.5)"
                 />
                 <ViewOnExplorer
                   explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.timeLock}`}

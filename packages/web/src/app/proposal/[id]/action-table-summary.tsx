@@ -3,7 +3,7 @@ import { useMemo } from "react";
 
 import { CustomTable } from "@/components/custom-table";
 import type { ColumnType } from "@/components/custom-table";
-import { PROPOSAL_ACTIONS } from "@/config/proposals";
+import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { formatFunctionSignature } from "@/utils";
 import { formatShortAddress } from "@/utils/address";
@@ -65,6 +65,17 @@ export function ActionTableSummary({
           <div className="flex items-center gap-[10px]">
             <Image
               src={
+                PROPOSAL_ACTIONS_LIGHT[
+                  record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS_LIGHT
+                ]
+              }
+              alt={record.type}
+              width={24}
+              height={24}
+              className="rounded-full block dark:hidden"
+            />
+            <Image
+              src={
                 PROPOSAL_ACTIONS[
                   record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS
                 ]
@@ -72,7 +83,7 @@ export function ActionTableSummary({
               alt={record.type}
               width={24}
               height={24}
-              className="rounded-full"
+              className="rounded-full hidden dark:block"
             />
             <span className="text-[14px] capitalize">
               {record.type === "xAccount"
@@ -98,10 +109,18 @@ export function ActionTableSummary({
               {formatShortAddress(record.target)}
             </span>
             <Image
+              src="/assets/image/light/external-link.svg"
+              alt="external-link"
+              width={16}
+              height={16}
+              className="dark:hidden"
+            />
+            <Image
               src="/assets/image/external-link.svg"
               alt="external-link"
               width={16}
               height={16}
+              className="hidden dark:block"
             />
           </a>
         ),

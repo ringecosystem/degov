@@ -1,6 +1,7 @@
 "use client";
 import { capitalize } from "lodash-es";
 import Image from "next/image";
+import { Fragment } from "react";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
@@ -23,13 +24,13 @@ export const DaoHeader = () => {
           />
           {config?.name}
           <div className="px-2.5 py-[5px] bg-foreground rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-foreground/80 transition-colors">
-            <div className="justify-start text-neutral-800 text-xs font-semibold font-['SF_UI_Display']">
+            <div className="justify-start text-card text-xs font-semibold font-['SF_UI_Display']">
               {config?.chain?.name}
             </div>
           </div>
         </h1>
 
-        <p className="line-clamp-2 text-[14px] text-card-foreground">
+        <p className="line-clamp-2 text-[14px] text-foreground/80">
           {config?.description}
         </p>
         <div className="flex items-center gap-[10px]">
@@ -41,19 +42,35 @@ export const DaoHeader = () => {
         {Object.entries(config?.links ?? {})
           .filter(([, value]) => value && value.trim() !== "")
           .map(([key, value]) => (
-            <a
-              key={key}
-              href={value}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={capitalize(key)}
-              className="flex size-[24px] items-center justify-center rounded-full bg-white transition-colors hover:bg-white/80"
-              style={{
-                backgroundImage: `url(/assets/image/user_social/${key}.svg)`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "center",
-              }}
-            ></a>
+            <Fragment key={key}>
+              <a
+                key={`${key}-light`}
+                href={value}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={capitalize(key)}
+                className="flex size-[24px] items-center justify-center rounded-full bg-foreground transition-colors hover:bg-foreground/80 dark:hidden"
+                style={{
+                  backgroundImage: `url(/assets/image/light/user_social/${key}.svg)`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "center",
+                }}
+              ></a>
+
+              <a
+                key={key}
+                href={value}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={capitalize(key)}
+                className="size-[24px] items-center justify-center rounded-full bg-foreground transition-colors hover:bg-foreground/80 hidden dark:flex"
+                style={{
+                  backgroundImage: `url(/assets/image/user_social/${key}.svg)`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "center",
+                }}
+              ></a>
+            </Fragment>
           ))}
       </div>
     </div>

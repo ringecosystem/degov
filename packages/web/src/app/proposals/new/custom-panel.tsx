@@ -199,10 +199,18 @@ export const CustomPanel = ({
           onClick={() => onRemove(index)}
         >
           <Image
+            src="/assets/image/light/proposal/close.svg"
+            alt="plus"
+            width={16}
+            height={16}
+            className="block dark:hidden"
+          />
+          <Image
             src="/assets/image/proposal/close.svg"
             alt="plus"
             width={16}
             height={16}
+            className="hidden dark:block"
           />
           <span>Remove action</span>
         </Button>
@@ -392,7 +400,7 @@ export const CustomPanel = ({
                   Contract)
                 </label>
                 <div className="flex flex-row gap-[10px]">
-                  <span className="inline-flex h-[37px] w-[200px] items-center justify-center truncate rounded-[4px] border border-border bg-[#2E2E2E] px-[10px] text-[14px] text-foreground">
+                  <span className="inline-flex h-[37px] w-[200px] items-center justify-center truncate rounded-[4px] border border-border bg-card-background px-[10px] text-[14px] text-foreground">
                     {daoConfig?.chain?.nativeToken?.symbol}
                   </span>
                   <Input

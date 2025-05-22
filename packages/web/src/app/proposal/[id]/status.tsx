@@ -22,10 +22,10 @@ const StatusSkeleton = () => {
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <h3 className="text-[18px] text-white">Status</h3>
+      <h3 className="text-[18px] text-foreground">Status</h3>
       <Separator className="bg-border/20" />
       <div className="relative">
-        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-white/10" />
+        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-foreground/10" />
 
         {stages.map((_, index) => (
           <div
@@ -355,10 +355,10 @@ const Status: React.FC<StatusProps> = ({
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <h3 className="text-[18px] text-white">Status</h3>
+      <h3 className="text-[18px] text-foreground">Status</h3>
       <Separator className="bg-border/20" />
       <div className="relative">
-        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-white/10" />
+        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-foreground/10" />
 
         {stages.map((stage, index) => (
           <div
@@ -368,7 +368,7 @@ const Status: React.FC<StatusProps> = ({
             }`}
           >
             <div className="flex items-center gap-[10px]">
-              <div className="z-10 mr-[13px] h-[28px] w-[28px] text-white">
+              <div className="z-10 mr-[13px] h-[28px] w-[28px] text-foreground">
                 {stage.icon}
               </div>
               <div className="flex items-center justify-between gap-[10px]">
@@ -379,7 +379,7 @@ const Status: React.FC<StatusProps> = ({
                     </div>
                   )}
 
-                  <span className="text-[16px] font-semibold text-white">
+                  <span className="text-[16px] font-semibold text-foreground">
                     {stage.title}
                   </span>
                   {stage.address && (
@@ -407,10 +407,18 @@ const Status: React.FC<StatusProps> = ({
                 className="hover:opacity-80 transition-opacity duration-300"
               >
                 <Image
+                  src="/assets/image/light/external-link.svg"
+                  alt="arrow"
+                  width={16}
+                  height={16}
+                  className="dark:hidden"
+                />
+                <Image
                   src="/assets/image/external-link.svg"
                   alt="arrow"
                   width={16}
                   height={16}
+                  className="hidden dark:block"
                 />
               </a>
             )}

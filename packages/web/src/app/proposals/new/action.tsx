@@ -5,7 +5,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { PROPOSAL_ACTIONS, type ProposalActionType } from "@/config/proposals";
+import {
+  PROPOSAL_ACTIONS,
+  PROPOSAL_ACTIONS_LIGHT,
+  type ProposalActionType,
+} from "@/config/proposals";
 import { cn } from "@/lib/utils";
 interface NewProposalActionProps {
   type: Omit<ProposalActionType, "add">;
@@ -32,10 +36,18 @@ export const NewProposalAction = ({
         onClick={() => onSwitch?.("proposal")}
       >
         <Image
+          src={PROPOSAL_ACTIONS_LIGHT["proposal"]}
+          alt="proposal"
+          width={24}
+          height={24}
+          className="block dark:hidden"
+        />
+        <Image
           src={PROPOSAL_ACTIONS["proposal"]}
           alt="proposal"
           width={24}
           height={24}
+          className="hidden dark:block"
         />
         <span className="text-[14px] font-normal text-foreground">
           Proposal
@@ -56,10 +68,18 @@ export const NewProposalAction = ({
         onClick={() => onSwitch?.("transfer")}
       >
         <Image
+          src={PROPOSAL_ACTIONS_LIGHT["transfer"]}
+          alt="transfer"
+          width={24}
+          height={24}
+          className="block dark:hidden"
+        />
+        <Image
           src={PROPOSAL_ACTIONS["transfer"]}
           alt="transfer"
           width={24}
           height={24}
+          className="hidden dark:block"
         />
         <span className="text-[14px] font-normal text-foreground">
           Transfer
@@ -80,10 +100,18 @@ export const NewProposalAction = ({
         onClick={() => onSwitch?.("custom")}
       >
         <Image
+          src={PROPOSAL_ACTIONS_LIGHT["custom"]}
+          alt="custom"
+          width={24}
+          height={24}
+          className="block dark:hidden"
+        />
+        <Image
           src={PROPOSAL_ACTIONS["custom"]}
           alt="custom"
           width={24}
           height={24}
+          className="hidden dark:block"
         />
         <span className="text-[14px] font-normal text-foreground">Custom</span>
         {error && (
@@ -102,10 +130,18 @@ export const NewProposalAction = ({
         onClick={() => onSwitch?.("custom")}
       >
         <Image
+          src={PROPOSAL_ACTIONS_LIGHT["xaccount"]}
+          alt="xaccount"
+          width={24}
+          height={24}
+          className="block dark:hidden"
+        />
+        <Image
           src={PROPOSAL_ACTIONS["xaccount"]}
           alt="xaccount"
           width={24}
           height={24}
+          className="hidden dark:block"
         />
         <span className="text-[14px] font-normal text-foreground flex items-center gap-[5px]">
           XAccount Cross-chain
@@ -140,10 +176,18 @@ export const NewProposalAction = ({
         onClick={() => onSwitch?.("preview")}
       >
         <Image
+          src={PROPOSAL_ACTIONS_LIGHT["preview"]}
+          alt="preview"
+          width={24}
+          height={24}
+          className="block dark:hidden"
+        />
+        <Image
           src={PROPOSAL_ACTIONS["preview"]}
           alt="preview"
           width={24}
           height={24}
+          className="hidden dark:block"
         />
         <span className="text-[14px] font-normal text-foreground">Preview</span>
       </div>

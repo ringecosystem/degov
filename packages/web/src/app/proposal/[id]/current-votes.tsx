@@ -135,13 +135,24 @@ export const CurrentVotes = ({
             <Image
               src={
                 quorum > proposalVotesData?.againstVotes
+                  ? "/assets/image/light/proposal/check.svg"
+                  : "/assets/image/light/proposal/error.svg"
+              }
+              alt="error"
+              width={20}
+              height={20}
+              className="rounded-full block dark:hidden"
+            />
+            <Image
+              src={
+                quorum > proposalVotesData?.againstVotes
                   ? "/assets/image/proposal/check.svg"
                   : "/assets/image/proposal/error.svg"
               }
               alt="error"
               width={20}
               height={20}
-              className="rounded-full"
+              className="rounded-full hidden dark:block"
             />
             <span className="text-[14px] font-normal">Quorum</span>
           </div>
@@ -161,13 +172,24 @@ export const CurrentVotes = ({
               <Image
                 src={
                   calculateMajoritySupport(proposalVotesData) === "Yes"
+                    ? "/assets/image/light/proposal/check.svg"
+                    : "/assets/image/light/proposal/error.svg"
+                }
+                alt="check"
+                width={20}
+                height={20}
+                className="rounded-full block dark:hidden"
+              />
+              <Image
+                src={
+                  calculateMajoritySupport(proposalVotesData) === "Yes"
                     ? "/assets/image/proposal/check.svg"
                     : "/assets/image/proposal/error.svg"
                 }
                 alt="check"
                 width={20}
                 height={20}
-                className="rounded-full"
+                className="rounded-full hidden dark:block"
               />
               <span className="text-[14px] font-normal">Majority support</span>
             </div>

@@ -118,7 +118,7 @@ export function CallDataInputForm({
       {fields.map((input, index) => (
         <div key={input.name} className="flex flex-col gap-[5px]">
           <div className="flex flex-row gap-[10px]">
-            <span className="inline-flex h-[37px] w-[200px] items-center justify-center truncate rounded-[4px] border border-border bg-[#2E2E2E] px-[10px] text-[14px] text-foreground">
+            <span className="inline-flex h-[37px] w-[200px] items-center justify-center truncate rounded-[4px] border border-border bg-card-background px-[10px] text-[14px] text-foreground">
               {input.name}
             </span>
             <div className="flex flex-1 flex-col gap-[10px]">

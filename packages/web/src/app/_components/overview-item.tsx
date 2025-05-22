@@ -32,8 +32,8 @@ export const OverviewItem = ({
       href={link ?? (null as unknown as string)}
     >
       <div className="flex flex-col gap-[10px]">
-        <p className="!m-0 text-[14px] text-card-foreground">{title}</p>
-        <div className="!m-0 text-[28px] font-bold text-white">
+        <p className="!m-0 text-[14px] text-foreground/80">{title}</p>
+        <div className="!m-0 text-[28px] font-bold text-foreground">
           {isLoading ? (
             <div className="h-[42px] w-[50px] flex flex-col justify-center">
               <Skeleton className="h-[32px] w-[50px]" />

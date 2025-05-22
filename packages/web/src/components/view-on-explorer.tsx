@@ -27,11 +27,18 @@ export const ViewOnExplorer = ({
           )}
         >
           <Image
+            src="/assets/image/light/external-link.svg"
+            alt="external-link"
+            width={16}
+            height={16}
+            className={cn("h-full w-full dark:hidden", imgClassName)}
+          />
+          <Image
             src="/assets/image/external-link.svg"
             alt="external-link"
             width={16}
             height={16}
-            className={cn("h-full w-full", imgClassName)}
+            className={cn("h-full w-full hidden dark:block", imgClassName)}
           />
         </a>
       </TooltipTrigger>

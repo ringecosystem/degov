@@ -1,6 +1,6 @@
 import { capitalize } from "lodash-es";
 import Link from "next/link";
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 
 import type { ProfileData } from "@/services/graphql/types/profile";
 import {
@@ -10,7 +10,6 @@ import {
   getTelegramLink,
   getTwitterLink,
 } from "@/utils/social";
-
 
 interface SocialLinksProps {
   profile?: ProfileData;
@@ -55,19 +54,32 @@ export const SocialLinks = ({ profile }: SocialLinksProps) => {
   return (
     <div className="flex items-center gap-[10px]">
       {socialLinks.map((social) => (
-        <Link
-          href={social.link || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-white transition-opacity hover:opacity-80"
-          key={social.name}
-          title={capitalize(social.name)}
-          style={{
-            backgroundImage: `url(/assets/image/user_social/${social.name.toLowerCase()}.svg)`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "center",
-          }}
-        ></Link>
+        <Fragment key={social.name}>
+          <Link
+            href={social.link || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-foreground transition-opacity hover:opacity-80 dark:hidden"
+            title={capitalize(social.name)}
+            style={{
+              backgroundImage: `url(/assets/image/light/user_social/${social.name.toLowerCase()}.svg)`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "center",
+            }}
+          ></Link>
+          <Link
+            href={social.link || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="size-[24px] cursor-pointer items-center justify-center rounded-full bg-foreground transition-opacity hover:opacity-80 hidden dark:flex"
+            title={capitalize(social.name)}
+            style={{
+              backgroundImage: `url(/assets/image/user_social/${social.name.toLowerCase()}.svg)`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "center",
+            }}
+          ></Link>
+        </Fragment>
       ))}
     </div>
   );

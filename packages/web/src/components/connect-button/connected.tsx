@@ -12,7 +12,6 @@ import {
 import { useDisconnectWallet } from "@/hooks/useDisconnectWallet";
 import { formatShortAddress } from "@/utils";
 
-
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
 import ClipboardIconButton from "../clipboard-icon-button";
@@ -53,7 +52,7 @@ export const Connected = ({ address }: ConnectedProps) => {
           <AddressAvatar address={address} className="rounded-full" />
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-[18px] font-extrabold text-white/80">
+              <span className="text-[18px] font-extrabold text-foreground/80">
                 {formatShortAddress(address)}
               </span>
             </TooltipTrigger>
@@ -83,7 +82,7 @@ export const Connected = ({ address }: ConnectedProps) => {
             className="w-full gap-[10px] rounded-[100px] border-border bg-card"
             variant="outline"
           >
-            <Power size={20} className="text-white" strokeWidth={2} />
+            <Power size={20} className="text-foreground" strokeWidth={2} />
             <span className="text-[14px]">Disconnect</span>
           </Button>
         </div>

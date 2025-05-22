@@ -44,7 +44,20 @@ export function TransactionStatus({
           rel="noopener noreferrer"
         >
           Tx:{transactionHash.slice(0, 6)}...{transactionHash.slice(-4)}
-          <Image src="/assets/image/link.svg" alt="link" width={8} height={8} />
+          <Image
+            src="/assets/image/light/link.svg"
+            alt="link"
+            width={8}
+            height={8}
+            className="dark:hidden"
+          />
+          <Image
+            src="/assets/image/link.svg"
+            alt="link"
+            width={8}
+            height={8}
+            className="hidden dark:block"
+          />
         </a>
       </div>
     </div>

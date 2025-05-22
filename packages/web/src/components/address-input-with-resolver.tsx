@@ -51,10 +51,18 @@ export function AddressInputWithResolver({
             className="absolute right-3 hover:opacity-70"
           >
             <Image
-              src="/assets/image/proposal/close.svg"
-              alt="clear"
+              src="/assets/image/light/proposal/close.svg"
+              alt="plus"
               width={16}
               height={16}
+              className="block dark:hidden"
+            />
+            <Image
+              src="/assets/image/proposal/close.svg"
+              alt="plus"
+              width={16}
+              height={16}
+              className="hidden dark:block"
             />
           </button>
         </div>

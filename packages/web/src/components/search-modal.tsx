@@ -78,8 +78,8 @@ export function SearchModal({
     return Array(5)
       .fill(0)
       .map((_, i) => (
-        <div key={i} className="py-[10px] border-b border-b-[#474747]">
-          <Skeleton className="h-[20px] w-full bg-[#2E2E2E]" />
+        <div key={i} className="py-[10px] border-b border-b-gray-1">
+          <Skeleton className="h-[20px] w-full bg-card-background" />
         </div>
       ));
   };
@@ -107,7 +107,7 @@ export function SearchModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-[800px] p-[20px] border-none shadow-lg flex flex-col gap-[20px] !rounded-[26px] bg-[#202224] backdrop-blur">
+      <DialogContent className="sm:max-w-[800px] p-[20px] border-none shadow-lg flex flex-col gap-[20px] !rounded-[26px] bg-card backdrop-blur">
         <DialogHeader className="hidden">
           <DialogTitle>Search Proposals</DialogTitle>
         </DialogHeader>
@@ -118,7 +118,7 @@ export function SearchModal({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search..."
-            className="bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[14px] border border-[#474747] h-[36px] rounded-[19px] px-[17px] py-[9px]"
+            className="bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[14px] border border-gray-1 h-[36px] rounded-[19px] px-[17px] py-[9px]"
           />
           <button
             onClick={() => onOpenChange?.(false)}
@@ -153,7 +153,7 @@ export function SearchModal({
                   onClick={() => {
                     handleSelect(item);
                   }}
-                  className="flex text-[14px] py-[10px] border-b border-b-[#474747] last:border-b-0 hover:bg-[#2E2E2E] transition-colors cursor-pointer"
+                  className="flex text-[14px] py-[10px] border-b border-b-gray-1 last:border-b-0 hover:bg-card-background transition-colors cursor-pointer"
                 >
                   <div
                     className="flex-1 line-clamp-1"
