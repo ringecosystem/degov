@@ -23,7 +23,7 @@ const ClipboardIconButton = ({
   copyText = "Copy to clipboard",
   size,
   className,
-  strokeWidth = 1,
+  strokeWidth = 2,
 }: ClipboardIconButtonProps) => {
   const [state, copyToClipboard] = useCopyToClipboard();
   const [copied, setCopied] = useState(false);
