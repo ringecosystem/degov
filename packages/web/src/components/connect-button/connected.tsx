@@ -69,10 +69,18 @@ export const Connected = ({ address }: ConnectedProps) => {
           >
             <Link href="/profile">
               <Image
+                src="/assets/image/light/profile.svg"
+                alt="profile"
+                width={20}
+                height={20}
+                className="dark:hidden"
+              />
+              <Image
                 src="/assets/image/profile.svg"
                 alt="profile"
                 width={20}
                 height={20}
+                className="hidden dark:block"
               />
               <span className="text-[14px]">Profile</span>
             </Link>
