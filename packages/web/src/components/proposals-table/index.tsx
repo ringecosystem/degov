@@ -88,11 +88,9 @@ export function ProposalsTable({
         key: "blockTimestamp",
         width: "200px",
         render: (record) => {
-          const timestamp = record.blockTimestamp
-            ? Number(record.blockTimestamp) * 1000
-            : undefined;
-
-          return timestamp ? formatTimeAgo(timestamp.toString()) : "";
+          return record.blockTimestamp
+            ? formatTimeAgo(record.blockTimestamp)
+            : "";
         },
       },
       {
