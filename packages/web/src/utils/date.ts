@@ -1,4 +1,4 @@
-import dayjs, { unix } from "dayjs";
+import dayjs from "dayjs";
 import duration, { type DurationUnitType } from "dayjs/plugin/duration";
 import relativeTime from "dayjs/plugin/relativeTime";
 dayjs.extend(duration);
@@ -157,8 +157,6 @@ export function formatSimpleDate(timestamp?: number | string): string {
  * @returns Custom formatted time ago string
  */
 export function formatTimeAgo(timestamp: string) {
-  console.log("timestamp", timestamp);
-
   if (!timestamp) return "";
 
   const timestampNum = Number(timestamp);
