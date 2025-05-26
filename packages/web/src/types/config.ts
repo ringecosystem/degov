@@ -67,6 +67,7 @@ interface Config {
   name: string;
   logo: string;
   siteUrl: string;
+  offChainDiscussionUrl?: string;
   description: string;
   links: Links;
   wallet: Wallet;
