@@ -150,3 +150,96 @@ export function formatSimpleDate(timestamp?: number | string): string {
 
   return date.format("MMM D, YYYY");
 }
+
+/**
+ * Format timestamp to custom time ago format based on client requirements
+ * @param timestamp Unix timestamp in milliseconds (as string)
+ * @returns Custom formatted time ago string
+ */
+export function formatTimeAgo(timestamp: string) {
+  if (!timestamp) return "";
+
+  const timestampNum = Number(timestamp);
+  if (isNaN(timestampNum)) {
+    console.error(`Invalid timestamp: "${timestamp}"`);
+    return "";
+  }
+
+  // Handle both seconds and milliseconds timestamps
+  const isMilliseconds = timestampNum > 10000000000;
+  const date = isMilliseconds ? dayjs(timestampNum) : dayjs.unix(timestampNum);
+  const now = dayjs();
+
+  if (!date.isValid()) {
+    console.error(`Invalid date from timestamp: "${timestamp}"`);
+    return "";
+  }
+
+  // If date is in the future, return formatted date
+  if (date.isAfter(now)) {
+    if (date.year() === now.year()) {
+      return date.format("MMM D");
+    } else {
+      return date.format("MMM D, YYYY");
+    }
+  }
+
+  // Calculate differences
+  const diffMinutes = now.diff(date, "minute");
+  const diffHours = now.diff(date, "hour");
+  const diffDays = now.diff(date, "day");
+  const diffWeeks = now.diff(date, "week");
+  const diffMonths = now.diff(date, "month");
+
+  // Different year - show "MMM D, YYYY" format (e.g., "Mar 20, 2024")
+  if (date.year() !== now.year()) {
+    return date.format("MMM D, YYYY");
+  }
+
+  // More than 1 month - show "MMM D" format for current year (e.g., "Apr 20")
+  if (diffMonths >= 1) {
+    return date.format("MMM D");
+  }
+
+  // 3 weeks ago
+  if (diffWeeks === 3) {
+    return "three weeks ago";
+  }
+
+  // 2 weeks ago
+  if (diffWeeks === 2) {
+    return "two weeks ago";
+  }
+
+  // 1 week ago
+  if (diffWeeks === 1) {
+    return "one week ago";
+  }
+
+  // More than 3 weeks but less than 1 month
+  if (diffDays >= 21) {
+    return "last month";
+  }
+
+  // Yesterday
+  if (diffDays === 1) {
+    return "yesterday";
+  }
+
+  // More than 1 day but less than 1 week - show days
+  if (diffDays >= 2) {
+    return `${diffDays} days ago`;
+  }
+
+  // Less than 24 hours - show hours
+  if (diffHours >= 1) {
+    return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
+  }
+
+  // Less than 1 hour - show minutes
+  if (diffMinutes >= 1) {
+    return `${diffMinutes} ${diffMinutes === 1 ? "minute" : "minutes"} ago`;
+  }
+
+  return dayjs().from(date);
+}
