@@ -3,6 +3,7 @@
 import BigNumber from "bignumber.js";
 import { isEmpty, isUndefined } from "lodash-es";
 import Image from "next/image";
+import Link from "next/link";
 import { useMemo } from "react";
 import { formatUnits } from "viem";
 import { useBalance } from "wagmi";
@@ -161,11 +162,37 @@ export default function Treasury() {
   return (
     <div className="flex flex-col gap-[20px]">
       <header className="flex items-center justify-between">
-        <div className="flex items-center gap-[10px]">
+        <div className="flex items-center gap-[5px]">
           <h3 className="text-[18px] font-extrabold text-foreground">
             Treasury Assets
           </h3>
-          <ClipboardIconButton text={timeLockAddress} size={16} />
+          {Boolean(timeLockAddress) && (
+            <>
+              <ClipboardIconButton text={timeLockAddress} size={16} />
+              <Link
+                className="cursor-pointer hover:opacity-80"
+                href={`${daoConfig?.chain?.explorers?.[0]}/address/${timeLockAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="View on Explorer"
+              >
+                <Image
+                  src="/assets/image/light/external-link.svg"
+                  alt="address"
+                  width={20}
+                  height={20}
+                  className="dark:hidden"
+                />
+                <Image
+                  src="/assets/image/external-link.svg"
+                  alt="address"
+                  width={20}
+                  height={20}
+                  className="hidden dark:block"
+                />
+              </Link>
+            </>
+          )}
         </div>
         {
           <div className="flex items-center gap-[10px] ">
