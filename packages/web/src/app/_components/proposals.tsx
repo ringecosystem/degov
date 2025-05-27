@@ -1,9 +1,10 @@
 "use client";
 
-import { ProposalsTable } from "@/components/proposals-table";
-import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
+
+import { ProposalsTable } from "@/components/proposals-table";
+import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 export const Proposals = () => {
