@@ -22,18 +22,6 @@ export class TokenHandler {
     private readonly indexContract: DegovConfigIndexLogContract
   ) {}
 
-  private contractStandard() {
-    const contractStandard = (
-      this.indexContract.standard ?? "erc20"
-    ).toLowerCase();
-    return contractStandard;
-  }
-
-  private itokenAbi() {
-    const contractStandard = this.contractStandard();
-    const isErc721 = contractStandard === "erc721";
-    return isErc721 ? itokenerc721 : itokenerc20;
-  }
 
   async handle(eventLog: Log) {
     const itokenAbi = this.itokenAbi();
