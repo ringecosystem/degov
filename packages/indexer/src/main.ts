@@ -27,6 +27,8 @@ async function runProcessorEvm(config: DegovConfig) {
 
   const indexLog: DegovConfigIndexLog = config.indexLog;
 
+  // console.log(indexLog);
+
   processor.run(
     new TypeormDatabase({ supportHotBlocks: true }),
     async (ctx) => {
