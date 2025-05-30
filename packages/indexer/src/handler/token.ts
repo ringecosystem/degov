@@ -1,5 +1,5 @@
-import { DataHandlerContext } from "@subsquid/evm-processor";
-import { Log } from "../processor";
+import { DataHandlerContext, Log as EvmLog } from "@subsquid/evm-processor";
+import { Store } from "@subsquid/typeorm-store";
 import * as itokenerc20 from "../abi/itokenerc20";
 import * as itokenerc721 from "../abi/itokenerc721";
 import {
@@ -13,12 +13,13 @@ import {
   TokenTransfer,
 } from "../model";
 import { MetricsId, DegovConfigIndexLogContract } from "../config";
+import { EvmFieldSelection } from "../types";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 export class TokenHandler {
   constructor(
-    private readonly ctx: DataHandlerContext<any, any>,
+    private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
     private readonly indexContract: DegovConfigIndexLogContract
   ) {}
 
@@ -35,7 +36,7 @@ export class TokenHandler {
     return isErc721 ? itokenerc721 : itokenerc20;
   }
 
-  async handle(eventLog: Log) {
+  async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const isDelegateChanged =
       eventLog.topics.findIndex(
@@ -68,7 +69,7 @@ export class TokenHandler {
     // ]);
   }
 
-  private async storeDelegateChanged(eventLog: Log) {
+  private async storeDelegateChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
     const entity = new DelegateChanged({
@@ -123,7 +124,7 @@ export class TokenHandler {
     }
   }
 
-  private async storeDelegateVotesChanged(eventLog: Log) {
+  private async storeDelegateVotesChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
     const entity = new DelegateVotesChanged({
@@ -204,7 +205,7 @@ export class TokenHandler {
     await this.storeDelegate(delegate);
   }
 
-  private async storeTokenTransfer(eventLog: Log) {
+  private async storeTokenTransfer(eventLog: EvmLog<EvmFieldSelection>) {
     const contractStandard = this.contractStandard();
     const isErc721 = contractStandard === "erc721";
     const itokenAbi = this.itokenAbi();
