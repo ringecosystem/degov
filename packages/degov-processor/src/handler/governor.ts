@@ -12,8 +12,14 @@ import {
   DgvVoteCastWithParams,
   EvmFieldSelection,
 } from "../types";
+import { GovernorIntegration } from "../integration/governor";
 
 export class GovernorHandler {
+
+  constructor(
+    private readonly integration: GovernorIntegration,
+  ) {}
+
   async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const isProposalCreated =
       eventLog.topics.findIndex(
@@ -85,29 +91,29 @@ export class GovernorHandler {
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     };
-    // await this.ctx.store.insert(entity);
+    await this.integration.storeProposalCreated(proposalCreated);
 
-    const proposal: DgvProposal = {
-      id: eventLog.id,
-      proposalId: this.stdProposalId(event.proposalId),
-      proposer: event.proposer,
-      targets: event.targets,
-      values: event.values.map((item) => item.toString()),
-      signatures: event.signatures,
-      calldatas: event.calldatas,
-      voteStart: event.voteStart,
-      voteEnd: event.voteEnd,
-      description: event.description,
-      blockNumber: BigInt(eventLog.block.height),
-      blockTimestamp: BigInt(eventLog.block.timestamp),
-      transactionHash: eventLog.transactionHash,
-      voters: [],
-    };
+    // const proposal: DgvProposal = {
+    //   id: eventLog.id,
+    //   proposalId: this.stdProposalId(event.proposalId),
+    //   proposer: event.proposer,
+    //   targets: event.targets,
+    //   values: event.values.map((item) => item.toString()),
+    //   signatures: event.signatures,
+    //   calldatas: event.calldatas,
+    //   voteStart: event.voteStart,
+    //   voteEnd: event.voteEnd,
+    //   description: event.description,
+    //   blockNumber: BigInt(eventLog.block.height),
+    //   blockTimestamp: BigInt(eventLog.block.timestamp),
+    //   transactionHash: eventLog.transactionHash,
+    //   voters: [],
+    // };
     // await this.ctx.store.insert(proposal);
 
-    await this.storeGlobalDataMetric({
-      proposalsCount: 1,
-    });
+    // await this.storeGlobalDataMetric({
+    //   proposalsCount: 1,
+    // });
   }
 
   private async storeProposalQueued(eventLog: EvmLog<EvmFieldSelection>) {
