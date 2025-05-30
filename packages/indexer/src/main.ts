@@ -55,9 +55,6 @@ async function runProcessorEvm(config: DegovConfig) {
             }
           } catch (e) {
             ctx.log.warn(
-              `unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}`
-            );
-            ctx.log.warn(
               // indexContract
               `(evm) unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}, reason: ${e}, stopped from ${ctx.blocks[0].header.height} block`
             );
