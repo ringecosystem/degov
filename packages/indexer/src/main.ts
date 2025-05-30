@@ -24,10 +24,13 @@ async function runProcessorEvm(config: DegovConfig) {
   if (config.gateway) {
     processor.setGateway(config.gateway);
   }
-
   const indexLog: DegovConfigIndexLog = config.indexLog;
 
-  // console.log(indexLog);
+  processor.addLog({
+    range: { from: indexLog.startBlock },
+    address: indexLog.contracts.map((item) => item.address),
+    transaction: true,
+  });
 
   processor.run(
     new TypeormDatabase({ supportHotBlocks: true }),
@@ -50,10 +53,15 @@ async function runProcessorEvm(config: DegovConfig) {
                 await new TokenHandler(ctx, indexContract).handle(event);
                 break;
             }
-          } finally {
+          } catch (e) {
             ctx.log.warn(
               `unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}`
             );
+            ctx.log.warn(
+              // indexContract
+              `(evm) unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}, reason: ${e}, stopped from ${ctx.blocks[0].header.height} block`
+            );
+            throw e;
           }
         }
       }
