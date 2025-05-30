@@ -29,6 +29,7 @@
     "reflect-metadata": "^0.2.2",
     "jest": "^29.7.0",
     "@types/jest": "29.5.14",
-    "zx": "^8.4.1"
+    "zx": "^8.4.1",
+    "@subsquid/cli": "^3.0.4"
   }
 }

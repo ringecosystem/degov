@@ -1,6 +1,6 @@
-import { Log } from "../processor";
 import * as igovernorAbi from "../abi/igovernor";
-import { DataHandlerContext } from "@subsquid/evm-processor";
+import { Store } from "@subsquid/typeorm-store";
+import { DataHandlerContext, Log as EvmLog } from "@subsquid/evm-processor";
 import {
   DataMetric,
   Proposal,
@@ -13,11 +13,14 @@ import {
   VoteCastWithParams,
 } from "../model";
 import { MetricsId } from "../config";
+import { EvmFieldSelection } from "../types";
 
 export class GovernorHandler {
-  constructor(private readonly ctx: DataHandlerContext<any, any>) {}
+  constructor(
+    private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>
+  ) {}
 
-  async handle(eventLog: Log) {
+  async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const isProposalCreated =
       eventLog.topics.findIndex(
         (item) => item === igovernorAbi.events.ProposalCreated.topic
@@ -71,7 +74,7 @@ export class GovernorHandler {
     return `0x${proposalId.toString(16)}`;
   }
 
-  private async storeProposalCreated(eventLog: Log) {
+  private async storeProposalCreated(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalCreated.decode(eventLog);
     const entity = new ProposalCreated({
       id: eventLog.id,
@@ -112,7 +115,7 @@ export class GovernorHandler {
     });
   }
 
-  private async storeProposalQueued(eventLog: Log) {
+  private async storeProposalQueued(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalQueued.decode(eventLog);
     const entity = new ProposalQueued({
       id: eventLog.id,
@@ -125,7 +128,7 @@ export class GovernorHandler {
     await this.ctx.store.insert(entity);
   }
 
-  private async storeProposalExecuted(eventLog: Log) {
+  private async storeProposalExecuted(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalExecuted.decode(eventLog);
     const entity = new ProposalExecuted({
       id: eventLog.id,
@@ -137,7 +140,7 @@ export class GovernorHandler {
     await this.ctx.store.insert(entity);
   }
 
-  private async storeProposalCanceled(eventLog: Log) {
+  private async storeProposalCanceled(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalCanceled.decode(eventLog);
     const entity = new ProposalCanceled({
       id: eventLog.id,
@@ -149,7 +152,7 @@ export class GovernorHandler {
     await this.ctx.store.insert(entity);
   }
 
-  private async storeVoteCast(eventLog: Log) {
+  private async storeVoteCast(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.VoteCast.decode(eventLog);
     const entity = new VoteCast({
       id: eventLog.id,
@@ -179,7 +182,7 @@ export class GovernorHandler {
     await this.storeVoteCastGroup(vcg);
   }
 
-  private async storeVoteCastWithParams(eventLog: Log) {
+  private async storeVoteCastWithParams(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.VoteCastWithParams.decode(eventLog);
     const entity = new VoteCastWithParams({
       id: eventLog.id,

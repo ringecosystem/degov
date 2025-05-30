@@ -1,32 +1,31 @@
 import { TypeormDatabase } from "@subsquid/typeorm-store";
-import { processor } from "./processor";
 import { DegovConfig, DegovConfigIndexLog, DegovConfigNanny } from "./config";
 import { GovernorHandler } from "./handler/governor";
 import { TokenHandler } from "./handler/token";
+import { EvmBatchProcessor } from "@subsquid/evm-processor";
+import { evmFieldSelection } from "./types";
 
 async function main() {
   const nanny = new DegovConfigNanny();
   const config = await nanny.load();
-  processIndex(config);
+  await runProcessorEvm(config);
 }
 
-function processIndex(config: DegovConfig) {
-  const indexLog: DegovConfigIndexLog = config.indexLog;
-  processor
+async function runProcessorEvm(config: DegovConfig) {
+  const processor = new EvmBatchProcessor()
     .setRpcEndpoint({
       // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
       capacity: 30,
       maxBatchCallSize: 200,
       url: config.endpoint.rpcs[0],
     })
-    .setFinalityConfirmation(10)
-    .addLog({
-      range: { from: indexLog.startBlock },
-      address: indexLog.contracts.map((item) => item.address),
-    });
+    .setFields(evmFieldSelection);
+  // .setFinalityConfirmation(ormpContract.finalityConfirmation ?? 50);
   if (config.gateway) {
     processor.setGateway(config.gateway);
   }
+
+  const indexLog: DegovConfigIndexLog = config.indexLog;
 
   processor.run(
     new TypeormDatabase({ supportHotBlocks: true }),
@@ -60,4 +59,13 @@ function processIndex(config: DegovConfig) {
   );
 }
 
-main().then(() => console.log("done"));
+main()
+  .then(() => console.log("done"))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+
+process.on("uncaughtException", (error) => {
+  console.error(error);
+});
