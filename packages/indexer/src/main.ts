@@ -19,8 +19,8 @@ async function runProcessorEvm(config: DegovConfig) {
       maxBatchCallSize: 200,
       url: config.endpoint.rpcs[0],
     })
-    .setFields(evmFieldSelection);
-  // .setFinalityConfirmation(ormpContract.finalityConfirmation ?? 50);
+    .setFields(evmFieldSelection)
+    .setFinalityConfirmation(10);
   if (config.gateway) {
     processor.setGateway(config.gateway);
   }
