@@ -23,6 +23,8 @@ import {
 } from "@/utils";
 import { formatShortAddress } from "@/utils/address";
 
+import { generateFunctionSignature } from "./helper";
+
 import type { Action } from "./type";
 import type { Address } from "viem";
 
@@ -108,9 +110,11 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               name: item.name,
               value: item.value,
             }));
-            info.signature = `${contractMethod}(${action?.content?.calldata
-              ?.map((item) => `${item.name}`)
-              .join(",")})`;
+            info.signature = generateFunctionSignature(
+              action.content.contractMethod,
+              action.content.calldata,
+              { useTypes: true, includeNames: true }
+            );
 
             info.calldata = action?.content?.calldata?.map((item) => {
               return {
@@ -266,21 +270,31 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.1 }}
                       >
-                        {action.params.map((param, pIndex) => (
-                          <div key={pIndex} className="flex gap-2">
-                            <span className="font-medium">{param.name}:</span>
-                            <span
-                              className="font-mono break-words text-left"
-                              style={{
-                                wordBreak: "break-all",
-                              }}
+                        <div className="border border-gray-1 bg-background">
+                          {action.params.map((param, pIndex) => (
+                            <div
+                              key={pIndex}
+                              className={cn(
+                                "grid grid-cols-[140px_1fr]",
+                                pIndex > 0 && "border-t border-gray-1"
+                              )}
                             >
-                              {Array.isArray(param.value)
-                                ? `[${param.value.join(", ")}]`
-                                : param.value}
-                            </span>
-                          </div>
-                        ))}
+                              <div className="p-[10px] text-[12px] font-medium border-r border-gray-1 flex items-center justify-center">
+                                {param.name}
+                              </div>
+                              <div
+                                className="p-[10px] text-[12px] font-mono break-words text-left"
+                                style={{
+                                  wordBreak: "break-all",
+                                }}
+                              >
+                                {Array.isArray(param.value)
+                                  ? `[${param.value.join(", ")}]`
+                                  : param.value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </motion.div>
                     </TableCell>
                   </motion.tr>
@@ -310,18 +324,17 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               Function {index + 1}
             </h3>
 
-            <div className="space-y-[20px] rounded-[4px] border p-[20px]">
-              {action.type === "custom" ||
-                (action.type === "xaccount" && (
-                  <div>
-                    <h4 className="text-[14px] font-normal text-muted-foreground">
-                      Signature:
-                    </h4>
-                    <p className="text-[14px] font-mono font-semibold">
-                      {action.signature}
-                    </p>
-                  </div>
-                ))}
+            <div className="space-y-[10px] rounded-[4px] border border-gray-1 p-[10px] bg-background">
+              {(action.type === "custom" || action.type === "xaccount") && (
+                <div>
+                  <h4 className="text-[14px] font-normal text-muted-foreground">
+                    Signature:
+                  </h4>
+                  <p className="text-[14px] font-mono font-semibold">
+                    {action.signature}
+                  </p>
+                </div>
+              )}
 
               {action.calldata && (
                 <div className="w-full">

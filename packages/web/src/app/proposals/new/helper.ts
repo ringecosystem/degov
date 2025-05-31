@@ -61,9 +61,7 @@ export const generateXAccountAction = (): XAccountAction => {
     content: {} as XAccountContent,
   };
 };
-/**
- * generateFunctionSignature
- *
+/** *
  * generate function signature
  *
  * @param methodName contract method name
@@ -76,7 +74,8 @@ export function generateFunctionSignature(
   params: CustomContent["calldata"] | undefined,
   options: {
     useTypes?: boolean;
-  } = { useTypes: false }
+    includeNames?: boolean;
+  } = { useTypes: false, includeNames: false }
 ): string {
   if (!methodName) return "";
 
@@ -87,10 +86,21 @@ export function generateFunctionSignature(
     return `${finalMethodName}()`;
   }
 
-  // Use parameter types or names based on options
+  // Generate parameter list based on options
   const paramList = params
-    .map((param) => (options.useTypes ? param.type : param.name))
-    .join(",");
+    .map((param) => {
+      if (options.useTypes && options.includeNames) {
+        // Include both type and name: "address target"
+        return `${param.type} ${param.name}`;
+      } else if (options.useTypes) {
+        // Only type: "address"
+        return param.type;
+      } else {
+        // Only name: "target"
+        return param.name;
+      }
+    })
+    .join(", ");
 
   return `${finalMethodName}(${paramList})`;
 }
@@ -132,7 +142,7 @@ export const transformActionsToProposalParams = async (
         const signature = generateFunctionSignature(
           customAction.contractMethod,
           customAction.calldata,
-          { useTypes: true }
+          { useTypes: true, includeNames: true }
         );
 
         return {
