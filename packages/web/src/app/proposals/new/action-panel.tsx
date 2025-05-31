@@ -23,6 +23,8 @@ import {
 } from "@/utils";
 import { formatShortAddress } from "@/utils/address";
 
+import { generateFunctionSignature } from "./helper";
+
 import type { Action } from "./type";
 import type { Address } from "viem";
 
@@ -108,9 +110,11 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               name: item.name,
               value: item.value,
             }));
-            info.signature = `${contractMethod}(${action?.content?.calldata
-              ?.map((item) => `${item.name}`)
-              .join(",")})`;
+            info.signature = generateFunctionSignature(
+              action.content.contractMethod,
+              action.content.calldata,
+              { useTypes: true, includeNames: true }
+            );
 
             info.calldata = action?.content?.calldata?.map((item) => {
               return {
@@ -320,18 +324,17 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               Function {index + 1}
             </h3>
 
-            <div className="space-y-[20px] rounded-[4px] border p-[20px]">
-              {action.type === "custom" ||
-                (action.type === "xaccount" && (
-                  <div>
-                    <h4 className="text-[14px] font-normal text-muted-foreground">
-                      Signature:
-                    </h4>
-                    <p className="text-[14px] font-mono font-semibold">
-                      {action.signature}
-                    </p>
-                  </div>
-                ))}
+            <div className="space-y-[10px] rounded-[4px] border border-gray-1 p-[10px] bg-background">
+              {(action.type === "custom" || action.type === "xaccount") && (
+                <div>
+                  <h4 className="text-[14px] font-normal text-muted-foreground">
+                    Signature:
+                  </h4>
+                  <p className="text-[14px] font-mono font-semibold">
+                    {action.signature}
+                  </p>
+                </div>
+              )}
 
               {action.calldata && (
                 <div className="w-full">

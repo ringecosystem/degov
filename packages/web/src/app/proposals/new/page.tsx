@@ -107,9 +107,6 @@ export default function NewProposal() {
 
   const actionsChanged = useMemo(() => {
     const currentActionsJson = JSON.stringify(actions);
-
-    console.log("currentActionsJson", currentActionsJson);
-    console.log("initialActionsRef", initialActionsRef.current);
     return currentActionsJson !== initialActionsRef.current;
   }, [actions]);
 

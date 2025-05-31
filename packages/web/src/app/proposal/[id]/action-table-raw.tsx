@@ -38,9 +38,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
         action.signature
       ) {
         try {
-          const signature = isXAccount
-            ? simplifyFunctionSignature(action.signature)
-            : action.signature;
+          const signature = simplifyFunctionSignature(action.signature);
 
           const iface = new ethers.Interface([`function ${signature}`]);
           const decoded = iface.decodeFunctionData(
@@ -92,7 +90,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
             Function {index + 1}
           </h3>
 
-          <div className="space-y-[20px] rounded-[4px] border p-[20px]">
+          <div className="space-y-[10px] rounded-[4px] border p-[10px] bg-background">
             {(action.inferredType === "custom" ||
               action.inferredType === "xaccount") && (
               <div>
@@ -103,9 +101,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
                   className="font-mono text-[14px]"
                   style={{ wordWrap: "break-word" }}
                 >
-                  {action.inferredType === "xaccount"
-                    ? simplifyFunctionSignature(action.signature ?? "")
-                    : action.signature}
+                  {simplifyFunctionSignature(action.signature ?? "")}
                 </p>
               </div>
             )}
