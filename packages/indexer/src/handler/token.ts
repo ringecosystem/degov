@@ -62,11 +62,6 @@ export class TokenHandler {
       await this.storeTokenTransfer(eventLog);
     }
 
-    // console.log('---------->', eventLog.topics, [
-    //   itokenAbi.events.DelegateChanged.topic,
-    //   itokenAbi.events.DelegateVotesChanged.topic,
-    //   itokenAbi.events.Transfer.topic,
-    // ]);
   }
 
   private async storeDelegateChanged(eventLog: EvmLog<EvmFieldSelection>) {
