@@ -37,7 +37,6 @@ interface ParsedParam {
   value: string | string[];
 }
 
-// 解析 calldata 并获取实际参数值
 function parseCalldataParams(
   signature: string,
   calldata: string
@@ -52,7 +51,6 @@ function parseCalldataParams(
       calldata
     );
 
-    // 提取参数类型和名称
     const match = signature.match(/\((.*)\)/);
     if (!match || !match[1].trim()) return [];
 
@@ -62,14 +60,10 @@ function parseCalldataParams(
       .map((param) => param.trim());
 
     return paramDefinitions.map((paramDef, index) => {
-      // 解析参数定义，提取类型和名称
       const parts = paramDef.trim().split(/\s+/);
       const type = parts[0];
-      // 如果只有类型没有参数名，使用类型作为显示名称
-      // 如果有参数名，使用参数名
       const name = parts.length >= 2 ? parts.slice(1).join(" ") : type;
 
-      // 获取解码后的值
       let value = decoded[index];
       if (typeof value === "bigint") {
         value = value.toString();
@@ -128,7 +122,6 @@ export function ActionTableSummary({
           : "";
       }
 
-      // 解析参数
       const params = parseCalldataParams(
         action?.signature || "",
         action?.calldata || ""
@@ -197,7 +190,6 @@ export function ActionTableSummary({
               : data.length > 0
               ? data.map((record) => (
                   <React.Fragment key={`${record.target}-${record.calldata}`}>
-                    {/* 主要数据行 */}
                     <TableRow
                       className={cn(
                         openParams.includes(record.index) &&
@@ -205,7 +197,6 @@ export function ActionTableSummary({
                           "border-b-0"
                       )}
                     >
-                      {/* Type 列 */}
                       <TableCell className="text-left" style={{ width: "33%" }}>
                         <div className="flex items-center gap-[10px]">
                           <Image
@@ -238,7 +229,6 @@ export function ActionTableSummary({
                         </div>
                       </TableCell>
 
-                      {/* Address Data 列 */}
                       <TableCell className="text-left" style={{ width: "33%" }}>
                         <a
                           href={`${daoConfig?.chain?.explorers?.[0]}/address/${record.target}`}
@@ -266,7 +256,6 @@ export function ActionTableSummary({
                         </a>
                       </TableCell>
 
-                      {/* Details 列 */}
                       <TableCell
                         className="text-left"
                         style={{ width: "33%", wordWrap: "break-word" }}
@@ -302,7 +291,6 @@ export function ActionTableSummary({
                       </TableCell>
                     </TableRow>
 
-                    {/* 展开的参数行 */}
                     <AnimatePresence>
                       {record.hasParams &&
                         openParams.includes(record.index) && (
