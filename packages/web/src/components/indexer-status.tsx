@@ -9,9 +9,7 @@ import { cn } from "@/lib/utils";
 
 import { INDEXER_CONFIG } from "../config/indexer";
 
-
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-
 
 interface IndexerStatusProps {
   currentBlock: number;
@@ -35,13 +33,16 @@ export function IndexerStatus({
   return (
     <div className="flex flex-col gap-[10px] rounded-[10px] bg-card p-[10px] shadow-sm">
       <div className="flex items-center gap-[5px] w-full">
-        <Image
-          src={networkIcon}
-          alt="network icon"
-          width={20}
-          height={20}
-          className="rounded-full size-[20px]"
-        />
+        {!!networkIcon && (
+          <Image
+            src={networkIcon}
+            alt="network icon"
+            width={20}
+            height={20}
+            className="rounded-full size-[20px]"
+          />
+        )}
+
         <div className="h-[20px]  rounded-[100px] bg-secondary flex-1">
           <div
             className={cn(

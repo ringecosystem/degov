@@ -16,6 +16,60 @@ interface ActionTableRawProps {
   actions: Action[];
 }
 
+interface ParsedParam {
+  name: string;
+  type: string;
+  value: string | string[];
+}
+
+function parseCalldataParams(
+  signature: string,
+  calldata: string
+): ParsedParam[] {
+  if (!signature || !calldata || calldata === "0x") return [];
+
+  try {
+    const simplifiedSignature = simplifyFunctionSignature(signature);
+    const iface = new ethers.Interface([`function ${simplifiedSignature}`]);
+    const decoded = iface.decodeFunctionData(
+      simplifiedSignature.split("(")[0],
+      calldata
+    );
+
+    const match = signature.match(/\((.*)\)/);
+    if (!match || !match[1].trim()) return [];
+
+    const paramsString = match[1];
+    const paramDefinitions = paramsString
+      .split(",")
+      .map((param) => param.trim());
+
+    return paramDefinitions.map((paramDef, index) => {
+      const parts = paramDef.trim().split(/\s+/);
+      const type = parts[0];
+      const name = parts.length >= 2 ? parts.slice(1).join(" ") : type;
+
+      let value = decoded[index];
+      if (typeof value === "bigint") {
+        value = value.toString();
+      } else if (Array.isArray(value)) {
+        value = Array.from(value).map((v) =>
+          typeof v === "bigint" ? v.toString() : v
+        );
+      }
+
+      return {
+        name,
+        type,
+        value: Array.isArray(value) ? value : String(value),
+      };
+    });
+  } catch (e) {
+    console.warn("Error parsing calldata:", e);
+    return [];
+  }
+}
+
 export function ActionTableRaw({ actions }: ActionTableRawProps) {
   const daoConfig = useDaoConfig();
 
@@ -32,45 +86,12 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
         inferredType = isXAccount ? "xaccount" : "custom";
       }
 
-      let parsedCalldata: { name: string; value: string | string[] }[] = [];
+      let parsedCalldata: ParsedParam[] = [];
       if (
         (inferredType === "custom" || inferredType === "xaccount") &&
         action.signature
       ) {
-        try {
-          const signature = simplifyFunctionSignature(action.signature);
-
-          const iface = new ethers.Interface([`function ${signature}`]);
-          const decoded = iface.decodeFunctionData(
-            signature.split("(")[0],
-            action.calldata
-          );
-
-          const paramTypes =
-            signature
-              .match(/\((.*)\)/)?.[1]
-              .split(",")
-              .filter(Boolean) || [];
-
-          parsedCalldata = paramTypes.map((type, i) => {
-            let value = decoded[i];
-
-            if (typeof value === "bigint") {
-              value = value.toString();
-            } else if (Array.isArray(value)) {
-              value = Array.from(value).map((v) =>
-                typeof v === "bigint" ? v.toString() : v
-              );
-            }
-
-            return {
-              name: type,
-              value,
-            };
-          });
-        } catch (e) {
-          console.warn("Error parsing calldata:", e);
-        }
+        parsedCalldata = parseCalldataParams(action.signature, action.calldata);
       }
 
       return {
@@ -101,7 +122,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
                   className="font-mono text-[14px]"
                   style={{ wordWrap: "break-word" }}
                 >
-                  {simplifyFunctionSignature(action.signature ?? "")}
+                  {action.signature ?? ""}
                 </p>
               </div>
             )}
@@ -113,14 +134,16 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
                   <h4 className="text-[14px] font-normal text-muted-foreground">
                     Calldata:
                   </h4>
-                  {action.parsedCalldata.map(({ name, value }, cIndex) => (
+                  {action.parsedCalldata.map((param, cIndex) => (
                     <div
                       key={cIndex}
                       className="font-mono text-[14px]"
                       style={{ wordWrap: "break-word" }}
                     >
-                      {name}:{" "}
-                      {Array.isArray(value) ? `[${value.join(", ")}]` : value}
+                      {param.name}:{" "}
+                      {Array.isArray(param.value)
+                        ? `[${param.value.join(", ")}]`
+                        : param.value}
                     </div>
                   ))}
                 </div>
