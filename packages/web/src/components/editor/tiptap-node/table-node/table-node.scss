@@ -46,7 +46,6 @@
     margin: 0;
   }
     
-  /* 使用CSS变量确保暗色主题兼容 */
   html.dark .ProseMirror table {
     --border-color: #4a5568;
     --th-background: rgba(45, 55, 72, 0.4);

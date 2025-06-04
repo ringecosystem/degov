@@ -44,11 +44,9 @@ export const XAccountPanel = ({
     return `https://xaccount.degov.ai?sourceChainId=${daoConfig?.chain?.id}&targetContractAddress=${daoConfig?.contracts?.timeLock}`;
   }, [daoConfig?.chain?.id, daoConfig?.contracts?.timeLock]);
 
-  // 处理XAccount JSON上传
   const handleUploadXAccount = useCallback(
     (jsonContent: XAccountContent) => {
       try {
-        // 使用zod验证JSON是否符合schema
         const result = xaccountSchema.safeParse(jsonContent);
 
         if (result.success) {
@@ -57,7 +55,6 @@ export const XAccountPanel = ({
           setValidationError(null);
           onChange(result.data);
         } else {
-          // 提取验证错误信息
           const errorMessages = result.error.errors.map(
             (err) => `${err.path.join(".")} - ${err.message}`
           );
