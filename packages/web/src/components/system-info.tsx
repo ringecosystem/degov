@@ -33,7 +33,7 @@ const SystemInfoItem = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-between">
-        <span className="text-[14px] font-medium text-foreground">{label}</span>
+        <span className="text-[14px]  text-muted-foreground">{label}</span>
         <Skeleton className="h-[22px] w-[120px]" />
       </div>
     );
@@ -41,20 +41,20 @@ const SystemInfoItem = ({
 
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[14px] font-medium text-foreground">{label}</span>
+      <span className="text-[14px]  text-muted-foreground">{label}</span>
       <div className="flex items-center gap-[5px]">
         {isAddress && explorerUrl ? (
           <a
             href={`${explorerUrl}/address/${value}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-[5px] text-[14px] font-mono text-foreground hover:opacity-80 transition-opacity"
+            className="flex items-center gap-[5px] text-[14px] text-foreground hover:opacity-80 transition-opacity"
           >
             {formatShortAddress(value as string)}
             <ExternalLink className="h-4 w-4" />
           </a>
         ) : (
-          <span className="text-[14px] font-mono text-foreground">
+          <span className="text-[14px] text-foreground">
             {typeof value === "number"
               ? formatNumberForDisplay(value, 0)[0]
               : value}
@@ -126,7 +126,7 @@ export const SystemInfo = () => {
   const explorerUrl = daoConfig?.chain?.explorers?.[0];
 
   return (
-    <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px]">
+    <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] w-[360px]">
       <div className="flex items-center gap-[10px]">
         <h2 className="text-[18px] font-semibold">System Info</h2>
       </div>

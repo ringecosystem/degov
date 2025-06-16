@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/select";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
+import { SystemInfo } from "@/components/system-info";
+import { Faqs } from "@/components/faqs";
 
 function ProposalsContent() {
   const router = useRouter();
@@ -70,7 +72,7 @@ function ProposalsContent() {
   };
 
   return (
-    <div className="flex flex-col gap-[30px]">
+    <div className="flex flex-col gap-[20px]">
       <div className="flex items-center justify-between gap-[20px]">
         <h3 className="text-[18px] font-extrabold">Onchain Proposals</h3>
 
@@ -132,13 +134,23 @@ function ProposalsContent() {
           </Button>
         </div>
       </div>
-      <ProposalsTable
-        type="all"
-        address={
-          isMyProposals ? address : (addressParam as `0x${string}` | undefined)
-        }
-        support={support === "all" ? undefined : support}
-      />
+      <div className="flex items-start gap-[10px]">
+        <div className="flex-1">
+          <ProposalsTable
+            type="all"
+            address={
+              isMyProposals
+                ? address
+                : (addressParam as `0x${string}` | undefined)
+            }
+            support={support === "all" ? undefined : support}
+          />
+        </div>
+        <div className="w-[360px] flex flex-col gap-[20px]">
+          <SystemInfo />
+          <Faqs type="general" />
+        </div>
+      </div>
     </div>
   );
 }

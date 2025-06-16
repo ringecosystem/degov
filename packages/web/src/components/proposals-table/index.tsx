@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { useMemo } from "react";
+import { useAccount } from "wagmi";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
+import { VoteType } from "@/config/vote";
 
 import { CustomTable } from "../custom-table";
 import { ProposalStatus } from "../proposal-status";
@@ -16,6 +18,7 @@ import { VoteTotal } from "./vote-total";
 
 import type { ColumnType } from "../custom-table";
 import type { Address } from "viem";
+import { VoteStatistics } from "../vote-statistics";
 
 const Caption = ({
   type,
@@ -60,119 +63,125 @@ export function ProposalsTable({
   address?: Address;
   support?: "1" | "2" | "3";
 }) {
+  const { address: connectedAddress } = useAccount();
   const { state, proposalStatusState, loadMoreData } = useProposalData(
     address,
     support,
     type === "active" ? 8 : DEFAULT_PAGE_SIZE
   );
 
+  const getUserVoteStatus = (record: ProposalItem) => {
+    if (!connectedAddress) return null;
+
+    const userVote = record.voters?.find(
+      (voter) => voter.voter.toLowerCase() === connectedAddress.toLowerCase()
+    );
+
+    if (!userVote) return null;
+
+    switch (userVote.support) {
+      case VoteType.For: // 1
+        return {
+          color: "bg-success",
+          textColor: "text-success",
+          label: "For",
+        };
+      case VoteType.Against: // 0
+        return {
+          color: "bg-danger",
+          textColor: "text-danger",
+          label: "Against",
+        };
+      case VoteType.Abstain: // 2
+        return {
+          color: "bg-muted-foreground",
+          textColor: "text-muted-foreground",
+          label: "Abstain",
+        };
+      default:
+        return null;
+    }
+  };
+
   const columns = useMemo<ColumnType<ProposalItem>[]>(
     () => [
       {
         title: "Proposal",
         key: "description",
-        width: "400px",
+        width: "70%",
         className: "text-left",
         render: (record) => (
-          <Link
-            className="line-clamp-1 hover:underline"
-            title={extractTitleAndDescription(record.description)?.title}
-            href={`/proposal/${record.proposalId}`}
-          >
-            {extractTitleAndDescription(record.description)?.title}
-          </Link>
+          <div className="space-y-2">
+            <Link
+              className="hover:underline text-base font-medium block"
+              title={extractTitleAndDescription(record.description)?.title}
+              href={`/proposal/${record.proposalId}`}
+            >
+              {extractTitleAndDescription(record.description)?.title}
+            </Link>
+
+            <div className="flex items-center gap-3 text-sm">
+              {proposalStatusState?.isFetching ? (
+                <Skeleton className="h-[20px] w-[60px]" />
+              ) : (
+                <ProposalStatus
+                  status={proposalStatusState?.data?.[record.id]}
+                  className="text-[12px] py-0 px-0 bg-transparent"
+                />
+              )}
+
+              <span className="text-muted-foreground text-[12px]">
+                {record.blockTimestamp
+                  ? formatTimeAgo(record.blockTimestamp)
+                  : ""}
+              </span>
+
+              {(() => {
+                const userVoteStatus = getUserVoteStatus(record);
+
+                if (userVoteStatus) {
+                  return (
+                    <div className="flex items-center gap-[5px]">
+                      <div
+                        className={`w-[10px] h-[10px] rounded-full ${userVoteStatus.color}`}
+                      ></div>
+                      <span
+                        className={`${userVoteStatus.textColor} text-[12px]`}
+                      >
+                        {userVoteStatus.label}
+                      </span>
+                    </div>
+                  );
+                }
+
+                return null;
+              })()}
+            </div>
+          </div>
         ),
       },
       {
-        title: "Date",
-        key: "blockTimestamp",
-        width: "200px",
-        render: (record) => {
-          return record.blockTimestamp
-            ? formatTimeAgo(record.blockTimestamp)
-            : "";
-        },
-      },
-      {
-        title: "Status",
-        key: "status",
-        width: "200px",
-        render: (record) => {
-          return proposalStatusState?.isFetching ? (
-            <Skeleton className="h-[30px] w-full" />
-          ) : (
-            <ProposalStatus status={proposalStatusState?.data?.[record.id]} />
-          );
-        },
-      },
-      {
-        title: "Votes for",
-        key: "votesFor",
-        width: "200px",
+        title: "Votes",
+        key: "votes",
+        width: "30%",
         render: (record) => {
           return (
-            <VotePercentage
-              status="for"
-              value={
+            <VoteStatistics
+              forVotes={
                 record.metricsVotesWeightForSum
                   ? BigInt(record.metricsVotesWeightForSum)
                   : 0n
               }
-              total={
+              againstVotes={
                 record.metricsVotesWeightAgainstSum
                   ? BigInt(record.metricsVotesWeightAgainstSum)
                   : 0n
               }
-            />
-          );
-        },
-      },
-      {
-        title: "Votes against",
-        key: "votesAgainst",
-        width: "200px",
-        render: (record) => {
-          return (
-            <VotePercentage
-              status="against"
-              value={
-                record.metricsVotesWeightAgainstSum
-                  ? BigInt(record.metricsVotesWeightAgainstSum)
+              abstainVotes={
+                record.metricsVotesWeightAbstainSum
+                  ? BigInt(record.metricsVotesWeightAbstainSum)
                   : 0n
               }
-              total={
-                record.metricsVotesWeightForSum
-                  ? BigInt(record.metricsVotesWeightForSum)
-                  : 0n
-              }
-            />
-          );
-        },
-      },
-      {
-        title: "Total votes",
-        key: "totalVotes",
-        width: "200px",
-        render: (record) => {
-          const metricsVotesWeightForSum = record?.metricsVotesWeightForSum
-            ? BigInt(record.metricsVotesWeightForSum)
-            : 0n;
-          const metricsVotesWeightAgainstSum =
-            record?.metricsVotesWeightAgainstSum
-              ? BigInt(record.metricsVotesWeightAgainstSum)
-              : 0n;
-          const metricsVotesWeightAbstainSum =
-            record?.metricsVotesWeightAbstainSum
-              ? BigInt(record.metricsVotesWeightAbstainSum)
-              : 0n;
-          return (
-            <VoteTotal
-              totalVotes={
-                metricsVotesWeightForSum +
-                metricsVotesWeightAgainstSum +
-                metricsVotesWeightAbstainSum
-              }
-              totalAddresses={record.voters?.length ?? 0}
             />
           );
         },

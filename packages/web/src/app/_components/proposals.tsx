@@ -43,7 +43,9 @@ export const Proposals = () => {
         ) : null}
       </div>
       <div className="flex items-start gap-[10px]">
-        <ProposalsTable type="active" />
+        <div className="flex-1">
+          <ProposalsTable type="active" />
+        </div>
         <Faqs type="general" />
       </div>
     </div>
