@@ -25,6 +25,8 @@ import { CurrentVotes } from "./current-votes";
 import { Proposal } from "./proposal";
 import { Result } from "./result";
 import Status from "./status";
+import { Tabs } from "./tabs";
+import { Faqs } from "@/components/faqs";
 
 const ACTIVE_STATES: ProposalState[] = [
   ProposalState.Pending,
@@ -82,6 +84,7 @@ export default function ProposalDetailPage() {
       return {
         ...data,
         description: parsedDescription.mainText,
+        discussion: parsedDescription.discussion,
         signatureContent: parsedDescription.signatureContent,
         originalDescription: data?.description,
       };
@@ -284,11 +287,11 @@ export default function ProposalDetailPage() {
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px]">
-        <div className="space-y-[20px]">
-          <Result data={data} isFetching={isPending} />
-          <ActionsTable data={data} isFetching={isPending} />
-          <Proposal data={data} isFetching={isPending} />
-        </div>
+        <Tabs
+          data={data}
+          isFetching={isPending}
+          proposalVotesData={proposalVotesData}
+        />
         <div className="space-y-[20px]">
           <CurrentVotes
             proposalVotesData={proposalVotesData}
@@ -303,6 +306,7 @@ export default function ProposalDetailPage() {
             proposalQueuedById={proposalQueuedById}
             isLoading={isAllQueriesFetching || isPending}
           />
+          <Faqs type="proposal" />
         </div>
       </div>
     </div>
