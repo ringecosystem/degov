@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ProposalsTable } from "@/components/proposals-table";
 import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { Faqs } from "@/components/faqs";
 
 export const Proposals = () => {
   const daoConfig = useDaoConfig();
@@ -41,7 +42,10 @@ export const Proposals = () => {
           </Button>
         ) : null}
       </div>
-      <ProposalsTable type="active" />
+      <div className="flex items-start gap-[10px]">
+        <ProposalsTable type="active" />
+        <Faqs type="general" />
+      </div>
     </div>
   );
 };
