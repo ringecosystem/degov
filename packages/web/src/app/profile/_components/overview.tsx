@@ -27,7 +27,6 @@ export const Overview = ({
   const { formattedVotes, votes, isLoading } = useAddressVotes(address);
   const daoConfig = useDaoConfig();
 
-  // 获取系统总投票权数据
   const { data: dataMetrics, isLoading: isMetricsLoading } = useQuery({
     queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
@@ -35,7 +34,6 @@ export const Overview = ({
     enabled: !!daoConfig?.indexer?.endpoint,
   });
 
-  // 计算投票权占比
   const votingPowerWithPercentage = useMemo(() => {
     if (!votes || !dataMetrics?.powerSum) {
       return formattedVotes;

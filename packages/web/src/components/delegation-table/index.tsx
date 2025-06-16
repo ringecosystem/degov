@@ -24,7 +24,6 @@ export function DelegationTable({ address }: DelegationTableProps) {
   const daoConfig = useDaoConfig();
   const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
 
-  // 获取当前账户的总投票权
   const { data: totalVotes } = useReadContract({
     address: tokenAddress,
     abi: tokenAbi,
@@ -100,7 +99,6 @@ export function DelegationTable({ address }: DelegationTableProps) {
   );
 }
 
-// 显示 delegator 投票权和占比的组件
 interface DelegatorVotesDisplayProps {
   record: DelegateItem;
   formatTokenAmount: (amount: bigint) => { formatted: string } | undefined;

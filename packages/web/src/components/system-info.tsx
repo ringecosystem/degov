@@ -71,7 +71,6 @@ export const SystemInfo = () => {
   const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
     useGovernanceToken();
 
-  // 获取总供应量
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
     useReadContract({
       address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
@@ -86,7 +85,6 @@ export const SystemInfo = () => {
       },
     });
 
-  // 获取提案指标数据（包含总投票权和代表数）
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
     queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
@@ -95,7 +93,6 @@ export const SystemInfo = () => {
     refetchInterval: DEFAULT_REFETCH_INTERVAL,
   });
 
-  // 格式化数据
   const systemData = useMemo(() => {
     const totalVotingPower = dataMetrics?.powerSum
       ? formatTokenAmount(BigInt(dataMetrics.powerSum))?.formatted
@@ -107,7 +104,6 @@ export const SystemInfo = () => {
 
     const totalDelegates = dataMetrics?.memberCount ?? 0;
 
-    // 计算投票权百分比
     const votingPowerPercentage =
       dataMetrics?.powerSum && totalSupply
         ? ((Number(dataMetrics.powerSum) / Number(totalSupply)) * 100).toFixed(
