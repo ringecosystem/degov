@@ -1,6 +1,7 @@
-import { ProposalItem } from "@/services/graphql/types";
-import { Description } from "./proposal/description";
+import type { ProposalItem } from "@/services/graphql/types";
+
 import { ActionsTable } from "./actions-table";
+import { Description } from "./proposal/description";
 
 export const TabContent = ({
   data,

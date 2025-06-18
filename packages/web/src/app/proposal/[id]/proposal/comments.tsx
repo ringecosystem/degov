@@ -3,16 +3,16 @@ import { useMemo } from "react";
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import type { ColumnType } from "@/components/custom-table";
 import { CustomTable } from "@/components/custom-table";
-import { VoteType } from "@/config/vote";
-import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import type { ProposalVoterItem } from "@/services/graphql/types";
-import { formatTimeAgo } from "@/utils/date";
-import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { VoteType } from "@/config/vote";
+import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import { cn } from "@/lib/utils";
+import type { ProposalVoterItem } from "@/services/graphql/types";
+import { formatTimeAgo } from "@/utils/date";
 
 interface CommentsProps {
   comments?: ProposalVoterItem[];

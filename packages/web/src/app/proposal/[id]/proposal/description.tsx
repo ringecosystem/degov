@@ -3,7 +3,7 @@ import { marked } from "marked";
 import { useMemo } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { ProposalItem } from "@/services/graphql/types";
+import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
 
 marked.use();

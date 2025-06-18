@@ -1,14 +1,13 @@
-import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { cn } from "@/lib/utils";
 import type { ProposalItem } from "@/services/graphql/types";
 
-import { Result } from "./result";
-import { TabContent } from "./tab-content";
-import { Comments } from "./proposal/comments";
 import { AiReview } from "./ai-review";
+import { Comments } from "./proposal/comments";
+import { TabContent } from "./tab-content";
 
 type TabType = "content" | "votes" | "ai-review";
 

@@ -1,24 +1,22 @@
 import Link from "next/link";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { VoteType } from "@/config/vote";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
-import { VoteType } from "@/config/vote";
 
 import { CustomTable } from "../custom-table";
 import { ProposalStatus } from "../proposal-status";
 import { Skeleton } from "../ui/skeleton";
+import { VoteStatistics } from "../vote-statistics";
 
 import { useProposalData } from "./hooks/useProposalData";
-import { VotePercentage } from "./vote-percentage";
-import { VoteTotal } from "./vote-total";
 
 import type { ColumnType } from "../custom-table";
 import type { Address } from "viem";
-import { VoteStatistics } from "../vote-statistics";
 
 const Caption = ({
   type,
@@ -70,38 +68,41 @@ export function ProposalsTable({
     type === "active" ? 8 : DEFAULT_PAGE_SIZE
   );
 
-  const getUserVoteStatus = (record: ProposalItem) => {
-    if (!connectedAddress) return null;
+  const getUserVoteStatus = useCallback(
+    (record: ProposalItem) => {
+      if (!connectedAddress) return null;
 
-    const userVote = record.voters?.find(
-      (voter) => voter.voter.toLowerCase() === connectedAddress.toLowerCase()
-    );
+      const userVote = record.voters?.find(
+        (voter) => voter.voter.toLowerCase() === connectedAddress.toLowerCase()
+      );
 
-    if (!userVote) return null;
+      if (!userVote) return null;
 
-    switch (userVote.support) {
-      case VoteType.For: // 1
-        return {
-          color: "bg-success",
-          textColor: "text-success",
-          label: "For",
-        };
-      case VoteType.Against: // 0
-        return {
-          color: "bg-danger",
-          textColor: "text-danger",
-          label: "Against",
-        };
-      case VoteType.Abstain: // 2
-        return {
-          color: "bg-muted-foreground",
-          textColor: "text-muted-foreground",
-          label: "Abstain",
-        };
-      default:
-        return null;
-    }
-  };
+      switch (userVote.support) {
+        case VoteType.For: // 1
+          return {
+            color: "bg-success",
+            textColor: "text-success",
+            label: "For",
+          };
+        case VoteType.Against: // 0
+          return {
+            color: "bg-danger",
+            textColor: "text-danger",
+            label: "Against",
+          };
+        case VoteType.Abstain: // 2
+          return {
+            color: "bg-muted-foreground",
+            textColor: "text-muted-foreground",
+            label: "Abstain",
+          };
+        default:
+          return null;
+      }
+    },
+    [connectedAddress]
+  );
 
   const columns = useMemo<ColumnType<ProposalItem>[]>(
     () => [
@@ -187,7 +188,7 @@ export function ProposalsTable({
         },
       },
     ],
-    [proposalStatusState]
+    [proposalStatusState, getUserVoteStatus]
   );
 
   return (

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { ProposalItem } from "@/services/graphql/types";
-import { extractTitleAndDescription, parseDescription } from "@/utils";
 
 import { Comments } from "./comments";
 import { Description } from "./description";
@@ -9,24 +8,13 @@ import { Description } from "./description";
 export const Proposal = ({
   isFetching,
   data,
-  discussion,
 }: {
   isFetching: boolean;
   data?: ProposalItem;
-  discussion?: string;
 }) => {
   const [activeTab, setActiveTab] = useState<"description" | "comments">(
     "description"
   );
-
-  const { description } = useMemo(() => {
-    const titleAndDesc = extractTitleAndDescription(data?.description);
-    const parsed = parseDescription(titleAndDesc?.description);
-    return {
-      description: parsed.mainText,
-    };
-  }, [data?.description]);
-  console.log("discussion", data, discussion);
 
   const comments = useMemo(() => {
     return data?.voters?.filter((voter) => voter.reason) ?? [];

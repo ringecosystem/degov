@@ -9,7 +9,7 @@ export const AiReview = () => {
           This RingDAO proposal aims to transition RING into a deflationary
           token by eliminating all future token issuance, thereby removing the
           estimated 200M RING that would have been created. This change is
-          intended to strengthen RING's value, stabilize its economy, and
+          intended to strengthen RING&apos;s value, stabilize its economy, and
           alleviate pressure on the Treasury. Additionally, the proposal
           outlines a shift for Collator and Kton staking rewards to a fixed,
           Treasury-funded model, allocating 40M RING to each, to ensure

@@ -1,9 +1,12 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { formatTimeAgo } from "@/utils/date";
+import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
+import { formatTimeAgo } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
@@ -13,9 +16,7 @@ import { Skeleton } from "../ui/skeleton";
 import { useMembersData } from "./hooks/useMembersData";
 
 import type { ColumnType } from "../custom-table";
-import { useQuery } from "@tanstack/react-query";
-import { proposalService } from "@/services/graphql";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
+
 interface MembersTableProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
@@ -35,10 +36,7 @@ export function MembersTable({
   });
   const {
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
-    profilePullState: {
-      data: profilePullData,
-      isLoading: isProfilePullLoading,
-    },
+    profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
   } = useMembersData(pageSize);
 
@@ -125,7 +123,6 @@ export function MembersTable({
     ],
     [
       onDelegate,
-      profilePullData,
       isProfilePullLoading,
       formatTokenAmount,
       dataMetrics,

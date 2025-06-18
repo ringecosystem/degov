@@ -3,10 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { Faqs } from "@/components/faqs";
 import { ProposalsTable } from "@/components/proposals-table";
 import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { Faqs } from "@/components/faqs";
 
 export const Proposals = () => {
   const daoConfig = useDaoConfig();

@@ -10,7 +10,9 @@ import { ChangeDelegate } from "@/app/profile/_components/change-delegate";
 import { AddressResolver } from "@/components/address-resolver";
 import { DelegateAction } from "@/components/delegate-action";
 import { DelegateSelector } from "@/components/delegate-selector";
+import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
+import { SystemInfo } from "@/components/system-info";
 import { WithConnect } from "@/components/with-connect";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -22,8 +24,6 @@ import { JoinDelegate } from "./join-delegate";
 import { ReceivedDelegations } from "./received-delegations";
 import { ProfileSkeleton } from "./skeleton";
 import { User } from "./user";
-import { Faqs } from "@/components/faqs";
-import { SystemInfo } from "@/components/system-info";
 interface ProfileProps {
   address: Address;
   isDelegate?: boolean;

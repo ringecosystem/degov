@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { useReadContract } from "wagmi";
 
-import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { abi as tokenAbi } from "@/config/abi/token";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { DelegateItem } from "@/services/graphql/types";
 
 import { AddressWithAvatar } from "../address-with-avatar";
@@ -68,7 +68,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         },
       },
     ],
-    [formatTokenAmount]
+    [formatTokenAmount, totalVotes]
   );
 
   return (

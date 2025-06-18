@@ -3,13 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { DelegateAction } from "@/components/delegate-action";
+import { Faqs } from "@/components/faqs";
 import { MembersTable } from "@/components/members-table";
+import { SystemInfo } from "@/components/system-info";
 import { WithConnect } from "@/components/with-connect";
 import type { ContributorItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
-import { SystemInfo } from "@/components/system-info";
-import { Faqs } from "@/components/faqs";
 
 export default function Members() {
   const { isConnected } = useAccount();

@@ -8,6 +8,7 @@ import { useReadContract } from "wagmi";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
+import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
 import { ProposalStatus } from "@/components/proposal-status";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,13 +21,9 @@ import { extractTitleAndDescription, parseDescription } from "@/utils";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
 
 import ActionGroup from "./action-group";
-import { ActionsTable } from "./actions-table";
 import { CurrentVotes } from "./current-votes";
-import { Proposal } from "./proposal";
-import { Result } from "./result";
 import Status from "./status";
 import { Tabs } from "./tabs";
-import { Faqs } from "@/components/faqs";
 
 const ACTIVE_STATES: ProposalState[] = [
   ProposalState.Pending,

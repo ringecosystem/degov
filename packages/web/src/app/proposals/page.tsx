@@ -4,7 +4,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { useAccount } from "wagmi";
 
+import { Faqs } from "@/components/faqs";
 import { ProposalsTable } from "@/components/proposals-table";
+import { SystemInfo } from "@/components/system-info";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -17,8 +19,6 @@ import {
 } from "@/components/ui/select";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
-import { SystemInfo } from "@/components/system-info";
-import { Faqs } from "@/components/faqs";
 
 function ProposalsContent() {
   const router = useRouter();
