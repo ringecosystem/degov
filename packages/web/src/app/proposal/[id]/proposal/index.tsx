@@ -3,19 +3,23 @@ import { useEffect, useMemo, useState } from "react";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 
+import { AiSummary } from "../ai-summary";
+
 import { Comments } from "./comments";
 import { Description } from "./description";
 
 export const Proposal = ({
   isFetching,
   data,
+  id,
 }: {
   isFetching: boolean;
   data?: ProposalItem;
+  id: string;
 }) => {
-  const [activeTab, setActiveTab] = useState<"description" | "comments">(
-    "description"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "description" | "ai-summary" | "comments"
+  >("description");
 
   const description = useMemo(() => {
     return extractTitleAndDescription(data?.description)?.description;
@@ -37,7 +41,7 @@ export const Proposal = ({
 
       <div className="flex flex-col gap-[20px]">
         <div className="flex flex-col gap-[20px] border-b border-b-border/20">
-          {comments?.length > 0 && (
+          {comments?.length > 0 ? (
             <div className="flex gap-[32px]">
               <button
                 className={`pb-[12px] text-[16px] font-medium ${
@@ -51,6 +55,16 @@ export const Proposal = ({
               </button>
               <button
                 className={`pb-[12px] text-[16px] font-medium ${
+                  activeTab === "ai-summary"
+                    ? "border-b-2 border-primary text-primary"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+                onClick={() => setActiveTab("ai-summary")}
+              >
+                Ai Summary
+              </button>
+              <button
+                className={`pb-[12px] text-[16px] font-medium ${
                   activeTab === "comments"
                     ? "border-b-2 border-primary text-primary"
                     : "text-text-secondary hover:text-text-primary"
@@ -60,12 +74,24 @@ export const Proposal = ({
                 Comments
               </button>
             </div>
+          ) : (
+            <button
+              className={`pb-[12px] text-[16px] font-medium ${
+                activeTab === "ai-summary"
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-text-secondary hover:text-text-primary"
+              }`}
+              onClick={() => setActiveTab("ai-summary")}
+            >
+              Ai Summary
+            </button>
           )}
         </div>
         <div className="min-h-[200px]">
           {activeTab === "description" && (
             <Description description={description} isFetching={isFetching} />
           )}
+          {activeTab === "ai-summary" && <AiSummary id={id} />}
           {activeTab === "comments" && comments?.length && (
             <Comments comments={comments} />
           )}

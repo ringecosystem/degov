@@ -287,7 +287,7 @@ export default function ProposalDetailPage() {
         <div className="space-y-[20px]">
           <Result data={data} isFetching={isPending} />
           <ActionsTable data={data} isFetching={isPending} />
-          <Proposal data={data} isFetching={isPending} />
+          <Proposal data={data} isFetching={isPending} id={id as string} />
         </div>
         <div className="space-y-[20px]">
           <CurrentVotes

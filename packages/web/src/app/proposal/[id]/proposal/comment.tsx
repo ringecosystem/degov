@@ -32,7 +32,10 @@ export const Comment = ({ comment }: CommentProps) => {
         </div>
       </div>
 
-      <p>{comment.reason}</p>
+      <p
+        dangerouslySetInnerHTML={{ __html: comment.reason }}
+        className="markdown-body"
+      ></p>
     </div>
   );
 };
