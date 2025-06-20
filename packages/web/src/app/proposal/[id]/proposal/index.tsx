@@ -75,16 +75,28 @@ export const Proposal = ({
               </button>
             </div>
           ) : (
-            <button
-              className={`pb-[12px] text-[16px] font-medium ${
-                activeTab === "ai-summary"
-                  ? "border-b-2 border-primary text-primary"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-              onClick={() => setActiveTab("ai-summary")}
-            >
-              Ai Summary
-            </button>
+            <div className="flex gap-[32px]">
+              <button
+                className={`pb-[12px] text-[16px] font-medium ${
+                  activeTab === "description"
+                    ? "border-b-2 border-primary text-primary"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+                onClick={() => setActiveTab("description")}
+              >
+                Description
+              </button>
+              <button
+                className={`pb-[12px] text-[16px] font-medium ${
+                  activeTab === "ai-summary"
+                    ? "border-b-2 border-primary text-primary"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+                onClick={() => setActiveTab("ai-summary")}
+              >
+                Ai Summary
+              </button>
+            </div>
           )}
         </div>
         <div className="min-h-[200px]">
