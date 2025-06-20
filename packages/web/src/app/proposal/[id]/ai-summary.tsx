@@ -4,14 +4,12 @@ import { useMemo } from "react";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { getProposalSummary } from "@/services/ai-agent";
-import { Skeleton } from "@/components/ui/skeleton";
 
 marked.use();
 
 const AiSummaryLoading = () => {
   return (
     <div className="space-y-6">
-      {/* AI Thinking Animation */}
       <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
         <div className="flex gap-1">
           <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>

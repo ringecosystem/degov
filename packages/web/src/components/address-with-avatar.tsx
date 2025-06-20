@@ -7,7 +7,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import { cn } from "@/lib/utils";
+
+import { AiIcon } from "./icons/ai-icon";
 
 interface AddressWithAvatarProps {
   address: `0x${string}`;
@@ -24,6 +27,7 @@ export function AddressWithAvatar({
   textClassName,
   customLink,
 }: AddressWithAvatarProps) {
+  const isAiBot = useAiBotAddress(address);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -47,6 +51,7 @@ export function AddressWithAvatar({
               </span>
             )}
           </AddressResolver>
+          {isAiBot && <AiIcon />}
         </Link>
       </TooltipTrigger>
       <TooltipContent>

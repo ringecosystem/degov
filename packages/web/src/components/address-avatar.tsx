@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { blo } from "blo";
 import Image from "next/image";
 
+import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import { cn } from "@/lib/utils";
 import { profileService } from "@/services/graphql";
 
@@ -26,7 +27,11 @@ export const AddressAvatar = ({
     enabled: !!address,
   });
 
-  const avatarUrl = profileData?.data?.avatar || blo(address as `0x${string}`);
+  const isAiBot = useAiBotAddress(address);
+
+  const avatarUrl = isAiBot
+    ? "/assets/image/aibot.svg"
+    : profileData?.data?.avatar || blo(address as `0x${string}`);
 
   return (
     <Image
