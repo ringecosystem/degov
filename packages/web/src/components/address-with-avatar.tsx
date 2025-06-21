@@ -51,7 +51,17 @@ export function AddressWithAvatar({
               </span>
             )}
           </AddressResolver>
-          {isAiBot && <AiIcon />}
+          {isAiBot && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AiIcon />
+              </TooltipTrigger>
+              <TooltipContent>
+                An AI-Powered delegate that can accept delegations and vote on
+                your behalf based on the community's preferences.
+              </TooltipContent>
+            </Tooltip>
+          )}
         </Link>
       </TooltipTrigger>
       <TooltipContent>
