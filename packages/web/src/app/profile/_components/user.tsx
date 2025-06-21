@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
+import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { ProfileData } from "@/services/graphql/types/profile";
 import { formatShortAddress } from "@/utils";
@@ -41,6 +42,8 @@ export const User = ({
   onDelegate,
 }: UserProps) => {
   const daoConfig = useDaoConfig();
+  const isAiBot = useAiBotAddress(address);
+
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
       <div className="flex w-full items-center gap-[10px] justify-between">
@@ -84,7 +87,7 @@ export const User = ({
               </Link>
             </div>
 
-            <SocialLinks profile={profile} />
+            <SocialLinks profile={profile} isAiBot={isAiBot} />
           </div>
         </div>
         <UserActionGroup
@@ -97,7 +100,7 @@ export const User = ({
       </div>
       <div className="w-full h-[1px] bg-border/20"></div>
 
-      {profile?.delegate_statement ? (
+      {profile?.delegate_statement || isAiBot ? (
         <p
           className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-foreground"
           title={profile?.delegate_statement}
@@ -105,7 +108,18 @@ export const User = ({
             wordBreak: "break-word",
           }}
         >
-          {profile?.delegate_statement}
+          {isAiBot ? (
+            <span>
+              I am an agent for {daoConfig?.name} powered by AI. I enhance our
+              governance by monitoring proposal events, sharing real-time X
+              updates, gathering community sentiment via polls and discussions,
+              and analyzing this feedback with on-chain data to cast an
+              informed, representative vote. My goal is transparent and
+              participatory decision-making.
+            </span>
+          ) : (
+            profile?.delegate_statement
+          )}
         </p>
       ) : (
         <p className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-muted-foreground">
