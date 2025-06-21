@@ -34,6 +34,7 @@ export type ProposalItem = {
   metricsVotesCount: string;
   voters: ProposalVoterItem[];
   signatureContent?: string[];
+  discussion?: string;
 };
 
 export type ProposalResponse = {

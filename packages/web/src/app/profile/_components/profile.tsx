@@ -10,7 +10,9 @@ import { ChangeDelegate } from "@/app/profile/_components/change-delegate";
 import { AddressResolver } from "@/components/address-resolver";
 import { DelegateAction } from "@/components/delegate-action";
 import { DelegateSelector } from "@/components/delegate-selector";
+import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
+import { SystemInfo } from "@/components/system-info";
 import { WithConnect } from "@/components/with-connect";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -91,9 +93,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
       return {
         type: "self",
-        displayText: `${balance ?? "0.00"} ${
-          governanceToken?.symbol
-        } to Self`,
+        displayText: `${balance ?? "0.00"} ${governanceToken?.symbol} to Self`,
         buttonText: "Change Delegate",
         to: latestDelegation.to,
       };
@@ -251,23 +251,31 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
         </div>
       ) : null}
 
-      <User
-        address={address}
-        profile={profile}
-        isOwnProfile={isOwnProfile}
-        isDelegate={isDelegate}
-        buttonText={delegationStatus?.buttonText}
-        onEditProfile={handleEditProfile}
-        onDelegate={handleDelegate}
-        tokenBalance={`${
-          tokenBalance ? formatTokenAmount(tokenBalance)?.formatted : 0
-        } ${governanceToken?.symbol}`}
-        isLoadingTokenBalance={isLoadingTokenBalance}
-        delegationStatusText={delegationStatusText}
-        isDelegateMappingsLoading={isDelegateMappingsLoading}
-      />
+      <div className="flex items-start gap-[10px]">
+        <div className="flex-1 flex flex-col gap-[20px]">
+          <User
+            address={address}
+            profile={profile}
+            isOwnProfile={isOwnProfile}
+            isDelegate={isDelegate}
+            buttonText={delegationStatus?.buttonText}
+            onEditProfile={handleEditProfile}
+            onDelegate={handleDelegate}
+            tokenBalance={`${
+              tokenBalance ? formatTokenAmount(tokenBalance)?.formatted : 0
+            } ${governanceToken?.symbol}`}
+            isLoadingTokenBalance={isLoadingTokenBalance}
+            delegationStatusText={delegationStatusText}
+            isDelegateMappingsLoading={isDelegateMappingsLoading}
+          />
 
-      <ReceivedDelegations address={address} />
+          <ReceivedDelegations address={address} />
+        </div>
+        <div className="flex flex-col gap-[20px]">
+          <SystemInfo />
+          <Faqs type="delegate" />
+        </div>
+      </div>
       <DelegateAction
         address={address}
         open={delegateOpen}

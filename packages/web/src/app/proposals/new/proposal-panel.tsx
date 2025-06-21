@@ -36,6 +36,7 @@ export const ProposalPanel = ({
     defaultValues: {
       title: content.title || "",
       markdown: content.markdown || "",
+      discussion: content.discussion || "",
     },
     mode: "onChange",
   });
@@ -105,6 +106,24 @@ export const ProposalPanel = ({
             </>
           )}
         />
+      </div>
+      <div className="flex flex-col gap-[10px]">
+        <label className="text-[14px] text-foreground" htmlFor="discussion">
+          Discussion(Optional)
+        </label>
+        <Input
+          id="discussion"
+          {...register("discussion")}
+          aria-invalid={errors.discussion ? "true" : "false"}
+          placeholder="eg, http://forum.example.com/t/1234"
+          className={cn(
+            "border-border/20 bg-card",
+            errors.discussion && "border-red-500"
+          )}
+        />
+        {errors.discussion && (
+          <ErrorMessage message={errors.discussion.message} />
+        )}
       </div>
     </form>
   );

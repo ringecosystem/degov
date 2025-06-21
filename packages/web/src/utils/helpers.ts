@@ -57,41 +57,52 @@ export function extractTitleAndDescription(description?: string): {
   };
 }
 
-// parse description to extract main text and signature content
+// parse description to extract main text, discussion and signature content
 export const parseDescription = (
   text?: string
 ): {
   mainText: string;
+  discussion?: string;
   signatureContent?: string[];
 } => {
   if (!text) return { mainText: "" };
 
+  const discussionPattern = /<discussion>([\s\S]*?)<\/discussion>/;
   const signaturePattern = /<signature>([\s\S]*?)<\/signature>/;
+
+  const discussionMatch = text.match(discussionPattern);
   const signatureMatch = text.match(signaturePattern);
 
-  if (signatureMatch) {
-    // extract signature content
-    const signatureContent = signatureMatch[1]?.trim();
+  let mainText = text;
+  let discussion: string | undefined;
+  let signatureContent: string[] | undefined;
 
-    // remove signature tag, get main text
-    const mainText = text.replace(signaturePattern, "").trim();
+  // Extract discussion
+  if (discussionMatch) {
+    discussion = discussionMatch[1]?.trim();
+    mainText = mainText.replace(discussionPattern, "").trim();
+  }
+
+  // Extract signature
+  if (signatureMatch) {
+    const signatureContentRaw = signatureMatch[1]?.trim();
+    mainText = mainText.replace(signaturePattern, "").trim();
 
     try {
-      const signatureContentJson = JSON.parse(signatureContent);
-      return {
-        mainText,
-        signatureContent: Array.isArray(signatureContentJson)
-          ? signatureContentJson
-          : [],
-      };
+      const signatureContentJson = JSON.parse(signatureContentRaw);
+      signatureContent = Array.isArray(signatureContentJson)
+        ? signatureContentJson
+        : [];
     } catch (error) {
       console.error("Failed to parse signature content:", error);
-      return { mainText };
     }
   }
 
-  // no signature tag, all as main text
-  return { mainText: text };
+  return {
+    mainText,
+    discussion,
+    signatureContent,
+  };
 };
 
 export const formatFunctionSignature = (signature: string): string => {

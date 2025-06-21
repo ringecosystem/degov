@@ -220,6 +220,7 @@ export default function NewProposal() {
         const result = proposalSchema.safeParse({
           title: action.content?.title,
           markdown: action.content?.markdown,
+          discussion: action.content?.discussion,
         });
         state.set(action.id, result.success);
       } else if (action.type === "transfer") {
@@ -257,7 +258,11 @@ export default function NewProposal() {
 
       const result = await transformActionsToProposalParams(actions);
 
-      const hash = await createProposal(result.description, result.actions);
+      const hash = await createProposal(
+        result.description,
+        result.actions,
+        result.discussion
+      );
       if (hash) {
         setHash(hash);
         resetChanges();

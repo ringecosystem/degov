@@ -24,6 +24,19 @@ export const proposalSchema = z.object({
 
       return cleanContent.length > 0;
     }, "Proposal description is required"),
+  discussion: z
+    .string()
+    .optional()
+    .refine((val) => {
+      if (!val) return true; // Optional field, empty is valid
+      // Basic URL validation
+      try {
+        new URL(val);
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Must be a valid URL"),
 });
 
 export type ProposalContent = z.infer<typeof proposalSchema>;

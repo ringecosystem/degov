@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { ProposalItem } from "@/services/graphql/types";
-import { extractTitleAndDescription } from "@/utils";
 
 import { Comments } from "./comments";
 import { Description } from "./description";
@@ -17,13 +16,19 @@ export const Proposal = ({
     "description"
   );
 
-  const description = useMemo(() => {
-    return extractTitleAndDescription(data?.description)?.description;
-  }, [data?.description]);
-
   const comments = useMemo(() => {
     return data?.voters?.filter((voter) => voter.reason) ?? [];
   }, [data?.voters]);
+
+  // Calculate total voting power from voters who have comments
+  const totalVotingPower = useMemo(() => {
+    if (!comments.length) return 0n;
+
+    return comments.reduce((total, voter) => {
+      const voterWeight = voter.weight ? BigInt(voter.weight) : 0n;
+      return total + voterWeight;
+    }, 0n);
+  }, [comments]);
 
   useEffect(() => {
     return () => {
@@ -64,10 +69,10 @@ export const Proposal = ({
         </div>
         <div className="min-h-[200px]">
           {activeTab === "description" && (
-            <Description description={description} isFetching={isFetching} />
+            <Description data={data} isFetching={isFetching} />
           )}
           {activeTab === "comments" && comments?.length && (
-            <Comments comments={comments} />
+            <Comments comments={comments} totalVotingPower={totalVotingPower} />
           )}
         </div>
       </div>

@@ -41,7 +41,11 @@ export const useProposal = () => {
   });
 
   const createProposal = useCallback(
-    async (description: string, actions: ProposalActionParam[]) => {
+    async (
+      description: string,
+      actions: ProposalActionParam[],
+      discussion?: string
+    ) => {
       const isValid = validateBeforeExecution();
       if (!isValid) return;
       try {
@@ -83,8 +87,15 @@ export const useProposal = () => {
         }
 
         let descriptionWithSignature = description;
+
+        // Add discussion if provided
+        if (discussion) {
+          descriptionWithSignature = `${descriptionWithSignature}\n\n<discussion>${discussion}</discussion>`;
+        }
+
+        // Add signatures if any
         if (signatures.length > 0) {
-          descriptionWithSignature = `${description}\n\n<signature>${JSON.stringify(
+          descriptionWithSignature = `${descriptionWithSignature}\n\n<signature>${JSON.stringify(
             signatures
           )}</signature>`;
         }
