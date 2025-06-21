@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import type { ColumnType } from "@/components/custom-table";
@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import type { ProposalVoterItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
+import { CommentModal } from "./comment-modal";
+
 interface CommentsProps {
   comments?: ProposalVoterItem[];
   totalVotingPower?: bigint;
@@ -21,7 +23,9 @@ interface CommentsProps {
 
 export const Comments = ({ comments }: CommentsProps) => {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-
+  const [currentComment, setCurrentComment] = useState<string | undefined>(
+    undefined
+  );
   const totalVotingPower = useMemo(() => {
     if (!comments?.length) return 0n;
 
@@ -31,7 +35,11 @@ export const Comments = ({ comments }: CommentsProps) => {
     }, 0n);
   }, [comments]);
 
-  const getVoteDisplay = (support: VoteType, reason?: string) => {
+  const getVoteDisplay = (
+    support: VoteType,
+    reason?: string,
+    onComment?: (reason: string) => void
+  ) => {
     const voteConfig = {
       [VoteType.For]: {
         icon: "✓",
@@ -71,13 +79,14 @@ export const Comments = ({ comments }: CommentsProps) => {
         {reason && (
           <Tooltip>
             <TooltipTrigger>
-              <div className="text-[12px] text-muted-foreground max-w-[180px] truncate leading-tight">
+              <div
+                className="text-[12px] text-muted-foreground max-w-[180px] truncate leading-tight cursor-pointer"
+                onClick={() => onComment?.(reason)}
+              >
                 {reason}
               </div>
             </TooltipTrigger>
-            <TooltipContent>
-              <p>{reason}</p>
-            </TooltipContent>
+            <TooltipContent>Click to view comment</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -130,7 +139,10 @@ export const Comments = ({ comments }: CommentsProps) => {
         key: "choice",
         width: "29%",
         className: "text-left",
-        render: (record) => getVoteDisplay(record.support, record.reason),
+        render: (record) =>
+          getVoteDisplay(record.support, record.reason, (reason) =>
+            setCurrentComment(reason)
+          ),
       },
       {
         title: "Date",
@@ -178,6 +190,11 @@ export const Comments = ({ comments }: CommentsProps) => {
         rowKey="id"
         maxHeight="500px"
         tableClassName="table-fixed"
+      />
+      <CommentModal
+        open={!!currentComment}
+        onOpenChange={() => setCurrentComment(undefined)}
+        comment={currentComment}
       />
     </div>
   );
