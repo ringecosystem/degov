@@ -25,6 +25,7 @@ import { CurrentVotes } from "./current-votes";
 import { Proposal } from "./proposal";
 import { Result } from "./result";
 import Status from "./status";
+import { AgentVotingAnalysisDialogExample } from "@/components/agent-voting-analysis-dialog-example";
 
 const ACTIVE_STATES: ProposalState[] = [
   ProposalState.Pending,
@@ -303,6 +304,7 @@ export default function ProposalDetailPage() {
             proposalQueuedById={proposalQueuedById}
             isLoading={isAllQueriesFetching || isPending}
           />
+          <AgentVotingAnalysisDialogExample />
         </div>
       </div>
     </div>
