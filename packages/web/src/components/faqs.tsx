@@ -1,3 +1,5 @@
+import { ArrowUpRight } from "lucide-react";
+
 const faqList = {
   general: [
     {
@@ -85,9 +87,9 @@ export const Faqs = ({ type }: FaqsProps) => {
             href={faq.link}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[14px] font-normal hover:underline"
+            className="text-[14px] font-normal hover:underline flex items-center gap-1"
           >
-            {faq.title}
+            {faq.title} <ArrowUpRight className="w-4 h-4" />
           </a>
         </div>
       ))}
