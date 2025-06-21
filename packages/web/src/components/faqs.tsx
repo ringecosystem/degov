@@ -87,9 +87,9 @@ export const Faqs = ({ type }: FaqsProps) => {
             href={faq.link}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[14px] font-normal hover:underline flex items-center gap-1"
+            className="text-[14px] font-normal hover:underline "
           >
-            {faq.title} <ArrowUpRight className="w-4 h-4" />
+            {faq.title} <ArrowUpRight className="w-4 h-4 inline-block" />
           </a>
         </div>
       ))}

@@ -147,7 +147,7 @@ function ProposalsContent() {
           />
         </div>
         <div className="w-[360px] flex flex-col gap-[20px]">
-          <SystemInfo />
+          <SystemInfo type="proposal" />
           <Faqs type="general" />
         </div>
       </div>
