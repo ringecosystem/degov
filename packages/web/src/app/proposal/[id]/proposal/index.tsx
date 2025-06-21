@@ -8,6 +8,8 @@ import { AiSummary } from "../ai-summary";
 import { Comments } from "./comments";
 import { Description } from "./description";
 
+type TabType = "description" | "ai-summary" | "comments";
+
 export const Proposal = ({
   isFetching,
   data,
@@ -17,9 +19,7 @@ export const Proposal = ({
   data?: ProposalItem;
   id: string;
 }) => {
-  const [activeTab, setActiveTab] = useState<
-    "description" | "ai-summary" | "comments"
-  >("description");
+  const [activeTab, setActiveTab] = useState<TabType>("description");
 
   const description = useMemo(() => {
     return extractTitleAndDescription(data?.description)?.description;
@@ -28,6 +28,19 @@ export const Proposal = ({
   const comments = useMemo(() => {
     return data?.voters?.filter((voter) => voter.reason) ?? [];
   }, [data?.voters]);
+
+  const tabs = useMemo(() => {
+    const baseTabs: { key: TabType; label: string }[] = [
+      { key: "description", label: "Description" },
+      { key: "ai-summary", label: "Ai Summary" },
+    ];
+
+    if (comments?.length > 0) {
+      baseTabs.push({ key: "comments", label: "Comments" });
+    }
+
+    return baseTabs;
+  }, [comments?.length]);
 
   useEffect(() => {
     return () => {
@@ -41,63 +54,21 @@ export const Proposal = ({
 
       <div className="flex flex-col gap-[20px]">
         <div className="flex flex-col gap-[20px] border-b border-b-border/20">
-          {comments?.length > 0 ? (
-            <div className="flex gap-[32px]">
+          <div className="flex gap-[32px]">
+            {tabs.map((tab) => (
               <button
+                key={tab.key}
                 className={`pb-[12px] text-[16px] font-medium ${
-                  activeTab === "description"
+                  activeTab === tab.key
                     ? "border-b-2 border-primary text-primary"
                     : "text-text-secondary hover:text-text-primary"
                 }`}
-                onClick={() => setActiveTab("description")}
+                onClick={() => setActiveTab(tab.key)}
               >
-                Description
+                {tab.label}
               </button>
-              <button
-                className={`pb-[12px] text-[16px] font-medium ${
-                  activeTab === "ai-summary"
-                    ? "border-b-2 border-primary text-primary"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-                onClick={() => setActiveTab("ai-summary")}
-              >
-                Ai Summary
-              </button>
-              <button
-                className={`pb-[12px] text-[16px] font-medium ${
-                  activeTab === "comments"
-                    ? "border-b-2 border-primary text-primary"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-                onClick={() => setActiveTab("comments")}
-              >
-                Comments
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-[32px]">
-              <button
-                className={`pb-[12px] text-[16px] font-medium ${
-                  activeTab === "description"
-                    ? "border-b-2 border-primary text-primary"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-                onClick={() => setActiveTab("description")}
-              >
-                Description
-              </button>
-              <button
-                className={`pb-[12px] text-[16px] font-medium ${
-                  activeTab === "ai-summary"
-                    ? "border-b-2 border-primary text-primary"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-                onClick={() => setActiveTab("ai-summary")}
-              >
-                Ai Summary
-              </button>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
         <div className="min-h-[200px]">
           {activeTab === "description" && (
