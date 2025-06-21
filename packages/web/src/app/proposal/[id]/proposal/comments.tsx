@@ -174,7 +174,7 @@ export const Comments = ({ comments }: CommentsProps) => {
         dataSource={comments ?? []}
         columns={columns}
         isLoading={false}
-        emptyText="No comments yet"
+        emptyText="No votes yet"
         rowKey="id"
         maxHeight="500px"
         tableClassName="table-fixed"
