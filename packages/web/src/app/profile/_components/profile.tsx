@@ -91,9 +91,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
       return {
         type: "self",
-        displayText: `${balance ?? "0.00"} ${
-          governanceToken?.symbol
-        } to Self`,
+        displayText: `${balance ?? "0.00"} ${governanceToken?.symbol} to Self`,
         buttonText: "Change Delegate",
         to: latestDelegation.to,
       };

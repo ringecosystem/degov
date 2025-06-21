@@ -4,7 +4,6 @@ import { Fragment, useMemo } from "react";
 
 import type { ProfileData } from "@/services/graphql/types/profile";
 import {
-  formatSocialHandle,
   getDiscordLink,
   getGithubLink,
   getTelegramLink,
@@ -13,43 +12,57 @@ import {
 
 interface SocialLinksProps {
   profile?: ProfileData;
+  isAiBot?: boolean;
 }
-export const SocialLinks = ({ profile }: SocialLinksProps) => {
+export const SocialLinks = ({ profile, isAiBot }: SocialLinksProps) => {
   const socialLinks = useMemo(
     () =>
-      [
-        {
-          name: "Email",
-          value: profile?.email,
-          link: `mailto:${profile?.email}`,
-          displayValue: profile?.email,
-        },
-        {
-          name: "Twitter",
-          value: profile?.twitter,
-          link: getTwitterLink(profile?.twitter),
-          displayValue: formatSocialHandle("twitter", profile?.twitter),
-        },
-        {
-          name: "GitHub",
-          value: profile?.github,
-          link: getGithubLink(profile?.github),
-          displayValue: formatSocialHandle("github", profile?.github),
-        },
-        {
-          name: "Telegram",
-          value: profile?.telegram,
-          link: getTelegramLink(profile?.telegram),
-          displayValue: formatSocialHandle("telegram", profile?.telegram),
-        },
-        {
-          name: "Discord",
-          value: profile?.discord,
-          link: getDiscordLink(profile?.discord),
-          displayValue: formatSocialHandle("discord", profile?.discord),
-        },
-      ]?.filter((item) => !!item.value),
-    [profile]
+      isAiBot
+        ? [
+            {
+              name: "Twitter",
+              value: "https://x.com/ai_degov",
+              link: "https://x.com/ai_degov",
+            },
+            {
+              name: "GitHub",
+              value: "https://github.com/ringecosystem/degov",
+              link: "https://github.com/ringecosystem/degov",
+            },
+            {
+              name: "Telegram",
+              value: "https://t.me/DeGov_AI",
+              link: "https://t.me/DeGov_AI",
+            },
+          ]
+        : [
+            {
+              name: "Email",
+              value: profile?.email,
+              link: `mailto:${profile?.email}`,
+            },
+            {
+              name: "Twitter",
+              value: profile?.twitter,
+              link: getTwitterLink(profile?.twitter),
+            },
+            {
+              name: "GitHub",
+              value: profile?.github,
+              link: getGithubLink(profile?.github),
+            },
+            {
+              name: "Telegram",
+              value: profile?.telegram,
+              link: getTelegramLink(profile?.telegram),
+            },
+            {
+              name: "Discord",
+              value: profile?.discord,
+              link: getDiscordLink(profile?.discord),
+            },
+          ]?.filter((item) => !!item.value),
+    [profile, isAiBot]
   );
   return (
     <div className="flex items-center gap-[10px]">
