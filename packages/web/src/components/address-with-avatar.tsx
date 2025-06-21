@@ -29,15 +29,15 @@ export function AddressWithAvatar({
 }: AddressWithAvatarProps) {
   const isAiBot = useAiBotAddress(address);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Link
-          href={customLink ? customLink(address) : `/delegate/${address}`}
-          target={!!customLink ? "_blank" : undefined}
-          rel={!!customLink ? "noopener noreferrer" : undefined}
-          className={cn("inline-flex items-center gap-[10px]", className)}
-        >
-          <AddressAvatar address={address} size={avatarSize} />
+    <Link
+      href={customLink ? customLink(address) : `/delegate/${address}`}
+      target={!!customLink ? "_blank" : undefined}
+      rel={!!customLink ? "noopener noreferrer" : undefined}
+      className={cn("inline-flex items-center gap-[10px]", className)}
+    >
+      <AddressAvatar address={address} size={avatarSize} />
+      <Tooltip>
+        <TooltipTrigger>
           <AddressResolver address={address} showShortAddress>
             {(ensName) => (
               <span
@@ -51,22 +51,22 @@ export function AddressWithAvatar({
               </span>
             )}
           </AddressResolver>
-          {isAiBot && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <AiIcon />
-              </TooltipTrigger>
-              <TooltipContent>
-                An AI-Powered delegate that can accept delegations and vote on
-                your behalf based on the community's preferences.
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </Link>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{address}</p>
-      </TooltipContent>
-    </Tooltip>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{address}</p>
+        </TooltipContent>
+      </Tooltip>
+      {isAiBot && (
+        <Tooltip>
+          <TooltipTrigger>
+            <AiIcon />
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[200px]">
+            An AI-Powered delegate that can accept delegations and vote on your
+            behalf based on the community&apos;s preferences.
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </Link>
   );
 }
