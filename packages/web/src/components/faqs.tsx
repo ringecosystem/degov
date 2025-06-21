@@ -1,71 +1,69 @@
 const faqList = {
   general: [
     {
-      title: "What is delegation? ↗",
+      title: "What is DeGov.AI",
       link: "https://docs.degov.ai/",
     },
     {
-      title: "What is voting power? ↗",
-      link: "https://docs.degov.ai/",
+      title: "How can my DAO get support from DeGov.AI?",
+      link: "https://docs.degov.ai/faqs/#how-can-my-dao-get-support-from-degovai",
     },
     {
-      title: "How are governance tokens and voting power related? ↗",
-      link: "https://docs.degov.ai/",
+      title: "How is AI integrated into DeGov.AI?",
+      link: "https://docs.degov.ai/faqs/#how-does-degovai-utilize-ai-capabilities",
     },
     {
-      title: "How can I delegate my voting power? ↗",
-      link: "https://docs.degov.ai/",
+      title: "How can I create or vote on proposals?",
+      link: "https://docs.degov.ai/faqs/#how-can-i-create-or-vote-on-proposals",
     },
     {
-      title:
-        "Can I split my voting power and delegate it to multiple delegates? ↗",
-      link: "https://docs.degov.ai/",
+      title: "Is there an off-chain platform for discussing proposals?",
+      link: "https://docs.degov.ai/faqs/#is-there-an-off-chain-platform-for-discussing-proposals",
     },
   ],
   delegate: [
     {
-      title: "What is delegation? ↗",
-      link: "https://docs.degov.ai/",
+      title: "What is delegation?",
+      link: "https://docs.degov.ai/faqs/#what-is-delegation",
     },
     {
-      title: "What is voting power? ↗",
-      link: "https://docs.degov.ai/",
+      title: "What is voting power?",
+      link: "https://docs.degov.ai/faqs/#what-is-voting-power",
     },
     {
-      title: "How are governance tokens and voting power related? ↗",
-      link: "https://docs.degov.ai/",
+      title: "How are governance tokens and voting power related?",
+      link: "https://docs.degov.ai/faqs/#how-are-governance-tokens-and-voting-power-related",
     },
     {
-      title: "How can I delegate my voting power? ↗",
-      link: "https://docs.degov.ai/",
+      title: "How can I delegate my voting power?",
+      link: "https://docs.degov.ai/faqs/#how-can-i-delegate-my-voting-power",
     },
     {
       title:
-        "Can I split my voting power and delegate it to multiple delegates? ↗",
-      link: "https://docs.degov.ai/",
+        "Can I split my voting power and delegate it to multiple delegates?",
+      link: "https://docs.degov.ai/faqs/#can-i-split-my-voting-power-and-delegate-it-to-multiple-delegates",
     },
   ],
   proposal: [
     {
-      title: "What is delegation? ↗",
-      link: "https://docs.degov.ai/",
+      title: "What is the proposal threshold?",
+      link: "https://docs.degov.ai/faqs/#what-is-the-proposal-threshold",
     },
     {
-      title: "What is voting power? ↗",
-      link: "https://docs.degov.ai/",
+      title: "What is the lifecycle of a proposal?",
+      link: "https://docs.degov.ai/faqs/#what-is-the-lifecycle-of-a-proposal",
     },
     {
-      title: "How are governance tokens and voting power related? ↗",
-      link: "https://docs.degov.ai/",
+      title: "What are the best practices for creating a proposal?",
+      link: "https://docs.degov.ai/faqs/#what-are-the-best-practices-for-creating-a-proposal",
     },
     {
-      title: "How can I delegate my voting power? ↗",
-      link: "https://docs.degov.ai/",
+      title: "How can I vote on a proposal?",
+      link: "https://docs.degov.ai/faqs/#how-can-i-vote-on-a-proposal",
     },
     {
-      title:
-        "Can I split my voting power and delegate it to multiple delegates? ↗",
-      link: "https://docs.degov.ai/",
+      title: "How can I check the status of a proposal?",
+      link: "https://docs.degov.ai/faqs/#how-can-i-check-the-status-of-a-proposal",
     },
   ],
 };
