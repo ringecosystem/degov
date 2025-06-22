@@ -56,7 +56,7 @@ interface VoteStatusActionProps {
   variant: VoteType;
   className?: string;
   type: "default" | "active";
-  onChangeVote: () => void;
+  onChangeVote?: () => void;
 }
 
 export const VoteStatusAction: FC<VoteStatusActionProps> = ({
@@ -82,7 +82,7 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={onChangeVote}
+      onClick={onChangeVote ? onChangeVote : undefined}
     >
       <Image
         src={isActive ? text[variant].icon : text[variant].defaultIcon}

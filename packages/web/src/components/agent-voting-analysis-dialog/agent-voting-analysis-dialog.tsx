@@ -1,12 +1,22 @@
-import React from "react";
-import Image from "next/image";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
+import React, { useMemo, useEffect } from "react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import { ProposalStatus } from "@/components/proposal-status";
-import { X } from "lucide-react";
+import { X, RefreshCw } from "lucide-react";
 import { ProposalState } from "@/types/proposal";
 import { formatTimestampToFriendlyDate } from "@/utils/date";
+import { AiLogo } from "@/components/icons/ai-logo";
+import { AiTitleIcon as AiTitleIcon1 } from "@/components/icons/ai-title-icon-1";
+import { AiTitleIcon as AiTitleIcon2 } from "@/components/icons/ai-title-icon-2";
+import { AiTitleIcon as AiTitleIcon3 } from "@/components/icons/ai-title-icon-3";
+import { VoteStatusAction } from "../vote-status";
+import { VoteType } from "@/config/vote";
+import type { AiAnalysisData } from "@/types/ai-analysis";
+import { useAiAnalysis } from "@/hooks/useAiAnalysis";
+import { LoadingState, ErrorState } from "@/components/ui/loading-spinner";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+import Image from "next/image";
 
 interface AgentVotingAnalysisDialogProps {
   open: boolean;
@@ -18,6 +28,7 @@ interface AgentVotingAnalysisDialogProps {
     proposer: string;
     blockTimestamp: string;
     status: ProposalState;
+    chainId?: number;
   };
 }
 
@@ -29,14 +40,21 @@ const StarRating = ({
   total?: number;
 }) => {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-[10px]">
       {Array.from({ length: total }, (_, i) => (
-        <div
-          key={i}
-          className={`w-3 h-3 rounded-sm ${
-            i < rating ? "bg-warning" : "bg-muted-foreground/30"
-          }`}
-        />
+        <div key={i} className="w-6 h-6 relative">
+          <Image
+            src={
+              i < rating
+                ? "/assets/image/star-active.svg"
+                : "/assets/image/star.svg"
+            }
+            alt={i < rating ? "Active star" : "Inactive star"}
+            width={24}
+            height={24}
+            className="w-6 h-6"
+          />
+        </div>
       ))}
     </div>
   );
@@ -146,14 +164,318 @@ const SentimentProgressBar = ({
   );
 };
 
+// Helper function to get vote type from final result
+const getVoteTypeFromResult = (result: string): VoteType => {
+  switch (result.toLowerCase()) {
+    case "for":
+      return VoteType.For;
+    case "against":
+      return VoteType.Against;
+    case "abstain":
+      return VoteType.Abstain;
+    default:
+      return VoteType.Abstain;
+  }
+};
+
+// Helper function to get proposal state from status
+const getProposalStateFromStatus = (status: string): ProposalState => {
+  switch (status.toLowerCase()) {
+    case "defeated":
+      return ProposalState.Defeated;
+    case "succeeded":
+      return ProposalState.Succeeded;
+    case "active":
+      return ProposalState.Active;
+    case "pending":
+      return ProposalState.Pending;
+    case "canceled":
+      return ProposalState.Canceled;
+    case "queued":
+      return ProposalState.Queued;
+    case "executed":
+      return ProposalState.Executed;
+    default:
+      return ProposalState.Defeated;
+  }
+};
+
+// Helper function to format vote counts
+const formatVoteCount = (votes: number): string => {
+  if (votes >= 1000000) {
+    return `${(votes / 1000000).toFixed(2)}M`;
+  } else if (votes >= 1000) {
+    return `${(votes / 1000).toFixed(1)}K`;
+  }
+  return votes.toString();
+};
+
 export const AgentVotingAnalysisDialog: React.FC<
   AgentVotingAnalysisDialogProps
 > = ({ open, onOpenChange, proposalData }) => {
+  // Use the custom hook to fetch AI analysis data
+  const {
+    data: aiAnalysisData,
+    loading,
+    error,
+    refetch,
+  } = useAiAnalysis(proposalData?.proposalId || null, {
+    enabled: open && !!proposalData?.proposalId,
+    chainId: proposalData?.chainId || 46,
+  });
+
+  const analysisOutput = aiAnalysisData?.fulfilled_explain.output;
+  const votingBreakdown = analysisOutput?.votingBreakdown;
+
+  const reasoningLiteHtml = useMemo(() => {
+    if (!analysisOutput?.reasoningLite) return "";
+    const html = marked.parse(analysisOutput.reasoningLite) as string;
+    return DOMPurify.sanitize(html);
+  }, [analysisOutput?.reasoningLite]);
+
+  const sanitizedHtml = useMemo(() => {
+    if (!analysisOutput?.reasoning) return "";
+    const html = marked.parse(analysisOutput.reasoning) as string;
+    return DOMPurify.sanitize(html);
+  }, [analysisOutput?.reasoning]);
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <LoadingState
+          title="Analyzing Proposal"
+          description="Fetching AI voting analysis data from DeGov.AI agent..."
+          className="min-h-[400px]"
+        />
+      );
+    }
+
+    if (error) {
+      return (
+        <ErrorState
+          title="Failed to Load Analysis"
+          description={error}
+          onRetry={refetch}
+          className="min-h-[400px]"
+        />
+      );
+    }
+
+    if (!aiAnalysisData || !analysisOutput || !votingBreakdown) {
+      return (
+        <ErrorState
+          title="No Analysis Available"
+          description="AI analysis data is not available for this proposal yet."
+          onRetry={refetch}
+          className="min-h-[400px]"
+        />
+      );
+    }
+
+    return (
+      <>
+        {/* Title Section */}
+        <div className="space-y-[20px]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-[10px]">
+              <AiTitleIcon1 className="w-[32px] h-[32px]" />
+              <h2 className="text-[26px] font-semibold text-foreground">
+                Agent Voting Reason Analysis
+              </h2>
+            </div>
+
+            <ProposalStatus
+              status={getProposalStateFromStatus(aiAnalysisData.status)}
+            />
+          </div>
+          <div className="flex flex-col gap-[20px] bg-card p-[20px] rounded-[14px]">
+            <h3 className="text-[36px] font-semibold text-foreground">
+              {proposalData?.title}
+            </h3>
+            <div className="text-[14px] text-foreground">
+              <span className="font-normal">Proposal ID:</span>{" "}
+              <span className="font-semibold">
+                {aiAnalysisData.proposal_id}
+              </span>
+            </div>
+            <div className="flex items-center gap-[5px]">
+              <span className="text-[14px] text-foreground">Proposed by</span>
+              <AddressWithAvatar
+                address={proposalData?.proposer as `0x${string}`}
+                avatarSize={24}
+                className="gap-[5px] text-[14px] font-semibold"
+              />
+              <span className="text-[14px] text-foreground">
+                On{" "}
+                <span className="font-semibold">
+                  {formatTimestampToFriendlyDate(aiAnalysisData.ctime)}
+                </span>
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
+              <div className="text-[12px] text-muted-foreground">Chain</div>
+              <div className="text-[14px] font-semibold">
+                {aiAnalysisData.dao.config.chain.name}
+              </div>
+            </div>
+            <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
+              <div className="text-[12px] text-muted-foreground">ID</div>
+              <div className="text-[14px] font-semibold underline">
+                {aiAnalysisData.id}
+              </div>
+            </div>
+            <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
+              <div className="text-[12px] text-muted-foreground">DAO</div>
+              <div className="text-[14px] font-semibold underline">
+                {aiAnalysisData.dao.name}
+              </div>
+            </div>
+            <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
+              <div className="text-[12px] text-muted-foreground">Created</div>
+              <div className="text-[14px] font-semibold">
+                {new Date(aiAnalysisData.ctime).toISOString()}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Vote Analysis */}
+        <div className="rounded-[14px] flex flex-col gap-[20px]">
+          <div className="flex items-center gap-[10px]">
+            <AiTitleIcon2 className="w-[32px] h-[32px]" />
+            <h3 className="text-[18px] font-semibold">Vote Analysis</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-card p-[20px] rounded-[14px] flex flex-col gap-[20px]">
+              <h4 className="text-[18px] font-medium">X Poll</h4>
+              <VoteProgressBar
+                forVotes={formatVoteCount(
+                  aiAnalysisData.fulfilled_explain.input.pollOptions.find(
+                    (o) => o.label === "For"
+                  )?.votes || 0
+                )}
+                forPercentage={votingBreakdown.twitterPoll.for}
+                againstVotes={formatVoteCount(
+                  aiAnalysisData.fulfilled_explain.input.pollOptions.find(
+                    (o) => o.label === "Against"
+                  )?.votes || 0
+                )}
+                againstPercentage={votingBreakdown.twitterPoll.against}
+                abstainVotes={formatVoteCount(
+                  aiAnalysisData.fulfilled_explain.input.pollOptions.find(
+                    (o) => o.label === "Abstain"
+                  )?.votes || 0
+                )}
+                abstainPercentage={votingBreakdown.twitterPoll.abstain}
+              />
+            </div>
+
+            <div className="bg-card p-[20px] rounded-[14px] flex flex-col gap-[20px]">
+              <h4 className="text-[18px] font-medium">On-Chain Votes</h4>
+              <VoteProgressBar
+                forVotes={formatVoteCount(votingBreakdown.onChainVotes.for)}
+                forPercentage={
+                  votingBreakdown.onChainVotes.for > 0
+                    ? (votingBreakdown.onChainVotes.for /
+                        (votingBreakdown.onChainVotes.for +
+                          votingBreakdown.onChainVotes.against +
+                          votingBreakdown.onChainVotes.abstain)) *
+                      100
+                    : 0
+                }
+                againstVotes={formatVoteCount(
+                  votingBreakdown.onChainVotes.against
+                )}
+                againstPercentage={
+                  votingBreakdown.onChainVotes.against > 0
+                    ? (votingBreakdown.onChainVotes.against /
+                        (votingBreakdown.onChainVotes.for +
+                          votingBreakdown.onChainVotes.against +
+                          votingBreakdown.onChainVotes.abstain)) *
+                      100
+                    : 100
+                }
+                abstainVotes={formatVoteCount(
+                  votingBreakdown.onChainVotes.abstain
+                )}
+                abstainPercentage={
+                  votingBreakdown.onChainVotes.abstain > 0
+                    ? (votingBreakdown.onChainVotes.abstain /
+                        (votingBreakdown.onChainVotes.for +
+                          votingBreakdown.onChainVotes.against +
+                          votingBreakdown.onChainVotes.abstain)) *
+                      100
+                    : 0
+                }
+              />
+            </div>
+
+            <div className="bg-card p-[20px] rounded-[14px] flex flex-col gap-[20px]">
+              <h4 className="text-[18px] font-medium">Comment Sentiment</h4>
+              <SentimentProgressBar
+                positive={votingBreakdown.twitterComments.positive}
+                negative={votingBreakdown.twitterComments.negative}
+                neutral={votingBreakdown.twitterComments.neutral}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Final Decision */}
+        <div className="flex flex-col gap-[20px]">
+          <div className="flex items-center gap-[10px]">
+            <AiTitleIcon3 />
+            <h3 className="text-[18px] font-semibold">Final Decision</h3>
+          </div>
+
+          <div className="rounded-[14px] bg-card p-[20px] border border-border/20">
+            <div className="flex items-center justify-between mb-4">
+              <VoteStatusAction
+                variant={getVoteTypeFromResult(analysisOutput.finalResult)}
+                type={"active"}
+                className="w-[113px] flex justify-center"
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] text-muted-foreground">
+                  Confidence
+                </span>
+                <StarRating rating={analysisOutput.confidence} />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-[10px] bg-card-background rounded-[14px] p-[20px]">
+              <h4 className="text-[18px] font-semibold">Executive Summary</h4>
+              <div
+                className="markdown-body"
+                dangerouslySetInnerHTML={{ __html: reasoningLiteHtml }}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[14px] bg-card p-[20px]">
+            <h3 className="text-[18px] font-semibold mb-[20px]">
+              Voting Reason
+            </h3>
+
+            <div
+              className="markdown-body"
+              dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+            />
+          </div>
+        </div>
+      </>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto bg-background border-border p-0">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto bg-background p-0">
+        <DialogTitle className="sr-only">
+          Agent Voting Reason Analysis
+        </DialogTitle>
         <div className="relative">
-          {/* Close button */}
           <button
             onClick={() => onOpenChange(false)}
             className="absolute right-6 top-6 z-10 text-muted-foreground hover:text-foreground transition-colors"
@@ -161,289 +483,14 @@ export const AgentVotingAnalysisDialog: React.FC<
             <X className="w-5 h-5" />
           </button>
 
-          <div className="p-6 space-y-6">
+          <div className="flex flex-col gap-[60px] p-[60px]">
             {/* Header */}
-            <div className="text-center pb-4">
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <div className="w-6 h-6 flex items-center justify-center">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path
-                      d="M10 0L12.1 7.9L20 10L12.1 12.1L10 20L7.9 12.1L0 10L7.9 7.9L10 0Z"
-                      fill="currentColor"
-                    />
-                  </svg>
-                </div>
-                <h1 className="text-[18px] font-semibold">DEGOV.AI</h1>
-              </div>
-              <Separator className="bg-border/20" />
+            <div className="flex items-center justify-center gap-2">
+              <AiLogo className="h-[50px]" />
             </div>
+            <div className="w-full h-[1px] bg-muted-foreground" />
 
-            {/* Title Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Image
-                  src="/assets/image/proposal/status-published.svg"
-                  alt="analysis"
-                  width={24}
-                  height={24}
-                />
-                <h2 className="text-[18px] font-semibold">
-                  Agent Voting Reason Analysis
-                </h2>
-                <ProposalStatus status={ProposalState.Defeated} />
-              </div>
-
-              <h3 className="text-[26px] font-semibold text-foreground">
-                [Non-Constitutional] DCDAO Delegate Incentive Program
-              </h3>
-
-              <div className="flex flex-col gap-[10px]">
-                <div className="text-[14px] text-muted-foreground">
-                  <span className="font-medium">Proposal ID:</span>{" "}
-                  {proposalData?.proposalId ||
-                    "0x474ec4da8ae93a02f63445e646682dbc06a4b55286e86c750bcd7916385b3907"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[14px] text-muted-foreground">
-                    Proposed by
-                  </span>
-                  <AddressWithAvatar
-                    address={
-                      (proposalData?.proposer as `0x${string}`) ||
-                      "0x1234567890123456789012345678901234567890"
-                    }
-                    displayName="Bear Wang"
-                  />
-                  <span className="text-[14px] text-muted-foreground">
-                    On{" "}
-                    {formatTimestampToFriendlyDate(
-                      proposalData?.blockTimestamp || "1704499200000"
-                    )}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Info Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="rounded-[14px] bg-card p-[20px]">
-                <div className="text-[12px] text-muted-foreground mb-2">
-                  Chain
-                </div>
-                <div className="text-[14px] font-medium">Darwinia Network</div>
-              </div>
-              <div className="rounded-[14px] bg-card p-[20px]">
-                <div className="text-[12px] text-muted-foreground mb-2">ID</div>
-                <div className="text-[14px] font-medium">
-                  193490697871614792
-                </div>
-              </div>
-              <div className="rounded-[14px] bg-card p-[20px]">
-                <div className="text-[12px] text-muted-foreground mb-2">
-                  DAO
-                </div>
-                <div className="text-[14px] font-medium">
-                  DeGov Development Test DAO
-                </div>
-              </div>
-              <div className="rounded-[14px] bg-card p-[20px]">
-                <div className="text-[12px] text-muted-foreground mb-2">
-                  Created
-                </div>
-                <div className="text-[14px] font-medium">
-                  2025-06-17T09:32:26.935Z
-                </div>
-              </div>
-            </div>
-
-            {/* Vote Analysis */}
-            <div className="rounded-[14px] bg-card p-[20px]">
-              <div className="flex items-center gap-2 mb-[20px]">
-                <Image
-                  src="/assets/image/proposal/status-ended.svg"
-                  alt="votes"
-                  width={20}
-                  height={20}
-                />
-                <h3 className="text-[18px] font-semibold">Vote Analysis</h3>
-              </div>
-              <Separator className="!my-0 bg-border/20 mb-[20px]" />
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-3">
-                  <h4 className="text-[16px] font-medium">X Poll</h4>
-                  <VoteProgressBar
-                    forVotes="10.79M"
-                    forPercentage={45}
-                    againstVotes="5.62K"
-                    againstPercentage={25}
-                    abstainVotes="8.8K"
-                    abstainPercentage={30}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="text-[16px] font-medium">On-Chain Votes</h4>
-                  <VoteProgressBar
-                    forVotes="10.79M"
-                    forPercentage={45}
-                    againstVotes="5.62K"
-                    againstPercentage={25}
-                    abstainVotes="8.8K"
-                    abstainPercentage={30}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="text-[16px] font-medium">Comment Sentiment</h4>
-                  <SentimentProgressBar
-                    positive={50}
-                    negative={40}
-                    neutral={10}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Final Decision */}
-            <div className="rounded-[14px] bg-card p-[20px]">
-              <div className="flex items-center gap-2 mb-[20px]">
-                <Image
-                  src="/assets/image/proposal/status-executed.svg"
-                  alt="decision"
-                  width={20}
-                  height={20}
-                />
-                <h3 className="text-[18px] font-semibold">Final Decision</h3>
-              </div>
-              <Separator className="!my-0 bg-border/20 mb-[20px]" />
-
-              <div className="rounded-[14px] bg-card-background p-[20px] border border-border/20">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-success rounded-full flex items-center justify-center">
-                      <Image
-                        src="/assets/image/proposal/check.svg"
-                        alt="check"
-                        width={16}
-                        height={16}
-                      />
-                    </div>
-                    <span className="text-[16px] font-medium">For</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[14px] text-muted-foreground">
-                      Confidence
-                    </span>
-                    <StarRating rating={8} />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="text-[16px] font-medium">Executive Summary</h4>
-                  <p className="text-[14px] text-muted-foreground leading-relaxed">
-                    The governance proposal analysis reveals a significant
-                    disconnect between social sentiment and on-chain voting
-                    results. While tweet comments slightly favor the proposal,
-                    the on-chain vote leans against it, with moderate abstention
-                    stance. Due to these contradictions and the lack of clear
-                    consensus, the final decision is to abstain, indicating a
-                    need for further discussion and community engagement to
-                    resolve these differences.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Voting Reason */}
-            <div className="rounded-[14px] bg-card p-[20px]">
-              <h3 className="text-[18px] font-semibold mb-[20px]">
-                Voting Reason
-              </h3>
-              <Separator className="!my-0 bg-border/20 mb-[20px]" />
-
-              <div className="space-y-6">
-                <div>
-                  <h4 className="text-[16px] font-semibold mb-4">
-                    Governance Proposal Analysis Report
-                  </h4>
-
-                  <div className="space-y-4 text-[14px]">
-                    <div>
-                      <h5 className="font-medium mb-2 text-foreground">
-                        1. Executive Summary
-                      </h5>
-                      <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-4">
-                        <li>
-                          <span className="text-foreground font-medium">
-                            Final Decision:
-                          </span>{" "}
-                          Abstain
-                        </li>
-                        <li>
-                          <span className="text-foreground font-medium">
-                            Confidence Score:
-                          </span>{" "}
-                          4 / 10
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div>
-                      <h5 className="font-medium mb-2 text-foreground">
-                        2. Data Overview
-                      </h5>
-                    </div>
-
-                    <div>
-                      <h5 className="font-medium mb-2 text-foreground">
-                        3. Comprehensive Analysis and Reasoning
-                      </h5>
-                    </div>
-
-                    <div>
-                      <h5 className="font-medium mb-2 text-foreground">
-                        A. Twitter Poll Analysis (40%)
-                      </h5>
-                      <p className="text-muted-foreground ml-4 leading-relaxed">
-                        The Twitter poll had no participation, rendering it
-                        ineffective for gauging community sentiment. This lack
-                        of data significantly reduces the weight of this source
-                        in the overall analysis.
-                      </p>
-                    </div>
-
-                    <div>
-                      <h5 className="font-medium mb-2 text-foreground">
-                        B. Comment Analysis (40%)
-                      </h5>
-                      <p className="text-muted-foreground ml-4 leading-relaxed">
-                        The comments were split, with a slight majority
-                        expressing support for the proposal. Supporters
-                        highlighted the strategic advantage of cultivating
-                        talent and the financial benefits, while opponents
-                        focused on the potential misallocation of senior
-                        engineers' time. The arguments were well-reasoned, but
-                        no significant influence from KOLs was detected.
-                      </p>
-                    </div>
-
-                    <div>
-                      <h5 className="font-medium mb-2 text-foreground">
-                        C. On-Chain Analysis (20%)
-                      </h5>
-                      <p className="text-muted-foreground ml-4 leading-relaxed">
-                        The on-chain voting results show mixed signals with
-                        moderate participation rates. The voting pattern
-                        suggests community uncertainty about the proposal's
-                        implementation timeline and resource allocation
-                        strategy.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            {renderContent()}
           </div>
         </div>
       </DialogContent>
