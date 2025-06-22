@@ -89,7 +89,9 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
 
           {activeTab === "votes" && <Comments comments={data?.voters} />}
 
-          {activeTab === "ai-review" && <AiReview />}
+          {activeTab === "ai-review" && (
+            <AiReview id={data?.proposalId as string} />
+          )}
         </motion.div>
       </AnimatePresence>
     </div>
