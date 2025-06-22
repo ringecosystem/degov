@@ -61,6 +61,10 @@ interface SafeItem {
   link: string;
 }
 
+interface AiAgent {
+  endpoint?: string;
+}
+
 type SafeConfig = SafeItem[];
 
 interface Config {
@@ -76,6 +80,7 @@ interface Config {
   timeLockAssets: TimelockAssets;
   indexer: Indexer;
   safes?: SafeConfig;
+  aiAgent?: AiAgent;
 }
 
 export type {

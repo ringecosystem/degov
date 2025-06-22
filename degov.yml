@@ -1,7 +1,9 @@
 name: DeGov Development Test DAO
-logo: "/example/logo.svg"
+logo: "https://raw.githubusercontent.com/ringecosystem/degov/refs/heads/main/packages/web/public/example/logo.svg"
 siteUrl: https://degov-dev.vercel.app
 offChainDiscussionUrl: https://github.com/ringecosystem/degov/discussions
+aiAgent:
+  endpoint: https://agent.degov.ai
 description: |
   This is the development test DAO interface for DeGov users, allowing them to gain 
   firsthand experience creating proposals and voting on them before deploying 
