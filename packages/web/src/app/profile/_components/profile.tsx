@@ -93,7 +93,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
       return {
         type: "self",
-        displayText: `${balance ?? "0.00"} ${governanceToken?.symbol} to Self`,
+        displayText: "Self",
         buttonText: "Change Delegate",
         to: latestDelegation.to,
       };
@@ -168,7 +168,6 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   const delegationStatusText = useMemo(() => {
     return delegationStatus?.type === "other" ? (
       <span className="flex items-center">
-        {delegationStatus?.displayText}{" "}
         <AddressResolver
           address={delegationStatus?.to as `0x${string}`}
           showShortAddress
