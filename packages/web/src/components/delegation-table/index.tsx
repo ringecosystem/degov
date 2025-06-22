@@ -77,7 +77,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         dataSource={state.data}
         columns={columns}
         isLoading={state.isPending}
-        emptyText={<span>You haven&#39;t received any delegation yet.</span>}
+        emptyText={<span>No delegations yet</span>}
         rowKey="id"
         caption={
           state.hasNextPage && (
