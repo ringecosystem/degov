@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { DelegateAction } from "@/components/delegate-action";
+import { Faqs } from "@/components/faqs";
 import { MembersTable } from "@/components/members-table";
+import { SystemInfo } from "@/components/system-info";
 import { WithConnect } from "@/components/with-connect";
 import type { ContributorItem } from "@/services/graphql/types";
 
@@ -45,22 +47,38 @@ export default function Members() {
   if (showConnectPrompt) {
     return (
       <WithConnect>
-        <div className="flex flex-col gap-[30px]">
+        <div className="flex flex-col gap-[20px]">
           <div className="flex items-center justify-between gap-[20px]">
             <h3 className="text-[18px] font-extrabold">Delegates</h3>
           </div>
-          <MembersTable onDelegate={handleDelegate} />
+          <div className="flex items-start gap-[10px]">
+            <div className="flex-1">
+              <MembersTable onDelegate={handleDelegate} />
+            </div>
+            <div className="flex flex-col gap-[20px]">
+              <SystemInfo />
+              <Faqs type="delegate" />
+            </div>
+          </div>
         </div>
       </WithConnect>
     );
   }
 
   return (
-    <div className="flex flex-col gap-[30px]">
+    <div className="flex flex-col gap-[20px]">
       <div className="flex items-center justify-between gap-[20px]">
         <h3 className="text-[18px] font-extrabold">Delegates</h3>
       </div>
-      <MembersTable onDelegate={handleDelegate} />
+      <div className="flex items-start gap-[10px]">
+        <div className="flex-1">
+          <MembersTable onDelegate={handleDelegate} />
+        </div>
+        <div className="flex flex-col gap-[20px]">
+          <SystemInfo />
+          <Faqs type="delegate" />
+        </div>
+      </div>
       <DelegateAction address={address} open={open} onOpenChange={setOpen} />
     </div>
   );

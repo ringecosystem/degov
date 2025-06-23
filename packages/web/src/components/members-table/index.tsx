@@ -1,18 +1,22 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
+import { formatTimeAgo } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 import { useMembersData } from "./hooks/useMembersData";
 
 import type { ColumnType } from "../custom-table";
+
 interface MembersTableProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
@@ -22,30 +26,22 @@ export function MembersTable({
   onDelegate,
   pageSize = DEFAULT_PAGE_SIZE,
 }: MembersTableProps) {
+  const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-
+  const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryFn: () =>
+      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
+    enabled: !!daoConfig?.indexer?.endpoint,
+  });
   const {
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
-    profilePullState: {
-      data: profilePullData,
-      isLoading: isProfilePullLoading,
-    },
+    profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
   } = useMembersData(pageSize);
 
   const columns = useMemo<ColumnType<ContributorItem>[]>(
     () => [
-      {
-        title: "Rank",
-        key: "rank",
-        width: "70px",
-        className: "text-left",
-        render: (_record, index) => (
-          <span className="line-clamp-1" title={(index + 1).toString()}>
-            {index + 1}
-          </span>
-        ),
-      },
       {
         title: "Name",
         key: "name",
@@ -56,56 +52,56 @@ export function MembersTable({
         ),
       },
       {
-        title: "Delegate Statement",
-        key: "delegateStatement",
-        width: "470px",
-        className: "text-left",
+        title: "Voting Power",
+        key: "votingPower",
+        width: "180px",
+        className: "text-center",
         render: (record) => {
-          if (!profilePullData?.[record.id]?.delegate_statement) {
-            return "-";
+          if (isProfilePullLoading || isProposalMetricsLoading) {
+            return <Skeleton className="h-[30px] w-[140px]" />;
           }
 
+          const userPower = record?.power ? BigInt(record.power) : 0n;
+          const totalPower = dataMetrics?.powerSum
+            ? BigInt(dataMetrics.powerSum)
+            : 0n;
+
+          const formattedAmount = formatTokenAmount(userPower);
+          const percentage =
+            totalPower > 0n
+              ? Number((userPower * 10000n) / totalPower) / 100
+              : 0;
+
           return (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="line-clamp-1 break-words">
-                  {profilePullData?.[record.id]?.delegate_statement || "-"}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent
-                className="w-[300px]"
-                style={{
-                  wordBreak: "break-word",
-                }}
-              >
-                {profilePullData?.[record.id]?.delegate_statement || "-"}
-              </TooltipContent>
-            </Tooltip>
+            <div className="flex items-center justify-center">
+              <div className="text-[14px]" title={formattedAmount?.formatted}>
+                {formattedAmount?.formatted}
+              </div>
+              <div>({percentage.toFixed(1)}%)</div>
+            </div>
           );
         },
       },
       {
-        title: "Voting Power",
-        key: "votingPower",
-        width: "120px",
-        className: "text-right",
-        render: (record) =>
-          isProfilePullLoading ? (
-            <Skeleton className="h-[30px] w-[100px]" />
-          ) : (
-            <span
-              className="line-clamp-1"
-              title={
-                formatTokenAmount(record?.power ? BigInt(record?.power) : 0n)
-                  ?.formatted
-              }
-            >
-              {
-                formatTokenAmount(record?.power ? BigInt(record?.power) : 0n)
-                  ?.formatted
-              }
+        title: "Last Voted",
+        key: "lastVoted",
+        width: "150px",
+        className: "text-center",
+        render: (record) => {
+          if (!record?.blockTimestamp) {
+            return (
+              <span className="text-muted-foreground text-sm">
+                No Vote History
+              </span>
+            );
+          }
+
+          return (
+            <span className="text-sm">
+              {formatTimeAgo(record.blockTimestamp)}
             </span>
-          ),
+          );
+        },
       },
       {
         title: "Action",
@@ -125,7 +121,13 @@ export function MembersTable({
         ),
       },
     ],
-    [onDelegate, profilePullData, isProfilePullLoading, formatTokenAmount]
+    [
+      onDelegate,
+      isProfilePullLoading,
+      formatTokenAmount,
+      dataMetrics,
+      isProposalMetricsLoading,
+    ]
   );
 
   return (

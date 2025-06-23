@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { ProposalItem } from "@/services/graphql/types";
-import { extractTitleAndDescription } from "@/utils";
 
 import { AiSummary } from "../ai-summary";
 
@@ -21,14 +20,19 @@ export const Proposal = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>("description");
 
-  const description = useMemo(() => {
-    return extractTitleAndDescription(data?.description)?.description;
-  }, [data?.description]);
-
   const comments = useMemo(() => {
     return data?.voters?.filter((voter) => voter.reason) ?? [];
   }, [data?.voters]);
 
+  // Calculate total voting power from voters who have comments
+  const totalVotingPower = useMemo(() => {
+    if (!comments.length) return 0n;
+
+    return comments.reduce((total, voter) => {
+      const voterWeight = voter.weight ? BigInt(voter.weight) : 0n;
+      return total + voterWeight;
+    }, 0n);
+  }, [comments]);
   const tabs = useMemo(() => {
     const baseTabs: { key: TabType; label: string }[] = [
       { key: "description", label: "Description" },
@@ -72,11 +76,11 @@ export const Proposal = ({
         </div>
         <div className="min-h-[200px]">
           {activeTab === "description" && (
-            <Description description={description} isFetching={isFetching} />
+            <Description data={data} isFetching={isFetching} />
           )}
           {activeTab === "ai-summary" && <AiSummary id={id} />}
           {activeTab === "comments" && comments?.length && (
-            <Comments comments={comments} />
+            <Comments comments={comments} totalVotingPower={totalVotingPower} />
           )}
         </div>
       </div>

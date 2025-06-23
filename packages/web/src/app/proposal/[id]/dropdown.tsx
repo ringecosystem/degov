@@ -1,5 +1,4 @@
 import Image from "next/image";
-import { Fragment } from "react";
 
 import {
   DropdownMenu,
@@ -21,7 +20,7 @@ export const Dropdown = ({
     showCancel && (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Fragment>
+          <span>
             <Image
               src="/assets/image/light/more.svg"
               alt="more"
@@ -36,7 +35,7 @@ export const Dropdown = ({
               height={36}
               className="cursor-pointer transition-opacity hover:opacity-80 hidden dark:block"
             />
-          </Fragment>
+          </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="flex w-[240px] flex-col gap-[10px] rounded-[14px] border-border/20 bg-card p-[10px]"

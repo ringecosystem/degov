@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { Faqs } from "@/components/faqs";
 import { ProposalsTable } from "@/components/proposals-table";
 import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -41,7 +42,12 @@ export const Proposals = () => {
           </Button>
         ) : null}
       </div>
-      <ProposalsTable type="active" />
+      <div className="flex items-start gap-[10px]">
+        <div className="flex-1">
+          <ProposalsTable type="active" />
+        </div>
+        <Faqs type="general" />
+      </div>
     </div>
   );
 };

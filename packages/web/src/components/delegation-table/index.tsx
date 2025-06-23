@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { useMemo } from "react";
+import { useReadContract } from "wagmi";
 
+import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { DelegateItem } from "@/services/graphql/types";
-import { formatTimestampToFriendlyDate } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
@@ -17,17 +17,33 @@ import type { Address } from "viem";
 interface DelegationTableProps {
   address: Address;
 }
+
 export function DelegationTable({ address }: DelegationTableProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { state, loadMoreData } = useDelegationData(address);
   const daoConfig = useDaoConfig();
+  const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
+
+  const { data: totalVotes } = useReadContract({
+    address: tokenAddress,
+    abi: tokenAbi,
+    functionName: "getVotes",
+    args: [address],
+    chainId: daoConfig?.chain?.id,
+    query: {
+      enabled:
+        Boolean(address) &&
+        Boolean(tokenAddress) &&
+        Boolean(daoConfig?.chain?.id),
+    },
+  });
 
   const columns = useMemo<ColumnType<DelegateItem>[]>(
     () => [
       {
         title: "Delegator",
         key: "delegator",
-        width: "33.3%",
+        width: "70%",
         className: "text-left",
         render: (record) => (
           <AddressWithAvatar
@@ -37,39 +53,31 @@ export function DelegationTable({ address }: DelegationTableProps) {
         ),
       },
       {
-        title: "Delegation Date",
-        key: "delegationDate",
-        width: "33.3%",
-        render: (record) => (
-          <Link
-            href={`${daoConfig?.chain?.explorers?.[0]}/tx/${record?.transactionHash}`}
-            className="hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {formatTimestampToFriendlyDate(record.blockTimestamp)}
-          </Link>
-        ),
-      },
-      {
         title: "Votes",
         key: "votes",
-        width: "33.3%",
+        width: "30%",
+        className: "text-right",
         render: (record) => {
-          return formatTokenAmount(record?.power ? BigInt(record?.power) : 0n)
-            .formatted;
+          return (
+            <DelegatorVotesDisplay
+              record={record}
+              formatTokenAmount={formatTokenAmount}
+              totalVotes={totalVotes || 0n}
+            />
+          );
         },
       },
     ],
-    [formatTokenAmount, daoConfig?.chain?.explorers]
+    [formatTokenAmount, totalVotes]
   );
+
   return (
     <div className="rounded-[14px] bg-card p-[20px]">
       <CustomTable
         dataSource={state.data}
-        columns={columns as ColumnType<DelegateItem>[]}
+        columns={columns}
         isLoading={state.isPending}
-        emptyText={<span>You haven&#39;t received any delegation yet.</span>}
+        emptyText={<span>No delegations yet</span>}
         rowKey="id"
         caption={
           state.hasNextPage && (
@@ -87,6 +95,33 @@ export function DelegationTable({ address }: DelegationTableProps) {
           )
         }
       />
+    </div>
+  );
+}
+
+interface DelegatorVotesDisplayProps {
+  record: DelegateItem;
+  formatTokenAmount: (amount: bigint) => { formatted: string } | undefined;
+  totalVotes: bigint;
+}
+
+function DelegatorVotesDisplay({
+  record,
+  formatTokenAmount,
+  totalVotes,
+}: DelegatorVotesDisplayProps) {
+  const userPower = record?.power ? BigInt(record.power) : 0n;
+  const formattedAmount = formatTokenAmount(userPower);
+
+  const percentage =
+    totalVotes > 0n ? Number((userPower * 10000n) / totalVotes) / 100 : 0;
+
+  return (
+    <div className="text-right flex items-center justify-end gap-[5px]">
+      <div className="text-[14px]" title={formattedAmount?.formatted}>
+        {formattedAmount?.formatted}
+      </div>
+      <div>({percentage.toFixed(1)}%)</div>
     </div>
   );
 }

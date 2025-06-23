@@ -108,13 +108,18 @@ export function generateFunctionSignature(
 export const transformActionsToProposalParams = async (
   actions: Action[],
   decimals: number = 18
-): Promise<{ description: string; actions: ProposalActionParam[] }> => {
+): Promise<{
+  description: string;
+  discussion?: string;
+  actions: ProposalActionParam[];
+}> => {
   const proposalAction = actions.find((action) => action.type === "proposal");
   const html = proposalAction?.content.markdown ?? "";
   const description = proposalAction
     ? `# ${proposalAction.content.title}\n\n${html}`
     : "";
-
+  const discussion = proposalAction?.content.discussion;
+  debugger;
   const proposalActions: ProposalActionParam[] = actions
     .filter(
       (action) =>
@@ -181,6 +186,7 @@ export const transformActionsToProposalParams = async (
 
   return {
     description,
+    discussion,
     actions: proposalActions,
   };
 };
