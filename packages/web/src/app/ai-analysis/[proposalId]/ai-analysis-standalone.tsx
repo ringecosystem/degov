@@ -453,7 +453,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background max-w-[1340px] mx-auto">
       <div className="relative">
         <div className="flex flex-col gap-[60px] p-[60px]">
           <div className="flex items-center justify-center gap-2">
