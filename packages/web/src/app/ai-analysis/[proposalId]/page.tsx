@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { useReadContract } from "wagmi";
-import { parseDescription } from "@/utils/helpers";
-import { ProposalState } from "@/types/proposal";
+
+import { abi as GovernorAbi } from "@/config/abi/governor";
+import { useAiAnalysis } from "@/hooks/useAiAnalysis";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
-import { useAiAnalysis } from "@/hooks/useAiAnalysis";
-import { abi as GovernorAbi } from "@/config/abi/governor";
+import { ProposalState } from "@/types/proposal";
+import { parseDescription } from "@/utils/helpers";
+
 import { AiAnalysisStandalone } from "./ai-analysis-standalone";
 
 export default function AiAnalysisPage({

@@ -9,8 +9,8 @@ import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
 
-import { ToastContainer } from "./toastContainer";
 import { ConditionalLayout } from "./conditional-layout";
+import { ToastContainer } from "./toastContainer";
 
 import type { Metadata } from "next";
 const geistSans = Geist({

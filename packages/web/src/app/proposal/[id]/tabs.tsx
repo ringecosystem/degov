@@ -87,7 +87,9 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
             <TabContent data={data} isFetching={isFetching} />
           )}
 
-          {activeTab === "votes" && <Comments comments={data?.voters} />}
+          {activeTab === "votes" && (
+            <Comments comments={data?.voters} id={data?.proposalId as string} />
+          )}
 
           {activeTab === "ai-review" && (
             <AiReview id={data?.proposalId as string} />

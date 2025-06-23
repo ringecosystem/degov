@@ -1,20 +1,22 @@
-import React, { useMemo } from "react";
+import DOMPurify from "dompurify";
 import { X } from "lucide-react";
+import { marked } from "marked";
+import Image from "next/image";
+import React, { useMemo } from "react";
+
 import { AddressWithAvatar } from "@/components/address-with-avatar";
-import { ProposalStatus } from "@/components/proposal-status";
-import { ProposalState } from "@/types/proposal";
-import { formatTimestampToFriendlyDate } from "@/utils/date";
 import { AiLogo } from "@/components/icons/ai-logo";
 import { AiTitleIcon as AiTitleIcon1 } from "@/components/icons/ai-title-icon-1";
 import { AiTitleIcon as AiTitleIcon2 } from "@/components/icons/ai-title-icon-2";
 import { AiTitleIcon as AiTitleIcon3 } from "@/components/icons/ai-title-icon-3";
+import { ProposalStatus } from "@/components/proposal-status";
+import { LoadingState, ErrorState } from "@/components/ui/loading-spinner";
 import { VoteStatusAction } from "@/components/vote-status";
 import { VoteType } from "@/config/vote";
 import type { AiAnalysisData } from "@/types/ai-analysis";
-import { LoadingState, ErrorState } from "@/components/ui/loading-spinner";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
-import Image from "next/image";
+import { ProposalState } from "@/types/proposal";
+import { extractTitleAndDescription } from "@/utils";
+import { formatTimestampToFriendlyDate } from "@/utils/date";
 
 interface ProposalData {
   proposalId: string;
@@ -287,7 +289,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
           </div>
           <div className="flex flex-col gap-[20px] bg-card p-[20px] rounded-[14px]">
             <h3 className="text-[36px] font-semibold text-foreground">
-              {proposalData.title}
+              {extractTitleAndDescription(proposalData.description)?.title}
             </h3>
             <div className="text-[14px] text-foreground">
               <span className="font-normal">Proposal ID:</span>{" "}

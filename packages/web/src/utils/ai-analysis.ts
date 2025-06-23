@@ -171,7 +171,7 @@ export function extractProposalTitle(description?: string): string {
 /**
  * Validate AI analysis data structure
  */
-export function validateAiAnalysisData(data: any): data is AiAnalysisData {
+export function validateAiAnalysisData(data: AiAnalysisData): boolean {
   return (
     data &&
     typeof data.id === "string" &&

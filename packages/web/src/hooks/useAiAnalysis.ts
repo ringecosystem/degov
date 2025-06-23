@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
+
+import type { AiAnalysisData } from "@/types/ai-analysis";
 import {
   fetchAiAnalysisData,
   validateAiAnalysisData,
 } from "@/utils/ai-analysis";
-import type { AiAnalysisData } from "@/types/ai-analysis";
 
 interface UseAiAnalysisState {
   data: AiAnalysisData | null;

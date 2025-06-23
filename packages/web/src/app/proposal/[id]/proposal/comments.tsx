@@ -18,14 +18,16 @@ import { CommentModal } from "./comment-modal";
 
 interface CommentsProps {
   comments?: ProposalVoterItem[];
+  id: string;
   totalVotingPower?: bigint;
 }
 
-export const Comments = ({ comments }: CommentsProps) => {
+export const Comments = ({ comments, id }: CommentsProps) => {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-  const [currentComment, setCurrentComment] = useState<string | undefined>(
-    undefined
-  );
+  const [currentCommentRow, setCurrentCommentRow] = useState<
+    ProposalVoterItem | undefined
+  >(undefined);
+
   const totalVotingPower = useMemo(() => {
     if (!comments?.length) return 0n;
 
@@ -140,8 +142,8 @@ export const Comments = ({ comments }: CommentsProps) => {
         width: "29%",
         className: "text-left",
         render: (record) =>
-          getVoteDisplay(record.support, record.reason, (reason) =>
-            setCurrentComment(reason)
+          getVoteDisplay(record.support, record.reason, () =>
+            setCurrentCommentRow(record)
           ),
       },
       {
@@ -192,9 +194,10 @@ export const Comments = ({ comments }: CommentsProps) => {
         tableClassName="table-fixed"
       />
       <CommentModal
-        open={!!currentComment}
-        onOpenChange={() => setCurrentComment(undefined)}
-        comment={currentComment}
+        open={!!currentCommentRow?.reason}
+        onOpenChange={() => setCurrentCommentRow(undefined)}
+        commentData={currentCommentRow}
+        id={id}
       />
     </div>
   );
