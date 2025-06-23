@@ -297,11 +297,14 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             </div>
             <div className="flex items-center gap-[5px]">
               <span className="text-[14px] text-foreground">Proposed by</span>
-              <AddressWithAvatar
-                address={proposalData.proposer as `0x${string}`}
-                avatarSize={24}
-                className="gap-[5px] text-[14px] font-semibold"
-              />
+              {!!proposalData.proposer && (
+                <AddressWithAvatar
+                  address={proposalData.proposer as `0x${string}`}
+                  avatarSize={24}
+                  className="gap-[5px] text-[14px] font-semibold"
+                />
+              )}
+
               <span className="text-[14px] text-foreground">
                 On{" "}
                 <span className="font-semibold">
@@ -348,23 +351,11 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             <div className="bg-card p-[20px] rounded-[14px] flex flex-col gap-[20px]">
               <h4 className="text-[18px] font-medium">X Poll</h4>
               <VoteProgressBar
-                forVotes={formatVoteCount(
-                  analysisData.fulfilled_explain.input.pollOptions.find(
-                    (o) => o.label === "For"
-                  )?.votes || 0
-                )}
+                forVotes={votingBreakdown.twitterPoll.for.toString()}
                 forPercentage={votingBreakdown.twitterPoll.for}
-                againstVotes={formatVoteCount(
-                  analysisData.fulfilled_explain.input.pollOptions.find(
-                    (o) => o.label === "Against"
-                  )?.votes || 0
-                )}
+                againstVotes={votingBreakdown.twitterPoll.against.toString()}
                 againstPercentage={votingBreakdown.twitterPoll.against}
-                abstainVotes={formatVoteCount(
-                  analysisData.fulfilled_explain.input.pollOptions.find(
-                    (o) => o.label === "Abstain"
-                  )?.votes || 0
-                )}
+                abstainVotes={votingBreakdown.twitterPoll.abstain.toString()}
                 abstainPercentage={votingBreakdown.twitterPoll.abstain}
               />
             </div>
@@ -469,17 +460,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
   return (
     <div className="min-h-screen bg-background">
       <div className="relative">
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="absolute right-6 top-6 z-10 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-
         <div className="flex flex-col gap-[60px] p-[60px]">
-          {/* Header */}
           <div className="flex items-center justify-center gap-2">
             <AiLogo className="h-[50px]" />
           </div>
