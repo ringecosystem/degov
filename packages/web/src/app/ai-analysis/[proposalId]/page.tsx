@@ -162,7 +162,6 @@ export default function AiAnalysisPage({
       analysisData={aiAnalysisData}
       loading={false}
       error={null}
-      onClose={() => window.history.back()}
       onRefresh={handleRefresh}
     />
   );

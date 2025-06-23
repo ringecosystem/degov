@@ -1,5 +1,4 @@
 import DOMPurify from "dompurify";
-import { X } from "lucide-react";
 import { marked } from "marked";
 import Image from "next/image";
 import React, { useMemo } from "react";
@@ -33,7 +32,6 @@ interface AiAnalysisStandaloneProps {
   analysisData: AiAnalysisData | null;
   loading?: boolean;
   error?: string | null;
-  onClose?: () => void;
   onRefresh?: () => void;
 }
 
@@ -208,7 +206,6 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
   analysisData,
   loading = false,
   error = null,
-  onClose,
   onRefresh,
 }) => {
   const analysisOutput = analysisData?.fulfilled_explain?.output;
@@ -296,7 +293,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               <span className="text-[14px] text-foreground">
                 On{" "}
                 <span className="font-semibold">
-                  {formatTimestampToFriendlyDate(analysisData.ctime)}
+                  {formatTimestampToFriendlyDate(proposalData.blockTimestamp)}
                 </span>
               </span>
             </div>
@@ -309,16 +306,26 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               </div>
             </div>
             <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-muted-foreground">ID</div>
-              <div className="text-[14px] font-semibold underline">
+              <div className="text-[12px] text-muted-foreground">X</div>
+              <a
+                href={`https://x.com/user/status/${analysisData.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[14px] font-semibold underline"
+              >
                 {analysisData.id}
-              </div>
+              </a>
             </div>
             <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
               <div className="text-[12px] text-muted-foreground">DAO</div>
-              <div className="text-[14px] font-semibold underline">
+              <a
+                href={analysisData?.dao?.links?.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[14px] font-semibold underline"
+              >
                 {analysisData.dao.name}
-              </div>
+              </a>
             </div>
             <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
               <div className="text-[12px] text-muted-foreground">Created</div>

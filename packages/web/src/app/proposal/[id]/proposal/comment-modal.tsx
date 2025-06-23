@@ -9,7 +9,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import type { ProposalVoterItem } from "@/services/graphql/types";
-import { AiLogo } from "@/components/icons/ai-logo";
 
 interface CommentModalProps {
   open: boolean;
