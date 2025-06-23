@@ -96,26 +96,20 @@ const VoteProgressBar = ({
           style={{ width: `${abstainPercentage}%` }}
         />
       </div>
-      <div className="flex flex-col gap-[10px]">
-        <div className="flex items-center justify-between gap-[10px]">
-          <div className="flex items-center gap-[5px]">
-            <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
-            <span className="text-[14px] font-normal">For</span>
-          </div>
+      <div className="flex flex-wrap gap-4 sm:gap-6 justify-between">
+        <div className="flex items-center gap-[5px]">
+          <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
+          <span className="text-[14px] font-normal">For</span>
           <span className="text-[14px] font-medium">{forVotes}</span>
         </div>
-        <div className="flex items-center justify-between gap-[10px]">
-          <div className="flex items-center gap-[5px]">
-            <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
-            <span className="text-[14px] font-normal">Against</span>
-          </div>
+        <div className="flex items-center gap-[5px]">
+          <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
+          <span className="text-[14px] font-normal">Against</span>
           <span className="text-[14px] font-medium">{againstVotes}</span>
         </div>
-        <div className="flex items-center justify-between gap-[10px]">
-          <div className="flex items-center gap-[5px]">
-            <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
-            <span className="text-[14px] font-normal">Abstain</span>
-          </div>
+        <div className="flex items-center gap-[5px]">
+          <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
+          <span className="text-[14px] font-normal">Abstain</span>
           <span className="text-[14px] font-medium">{abstainVotes}</span>
         </div>
       </div>
@@ -142,26 +136,20 @@ const SentimentProgressBar = ({
           style={{ width: `${neutral}%` }}
         />
       </div>
-      <div className="flex flex-col gap-[10px]">
-        <div className="flex items-center justify-between gap-[10px]">
-          <div className="flex items-center gap-[5px]">
-            <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
-            <span className="text-[14px] font-normal">Positive</span>
-          </div>
+      <div className="flex flex-wrap gap-4 sm:gap-6 justify-between">
+        <div className="flex items-center gap-[5px]">
+          <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
+          <span className="text-[14px] font-normal">Positive</span>
           <span className="text-[14px] font-medium">{positive}%</span>
         </div>
-        <div className="flex items-center justify-between gap-[10px]">
-          <div className="flex items-center gap-[5px]">
-            <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
-            <span className="text-[14px] font-normal">Negative</span>
-          </div>
+        <div className="flex items-center gap-[5px]">
+          <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
+          <span className="text-[14px] font-normal">Negative</span>
           <span className="text-[14px] font-medium">{negative}%</span>
         </div>
-        <div className="flex items-center justify-between gap-[10px]">
-          <div className="flex items-center gap-[5px]">
-            <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
-            <span className="text-[14px] font-normal">Neutral</span>
-          </div>
+        <div className="flex items-center gap-[5px]">
+          <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
+          <span className="text-[14px] font-normal">Neutral</span>
           <span className="text-[14px] font-medium">{neutral}%</span>
         </div>
       </div>
