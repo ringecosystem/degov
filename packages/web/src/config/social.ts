@@ -51,6 +51,14 @@ export const socialConfig: SocialConfig[] = [
     10
   ),
   createSocialConfig(
+    "Docs",
+    "https://docs.degov.ai",
+    "/assets/image/light/social/docs.svg",
+    "/assets/image/social/docs.svg",
+    16,
+    16
+  ),
+  createSocialConfig(
     "Github",
     "https://github.com/ringecosystem/degov/tree/",
     "/assets/image/light/social/github.svg",
