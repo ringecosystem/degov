@@ -16,7 +16,21 @@ import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { Types } from "@/services/graphql";
 import { proposalService } from "@/services/graphql";
-import { extractTitleAndDescription } from "@/utils";
+import { extractTitleAndDescription, parseDescription } from "@/utils";
+
+// Helper function to strip HTML tags from text
+const stripHtmlTags = (html: string): string => {
+  return html
+    .replace(/<[^>]*>/g, "") // Remove HTML tags
+    .replace(/&nbsp;/g, " ") // Replace &nbsp; with space
+    .replace(/&amp;/g, "&") // Replace &amp; with &
+    .replace(/&lt;/g, "<") // Replace &lt; with <
+    .replace(/&gt;/g, ">") // Replace &gt; with >
+    .replace(/&quot;/g, '"') // Replace &quot; with "
+    .replace(/&#39;/g, "'") // Replace &#39; with '
+    .replace(/\s+/g, " ") // Replace multiple spaces with single space
+    .trim(); // Remove leading/trailing whitespace
+};
 
 interface SearchModalProps {
   children?: React.ReactNode;
@@ -147,22 +161,52 @@ export function SearchModal({
             renderSkeletons()
           ) : flattenedData && flattenedData.length > 0 ? (
             <div>
-              {flattenedData.map((item, i) => (
-                <div
-                  key={i}
-                  onClick={() => {
-                    handleSelect(item);
-                  }}
-                  className="flex text-[14px] py-[10px] border-b border-b-gray-1 last:border-b-0 hover:bg-card-background transition-colors cursor-pointer"
-                >
+              {flattenedData.map((item, i) => {
+                const titleAndDesc = extractTitleAndDescription(
+                  item.description
+                );
+                const parsed = parseDescription(titleAndDesc?.description);
+                const title = titleAndDesc?.title;
+                const description = parsed.mainText;
+                return (
                   <div
-                    className="flex-1 line-clamp-1"
-                    title={extractTitleAndDescription(item.description)?.title}
+                    key={i}
+                    onClick={() => {
+                      handleSelect(item);
+                    }}
+                    className="flex items-start gap-[12px] py-[12px] border-b border-b-gray-1 last:border-b-0 hover:bg-card-background transition-colors cursor-pointer"
                   >
-                    {extractTitleAndDescription(item.description)?.title}
+                    <div className="flex-shrink-0 mt-[2px]">
+                      <svg
+                        width="26"
+                        height="20"
+                        viewBox="0 0 26 20"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M24.4408 17.5367C24.4408 17.2774 24.1815 17.0181 23.9222 17.0181H14.1329L22.2366 8.91434C22.6256 8.52537 22.6256 7.81224 22.2366 7.42326L15.0405 0.291978C14.6515 -0.0970006 13.9384 -0.0970006 13.5494 0.291978L4.01945 9.82196C3.63047 10.2109 3.63047 10.9241 4.01945 11.313L9.72447 16.9532H1.55592C1.2966 16.9532 1.03728 17.2126 1.03728 17.4719L0 19.4816C0 19.7409 0.259319 20.0002 0.518639 20.0002H24.9595C25.2188 20.0002 25.4781 19.7409 25.4781 19.4816L24.4408 17.5367ZM10.7618 9.044L12.4473 10.8592L15.8833 7.35843L16.4019 7.9419L12.4473 11.9613L10.1783 9.62747L10.7618 9.044ZM7.06645 19.0926L7.58509 18.2498H17.893L18.4117 19.0926H7.06645Z"
+                          fill="currentColor"
+                          className="text-muted-foreground"
+                        />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col gap-[4px]">
+                      <div
+                        className="font-medium text-[14px] line-clamp-1 text-foreground"
+                        title={title}
+                      >
+                        {title}
+                      </div>
+                      {description && (
+                        <div className="text-[12px] text-muted-foreground line-clamp-2 mt-[4px]">
+                          {stripHtmlTags(description)}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {hasNextPage && (
                 <div className="flex justify-center items-center py-4">
