@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import Image from "next/image";
+import Link from "next/link";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -273,8 +274,29 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             />
           </div>
           <div className="flex flex-col gap-[20px] bg-card p-[20px] rounded-[14px]">
-            <h3 className="text-[36px] font-semibold text-foreground">
+            <h3 className="text-[36px] font-semibold text-foreground flex items-center gap-[10px]">
               {extractTitleAndDescription(proposalData.description)?.title}
+              <Link
+                href={`/proposal/${proposalData.proposalId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:opacity-80 transition-opacity"
+              >
+                <Image
+                  src="/assets/image/light/external-link.svg"
+                  alt="external-link"
+                  className="h-[24px] w-[24px] dark:hidden"
+                  width={24}
+                  height={24}
+                />
+                <Image
+                  src="/assets/image/external-link.svg"
+                  alt="external-link"
+                  className="h-[24px] w-[24px] hidden dark:block"
+                  width={24}
+                  height={24}
+                />
+              </Link>
             </h3>
             <div className="text-[14px] text-foreground">
               <span className="font-normal">Proposal ID:</span>{" "}
@@ -437,11 +459,9 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             </div>
           </div>
 
-          <div className="rounded-[14px] bg-card p-[20px]">
-            <h3 className="text-[18px] font-semibold mb-[20px]">
-              Voting Reason
-            </h3>
-
+          <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[20px]">
+            <h3 className="text-[18px] font-semibold">Voting Reason</h3>
+            <div className="w-full h-[1px] bg-gray-1"></div>
             <div
               className="markdown-body"
               dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
