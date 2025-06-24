@@ -48,7 +48,7 @@ export function getShortProposalId(fullProposalId: string): string {
 export const getAiAnalysis = async (
   endpoint: string,
   fullProposalId: string,
-  chainId: number = 46
+  chainId: number
 ): Promise<{ code: number; data: AiAnalysisData | null }> => {
   try {
     const shortProposalId = getShortProposalId(fullProposalId);
