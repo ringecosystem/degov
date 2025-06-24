@@ -80,7 +80,11 @@ export const Proposal = ({
           )}
           {activeTab === "ai-summary" && <AiSummary id={id} />}
           {activeTab === "comments" && comments?.length && (
-            <Comments comments={comments} totalVotingPower={totalVotingPower} />
+            <Comments
+              comments={comments}
+              totalVotingPower={totalVotingPower}
+              id={id}
+            />
           )}
         </div>
       </div>

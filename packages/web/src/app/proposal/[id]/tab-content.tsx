@@ -1,4 +1,9 @@
+import { useState, useEffect } from "react";
+
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { getAiAnalysis } from "@/services/ai-agent";
 import type { ProposalItem } from "@/services/graphql/types";
+import type { AiAnalysisData } from "@/types/ai-analysis";
 
 import { ActionsTable } from "./actions-table";
 import { Description } from "./proposal/description";
@@ -10,22 +15,71 @@ export const TabContent = ({
   data?: ProposalItem;
   isFetching: boolean;
 }) => {
+  const daoConfig = useDaoConfig();
+  const [aiAnalysisData, setAiAnalysisData] = useState<AiAnalysisData | null>(
+    null
+  );
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchAiAnalysis = async () => {
+      if (
+        !data?.proposalId ||
+        !daoConfig?.aiAgent?.endpoint ||
+        !daoConfig?.chain?.id
+      ) {
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const result = await getAiAnalysis(
+          daoConfig.aiAgent.endpoint,
+          data.proposalId,
+          daoConfig.chain.id
+        );
+
+        if (result.code === 0 && result.data) {
+          setAiAnalysisData(result.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch AI analysis:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAiAnalysis();
+  }, [data?.proposalId, daoConfig?.aiAgent?.endpoint, daoConfig?.chain?.id]);
+
   return (
     <div className="flex flex-col gap-[20px]">
-      {data?.discussion ? (
+      {data?.discussion || aiAnalysisData?.id ? (
         <div className="flex flex-col gap-[20px] p-[20px] rounded-[14px] bg-card">
           <div className="flex flex-col gap-[12px]">
             <h3 className="text-[26px] font-semibold text-foreground">
               Discussions
             </h3>
-            <a
-              href={data?.discussion}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[18px] font-semibold hover:underline"
-            >
-              {data?.discussion}
-            </a>
+            {data?.discussion && (
+              <a
+                href={data?.discussion}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[18px] font-semibold hover:underline"
+              >
+                {data?.discussion}
+              </a>
+            )}
+            {!loading && aiAnalysisData?.id && (
+              <a
+                href={`https://x.com/user/status/${aiAnalysisData.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[18px] font-semibold hover:underline"
+              >
+                https://x.com/user/status/{aiAnalysisData.id}
+              </a>
+            )}
           </div>
         </div>
       ) : null}

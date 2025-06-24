@@ -5,16 +5,16 @@ import { getBotAddress } from "@/services/ai-agent";
 
 import { useDaoConfig } from "./useDaoConfig";
 
-export const useAiBotAddress = (address: `0x${string}`) => {
+export const useAiBotAddress = (address?: `0x${string}`) => {
   const daoConfig = useDaoConfig();
   const { data: botAddress } = useQuery({
     queryKey: ["bot-address", daoConfig?.aiAgent?.endpoint],
     queryFn: () => getBotAddress(daoConfig?.aiAgent?.endpoint ?? ""),
-    enabled: !!daoConfig?.aiAgent?.endpoint,
+    enabled: !!daoConfig?.aiAgent?.endpoint && !!address,
   });
 
   const isAiBot = useMemo(() => {
-    return botAddress?.data?.address.toLowerCase() === address.toLowerCase();
+    return botAddress?.data?.address?.toLowerCase() === address?.toLowerCase();
   }, [botAddress, address]);
 
   return isAiBot;
