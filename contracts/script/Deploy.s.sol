@@ -10,10 +10,10 @@ import {Timelock} from "../src/Timelock.sol";
 
 contract Deploy is Script {
     address deployer = 0x0f14341A7f464320319025540E8Fe48Ad0fe5aec;
-    address FT = 0xcbd1931E971c2Cc1eD11cF44Cdfd4dA732B7fFB4;
-    address GFT = 0x7946A3EA97EEb82acC915952C5De4383313AF24b;
-    address TL = 0xA8F392949A79Faf397CA1997387d8A0BaA1F6bd5;
-    address DGVN = 0x4484123c31BBB9cb6497B3676aC6F4771a2257d7;
+    address FT = 0x337a2E57930577A4C39f5F176D974F5E8C2A2f90;
+    address GFT = 0xA8Fd3E32e7E6eEa26a29Cb428c580CeAF8652eFc;
+    address TL = 0x423d1A3b3a3cCFb812F2c8Ac81962bDa5d642944;
+    address DGVN = 0x1e4122BdB410475561C27A6D3D8Bd7f69D9da60e;
 
     function run() public {
         safeconsole.log("Chain Id: ", block.chainid);
