@@ -11,7 +11,6 @@ contract Token is ERC20, AccessControl, ERC20Permit {
 
     constructor(address defaultAdmin) ERC20("Token", "TK") ERC20Permit("Token") {
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
-        _grantRole(MINTER_ROLE, defaultAdmin);
     }
 
     function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) {
