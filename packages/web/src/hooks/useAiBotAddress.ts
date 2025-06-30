@@ -17,5 +17,8 @@ export const useAiBotAddress = (address?: `0x${string}`) => {
     return botAddress?.data?.address?.toLowerCase() === address?.toLowerCase();
   }, [botAddress, address]);
 
-  return isAiBot;
+  return {
+    isAiBot,
+    botAddress: botAddress?.data?.address?.toLowerCase() ?? undefined,
+  };
 };
