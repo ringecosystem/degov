@@ -42,7 +42,7 @@ export const User = ({
   onDelegate,
 }: UserProps) => {
   const daoConfig = useDaoConfig();
-  const isAiBot = useAiBotAddress(address);
+  const { isAiBot } = useAiBotAddress(address);
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">

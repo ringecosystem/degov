@@ -27,7 +27,7 @@ export const AddressAvatar = ({
     enabled: !!address,
   });
 
-  const isAiBot = useAiBotAddress(address);
+  const { isAiBot } = useAiBotAddress(address);
 
   const avatarUrl = isAiBot
     ? "/assets/image/aibot.svg"

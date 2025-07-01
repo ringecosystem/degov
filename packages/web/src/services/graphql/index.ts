@@ -153,12 +153,14 @@ export const contributorService = {
       offset: number;
       where?: {
         id_in?: string[];
+        id_not_eq?: string;
       };
     } = {
       limit: 10,
       offset: 0,
       where: {
         id_in: [],
+        id_not_eq: undefined,
       },
     }
   ) => {

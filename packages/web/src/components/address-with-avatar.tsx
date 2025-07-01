@@ -27,7 +27,7 @@ export function AddressWithAvatar({
   textClassName,
   customLink,
 }: AddressWithAvatarProps) {
-  const isAiBot = useAiBotAddress(address);
+  const { isAiBot } = useAiBotAddress(address);
   return (
     <Link
       href={customLink ? customLink(address) : `/delegate/${address}`}

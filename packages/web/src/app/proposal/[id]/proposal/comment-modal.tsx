@@ -23,7 +23,7 @@ export function CommentModal({
   onOpenChange,
   commentData,
 }: CommentModalProps) {
-  const isAiBot = useAiBotAddress(commentData?.voter);
+  const { isAiBot } = useAiBotAddress(commentData?.voter);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[700px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px] sm:max-w-[700px]">

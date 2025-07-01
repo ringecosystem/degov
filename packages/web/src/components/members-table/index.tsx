@@ -13,6 +13,7 @@ import { CustomTable } from "../custom-table";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 
+import { useBotMemberData } from "./hooks/useBotMemberData";
 import { useMembersData } from "./hooks/useMembersData";
 
 import type { ColumnType } from "../custom-table";
@@ -39,6 +40,18 @@ export function MembersTable({
     profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
   } = useMembersData(pageSize);
+
+  // Fetch AI bot contributor data separately and prepend when available (only on the first page)
+  const { data: botMember } = useBotMemberData();
+
+  const dataSource = useMemo<ContributorItem[]>(() => {
+    if (botMember) {
+      // Ensure no duplication (members already excludes bot address in most cases but safe-guard)
+      const withoutBot = members.filter((m) => m.id !== botMember.id);
+      return [botMember, ...withoutBot];
+    }
+    return members;
+  }, [botMember, members]);
 
   const columns = useMemo<ColumnType<ContributorItem>[]>(
     () => [
@@ -135,7 +148,7 @@ export function MembersTable({
       <CustomTable
         tableClassName="table-fixed"
         columns={columns}
-        dataSource={members}
+        dataSource={dataSource}
         rowKey="id"
         isLoading={isPending}
         emptyText="No Delegates"

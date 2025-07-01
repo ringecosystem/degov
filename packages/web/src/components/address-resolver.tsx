@@ -23,7 +23,7 @@ export function AddressResolver({
     chainId: 1,
   });
 
-  const isAiBot = useAiBotAddress(address);
+  const { isAiBot } = useAiBotAddress(address);
 
   const { data: profileData } = useQuery({
     queryKey: ["profile", address],

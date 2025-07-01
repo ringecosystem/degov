@@ -2,20 +2,25 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { contributorService, memberService } from "@/services/graphql";
 import type { ContributorItem, Member } from "@/services/graphql/types";
 
 export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
   const daoConfig = useDaoConfig();
+  const { botAddress } = useAiBotAddress();
   const membersQuery = useInfiniteQuery({
-    queryKey: ["members", pageSize, daoConfig?.indexer?.endpoint],
+    queryKey: ["members", pageSize, daoConfig?.indexer?.endpoint, botAddress],
     queryFn: async ({ pageParam }) => {
       const result = await contributorService.getAllContributors(
         daoConfig?.indexer?.endpoint ?? "",
         {
           limit: pageSize,
           offset: Number(pageParam),
+          where: {
+            id_not_eq: botAddress,
+          },
         }
       );
 
