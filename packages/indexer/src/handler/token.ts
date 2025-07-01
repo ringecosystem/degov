@@ -147,7 +147,7 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
     this.ctx.log.info(
-      `Received ddelegate votes changed event: ${_safeJsonStringify(
+      `Received delegate votes changed event: ${_safeJsonStringify(
         event
       )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
     );
@@ -242,6 +242,11 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
 
     const event = itokenAbi.events.Transfer.decode(eventLog);
+    this.ctx.log.info(
+      `Received token transfer event: ${_safeJsonStringify(event)}, at ${
+        eventLog.block.height
+      }, tx: ${eventLog.transactionHash}`
+    );
     const entity = new TokenTransfer({
       id: eventLog.id,
       from: event.from,
