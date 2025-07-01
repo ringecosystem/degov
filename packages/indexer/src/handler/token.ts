@@ -121,7 +121,7 @@ export class TokenHandler {
       }
     );
     this.ctx.log.info(
-      `Queried delegate rolling (update rolling): ${_safeJsonStringify(
+      `Queried delegate rolling (store deledatechanged): ${_safeJsonStringify(
         delegateRolling
       )} => tx: ${eventLog.transactionHash}`
     );
@@ -177,7 +177,9 @@ export class TokenHandler {
     this.ctx.log.info(
       `Queried delegate rolling (update rolling): ${_safeJsonStringify(
         delegateRolling
-      )} => tx: ${options.transactionHash}`
+      )} options: ${_safeJsonStringify(options)} => tx: ${
+        options.transactionHash
+      }`
     );
 
     /*
