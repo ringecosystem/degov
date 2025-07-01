@@ -41,6 +41,8 @@ export class TokenHandler {
       eventLog.topics.findIndex(
         (item) => item === itokenAbi.events.DelegateChanged.topic
       ) != -1;
+
+    this.ctx.log.info(`Received event: ${_safeJsonStringify(eventLog)}`);
     if (isDelegateChanged) {
       await this.storeDelegateChanged(eventLog);
     }
@@ -264,15 +266,7 @@ export class TokenHandler {
   private async storeDelegate(currentDelegate: Delegate, options?: {}) {
     if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
       this.ctx.log.warn(
-        `Delegate from or to is not set. ${JSON.stringify(
-          currentDelegate,
-          (_, v) => {
-            if (typeof v === "bigint") {
-              return v.toString();
-            }
-            return v;
-          }
-        )}`
+        `Delegate from or to is not set. ${_safeJsonStringify(currentDelegate)}`
       );
     }
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
@@ -407,4 +401,16 @@ export class TokenHandler {
     dm.memberCount = (dm.memberCount ?? 0) + 1;
     await this.ctx.store.save(dm);
   }
+}
+
+function _safeJsonStringify(
+  value: any,
+  replacer: (key: string, value: any) => any = (_, v) => v
+): string {
+  return JSON.stringify(value, (_, v) => {
+    if (typeof v === "bigint") {
+      return v.toString();
+    }
+    return v;
+  });
 }
