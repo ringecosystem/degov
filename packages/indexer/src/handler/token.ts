@@ -112,6 +112,20 @@ export class TokenHandler {
     });
     await this.ctx.store.insert(delegateRolling);
 
+    const x: DelegateRolling | undefined = await this.ctx.store.findOne(
+      DelegateRolling,
+      {
+        where: {
+          transactionHash: eventLog.transactionHash,
+        },
+      }
+    );
+    this.ctx.log.info(
+      `Queried delegate rolling (update rolling): ${_safeJsonStringify(
+        delegateRolling
+      )} => tx: ${eventLog.transactionHash}`
+    );
+
     // store self delegate
     if (
       entity.fromDelegate === zeroAddress &&
@@ -160,6 +174,11 @@ export class TokenHandler {
         },
       });
     if (!delegateRolling) return;
+    this.ctx.log.info(
+      `Queried delegate rolling (update rolling): ${_safeJsonStringify(
+        delegateRolling
+      )} => tx: ${options.transactionHash}`
+    );
 
     /*
     // delegate change b to c
