@@ -264,7 +264,15 @@ export class TokenHandler {
   private async storeDelegate(currentDelegate: Delegate, options?: {}) {
     if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
       this.ctx.log.warn(
-        `Delegate from or to is not set. ${JSON.stringify(currentDelegate)}`
+        `Delegate from or to is not set. ${JSON.stringify(
+          currentDelegate,
+          (_, v) => {
+            if (typeof v === "bigint") {
+              return v.toString();
+            }
+            return v;
+          }
+        )}`
       );
     }
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
