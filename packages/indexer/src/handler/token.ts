@@ -42,7 +42,6 @@ export class TokenHandler {
         (item) => item === itokenAbi.events.DelegateChanged.topic
       ) != -1;
 
-    this.ctx.log.info(`Received event: ${_safeJsonStringify(eventLog)}`);
     if (isDelegateChanged) {
       await this.storeDelegateChanged(eventLog);
     }
@@ -73,6 +72,11 @@ export class TokenHandler {
   private async storeDelegateChanged(eventLog: Log) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
+    this.ctx.log.info(
+      `Received delegate chanaged event: ${_safeJsonStringify(event)}, at ${
+        eventLog.block.height
+      }, tx: ${eventLog.transactionHash}`
+    );
     const entity = new DelegateChanged({
       id: eventLog.id,
       delegator: event.delegator,
@@ -128,6 +132,11 @@ export class TokenHandler {
   private async storeDelegateVotesChanged(eventLog: Log) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
+    this.ctx.log.info(
+      `Received ddelegate votes changed event: ${_safeJsonStringify(
+        event
+      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
+    );
     const entity = new DelegateVotesChanged({
       id: eventLog.id,
       delegate: event.delegate,
