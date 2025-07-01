@@ -1273,13 +1273,62 @@ const recordsFor_0xb258051 = [
       fromDelegate: "0x0000000000000000000000000000000000000000",
       toDelegate: "0xb25805118F1b471844687A1D1374ffb18207De6c",
       blockNumber: "6608398",
-      txHash: "0xb1272dcd1a95f7b26823f452a09dfe6294482aa6d6bbf147cd86880e3aeba17d",
+      txHash:
+        "0xb1272dcd1a95f7b26823f452a09dfe6294482aa6d6bbf147cd86880e3aeba17d",
     },
   ],
 ];
 
+//# uniswap compound records
+//# https://etherscan.io/tx/0x4c6efccf3f03a5618bac7194cccf9d6fdb84f7bfdae75102f1736c6fade22d3d#eventlog
+//# https://docs.tally.xyz/set-up-and-technical-documentation/deploying-daos/smart-contract-compatibility/compound-governor-bravo
+//# https://docs.tally.xyz/set-up-and-technical-documentation/deploying-daos/smart-contract-compatibility/openzeppelin-governor
+const recordsFor_0x0F60F8a = [
+  [
+    // mock
+    {
+      method: "DelegateChanged",
+      delegator: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796"
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+      previousVotes: 0n,
+      newVotes: 2676182531244817051458n,
+    },
+
+    // ===
+    {
+      method: "DelegateChanged",
+      delegator: "0x0F60F8aD6F587561605c7980C5c044b6e809829A",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xB63308CB3d88c298eD0E76f8044a731BAFeF0934",
+    },
+    {
+      method: "Transfer",
+      from: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+      to: "0x0F60F8aD6F587561605c7980C5c044b6e809829A",
+      value: 10000000000000000000n
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+      previousVotes: 2676182531244817051458n,
+      newVotes: 2666182531244817051458n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0xB63308CB3d88c298eD0E76f8044a731BAFeF0934",
+      previousVotes: 0n,
+      newVotes: 1000000000000000000n,
+    }
+  ],
+];
+
 test("testTokens", () => {
-  const records = recordsFor_0xb258051;
+  const records = recordsFor_0x0F60F8a;
 
   const ds = new DelegateStorage();
   for (const record of records) {
