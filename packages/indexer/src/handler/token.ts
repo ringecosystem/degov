@@ -262,6 +262,11 @@ export class TokenHandler {
   }
 
   private async storeDelegate(currentDelegate: Delegate, options?: {}) {
+    if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
+      this.ctx.log.warn(
+        `Delegate from or to is not set. ${JSON.stringify(currentDelegate)}`
+      );
+    }
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
     currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
