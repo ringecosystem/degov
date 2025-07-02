@@ -68,3 +68,13 @@ safes:
   - name: Test DAO Safe(Sepolia)
     chainId: 11155111
     link: https://app.safe.global/home?safe=sep:0x80d180621B2f875269216f19A499e6fB9402776C
+
+apps:
+  - name: RING Token Wrap
+    description: Convert back and forth between the native token and the wrapped governance token
+    icon: https://raw.githubusercontent.com/ringecosystem/degov/refs/heads/main/packages/web/public/example/logo.svg
+    link: https://degov-dev.vercel.app/tools/token-wrap
+  - name: Another Tool
+    description: This is another tool for testing purposes.
+    icon: https://raw.githubusercontent.com/ringecosystem/degov/refs/heads/main/packages/web/public/example/logo.svg
+    link: https://degov-dev.vercel.app/tools/another-tool

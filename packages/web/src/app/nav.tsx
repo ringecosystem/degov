@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 
 import {
   Tooltip,
@@ -10,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { routes } from "@/config/route";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 
 interface NavProps {
@@ -18,18 +20,31 @@ interface NavProps {
 
 export const Nav = ({ collapsed = false }: NavProps) => {
   const pathname = usePathname();
+  const daoConfig = useDaoConfig();
+
+  // Filter routes based on configuration
+  const visibleRoutes = useMemo(() => {
+    return routes.filter((route) => {
+      // Show apps route only if apps are configured
+      if (route.key === "apps") {
+        return daoConfig?.apps && daoConfig.apps.length > 0;
+      }
+      return true;
+    });
+  }, [daoConfig?.apps]);
 
   return (
     <nav className="space-y-2">
       <TooltipProvider delayDuration={0}>
-        {routes.map((route) => {
+        {visibleRoutes.map((route) => {
           const isActive =
             pathname === route.pathname ||
             pathname.startsWith(route.pathname + "/") ||
             (pathname.startsWith("/proposal") &&
               route.pathname === "/proposals") ||
             (pathname.startsWith("/delegate") &&
-              route.pathname === "/delegates");
+              route.pathname === "/delegates") ||
+            (pathname.startsWith("/apps") && route.pathname === "/apps");
 
           return (
             <Tooltip key={route.key}>

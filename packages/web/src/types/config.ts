@@ -65,7 +65,15 @@ interface AiAgent {
   endpoint?: string;
 }
 
+interface AppItem {
+  name: string;
+  description: string;
+  icon: string;
+  link: string;
+}
+
 type SafeConfig = SafeItem[];
+type AppConfig = AppItem[];
 
 interface Config {
   name: string;
@@ -80,6 +88,7 @@ interface Config {
   timeLockAssets: TimelockAssets;
   indexer: Indexer;
   safes?: SafeConfig;
+  apps?: AppConfig;
   aiAgent?: AiAgent;
 }
 
@@ -96,4 +105,6 @@ export type {
   Indexer,
   SafeItem,
   SafeConfig,
+  AppItem,
+  AppConfig,
 };
