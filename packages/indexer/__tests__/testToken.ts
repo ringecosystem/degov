@@ -4,18 +4,29 @@ const zeroAddress = "0x0000000000000000000000000000000000000000";
 /*
 delegates:  [
   {
-    fromDelegate: '0xb25805118f1b471844687a1d1374ffb18207de6c',
-    toDelegate: '0xb25805118f1b471844687a1d1374ffb18207de6c',
-    power: 0n,
-    id: '0xb25805118f1b471844687a1d1374ffb18207de6c_0xb25805118f1b471844687a1d1374ffb18207de6c'
+    delegator: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    fromDelegate: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    toDelegate: '0x92e9fb99e99d79bc47333e451e7c6490dbf24b22',
+    power: 20000000000000000000n,
+    id: '0xf25f97f6f7657a210daeb1cd6042b769fae95488_0x92e9fb99e99d79bc47333e451e7c6490dbf24b22'
   }
 ]
 
 mapping:  [
   {
-    id: '0xb25805118f1b471844687a1d1374ffb18207de6c',
-    from: '0xb25805118f1b471844687a1d1374ffb18207de6c',
-    to: '0xb25805118f1b471844687a1d1374ffb18207de6c'
+    id: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    from: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    to: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9'
+  },
+  {
+    id: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    from: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    to: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab'
+  },
+  {
+    id: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    from: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    to: '0x92e9fb99e99d79bc47333e451e7c6490dbf24b22'
   }
 ]
 */
@@ -1587,7 +1598,7 @@ const recordsFor_0x0F60F8a = [
 // ];
 
 test("testTokens", () => {
-  const records = recordsFor_0x0F60F8a;
+  const records = recordsFor_0x92e9fb9;
 
   const ds = new DelegateStorage();
   for (const record of records) {
