@@ -1587,11 +1587,12 @@ const recordsFor_0x0F60F8a = [
 // ];
 
 test("testTokens", () => {
-  const records = recordsFor_0xf25f97f;
+  const records = recordsFor_0x0F60F8a;
 
   const ds = new DelegateStorage();
   for (const record of records) {
     // const currentDelegates = [];
+    let cdg;
     for (const entry of record) {
       const method = entry.method.toLowerCase();
       switch (method) {
@@ -1601,72 +1602,63 @@ test("testTokens", () => {
             to: entry.to.toLowerCase(),
             value: BigInt(entry.value),
           });
+          cdg = null; // reset cdg after transfer
           break;
         case "delegatechanged":
-          const cdgA = {
+          cdg = {
             delegator: entry.delegator.toLowerCase(),
             fromDelegate: entry.fromDelegate.toLowerCase(),
             toDelegate: entry.toDelegate.toLowerCase(),
           };
-          ds.pushMapping(cdgA);
+          ds.pushMapping(cdg);
           if (
-            cdgA.fromDelegate === zeroAddress &&
-            cdgA.delegator === cdgA.toDelegate
+            cdg.fromDelegate === zeroAddress &&
+            cdg.delegator === cdg.toDelegate
           ) {
             const cdelegate = {
-              fromDelegate: cdgA.delegator,
-              toDelegate: cdgA.toDelegate,
+              fromDelegate: cdg.delegator,
+              toDelegate: cdg.toDelegate,
               power: 0n,
             };
             ds.pushDelegator(cdelegate);
           }
           break;
         case "delegatevoteschanged":
-          const dss = ds.getDelegates();
-          const cdgB = dss.find(
-            (item) => item.fromDelegate === entry.delegate.toLowerCase()
-          );
-          if (!cdgB) {
+          if (!cdg) {
             console.log(
-              "skipped delegate votes changed, because not found delegate mapping"
+              "skipped delegate votes changed, because it's from transfer"
             );
             break;
           }
-          console.log("======================>", cdgB);
-
           let fromDelegate, toDelegate;
-          // const isDelegateChangeToAnother =
-          //   cdgB.delegator !== cdgB.fromDelegate &&
-          //   cdgB.delegator !== cdgB.toDelegate;
-          // const entryDelegate = entry.delegate.toLowerCase();
-          // if (entryDelegate === cdgB.fromDelegate) {
-          //   if (
-          //     (cdgB.delegator === cdgB.toDelegate &&
-          //       cdgB.fromDelegate !== zeroAddress) ||
-          //     isDelegateChangeToAnother
-          //   ) {
-          //     fromDelegate = cdgB.delegator;
-          //     toDelegate = cdgB.fromDelegate;
-          //   } else {
-          //   }
-          // }
-          // if (entryDelegate === cdgB.toDelegate) {
-          //   fromDelegate = cdgB.delegator;
-          //   toDelegate =
-          //     cdgB.delegator === cdgB.toDelegate
-          //       ? cdgB.delegator
-          //       : cdgB.toDelegate;
-          // }
-
-          fromDelegate = cdgB.fromDelegate;
-          toDelegate = cdgB.toDelegate;
+          const isDelegateChangeToAnother =
+            cdg.delegator !== cdg.fromDelegate &&
+            cdg.delegator !== cdg.toDelegate;
+          if (entry.delegate.toLowerCase() === cdg.fromDelegate) {
+            if (
+              (cdg.delegator === cdg.toDelegate &&
+                cdg.fromDelegate !== zeroAddress) ||
+              isDelegateChangeToAnother
+            ) {
+              fromDelegate = cdg.delegator;
+              toDelegate = cdg.fromDelegate;
+            } else {
+              fromDelegate = cdg.fromDelegate;
+              toDelegate = cdg.delegator;
+            }
+          }
+          if (entry.delegate.toLowerCase() === cdg.toDelegate) {
+            fromDelegate = cdg.delegator;
+            toDelegate =
+              cdg.delegator === cdg.toDelegate ? cdg.delegator : cdg.toDelegate;
+          }
           const cdelegate = {
-            ...cdgB,
+            ...cdg,
             fromDelegate,
             toDelegate,
             power: BigInt(entry.newVotes) - BigInt(entry.previousVotes),
           };
-          console.log("check --------> ", cdgB, cdelegate);
+          console.log("check --------> ", cdg, cdelegate, entry);
           ds.pushDelegator(cdelegate);
           break;
         default:

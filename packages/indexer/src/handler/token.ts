@@ -112,20 +112,6 @@ export class TokenHandler {
     });
     await this.ctx.store.insert(delegateRolling);
 
-    const x: DelegateRolling | undefined = await this.ctx.store.findOne(
-      DelegateRolling,
-      {
-        where: {
-          transactionHash: eventLog.transactionHash,
-        },
-      }
-    );
-    this.ctx.log.info(
-      `Queried delegate rolling (store deledatechanged): ${_safeJsonStringify(
-        delegateRolling
-      )} => tx: ${eventLog.transactionHash}`
-    );
-
     // store self delegate
     if (
       entity.fromDelegate === zeroAddress &&
@@ -173,7 +159,22 @@ export class TokenHandler {
           transactionHash: options.transactionHash,
         },
       });
-    if (!delegateRolling) return;
+    if (!delegateRolling) {
+      this.ctx.log.debug(
+        `skipped delegate votes changed, because it's from transfer (checked no delegatechanged event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
+      );
+      return;
+    }
+    const dvcDelegate = options.delegate.toLowerCase();
+    if (
+      dvcDelegate !== delegateRolling.fromDelegate &&
+      dvcDelegate !== delegateRolling.toDelegate
+    ) {
+      this.ctx.log.debug(
+        `skipped delegate votes changed, because it's from transfer (checked no there is no matching delegated changed event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
+      );
+      return;
+    }
     this.ctx.log.info(
       `Queried delegate rolling (update rolling): ${_safeJsonStringify(
         delegateRolling
@@ -191,11 +192,12 @@ export class TokenHandler {
        toDelegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
      }
     */
-    const isDelegateChangeToAnother =
-      delegateRolling.delegator !== delegateRolling.fromDelegate &&
-      delegateRolling.delegator !== delegateRolling.toDelegate;
     let fromDelegate, toDelegate;
     if (options.delegate === delegateRolling.fromDelegate) {
+      const isDelegateChangeToAnother =
+        delegateRolling.delegator !== delegateRolling.fromDelegate &&
+        delegateRolling.delegator !== delegateRolling.toDelegate;
+
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
       // retuning power to self
