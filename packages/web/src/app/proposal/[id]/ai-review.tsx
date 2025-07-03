@@ -1,6 +1,15 @@
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+
 import { AiSummary } from "./ai-summary";
 
 export const AiReview = ({ id }: { id: string }) => {
+  const daoConfig = useDaoConfig();
+
+  // Only render AI review if aiAgent is configured
+  if (!daoConfig?.aiAgent?.endpoint) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-[20px]">
       <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
