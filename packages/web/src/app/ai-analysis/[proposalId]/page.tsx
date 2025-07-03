@@ -131,7 +131,7 @@ export default function AiAnalysisPage({
           <p className="text-red-500 mb-4">{error}</p>
           <button
             onClick={handleRefresh}
-            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+            className="px-4 py-2 bg-foreground text-background rounded-lg hover:bg-foreground/90"
           >
             Retry
           </button>
@@ -147,7 +147,7 @@ export default function AiAnalysisPage({
           <p className="text-text-secondary">No proposal data found</p>
           <button
             onClick={handleRefresh}
-            className="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+            className="mt-4 px-4 py-2 bg-foreground text-background rounded-lg hover:bg-foreground/90"
           >
             Retry
           </button>

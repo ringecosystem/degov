@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import type { ProposalItem } from "@/services/graphql/types";
 
@@ -14,11 +15,6 @@ type TabType = "content" | "votes" | "ai-review";
 interface TabsProps {
   data?: ProposalItem;
   isFetching: boolean;
-  proposalVotesData: {
-    againstVotes: bigint;
-    forVotes: bigint;
-    abstainVotes: bigint;
-  };
 }
 const contentVariants = {
   initial: { opacity: 0, y: 10 },
@@ -26,23 +22,32 @@ const contentVariants = {
   exit: { opacity: 0, y: -10 },
 };
 
-const tabConfig = [
-  {
-    key: "content" as TabType,
-    label: "Content",
-  },
-  {
-    key: "votes" as TabType,
-    label: "Votes",
-  },
-  {
-    key: "ai-review" as TabType,
-    label: "AI Review",
-  },
-];
-
 export const Tabs = ({ data, isFetching }: TabsProps) => {
   const [activeTab, setActiveTab] = useState<TabType>("content");
+  const daoConfig = useDaoConfig();
+
+  const tabConfig = useMemo(() => {
+    const baseTabs = [
+      {
+        key: "content" as TabType,
+        label: "Content",
+      },
+      {
+        key: "votes" as TabType,
+        label: "Votes",
+      },
+    ];
+
+    // Only show AI Review tab if aiAgent is configured
+    if (daoConfig?.aiAgent?.endpoint) {
+      baseTabs.push({
+        key: "ai-review" as TabType,
+        label: "AI Review",
+      });
+    }
+
+    return baseTabs;
+  }, [daoConfig?.aiAgent?.endpoint]);
 
   return (
     <div className="space-y-[20px]">

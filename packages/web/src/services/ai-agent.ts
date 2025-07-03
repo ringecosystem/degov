@@ -29,30 +29,16 @@ export const getProposalSummary = async (
 };
 
 /**
- * Extract short proposal ID from full proposal ID (first 11 characters)
- * Example: 0xd405fa55165a239bc26d7324dee1a30e9baa5fc257ac16233ba20cd204a56909 -> 0xd405fa5
- */
-export function getShortProposalId(fullProposalId: string): string {
-  if (!fullProposalId || !fullProposalId.startsWith("0x")) {
-    throw new Error("Invalid proposal ID format");
-  }
-
-  // Return first 11 characters (0x + 9 hex chars)
-  return fullProposalId.substring(0, 11);
-}
-
-/**
  * Fetch AI analysis data from DeGov.AI API
  * API format: {endpoint}/degov/vote/{chainId}/{shortProposalId}?format=json
  */
 export const getAiAnalysis = async (
   endpoint: string,
-  fullProposalId: string,
+  proposalId: string,
   chainId: number
 ): Promise<{ code: number; data: AiAnalysisData | null }> => {
   try {
-    const shortProposalId = getShortProposalId(fullProposalId);
-    const apiUrl = `${endpoint}/degov/vote/${chainId}/${shortProposalId}?format=json`;
+    const apiUrl = `${endpoint}/degov/vote/${chainId}/${proposalId}?format=json`;
 
     console.log(`Fetching AI analysis from: ${apiUrl}`);
 
@@ -72,8 +58,8 @@ export const getAiAnalysis = async (
 
     const data: AiAnalysisResponse = await response.json();
 
-    if (data.code === 0 && data.data && data.data.length > 0) {
-      return { code: data.code, data: data.data[0] };
+    if (data.code === 0 && data.data) {
+      return { code: data.code, data: data.data };
     }
 
     return { code: data.code || -1, data: null };

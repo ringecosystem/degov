@@ -284,11 +284,7 @@ export default function ProposalDetailPage() {
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px]">
-        <Tabs
-          data={data}
-          isFetching={isPending}
-          proposalVotesData={proposalVotesData}
-        />
+        <Tabs data={data} isFetching={isPending} />
         <div className="space-y-[20px]">
           <CurrentVotes
             proposalVotesData={proposalVotesData}

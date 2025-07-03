@@ -54,7 +54,8 @@ export const TabContent = ({
 
   return (
     <div className="flex flex-col gap-[20px]">
-      {data?.discussion || aiAnalysisData?.id ? (
+      {data?.discussion ||
+      (daoConfig?.aiAgent?.endpoint && aiAnalysisData?.id) ? (
         <div className="flex flex-col gap-[20px] p-[20px] rounded-[14px] bg-card">
           <div className="flex flex-col gap-[12px]">
             <h3 className="text-[26px] font-semibold text-foreground">
@@ -70,7 +71,7 @@ export const TabContent = ({
                 {data?.discussion}
               </a>
             )}
-            {!loading && aiAnalysisData?.id && (
+            {daoConfig?.aiAgent?.endpoint && !loading && aiAnalysisData?.id && (
               <a
                 href={`https://x.com/user/status/${aiAnalysisData.id}`}
                 target="_blank"
