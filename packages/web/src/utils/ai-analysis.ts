@@ -18,12 +18,11 @@ export function getShortProposalId(fullProposalId: string): string {
  * API format: https://agent.degov.ai/degov/vote/{chainId}/{shortProposalId}?format=json
  */
 export async function fetchAiAnalysisData(
-  fullProposalId: string,
+  proposalId: string,
   chainId: number = 46
 ): Promise<AiAnalysisData | null> {
   try {
-    const shortProposalId = getShortProposalId(fullProposalId);
-    const apiUrl = `https://agent.degov.ai/degov/vote/${chainId}/${shortProposalId}?format=json`;
+    const apiUrl = `https://agent.degov.ai/degov/vote/${chainId}/${proposalId}?format=json`;
 
     console.log(`Fetching AI analysis from: ${apiUrl}`);
 
@@ -43,8 +42,8 @@ export async function fetchAiAnalysisData(
 
     const data: AiAnalysisResponse = await response.json();
 
-    if (data.code === 0 && data.data && data.data.length > 0) {
-      return data.data[0];
+    if (data.code === 0 && data.data) {
+      return data.data;
     }
 
     return null;

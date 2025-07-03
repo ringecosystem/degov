@@ -156,5 +156,5 @@ export interface AiAnalysisData {
 
 export interface AiAnalysisResponse {
   code: number;
-  data: AiAnalysisData[];
+  data: AiAnalysisData;
 }

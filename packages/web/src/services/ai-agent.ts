@@ -47,12 +47,11 @@ export function getShortProposalId(fullProposalId: string): string {
  */
 export const getAiAnalysis = async (
   endpoint: string,
-  fullProposalId: string,
+  proposalId: string,
   chainId: number
 ): Promise<{ code: number; data: AiAnalysisData | null }> => {
   try {
-    const shortProposalId = getShortProposalId(fullProposalId);
-    const apiUrl = `${endpoint}/degov/vote/${chainId}/${shortProposalId}?format=json`;
+    const apiUrl = `${endpoint}/degov/vote/${chainId}/${proposalId}?format=json`;
 
     console.log(`Fetching AI analysis from: ${apiUrl}`);
 
@@ -72,8 +71,8 @@ export const getAiAnalysis = async (
 
     const data: AiAnalysisResponse = await response.json();
 
-    if (data.code === 0 && data.data && data.data.length > 0) {
-      return { code: data.code, data: data.data[0] };
+    if (data.code === 0 && data.data) {
+      return { code: data.code, data: data.data };
     }
 
     return { code: data.code || -1, data: null };
