@@ -49,10 +49,11 @@ function processIndex(config: DegovConfig) {
                 await new TokenHandler(ctx, indexContract).handle(event);
                 break;
             }
-          } finally {
+          } catch (e) {
             ctx.log.warn(
-              `unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}`
+              `(evm) unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}, reason: ${e}, stopped from ${ctx.blocks[0].header.height} block`
             );
+            throw e;
           }
         }
       }

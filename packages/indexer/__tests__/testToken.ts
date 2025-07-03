@@ -1,6 +1,35 @@
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 // 0xf25f97f6f7657a210daeb1cd6042b769fae95488
+/*
+delegates:  [
+  {
+    delegator: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    fromDelegate: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    toDelegate: '0x92e9fb99e99d79bc47333e451e7c6490dbf24b22',
+    power: 20000000000000000000n,
+    id: '0xf25f97f6f7657a210daeb1cd6042b769fae95488_0x92e9fb99e99d79bc47333e451e7c6490dbf24b22'
+  }
+]
+
+mapping:  [
+  {
+    id: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    from: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    to: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9'
+  },
+  {
+    id: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    from: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    to: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab'
+  },
+  {
+    id: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    from: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    to: '0x92e9fb99e99d79bc47333e451e7c6490dbf24b22'
+  }
+]
+*/
 const recordsFor_0xf25f97f = [
   [
     {
@@ -263,6 +292,44 @@ const recordsFor_0xf25f97f = [
 ];
 
 // 0x92e9fb99e99d79bc47333e451e7c6490dbf24b22
+/*
+delegates:  [
+  {
+    delegator: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    fromDelegate: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    toDelegate: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    power: -25000000000000000000n,
+    id: '0xf25f97f6f7657a210daeb1cd6042b769fae95488_0xf25f97f6f7657a210daeb1cd6042b769fae95488'
+  },
+  {
+    delegator: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    fromDelegate: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    toDelegate: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    power: -20000000000000000000n,
+    id: '0xf25f97f6f7657a210daeb1cd6042b769fae95488_0x3e8436e87abb49efe1a958ee73fbb7a12b419aab'
+  },
+  {
+    delegator: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    fromDelegate: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    toDelegate: '0x92e9fb99e99d79bc47333e451e7c6490dbf24b22',
+    power: 20000000000000000000n,
+    id: '0xf25f97f6f7657a210daeb1cd6042b769fae95488_0x92e9fb99e99d79bc47333e451e7c6490dbf24b22'
+  }
+]
+
+mapping:  [
+  {
+    id: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    from: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    to: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9'
+  },
+  {
+    id: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    from: '0xf25f97f6f7657a210daeb1cd6042b769fae95488',
+    to: '0x92e9fb99e99d79bc47333e451e7c6490dbf24b22'
+  }
+]
+ */
 const recordsFor_0x92e9fb9 = [
   [
     {
@@ -377,6 +444,25 @@ const recordsFor_0x92e9fb9 = [
 ];
 
 // 0xa23d90f2fb496f3055d3d96a2dc991e9133efee9
+/**
+delegates:  [
+  {
+    delegator: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    fromDelegate: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    toDelegate: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    power: 35000000000000000000n,
+    id: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9_0x3e8436e87abb49efe1a958ee73fbb7a12b419aab'
+  }
+]
+
+mapping:  [
+  {
+    id: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    from: '0xa23d90f2fb496f3055d3d96a2dc991e9133efee9',
+    to: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab'
+  }
+]
+ */
 const recordsFor_0xa23d90f = [
   [
     {
@@ -536,6 +622,36 @@ const recordsFor_0xa23d90f = [
   ],
 ];
 
+/**
+delegates:  [
+  {
+    delegator: '0xc1c8f6ef43b39c279417e361969d535f2a20b92e',
+    fromDelegate: '0xc1c8f6ef43b39c279417e361969d535f2a20b92e',
+    toDelegate: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d',
+    power: 8385000000000000000000000n,
+    id: '0xc1c8f6ef43b39c279417e361969d535f2a20b92e_0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d'
+  },
+  {
+    fromDelegate: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d',
+    toDelegate: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d',
+    power: 0n,
+    id: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d_0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d'
+  }
+]
+  
+mapping:  [
+  {
+    id: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d',
+    from: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d',
+    to: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d'
+  },
+  {
+    id: '0xc1c8f6ef43b39c279417e361969d535f2a20b92e',
+    from: '0xc1c8f6ef43b39c279417e361969d535f2a20b92e',
+    to: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d'
+  }
+]
+ */
 const recordsFor_0xebd9a48 = [
   [
     {
@@ -1189,6 +1305,44 @@ const recordsFor_0xebd9a48 = [
 ];
 
 // 0x9Fc3d617873c95D8dd8DbBDb8377A16cf11376eE
+/**
+delegates:  [
+  {
+    fromDelegate: '0x9fc3d617873c95d8dd8dbbdb8377a16cf11376ee',
+    toDelegate: '0x9fc3d617873c95d8dd8dbbdb8377a16cf11376ee',
+    power: 0n,
+    id: '0x9fc3d617873c95d8dd8dbbdb8377a16cf11376ee_0x9fc3d617873c95d8dd8dbbdb8377a16cf11376ee'
+  },
+  {
+    delegator: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    fromDelegate: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    toDelegate: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    power: -30000000000000000000n,
+    id: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab_0x3e8436e87abb49efe1a958ee73fbb7a12b419aab'
+  },
+  {
+    delegator: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    fromDelegate: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    toDelegate: '0x92e9fb99e99d79bc47333e451e7c6490dbf24b22',
+    power: 30000000000000000000n,
+    id: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab_0x92e9fb99e99d79bc47333e451e7c6490dbf24b22'
+  }
+]
+
+
+mapping:  [
+  {
+    id: '0x9fc3d617873c95d8dd8dbbdb8377a16cf11376ee',
+    from: '0x9fc3d617873c95d8dd8dbbdb8377a16cf11376ee',
+    to: '0x9fc3d617873c95d8dd8dbbdb8377a16cf11376ee'
+  },
+  {
+    id: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    from: '0x3e8436e87abb49efe1a958ee73fbb7a12b419aab',
+    to: '0x92e9fb99e99d79bc47333e451e7c6490dbf24b22'
+  }
+]
+ */
 const recordsFor_0x9Fc3d61 = [
   [
     {
@@ -1265,6 +1419,24 @@ const recordsFor_0x9Fc3d61 = [
 ];
 
 // 0xb25805118F1b471844687A1D1374ffb18207De6c
+/**
+delegates:  [
+  {
+    fromDelegate: '0xb25805118f1b471844687a1d1374ffb18207de6c',
+    toDelegate: '0xb25805118f1b471844687a1d1374ffb18207de6c',
+    power: 0n,
+    id: '0xb25805118f1b471844687a1d1374ffb18207de6c_0xb25805118f1b471844687a1d1374ffb18207de6c'
+  }
+]
+
+mapping:  [
+  {
+    id: '0xb25805118f1b471844687a1d1374ffb18207de6c',
+    from: '0xb25805118f1b471844687a1d1374ffb18207de6c',
+    to: '0xb25805118f1b471844687a1d1374ffb18207de6c'
+  }
+]
+ */
 const recordsFor_0xb258051 = [
   [
     {
@@ -1273,13 +1445,160 @@ const recordsFor_0xb258051 = [
       fromDelegate: "0x0000000000000000000000000000000000000000",
       toDelegate: "0xb25805118F1b471844687A1D1374ffb18207De6c",
       blockNumber: "6608398",
-      txHash: "0xb1272dcd1a95f7b26823f452a09dfe6294482aa6d6bbf147cd86880e3aeba17d",
+      txHash:
+        "0xb1272dcd1a95f7b26823f452a09dfe6294482aa6d6bbf147cd86880e3aeba17d",
     },
   ],
 ];
 
+//# uniswap compound records
+//# https://etherscan.io/tx/0x4c6efccf3f03a5618bac7194cccf9d6fdb84f7bfdae75102f1736c6fade22d3d#eventlog
+//# https://docs.tally.xyz/set-up-and-technical-documentation/deploying-daos/smart-contract-compatibility/compound-governor-bravo
+//# https://docs.tally.xyz/set-up-and-technical-documentation/deploying-daos/smart-contract-compatibility/openzeppelin-governor
+/**
+delegates:  [
+  {
+    fromDelegate: '0xf665f2ed351696817898fe0ace20c5c1bc3c5796',
+    toDelegate: '0xf665f2ed351696817898fe0ace20c5c1bc3c5796',
+    power: 2656182531244817051458n,
+    id: '0xf665f2ed351696817898fe0ace20c5c1bc3c5796_0xf665f2ed351696817898fe0ace20c5c1bc3c5796'
+  },
+  {
+    delegator: '0x0f60f8ad6f587561605c7980c5c044b6e809829a',
+    fromDelegate: '0x0f60f8ad6f587561605c7980c5c044b6e809829a',
+    toDelegate: '0xb63308cb3d88c298ed0e76f8044a731bafef0934',
+    power: 10000000000000000000n,
+    id: '0x0f60f8ad6f587561605c7980c5c044b6e809829a_0xb63308cb3d88c298ed0e76f8044a731bafef0934'
+  }
+]
+
+mapping:  [
+  {
+    id: '0xf665f2ed351696817898fe0ace20c5c1bc3c5796',
+    from: '0xf665f2ed351696817898fe0ace20c5c1bc3c5796',
+    to: '0xf665f2ed351696817898fe0ace20c5c1bc3c5796'
+  },
+  {
+    id: '0x0f60f8ad6f587561605c7980c5c044b6e809829a',
+    from: '0x0f60f8ad6f587561605c7980c5c044b6e809829a',
+    to: '0xb63308cb3d88c298ed0e76f8044a731bafef0934'
+  }
+]
+ */
+const recordsFor_0x0F60F8a = [
+  [
+    // mock
+    {
+      method: "DelegateChanged",
+      delegator: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+      previousVotes: 0n,
+      newVotes: 2676182531244817051458n,
+    },
+
+    // ===
+    {
+      method: "DelegateChanged",
+      delegator: "0x0F60F8aD6F587561605c7980C5c044b6e809829A",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xB63308CB3d88c298eD0E76f8044a731BAFeF0934",
+    },
+    {
+      method: "Transfer",
+      from: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+      to: "0x0F60F8aD6F587561605c7980C5c044b6e809829A",
+      value: 10000000000000000000n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0xf665F2eD351696817898fe0Ace20c5C1Bc3c5796",
+      previousVotes: 2676182531244817051458n,
+      newVotes: 2666182531244817051458n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0xB63308CB3d88c298eD0E76f8044a731BAFeF0934",
+      previousVotes: 0n,
+      newVotes: 1000000000000000000n,
+    },
+  ],
+];
+
+// const recordsFor_0xc183602 = [
+//   // mock
+//   [
+//     {
+//       method: "DelegateChanged",
+//       delegator: "0x1F3D3A7A9c548bE39539b39D7400302753E20591",
+//       fromDelegate: "0x0000000000000000000000000000000000000000",
+//       toDelegate: "0x1F3D3A7A9c548bE39539b39D7400302753E20591",
+//     },
+//     {
+//       method: "DelegateVotesChanged",
+//       delegate: "0x1F3D3A7A9c548bE39539b39D7400302753E20591",
+//       previousVotes: 0n,
+//       newVotes: 5032302606544916775545n,
+//     },
+//   ],
+//   [
+//     {
+//       method: "DelegateChanged",
+//       delegator: "0x9de403Ef57b032afa295fEFc65057365EfEfD3C3",
+//       fromDelegate: "0x0000000000000000000000000000000000000000",
+//       toDelegate: "0x1F3D3A7A9c548bE39539b39D7400302753E20591",
+//     },
+//     {
+//       method: "Transfer",
+//       from: "0x73cD8626b3cD47B009E68380720CFE6679A3Ec3D",
+//       to: "0x9de403Ef57b032afa295fEFc65057365EfEfD3C3",
+//       value: 15000000000000000000000n,
+//     },
+//     {
+//       method: "DelegateVotesChanged",
+//       delegate: "0x1F3D3A7A9c548bE39539b39D7400302753E20591",
+//       previousVotes: 5032302606544916775545n,
+//       newVotes: 20032302606544916775545n,
+//     },
+//     {
+//       method: "Transfer",
+//       from: "0x04b05BD584a414cd87796e2c536b4161E5A3CA0a",
+//       to: "0x000ee9A6Bcec9AadCc883bD52B2c9A75FB098991",
+//       value: 519953196347027812164n,
+//     },
+//     {
+//       method: "Transfer",
+//       from: "0x9de403Ef57b032afa295fEFc65057365EfEfD3C3",
+//       to: "0x000ee9A6Bcec9AadCc883bD52B2c9A75FB098991",
+//       value: 4842414145738195837622n,
+//     },
+//     {
+//       method: "Transfer",
+//       from: "0x000ee9A6Bcec9AadCc883bD52B2c9A75FB098991",
+//       to: "0x53fa6D5428f16e4e8b67Ff29B5C95aa53239c653",
+//       value: 5300000000000000000000n,
+//     },
+//     {
+//       method: "DelegateVotesChanged",
+//       delegate: "0x1F3D3A7A9c548bE39539b39D7400302753E20591",
+//       previousVotes: 20032302606544916775545n,
+//       newVotes: 14732302606544916775545n,
+//     },
+//     {
+//       method: "DelegateVotesChanged",
+//       delegate: "0xD4A46A9ef66d7352790f131FE49e7CF84ae68B55",
+//       previousVotes: 0n,
+//       newVotes: 5300000000000000000000n,
+//     },
+//   ],
+// ];
+
 test("testTokens", () => {
-  const records = recordsFor_0xb258051;
+  const records = recordsFor_0x92e9fb9;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -1294,6 +1613,7 @@ test("testTokens", () => {
             to: entry.to.toLowerCase(),
             value: BigInt(entry.value),
           });
+          cdg = null; // reset cdg after transfer
           break;
         case "delegatechanged":
           cdg = {
@@ -1316,9 +1636,9 @@ test("testTokens", () => {
           break;
         case "delegatevoteschanged":
           if (!cdg) {
-            // console.log(
-            //   "skipped delegate votes changed, because it's from transfer"
-            // );
+            console.log(
+              "skipped delegate votes changed, because it's from transfer"
+            );
             break;
           }
           let fromDelegate, toDelegate;
@@ -1349,7 +1669,7 @@ test("testTokens", () => {
             toDelegate,
             power: BigInt(entry.newVotes) - BigInt(entry.previousVotes),
           };
-          console.log("--------> ", cdg, cdelegate);
+          console.log("check --------> ", cdg, cdelegate, entry);
           ds.pushDelegator(cdelegate);
           break;
         default:

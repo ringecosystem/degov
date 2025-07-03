@@ -41,6 +41,7 @@ export class TokenHandler {
       eventLog.topics.findIndex(
         (item) => item === itokenAbi.events.DelegateChanged.topic
       ) != -1;
+
     if (isDelegateChanged) {
       await this.storeDelegateChanged(eventLog);
     }
@@ -71,6 +72,11 @@ export class TokenHandler {
   private async storeDelegateChanged(eventLog: Log) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
+    this.ctx.log.info(
+      `Received delegate chanaged event: ${_safeJsonStringify(event)}, at ${
+        eventLog.block.height
+      }, tx: ${eventLog.transactionHash}`
+    );
     const entity = new DelegateChanged({
       id: eventLog.id,
       delegator: event.delegator,
@@ -126,6 +132,11 @@ export class TokenHandler {
   private async storeDelegateVotesChanged(eventLog: Log) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
+    this.ctx.log.info(
+      `Received delegate votes changed event: ${_safeJsonStringify(
+        event
+      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
+    );
     const entity = new DelegateVotesChanged({
       id: eventLog.id,
       delegate: event.delegate,
@@ -148,7 +159,29 @@ export class TokenHandler {
           transactionHash: options.transactionHash,
         },
       });
-    if (!delegateRolling) return;
+    if (!delegateRolling) {
+      this.ctx.log.debug(
+        `skipped delegate votes changed, because it's from transfer (checked no delegatechanged event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
+      );
+      return;
+    }
+    const dvcDelegate = options.delegate.toLowerCase();
+    if (
+      dvcDelegate !== delegateRolling.fromDelegate &&
+      dvcDelegate !== delegateRolling.toDelegate
+    ) {
+      this.ctx.log.debug(
+        `skipped delegate votes changed, because it's from transfer (checked no there is no matching delegated changed event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
+      );
+      return;
+    }
+    this.ctx.log.info(
+      `Queried delegate rolling (update rolling): ${_safeJsonStringify(
+        delegateRolling
+      )} options: ${_safeJsonStringify(options)} => tx: ${
+        options.transactionHash
+      }`
+    );
 
     /*
     // delegate change b to c
@@ -159,11 +192,12 @@ export class TokenHandler {
        toDelegate: "0x92e9Fb99E99d79Bc47333E451e7c6490dbf24b22",
      }
     */
-    const isDelegateChangeToAnother =
-      delegateRolling.delegator !== delegateRolling.fromDelegate &&
-      delegateRolling.delegator !== delegateRolling.toDelegate;
     let fromDelegate, toDelegate;
     if (options.delegate === delegateRolling.fromDelegate) {
+      const isDelegateChangeToAnother =
+        delegateRolling.delegator !== delegateRolling.fromDelegate &&
+        delegateRolling.delegator !== delegateRolling.toDelegate;
+
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
       // retuning power to self
@@ -210,6 +244,11 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
 
     const event = itokenAbi.events.Transfer.decode(eventLog);
+    this.ctx.log.info(
+      `Received token transfer event: ${_safeJsonStringify(event)}, at ${
+        eventLog.block.height
+      }, tx: ${eventLog.transactionHash}`
+    );
     const entity = new TokenTransfer({
       id: eventLog.id,
       from: event.from,
@@ -262,6 +301,11 @@ export class TokenHandler {
   }
 
   private async storeDelegate(currentDelegate: Delegate, options?: {}) {
+    if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
+      this.ctx.log.warn(
+        `Delegate from or to is not set. ${_safeJsonStringify(currentDelegate)}`
+      );
+    }
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
     currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
@@ -394,4 +438,16 @@ export class TokenHandler {
     dm.memberCount = (dm.memberCount ?? 0) + 1;
     await this.ctx.store.save(dm);
   }
+}
+
+function _safeJsonStringify(
+  value: any,
+  replacer: (key: string, value: any) => any = (_, v) => v
+): string {
+  return JSON.stringify(value, (_, v) => {
+    if (typeof v === "bigint") {
+      return v.toString();
+    }
+    return v;
+  });
 }
