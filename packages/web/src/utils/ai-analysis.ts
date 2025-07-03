@@ -1,19 +1,6 @@
 import type { AiAnalysisResponse, AiAnalysisData } from "@/types/ai-analysis";
 
 /**
- * Extract short proposal ID from full proposal ID (first 11 characters)
- * Example: 0xd405fa55165a239bc26d7324dee1a30e9baa5fc257ac16233ba20cd204a56909 -> 0xd405fa5
- */
-export function getShortProposalId(fullProposalId: string): string {
-  if (!fullProposalId || !fullProposalId.startsWith("0x")) {
-    throw new Error("Invalid proposal ID format");
-  }
-
-  // Return first 11 characters (0x + 9 hex chars)
-  return fullProposalId.substring(0, 11);
-}
-
-/**
  * Fetch AI analysis data from DeGov.AI API
  * API format: https://agent.degov.ai/degov/vote/{chainId}/{shortProposalId}?format=json
  */
