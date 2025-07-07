@@ -73,8 +73,11 @@ apps:
   - name: RING Token Wrap
     description: Convert back and forth between the native token and the wrapped governance token
     icon: https://raw.githubusercontent.com/ringecosystem/degov/refs/heads/main/packages/web/public/example/logo.svg
-    link: https://degov-dev.vercel.app/tools/token-wrap
-  - name: Another Tool
-    description: This is another tool for testing purposes.
-    icon: https://raw.githubusercontent.com/ringecosystem/degov/refs/heads/main/packages/web/public/example/logo.svg
-    link: https://degov-dev.vercel.app/tools/another-tool
+    link: https://degov-dev.vercel.app/tools/token-wrap?config=https://demo.degov.ai/degov.yml
+    params:
+      sourceToken:
+        address: '0x48C817eebE1fD79F946bd6b976EF579540517121'
+        icon: '/example/token.svg'
+      wrapToken:
+        address: '0x0ef0827A9d5D329DFbaA14c7d5Aae364453A4D32'
+        icon: '/example/token.svg'
