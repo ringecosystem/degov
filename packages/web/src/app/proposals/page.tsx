@@ -73,69 +73,69 @@ function ProposalsContent() {
 
   return (
     <div className="flex flex-col gap-[20px]">
-      <div className="flex items-center justify-between gap-[20px]">
-        <h3 className="text-[18px] font-extrabold">Onchain Proposals</h3>
+      <div className="flex items-start gap-[20px]">
+        <div className="flex-1 flex flex-col gap-[20px]">
+          <div className="flex items-center justify-between gap-[20px]">
+            <h3 className="text-[18px] font-extrabold">Onchain Proposals</h3>
 
-        <div className="flex items-center gap-[20px]">
-          {isConnected && (
-            <>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="my-proposals"
-                  checked={isMyProposals}
-                  onCheckedChange={handleMyProposalsChange}
-                />
-                <label
-                  htmlFor="my-proposals"
-                  className="cursor-pointer text-[14px] font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  My Proposals
-                </label>
-              </div>
-              <Select
-                value={support}
-                onValueChange={handleSupportChange}
-                disabled={!isMyProposals}
+            <div className="flex items-center gap-[20px]">
+              {isConnected && (
+                <>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="my-proposals"
+                      checked={isMyProposals}
+                      onCheckedChange={handleMyProposalsChange}
+                    />
+                    <label
+                      htmlFor="my-proposals"
+                      className="cursor-pointer text-[14px] font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      My Proposals
+                    </label>
+                  </div>
+                  <Select
+                    value={support}
+                    onValueChange={handleSupportChange}
+                    disabled={!isMyProposals}
+                  >
+                    <SelectTrigger className="w-[130px] rounded-[100px] border border-border px-[10px]">
+                      <SelectValue placeholder="Select Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="1">Vote For</SelectItem>
+                        <SelectItem value="0">Vote Against</SelectItem>
+                        <SelectItem value="2">Vote Abstain</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+
+              <Button
+                className="flex items-center gap-[5px] rounded-[100px]"
+                onClick={() => router.push("/proposals/new")}
               >
-                <SelectTrigger className="w-[130px] rounded-[100px] border border-border px-[10px]">
-                  <SelectValue placeholder="Select Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="1">Vote For</SelectItem>
-                    <SelectItem value="0">Vote Against</SelectItem>
-                    <SelectItem value="2">Vote Abstain</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </>
-          )}
-
-          <Button
-            className="flex items-center gap-[5px] rounded-[100px]"
-            onClick={() => router.push("/proposals/new")}
-          >
-            <Image
-              src="/assets/image/light/plus.svg"
-              alt="plus"
-              width={20}
-              height={20}
-              className="size-[20px] block dark:hidden"
-            />
-            <Image
-              src="/assets/image/plus.svg"
-              alt="plus"
-              width={20}
-              height={20}
-              className="size-[20px] hidden dark:block"
-            />
-            New Proposal
-          </Button>
-        </div>
-      </div>
-      <div className="flex items-start gap-[10px]">
-        <div className="flex-1">
+                <Image
+                  src="/assets/image/light/plus.svg"
+                  alt="plus"
+                  width={20}
+                  height={20}
+                  className="size-[20px] block dark:hidden"
+                />
+                <Image
+                  src="/assets/image/plus.svg"
+                  alt="plus"
+                  width={20}
+                  height={20}
+                  className="size-[20px] hidden dark:block"
+                />
+                New Proposal
+              </Button>
+            </div>
+          </div>
           <ProposalsTable
             type="all"
             address={

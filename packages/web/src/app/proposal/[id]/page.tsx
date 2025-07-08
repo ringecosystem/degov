@@ -224,67 +224,70 @@ export default function ProposalDetailPage() {
         <span>Proposal</span>
       </div>
 
-      <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-        <div className="flex items-center justify-between gap-[20px]">
-          {isPending ? (
-            <Skeleton className="h-[37px] w-[100px]" />
-          ) : (
-            <ProposalStatus status={proposalStatus?.data as ProposalState} />
-          )}
-
-          <ActionGroup
-            data={data}
-            status={proposalStatus?.data as ProposalState}
-            proposalQueuedById={proposalQueuedById}
-            isAllQueriesFetching={isAllQueriesFetching}
-            onRefetch={refetchPageData}
-          />
-        </div>
-
-        <h2 className="text-[36px] font-extrabold flex items-center gap-[10px]">
-          {isPending ? (
-            <Skeleton className="h-[36px] w-[200px]" />
-          ) : (
-            extractTitleAndDescription(data?.description)?.title
-          )}
-          <ClipboardIconButton
-            text={`${window.location.origin}/proposal/${id}`}
-            size={20}
-            copyText="Copy link"
-          />
-        </h2>
-
-        {isPending ? (
-          <Skeleton className="h-[24px] w-[80%] my-1" />
-        ) : (
-          <div className="flex items-center gap-[5px]">
-            <div className="flex items-center gap-[5px]">
-              <span>Proposed by</span>
-              {!!data?.proposer && (
-                <AddressWithAvatar
-                  address={data?.proposer as `0x${string}`}
-                  avatarSize={24}
-                  className="gap-[5px] font-semibold"
+      <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px]">
+        <div className="flex flex-col gap-[20px]">
+          <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+            <div className="flex items-center justify-between gap-[20px]">
+              {isPending ? (
+                <Skeleton className="h-[37px] w-[100px]" />
+              ) : (
+                <ProposalStatus
+                  status={proposalStatus?.data as ProposalState}
                 />
               )}
-            </div>
-            <span className="text-foreground">
-              On{" "}
-              <Link
-                href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline font-semibold"
-              >
-                {formatTimestampToFriendlyDate(data?.blockTimestamp)}
-              </Link>
-            </span>
-          </div>
-        )}
-      </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px]">
-        <Tabs data={data} isFetching={isPending} />
+              <ActionGroup
+                data={data}
+                status={proposalStatus?.data as ProposalState}
+                proposalQueuedById={proposalQueuedById}
+                isAllQueriesFetching={isAllQueriesFetching}
+                onRefetch={refetchPageData}
+              />
+            </div>
+
+            <h2 className="text-[36px] font-extrabold flex items-center gap-[10px]">
+              {isPending ? (
+                <Skeleton className="h-[36px] w-[200px]" />
+              ) : (
+                extractTitleAndDescription(data?.description)?.title
+              )}
+              <ClipboardIconButton
+                text={`${window.location.origin}/proposal/${id}`}
+                size={20}
+                copyText="Copy link"
+              />
+            </h2>
+
+            {isPending ? (
+              <Skeleton className="h-[24px] w-[80%] my-1" />
+            ) : (
+              <div className="flex items-center gap-[5px]">
+                <div className="flex items-center gap-[5px]">
+                  <span>Proposed by</span>
+                  {!!data?.proposer && (
+                    <AddressWithAvatar
+                      address={data?.proposer as `0x${string}`}
+                      avatarSize={24}
+                      className="gap-[5px] font-semibold"
+                    />
+                  )}
+                </div>
+                <span className="text-foreground">
+                  On{" "}
+                  <Link
+                    href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:underline font-semibold"
+                  >
+                    {formatTimestampToFriendlyDate(data?.blockTimestamp)}
+                  </Link>
+                </span>
+              </div>
+            )}
+          </div>
+          <Tabs data={data} isFetching={isPending} />
+        </div>
         <div className="space-y-[20px]">
           <CurrentVotes
             proposalVotesData={proposalVotesData}
