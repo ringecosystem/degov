@@ -170,6 +170,7 @@ export const contributorService = {
       where?: {
         id_in?: string[];
         id_not_eq?: string;
+        id_eq?: string;
       };
     } = {
       limit: 10,
