@@ -212,7 +212,7 @@ export default function ProposalDetailPage() {
     return <NotFound />;
   }
   return (
-    <div className="flex w-full flex-col gap-[20px] ">
+    <div className="flex w-full flex-col gap-[20px] h-full min-h-0">
       <div className="flex items-center gap-1 text-[18px] font-extrabold">
         <Link
           className="text-muted-foreground hover:underline"
@@ -224,8 +224,8 @@ export default function ProposalDetailPage() {
         <span>Proposal</span>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px]">
-        <div className="flex flex-col gap-[20px]">
+      <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px] flex-1 min-h-0">
+        <div className="flex flex-col gap-[20px] min-h-0">
           <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
             <div className="flex items-center justify-between gap-[20px]">
               {isPending ? (
@@ -286,7 +286,9 @@ export default function ProposalDetailPage() {
               </div>
             )}
           </div>
-          <Tabs data={data} isFetching={isPending} />
+          <div className="flex-1 min-h-0">
+            <Tabs data={data} isFetching={isPending} />
+          </div>
         </div>
         <div className="space-y-[20px]">
           <CurrentVotes

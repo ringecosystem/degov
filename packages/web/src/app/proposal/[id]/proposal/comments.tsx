@@ -183,15 +183,16 @@ export const Comments = ({ comments, id }: CommentsProps) => {
   }, [formatTokenAmount, totalVotingPower]);
 
   return (
-    <div className="rounded-[14px] bg-card p-[20px]">
+    <div className="rounded-[14px] bg-card p-[20px] flex flex-col h-full min-h-0">
       <CustomTable
         dataSource={comments ?? []}
         columns={columns}
         isLoading={false}
         emptyText="No votes yet"
         rowKey="id"
-        maxHeight="500px"
+        maxHeight="100%"
         tableClassName="table-fixed"
+        bodyClassName="flex-1 min-h-0"
       />
       <CommentModal
         open={!!currentCommentRow?.reason}

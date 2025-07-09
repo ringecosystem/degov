@@ -50,9 +50,9 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
   }, [daoConfig?.aiAgent?.endpoint]);
 
   return (
-    <div className="space-y-[20px]">
+    <div className="flex flex-col h-full min-h-0">
       {/* Tab Navigation */}
-      <div className="border-b border-border/20">
+      <div className="border-b border-border/20 mb-[20px]">
         <div className="flex gap-[32px]">
           {tabConfig.map((tab) => (
             <button
@@ -87,13 +87,22 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
           exit="exit"
           variants={contentVariants}
           transition={{ duration: DEFAULT_ANIMATION_DURATION }}
+          className={cn(
+            "flex-1 min-h-0",
+            activeTab === "votes" && "flex flex-col"
+          )}
         >
           {activeTab === "content" && (
             <TabContent data={data} isFetching={isFetching} />
           )}
 
           {activeTab === "votes" && (
-            <Comments comments={data?.voters} id={data?.proposalId as string} />
+            <div className="flex-1 min-h-0">
+              <Comments
+                comments={data?.voters}
+                id={data?.proposalId as string}
+              />
+            </div>
           )}
 
           {activeTab === "ai-review" && (

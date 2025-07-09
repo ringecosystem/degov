@@ -95,7 +95,7 @@ export function CustomTable<T extends Record<string, unknown>>({
   }, [columns, loadingRows, loadingHeight]);
 
   return (
-    <div>
+    <div className="flex flex-col h-full min-h-0">
       <Table className={cn(tableClassName)}>
         <TableHeader>
           <TableRow>
@@ -117,7 +117,10 @@ export function CustomTable<T extends Record<string, unknown>>({
       </Table>
 
       <div
-        className={cn("overflow-y-auto custom-scrollbar", bodyClassName)}
+        className={cn(
+          "overflow-y-auto custom-scrollbar flex-1 min-h-0",
+          bodyClassName
+        )}
         style={{ maxHeight }}
       >
         <Table className={cn(tableClassName)}>
