@@ -39,7 +39,7 @@ export const Proposals = () => {
                     height={20}
                     className="hidden dark:block"
                   />
-                  Join the Discussion
+                  Join Discussion
                 </Link>
               </Button>
             ) : null}
