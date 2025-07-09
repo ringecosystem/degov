@@ -67,11 +67,11 @@ export default function Members() {
 
   return (
     <div className="flex flex-col gap-[20px]">
-      <div className="flex items-center justify-between gap-[20px]">
-        <h3 className="text-[18px] font-extrabold">Delegates</h3>
-      </div>
-      <div className="flex items-start gap-[10px]">
-        <div className="flex-1">
+      <div className="flex items-start gap-[20px]">
+        <div className="flex-1 flex flex-col gap-[20px]">
+          <div className="flex items-center justify-between gap-[20px]">
+            <h3 className="text-[18px] font-extrabold">Delegates</h3>
+          </div>
           <MembersTable onDelegate={handleDelegate} />
         </div>
         <div className="flex flex-col gap-[20px]">
