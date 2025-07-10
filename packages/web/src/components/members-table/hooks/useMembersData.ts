@@ -7,12 +7,38 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { contributorService, memberService } from "@/services/graphql";
 import type { ContributorItem, Member } from "@/services/graphql/types";
 
-export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
+export function useMembersData(pageSize = DEFAULT_PAGE_SIZE, searchTerm = "") {
   const daoConfig = useDaoConfig();
   const { botAddress } = useAiBotAddress();
+  const isSearching = searchTerm.trim().length > 0;
+
   const membersQuery = useInfiniteQuery({
-    queryKey: ["members", pageSize, daoConfig?.indexer?.endpoint, botAddress],
+    queryKey: [
+      "members",
+      pageSize,
+      daoConfig?.indexer?.endpoint,
+      botAddress,
+      searchTerm,
+      isSearching,
+    ],
     queryFn: async ({ pageParam }) => {
+      // If searching, use exact match or return empty result for non-matches
+      if (isSearching) {
+        // For exact address match, search with id_eq
+        const result = await contributorService.getAllContributors(
+          daoConfig?.indexer?.endpoint ?? "",
+          {
+            limit: 1,
+            offset: 0,
+            where: {
+              id_eq: searchTerm ? searchTerm?.toLowerCase()?.trim() : undefined,
+            },
+          }
+        );
+        return result;
+      }
+
+      // Normal pagination when not searching
       const result = await contributorService.getAllContributors(
         daoConfig?.indexer?.endpoint ?? "",
         {
@@ -27,7 +53,12 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE) {
       return result;
     },
     initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages, lastPageParam) => {
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
+      // If searching, no pagination
+      if (isSearching) {
+        return undefined;
+      }
+
       // If no data or less than page size, no more pages
       if (!lastPage || lastPage.length < DEFAULT_PAGE_SIZE) {
         return undefined;

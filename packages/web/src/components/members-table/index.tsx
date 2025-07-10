@@ -21,14 +21,17 @@ import type { ColumnType } from "../custom-table";
 interface MembersTableProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
+  searchTerm?: string;
 }
 
 export function MembersTable({
   onDelegate,
   pageSize = DEFAULT_PAGE_SIZE,
+  searchTerm = "",
 }: MembersTableProps) {
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
+
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
     queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
@@ -39,19 +42,25 @@ export function MembersTable({
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
     profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
-  } = useMembersData(pageSize);
+  } = useMembersData(pageSize, searchTerm);
 
   // Fetch AI bot contributor data separately and prepend when available (only on the first page)
   const { data: botMember } = useBotMemberData();
 
   const dataSource = useMemo<ContributorItem[]>(() => {
+    // When searching, return members as-is (already filtered by API)
+    if (searchTerm) {
+      return members;
+    }
+
+    // When not searching, prepend bot member if available
     if (botMember) {
-      // Ensure no duplication (members already excludes bot address in most cases but safe-guard)
       const withoutBot = members.filter((m) => m.id !== botMember.id);
       return [botMember, ...withoutBot];
     }
+
     return members;
-  }, [botMember, members]);
+  }, [botMember, members, searchTerm]);
 
   const columns = useMemo<ColumnType<ContributorItem>[]>(
     () => [
@@ -151,9 +160,9 @@ export function MembersTable({
         dataSource={dataSource}
         rowKey="id"
         isLoading={isPending}
-        emptyText="No Delegates"
+        emptyText={searchTerm ? "No matching delegates found" : "No Delegates"}
         caption={
-          hasNextPage ? (
+          hasNextPage && !searchTerm ? (
             <div
               className="text-foreground transition-colors hover:text-foreground/80 cursor-pointer"
               onClick={loadMoreData}

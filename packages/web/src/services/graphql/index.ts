@@ -133,6 +133,22 @@ export const delegateService = {
     );
     return response?.delegateMappings ?? [];
   },
+  getDelegateMappingsConnection: async (
+    endpoint: string,
+    options: {
+      where: {
+        to_eq: string;
+      };
+      orderBy: string[];
+    }
+  ) => {
+    const response = await request<Types.DelegateMappingConnectionResponse>(
+      endpoint,
+      Queries.GET_DELEGATE_MAPPINGS_CONNECTION,
+      options
+    );
+    return response?.delegateMappingsConnection;
+  },
 };
 
 export const squidStatusService = {
@@ -154,6 +170,7 @@ export const contributorService = {
       where?: {
         id_in?: string[];
         id_not_eq?: string;
+        id_eq?: string;
       };
     } = {
       limit: 10,

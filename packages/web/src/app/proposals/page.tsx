@@ -1,4 +1,5 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -17,6 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
@@ -26,6 +29,7 @@ function ProposalsContent() {
   const typeParam = searchParams.get("type");
   const supportParam = searchParams.get("support");
   const addressParam = searchParams.get("address");
+  const daoConfig = useDaoConfig();
 
   const [support, setSupport] = useState<"all" | "1" | "2" | "3">(
     (supportParam as "all" | "1" | "2" | "3") || "all"
@@ -35,6 +39,16 @@ function ProposalsContent() {
   const [isMyProposals, setIsMyProposals] = useState<CheckedState>(
     typeParam === "my"
   );
+
+  // Get proposal metrics (including total count)
+  const { data: proposalMetrics } = useQuery({
+    queryKey: ["proposalMetrics", daoConfig?.indexer?.endpoint],
+    queryFn: () =>
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint as string
+      ),
+    enabled: !!daoConfig?.indexer?.endpoint,
+  });
 
   // Update URL when filters change
   const updateUrlParams = (myProposals: boolean, supportValue: string) => {
@@ -71,12 +85,23 @@ function ProposalsContent() {
     updateUrlParams(!!isMyProposals, value);
   };
 
+  const getDisplayTitle = () => {
+    const totalCount = proposalMetrics?.proposalsCount
+      ? parseInt(proposalMetrics.proposalsCount)
+      : null;
+    if (totalCount !== null) {
+      return `All Proposals (${totalCount})`;
+    }
+
+    return "All Proposals";
+  };
+
   return (
     <div className="flex flex-col gap-[20px]">
       <div className="flex items-start gap-[20px]">
         <div className="flex-1 flex flex-col gap-[20px]">
           <div className="flex items-center justify-between gap-[20px]">
-            <h3 className="text-[18px] font-extrabold">All Proposals</h3>
+            <h3 className="text-[18px] font-extrabold">{getDisplayTitle()}</h3>
 
             <div className="flex items-center gap-[20px]">
               {isConnected && (

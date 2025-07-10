@@ -36,3 +36,14 @@ export const GET_DELEGATE_MAPPINGS = gql`
     }
   }
 `;
+
+export const GET_DELEGATE_MAPPINGS_CONNECTION = gql`
+  query GetDelegateMappingsConnection(
+    $where: DelegateMappingWhereInput!
+    $orderBy: [DelegateMappingOrderByInput!]!
+  ) {
+    delegateMappingsConnection(where: $where, orderBy: $orderBy) {
+      totalCount
+    }
+  }
+`;

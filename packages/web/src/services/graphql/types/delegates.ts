@@ -24,3 +24,11 @@ export type DelegateMappingItem = {
 export type DelegateMappingResponse = {
   delegateMappings: DelegateMappingItem[];
 };
+
+export type DelegateMappingConnectionItem = {
+  totalCount: number;
+};
+
+export type DelegateMappingConnectionResponse = {
+  delegateMappingsConnection: DelegateMappingConnectionItem;
+};
