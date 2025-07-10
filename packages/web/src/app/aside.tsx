@@ -99,24 +99,49 @@ export const Aside = () => {
                 />
               </>
             ) : (
-              <>
-                <Image
-                  src="/assets/image/logo.svg"
-                  alt="logo"
-                  width={128}
-                  height={26}
-                  priority
-                  className="h-[26px] w-[128px] hidden dark:block"
-                />
-                <Image
-                  src="/assets/image/light/logo.svg"
-                  alt="logo"
-                  width={128}
-                  height={26}
-                  priority
-                  className="h-[26px] w-[128px] block dark:hidden"
-                />
-              </>
+              <div className="flex items-center gap-[10px]">
+                <div>
+                  <Image
+                    src="/assets/image/logo.svg"
+                    alt="logo"
+                    width={128}
+                    height={26}
+                    priority
+                    className="h-[26px] w-[128px] hidden dark:block"
+                  />
+                  <Image
+                    src="/assets/image/light/logo.svg"
+                    alt="logo"
+                    width={128}
+                    height={26}
+                    priority
+                    className="h-[26px] w-[128px] block dark:hidden"
+                  />
+                </div>
+                <Link
+                  href="https://apps.degov.ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Image
+                    src="/assets/image/app.svg"
+                    alt="logo"
+                    width={32}
+                    height={32}
+                    priority
+                    className="hidden dark:block"
+                  />
+                  <Image
+                    src="/assets/image/light/app.svg"
+                    alt="logo"
+                    width={32}
+                    height={32}
+                    priority
+                    className="block dark:hidden"
+                  />
+                </Link>
+              </div>
             )}
           </Link>
 

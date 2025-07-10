@@ -355,7 +355,7 @@ const Status: React.FC<StatusProps> = ({
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <h3 className="text-[18px] text-foreground">Status</h3>
+      <h3 className="text-[18px] text-foreground font-semibold">Status</h3>
       <Separator className="bg-border/20" />
       <div className="relative">
         <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-foreground/10" />
