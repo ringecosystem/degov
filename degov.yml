@@ -10,6 +10,7 @@ description: |
   their own DeGov instance. The DAO is built on the Darwinia chain, an Ethereum-compatible chain.
 # The following fields in the links are optional and will be used to display basic information about the DAO
 links:
+  coingecko: https://www.coingecko.com/en/coins/ringdao
   website: https://ringdao.com/
   twitter: https://x.com/ringecosystem
   discord: https://discord.com/invite/BhNbKWWfGV
