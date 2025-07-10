@@ -36,8 +36,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     title: {
-      template: `%s | ${daoName} - Powered by DeGov.AI`,
-      default: `${daoName} - Powered by DeGov.AI`,
+      template: `%s | ${daoName} | DeGov.AI`,
+      default: `${daoName} | DeGov.AI`,
     },
     description,
     metadataBase: new URL(siteUrl),
