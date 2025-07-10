@@ -3,17 +3,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAccount } from "wagmi";
 
 import { Faqs } from "@/components/faqs";
 import { ProposalsTable } from "@/components/proposals-table";
 import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
-
 export const Proposals = () => {
   const daoConfig = useDaoConfig();
-  const { isConnected } = useAccount();
   const router = useRouter();
 
   return (
@@ -49,28 +46,26 @@ export const Proposals = () => {
                   </Link>
                 </Button>
               ) : null}
-              {isConnected ? (
-                <Button
-                  className="flex items-center gap-[5px] rounded-[100px]"
-                  onClick={() => router.push("/proposals/new")}
-                >
-                  <Image
-                    src="/assets/image/light/plus.svg"
-                    alt="plus"
-                    width={20}
-                    height={20}
-                    className="size-[20px] block dark:hidden"
-                  />
-                  <Image
-                    src="/assets/image/plus.svg"
-                    alt="plus"
-                    width={20}
-                    height={20}
-                    className="size-[20px] hidden dark:block"
-                  />
-                  New Proposal
-                </Button>
-              ) : null}
+              <Button
+                className="flex items-center gap-[5px] rounded-[100px]"
+                onClick={() => router.push("/proposals/new")}
+              >
+                <Image
+                  src="/assets/image/light/plus.svg"
+                  alt="plus"
+                  width={20}
+                  height={20}
+                  className="size-[20px] block dark:hidden"
+                />
+                <Image
+                  src="/assets/image/plus.svg"
+                  alt="plus"
+                  width={20}
+                  height={20}
+                  className="size-[20px] hidden dark:block"
+                />
+                New Proposal
+              </Button>
             </div>
           </div>
           <ProposalsTable type="active" />
