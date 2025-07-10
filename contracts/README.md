@@ -20,5 +20,5 @@ DGovernor: 0x892eaD4A183067fD30aAB74947Eb57ddd17BfE53;
 ## Governor without timelock
 ```
 GTK: 0xbC9f58566810F7e853e1eef1b9957ac82F9971df 
-DGovernorWithoutTimelock: 0xbC9f58566810F7e853e1eef1b9957ac82F9971df
+DGovernorWithoutTimelock: 0x36BeEC8463D4601606958Fa58DB458B4f3C399fe
 ```
