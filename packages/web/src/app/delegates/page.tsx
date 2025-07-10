@@ -89,7 +89,7 @@ export default function Members() {
             <div className="flex h-[36px] w-[388px] items-center gap-[13px] rounded-[20px] border px-[17px] transition-all border-border bg-card">
               <Search className="h-[15px] w-[15px] text-foreground/50" />
               <Input
-                placeholder="Search address"
+                placeholder="Search by address"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-full flex-1 appearance-none bg-transparent outline-none border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
@@ -122,7 +122,7 @@ export default function Members() {
             <div className="flex h-[36px] w-[388px] items-center gap-[13px] rounded-[20px] border px-[17px] transition-all border-border bg-card">
               <Search className="h-[15px] w-[15px] text-foreground/50" />
               <Input
-                placeholder="Search address"
+                placeholder="Search by address"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-full flex-1 appearance-none bg-transparent outline-none border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
