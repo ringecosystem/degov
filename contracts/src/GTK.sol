@@ -9,7 +9,11 @@ import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract GTK is ERC20, Ownable, ERC20Permit, ERC20Votes {
-    constructor(address initialOwner) ERC20("Governance Token", "GTK") Ownable(initialOwner) ERC20Permit("Governance Token") {}
+    constructor(address initialOwner)
+        ERC20("Governance Token", "GTK")
+        Ownable(initialOwner)
+        ERC20Permit("Governance Token")
+    {}
 
     function mint(address to, uint256 amount) public onlyOwner {
         _mint(to, amount);
