@@ -43,11 +43,11 @@ indexer:
 
 # Core contracts related to the DAO Governance
 contracts:
-  governor: "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
+  governor: "0x36BeEC8463D4601606958Fa58DB458B4f3C399fe"
   governorToken:
     address: "0xbC9f58566810F7e853e1eef1b9957ac82F9971df"
     standard: ERC20
-  timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
+  # timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
 
 # The treasury assets information
 timeLockAssets:
