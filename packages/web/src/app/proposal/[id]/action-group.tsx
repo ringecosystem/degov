@@ -215,18 +215,20 @@ export default function ActionGroup({
         ? BigInt(proposalQueuedById?.blockTimestamp)
         : undefined;
 
-      const timeLockDelay = govParams?.timeLockDelay
-        ? BigInt(govParams?.timeLockDelay * 1000n)
-        : undefined;
+      // Use the properly converted timeLockDelayInSeconds field
+      const timeLockDelayInSeconds = govParams?.timeLockDelayInSeconds;
+      
       if (!queuedBlockTimestamp) return false;
-      if (!timeLockDelay) return true;
+      if (!timeLockDelayInSeconds) return true;
 
-      return (
-        BigInt(new Date().getTime()) > queuedBlockTimestamp + timeLockDelay
-      );
+      // Convert current time to seconds to match queuedBlockTimestamp units
+      const currentTimeInSeconds = BigInt(Math.floor(new Date().getTime() / 1000));
+      const timeLockDelayBigInt = BigInt(timeLockDelayInSeconds);
+
+      return currentTimeInSeconds > queuedBlockTimestamp + timeLockDelayBigInt;
     }
     return false;
-  }, [status, proposalQueuedById, govParams?.timeLockDelay]);
+  }, [status, proposalQueuedById, govParams?.timeLockDelayInSeconds]);
 
   const handleAction = useCallback(
     (action: "vote" | "queue" | "execute") => {
