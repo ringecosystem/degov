@@ -117,16 +117,16 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         ? formatTokenAmount(governanceParams.quorum)?.formatted ?? "0"
         : "0";
 
-      const votingDelayFormatted = governanceParams?.votingDelay
-        ? dayjsHumanize(Number(governanceParams.votingDelay)) ?? "None"
+      const votingDelayFormatted = governanceParams?.votingDelayInSeconds
+        ? dayjsHumanize(governanceParams.votingDelayInSeconds) ?? "None"
         : "None";
 
-      const votingPeriodFormatted = governanceParams?.votingPeriod
-        ? dayjsHumanize(Number(governanceParams.votingPeriod)) ?? "None"
+      const votingPeriodFormatted = governanceParams?.votingPeriodInSeconds
+        ? dayjsHumanize(governanceParams.votingPeriodInSeconds) ?? "None"
         : "None";
 
-      const timeLockDelayFormatted = governanceParams?.timeLockDelay
-        ? dayjsHumanize(Number(governanceParams.timeLockDelay)) ?? "None"
+      const timeLockDelayFormatted = governanceParams?.timeLockDelayInSeconds
+        ? dayjsHumanize(governanceParams.timeLockDelayInSeconds) ?? "None"
         : "None";
 
       return {

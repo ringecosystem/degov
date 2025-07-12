@@ -5,6 +5,7 @@ import "./markdown-body.css";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getDaoConfigServer } from "@/lib/config";
+import { BlockDataProvider } from "@/providers/block.provider";
 import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
@@ -83,10 +84,12 @@ export default function RootLayout({
         <NextThemeProvider>
           <ConfigProvider>
             <DAppProvider>
-              <TooltipProvider delayDuration={0}>
-                <ConditionalLayout>{children}</ConditionalLayout>
-                <ToastContainer />
-              </TooltipProvider>
+              <BlockDataProvider>
+                <TooltipProvider delayDuration={0}>
+                  <ConditionalLayout>{children}</ConditionalLayout>
+                  <ToastContainer />
+                </TooltipProvider>
+              </BlockDataProvider>
             </DAppProvider>
           </ConfigProvider>
         </NextThemeProvider>

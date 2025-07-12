@@ -27,7 +27,21 @@ export function IndexerStatus({
   const daoConfig = useDaoConfig();
 
   const networkIcon = useMemo(() => {
-    return chainInfo?.[daoConfig?.chain?.id ?? ""]?.icon;
+    const icon = chainInfo?.[daoConfig?.chain?.id ?? ""]?.icon;
+    if (!icon) return null;
+
+    // If it's already an absolute URL, return as is
+    if (icon.startsWith("http://") || icon.startsWith("https://")) {
+      return icon;
+    }
+
+    // If it's a relative path starting with /assets/, convert to SubWallet ChainList absolute URL
+    if (icon.startsWith("/assets/")) {
+      return `https://raw.githubusercontent.com/Koniverse/SubWallet-ChainList/master/packages/chain-list-assets/public${icon}`;
+    }
+
+    // For other relative paths, return as is (might be local assets)
+    return icon;
   }, [chainInfo, daoConfig]);
 
   return (
