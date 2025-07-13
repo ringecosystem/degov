@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode } from "react";
+
 import { BlockProvider } from "@/contexts/BlockContext";
 
 interface BlockProviderProps {

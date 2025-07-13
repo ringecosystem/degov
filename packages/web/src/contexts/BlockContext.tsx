@@ -1,11 +1,11 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useBlockNumber, usePublicClient } from "wagmi";
-import { useQuery } from "@tanstack/react-query";
 
-import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 interface BlockContextValue {
   /** Current block number */

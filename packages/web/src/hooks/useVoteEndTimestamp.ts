@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 
 import { useCurrentBlockTime, useCurrentBlockNumber } from "@/contexts/BlockContext";
+
 import { useDaoConfig } from "./useDaoConfig";
 
 /**

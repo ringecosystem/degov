@@ -3,13 +3,13 @@ import { useReadContract, useReadContracts } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as timeLockAbi } from "@/config/abi/timeLock";
-
-import { useClockMode } from "./useClockMode";
-import { useDaoConfig } from "./useDaoConfig";
 import {
   useAverageBlockTime,
   useCurrentBlockNumber,
 } from "@/contexts/BlockContext";
+
+import { useClockMode } from "./useClockMode";
+import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
 
