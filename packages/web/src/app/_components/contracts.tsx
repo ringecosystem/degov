@@ -89,26 +89,28 @@ export const Contracts = () => {
             </div>
           </div>
 
-          <div className="flex flex-col gap-[10px]">
-            <span className="text-[14px] font-normal text-foreground/50">
-              TimeLock
-            </span>
-            <div className="flex w-full items-center justify-between gap-[5px]">
-              <span className="text-[14px] font-normal text-foreground font-mono">
-                {daoConfig?.contracts?.timeLock}
+          {daoConfig?.contracts?.timeLock && (
+            <div className="flex flex-col gap-[10px]">
+              <span className="text-[14px] font-normal text-foreground/50">
+                TimeLock
               </span>
-              <div className="flex items-center gap-[5px]">
-                <ClipboardIconButton
-                  text={daoConfig?.contracts?.timeLock}
-                  size={15}
-                  strokeWidth={2}
-                />
-                <ViewOnExplorer
-                  explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.timeLock}`}
-                />
+              <div className="flex w-full items-center justify-between gap-[5px]">
+                <span className="text-[14px] font-normal text-foreground font-mono">
+                  {daoConfig?.contracts?.timeLock}
+                </span>
+                <div className="flex items-center gap-[5px]">
+                  <ClipboardIconButton
+                    text={daoConfig?.contracts?.timeLock}
+                    size={15}
+                    strokeWidth={2}
+                  />
+                  <ViewOnExplorer
+                    explorerUrl={`${daoConfig?.chain?.explorers?.[0]}/address/${daoConfig?.contracts?.timeLock}`}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

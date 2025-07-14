@@ -189,12 +189,14 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
           explorerUrl={explorerUrl}
         />
 
-        <SystemInfoItem
-          label="TimeLock Contract"
-          value={daoConfig?.contracts?.timeLock ?? ""}
-          isAddress={true}
-          explorerUrl={explorerUrl}
-        />
+        {daoConfig?.contracts?.timeLock && (
+          <SystemInfoItem
+            label="TimeLock Contract"
+            value={daoConfig?.contracts?.timeLock}
+            isAddress={true}
+            explorerUrl={explorerUrl}
+          />
+        )}
 
         <SystemInfoItem
           label="Proposal Threshold"

@@ -28,7 +28,7 @@ export function useTokenBalances(
   assets: TokenDetails[]
 ): UseTokenBalancesReturn {
   const daoConfig = useDaoConfig();
-  const timeLockAddress = daoConfig?.contracts?.timeLock;
+  const timeLockAddress = daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
   const { tokenInfo } = useGetTokenInfo(
     assets.map((v) => ({
       contract: v.contract,

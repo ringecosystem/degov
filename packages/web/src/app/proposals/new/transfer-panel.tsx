@@ -86,10 +86,10 @@ export const TransferPanel = ({
   }, [daoConfig]);
 
   const { data: balance, isLoading } = useBalance({
-    address: daoConfig?.contracts?.timeLock as Address,
+    address: (daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor) as Address,
     chainId: daoConfig?.chain?.id,
     query: {
-      enabled: !!daoConfig?.contracts?.timeLock && !!daoConfig?.chain?.id,
+      enabled: !!(daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor) && !!daoConfig?.chain?.id,
       gcTime: 0,
     },
   });
