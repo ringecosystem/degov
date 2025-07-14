@@ -149,7 +149,9 @@ export function useQuorum() {
 
   // Determine the correct parameter for quorum function based on clock mode
   // Use a slightly older block for stability (current block - 10)
-  const stableBlockNumber = currentBlockNumber ? currentBlockNumber - BigInt(10) : BigInt(0);
+  const stableBlockNumber = currentBlockNumber
+    ? currentBlockNumber - BigInt(10)
+    : BigInt(0);
   const quorumParameter: bigint = isBlockNumberMode
     ? stableBlockNumber
     : BigInt(clockData ?? 0);
@@ -170,10 +172,11 @@ export function useQuorum() {
         Boolean(governorAddress) &&
         Boolean(daoConfig?.chain?.id) &&
         !isClockModeLoading &&
-        (isBlockNumberMode ? Boolean(currentBlockNumber && currentBlockNumber > BigInt(10)) : Boolean(clockData)),
+        (isBlockNumberMode
+          ? Boolean(currentBlockNumber && currentBlockNumber > BigInt(10))
+          : Boolean(clockData)),
     },
   });
-
 
   return {
     quorum: quorumData as bigint | undefined,

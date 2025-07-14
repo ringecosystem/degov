@@ -295,6 +295,7 @@ export default function ProposalDetailPage() {
             proposalVotesData={proposalVotesData}
             isLoading={proposalVotes?.isPending}
             blockTimestamp={data?.blockTimestamp}
+            blockNumber={data?.blockNumber}
           />
           <Status
             data={data}
