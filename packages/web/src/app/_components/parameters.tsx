@@ -115,7 +115,7 @@ export const Parameters = () => {
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
-              ) : governanceParams?.timeLockDelay ? (
+              ) : governanceParams?.timeLockDelay !== undefined ? (
                 dayjsHumanize(Number(governanceParams?.timeLockDelay))
               ) : (
                 "None"

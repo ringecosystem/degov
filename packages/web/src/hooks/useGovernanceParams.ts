@@ -12,7 +12,7 @@ interface StaticGovernanceParams {
   proposalThreshold: bigint;
   votingDelay: bigint;
   votingPeriod: bigint;
-  timeLockDelay: bigint;
+  timeLockDelay?: bigint;
 }
 
 interface GovernanceParams extends StaticGovernanceParams {
@@ -24,33 +24,44 @@ export function useStaticGovernanceParams() {
   const governorAddress = daoConfig?.contracts?.governor as Address;
   const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
 
-  const { data, isLoading, error, isFetching } = useReadContracts({
-    contracts: [
+  const contracts = useMemo(() => {
+    const baseContracts = [
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "proposalThreshold" as const,
+        functionName: "proposalThreshold",
         chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "votingDelay" as const,
+        functionName: "votingDelay",
         chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "votingPeriod" as const,
+        functionName: "votingPeriod",
         chainId: daoConfig?.chain?.id,
       },
-      {
+    ];
+
+    if (timeLockAddress) {
+      baseContracts.push({
         address: timeLockAddress as `0x${string}`,
+        // @ts-expect-error wagmi type constraint
         abi: timeLockAbi,
-        functionName: "getMinDelay" as const,
+        functionName: "getMinDelay",
         chainId: daoConfig?.chain?.id,
-      },
-    ],
+      });
+    }
+
+    return baseContracts;
+  }, [governorAddress, timeLockAddress, daoConfig?.chain?.id]);
+
+  const { data, isLoading, error, isFetching } = useReadContracts({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    contracts: contracts as any,
     query: {
       retry: false,
       staleTime: 24 * 60 * 60 * 1000,
@@ -58,14 +69,21 @@ export function useStaticGovernanceParams() {
     },
   });
 
-  const formattedData: StaticGovernanceParams | null = data
-    ? {
-        proposalThreshold: data[0]?.result as bigint,
-        votingDelay: data[1]?.result as bigint,
-        votingPeriod: data[2]?.result as bigint,
-        timeLockDelay: data[3]?.result as bigint,
-      }
-    : null;
+  const formattedData: StaticGovernanceParams | null = useMemo(() => {
+    if (!data) return null;
+
+    const result: StaticGovernanceParams = {
+      proposalThreshold: data[0]?.result as bigint,
+      votingDelay: data[1]?.result as bigint,
+      votingPeriod: data[2]?.result as bigint,
+    };
+
+    if (timeLockAddress && data.length > 3) {
+      result.timeLockDelay = data[3]?.result as bigint;
+    }
+
+    return result;
+  }, [data, timeLockAddress]);
 
   return {
     data: formattedData,
@@ -139,7 +157,7 @@ export function useGovernanceParams() {
       proposalThreshold: staticParams.data?.proposalThreshold ?? 0n,
       votingDelay: staticParams.data?.votingDelay ?? 0n,
       votingPeriod: staticParams.data?.votingPeriod ?? 0n,
-      timeLockDelay: staticParams.data?.timeLockDelay ?? 0n,
+      timeLockDelay: staticParams.data?.timeLockDelay,
       quorum: quorum ?? 0n,
     };
   }, [staticParams.data, quorum]);

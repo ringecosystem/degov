@@ -215,11 +215,11 @@ export default function ActionGroup({
         ? BigInt(proposalQueuedById?.blockTimestamp)
         : undefined;
 
-      const timeLockDelay = govParams?.timeLockDelay
+      const timeLockDelay = govParams?.timeLockDelay !== undefined
         ? BigInt(govParams?.timeLockDelay * 1000n)
         : undefined;
       if (!queuedBlockTimestamp) return false;
-      if (!timeLockDelay) return true;
+      if (timeLockDelay === undefined) return true;
 
       return (
         BigInt(new Date().getTime()) > queuedBlockTimestamp + timeLockDelay
