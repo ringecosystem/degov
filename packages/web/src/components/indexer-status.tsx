@@ -6,6 +6,7 @@ import type { BlockSyncStatus } from "@/hooks/useBlockSync";
 import { useChainInfo } from "@/hooks/useChainInfo";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
+import { processChainIconUrl } from "@/utils";
 
 import { INDEXER_CONFIG } from "../config/indexer";
 
@@ -28,20 +29,7 @@ export function IndexerStatus({
 
   const networkIcon = useMemo(() => {
     const icon = chainInfo?.[daoConfig?.chain?.id ?? ""]?.icon;
-    if (!icon) return null;
-
-    // If it's already an absolute URL, return as is
-    if (icon.startsWith("http://") || icon.startsWith("https://")) {
-      return icon;
-    }
-
-    // If it's a relative path starting with /assets/, convert to SubWallet ChainList absolute URL
-    if (icon.startsWith("/assets/")) {
-      return `https://raw.githubusercontent.com/Koniverse/SubWallet-ChainList/master/packages/chain-list-assets/public${icon}`;
-    }
-
-    // For other relative paths, return as is (might be local assets)
-    return icon;
+    return processChainIconUrl(icon);
   }, [chainInfo, daoConfig]);
 
   return (
