@@ -245,7 +245,7 @@ export default function ProposalDetailPage() {
               />
             </div>
 
-            <h2 className="text-[36px] font-extrabold flex items-center gap-[10px]">
+            <h2 className="text-[26px] font-semibold flex items-center gap-[10px]">
               {isPending ? (
                 <Skeleton className="h-[36px] w-[200px]" />
               ) : (
