@@ -75,12 +75,9 @@ export const Aside = () => {
         </button>
 
         <div className="flex flex-col gap-[10px]">
-          <Link
-            className={`flex h-[76px] items-center justify-center transition-all duration-300`}
-            href="/"
-          >
+          <div className={`flex h-[76px] items-center justify-center transition-all duration-300`}>
             {collapsed ? (
-              <>
+              <Link href="/">
                 <Image
                   src="/assets/image/logo-simple.svg"
                   alt="logo"
@@ -97,10 +94,10 @@ export const Aside = () => {
                   priority
                   className="h-[32px] w-[32px] block dark:hidden"
                 />
-              </>
+              </Link>
             ) : (
               <div className="flex items-center gap-[10px]">
-                <div>
+                <Link href="/">
                   <Image
                     src="/assets/image/logo.svg"
                     alt="logo"
@@ -117,12 +114,11 @@ export const Aside = () => {
                     priority
                     className="h-[26px] w-[128px] block dark:hidden"
                   />
-                </div>
+                </Link>
                 <Link
                   href="https://apps.degov.ai"
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
                 >
                   <Image
                     src="/assets/image/app.svg"
@@ -143,7 +139,7 @@ export const Aside = () => {
                 </Link>
               </div>
             )}
-          </Link>
+          </div>
 
           <Nav collapsed={collapsed} />
         </div>
