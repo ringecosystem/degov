@@ -36,7 +36,7 @@ chain:
     logo:
 
 indexer:
-  endpoint: https://cors.kahub.in/http://g2.generic.darwinia.network:4351/graphql
+  endpoint: https://degov-without-timelock-indexer.vercel.app/graphql
   startBlock: 5873342
   # if set this, indexer rpc will be use this first
   rpc: wss://rpc.darwinia.network
