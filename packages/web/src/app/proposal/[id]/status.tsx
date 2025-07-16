@@ -176,15 +176,21 @@ const Status: React.FC<StatusProps> = ({
         remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
       },
     ];
+    
+    // Check if timelock is enabled
+    const hasTimelock = govParams?.timeLockDelayInSeconds !== undefined && govParams?.timeLockDelayInSeconds !== null;
+    
     switch (status) {
       case ProposalState.Pending:
       case ProposalState.Active:
       case ProposalState.Queued:
       case ProposalState.Executed:
       case ProposalState.Succeeded:
-        return [
-          ...baseStages,
-          {
+        const additionalStages = [];
+        
+        // Only add queue stage if timelock is enabled
+        if (hasTimelock) {
+          additionalStages.push({
             key: "queue" as ProposalStageKey,
             title: "Queue proposal",
             timestamp: proposalQueuedById?.blockTimestamp
@@ -201,26 +207,30 @@ const Status: React.FC<StatusProps> = ({
             viewOnExplorer: proposalQueuedById?.transactionHash
               ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalQueuedById?.transactionHash}`
               : "",
-          },
-          {
-            key: "execute" as ProposalStageKey,
-            title: "Execute proposal",
-            timestamp: proposalExecutedById?.blockTimestamp
-              ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
-              : "",
-            icon: (
-              <Image
-                src="/assets/image/proposal/status-executed.svg"
-                alt="executed"
-                width={28}
-                height={28}
-              />
-            ),
-            viewOnExplorer: proposalExecutedById?.transactionHash
-              ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`
-              : "",
-          },
-        ]?.map((v) => {
+          });
+        }
+        
+        // Always add execute stage
+        additionalStages.push({
+          key: "execute" as ProposalStageKey,
+          title: "Execute proposal",
+          timestamp: proposalExecutedById?.blockTimestamp
+            ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
+            : "",
+          icon: (
+            <Image
+              src="/assets/image/proposal/status-executed.svg"
+              alt="executed"
+              width={28}
+              height={28}
+            />
+          ),
+          viewOnExplorer: proposalExecutedById?.transactionHash
+            ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`
+            : "",
+        });
+        
+        return [...baseStages, ...additionalStages]?.map((v) => {
           if (status === ProposalState.Pending) {
             return {
               ...v,
@@ -372,6 +382,7 @@ const Status: React.FC<StatusProps> = ({
     votingPeriodEnded,
     votingPeriodStarted,
     status,
+    govParams?.timeLockDelayInSeconds,
   ]);
 
   if (isLoading) {

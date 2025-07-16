@@ -119,7 +119,6 @@ export const transformActionsToProposalParams = async (
     ? `# ${proposalAction.content.title}\n\n${html}`
     : "";
   const discussion = proposalAction?.content.discussion;
-  debugger;
   const proposalActions: ProposalActionParam[] = actions
     .filter(
       (action) =>

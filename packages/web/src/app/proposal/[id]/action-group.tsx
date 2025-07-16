@@ -209,7 +209,16 @@ export default function ActionGroup({
     onRefetch();
   }, [onRefetch]);
 
+  const hasTimelock = useMemo(() => {
+    return govParams?.timeLockDelayInSeconds !== undefined && govParams?.timeLockDelayInSeconds !== null;
+  }, [govParams?.timeLockDelayInSeconds]);
+
   const canExecute = useMemo(() => {
+    // If no timelock and proposal is succeeded, can execute directly
+    if (!hasTimelock && status === ProposalState.Succeeded) {
+      return true;
+    }
+    
     if (status === ProposalState.Queued) {
       const queuedBlockTimestamp = proposalQueuedById?.blockTimestamp
         ? BigInt(proposalQueuedById?.blockTimestamp)
@@ -233,7 +242,7 @@ export default function ActionGroup({
       return currentTimeInSeconds > queuedBlockTimestamp + timeLockDelayBigInt;
     }
     return false;
-  }, [status, proposalQueuedById, govParams?.timeLockDelayInSeconds]);
+  }, [status, proposalQueuedById, govParams?.timeLockDelayInSeconds, hasTimelock]);
 
   const handleAction = useCallback(
     (action: "vote" | "queue" | "execute") => {
@@ -271,6 +280,7 @@ export default function ActionGroup({
           status={status}
           votedSupport={votedSupport}
           canExecute={canExecute}
+          hasTimelock={hasTimelock}
           isLoading={
             isPendingCastVote ||
             !!castVoteHash ||
