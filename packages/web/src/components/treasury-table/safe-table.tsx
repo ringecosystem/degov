@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { useChainInfo } from "@/hooks/useChainInfo";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { processChainIconUrl } from "@/utils";
 
 import { Button } from "../ui/button";
 
@@ -35,6 +36,8 @@ export function SafeTable({ caption }: SafeTableProps) {
 
     return (daoConfig.safes || []).map((v) => {
       const explorer = flatChainInfo?.[v.chainId ?? ""]?.blockExplorer;
+      const icon = flatChainInfo?.[v.chainId ?? ""]?.icon;
+      
       return {
         name: v.name,
         address: v.link.split(":")[2],
@@ -42,7 +45,7 @@ export function SafeTable({ caption }: SafeTableProps) {
         link: v.link,
         blockExplorer: explorer,
         addressExplorer: `${explorer}/address/${v.link.split(":")[2]}`,
-        chainIcon: flatChainInfo?.[v.chainId ?? ""]?.icon,
+        chainIcon: processChainIconUrl(icon),
         chainName: flatChainInfo?.[v.chainId ?? ""]?.name,
       };
     });

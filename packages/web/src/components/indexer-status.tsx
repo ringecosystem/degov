@@ -6,6 +6,7 @@ import type { BlockSyncStatus } from "@/hooks/useBlockSync";
 import { useChainInfo } from "@/hooks/useChainInfo";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
+import { processChainIconUrl } from "@/utils";
 
 import { INDEXER_CONFIG } from "../config/indexer";
 
@@ -27,7 +28,8 @@ export function IndexerStatus({
   const daoConfig = useDaoConfig();
 
   const networkIcon = useMemo(() => {
-    return chainInfo?.[daoConfig?.chain?.id ?? ""]?.icon;
+    const icon = chainInfo?.[daoConfig?.chain?.id ?? ""]?.icon;
+    return processChainIconUrl(icon);
   }, [chainInfo, daoConfig]);
 
   return (

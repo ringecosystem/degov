@@ -87,8 +87,8 @@ export const Parameters = () => {
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
-              ) : governanceParams?.votingDelay ? (
-                dayjsHumanize(Number(governanceParams?.votingDelay))
+              ) : governanceParams?.votingDelayInSeconds ? (
+                dayjsHumanize(governanceParams.votingDelayInSeconds)
               ) : (
                 "None"
               )}
@@ -102,8 +102,8 @@ export const Parameters = () => {
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
-              ) : governanceParams?.votingPeriod ? (
-                dayjsHumanize(Number(governanceParams?.votingPeriod))
+              ) : governanceParams?.votingPeriodInSeconds ? (
+                dayjsHumanize(governanceParams.votingPeriodInSeconds)
               ) : (
                 "None"
               )}
