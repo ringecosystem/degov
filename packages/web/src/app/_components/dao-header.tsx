@@ -1,8 +1,10 @@
 "use client";
+import { TooltipTrigger } from "@radix-ui/react-tooltip";
 import { capitalize } from "lodash-es";
 import Image from "next/image";
 import { Fragment } from "react";
 
+import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import { Contracts } from "./contracts";
@@ -30,9 +32,17 @@ export const DaoHeader = () => {
           </div>
         </h1>
 
-        <p className="line-clamp-2 text-[14px] text-foreground/80">
-          {config?.description}
-        </p>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <p className="line-clamp-2 text-[14px] text-foreground/80">
+              {config?.description}
+            </p>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[600px] rounded-[26px] bg-card p-[20px] border border-card-background shadow-sm">
+            <p className="text-[14px]">{config?.description}</p>
+          </TooltipContent>
+        </Tooltip>
+
         <div className="flex items-center gap-[10px]">
           <Parameters />
           <Contracts />
