@@ -62,7 +62,8 @@ export function useStaticGovernanceParams() {
     if (timeLockAddress) {
       baseContracts.push({
         address: timeLockAddress as `0x${string}`,
-        // @ts-expect-error wagmi type constraint
+        // @ts-ignore: The wagmi library's type definitions for the `abi` property are overly strict and do not account for all valid ABI formats.
+        // This is a known issue, and the provided `timeLockAbi` is valid for the `getMinDelay` function.
         abi: timeLockAbi,
         functionName: "getMinDelay",
         chainId: daoConfig?.chain?.id,
