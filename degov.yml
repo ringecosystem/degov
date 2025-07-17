@@ -1,13 +1,13 @@
-name: DeGov Development Test DAO
+name: DeGov Development DAO
 logo: "https://raw.githubusercontent.com/ringecosystem/degov/refs/heads/main/packages/web/public/example/logo.svg"
 siteUrl: https://degov-dev.vercel.app
 offChainDiscussionUrl: https://github.com/ringecosystem/degov/discussions
 aiAgent:
   endpoint: https://agent.degov.ai
 description: |
-  This is the development test DAO interface for DeGov users, allowing them to gain 
-  firsthand experience creating proposals and voting on them before deploying 
-  their own DeGov instance. The DAO is built on the Darwinia chain, an Ethereum-compatible chain.
+  It's a test DAO for developers and users to experience DeGov's features, including the
+  latest innovations features like AI agents, token wrapping, and more. The DAO is built
+  on the Darwinia chain, an Ethereum-compatible chain.
 # The following fields in the links are optional and will be used to display basic information about the DAO
 links:
   coingecko: https://www.coingecko.com/en/coins/ringdao
