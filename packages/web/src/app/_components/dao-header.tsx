@@ -34,7 +34,7 @@ export const DaoHeader = () => {
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <p className="line-clamp-2 text-[14px] text-foreground/80">
+            <p className="line-clamp-2 text-[14px] text-foreground/80 max-w-[693px]">
               {config?.description}
             </p>
           </TooltipTrigger>
