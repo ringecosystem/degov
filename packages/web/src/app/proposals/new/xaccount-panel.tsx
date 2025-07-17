@@ -41,8 +41,9 @@ export const XAccountPanel = ({
   });
 
   const xaccountLink = useMemo(() => {
-    return `https://xaccount.degov.ai?sourceChainId=${daoConfig?.chain?.id}&targetContractAddress=${daoConfig?.contracts?.timeLock}`;
-  }, [daoConfig?.chain?.id, daoConfig?.contracts?.timeLock]);
+    const targetAddress = daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
+    return `https://xaccount.degov.ai?sourceChainId=${daoConfig?.chain?.id}&targetContractAddress=${targetAddress}`;
+  }, [daoConfig?.chain?.id, daoConfig?.contracts?.timeLock, daoConfig?.contracts?.governor]);
 
   const handleUploadXAccount = useCallback(
     (jsonContent: XAccountContent) => {

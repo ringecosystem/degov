@@ -17,11 +17,11 @@ interface StaticGovernanceParams {
   proposalThreshold: bigint;
   votingDelay: bigint;
   votingPeriod: bigint;
-  timeLockDelay: bigint;
+  timeLockDelay?: bigint;
   // Time conversion info for blocknumber mode
   votingDelayInSeconds: number | null;
   votingPeriodInSeconds: number | null;
-  timeLockDelayInSeconds: number | null;
+  timeLockDelayInSeconds?: number | null;
 }
 
 interface GovernanceParams extends StaticGovernanceParams {
@@ -37,33 +37,45 @@ export function useStaticGovernanceParams() {
   const { isBlockNumberMode, isLoading: isClockModeLoading } = useClockMode();
   const averageBlockTime = useAverageBlockTime(); // Get from BlockContext
 
-  const { data, isLoading, error, isFetching } = useReadContracts({
-    contracts: [
+  const contracts = useMemo(() => {
+    const baseContracts = [
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "proposalThreshold" as const,
+        functionName: "proposalThreshold",
         chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "votingDelay" as const,
+        functionName: "votingDelay",
         chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "votingPeriod" as const,
+        functionName: "votingPeriod",
         chainId: daoConfig?.chain?.id,
       },
-      {
+    ];
+
+    if (timeLockAddress) {
+      baseContracts.push({
         address: timeLockAddress as `0x${string}`,
+        // @ts-expect-error: The wagmi library's type definitions for the `abi` property are overly strict and do not account for all valid ABI formats.
+        // This is a known issue, and the provided `timeLockAbi` is valid for the `getMinDelay` function.
         abi: timeLockAbi,
-        functionName: "getMinDelay" as const,
+        functionName: "getMinDelay",
         chainId: daoConfig?.chain?.id,
-      },
-    ],
+      });
+    }
+
+    return baseContracts;
+  }, [governorAddress, timeLockAddress, daoConfig?.chain?.id]);
+
+  const { data, isLoading, error, isFetching } = useReadContracts({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    contracts: contracts as any,
     query: {
       retry: false,
       staleTime: Infinity, // Governance params don't change
@@ -80,7 +92,7 @@ export function useStaticGovernanceParams() {
 
     const votingDelay = data[1]?.result as bigint;
     const votingPeriod = data[2]?.result as bigint;
-    const timeLockDelay = data[3]?.result as bigint;
+    const timeLockDelay = (data?.[3]?.result as bigint) ?? undefined;
 
     // Convert blocknumber values to seconds if needed (only if clock mode is determined)
     const fallbackBlockTime = 12; // Default Ethereum block time
@@ -95,7 +107,8 @@ export function useStaticGovernanceParams() {
       ? Number(votingPeriod) * blockTime
       : Number(votingPeriod);
     // TimeLock delay is always in seconds (not affected by clock mode)
-    const timeLockDelayInSeconds = Number(timeLockDelay);
+
+    const timeLockDelayInSeconds = timeLockDelay ? Number(timeLockDelay) : null;
 
     return {
       proposalThreshold: data[0]?.result as bigint,

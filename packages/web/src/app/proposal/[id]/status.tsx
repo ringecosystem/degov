@@ -26,7 +26,7 @@ const StatusSkeleton = () => {
       <h3 className="text-[18px] text-foreground">Status</h3>
       <Separator className="bg-border/20" />
       <div className="relative">
-        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-foreground/10" />
+        <div className="absolute bottom-0 left-[14px] top-3 h-[calc(100%-40px)] w-0.5 bg-foreground/10" />
 
         {stages.map((_, index) => (
           <div
@@ -94,10 +94,10 @@ const Status: React.FC<StatusProps> = ({
 }) => {
   const daoConfig = useDaoConfig();
   const { data: govParams } = useGovernanceParams();
-  
+
   // Get accurate voting period timestamps from actual blocks
   const { data: votingTimestamps } = useVotingPeriodTimestamps(
-    data?.voteStart ?? null, 
+    data?.voteStart ?? null,
     data?.voteEnd ?? null
   );
 
@@ -106,7 +106,7 @@ const Status: React.FC<StatusProps> = ({
     if (votingTimestamps?.voteStartTimestamp) {
       return votingTimestamps.voteStartTimestamp;
     }
-    
+
     // Fallback to calculated time if voteStart timestamp not available
     if (isNil(data?.blockTimestamp) || isNil(govParams?.votingDelayInSeconds))
       return "";
@@ -114,22 +114,29 @@ const Status: React.FC<StatusProps> = ({
       BigInt(data?.blockTimestamp) +
       BigInt(govParams.votingDelayInSeconds) * 1000n
     );
-  }, [votingTimestamps?.voteStartTimestamp, data?.blockTimestamp, govParams?.votingDelayInSeconds]);
+  }, [
+    votingTimestamps?.voteStartTimestamp,
+    data?.blockTimestamp,
+    govParams?.votingDelayInSeconds,
+  ]);
 
   const votingPeriodEnded = useMemo(() => {
     // Use actual voteEnd block timestamp for accurate timing
     if (votingTimestamps?.voteEndTimestamp) {
       return votingTimestamps.voteEndTimestamp;
     }
-    
+
     // Fallback to calculated time if voteEnd timestamp not available
     if (votingPeriodStarted === "" || isNil(govParams?.votingPeriodInSeconds))
       return "";
     return (
       votingPeriodStarted + BigInt(govParams.votingPeriodInSeconds) * 1000n
     );
-  }, [votingTimestamps?.voteEndTimestamp, votingPeriodStarted, govParams?.votingPeriodInSeconds]);
-
+  }, [
+    votingTimestamps?.voteEndTimestamp,
+    votingPeriodStarted,
+    govParams?.votingPeriodInSeconds,
+  ]);
 
   const stages: ProposalStage[] = useMemo(() => {
     const baseStages = [
@@ -176,15 +183,23 @@ const Status: React.FC<StatusProps> = ({
         remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
       },
     ];
+
+    // Check if timelock is enabled
+    const hasTimelock =
+      govParams?.timeLockDelayInSeconds !== undefined &&
+      govParams?.timeLockDelayInSeconds !== null;
+
     switch (status) {
       case ProposalState.Pending:
       case ProposalState.Active:
       case ProposalState.Queued:
       case ProposalState.Executed:
       case ProposalState.Succeeded:
-        return [
-          ...baseStages,
-          {
+        const additionalStages = [];
+
+        // Only add queue stage if timelock is enabled
+        if (hasTimelock) {
+          additionalStages.push({
             key: "queue" as ProposalStageKey,
             title: "Queue proposal",
             timestamp: proposalQueuedById?.blockTimestamp
@@ -201,26 +216,30 @@ const Status: React.FC<StatusProps> = ({
             viewOnExplorer: proposalQueuedById?.transactionHash
               ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalQueuedById?.transactionHash}`
               : "",
-          },
-          {
-            key: "execute" as ProposalStageKey,
-            title: "Execute proposal",
-            timestamp: proposalExecutedById?.blockTimestamp
-              ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
-              : "",
-            icon: (
-              <Image
-                src="/assets/image/proposal/status-executed.svg"
-                alt="executed"
-                width={28}
-                height={28}
-              />
-            ),
-            viewOnExplorer: proposalExecutedById?.transactionHash
-              ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`
-              : "",
-          },
-        ]?.map((v) => {
+          });
+        }
+
+        // Always add execute stage
+        additionalStages.push({
+          key: "execute" as ProposalStageKey,
+          title: "Execute proposal",
+          timestamp: proposalExecutedById?.blockTimestamp
+            ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
+            : "",
+          icon: (
+            <Image
+              src="/assets/image/proposal/status-executed.svg"
+              alt="executed"
+              width={28}
+              height={28}
+            />
+          ),
+          viewOnExplorer: proposalExecutedById?.transactionHash
+            ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`
+            : "",
+        });
+
+        return [...baseStages, ...additionalStages]?.map((v) => {
           if (status === ProposalState.Pending) {
             return {
               ...v,
@@ -372,6 +391,7 @@ const Status: React.FC<StatusProps> = ({
     votingPeriodEnded,
     votingPeriodStarted,
     status,
+    govParams?.timeLockDelayInSeconds,
   ]);
 
   if (isLoading) {
@@ -383,7 +403,7 @@ const Status: React.FC<StatusProps> = ({
       <h3 className="text-[18px] text-foreground font-semibold">Status</h3>
       <Separator className="bg-border/20" />
       <div className="relative">
-        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-foreground/10" />
+        <div className="absolute bottom-0 left-[14px] top-3 h-[calc(100%-40px)] w-0.5 bg-foreground/10" />
 
         {stages.map((stage, index) => (
           <div

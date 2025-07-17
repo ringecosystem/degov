@@ -37,7 +37,7 @@ interface GovernorToken {
 interface Contracts {
   governor: string;
   governorToken: GovernorToken;
-  timeLock: string;
+  timeLock?: string;
 }
 
 interface TokenDetails {

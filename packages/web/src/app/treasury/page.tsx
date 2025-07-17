@@ -26,7 +26,7 @@ import { formatBigIntForDisplay, formatNumberForDisplay } from "@/utils";
 export default function Treasury() {
   const daoConfig = useDaoConfig();
 
-  const timeLockAddress = daoConfig?.contracts?.timeLock;
+  const timeLockAddress = daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
 
   const tokenInfo = useMemo(() => {
     const nativeAsset: TokenWithBalance = {

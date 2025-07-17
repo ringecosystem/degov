@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import { dayjsHumanize } from "@/utils/date";
@@ -21,6 +22,7 @@ export const Parameters = () => {
     refetchClock,
   } = useGovernanceParams();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
+  const daoConfig = useDaoConfig();
 
   useEffect(() => {
     if (open) {
@@ -108,20 +110,22 @@ export const Parameters = () => {
             </span>
           </div>
 
-          <div className="flex items-center justify-between gap-[10px]">
-            <span className="text-[14px] font-normal text-foreground/40">
-              TimeLock delay
-            </span>
-            <span className="text-[14px] font-normal text-foreground">
-              {isStaticLoading ? (
-                <Skeleton className="h-[14px] w-[30px]" />
-              ) : governanceParams?.timeLockDelayInSeconds ? (
-                dayjsHumanize(governanceParams.timeLockDelayInSeconds)
-              ) : (
-                "None"
-              )}
-            </span>
-          </div>
+          {daoConfig?.contracts?.timeLock && (
+            <div className="flex items-center justify-between gap-[10px]">
+              <span className="text-[14px] font-normal text-foreground/40">
+                TimeLock delay
+              </span>
+              <span className="text-[14px] font-normal text-foreground">
+                {isStaticLoading ? (
+                  <Skeleton className="h-[14px] w-[30px]" />
+                ) : governanceParams?.timeLockDelay !== undefined ? (
+                  dayjsHumanize(Number(governanceParams?.timeLockDelay))
+                ) : (
+                  "None"
+                )}
+              </span>
+            </div>
+          )}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -209,26 +209,40 @@ export default function ActionGroup({
     onRefetch();
   }, [onRefetch]);
 
+  const hasTimelock = useMemo(() => {
+    return govParams?.timeLockDelayInSeconds !== undefined && govParams?.timeLockDelayInSeconds !== null;
+  }, [govParams?.timeLockDelayInSeconds]);
+
   const canExecute = useMemo(() => {
+    // If no timelock and proposal is succeeded, can execute directly
+    if (!hasTimelock && status === ProposalState.Succeeded) {
+      return true;
+    }
+    
     if (status === ProposalState.Queued) {
       const queuedBlockTimestamp = proposalQueuedById?.blockTimestamp
         ? BigInt(proposalQueuedById?.blockTimestamp)
         : undefined;
-
-      // Use the properly converted timeLockDelayInSeconds field
       const timeLockDelayInSeconds = govParams?.timeLockDelayInSeconds;
-      
+
+      const timeLockDelay =
+        timeLockDelayInSeconds !== undefined && timeLockDelayInSeconds !== null
+          ? BigInt(BigInt(timeLockDelayInSeconds) * 1000n)
+          : undefined;
+
       if (!queuedBlockTimestamp) return false;
-      if (!timeLockDelayInSeconds) return true;
+      if (timeLockDelay === undefined) return true;
 
       // Convert current time to seconds to match queuedBlockTimestamp units
-      const currentTimeInSeconds = BigInt(Math.floor(new Date().getTime() / 1000));
-      const timeLockDelayBigInt = BigInt(timeLockDelayInSeconds);
+      const currentTimeInSeconds = BigInt(
+        Math.floor(new Date().getTime() / 1000)
+      );
+      const timeLockDelayBigInt = BigInt(timeLockDelayInSeconds ?? 0);
 
       return currentTimeInSeconds > queuedBlockTimestamp + timeLockDelayBigInt;
     }
     return false;
-  }, [status, proposalQueuedById, govParams?.timeLockDelayInSeconds]);
+  }, [status, proposalQueuedById, govParams?.timeLockDelayInSeconds, hasTimelock]);
 
   const handleAction = useCallback(
     (action: "vote" | "queue" | "execute") => {
@@ -266,6 +280,7 @@ export default function ActionGroup({
           status={status}
           votedSupport={votedSupport}
           canExecute={canExecute}
+          hasTimelock={hasTimelock}
           isLoading={
             isPendingCastVote ||
             !!castVoteHash ||
