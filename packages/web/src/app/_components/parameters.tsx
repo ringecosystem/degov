@@ -17,7 +17,6 @@ export const Parameters = () => {
   const [open, setOpen] = useState(false);
   const {
     data: governanceParams,
-    isQuorumFetching,
     isStaticLoading,
     refetchClock,
   } = useGovernanceParams();
@@ -61,21 +60,6 @@ export const Parameters = () => {
                   ?.formatted
               ) : (
                 "-"
-              )}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between gap-[10px]">
-            <span className="text-[14px] font-normal text-foreground/40">
-              Quorum needed
-            </span>
-            <span className="text-[14px] font-normal text-foreground">
-              {isQuorumFetching ? (
-                <Skeleton className="h-[14px] w-[30px]" />
-              ) : governanceParams?.quorum ? (
-                formatTokenAmount(governanceParams?.quorum)?.formatted
-              ) : (
-                "0"
               )}
             </span>
           </div>
