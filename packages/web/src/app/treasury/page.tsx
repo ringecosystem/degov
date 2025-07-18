@@ -26,7 +26,8 @@ import { formatBigIntForDisplay, formatNumberForDisplay } from "@/utils";
 export default function Treasury() {
   const daoConfig = useDaoConfig();
 
-  const timeLockAddress = daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
+  const timeLockAddress =
+    daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
 
   const tokenInfo = useMemo(() => {
     const nativeAsset: TokenWithBalance = {
@@ -35,7 +36,7 @@ export default function Treasury() {
       chainId: daoConfig?.chain?.id,
       contract: "0x0000000000000000000000000000000000000000" as `0x${string}`,
       standard: "ERC20",
-      logo: daoConfig?.chain?.logo ?? "",
+      logo: daoConfig?.chain?.nativeToken?.logo ?? daoConfig?.chain?.logo ?? "",
     };
     const ids = new Set<string>();
 

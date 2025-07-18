@@ -1,5 +1,5 @@
 name: DeGov Development DAO
-logo: "https://raw.githubusercontent.com/ringecosystem/degov/refs/heads/main/packages/web/public/example/logo.svg"
+logo: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/degov/degov-head.svg
 siteUrl: https://degov-dev.vercel.app
 offChainDiscussionUrl: https://github.com/ringecosystem/degov/discussions
 aiAgent:
@@ -24,7 +24,7 @@ wallet:
 # Chain information: these commented fields are optional if this chain can be accessed by viem.
 chain:
   id: 46
-  logo: https://darwinia.network/images/darwinia-logo-black-background-round.svg
+  logo: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/networks/darwinia/darwinia-pink.svg
   # name: darwinia
   # rpcs:
   #   - https://rpc.darwinia.network
@@ -33,7 +33,7 @@ chain:
   #   - https://explorer.darwinia.network/
   nativeToken:
     priceId: darwinia-network-native-token
-    logo:
+    logo: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/tokens/RING/RING.svg
 
 indexer:
   endpoint: https://degov-indexer.vercel.app/graphql
@@ -78,7 +78,7 @@ apps:
     params:
       sourceToken:
         address: '0x48C817eebE1fD79F946bd6b976EF579540517121'
-        icon: '/example/token.svg'
+        icon: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/tokens/RING/RING.svg
       wrapToken:
         address: '0x0ef0827A9d5D329DFbaA14c7d5Aae364453A4D32'
-        icon: '/example/token.svg'
+        icon: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/tokens/RING/RING.svg
