@@ -28,6 +28,10 @@ export function inspectContributor(
       query,
       variables: { id: address },
     }),
+    next: { 
+      revalidate: 60, // Cache for 1 minute
+      tags: [`contributor-${address}`] 
+    },
   })
     .then((res) => res.json())
     .then((res) => {

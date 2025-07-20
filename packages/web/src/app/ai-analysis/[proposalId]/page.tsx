@@ -13,6 +13,9 @@ import { parseDescription } from "@/utils/helpers";
 
 import { AiAnalysisStandalone } from "./ai-analysis-standalone";
 
+// Force static generation for this dynamic route
+export const dynamic = 'force-static';
+
 export default function AiAnalysisPage({
   params,
 }: {

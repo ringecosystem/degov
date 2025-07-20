@@ -9,12 +9,20 @@ const defaultConfig = {
   name: "DeGov",
 };
 
+// Cache the config to avoid reading file system on every request
+let cachedConfig: Config | null = null;
+
 export const getDaoConfigServer = (): Config => {
+  // Return cached config if available
+  if (cachedConfig) {
+    return cachedConfig;
+  }
   try {
     const configPath = path.join(process.cwd(), "public", "degov.yml");
 
     if (!configPath) {
-      return defaultConfig as Config;
+      cachedConfig = defaultConfig as Config;
+      return cachedConfig;
     }
 
     let yamlText: string | undefined;
@@ -24,12 +32,14 @@ export const getDaoConfigServer = (): Config => {
       console.log(`[Config] Loaded from ${configPath}`);
     } catch {
       console.log("[Config] Using default config");
-      return defaultConfig as Config;
+      cachedConfig = defaultConfig as Config;
+      return cachedConfig;
     }
 
     if (!yamlText) {
       console.log("[Config] Using default config");
-      return defaultConfig as Config;
+      cachedConfig = defaultConfig as Config;
+      return cachedConfig;
     }
 
     const config = yaml.load(yamlText) as Config;
@@ -39,12 +49,15 @@ export const getDaoConfigServer = (): Config => {
       typeof config === "object" &&
       typeof config.name === "string"
     ) {
-      return config;
+      cachedConfig = config;
+      return cachedConfig;
     }
 
-    return defaultConfig as Config;
+    cachedConfig = defaultConfig as Config;
+    return cachedConfig;
   } catch {
     console.log("[Config] Error occurred, using default config");
-    return defaultConfig as Config;
+    cachedConfig = defaultConfig as Config;
+    return cachedConfig;
   }
 };

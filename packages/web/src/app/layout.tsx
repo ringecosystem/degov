@@ -17,19 +17,19 @@ import type { Metadata } from "next";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
-
 export async function generateMetadata(): Promise<Metadata> {
-  const config = await getDaoConfigServer();
+  const config = getDaoConfigServer();
   const daoName = config?.name || "DeGov";
   const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
   const siteUrl = config?.siteUrl;
