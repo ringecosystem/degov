@@ -18,6 +18,12 @@ const nextConfig: NextConfig = {
     ],
   },
   reactStrictMode: false,
+  experimental: {
+    staleTimes: {
+      dynamic: Infinity,
+      static: Infinity,
+    },
+  },
 };
 
 export default nextConfig;
