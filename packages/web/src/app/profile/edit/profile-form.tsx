@@ -23,7 +23,7 @@ import type { ProfileData } from "@/services/graphql/types/profile";
 // Social platform URL parsers
 function parseTwitterUrl(value: string): string {
   const trimmed = value.trim();
-  
+
   if (trimmed.startsWith("https://x.com/")) {
     return trimmed.substring("https://x.com/".length);
   }
@@ -44,7 +44,7 @@ function parseTwitterUrl(value: string): string {
 
 function parseTelegramUrl(value: string): string {
   const trimmed = value.trim();
-  
+
   if (trimmed.startsWith("https://t.me/")) {
     return trimmed.substring("https://t.me/".length);
   }
@@ -59,10 +59,7 @@ function parseTelegramUrl(value: string): string {
 
 function parseGithubUrl(value: string): string {
   const trimmed = value.trim();
-  
-  if (trimmed.startsWith("@https://github.com/")) {
-    return trimmed.substring("@https://github.com/".length);
-  }
+
   if (trimmed.startsWith("https://github.com/")) {
     return trimmed.substring("https://github.com/".length);
   }
@@ -77,7 +74,7 @@ function parseGithubUrl(value: string): string {
 
 function parseDiscordUrl(value: string): string {
   const trimmed = value.trim();
-  
+
   if (trimmed.startsWith("https://discordapp.com/users/")) {
     return trimmed.substring("https://discordapp.com/users/".length);
   }
@@ -119,7 +116,6 @@ const FormSchema = z.object({
     .refine(
       (val) => {
         if (val === "") return true;
-        // Twitter/X: 1-15 characters, alphanumeric and underscores only
         return /^[A-Za-z0-9_]{1,15}$/.test(val);
       },
       {
@@ -135,8 +131,7 @@ const FormSchema = z.object({
     .refine(
       (val) => {
         if (val === "") return true;
-        // Telegram: 5-32 characters, lowercase letters, numbers, underscores only
-        return /^[a-z0-9_]{5,32}$/.test(val);
+        return /^[A-Za-z0-9_]{5,32}$/.test(val);
       },
       {
         message: "Invalid Telegram username",
@@ -151,8 +146,7 @@ const FormSchema = z.object({
     .refine(
       (val) => {
         if (val === "") return true;
-        // GitHub: max 39 characters, alphanumeric and single hyphens, cannot start/end with hyphen, no consecutive hyphens
-        return /^[A-Za-z0-9]([A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(val);
+        return /^[A-Za-z0-9](?!.*--)([A-Za-z0-9-]){0,37}[A-Za-z0-9]$/.test(val);
       },
       {
         message: "Invalid GitHub username",
@@ -167,12 +161,10 @@ const FormSchema = z.object({
     .refine(
       (val) => {
         if (val === "") return true;
-        // Discord: New format (2-32 chars, lowercase, numbers, underscore, period, no consecutive periods)
-        // OR User ID format (17-19 digits) OR Old format (legacy username#discriminator)
         const newFormat = /^[a-z0-9._]{2,32}$/.test(val) && !/\.\./.test(val);
         const userIdFormat = /^[0-9]{17,19}$/.test(val);
         const legacyFormat = /^.{2,32}#[0-9]{4}$/.test(val);
-        
+
         return newFormat || userIdFormat || legacyFormat;
       },
       {
