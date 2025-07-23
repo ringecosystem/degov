@@ -67,7 +67,7 @@ export interface ContractsConfig {
   timeLock: string;
 }
 
-export interface TimeLockAsset {
+export interface TreasuryAsset {
   name: string;
   contract: string;
   standard: string;
@@ -109,7 +109,7 @@ export interface DaoConfigData {
   chain: ChainConfig;
   indexer: IndexerConfig;
   contracts: ContractsConfig;
-  timeLockAssets: TimeLockAsset[];
+  treasuryAssets: TreasuryAsset[];
   safes: Safe[];
 }
 
