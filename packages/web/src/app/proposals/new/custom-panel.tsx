@@ -69,7 +69,7 @@ export const CustomPanel = ({
   const { data: bytecode, isFetching: isLoadingBytecode } = useBytecode({
     address: watch("target"),
     query: {
-      enabled: !!watch("target") && isAddress(watch("target")),
+      enabled: !!watch("target") && isAddress(watch("target") || ""),
     },
   });
 
@@ -248,7 +248,7 @@ export const CustomPanel = ({
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading contract info...
             </span>
-          ) : watch("target") && isAddress(watch("target")) && !bytecode ? (
+          ) : watch("target") && isAddress(watch("target") || "") && !bytecode ? (
             <ErrorMessage message="The address must be a contract address, not an EOA address" />
           ) : (
             errors.target && <ErrorMessage message={errors.target.message} />
