@@ -48,7 +48,7 @@ interface TokenDetails {
   logo: string | null;
 }
 
-type TimelockAssets = TokenDetails[];
+type TreasuryAssets = TokenDetails[];
 
 interface Indexer {
   endpoint: string;
@@ -85,7 +85,7 @@ interface Config {
   wallet: Wallet;
   chain: Chain;
   contracts: Contracts;
-  timeLockAssets: TimelockAssets;
+  treasuryAssets: TreasuryAssets;
   indexer: Indexer;
   safes?: SafeConfig;
   apps?: AppConfig;
@@ -101,7 +101,7 @@ export type {
   GovernorToken,
   Contracts,
   TokenDetails,
-  TimelockAssets,
+  TreasuryAssets,
   Indexer,
   SafeItem,
   SafeConfig,

@@ -43,7 +43,7 @@ export default function Treasury() {
     if (daoConfig?.chain?.nativeToken?.priceId) {
       ids.add(daoConfig?.chain?.nativeToken?.priceId.toLowerCase());
     }
-    if (!daoConfig?.timeLockAssets || isEmpty(daoConfig?.timeLockAssets))
+    if (!daoConfig?.treasuryAssets || isEmpty(daoConfig?.treasuryAssets))
       return {
         nativeAsset,
         erc20Assets: [],
@@ -58,7 +58,7 @@ export default function Treasury() {
       ids.add(daoConfig?.chain?.nativeToken?.priceId.toLowerCase());
     }
 
-    Object.entries(daoConfig.timeLockAssets).forEach(([, asset]) => {
+    Object.entries(daoConfig.treasuryAssets).forEach(([, asset]) => {
       const assetWithChainId = {
         ...asset,
         chainId: daoConfig.chain.id,

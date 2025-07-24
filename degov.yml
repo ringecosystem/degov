@@ -50,7 +50,7 @@ contracts:
   timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
 
 # The treasury assets information
-timeLockAssets:
+treasuryAssets:
   - name: FT
     contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
     standard: ERC20
@@ -77,8 +77,8 @@ apps:
     link: https://token-wrap.degov.ai?config=https://degov-dev.vercel.app/degov.yml
     params:
       sourceToken:
-        address: '0x48C817eebE1fD79F946bd6b976EF579540517121'
+        address: "0x48C817eebE1fD79F946bd6b976EF579540517121"
         icon: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/tokens/RING/RING.svg
       wrapToken:
-        address: '0x0ef0827A9d5D329DFbaA14c7d5Aae364453A4D32'
+        address: "0x0ef0827A9d5D329DFbaA14c7d5Aae364453A4D32"
         icon: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/tokens/RING/RING.svg
