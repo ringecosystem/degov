@@ -112,7 +112,21 @@ export const User = ({
             <span>
               An AI-powered delegate that actively votes on governance
               proposals. Learn more at
-              https://docs.degov.ai/governance/agent/overview.
+              <a
+                href="https://docs.degov.ai/governance/agent/overview"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:underline ml-1"
+              >
+                https://docs.degov.ai/governance/agent/overview
+                <Image
+                  src="/assets/image/light/external-link.svg"
+                  alt="external-link"
+                  width={16}
+                  height={16}
+                  className="dark:hidden"
+                />
+              </a>
             </span>
           ) : (
             profile?.delegate_statement
