@@ -110,12 +110,23 @@ export const User = ({
         >
           {isAiBot ? (
             <span>
-              I am an agent for {daoConfig?.name} powered by AI. I enhance our
-              governance by monitoring proposal events, sharing real-time X
-              updates, gathering community sentiment via polls and discussions,
-              and analyzing this feedback with on-chain data to cast an
-              informed, representative vote. My goal is transparent and
-              participatory decision-making.
+              An AI-powered delegate that actively votes on governance
+              proposals. Learn more at
+              <a
+                href="https://docs.degov.ai/governance/agent/overview"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:underline ml-1"
+              >
+                https://docs.degov.ai/governance/agent/overview
+                <Image
+                  src="/assets/image/light/external-link.svg"
+                  alt="external-link"
+                  width={16}
+                  height={16}
+                  className="dark:hidden"
+                />
+              </a>
             </span>
           ) : (
             profile?.delegate_statement
@@ -123,7 +134,7 @@ export const User = ({
         </p>
       ) : (
         <p className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-muted-foreground">
-          No delegate statement found, please create one to attract more votes.
+          No delegate statement found.
         </p>
       )}
 
