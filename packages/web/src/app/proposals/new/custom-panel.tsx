@@ -161,7 +161,7 @@ export const CustomPanel = ({
     const abiJson = watch("customAbiContent") as Abi;
     const methodValue = watch("contractMethod");
 
-    const [name, paramCountNum] = methodValue.split("-") || [];
+    const [name, paramCountNum] = methodValue?.split("-") || [];
 
     if (!name || !paramCountNum) return false;
 
@@ -248,7 +248,9 @@ export const CustomPanel = ({
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading contract info...
             </span>
-          ) : watch("target") && isAddress(watch("target") || "") && !bytecode ? (
+          ) : watch("target") &&
+            isAddress(watch("target") || "") &&
+            !bytecode ? (
             <ErrorMessage message="The address must be a contract address, not an EOA address" />
           ) : (
             errors.target && <ErrorMessage message={errors.target.message} />
@@ -303,7 +305,7 @@ export const CustomPanel = ({
                   onUpload={handleUploadAbi}
                   className={`${errors?.customAbiContent && "border-danger"}`}
                   isError={!!errors.customAbiContent}
-                  isUploaded={isValidAbi(watch("customAbiContent"))}
+                  isUploaded={isValidAbi(watch("customAbiContent") || [])}
                 />
               </div>
             )}

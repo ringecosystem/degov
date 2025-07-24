@@ -77,7 +77,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.5",
-    "react-hook-form": "^7.54.2",
+    "react-hook-form": "^7.61.0",
     "react-toastify": "^11.0.3",
     "react-use": "^17.6.0",
     "siwe": "^3.0.0",
