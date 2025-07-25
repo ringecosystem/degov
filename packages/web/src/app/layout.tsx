@@ -35,6 +35,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = config?.siteUrl;
   const ogImageUrl = `${siteUrl}/assets/image/og.png`;
 
+  console.log(`[Metadata] Generating metadata for: ${daoName} at ${new Date().toISOString()}`);
+
   return {
     title: {
       template: `%s | ${daoName} | DeGov.AI`,
@@ -67,6 +69,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     other: {
       timestamp: Date.now(),
+      configName: daoName,
     },
   };
 }
