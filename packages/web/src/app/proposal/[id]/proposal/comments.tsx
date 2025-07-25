@@ -143,9 +143,11 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         width: "29%",
         className: "text-left",
         render: (record) =>
-          getVoteDisplay(record?.support, record?.reason, () =>
-            setCurrentCommentRow(record)
-          ),
+          record
+            ? getVoteDisplay(record.support, record.reason, () =>
+                setCurrentCommentRow(record)
+              )
+            : null,
       },
       {
         title: "Date",
