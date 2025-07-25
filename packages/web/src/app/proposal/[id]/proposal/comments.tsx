@@ -63,7 +63,8 @@ export const Comments = ({ comments, id }: CommentsProps) => {
       },
     };
 
-    const config = voteConfig[support];
+    const config = voteConfig?.[support];
+
 
     return (
       <div className="flex flex-col items-start gap-[6px]">
@@ -71,12 +72,12 @@ export const Comments = ({ comments, id }: CommentsProps) => {
           <span
             className={cn(
               `w-[16px] h-[16px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background`,
-              config.bgColor
+              config?.bgColor
             )}
           >
-            {config.icon}
+            {config?.icon}
           </span>
-          <span className={cn(config.textColor)}>{config.label}</span>
+          <span className={cn(config?.textColor)}>{config?.label}</span>
         </div>
         {reason && (
           <Tooltip>
@@ -142,7 +143,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         width: "29%",
         className: "text-left",
         render: (record) =>
-          getVoteDisplay(record.support, record.reason, () =>
+          getVoteDisplay(record?.support, record?.reason, () =>
             setCurrentCommentRow(record)
           ),
       },
