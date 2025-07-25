@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from "next/cache";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import "./globals.css";
@@ -29,13 +30,20 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
+  // Disable static optimization for metadata generation
+  noStore();
+
+  // Force dynamic metadata generation by adding timestamp
+  const timestamp = Date.now();
   const config = getDaoConfigServer();
   const daoName = config?.name || "DeGov";
   const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
   const siteUrl = config?.siteUrl;
-  const ogImageUrl = `${siteUrl}/assets/image/og.png`;
+  const ogImageUrl = `${siteUrl}/assets/image/og.png?t=${timestamp}`;
 
-  console.log(`[Metadata] Generating metadata for: ${daoName} at ${new Date().toISOString()}`);
+  console.log(
+    `[Metadata] Generating metadata for: ${daoName} at ${new Date().toISOString()} (timestamp: ${timestamp})`
+  );
 
   return {
     title: {
