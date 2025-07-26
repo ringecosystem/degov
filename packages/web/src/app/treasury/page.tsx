@@ -125,27 +125,33 @@ export default function Treasury() {
 
     const allAssets = [...nativeAssets, ...erc20Assets];
 
-    const hasMissingPrice = allAssets.some((asset) => {
-      return asset.priceId && !prices[asset?.priceId?.toLowerCase()];
+    // check if any asset has known price
+    const hasAnyKnownPrice = allAssets.some((asset) => {
+      return asset.priceId && prices[asset.priceId.toLowerCase()] && prices[asset.priceId.toLowerCase()] > 0;
     });
 
-    // if has missing price, return undefined
-    if (hasMissingPrice) {
+    // if no asset has known price, return undefined to show N/A
+    if (!hasAnyKnownPrice) {
       return undefined;
     }
 
-    // calculate total value
+    // calculate total value, only include assets with known prices
     const totalValue = allAssets.reduce((total, asset) => {
-      // get price, if not exist, return 0
-      const priceValue = asset.priceId
-        ? prices[asset.priceId.toLowerCase()]
-        : 0;
-      const price =
-        priceValue === undefined || priceValue === null ? 0 : priceValue;
+      // skip assets without priceId or unknown price
+      if (!asset.priceId || !prices[asset.priceId.toLowerCase()]) {
+        return total;
+      }
+
+      const priceValue = prices[asset.priceId.toLowerCase()];
+      const price = priceValue === undefined || priceValue === null ? 0 : priceValue;
+      
+      // skip if price is 0
+      if (price === 0) {
+        return total;
+      }
 
       // get balance, default is "0"
-      const balance = asset?.formattedBalance || "0";
-
+      const balance = asset?.formattedRawBalance || "0";
       try {
         // calculate current asset value and accumulate
         const value = new BigNumber(price).multipliedBy(balance).toNumber();
@@ -155,7 +161,6 @@ export default function Treasury() {
         return total;
       }
     }, 0);
-
     // return calculation result
     return totalValue ? formatNumberForDisplay(totalValue)?.[0] : "0";
   }, [nativeAssets, erc20Assets, prices]);
