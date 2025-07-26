@@ -149,7 +149,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
     );
   };
 
-  const toggleVoteFilter = (voteType: VoteType) => {
+  const toggleVoteFilter = useCallback((voteType: VoteType) => {
     startTransition(() => {
       setVoteFilters((prev) => ({
         ...prev,
@@ -157,7 +157,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
       }));
       resetVisibleCount();
     });
-  };
+  }, [startTransition, resetVisibleCount]);
 
   const columns = useMemo<ColumnType<ProposalVoterItem>[]>(() => {
     return [
