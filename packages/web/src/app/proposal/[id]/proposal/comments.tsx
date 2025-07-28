@@ -46,7 +46,6 @@ export const Comments = ({ comments, id }: CommentsProps) => {
   const deferredComments = useDeferredValue(comments);
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const LOAD_MORE_THRESHOLD = PAGE_SIZE;
 
   const filteredComments = useMemo(() => {
     if (!deferredComments?.length) return [];
@@ -57,30 +56,30 @@ export const Comments = ({ comments, id }: CommentsProps) => {
   }, [deferredComments, voteFilters]);
 
   const visibleComments = useMemo(() => {
-    if (filteredComments.length <= LOAD_MORE_THRESHOLD) {
+    if (filteredComments.length <= PAGE_SIZE) {
       return filteredComments;
     }
     return filteredComments.slice(0, visibleCount);
-  }, [filteredComments, visibleCount, LOAD_MORE_THRESHOLD]);
+  }, [filteredComments, visibleCount, PAGE_SIZE]);
 
   const loadMoreComments = useCallback(() => {
     if (visibleCount < filteredComments.length) {
       startTransition(() => {
         setVisibleCount((prev) =>
-          Math.min(prev + LOAD_MORE_THRESHOLD, filteredComments.length)
+          Math.min(prev + PAGE_SIZE, filteredComments.length)
         );
       });
     }
   }, [
     visibleCount,
     filteredComments.length,
-    LOAD_MORE_THRESHOLD,
+    PAGE_SIZE,
     startTransition,
   ]);
 
   const resetVisibleCount = useCallback(() => {
-    setVisibleCount(LOAD_MORE_THRESHOLD);
-  }, [LOAD_MORE_THRESHOLD]);
+    setVisibleCount(PAGE_SIZE);
+  }, [PAGE_SIZE]);
 
   const totalVotingPower = useMemo(() => {
     if (!comments?.length) return 0n;
@@ -288,7 +287,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
                   : `Load More (${filteredComments.length - visibleCount})`}
               </button>
             </div>
-          ) : filteredComments.length > LOAD_MORE_THRESHOLD ? (
+          ) : filteredComments.length > PAGE_SIZE ? (
             <div className="text-muted-foreground text-xs">
               Showing all {filteredComments.length} votes
             </div>
