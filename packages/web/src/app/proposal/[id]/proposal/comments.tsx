@@ -1,4 +1,10 @@
-import { useMemo, useState } from "react";
+import {
+  useMemo,
+  useState,
+  useTransition,
+  useDeferredValue,
+  useCallback,
+} from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import type { ColumnType } from "@/components/custom-table";
@@ -22,11 +28,58 @@ interface CommentsProps {
   totalVotingPower?: bigint;
 }
 
+const PAGE_SIZE = 20;
 export const Comments = ({ comments, id }: CommentsProps) => {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const [currentCommentRow, setCurrentCommentRow] = useState<
     ProposalVoterItem | undefined
   >(undefined);
+
+  const [voteFilters, setVoteFilters] = useState({
+    [VoteType.For]: true,
+    [VoteType.Against]: true,
+    [VoteType.Abstain]: true,
+  });
+
+  const [isPending, startTransition] = useTransition();
+
+  const deferredComments = useDeferredValue(comments);
+
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const filteredComments = useMemo(() => {
+    if (!deferredComments?.length) return [];
+    const filtered = deferredComments.filter(
+      (comment) => voteFilters[comment.support]
+    );
+    return filtered;
+  }, [deferredComments, voteFilters]);
+
+  const visibleComments = useMemo(() => {
+    if (filteredComments.length <= PAGE_SIZE) {
+      return filteredComments;
+    }
+    return filteredComments.slice(0, visibleCount);
+  }, [filteredComments, visibleCount, PAGE_SIZE]);
+
+  const loadMoreComments = useCallback(() => {
+    if (visibleCount < filteredComments.length) {
+      startTransition(() => {
+        setVisibleCount((prev) =>
+          Math.min(prev + PAGE_SIZE, filteredComments.length)
+        );
+      });
+    }
+  }, [
+    visibleCount,
+    filteredComments.length,
+    PAGE_SIZE,
+    startTransition,
+  ]);
+
+  const resetVisibleCount = useCallback(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [PAGE_SIZE]);
 
   const totalVotingPower = useMemo(() => {
     if (!comments?.length) return 0n;
@@ -65,7 +118,6 @@ export const Comments = ({ comments, id }: CommentsProps) => {
 
     const config = voteConfig?.[support];
 
-
     return (
       <div className="flex flex-col items-start gap-[6px]">
         <div className={`flex items-center gap-[10px]`}>
@@ -96,6 +148,16 @@ export const Comments = ({ comments, id }: CommentsProps) => {
     );
   };
 
+  const toggleVoteFilter = useCallback((voteType: VoteType) => {
+    startTransition(() => {
+      setVoteFilters((prev) => ({
+        ...prev,
+        [voteType]: !prev[voteType],
+      }));
+      resetVisibleCount();
+    });
+  }, [startTransition, resetVisibleCount]);
+
   const columns = useMemo<ColumnType<ProposalVoterItem>[]>(() => {
     return [
       {
@@ -117,22 +179,34 @@ export const Comments = ({ comments, id }: CommentsProps) => {
           <div className="flex items-center gap-[4px]">
             <span>Choice</span>
             <span
+              onClick={() => toggleVoteFilter(VoteType.For)}
               className={cn(
-                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background bg-foreground`
+                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
+                voteFilters[VoteType.For]
+                  ? "bg-foreground"
+                  : "bg-muted-foreground opacity-50"
               )}
             >
               ✓
             </span>
             <span
+              onClick={() => toggleVoteFilter(VoteType.Against)}
               className={cn(
-                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background bg-foreground`
+                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
+                voteFilters[VoteType.Against]
+                  ? "bg-foreground"
+                  : "bg-muted-foreground opacity-50"
               )}
             >
               ✕
             </span>
             <span
+              onClick={() => toggleVoteFilter(VoteType.Abstain)}
               className={cn(
-                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background bg-muted-foreground`
+                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
+                voteFilters[VoteType.Abstain]
+                  ? "bg-foreground"
+                  : "bg-muted-foreground opacity-50"
               )}
             >
               —
@@ -165,7 +239,6 @@ export const Comments = ({ comments, id }: CommentsProps) => {
           const voterWeight = record.weight ? BigInt(record.weight) : 0n;
           const formattedAmount = formatTokenAmount(voterWeight);
 
-          // Calculate percentage based on total voting power
           let percentage = "0%";
           if (totalVotingPower && totalVotingPower > 0n && voterWeight > 0n) {
             const percentageValue =
@@ -183,20 +256,45 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         },
       },
     ];
-  }, [formatTokenAmount, totalVotingPower]);
+  }, [formatTokenAmount, totalVotingPower, voteFilters, toggleVoteFilter]);
+
+  const hasMoreItems = visibleCount < filteredComments.length;
 
   return (
     <div className="rounded-[14px] bg-card p-[20px] flex flex-col h-full min-h-0">
       <CustomTable
-        dataSource={comments ?? []}
+        dataSource={visibleComments}
         columns={columns}
         isLoading={false}
         emptyText="No votes yet"
         rowKey="id"
         maxHeight="100%"
         tableClassName="table-fixed"
-        bodyClassName="flex-1 min-h-0"
+        bodyClassName={cn(
+          "flex-1 min-h-0",
+          !filteredComments?.length ? "hidden" : ""
+        )}
+        caption={
+          hasMoreItems ? (
+            <div className="flex justify-center py-4">
+              <button
+                onClick={loadMoreComments}
+                disabled={isPending}
+                className="text-foreground transition-colors hover:text-foreground/80"
+              >
+                {isPending
+                  ? "Loading..."
+                  : `Load More (${filteredComments.length - visibleCount})`}
+              </button>
+            </div>
+          ) : filteredComments.length > PAGE_SIZE ? (
+            <div className="text-muted-foreground text-xs">
+              Showing all {filteredComments.length} votes
+            </div>
+          ) : null
+        }
       />
+
       <CommentModal
         open={!!currentCommentRow?.reason}
         onOpenChange={() => setCurrentCommentRow(undefined)}
