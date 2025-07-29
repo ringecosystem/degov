@@ -7,6 +7,9 @@ import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
 
 marked.use();
+
+const MAX_COLLAPSED_HEIGHT = 644;
+
 const Loading = () => {
   return (
     <div className="flex flex-col h-[200px] w-full  gap-4">
@@ -47,12 +50,12 @@ export const Description = ({
     const checkHeight = () => {
       if (markdownRef.current) {
         const height = markdownRef.current.scrollHeight;
-        setShowToggle(height > 644);
+        setShowToggle(height > MAX_COLLAPSED_HEIGHT);
       }
     };
 
     if (sanitizedHtml) {
-      setTimeout(checkHeight, 0);
+      requestAnimationFrame(checkHeight);
     }
   }, [sanitizedHtml]);
 
@@ -72,7 +75,7 @@ export const Description = ({
           ref={markdownRef}
           className="markdown-body"
           style={{
-            maxHeight: showToggle && !isExpanded ? "644px" : "none",
+            maxHeight: showToggle && !isExpanded ? `${MAX_COLLAPSED_HEIGHT}px` : "none",
             overflow: "hidden",
           }}
         >
