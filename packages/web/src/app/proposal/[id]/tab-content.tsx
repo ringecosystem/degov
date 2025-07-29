@@ -59,7 +59,7 @@ export const TabContent = ({
         <div className="flex flex-col gap-[20px] p-[20px] rounded-[14px] bg-card">
           <div className="flex flex-col gap-[12px]">
             <h3 className="text-[18px] font-semibold text-foreground border-b border-card-background pb-[20px]">
-              Discussions
+              Offchain discussion
             </h3>
             {data?.discussion && (
               <a
