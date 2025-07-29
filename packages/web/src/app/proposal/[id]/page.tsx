@@ -37,16 +37,25 @@ export default function ProposalDetailPage() {
 
   const { id } = useParams();
 
+  const validId = useMemo(() => {
+    if (!id) return null;
+    try {
+      return BigInt(id as string);
+    } catch {
+      return null;
+    }
+  }, [id]);
+
   const proposalStatus = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
     functionName: "state",
-    args: [id ? BigInt(id as string) : 0n],
+    args: [validId || 0n],
     chainId: daoConfig?.chain?.id,
     query: {
       refetchInterval: DEFAULT_REFETCH_INTERVAL,
       enabled:
-        !!id && !!daoConfig?.contracts?.governor && !!daoConfig?.chain?.id,
+        !!validId && !!daoConfig?.contracts?.governor && !!daoConfig?.chain?.id,
     },
   });
 
@@ -66,7 +75,7 @@ export default function ProposalDetailPage() {
           proposalId_eq: id as string,
         },
       }),
-    enabled: !!id && !!daoConfig?.indexer.endpoint,
+    enabled: !!validId && !!daoConfig?.indexer.endpoint,
     refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
   });
 
@@ -208,7 +217,7 @@ export default function ProposalDetailPage() {
     refetchProposalQueuedById,
   ]);
 
-  if (!id) {
+  if (!validId || !allData || allData.length === 0) {
     return <NotFound />;
   }
   return (
