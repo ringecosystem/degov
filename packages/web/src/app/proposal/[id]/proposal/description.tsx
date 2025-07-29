@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProposalItem } from "@/services/graphql/types";
@@ -25,6 +25,10 @@ export const Description = ({
   data?: ProposalItem;
   isFetching: boolean;
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showToggle, setShowToggle] = useState(false);
+  const markdownRef = useRef<HTMLDivElement>(null);
+
   const { description } = useMemo(() => {
     const titleAndDesc = extractTitleAndDescription(data?.description);
     const parsed = parseDescription(titleAndDesc?.description);
@@ -32,11 +36,29 @@ export const Description = ({
       description: parsed.mainText,
     };
   }, [data?.description]);
+
   const sanitizedHtml = useMemo(() => {
     const html = marked.parse(description ?? "") as string;
     if (!html) return "";
     return DOMPurify.sanitize(html);
   }, [description]);
+
+  useEffect(() => {
+    const checkHeight = () => {
+      if (markdownRef.current) {
+        const height = markdownRef.current.scrollHeight;
+        setShowToggle(height > 644);
+      }
+    };
+
+    if (sanitizedHtml) {
+      setTimeout(checkHeight, 0);
+    }
+  }, [sanitizedHtml]);
+
+  const toggleExpanded = () => {
+    setIsExpanded(!isExpanded);
+  };
 
   return isFetching ? (
     <Loading />
@@ -46,7 +68,14 @@ export const Description = ({
         <h3 className="text-[26px] font-semibold text-foreground  border-b border-card-background pb-[20px]">
           Description
         </h3>
-        <div className="markdown-body">
+        <div
+          ref={markdownRef}
+          className="markdown-body"
+          style={{
+            maxHeight: showToggle && !isExpanded ? "644px" : "none",
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
               whiteSpace: "wrap",
@@ -58,6 +87,14 @@ export const Description = ({
             }}
           ></div>
         </div>
+        {showToggle && (
+          <div
+            className="flex flex-col border-t border-card-background pt-[20px] text-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
+            onClick={toggleExpanded}
+          >
+            <span>{isExpanded ? "Show less" : "Show more"}</span>
+          </div>
+        )}
       </div>
     </div>
   );
