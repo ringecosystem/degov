@@ -5,6 +5,7 @@ import "./globals.css";
 import "./markdown-body.css";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ClockModeProvider } from "@/contexts/ClockModeContext";
 import { getDaoConfigServer } from "@/lib/config";
 import { BlockDataProvider } from "@/providers/block.provider";
 import { ConfigProvider } from "@/providers/config.provider";
@@ -15,6 +16,7 @@ import { ConditionalLayout } from "./conditional-layout";
 import { ToastContainer } from "./toastContainer";
 
 import type { Metadata } from "next";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -96,10 +98,12 @@ export default function RootLayout({
           <ConfigProvider>
             <DAppProvider>
               <BlockDataProvider>
-                <TooltipProvider delayDuration={0}>
-                  <ConditionalLayout>{children}</ConditionalLayout>
-                  <ToastContainer />
-                </TooltipProvider>
+                <ClockModeProvider>
+                  <TooltipProvider delayDuration={0}>
+                    <ConditionalLayout>{children}</ConditionalLayout>
+                    <ToastContainer />
+                  </TooltipProvider>
+                </ClockModeProvider>
               </BlockDataProvider>
             </DAppProvider>
           </ConfigProvider>

@@ -1,19 +1,18 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { getBlock } from "@wagmi/core";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { useBlockNumber, usePublicClient } from "wagmi";
+import { useBlockNumber, useConfig } from "wagmi";
 
-import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { QUERY_CONFIGS } from "@/utils/query-config";
+
+const BLOCK_SAMPLE_SIZE = 9; // Sample 10 blocks total (current + 9 previous)
 
 interface BlockContextValue {
-  /** Current block number */
-  currentBlockNumber: bigint | null;
-  /** Current block production time in seconds */
-  currentBlockTime: number | null;
-  /** Average block production time over larger sample */
-  averageBlockTime: number | null;
+  /** Block production time based on last 10 blocks */
+  blockTime: number | null;
   /** Chain ID */
   chainId: number | null;
   /** Loading state */
@@ -28,92 +27,90 @@ const BlockContext = createContext<BlockContextValue | null>(null);
 
 interface BlockProviderProps {
   children: ReactNode;
-  /** Number of blocks to sample for average calculation (default: 10) */
-  sampleSize?: number;
-  /** Whether to watch for new blocks (default: true) */
-  watch?: boolean;
 }
 
-export function BlockProvider({
-  children,
-  sampleSize = 10,
-  watch = true,
-}: BlockProviderProps) {
+export function BlockProvider({ children }: BlockProviderProps) {
   const daoConfig = useDaoConfig();
-  const publicClient = usePublicClient();
 
-  // Single source of truth for block number
-  const { data: currentBlockNumber } = useBlockNumber({
-    watch,
+  const config = useConfig();
+  const { data: blockNumber } = useBlockNumber({
     chainId: daoConfig?.chain?.id,
+    watch: false,
     query: {
-      refetchInterval: watch ? DEFAULT_REFETCH_INTERVAL : undefined,
+      ...QUERY_CONFIGS.DEFAULT,
     },
   });
 
-  // Single block time calculation
   const {
-    data: blockTimeData,
+    data: blockTime,
     isLoading,
     error,
     isFetching,
   } = useQuery({
     // eslint-disable-next-line @tanstack/query/exhaustive-deps
-    queryKey: [
-      "globalBlockTime",
-      daoConfig?.chain?.id,
-      currentBlockNumber?.toString(),
-      sampleSize,
-      publicClient ? "client-present" : "no-client",
-    ],
+    queryKey: ["blockTime", blockNumber?.toString(), daoConfig?.chain?.id],
     queryFn: async () => {
-      if (!publicClient || !currentBlockNumber) {
-        throw new Error("Public client or block number not available");
+      if (!blockNumber) {
+        throw new Error("Block number not available");
       }
 
       // Ensure we have enough blocks to sample
-      if (currentBlockNumber < BigInt(sampleSize)) {
+      if (blockNumber < BigInt(BLOCK_SAMPLE_SIZE)) {
         throw new Error(
-          `Not enough blocks to sample. Current: ${currentBlockNumber}, Required: ${sampleSize}`
+          `Not enough blocks to sample. Current: ${blockNumber}, Required: ${
+            BLOCK_SAMPLE_SIZE + 1
+          }`
         );
       }
 
       try {
-        // Fetch multiple consecutive blocks in parallel
-        const blocks = await Promise.all(
-          Array.from({ length: sampleSize + 1 }, (_, i) =>
-            publicClient.getBlock({
-              blockNumber: currentBlockNumber - BigInt(i),
+        // Fetch last 10 blocks using direct JSON-RPC calls
+        const fromBlock = blockNumber - BigInt(BLOCK_SAMPLE_SIZE);
+        const blockPromises: Promise<{
+          timestamp: bigint;
+          number: bigint;
+          hash: string;
+        }>[] = [];
+
+        for (let i = fromBlock; i <= blockNumber; i++) {
+          // Use direct JSON-RPC call to get block by number
+          blockPromises.push(
+            getBlock(config, {
+              blockNumber: i,
+              chainId: daoConfig?.chain?.id,
             })
-          )
-        );
-
-        // Calculate time differences between consecutive blocks
-        const blockTimes: number[] = [];
-        for (let i = 0; i < blocks.length - 1; i++) {
-          const timeDiff = Number(
-            blocks[i].timestamp - blocks[i + 1].timestamp
           );
+        }
 
-          // Validate reasonable block time (1-300 seconds)
-          if (timeDiff > 0 && timeDiff <= 300) {
-            blockTimes.push(timeDiff);
+        const rpcBlocks = await Promise.all(blockPromises);
+
+        if (rpcBlocks.length < 2) {
+          throw new Error("Need at least 2 blocks to calculate interval");
+        }
+
+        // Calculate average block interval from last 10 blocks
+        let totalInterval = 0;
+        let intervalCount = 0;
+
+        for (let i = 1; i < rpcBlocks.length; i++) {
+          const currentBlock = rpcBlocks[i];
+          const previousBlock = rpcBlocks[i - 1];
+
+          if (currentBlock.timestamp && previousBlock.timestamp) {
+            const interval = Number(
+              currentBlock.timestamp - previousBlock.timestamp
+            );
+            totalInterval += interval;
+            intervalCount++;
           }
         }
 
-        if (blockTimes.length === 0) {
-          throw new Error("No valid block times found");
+        if (intervalCount === 0) {
+          throw new Error("No valid block intervals found");
         }
+        const averageInterval = Math.floor(totalInterval / intervalCount);
 
-        const currentBlockTime = blockTimes[0]; // Most recent
-        const averageBlockTime =
-          blockTimes.reduce((sum, time) => sum + time, 0) / blockTimes.length;
-
-        return {
-          currentBlockTime,
-          averageBlockTime,
-          blockTimes,
-        };
+        return averageInterval;
       } catch (err) {
         throw new Error(
           `Failed to fetch block data: ${
@@ -122,30 +119,19 @@ export function BlockProvider({
         );
       }
     },
-    enabled: !!publicClient && !!currentBlockNumber && !!daoConfig?.chain?.id,
-    staleTime: DEFAULT_REFETCH_INTERVAL / 2,
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    enabled: !!daoConfig?.chain?.id,
+    ...QUERY_CONFIGS.DEFAULT,
   });
 
   const value = useMemo(
     (): BlockContextValue => ({
-      currentBlockNumber: currentBlockNumber ?? null,
-      currentBlockTime: blockTimeData?.currentBlockTime ?? null,
-      averageBlockTime: blockTimeData?.averageBlockTime ?? null,
+      blockTime: blockTime ?? null,
       chainId: daoConfig?.chain?.id ?? null,
       isLoading,
       error,
       isFetching,
     }),
-    [
-      currentBlockNumber,
-      blockTimeData,
-      daoConfig?.chain?.id,
-      isLoading,
-      error,
-      isFetching,
-    ]
+    [blockTime, daoConfig?.chain?.id, isLoading, error, isFetching]
   );
 
   return (
@@ -161,15 +147,6 @@ export function useBlockData(): BlockContextValue {
   return context;
 }
 
-// Convenience hooks for specific data
-export function useCurrentBlockNumber(): bigint | null {
-  return useBlockData().currentBlockNumber;
-}
-
-export function useCurrentBlockTime(): number | null {
-  return useBlockData().currentBlockTime;
-}
-
-export function useAverageBlockTime(): number | null {
-  return useBlockData().averageBlockTime;
+export function useBlockInterval(): number | null {
+  return useBlockData().blockTime;
 }

@@ -1,14 +1,11 @@
 import { useMemo } from "react";
-import { useReadContract, useReadContracts } from "wagmi";
+import { useBlockNumber, useReadContract, useReadContracts } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as timeLockAbi } from "@/config/abi/timeLock";
-import {
-  useAverageBlockTime,
-  useCurrentBlockNumber,
-} from "@/contexts/BlockContext";
+import { useBlockInterval } from "@/contexts/BlockContext";
+import { useClockModeContext } from "@/contexts/ClockModeContext";
 
-import { useClockMode } from "./useClockMode";
 import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
@@ -34,8 +31,8 @@ export function useStaticGovernanceParams() {
   const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
 
   // Get clock mode and block time for conversion
-  const { isBlockNumberMode, isLoading: isClockModeLoading } = useClockMode();
-  const averageBlockTime = useAverageBlockTime(); // Get from BlockContext
+  const { isBlockNumberMode, isClockModeLoading } = useClockModeContext();
+  const averageBlockTime = useBlockInterval(); // Get from BlockContext
 
   const contracts = useMemo(() => {
     const baseContracts = [
@@ -135,14 +132,16 @@ export function useQuorum() {
 
   // Use the dedicated clock mode hook
   const {
-    rawClockMode,
     isBlockNumberMode,
-    isLoading: isClockModeLoading,
-    error: clockModeError,
-  } = useClockMode();
+    rawClockMode,
+    isClockModeLoading,
+    clockModeError,
+  } = useClockModeContext();
 
   // Get current block number from BlockContext
-  const currentBlockNumber = useCurrentBlockNumber();
+  const { data: blockNumber } = useBlockNumber({
+    chainId: daoConfig?.chain?.id,
+  });
 
   const {
     data: clockData,
@@ -162,9 +161,7 @@ export function useQuorum() {
 
   // Determine the correct parameter for quorum function based on clock mode
   // Use a slightly older block for stability (current block - 10)
-  const stableBlockNumber = currentBlockNumber
-    ? currentBlockNumber - BigInt(10)
-    : BigInt(0);
+  const stableBlockNumber = blockNumber ? blockNumber - BigInt(10) : BigInt(0);
   const quorumParameter: bigint = isBlockNumberMode
     ? stableBlockNumber
     : BigInt(clockData ?? 0);
@@ -186,7 +183,7 @@ export function useQuorum() {
         Boolean(daoConfig?.chain?.id) &&
         !isClockModeLoading &&
         (isBlockNumberMode
-          ? Boolean(currentBlockNumber && currentBlockNumber > BigInt(10))
+          ? Boolean(blockNumber && blockNumber > BigInt(10))
           : Boolean(clockData)),
     },
   });
