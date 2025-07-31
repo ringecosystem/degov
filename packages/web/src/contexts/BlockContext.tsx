@@ -122,7 +122,6 @@ export function BlockProvider({ children }: BlockProviderProps) {
     enabled: !!daoConfig?.chain?.id,
     ...QUERY_CONFIGS.DEFAULT,
   });
-
   const value = useMemo(
     (): BlockContextValue => ({
       blockTime: blockTime ?? null,
