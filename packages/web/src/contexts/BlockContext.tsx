@@ -47,6 +47,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
     error,
     isFetching,
   } = useQuery({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps
     queryKey: ["blockTime", blockNumber?.toString(), daoConfig?.chain?.id],
     queryFn: async () => {
       if (!blockNumber) {
