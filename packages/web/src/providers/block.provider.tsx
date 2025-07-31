@@ -13,9 +13,5 @@ interface BlockProviderProps {
  * This should be placed high in the component tree, ideally in layout or app component
  */
 export function BlockDataProvider({ children }: BlockProviderProps) {
-  return (
-    <BlockProvider sampleSize={10} watch={true}>
-      {children}
-    </BlockProvider>
-  );
+  return <BlockProvider>{children}</BlockProvider>;
 }

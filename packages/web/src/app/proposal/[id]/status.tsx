@@ -7,7 +7,6 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
-import { useVotingPeriodTimestamps } from "@/hooks/useVoteEndTimestamp";
 import type {
   ProposalCanceledByIdItem,
   ProposalExecutedByIdItem,
@@ -95,46 +94,32 @@ const Status: React.FC<StatusProps> = ({
   const daoConfig = useDaoConfig();
   const { data: govParams } = useGovernanceParams();
 
-  // Get accurate voting period timestamps from actual blocks
-  const { data: votingTimestamps } = useVotingPeriodTimestamps(
-    data?.voteStart ?? null,
-    data?.voteEnd ?? null
-  );
-
   const votingPeriodStarted = useMemo(() => {
-    // Use actual voteStart block timestamp for accurate timing
-    if (votingTimestamps?.voteStartTimestamp) {
-      return votingTimestamps.voteStartTimestamp;
-    }
-
-    // Fallback to calculated time if voteStart timestamp not available
     if (isNil(data?.blockTimestamp) || isNil(govParams?.votingDelayInSeconds))
       return "";
+
     return (
       BigInt(data?.blockTimestamp) +
       BigInt(govParams.votingDelayInSeconds) * 1000n
     );
-  }, [
-    votingTimestamps?.voteStartTimestamp,
-    data?.blockTimestamp,
-    govParams?.votingDelayInSeconds,
-  ]);
+  }, [data?.blockTimestamp, govParams?.votingDelayInSeconds]);
 
   const votingPeriodEnded = useMemo(() => {
-    // Use actual voteEnd block timestamp for accurate timing
-    if (votingTimestamps?.voteEndTimestamp) {
-      return votingTimestamps.voteEndTimestamp;
-    }
+    console.log(
+      "votingPeriodEnded",
+      data?.blockTimestamp,
+      govParams?.votingDelayInSeconds,
+      govParams?.votingPeriodInSeconds
+    );
 
-    // Fallback to calculated time if voteEnd timestamp not available
-    if (votingPeriodStarted === "" || isNil(govParams?.votingPeriodInSeconds))
-      return "";
     return (
-      votingPeriodStarted + BigInt(govParams.votingPeriodInSeconds) * 1000n
+      BigInt(data?.blockTimestamp ?? 0) +
+      BigInt((govParams?.votingDelayInSeconds || 0) * 1000) +
+      BigInt((govParams?.votingPeriodInSeconds || 0) * 1000)
     );
   }, [
-    votingTimestamps?.voteEndTimestamp,
-    votingPeriodStarted,
+    data?.blockTimestamp,
+    govParams?.votingDelayInSeconds,
     govParams?.votingPeriodInSeconds,
   ]);
 
@@ -172,6 +157,8 @@ const Status: React.FC<StatusProps> = ({
         key: "end" as ProposalStageKey,
         title: "End voting period",
         timestamp: formatTimestampToDayTime(String(votingPeriodEnded)),
+        remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
+
         icon: (
           <Image
             src="/assets/image/proposal/status-ended.svg"
@@ -180,7 +167,6 @@ const Status: React.FC<StatusProps> = ({
             height={28}
           />
         ),
-        remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
       },
     ];
 
