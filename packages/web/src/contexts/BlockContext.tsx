@@ -108,7 +108,6 @@ export function BlockProvider({ children }: BlockProviderProps) {
         if (intervalCount === 0) {
           throw new Error("No valid block intervals found");
         }
-        // todo
         const averageInterval = Math.floor(totalInterval / intervalCount);
 
         return averageInterval;

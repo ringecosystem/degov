@@ -105,13 +105,6 @@ const Status: React.FC<StatusProps> = ({
   }, [data?.blockTimestamp, govParams?.votingDelayInSeconds]);
 
   const votingPeriodEnded = useMemo(() => {
-    console.log(
-      "votingPeriodEnded",
-      data?.blockTimestamp,
-      govParams?.votingDelayInSeconds,
-      govParams?.votingPeriodInSeconds
-    );
-
     return (
       BigInt(data?.blockTimestamp ?? 0) +
       BigInt((govParams?.votingDelayInSeconds || 0) * 1000) +
@@ -158,7 +151,6 @@ const Status: React.FC<StatusProps> = ({
         title: "End voting period",
         timestamp: formatTimestampToDayTime(String(votingPeriodEnded)),
         remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
-
         icon: (
           <Image
             src="/assets/image/proposal/status-ended.svg"
