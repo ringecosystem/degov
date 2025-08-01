@@ -346,21 +346,16 @@ export const CustomPanel = ({
                                 (item.stateMutability === "payable" ||
                                   item.stateMutability === "nonpayable")
                             )
-                            ?.map(
-                              (item) =>
-                                item?.type === "function" && (
-                                  <SelectItem
-                                    key={`${item.name}-${
-                                      item.inputs?.length ?? 0
-                                    }`}
-                                    value={`${item.name}-${
-                                      item.inputs?.length ?? 0
-                                    }`}
-                                  >
-                                    {item.name}
-                                  </SelectItem>
-                                )
-                            )}
+                            ?.map((item) => (
+                              <SelectItem
+                                key={`${item.name}-${item.inputs?.length ?? 0}`}
+                                value={`${item.name}-${
+                                  item.inputs?.length ?? 0
+                                }`}
+                              >
+                                {item.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     )}
