@@ -11,6 +11,7 @@ import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
 import { ProposalStatus } from "@/components/proposal-status";
+import { LoadingState } from "@/components/ui/loading-spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
@@ -217,7 +218,22 @@ export default function ProposalDetailPage() {
     refetchProposalQueuedById,
   ]);
 
-  if (!validId || !allData || allData.length === 0) {
+  if (!validId) {
+    return <NotFound />;
+  }
+
+  if (isPending) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <LoadingState
+          title="Proposal Loading"
+          description="Loading proposal data, please wait..."
+        />
+      </div>
+    );
+  }
+
+  if (!allData || allData.length === 0) {
     return <NotFound />;
   }
   return (

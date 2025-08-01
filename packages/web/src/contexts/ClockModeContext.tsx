@@ -33,20 +33,16 @@ export function ClockModeProvider({ children }: ClockModeProviderProps) {
     clockModeError: error,
   };
 
-  // Show global loading overlay while clock mode is being determined
-  if (isLoading || isBlockDataLoading) {
-    return (
-      <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
-        <LoadingState
-          title="Initializing System"
-          description="Loading data, please wait..."
-        />
-      </div>
-    );
-  }
-
   return (
     <ClockModeContext.Provider value={value}>
+      {(isLoading || isBlockDataLoading) && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <LoadingState
+            title="Initializing System"
+            description="Loading data, please wait..."
+          />
+        </div>
+      )}
       {children}
     </ClockModeContext.Provider>
   );
