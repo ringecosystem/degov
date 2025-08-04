@@ -16,6 +16,13 @@ links:
   github: https://github.com/ringecosystem/degov
   email: # It's ok to leave it empty
 
+# The custom theme configuration for the DAO
+theme:
+  logoDark: https://github.com/ringecosystem/degov-registry/blob/main/assets/logos/aquari-dark.svg
+  logoLight: https://github.com/ringecosystem/degov-registry/blob/main/assets/logos/aquari-light.svg
+  banner: https://github.com/ringecosystem/degov-registry/blob/main/assets/banners/aquari.jpg
+  bannerMobile: https://github.com/ringecosystem/degov-registry/blob/main/assets/banners/aquari-mobile.jpg
+
 # Wallet connection related configuration
 wallet:
   walletConnectProjectId: 2719448e2ce94fdd269a3c8587123bcc
