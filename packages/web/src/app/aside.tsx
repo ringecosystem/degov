@@ -22,12 +22,12 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 const SIDEBAR_WIDTH = {
   EXPANDED: 240,
-  COLLAPSED: 80,
+  COLLAPSED: 100,
 };
 
 const SIDEBAR_PADDING = {
   EXPANDED: 20,
-  COLLAPSED: 10,
+  COLLAPSED: 20,
 };
 
 export const Aside = () => {
@@ -89,10 +89,10 @@ export const Aside = () => {
                 <Image
                   src={config?.logo ?? ""}
                   alt="logo"
-                  width={32}
-                  height={32}
+                  width={60}
+                  height={60}
                   priority
-                  className="h-[32px] w-[32px] rounded-full"
+                  className="h-[60px] w-[60px] rounded-full"
                 />
               </Link>
             ) : (
@@ -106,7 +106,7 @@ export const Aside = () => {
                         width={128}
                         height={26}
                         priority
-                        className="h-[26px] w-[128px] rounded-full hidden dark:block"
+                        className="h-[26px] w-[128px] rounded-full hidden dark:block border border-[var(--card-background)]"
                       />
                       <Image
                         src={config?.theme?.logoLight ?? ""}
@@ -114,7 +114,7 @@ export const Aside = () => {
                         width={128}
                         height={26}
                         priority
-                        className="h-[26px] w-[128px] rounded-full block dark:hidden"
+                        className="h-[26px] w-[128px] rounded-full block dark:hidden border border-[var(--card-background)]"
                       />
                     </>
                   ) : (
@@ -174,7 +174,7 @@ export const Aside = () => {
                 <TooltipTrigger asChild>
                   <div
                     className={cn(
-                      "h-5 w-5 cursor-help rounded-full",
+                      "h-[24px] w-[24px] cursor-help rounded-full",
                       INDEXER_CONFIG.colors[status]
                     )}
                   ></div>
