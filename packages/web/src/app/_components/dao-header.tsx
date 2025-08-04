@@ -6,10 +6,10 @@ import { Fragment, useMemo } from "react";
 
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { cn } from "@/lib/utils";
 
 import { Contracts } from "./contracts";
 import { Parameters } from "./parameters";
-import { cn } from "@/lib/utils";
 
 export const DaoHeader = () => {
   const config = useDaoConfig();
