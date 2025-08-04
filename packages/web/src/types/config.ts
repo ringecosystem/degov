@@ -8,6 +8,13 @@ interface Links {
   email?: string | null;
 }
 
+interface Theme {
+  logoDark?: string;
+  logoLight?: string;
+  banner?: string;
+  bannerMobile?: string;
+}
+
 interface NativeToken {
   symbol: string;
   decimals: number;
@@ -82,6 +89,7 @@ interface Config {
   offChainDiscussionUrl?: string;
   description: string;
   links: Links;
+  theme?: Theme;
   wallet: Wallet;
   chain: Chain;
   contracts: Contracts;

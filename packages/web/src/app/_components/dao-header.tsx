@@ -2,28 +2,48 @@
 import { TooltipTrigger } from "@radix-ui/react-tooltip";
 import { capitalize } from "lodash-es";
 import Image from "next/image";
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
 
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import { Contracts } from "./contracts";
 import { Parameters } from "./parameters";
+import { cn } from "@/lib/utils";
 
 export const DaoHeader = () => {
   const config = useDaoConfig();
 
+  const isCustomBanner = useMemo(() => {
+    return !!config?.theme?.banner || !!config?.theme?.bannerMobile;
+  }, [config]);
+
   return (
-    <div className="grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-card p-[20px]">
+    <div
+      className="grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-card p-[20px]"
+      style={{
+        backgroundImage: isCustomBanner
+          ? `url(${config?.theme?.banner})`
+          : undefined,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
       <div className="flex flex-col gap-[10px]">
-        <h1 className="flex items-center gap-[10px] text-[26px] font-extrabold">
+        <h1
+          className={cn(
+            "flex items-center gap-[10px] text-[26px] font-extrabold",
+            isCustomBanner && "text-white"
+          )}
+        >
           <Image
             src={config?.logo ?? ""}
             alt="logo"
-            className="size-[35px] rounded-full"
+            className={cn("size-[35px] rounded-full")}
             width={35}
             height={35}
           />
+
           {config?.name}
           <div className="px-2.5 py-[5px] bg-foreground rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-foreground/80 transition-colors">
             <div className="justify-start text-card text-xs font-semibold font-['SF_UI_Display']">
@@ -34,7 +54,12 @@ export const DaoHeader = () => {
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <p className="line-clamp-2 text-[14px] text-foreground/80 max-w-[693px]">
+            <p
+              className={cn(
+                "line-clamp-2 text-[14px] text-foreground/80 max-w-[693px]",
+                isCustomBanner && "text-white"
+              )}
+            >
               {config?.description}
             </p>
           </TooltipTrigger>
