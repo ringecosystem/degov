@@ -16,7 +16,7 @@ links:
   github: https://github.com/ringecosystem/degov
   email: # It's ok to leave it empty
 
-# The custom theme configuration for the DAO
+# The custom theme configuration for the DAO, this is optional.
 theme:
   logoDark: https://github.com/ringecosystem/degov-registry/blob/main/assets/logos/aquari-dark.svg
   logoLight: https://github.com/ringecosystem/degov-registry/blob/main/assets/logos/aquari-light.svg
