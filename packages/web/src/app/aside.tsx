@@ -2,7 +2,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 import { IndexerStatus } from "@/components/indexer-status";
 import {
@@ -13,6 +13,7 @@ import {
 import { INDEXER_CONFIG } from "@/config/indexer";
 import { socialConfig } from "@/config/social";
 import { useBlockSync } from "@/hooks/useBlockSync";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 
 import packageInfo from "../../package.json";
@@ -21,17 +22,22 @@ import { Nav } from "./nav";
 
 const SIDEBAR_WIDTH = {
   EXPANDED: 240,
-  COLLAPSED: 80,
+  COLLAPSED: 100,
 };
 
 const SIDEBAR_PADDING = {
   EXPANDED: 20,
-  COLLAPSED: 10,
+  COLLAPSED: 20,
 };
 
 export const Aside = () => {
+  const config = useDaoConfig();
   const [collapsed, setCollapsed] = useState(false);
   const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
+
+  const isCustomLogo = useMemo(() => {
+    return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
+  }, [config]);
 
   useEffect(() => {
     const savedState = localStorage.getItem("sidebar-collapsed");
@@ -75,45 +81,62 @@ export const Aside = () => {
         </button>
 
         <div className="flex flex-col gap-[10px]">
-          <div className={`flex h-[76px] items-center justify-center transition-all duration-300`}>
+          <div
+            className={`flex h-[76px] items-center justify-center transition-all duration-300`}
+          >
             {collapsed ? (
               <Link href="/">
                 <Image
-                  src="/assets/image/logo-simple.svg"
+                  src={config?.logo ?? ""}
                   alt="logo"
-                  width={32}
-                  height={32}
+                  width={60}
+                  height={60}
                   priority
-                  className="h-[32px] w-[32px] hidden dark:block"
-                />
-                <Image
-                  src="/assets/image/light/logo-simple.svg"
-                  alt="logo"
-                  width={32}
-                  height={32}
-                  priority
-                  className="h-[32px] w-[32px] block dark:hidden"
+                  className="h-[60px] w-[60px] rounded-full"
                 />
               </Link>
             ) : (
               <div className="flex items-center gap-[10px]">
                 <Link href="/">
-                  <Image
-                    src="/assets/image/logo.svg"
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] hidden dark:block"
-                  />
-                  <Image
-                    src="/assets/image/light/logo.svg"
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] block dark:hidden"
-                  />
+                  {isCustomLogo ? (
+                    <>
+                      <Image
+                        src={config?.theme?.logoDark ?? ""}
+                        alt="logo"
+                        width={128}
+                        height={26}
+                        priority
+                        className="h-[26px] w-[128px] rounded-full hidden dark:block border border-[var(--card-background)]"
+                      />
+                      <Image
+                        src={config?.theme?.logoLight ?? ""}
+                        alt="logo"
+                        width={128}
+                        height={26}
+                        priority
+                        className="h-[26px] w-[128px] rounded-full block dark:hidden border border-[var(--card-background)]"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Image
+                        src="/assets/image/logo.svg"
+                        alt="logo"
+                        width={128}
+                        height={26}
+                        priority
+                        className="h-[26px] w-[128px] hidden dark:block"
+                      />
+                      <Image
+                        src="/assets/image/light/logo.svg"
+                        alt="logo"
+                        width={128}
+                        height={26}
+                        priority
+                        className="h-[26px] w-[128px] block dark:hidden"
+                      />
+                    </>
+                  )}
                 </Link>
                 <Link
                   href="https://apps.degov.ai"
@@ -151,7 +174,7 @@ export const Aside = () => {
                 <TooltipTrigger asChild>
                   <div
                     className={cn(
-                      "h-5 w-5 cursor-help rounded-full",
+                      "h-[24px] w-[24px] cursor-help rounded-full",
                       INDEXER_CONFIG.colors[status]
                     )}
                   ></div>

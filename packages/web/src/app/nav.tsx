@@ -57,7 +57,7 @@ export const Nav = ({ collapsed = false }: NavProps) => {
                     "transition-all duration-100 hover:bg-foreground hover:font-semibold hover:text-card",
                     isActive && "bg-foreground font-semibold text-card",
                     collapsed
-                      ? "h-[50px] w-[50px] justify-center p-0"
+                      ? "h-[60px] w-[60px] justify-center p-0"
                       : "h-[60px] w-full px-[20px] gap-[15px]"
                   )}
                   style={{

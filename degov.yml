@@ -16,6 +16,13 @@ links:
   github: https://github.com/ringecosystem/degov
   email: # It's ok to leave it empty
 
+# The custom theme configuration for the DAO, this is optional.
+theme:
+  logoDark: 
+  logoLight: 
+  banner: 
+  bannerMobile: 
+
 # Wallet connection related configuration
 wallet:
   walletConnectProjectId: 2719448e2ce94fdd269a3c8587123bcc
