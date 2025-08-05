@@ -119,7 +119,7 @@ export default function Treasury() {
   );
 
   const currencyBalance = useMemo(() => {
-    if (isEmpty(nativeAssets) || isEmpty(erc20Assets)) {
+    if (isEmpty(nativeAssets) && isEmpty(erc20Assets)) {
       return undefined;
     }
 
@@ -127,7 +127,11 @@ export default function Treasury() {
 
     // check if any asset has known price
     const hasAnyKnownPrice = allAssets.some((asset) => {
-      return asset.priceId && prices[asset.priceId.toLowerCase()] && prices[asset.priceId.toLowerCase()] > 0;
+      return (
+        asset.priceId &&
+        prices[asset.priceId.toLowerCase()] &&
+        prices[asset.priceId.toLowerCase()] > 0
+      );
     });
 
     // if no asset has known price, return undefined to show N/A
@@ -143,8 +147,9 @@ export default function Treasury() {
       }
 
       const priceValue = prices[asset.priceId.toLowerCase()];
-      const price = priceValue === undefined || priceValue === null ? 0 : priceValue;
-      
+      const price =
+        priceValue === undefined || priceValue === null ? 0 : priceValue;
+
       // skip if price is 0
       if (price === 0) {
         return total;
