@@ -18,10 +18,10 @@ links:
 
 # The custom theme configuration for the DAO, this is optional.
 theme:
-  logoDark: 
-  logoLight: 
-  banner: 
-  bannerMobile: 
+  logoDark: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/demo-dark.svg
+  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/demo-light.svg
+  banner: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo.jpg
+  bannerMobile: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo-mobile.jpg
 
 # Wallet connection related configuration
 wallet:
