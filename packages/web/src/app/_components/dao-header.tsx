@@ -20,7 +20,7 @@ export const DaoHeader = () => {
 
   return (
     <div
-      className="grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-card p-[20px]"
+      className="grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-[#202224] p-[20px]"
       style={{
         backgroundImage: isCustomBanner
           ? `url(${config?.theme?.banner})`
@@ -32,8 +32,7 @@ export const DaoHeader = () => {
       <div className="flex flex-col gap-[10px]">
         <h1
           className={cn(
-            "flex items-center gap-[10px] text-[26px] font-extrabold",
-            isCustomBanner && "text-white"
+            "flex items-center gap-[10px] text-[26px] font-extrabold text-white"
           )}
         >
           <Image
@@ -45,8 +44,8 @@ export const DaoHeader = () => {
           />
 
           {config?.name}
-          <div className="px-2.5 py-[5px] bg-foreground rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-foreground/80 transition-colors">
-            <div className="justify-start text-card text-xs font-semibold font-['SF_UI_Display']">
+          <div className="px-2.5 py-[5px] bg-white rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-foreground/80 transition-colors">
+            <div className="justify-start text-[#202224] text-xs font-semibold font-['SF_UI_Display']">
               {config?.chain?.name}
             </div>
           </div>
@@ -56,8 +55,7 @@ export const DaoHeader = () => {
           <TooltipTrigger asChild>
             <p
               className={cn(
-                "line-clamp-2 text-[14px] text-foreground/80 max-w-[693px]",
-                isCustomBanner && "text-white"
+                "line-clamp-2 text-[14px] text-foreground/80 max-w-[693px] text-white"
               )}
             >
               {config?.description}
@@ -79,26 +77,12 @@ export const DaoHeader = () => {
           .map(([key, value]) => (
             <Fragment key={key}>
               <a
-                key={`${key}-light`}
-                href={value}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={capitalize(key)}
-                className="flex size-[24px] items-center justify-center rounded-full bg-foreground transition-colors hover:bg-foreground/80 dark:hidden"
-                style={{
-                  backgroundImage: `url(/assets/image/light/user_social/${key}.svg)`,
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "center",
-                }}
-              ></a>
-
-              <a
                 key={key}
                 href={value}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={capitalize(key)}
-                className="size-[24px] items-center justify-center rounded-full bg-foreground transition-colors hover:bg-foreground/80 hidden dark:flex"
+                className="size-[24px] items-center justify-center rounded-full bg-white transition-colors hover:bg-white/80 "
                 style={{
                   backgroundImage: `url(/assets/image/user_social/${key}.svg)`,
                   backgroundRepeat: "no-repeat",
