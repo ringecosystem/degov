@@ -210,15 +210,17 @@ export default function ActionGroup({
   }, [onRefetch]);
 
   const hasTimelock = useMemo(() => {
-    return govParams?.timeLockDelayInSeconds !== undefined && govParams?.timeLockDelayInSeconds !== null;
+    return (
+      govParams?.timeLockDelayInSeconds !== undefined &&
+      govParams?.timeLockDelayInSeconds !== null
+    );
   }, [govParams?.timeLockDelayInSeconds]);
 
   const canExecute = useMemo(() => {
-    // If no timelock and proposal is succeeded, can execute directly
     if (!hasTimelock && status === ProposalState.Succeeded) {
       return true;
     }
-    
+
     if (status === ProposalState.Queued) {
       const queuedBlockTimestamp = proposalQueuedById?.blockTimestamp
         ? BigInt(proposalQueuedById?.blockTimestamp)
@@ -233,16 +235,17 @@ export default function ActionGroup({
       if (!queuedBlockTimestamp) return false;
       if (timeLockDelay === undefined) return true;
 
-      // Convert current time to seconds to match queuedBlockTimestamp units
-      const currentTimeInSeconds = BigInt(
-        Math.floor(new Date().getTime() / 1000)
-      );
-      const timeLockDelayBigInt = BigInt(timeLockDelayInSeconds ?? 0);
-
-      return currentTimeInSeconds > queuedBlockTimestamp + timeLockDelayBigInt;
+      const currentTime = BigInt(new Date().getTime());
+      const timeLockDelayBigInt = timeLockDelay ?? 0n;
+      return currentTime > queuedBlockTimestamp + timeLockDelayBigInt;
     }
     return false;
-  }, [status, proposalQueuedById, govParams?.timeLockDelayInSeconds, hasTimelock]);
+  }, [
+    status,
+    proposalQueuedById,
+    govParams?.timeLockDelayInSeconds,
+    hasTimelock,
+  ]);
 
   const handleAction = useCallback(
     (action: "vote" | "queue" | "execute") => {
