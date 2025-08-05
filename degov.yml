@@ -19,9 +19,9 @@ links:
 # The custom theme configuration for the DAO, this is optional.
 theme:
   logoDark: 
-  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/aquari-light.svg
-  banner: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/aquari.jpg
-  bannerMobile: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/aquari-mobile.jpg
+  logoLight: 
+  banner: 
+  bannerMobile: 
 
 # Wallet connection related configuration
 wallet:
