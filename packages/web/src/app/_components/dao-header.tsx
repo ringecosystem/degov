@@ -15,7 +15,7 @@ export const DaoHeader = () => {
   const config = useDaoConfig();
 
   const isCustomBanner = useMemo(() => {
-    return !!config?.theme?.banner || !!config?.theme?.bannerMobile;
+    return !!config?.theme?.banner && !!config?.theme?.bannerMobile;
   }, [config]);
 
   return (

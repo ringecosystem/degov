@@ -36,7 +36,7 @@ export const Aside = () => {
   const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
 
   const isCustomLogo = useMemo(() => {
-    return !!config?.theme?.logoDark || !!config?.theme?.logoLight;
+    return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
   }, [config]);
 
   useEffect(() => {
