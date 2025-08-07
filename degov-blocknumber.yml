@@ -1,23 +1,22 @@
-name: DeGov Development DAO(with Blocknumber)
+name: DeGov Demo DAO - Block Number Clock
 logo: https://pbs.twimg.com/profile_images/1912415584257474560/GznnScP3_400x400.jpg
 siteUrl: http://degovtrial-webdemowithblocknumber-jpt8mz-911581-168-119-79-153.traefik.me
 offChainDiscussionUrl: https://github.com/ringecosystem/degov/discussions
 description: |
-  It's a test DAO for developers and users to experience DeGov's features, including the
+  It's a demo DAO for developers and users to experience DeGov's features, including the
   latest innovations features like AI agents, token wrapping, and more. The DAO is built
   on the Darwinia chain, an Ethereum-compatible chain.
 
 links:
   coingecko: https://www.coingecko.com/en/coins/ringdao
-  website: https://ringdao.com/
+  website: https://degov.ai
   twitter: https://x.com/ringecosystem
-  discord: https://discord.com/invite/BhNbKWWfGV
-  telegram: https://t.me/ringecosystem
+  discord: https://discord.gg/RingDAO
+  telegram: https://t.me/DeGov_AI
   github: https://github.com/ringecosystem/degov
 
 wallet:
   walletConnectProjectId: 2719448e2ce94fdd269a3c8587123bcc
-
 
 chain:
   id: 46
