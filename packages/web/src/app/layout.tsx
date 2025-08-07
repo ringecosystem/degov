@@ -12,7 +12,7 @@ import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
 import type { Config } from "@/types/config";
-import { isRemoteApiConfigured } from "@/utils/remote-api";
+import { buildRemoteApiUrl, isRemoteApiConfigured } from "@/utils/remote-api";
 import { getRequestOrigin } from "@/utils/request-server";
 
 import { ConditionalLayout } from "./conditional-layout";
@@ -48,7 +48,11 @@ export async function generateMetadata(): Promise<Metadata> {
       if (!host) {
         throw new Error("No host found");
       }
-      const response = await fetch(`${host}/api/config`);
+      const response = await fetch(buildRemoteApiUrl() || "", {
+        headers: {
+          "x-degov-site": host,
+        },
+      });
       if (response.ok) {
         const yamlText = await response.text();
         const yaml = await import("js-yaml");
