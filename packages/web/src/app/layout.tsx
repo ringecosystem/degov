@@ -11,6 +11,9 @@ import { BlockDataProvider } from "@/providers/block.provider";
 import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
+import type { Config } from "@/types/config";
+import { isRemoteApiConfigured } from "@/utils/remote-api";
+import { getRequestOrigin } from "@/utils/request-server";
 
 import { ConditionalLayout } from "./conditional-layout";
 import { ToastContainer } from "./toastContainer";
@@ -37,7 +40,34 @@ export async function generateMetadata(): Promise<Metadata> {
 
   // Force dynamic metadata generation by adding timestamp
   const timestamp = Date.now();
-  const config = getDaoConfigServer();
+
+  let config: Config | null = null;
+  if (isRemoteApiConfigured()) {
+    try {
+      const host = await getRequestOrigin();
+      if (!host) {
+        throw new Error("No host found");
+      }
+      const response = await fetch(`${host}/api/config`);
+      if (response.ok) {
+        const yamlText = await response.text();
+        const yaml = await import("js-yaml");
+        config = yaml.load(yamlText) as Config;
+      } else {
+        throw new Error(`API responded with ${response.status}`);
+      }
+    } catch (error) {
+      console.error(
+        "[Metadata] Failed to fetch remote config, falling back to local:",
+        error
+      );
+      config = getDaoConfigServer();
+    }
+  } else {
+    config = getDaoConfigServer();
+  }
+  console.log(config);
+
   const daoName = config?.name || "DeGov";
   const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
   const siteUrl = config?.siteUrl;
