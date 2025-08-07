@@ -26,7 +26,7 @@ chain:
   rpcs:
     - https://rpc.darwinia.network
   explorers:
-    - https://explorer.darwinia.network/
+    - https://explorer.darwinia.network
   nativeToken:
     symbol: RING
     decimals: 18
