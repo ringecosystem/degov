@@ -1,0 +1,48 @@
+name: DeGov Development DAO (without Timelock)
+logo: https://pbs.twimg.com/profile_images/1912415584257474560/GznnScP3_400x400.jpg
+siteUrl: https://degov-dev.vercel.app
+offChainDiscussionUrl: https://github.com/ringecosystem/degov/discussions
+description: |
+  It's a test DAO for developers and users to experience DeGov's features, including the
+  latest innovations features like AI agents, token wrapping, and more. The DAO is built
+  on the Darwinia chain, an Ethereum-compatible chain.
+
+links:
+  coingecko: https://www.coingecko.com/en/coins/ringdao
+  website: https://ringdao.com/
+  twitter: https://x.com/ringecosystem
+  discord: https://discord.com/invite/BhNbKWWfGV
+  telegram: https://t.me/ringecosystem
+  github: https://github.com/ringecosystem/degov
+  email: # It's ok to leave it empty
+
+wallet:
+  walletConnectProjectId: 2719448e2ce94fdd269a3c8587123bcc
+
+chain:
+  id: 46
+  name: Darwinia Network
+  logo: https://pbs.twimg.com/profile_images/1742030786495500288/merX__YL_400x400.jpg
+  rpcs:
+    - https://rpc.darwinia.network
+  explorers:
+    - https://explorer.darwinia.network/
+  nativeToken:
+    symbol: RING
+    decimals: 18
+    priceId: darwinia-network-native-token
+    logo: https://assets.coingecko.com/coins/images/9443/standard/RING.png
+
+indexer:
+  endpoint: https://degov-indexer.vercel.app/graphql
+  startBlock: 5873342
+  rpc: wss://rpc.darwinia.network
+
+aiAgent:
+  endpoint: https://agent.degov.ai
+
+contracts:
+  governor: "0x36BeEC8463D4601606958Fa58DB458B4f3C399fe"
+  governorToken:
+    address: "0xbC9f58566810F7e853e1eef1b9957ac82F9971df"
+    standard: ERC20
