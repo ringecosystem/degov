@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const token = await new SignJWT({ address })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
-      .setExpirationTime("1h")
+      .setExpirationTime("5h")
       .sign(new TextEncoder().encode(jwtSecretKey));
 
     const sql = databaseConnection();
