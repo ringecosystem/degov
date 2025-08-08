@@ -3,6 +3,7 @@ export const isRemoteApiConfigured = () => {
 };
 
 export const buildRemoteApiUrl = (): string | undefined => {
+  console.log(JSON.stringify(process.env));
   const daoName = process.env.NEXT_PUBLIC_DEGOV_DAO;
 
   if (!isRemoteApiConfigured()) {
