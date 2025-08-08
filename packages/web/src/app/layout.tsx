@@ -1,10 +1,9 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { Geist, Geist_Mono } from "next/font/google";
+import { PublicEnvScript } from "next-runtime-env";
 
 import "./globals.css";
 import "./markdown-body.css";
-
-import { PublicEnvScript } from "next-runtime-env";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClockModeProvider } from "@/contexts/ClockModeContext";
