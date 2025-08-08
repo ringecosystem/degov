@@ -8,6 +8,7 @@ import { Resp } from "@/types/api";
 import { databaseConnection } from "../../common/database";
 import * as graphql from "../../common/graphql";
 import { snowflake } from "../../common/toolkit";
+import { nonceCache } from "../../common/nonce-cache";
 
 import type { NextRequest } from "next/server";
 
@@ -34,11 +35,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(Resp.err("invalid message"), { status: 400 });
     }
 
+    // Validate if nonce is still valid
+    const nonce = fields.data.nonce;
+    if (!nonceCache.isValid(nonce)) {
+      return NextResponse.json(
+        Resp.err("nonce expired or invalid, please get a new nonce"), 
+        { status: 400 }
+      );
+    }
+
+    // Remove nonce from cache after validation to prevent reuse
+    nonceCache.remove(nonce);
+
     const address = fields.data.address.toLowerCase();
     const token = await new SignJWT({ address })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
-      .setExpirationTime("1h")
+      .setExpirationTime("5h")
       .sign(new TextEncoder().encode(jwtSecretKey));
 
     const sql = databaseConnection();
