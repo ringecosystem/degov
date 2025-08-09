@@ -41,8 +41,8 @@ export function GlobalLoadingProvider({
       const next = { ...prev, [key]: value };
       if (!value) {
         // remove the key when false to keep map small
-        const { [key]: _removed, ...rest } = next;
-        console.log("_removed", _removed);
+        const { [key]: _, ...rest } = next;
+        console.log("_", _);
         return rest;
       }
       return next;
