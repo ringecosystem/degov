@@ -2,6 +2,8 @@
 
 import { usePathname } from "next/navigation";
 
+import { PageTransition } from "@/components/motion/page-transition";
+
 import { Alert } from "./alert";
 import { Aside } from "./aside";
 import { DemoTips } from "./demo-tips";
@@ -21,7 +23,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
     // Standalone layout - no sidebar, header, etc.
     return (
       <div className="min-h-screen bg-background font-sans antialiased">
-        {children}
+        <PageTransition>{children}</PageTransition>
       </div>
     );
   }
@@ -35,7 +37,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
         <div className="mx-auto w-full flex-1 p-[30px] gap-[20px] flex flex-col max-w-[1400px]">
           <DemoTips />
           <Alert />
-          {children}
+          <PageTransition>{children}</PageTransition>
         </div>
       </main>
     </div>

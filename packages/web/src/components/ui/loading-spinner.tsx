@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import React from "react";
 
 import { cn } from "@/lib/utils";
@@ -18,12 +21,15 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   };
 
   return (
-    <div
+    <motion.div
       className={cn(
-        "animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary",
+        "rounded-full border-2 border-muted-foreground/30 border-t-primary",
         sizeClasses[size],
         className
       )}
+      style={{ willChange: "transform" }}
+      animate={{ rotate: 360 }}
+      transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
     />
   );
 };
@@ -40,20 +46,35 @@ export const LoadingState: React.FC<LoadingStateProps> = ({
   className,
 }) => {
   return (
-    <div
+    <motion.div
       className={cn(
         "flex flex-col items-center justify-center py-12 px-4",
         className
       )}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
     >
       <LoadingSpinner size="lg" className="mb-4" />
-      <h3 className="text-lg font-medium text-foreground mb-2">{title}</h3>
+      <motion.h3
+        className="text-lg font-medium text-foreground mb-2"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.1 }}
+      >
+        {title}
+      </motion.h3>
       {description && (
-        <p className="text-sm text-muted-foreground text-center max-w-md">
+        <motion.p
+          className="text-sm text-muted-foreground text-center max-w-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.15 }}
+        >
           {description}
-        </p>
+        </motion.p>
       )}
-    </div>
+    </motion.div>
   );
 };
 

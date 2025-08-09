@@ -203,7 +203,7 @@ export const profileService = {
     data: ProfileData;
   }> => {
     const response = await fetch(`/api/profile/${address}`, {
-      cache: "no-store",
+      next: { revalidate: 300, tags: [`profile-${address}`] }, // 5分钟缓存，带标签
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${getToken()}`,
@@ -290,7 +290,7 @@ export const memberService = {
 
   getMemberTotal: async (): Promise<Types.MemberTotalResponse> => {
     const response = await fetch(`/api/degov/metrics`, {
-      cache: "no-store",
+      next: { revalidate: 60, tags: ["member-metrics"] },
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${getToken()}`,

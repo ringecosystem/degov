@@ -19,7 +19,10 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      staleTime: 5_000,
+      // Keep data fresh longer to reduce refetch on route changes
+      staleTime: 10_000,
+      // Prevent unexpected garbage collection for a long time
+      gcTime: 30 * 60 * 1000,
     },
   },
 });
