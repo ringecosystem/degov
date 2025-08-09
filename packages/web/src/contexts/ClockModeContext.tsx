@@ -1,9 +1,14 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  type ReactNode,
+} from "react";
 
-import { LoadingState } from "@/components/ui/loading-spinner";
 import { useBlockData } from "@/contexts/BlockContext";
+import { useGlobalLoading } from "@/contexts/GlobalLoadingContext";
 import { useClockMode } from "@/hooks/useClockMode";
 
 interface ClockModeContextValue {
@@ -24,6 +29,14 @@ export function ClockModeProvider({ children }: ClockModeProviderProps) {
   const { isBlockNumberMode, clockMode, rawClockMode, isLoading, error } =
     useClockMode();
   const { isLoading: isBlockDataLoading } = useBlockData();
+  const { setLoading } = useGlobalLoading();
+
+  // Report combined loading state to global loader
+  useEffect(() => {
+    const combined = isLoading || isBlockDataLoading;
+    setLoading("clock", combined);
+    return () => setLoading("clock", false);
+  }, [isLoading, isBlockDataLoading, setLoading]);
 
   const value = {
     isBlockNumberMode,
@@ -35,14 +48,6 @@ export function ClockModeProvider({ children }: ClockModeProviderProps) {
 
   return (
     <ClockModeContext.Provider value={value}>
-      {(isLoading || isBlockDataLoading) && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <LoadingState
-            title="Initializing System"
-            description="Loading data, please wait..."
-          />
-        </div>
-      )}
       {children}
     </ClockModeContext.Provider>
   );

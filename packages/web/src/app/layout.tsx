@@ -6,11 +6,8 @@ import "./globals.css";
 import "./markdown-body.css";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ClockModeProvider } from "@/contexts/ClockModeContext";
 import { getDaoConfigServer } from "@/lib/config";
-import { BlockDataProvider } from "@/providers/block.provider";
 import { ConfigProvider } from "@/providers/config.provider";
-import { DAppProvider } from "@/providers/dapp.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
 import type { Config } from "@/types/config";
 import { isRemoteApiConfigured } from "@/utils/remote-api";
@@ -125,19 +122,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* NEXT_PUBLIC_* are injected above via <Script id="public-env" /> */}
         <NextThemeProvider>
           <ConfigProvider>
-            <DAppProvider>
-              <BlockDataProvider>
-                <ClockModeProvider>
-                  <TooltipProvider delayDuration={0}>
-                    <ConditionalLayout>{children}</ConditionalLayout>
-                    <ToastContainer />
-                  </TooltipProvider>
-                </ClockModeProvider>
-              </BlockDataProvider>
-            </DAppProvider>
+            <TooltipProvider delayDuration={0}>
+              <ConditionalLayout>{children}</ConditionalLayout>
+              <ToastContainer />
+            </TooltipProvider>
           </ConfigProvider>
         </NextThemeProvider>
       </body>
