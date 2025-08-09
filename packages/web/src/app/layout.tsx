@@ -95,7 +95,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   if (!apiMode) {
     unstable_noStore();
-    const config = getDaoConfigServer();
+    const config = await getDaoConfigServer();
     return buildMetadata(config);
   }
 
