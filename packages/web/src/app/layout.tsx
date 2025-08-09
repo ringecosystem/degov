@@ -1,3 +1,4 @@
+import { unstable_noStore } from "next/cache";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 
@@ -85,7 +86,6 @@ function buildMetadata(config: Config | null | undefined): Metadata {
 }
 
 async function getRemoteConfig(): Promise<Config> {
-  // Dynamically import server-only helper to avoid marking root as dynamic in local mode
   const { getConfigCachedByHost } = await import("./_server/config-remote");
   return getConfigCachedByHost();
 }
@@ -94,6 +94,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const apiMode = isRemoteApiConfigured();
 
   if (!apiMode) {
+    unstable_noStore();
     const config = getDaoConfigServer();
     return buildMetadata(config);
   }
