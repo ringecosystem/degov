@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import ErrorComponent from "@/components/error";
 import { ConfigContext } from "@/hooks/useDaoConfig";
 import { processStandardProperties } from "@/utils";
-import { buildRemoteApiUrl } from "@/utils/remote-api";
+import { buildRemoteApiUrlClient } from "@/utils/remote-api";
 
 import type { Config } from "../types/config";
 
@@ -15,7 +15,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    const configSource = buildRemoteApiUrl() ?? "/degov.yml";
+    const configSource = buildRemoteApiUrlClient() ?? "/degov.yml";
 
     fetch(configSource)
       .then((response) => {

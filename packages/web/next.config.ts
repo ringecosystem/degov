@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
     ],
   },
   reactStrictMode: false,
+
+  serverExternalPackages: ["js-yaml"],
+
   experimental: {
     staleTimes: {
       dynamic: Infinity,
