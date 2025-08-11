@@ -34,7 +34,7 @@ export const Connected = ({ address }: ConnectedProps) => {
       <DropdownMenuTrigger>
         <AddressResolver address={address} showShortAddress>
           {(value) => (
-            <div className="flex items-center gap-[10px] rounded-[10px] border border-border px-4 py-2">
+            <div className="flex items-center gap-[10px] rounded-[20px] lg:rounded-[10px] bg-card lg:bg-transparent lg:border lg:border-border px-4 py-2">
               <AddressAvatar
                 address={address}
                 className="size-[24px] rounded-full"

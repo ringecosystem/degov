@@ -16,9 +16,10 @@ import { cn } from "@/lib/utils";
 
 interface NavProps {
   collapsed?: boolean;
+  onMenuToggle?: () => void;
 }
 
-export const Nav = ({ collapsed = false }: NavProps) => {
+export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
   const pathname = usePathname();
   const daoConfig = useDaoConfig();
 
@@ -52,6 +53,7 @@ export const Nav = ({ collapsed = false }: NavProps) => {
                 <Link
                   href={route.pathname}
                   prefetch
+                  onClick={onMenuToggle}
                   className={cn(
                     "group flex w-full items-center gap-[10px] rounded-[10px] px-[30px] capitalize",
                     "transition-all duration-100 hover:bg-foreground hover:font-semibold hover:text-card",

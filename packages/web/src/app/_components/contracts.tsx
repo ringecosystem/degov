@@ -25,7 +25,7 @@ export const Contracts = () => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="flex flex-col gap-[20px] rounded-[14px] border-border/20 bg-card p-[20px]"
+        className="flex flex-col gap-[20px] rounded-[14px] border-border/20 bg-card p-[20px] max-w-[100vw]"
         align="start"
       >
         <div className="flex items-center justify-between text-[16px] font-semibold text-foreground">
@@ -48,11 +48,11 @@ export const Contracts = () => {
             <span className="text-[14px] font-normal text-foreground/50">
               Governor
             </span>
-            <div className="flex w-full items-center justify-between gap-[5px]">
-              <span className="text-[14px] font-normal text-foreground font-mono">
+            <div className="flex flex-row  lg:items-center lg:justify-between gap-[10px] lg:gap-[5px]">
+              <span className="text-[14px] font-normal text-foreground font-mono break-all">
                 {daoConfig?.contracts?.governor}
               </span>
-              <div className="flex items-center gap-[5px]">
+              <div className="flex items-center gap-[5px] self-start lg:self-auto">
                 <ClipboardIconButton
                   text={daoConfig?.contracts?.governor}
                   size={15}
@@ -72,11 +72,11 @@ export const Contracts = () => {
                 {daoConfig?.contracts?.governorToken?.standard}
               </span>
             </span>
-            <div className="flex w-full items-center justify-between gap-[5px]">
-              <span className="text-[14px] font-normal text-foreground font-mono">
+            <div className="flex flex-row lg:items-center lg:justify-between gap-[10px] lg:gap-[5px]">
+              <span className="text-[14px] font-normal text-foreground font-mono break-all">
                 {daoConfig?.contracts?.governorToken?.address}
               </span>
-              <div className="flex items-center gap-[5px]">
+              <div className="flex items-center gap-[5px] self-start lg:self-auto">
                 <ClipboardIconButton
                   text={daoConfig?.contracts?.governorToken?.address}
                   size={15}
@@ -94,11 +94,11 @@ export const Contracts = () => {
               <span className="text-[14px] font-normal text-foreground/50">
                 TimeLock
               </span>
-              <div className="flex w-full items-center justify-between gap-[5px]">
-                <span className="text-[14px] font-normal text-foreground font-mono">
+              <div className="flex flex-row lg:items-center lg:justify-between gap-[10px] lg:gap-[5px]">
+                <span className="text-[14px] font-normal text-foreground font-mono break-all">
                   {daoConfig?.contracts?.timeLock}
                 </span>
-                <div className="flex items-center gap-[5px]">
+                <div className="flex items-center gap-[5px] self-start lg:self-auto">
                   <ClipboardIconButton
                     text={daoConfig?.contracts?.timeLock}
                     size={15}

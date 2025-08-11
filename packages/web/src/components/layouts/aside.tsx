@@ -4,20 +4,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
+import { Nav } from "@/app/nav";
 import { IndexerStatus } from "@/components/indexer-status";
+import { Socials } from "@/components/socials";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { INDEXER_CONFIG } from "@/config/indexer";
-import { socialConfig } from "@/config/social";
 import { useBlockSync } from "@/hooks/useBlockSync";
 import { cn } from "@/lib/utils";
 
-import packageInfo from "../../package.json";
-
-import { Nav } from "./nav";
 
 const SIDEBAR_WIDTH = {
   EXPANDED: 240,
@@ -75,7 +73,9 @@ export const Aside = () => {
         </button>
 
         <div className="flex flex-col gap-[10px]">
-          <div className={`flex h-[76px] items-center justify-center transition-all duration-300`}>
+          <div
+            className={`flex h-[76px] items-center justify-center transition-all duration-300`}
+          >
             {collapsed ? (
               <Link href="/">
                 <Image
@@ -174,59 +174,7 @@ export const Aside = () => {
               indexedBlock={indexedBlock}
             />
           )}
-
-          <div
-            className={`flex items-center gap-[10px] ${
-              collapsed ? "flex-col" : "justify-around"
-            }`}
-          >
-            {socialConfig.map((social) => (
-              <Tooltip key={social.name}>
-                <TooltipTrigger asChild>
-                  <a
-                    href={
-                      social.name === "Github"
-                        ? `${social.url}v${packageInfo.version}`
-                        : social.url
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={cn(
-                      "relative flex h-[24px]  items-center justify-center w-[24px] rounded-[36px] bg-card transition-opacity duration-300 hover:opacity-80",
-                      social.name === "Github" && "px-[5px] w-auto gap-[5px]"
-                    )}
-                  >
-                    <Image
-                      src={social.lightAssetPath}
-                      alt={social.name}
-                      width={social?.width || 24}
-                      height={social?.height || 24}
-                      className="object-contain block dark:hidden"
-                    />
-                    <Image
-                      src={social.assetPath}
-                      alt={social.name}
-                      width={social?.width || 24}
-                      height={social?.height || 24}
-                      className="object-contain hidden dark:block"
-                    />
-
-                    {social.name === "Github" && (
-                      <span className="text-xs text-muted-foreground">
-                        {packageInfo.version}
-                      </span>
-                    )}
-                  </a>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="right"
-                  className={collapsed ? "" : "hidden"}
-                >
-                  {social.name}
-                </TooltipContent>
-              </Tooltip>
-            ))}
-          </div>
+          <Socials collapsed={collapsed} />
         </footer>
       </div>
     </aside>

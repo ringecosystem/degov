@@ -156,34 +156,35 @@ export function ActionTableSummary({
   }, []);
 
   return (
-    <div>
-      <Table className="table-fixed">
-        <TableHeader>
-          <TableRow>
-            <TableHead
-              className="text-left rounded-l-[14px]"
-              style={{ width: "33%" }}
-            >
-              Type
-            </TableHead>
-            <TableHead className="text-left" style={{ width: "33%" }}>
-              Address Data
-            </TableHead>
-            <TableHead
-              className="text-left rounded-r-[14px]"
-              style={{ width: "33%" }}
-            >
-              Details
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-      </Table>
-
-      <div
-        className="overflow-y-auto custom-scrollbar"
-        style={{ maxHeight: "calc(100vh-200px)" }}
-      >
+    <div className="overflow-x-auto lg:overflow-x-visible">
+      <div className="min-w-[600px] lg:min-w-0">
         <Table className="table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead
+                className="text-left rounded-l-[14px]"
+                style={{ width: "33%" }}
+              >
+                Type
+              </TableHead>
+              <TableHead className="text-left" style={{ width: "33%" }}>
+                Address Data
+              </TableHead>
+              <TableHead
+                className="text-left rounded-r-[14px]"
+                style={{ width: "33%" }}
+              >
+                Details
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+        </Table>
+
+        <div
+          className="overflow-y-auto custom-scrollbar"
+          style={{ maxHeight: "calc(100vh-200px)" }}
+        >
+          <Table className="table-fixed">
           <TableBody className="[&_tr:has(+tr[data-expanded])]:border-0">
             {isLoading
               ? LoadingRows
@@ -347,16 +348,17 @@ export function ActionTableSummary({
               : null}
           </TableBody>
         </Table>
-      </div>
+        </div>
 
-      {!isLoading && data.length === 0 && (
-        <Empty
-          label="No Actions"
-          style={{
-            height: 120,
-          }}
-        />
-      )}
+        {!isLoading && data.length === 0 && (
+          <Empty
+            label="No Actions"
+            style={{
+              height: 120,
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -41,12 +41,12 @@ export const Description = ({
   return isFetching ? (
     <Loading />
   ) : (
-    <div className="flex flex-col gap-[20px] bg-card p-[20px] rounded-[14px]">
+    <div className="flex flex-col gap-[20px] bg-card p-[10px] lg:p-[20px] rounded-[14px]">
       <div className="flex flex-col gap-[12px]">
-        <h3 className="text-[26px] font-semibold text-foreground  border-b border-card-background pb-[20px]">
+        <h3 className="text-[18px] lg:text-[26px] font-semibold text-foreground  border-b border-card-background pb-[20px]">
           Description
         </h3>
-        <div className="markdown-body">
+        <div className="markdown-body text-[14px] lg:text-[16px]">
           <div
             style={{
               whiteSpace: "wrap",

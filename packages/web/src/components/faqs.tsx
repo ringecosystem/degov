@@ -76,7 +76,7 @@ interface FaqsProps {
 
 export const Faqs = ({ type }: FaqsProps) => {
   return (
-    <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] w-[360px]">
+    <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] lg:w-[360px]">
       <h2 className="text-[18px] font-semibold">
         {type.charAt(0).toUpperCase() + type.slice(1)} FAQs
       </h2>
