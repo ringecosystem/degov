@@ -3,6 +3,8 @@
 import { Alert } from "@/app/alert";
 import { DemoTips } from "@/app/demo-tips";
 
+import { PageTransition } from "../motion/page-transition";
+
 import { MobileHeader } from "./mobile-header";
 
 interface MobileLayoutProps {
@@ -17,9 +19,9 @@ export const MobileLayout = ({ children }: MobileLayoutProps) => {
         <div className="mx-auto w-full flex-1 p-[15px] gap-[20px] flex flex-col max-w-[1400px]">
           <DemoTips />
           <Alert />
-          {children}
+          <PageTransition>{children}</PageTransition>
         </div>
       </main>
     </div>
   );
-}; 
+};

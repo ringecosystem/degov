@@ -121,7 +121,7 @@ export default function Treasury() {
   );
 
   const currencyBalance = useMemo(() => {
-    if (isEmpty(nativeAssets) || isEmpty(erc20Assets)) {
+    if (isEmpty(nativeAssets) && isEmpty(erc20Assets)) {
       return undefined;
     }
 

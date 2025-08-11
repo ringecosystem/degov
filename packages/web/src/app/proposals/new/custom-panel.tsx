@@ -339,21 +339,23 @@ export const CustomPanel = ({
                           <SelectValue placeholder="Select the contract method..." />
                         </SelectTrigger>
                         <SelectContent className="border-border/20 bg-card">
-                          {watch("customAbiContent")?.map(
-                            (item) =>
-                              item?.type === "function" && (
-                                <SelectItem
-                                  key={`${item.name}-${
-                                    item.inputs?.length ?? 0
-                                  }`}
-                                  value={`${item.name}-${
-                                    item.inputs?.length ?? 0
-                                  }`}
-                                >
-                                  {item.name}
-                                </SelectItem>
-                              )
-                          )}
+                          {watch("customAbiContent")
+                            ?.filter(
+                              (item) =>
+                                item?.type === "function" &&
+                                (item.stateMutability === "payable" ||
+                                  item.stateMutability === "nonpayable")
+                            )
+                            ?.map((item) => (
+                              <SelectItem
+                                key={`${item.name}-${item.inputs?.length ?? 0}`}
+                                value={`${item.name}-${
+                                  item.inputs?.length ?? 0
+                                }`}
+                              >
+                                {item.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     )}

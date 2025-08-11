@@ -10,10 +10,7 @@ ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLA
 RUN tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz
 
 COPY packages/indexer .
-COPY degov.yml .
 COPY docker/services.d /etc/services.d
-
-ENV DEGOV_CONFIG_PATH=/app/degov.yml
 
 RUN npm i -g @subsquid/cli \
   && yarn install \

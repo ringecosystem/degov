@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 
 import { DeviceRouter } from "@/components/device-router";
+import { PageTransition } from "@/components/motion/page-transition";
 
 interface ConditionalLayoutProps {
   children: React.ReactNode;
@@ -18,7 +19,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
     // Standalone layout - no sidebar, header, etc.
     return (
       <div className="min-h-screen bg-background font-sans antialiased">
-        {children}
+        <PageTransition>{children}</PageTransition>
       </div>
     );
   }

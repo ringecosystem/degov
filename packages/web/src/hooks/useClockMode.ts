@@ -1,8 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
+import { readContract } from "@wagmi/core";
 import { useMemo } from "react";
-import { useReadContract } from "wagmi";
+import { useConfig } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { QUERY_CONFIGS } from "@/utils/query-config";
 
 import type { Address } from "viem";
 
@@ -29,58 +32,47 @@ interface ClockModeResult {
   error: Error | null;
 }
 
-/**
- * Hook to detect the clock mode used by the Governor contract
- * 
- * According to ERC-6372 standard, the CLOCK_MODE() function returns:
- * - "mode=blocknumber&from=default" for block number mode
- * - "mode=timestamp" for timestamp mode
- * - "mode=blocknumber&from=<CAIP-2-ID>" for custom block number mode
- * 
- * This affects how voting delays and periods should be interpreted:
- * - timestamp mode: values are in seconds (Unix timestamps)
- * - blocknumber mode: values are in block numbers
- * 
- * @returns Clock mode information and utilities
- * 
- * @example
- * ```typescript
- * const { clockMode, isTimestampMode, isLoading } = useClockMode()
- * 
- * if (isLoading) return <div>Loading...</div>
- * 
- * const votingDelayText = isTimestampMode 
- *   ? `${votingDelay} seconds`
- *   : `${votingDelay} blocks`
- * ```
- */
 export function useClockMode(): ClockModeResult {
   const daoConfig = useDaoConfig();
+  const config = useConfig();
   const governorAddress = daoConfig?.contracts?.governor as Address;
+  const chainId = daoConfig?.chain?.id;
 
   const {
     data: rawClockMode,
     isLoading,
-    error
-  } = useReadContract({
-    address: governorAddress as `0x${string}`,
-    abi: governorAbi,
-    functionName: "CLOCK_MODE" as const,
-    chainId: daoConfig?.chain?.id,
-    query: {
-      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
-      staleTime: Infinity, // Never refetch - clock mode never changes
-      gcTime: Infinity, // Keep in cache forever
-      retry: 1, // Only retry once
-      retryDelay: 1000,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+    error,
+  } = useQuery({
+    queryKey: ["clockMode", governorAddress, chainId],
+    queryFn: async (): Promise<string> => {
+      try {
+        const result = await readContract(config, {
+          abi: governorAbi,
+          address: governorAddress as `0x${string}`,
+          functionName: "CLOCK_MODE" as const,
+          chainId,
+        });
+
+        if (!result || typeof result !== "string") {
+          throw new Error("Invalid response from contract");
+        }
+
+        return result as string;
+      } catch (contractError) {
+        console.log(
+          "[useClockMode] Contract call failed:",
+          (contractError as Error).message
+        );
+
+        return "mode=blocknumber";
+      }
     },
+    enabled: Boolean(governorAddress) && Boolean(chainId),
+    ...QUERY_CONFIGS.STATIC,
+    retry: false,
   });
 
   const result = useMemo((): ClockModeResult => {
-    // If loading, return loading state without assuming mode
     if (isLoading) {
       return {
         clockMode: null,
@@ -91,46 +83,43 @@ export function useClockMode(): ClockModeResult {
         error: null,
       };
     }
-    
-    // If there's an error (method doesn't exist) or no data, assume blocknumber mode
-    if (error || !rawClockMode) {
+
+    if (error) {
+      console.warn("[useClockMode] Unexpected error:", error);
       return {
         clockMode: "blocknumber",
         rawClockMode: null,
         isTimestampMode: false,
         isBlockNumberMode: true,
         isLoading: false,
-        error: error as Error | null,
+        error: error as Error,
       };
     }
 
-    const clockModeString = rawClockMode as string;
-    
-    // Parse the clock mode string according to ERC-6372
+    const clockModeString = rawClockMode || null;
     let detectedMode: ClockMode;
-    
-    if (clockModeString.includes("mode=timestamp")) {
+
+    if (clockModeString?.includes("mode=timestamp")) {
       detectedMode = "timestamp";
-    } else if (clockModeString.includes("mode=blocknumber")) {
+    } else if (clockModeString?.includes("mode=blocknumber")) {
       detectedMode = "blocknumber";
     } else {
-      // If we can't parse the format, default to blocknumber mode for older contracts
-      console.warn(`[useClockMode] Unknown clock mode format: ${clockModeString}. Defaulting to blocknumber mode.`);
+      console.warn(
+        `[useClockMode] Unknown clock mode format: ${clockModeString}. Defaulting to blocknumber mode.`
+      );
       detectedMode = "blocknumber";
     }
 
-    const result = {
+    return {
       clockMode: detectedMode,
-      rawClockMode: clockModeString,
+      rawClockMode:
+        clockModeString === "mode=blocknumber" ? null : clockModeString,
       isTimestampMode: detectedMode === "timestamp",
       isBlockNumberMode: detectedMode === "blocknumber",
-      isLoading,
-      error: error as Error | null,
+      isLoading: false,
+      error: null,
     };
-    
-    return result;
   }, [rawClockMode, isLoading, error]);
 
   return result;
 }
-

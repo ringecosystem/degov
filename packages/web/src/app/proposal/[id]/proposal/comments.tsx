@@ -60,7 +60,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
       return filteredComments;
     }
     return filteredComments.slice(0, visibleCount);
-  }, [filteredComments, visibleCount, PAGE_SIZE]);
+  }, [filteredComments, visibleCount]);
 
   const loadMoreComments = useCallback(() => {
     if (visibleCount < filteredComments.length) {
@@ -70,11 +70,11 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         );
       });
     }
-  }, [visibleCount, filteredComments.length, PAGE_SIZE, startTransition]);
+  }, [visibleCount, filteredComments.length, startTransition]);
 
   const resetVisibleCount = useCallback(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [PAGE_SIZE]);
+  }, []);
 
   const totalVotingPower = useMemo(() => {
     if (!comments?.length) return 0n;

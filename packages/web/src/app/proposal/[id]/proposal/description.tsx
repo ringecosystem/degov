@@ -1,12 +1,15 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
 
 marked.use();
+
+const MAX_COLLAPSED_HEIGHT = 644;
+
 const Loading = () => {
   return (
     <div className="flex flex-col h-[200px] w-full  gap-4">
@@ -25,6 +28,10 @@ export const Description = ({
   data?: ProposalItem;
   isFetching: boolean;
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showToggle, setShowToggle] = useState(false);
+  const markdownRef = useRef<HTMLDivElement>(null);
+
   const { description } = useMemo(() => {
     const titleAndDesc = extractTitleAndDescription(data?.description);
     const parsed = parseDescription(titleAndDesc?.description);
@@ -32,21 +39,44 @@ export const Description = ({
       description: parsed.mainText,
     };
   }, [data?.description]);
+
   const sanitizedHtml = useMemo(() => {
     const html = marked.parse(description ?? "") as string;
     if (!html) return "";
     return DOMPurify.sanitize(html);
   }, [description]);
 
+  useEffect(() => {
+    const checkHeight = () => {
+      if (markdownRef.current) {
+        const height = markdownRef.current.scrollHeight;
+        setShowToggle(height > MAX_COLLAPSED_HEIGHT);
+      }
+    };
+
+    if (sanitizedHtml) {
+      requestAnimationFrame(checkHeight);
+    }
+  }, [sanitizedHtml]);
+
+  const toggleExpanded = () => {
+    setIsExpanded(!isExpanded);
+  };
+
   return isFetching ? (
     <Loading />
   ) : (
     <div className="flex flex-col gap-[20px] bg-card p-[10px] lg:p-[20px] rounded-[14px]">
       <div className="flex flex-col gap-[12px]">
-        <h3 className="text-[18px] lg:text-[26px] font-semibold text-foreground  border-b border-card-background pb-[20px]">
-          Description
-        </h3>
-        <div className="markdown-body text-[14px] lg:text-[16px]">
+        <div
+          ref={markdownRef}
+          className="markdown-body"
+          style={{
+            maxHeight:
+              showToggle && !isExpanded ? `${MAX_COLLAPSED_HEIGHT}px` : "none",
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
               whiteSpace: "wrap",
@@ -58,6 +88,14 @@ export const Description = ({
             }}
           ></div>
         </div>
+        {showToggle && (
+          <div
+            className="flex flex-col border-t border-card-background pt-[20px] text-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
+            onClick={toggleExpanded}
+          >
+            <span>{isExpanded ? "Show less" : "Show more"}</span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -52,14 +52,13 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
               <TooltipTrigger asChild>
                 <Link
                   href={route.pathname}
-                  prefetch
-                  onClick={onMenuToggle}
+                  prefetch={false}
                   className={cn(
                     "group flex w-full items-center gap-[10px] rounded-[10px] px-[30px] capitalize",
                     "transition-all duration-100 hover:bg-foreground hover:font-semibold hover:text-card",
                     isActive && "bg-foreground font-semibold text-card",
                     collapsed
-                      ? "h-[50px] w-[50px] justify-center p-0"
+                      ? "h-[60px] w-[60px] justify-center p-0"
                       : "h-[60px] w-full px-[20px] gap-[15px]"
                   )}
                   style={{

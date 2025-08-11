@@ -54,10 +54,10 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
   };
 
   return Array.isArray(actions) && actions?.length > 0 ? (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px]">
-      <header className="flex items-center justify-between">
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+      <header className="flex items-center justify-between border-b border-card-background pb-[10px]">
         <motion.h4
-          className="text-[18px] lg:text-[26px] font-semibold border-b border-card-background lg:pb-[20px]"
+          className="text-[18px] font-semibold"
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: DEFAULT_ANIMATION_DURATION }}

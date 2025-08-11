@@ -6,20 +6,25 @@ import { useParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import { useReadContract } from "wagmi";
 
+import { AddressWithAvatar } from "@/components/address-with-avatar";
+import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
+import { ProposalStatus } from "@/components/proposal-status";
+import { LoadingState } from "@/components/ui/loading-spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
-import { parseDescription } from "@/utils";
+import { extractTitleAndDescription, parseDescription } from "@/utils";
+import { formatTimeAgo } from "@/utils/date";
 
+import ActionGroup from "./action-group";
 import { CurrentVotes } from "./current-votes";
 import Status from "./status";
-import { Summary } from "./summary";
 import { Tabs } from "./tabs";
-import { TabsList } from "./tabs-list";
 
 const ACTIVE_STATES: ProposalState[] = [
   ProposalState.Pending,
@@ -33,16 +38,25 @@ export default function ProposalDetailPage() {
 
   const { id } = useParams();
 
+  const validId = useMemo(() => {
+    if (!id) return null;
+    try {
+      return BigInt(id as string);
+    } catch {
+      return null;
+    }
+  }, [id]);
+
   const proposalStatus = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
     functionName: "state",
-    args: [id ? BigInt(id as string) : 0n],
+    args: [validId || 0n],
     chainId: daoConfig?.chain?.id,
     query: {
       refetchInterval: DEFAULT_REFETCH_INTERVAL,
       enabled:
-        !!id && !!daoConfig?.contracts?.governor && !!daoConfig?.chain?.id,
+        !!validId && !!daoConfig?.contracts?.governor && !!daoConfig?.chain?.id,
     },
   });
 
@@ -62,7 +76,7 @@ export default function ProposalDetailPage() {
           proposalId_eq: id as string,
         },
       }),
-    enabled: !!id && !!daoConfig?.indexer.endpoint,
+    enabled: !!validId && !!daoConfig?.indexer.endpoint,
     refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
   });
 
@@ -204,7 +218,22 @@ export default function ProposalDetailPage() {
     refetchProposalQueuedById,
   ]);
 
-  if (!id) {
+  if (!validId) {
+    return <NotFound />;
+  }
+
+  if (isPending) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <LoadingState
+          title="Proposal Loading"
+          description="Loading proposal data, please wait..."
+        />
+      </div>
+    );
+  }
+
+  if (!allData || allData.length === 0) {
     return <NotFound />;
   }
   return (
@@ -220,66 +249,91 @@ export default function ProposalDetailPage() {
         <span>Proposal</span>
       </div>
 
-      <div className="hidden lg:block">
-        <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px] flex-1 min-h-0">
-          <div className="flex flex-col gap-[20px] min-h-0">
-            <Summary
-              data={data}
-              isPending={isPending}
-              proposalStatus={proposalStatus as { data: ProposalState }}
-              proposalQueuedById={proposalQueuedById}
-              isAllQueriesFetching={isAllQueriesFetching}
-              onRefetch={refetchPageData}
-              id={id as string}
-            />
+      <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px] flex-1 min-h-0">
+        <div className="flex flex-col gap-[20px] min-h-0">
+          <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+            <div className="flex items-center justify-between gap-[20px]">
+              {isPending ? (
+                <Skeleton className="h-[37px] w-[100px]" />
+              ) : (
+                <ProposalStatus
+                  status={proposalStatus?.data as ProposalState}
+                />
+              )}
 
+              <ActionGroup
+                data={data}
+                status={proposalStatus?.data as ProposalState}
+                proposalQueuedById={proposalQueuedById}
+                isAllQueriesFetching={isAllQueriesFetching}
+                onRefetch={refetchPageData}
+              />
+            </div>
+
+            <h2 className="text-[26px] font-semibold flex items-center gap-[10px]">
+              {isPending ? (
+                <Skeleton className="h-[36px] w-[200px]" />
+              ) : (
+                extractTitleAndDescription(data?.description)?.title
+              )}
+              <ClipboardIconButton
+                text={`${window.location.origin}/proposal/${id}`}
+                size={20}
+                copyText="Copy link"
+              />
+            </h2>
+
+            {isPending ? (
+              <Skeleton className="h-[24px] w-[80%] my-1" />
+            ) : (
+              <div className="flex items-center gap-[5px]">
+                <div className="flex items-center gap-[5px]">
+                  <span>Proposed by</span>
+                  {!!data?.proposer && (
+                    <AddressWithAvatar
+                      address={data?.proposer as `0x${string}`}
+                      avatarSize={24}
+                      className="gap-[5px] font-semibold"
+                    />
+                  )}
+                </div>
+                <span className="text-foreground">
+                  On{" "}
+                  <Link
+                    href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:underline font-semibold"
+                  >
+                    {data?.blockTimestamp
+                      ? formatTimeAgo(data?.blockTimestamp)
+                      : ""}
+                  </Link>
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="flex-1 min-h-0">
             <Tabs data={data} isFetching={isPending} />
           </div>
-          <div className="space-y-[20px]">
-            <CurrentVotes
-              proposalVotesData={proposalVotesData}
-              isLoading={proposalVotes?.isPending}
-              blockTimestamp={data?.blockTimestamp}
-              blockNumber={data?.blockNumber}
-            />
-            <Status
-              data={data}
-              status={proposalStatus?.data as ProposalState}
-              proposalCanceledById={proposalCanceledById}
-              proposalExecutedById={proposalExecutedById}
-              proposalQueuedById={proposalQueuedById}
-              isLoading={isAllQueriesFetching || isPending}
-            />
-            <Faqs type="proposal" />
-          </div>
         </div>
-      </div>
-
-      <div className="lg:hidden flex flex-col gap-[20px]">
-        <Summary
-          data={data}
-          isPending={isPending}
-          proposalStatus={proposalStatus as { data: ProposalState }}
-          proposalQueuedById={proposalQueuedById}
-          isAllQueriesFetching={isAllQueriesFetching}
-          onRefetch={refetchPageData}
-          id={id as string}
-        />
-        <CurrentVotes
-          proposalVotesData={proposalVotesData}
-          isLoading={proposalVotes?.isPending}
-          blockTimestamp={data?.blockTimestamp}
-          blockNumber={data?.blockNumber}
-        />
-        <Tabs data={data} isFetching={isPending} />
-        <Status
-          data={data}
-          status={proposalStatus?.data as ProposalState}
-          proposalCanceledById={proposalCanceledById}
-          proposalExecutedById={proposalExecutedById}
-          proposalQueuedById={proposalQueuedById}
-          isLoading={isAllQueriesFetching || isPending}
-        />
+        <div className="space-y-[20px]">
+          <CurrentVotes
+            proposalVotesData={proposalVotesData}
+            isLoading={proposalVotes?.isPending}
+            blockTimestamp={data?.blockTimestamp}
+            blockNumber={data?.blockNumber}
+          />
+          <Status
+            data={data}
+            status={proposalStatus?.data as ProposalState}
+            proposalCanceledById={proposalCanceledById}
+            proposalExecutedById={proposalExecutedById}
+            proposalQueuedById={proposalQueuedById}
+            isLoading={isAllQueriesFetching || isPending}
+          />
+          <Faqs type="proposal" />
+        </div>
       </div>
     </div>
   );

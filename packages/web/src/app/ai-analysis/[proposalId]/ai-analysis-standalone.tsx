@@ -16,7 +16,7 @@ import { VoteType } from "@/config/vote";
 import type { AiAnalysisData } from "@/types/ai-analysis";
 import { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription } from "@/utils";
-import { formatTimestampToFriendlyDate } from "@/utils/date";
+import { formatTimeAgo } from "@/utils/date";
 
 interface ProposalData {
   proposalId: string;
@@ -315,7 +315,9 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               <span className="text-[14px] text-foreground">
                 On{" "}
                 <span className="font-semibold">
-                  {formatTimestampToFriendlyDate(proposalData.blockTimestamp)}
+                  {proposalData.blockTimestamp
+                    ? formatTimeAgo(proposalData.blockTimestamp)
+                    : ""}
                 </span>
               </span>
             </div>

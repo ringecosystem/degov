@@ -3,6 +3,7 @@
 import { Alert } from "@/app/alert";
 import { DemoTips } from "@/app/demo-tips";
 import { Header } from "@/components/layouts/header";
+import { PageTransition } from "@/components/motion/page-transition";
 
 import { Aside } from "./aside";
 
@@ -19,7 +20,7 @@ export const DesktopLayout = ({ children }: DesktopLayoutProps) => {
         <div className="mx-auto w-full flex-1 p-[15px] lg:p-[30px] gap-[15px] lg:gap-[20px] flex flex-col max-w-[1400px]">
           <DemoTips />
           <Alert />
-          {children}
+          <PageTransition>{children}</PageTransition>
         </div>
       </main>
     </div>

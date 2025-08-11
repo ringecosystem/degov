@@ -58,7 +58,7 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
             <button
               key={tab.key}
               className={cn(
-                "pb-[12px] text-[16px]  flex-1 lg:text-[26px] font-semibold transition-colors relative",
+                "pb-[12px] text-[18px] font-semibold transition-colors relative",
                 activeTab === tab.key
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground"
