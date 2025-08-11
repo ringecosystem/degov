@@ -7,7 +7,7 @@ import type { Config } from "@/types/config";
 import type { DaoDetectlResult } from "@/types/api";
 import type { NextRequest } from "next/server";
 import {
-  isRemoteApiConfigured,
+  isDegovApiConfigured,
   degovApiDaoConfig,
   degovApiDaoDetect,
 } from "@/utils/remote-api";
@@ -24,7 +24,7 @@ export async function degovConfig(
 
   const host = getRequestHost(reqeust);
 
-  if (isRemoteApiConfigured() && host) {
+  if (isDegovApiConfigured() && host) {
     const apiUrl = degovApiDaoConfig();
     if (!apiUrl) {
       throw new Error("Remote API is not configured properly.");
