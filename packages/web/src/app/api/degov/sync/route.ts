@@ -23,6 +23,10 @@ export async function POST(request: NextRequest) {
         status: 400,
       });
     }
+    const inputDaocode = headersList.get("x-degov-daocode");
+    if (!inputDaocode) {
+      return NextResponse.json(Resp.err("missing dao code"), { status: 400 });
+    }
 
     const payloads = await request.json();
     if (!Array.isArray(payloads)) {
@@ -37,7 +41,7 @@ export async function POST(request: NextRequest) {
           // sync user power
           const { address, power } = payload.body;
           const hexPower = `0x${BigInt(power).toString(16).padStart(64, "0")}`;
-          await sql`update d_user set power = ${hexPower} where address = ${address}`;
+          await sql`update d_user set power = ${hexPower} where address = ${address} and dao_code = ${inputDaocode}`;
           break;
         }
         default: {

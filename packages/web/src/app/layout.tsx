@@ -12,7 +12,7 @@ import { ConfigProvider } from "@/providers/config.provider";
 import { DAppProvider } from "@/providers/dapp.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
 import type { Config } from "@/types/config";
-import { buildRemoteApiUrl, isRemoteApiConfigured } from "@/utils/remote-api";
+import { degovApiDaoConfig, isRemoteApiConfigured } from "@/utils/remote-api";
 import { getRequestHost } from "@/utils/request-server";
 
 import { ConditionalLayout } from "./conditional-layout";
@@ -48,7 +48,7 @@ export async function generateMetadata(): Promise<Metadata> {
       if (!host) {
         throw new Error("No host found");
       }
-      const response = await fetch(buildRemoteApiUrl() || "", {
+      const response = await fetch(degovApiDaoConfig() || "", {
         headers: {
           "x-degov-site": host,
         },

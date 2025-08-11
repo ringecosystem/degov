@@ -9,11 +9,21 @@ import { databaseConnection } from "../../common/database";
 import * as graphql from "../../common/graphql";
 import { snowflake } from "../../common/toolkit";
 import { nonceCache } from "../../common/nonce-cache";
+import * as config from "../../common/config";
 
 import type { NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
+    const detectResult = await config.detectDao(request);
+    if (!detectResult) {
+      return NextResponse.json(
+        Resp.err("failed to detect dao, please contact admin"),
+        { status: 400 }
+      );
+    }
+    const daocode = detectResult.daocode;
+
     const jwtSecretKey = process.env.JWT_SECRET_KEY;
     if (!jwtSecretKey) {
       return NextResponse.json(
@@ -39,7 +49,7 @@ export async function POST(request: NextRequest) {
     const nonce = fields.data.nonce;
     if (!nonceCache.isValid(nonce)) {
       return NextResponse.json(
-        Resp.err("nonce expired or invalid, please get a new nonce"), 
+        Resp.err("nonce expired or invalid, please get a new nonce"),
         { status: 400 }
       );
     }
@@ -56,9 +66,12 @@ export async function POST(request: NextRequest) {
 
     const sql = databaseConnection();
     const [storedUser] =
-      await sql`select * from d_user where address = ${address} limit 1`;
+      await sql`select * from d_user where address = ${address} and dao_code = ${daocode} limit 1`;
     if (!storedUser) {
-      const contributor = await graphql.inspectContributor(address);
+      const contributor = await graphql.inspectContributor({
+        address,
+        request,
+      });
       let power = "0";
       if (contributor) {
         power = contributor.power;
@@ -67,6 +80,7 @@ export async function POST(request: NextRequest) {
 
       const newUser: DUser = {
         id: snowflake.generate(),
+        dao_code: daocode,
         address,
         power: hexPower,
         last_login_time: new Date().toISOString(),
@@ -74,6 +88,7 @@ export async function POST(request: NextRequest) {
       await sql`insert into d_user ${sql(
         newUser,
         "id",
+        "dao_code",
         "address",
         "last_login_time",
         "power"

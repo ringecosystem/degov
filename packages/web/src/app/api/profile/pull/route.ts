@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Resp } from "@/types/api";
 
 import { databaseConnection } from "../../common/database";
+import * as config from "../../common/config";
 
 import type { NextRequest } from "next/server";
 
@@ -15,11 +16,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const detectResult = await config.detectDao(request);
+    if (!detectResult) {
+      return NextResponse.json(
+        Resp.err("failed to detect dao, please contact admin"),
+        { status: 400 }
+      );
+    }
+    const daocode = detectResult.daocode;
+
     const sql = databaseConnection();
 
     const members = await sql`select * from d_user where address in ${sql(
       body
-    )}`;
+    )} and dao_code = ${daocode}`;
 
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
