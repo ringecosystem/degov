@@ -20,7 +20,7 @@ export const DaoHeader = () => {
 
   return (
     <div
-      className="grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-[#202224] p-[20px]"
+      className="lg:grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-[#202224] p-[20px]"
       style={{
         backgroundImage: isCustomBanner
           ? `url(${config?.theme?.banner})`
@@ -71,7 +71,7 @@ export const DaoHeader = () => {
           <Contracts />
         </div>
       </div>
-      <div className="flex items-center justify-end gap-[20px]">
+      <div className="flex items-center lg:justify-end gap-[20px] mt-4 lg:mt-0">
         {Object.entries(config?.links ?? {})
           .filter(([, value]) => value && value.trim() !== "")
           .map(([key, value]) => (
