@@ -3,19 +3,25 @@ import yaml from "js-yaml";
 import { useEffect, useState } from "react";
 
 import ErrorComponent from "@/components/error";
+import { BlockProvider } from "@/contexts/BlockContext";
+import { ClockModeProvider } from "@/contexts/ClockModeContext";
+import { GlobalLoadingProvider } from "@/contexts/GlobalLoadingContext";
+import { useGlobalLoading } from "@/contexts/GlobalLoadingContext";
 import { ConfigContext } from "@/hooks/useDaoConfig";
+import { DAppProvider } from "@/providers/dapp.provider";
 import { processStandardProperties } from "@/utils";
-import { buildRemoteApiUrl } from "@/utils/remote-api";
+import { buildRemoteApiUrlClient } from "@/utils/remote-api";
 
 import type { Config } from "../types/config";
 
-export function ConfigProvider({ children }: { children: React.ReactNode }) {
+function ConfigProviderContent({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<Config | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Manage config loading
   useEffect(() => {
-    const configSource = buildRemoteApiUrl() ?? "/degov.yml";
+    const configSource = buildRemoteApiUrlClient() ?? "/degov.yml";
 
     fetch(configSource)
       .then((response) => {
@@ -44,21 +50,41 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       });
   }, []);
 
-  if (isLoading || !config) return null;
+  // Hook into global loading overlay (inside provider tree)
+  const { setLoading } = useGlobalLoading();
+  useEffect(() => {
+    setLoading("config", isLoading);
+    return () => setLoading("config", false);
+  }, [isLoading, setLoading]);
+
   if (error)
     return (
       <div
         className="flex items-center justify-center"
-        style={{
-          height: "100dvh",
-          width: "100dvw",
-        }}
+        style={{ height: "100dvh", width: "100dvw" }}
       >
         <ErrorComponent />
       </div>
     );
 
+  // Render nothing (except overlay) while config is loading
+  if (isLoading || !config) return null;
+
   return (
-    <ConfigContext.Provider value={config}>{children}</ConfigContext.Provider>
+    <ConfigContext.Provider value={config}>
+      <DAppProvider>
+        <BlockProvider>
+          <ClockModeProvider>{children}</ClockModeProvider>
+        </BlockProvider>
+      </DAppProvider>
+    </ConfigContext.Provider>
+  );
+}
+
+export function ConfigProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <GlobalLoadingProvider>
+      <ConfigProviderContent>{children}</ConfigProviderContent>
+    </GlobalLoadingProvider>
   );
 }
