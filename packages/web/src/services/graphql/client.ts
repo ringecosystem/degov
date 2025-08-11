@@ -1,11 +1,12 @@
 import { GraphQLClient } from "graphql-request";
+import { cache } from "react";
 
-export function createGraphQLClient(endpoint: string) {
+export const createGraphQLClient = cache((endpoint: string) => {
   if (!endpoint) {
     throw new Error("Indexer endpoint is not configured");
   }
   return new GraphQLClient(endpoint);
-}
+});
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function request<T = any, V extends object = object>(

@@ -1,30 +1,41 @@
+import { env } from "next-runtime-env";
+
+// === Server-side functions (use process.env) ===
 export const isRemoteApiConfigured = () => {
-  return !!process.env.NEXT_PUBLIC_DEGOV_API;
+  const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
+  return !!NEXT_PUBLIC_DEGOV_API;
 };
+
 
 export function degovApiHost(): string | undefined {
   return process.env.NEXT_PUBLIC_DEGOV_API;
 }
 
+
 export const degovApiDaoConfig = (): string | undefined => {
-  const daoCode = process.env.NEXT_PUBLIC_DEGOV_DAO;
+  const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
+  const NEXT_PUBLIC_DEGOV_DAO = process.env.NEXT_PUBLIC_DEGOV_DAO;
 
-  if (!isRemoteApiConfigured()) {
-    return undefined;
-  }
+  if (!NEXT_PUBLIC_DEGOV_API) return undefined;
 
-  const apiHost = degovApiHost();
-
-  return daoCode
-    ? `${apiHost}/dao/config/${daoCode}?format=yml`
-    : `${apiHost}/dao/config?format=yml`;
+  return NEXT_PUBLIC_DEGOV_DAO
+    ? `${NEXT_PUBLIC_DEGOV_API}/dao/config/${NEXT_PUBLIC_DEGOV_DAO}?format=yml`
+    : `${NEXT_PUBLIC_DEGOV_API}/dao/config?format=yml`;
 };
 
-export const degovApiDaoDetect = (): string | undefined => {
-  if (!isRemoteApiConfigured()) {
-    return undefined;
-  }
+// === Client-side functions (use next-runtime-env) ===
+export const isRemoteApiConfiguredClient = () => {
+  const NEXT_PUBLIC_DEGOV_API = env("NEXT_PUBLIC_DEGOV_API");
+  return !!NEXT_PUBLIC_DEGOV_API;
+};
 
-  const apiHost = degovApiHost();
-  return `${apiHost}/dao/detect`;
+export const buildRemoteApiUrlClient = (): string | undefined => {
+  const NEXT_PUBLIC_DEGOV_API = env("NEXT_PUBLIC_DEGOV_API");
+  const NEXT_PUBLIC_DEGOV_DAO = env("NEXT_PUBLIC_DEGOV_DAO");
+
+  if (!NEXT_PUBLIC_DEGOV_API) return undefined;
+
+  return NEXT_PUBLIC_DEGOV_DAO
+    ? `${NEXT_PUBLIC_DEGOV_API}/dao/config/${NEXT_PUBLIC_DEGOV_DAO}?format=yml`
+    : `${NEXT_PUBLIC_DEGOV_API}/dao/config?format=yml`;
 };

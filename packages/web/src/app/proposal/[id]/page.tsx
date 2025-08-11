@@ -19,7 +19,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
-import { formatTimestampToFriendlyDate } from "@/utils/date";
+import { formatTimeAgo } from "@/utils/date";
 
 import ActionGroup from "./action-group";
 import { CurrentVotes } from "./current-votes";
@@ -305,7 +305,9 @@ export default function ProposalDetailPage() {
                     rel="noreferrer"
                     className="hover:underline font-semibold"
                   >
-                    {formatTimestampToFriendlyDate(data?.blockTimestamp)}
+                    {data?.blockTimestamp
+                      ? formatTimeAgo(data?.blockTimestamp)
+                      : ""}
                   </Link>
                 </span>
               </div>
