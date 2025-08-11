@@ -11,7 +11,7 @@ import type {
 } from "@/services/graphql/types";
 import type { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription } from "@/utils";
-import { formatTimestampToFriendlyDate } from "@/utils/date";
+import { formatTimeAgo } from "@/utils/date";
 
 import ActionGroup from "./action-group";
 
@@ -54,7 +54,7 @@ export const Summary = ({
         />
       </div>
 
-      <h2 className="text-[16px] lg:text-[26px] font-semibold flex items-center gap-[10px]">
+      <h2 className="text-[26px] font-semibold flex items-center gap-[10px]">
         {isPending ? (
           <Skeleton className="h-[36px] w-[200px]" />
         ) : (
@@ -70,7 +70,7 @@ export const Summary = ({
       {isPending ? (
         <Skeleton className="h-[24px] w-[80%] my-1" />
       ) : (
-        <div className="flex items-center gap-[5px] flex-wrap">
+        <div className="flex items-center gap-[5px]">
           <div className="flex items-center gap-[5px]">
             <span>Proposed by</span>
             {!!data?.proposer && (
@@ -89,7 +89,7 @@ export const Summary = ({
               rel="noreferrer"
               className="hover:underline font-semibold"
             >
-              {formatTimestampToFriendlyDate(data?.blockTimestamp)}
+              {data?.blockTimestamp ? formatTimeAgo(data?.blockTimestamp) : ""}
             </Link>
           </span>
         </div>
