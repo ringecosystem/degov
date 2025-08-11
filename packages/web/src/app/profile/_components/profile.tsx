@@ -250,8 +250,8 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
         </div>
       ) : null}
 
-      <div className="flex items-start gap-[10px]">
-        <div className="flex-1 flex flex-col gap-[20px]">
+      <div className="flex flex-col lg:flex-row lg:items-start gap-[15px] lg:gap-[20px]">
+        <div className="flex-1 flex flex-col gap-[15px] lg:gap-[20px]">
           <User
             address={address}
             profile={profile}
@@ -270,7 +270,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
 
           <ReceivedDelegations address={address} />
         </div>
-        <div className="flex flex-col gap-[20px]">
+        <div className="hidden lg:block flex flex-col gap-[15px] lg:gap-[20px] lg:w-[300px]">
           <SystemInfo />
           <Faqs type="delegate" />
         </div>

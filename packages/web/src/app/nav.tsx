@@ -16,9 +16,10 @@ import { cn } from "@/lib/utils";
 
 interface NavProps {
   collapsed?: boolean;
+  onMenuToggle?: () => void;
 }
 
-export const Nav = ({ collapsed = false }: NavProps) => {
+export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
   const pathname = usePathname();
   const daoConfig = useDaoConfig();
 
@@ -50,6 +51,7 @@ export const Nav = ({ collapsed = false }: NavProps) => {
             <Tooltip key={route.key}>
               <TooltipTrigger asChild>
                 <Link
+                  onClick={onMenuToggle}
                   href={route.pathname}
                   prefetch={false}
                   className={cn(

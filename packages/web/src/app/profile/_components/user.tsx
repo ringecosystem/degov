@@ -45,44 +45,45 @@ export const User = ({
   const { isAiBot } = useAiBotAddress(address);
 
   return (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <div className="flex w-full items-center gap-[10px] justify-between">
-        <div className="flex items-center gap-[10px]">
-          <AddressAvatar address={address as `0x${string}`} size={70} />
-          <div className="flex flex-col gap-[10px]">
-            <div className="flex items-center gap-[5px]">
+    <div className="flex flex-col gap-[15px] lg:gap-[20px] rounded-[14px] bg-card p-[15px] lg:p-[20px]">
+      <div className="flex w-full flex-col lg:flex-row lg:items-center gap-[15px] lg:gap-[10px] lg:justify-between">
+        <div className="flex items-center gap-[10px] lg:gap-[10px]">
+          <AddressAvatar address={address as `0x${string}`} size={60} className="lg:w-[70px] lg:h-[70px]" />
+          <div className="flex flex-col gap-[8px] lg:gap-[10px] flex-1 min-w-0">
+            <div className="flex items-center gap-[5px] flex-wrap">
               <AddressResolver
                 address={address as `0x${string}`}
                 showShortAddress
               >
                 {(value) => (
-                  <span className="text-[26px] font-semibold leading-[100%]">
+                  <span className="text-[20px] lg:text-[26px] font-semibold leading-[100%] break-words">
                     {value}
                   </span>
                 )}
               </AddressResolver>
-              <span className="text-[14px] text-foreground/40">
+              <span className="text-[12px] lg:text-[14px] text-foreground/40 flex-shrink-0">
                 {formatShortAddress(address)}
               </span>
-              <ClipboardIconButton text={address} className="size-[16px]" />
+              <ClipboardIconButton text={address} className="size-[14px] lg:size-[16px] flex-shrink-0" />
               <Link
                 href={`${daoConfig?.chain?.explorers?.[0]}/address/${address}`}
                 target="_blank"
                 rel="noreferrer"
+                className="flex-shrink-0"
               >
                 <Image
                   src="/assets/image/light/external-link.svg"
                   alt="external-link"
-                  width={16}
-                  height={16}
-                  className="dark:hidden"
+                  width={14}
+                  height={14}
+                  className="dark:hidden lg:w-4 lg:h-4"
                 />
                 <Image
                   src="/assets/image/external-link.svg"
                   alt="external-link"
-                  width={16}
-                  height={16}
-                  className="hidden dark:block"
+                  width={14}
+                  height={14}
+                  className="hidden dark:block lg:w-4 lg:h-4"
                 />
               </Link>
             </div>

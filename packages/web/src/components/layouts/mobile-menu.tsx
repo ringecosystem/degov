@@ -47,7 +47,7 @@ export const MobileMenu = ({
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">
-            <Nav collapsed={false} />
+            <Nav collapsed={false} onMenuToggle={onMenuToggle} />
           </div>
 
           <div className="p-4">
