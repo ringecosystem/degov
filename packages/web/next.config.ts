@@ -24,9 +24,10 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["js-yaml"],
 
   experimental: {
+    clientSegmentCache: true,
     staleTimes: {
-      dynamic: 300, // 5 minutes for dynamic content
-      static: 86400, // 24 hours for static content
+      dynamic: 300,
+      static: 86400,
     },
     optimizePackageImports: [
       "@rainbow-me/rainbowkit",
