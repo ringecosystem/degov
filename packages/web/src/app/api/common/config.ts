@@ -8,8 +8,8 @@ import type { DaoDetectlResult } from "@/types/api";
 import type { NextRequest } from "next/server";
 import {
   isDegovApiConfigured,
-  degovApiDaoConfig,
-  degovApiDaoDetect,
+  degovApiDaoConfigServer,
+  degovApiDaoDetectServer,
 } from "@/utils/remote-api";
 import { Resp } from "@/types/api";
 
@@ -25,7 +25,7 @@ export async function degovConfig(
   const host = getRequestHost(reqeust);
 
   if (isDegovApiConfigured() && host) {
-    const apiUrl = degovApiDaoConfig();
+    const apiUrl = degovApiDaoConfigServer();
     if (!apiUrl) {
       throw new Error("Remote API is not configured properly.");
     }
@@ -69,7 +69,7 @@ export async function detectDao(
     };
   }
 
-  const apiUrl = degovApiDaoDetect();
+  const apiUrl = degovApiDaoDetectServer();
   if (!apiUrl) {
     return undefined;
   }
