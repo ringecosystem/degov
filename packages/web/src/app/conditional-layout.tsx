@@ -13,7 +13,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const pathname = usePathname();
 
   // Check if current path is a standalone route (AI analysis)
-  const isStandalonePage = pathname.startsWith("/ai-analysis");
+  const isStandalonePage = pathname?.startsWith("/ai-analysis") ?? false;
 
   if (isStandalonePage) {
     // Standalone layout - no sidebar, header, etc.

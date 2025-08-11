@@ -31,7 +31,8 @@ const ACTIVE_STATES: ProposalState[] = [
 export default function ProposalDetailPage() {
   const daoConfig = useDaoConfig();
 
-  const { id } = useParams();
+  const params = useParams();
+  const id = params?.id;
 
   const validId = useMemo(() => {
     if (!id) return null;

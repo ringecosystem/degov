@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { Faqs } from "@/components/faqs";
+import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
 import { SystemInfo } from "@/components/system-info";
 import { Button } from "@/components/ui/button";
@@ -22,14 +23,13 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
-import { ProposalsList } from "@/components/proposals-list";
 
 function ProposalsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const typeParam = searchParams.get("type");
-  const supportParam = searchParams.get("support");
-  const addressParam = searchParams.get("address");
+  const typeParam = searchParams?.get("type");
+  const supportParam = searchParams?.get("support");
+  const addressParam = searchParams?.get("address");
   const daoConfig = useDaoConfig();
 
   const [support, setSupport] = useState<"all" | "1" | "2" | "3">(
@@ -53,7 +53,7 @@ function ProposalsContent() {
 
   // Update URL when filters change
   const updateUrlParams = (myProposals: boolean, supportValue: string) => {
-    const params = new URLSearchParams(searchParams);
+    const params = new URLSearchParams(searchParams || undefined);
 
     if (myProposals) {
       params.set("type", "my");

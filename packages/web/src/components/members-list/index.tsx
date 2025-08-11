@@ -6,15 +6,13 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
-import { formatTimeAgo } from "@/utils/date";
 
-import { AddressWithAvatar } from "../address-with-avatar";
+import { AddressAvatar } from "../address-avatar";
+import { AddressResolver } from "../address-resolver";
 import { useBotMemberData } from "../members-table/hooks/useBotMemberData";
 import { useMembersData } from "../members-table/hooks/useMembersData";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
-import { AddressAvatar } from "../address-avatar";
-import { AddressResolver } from "../address-resolver";
 
 interface MembersListProps {
   onDelegate?: (value: ContributorItem) => void;
