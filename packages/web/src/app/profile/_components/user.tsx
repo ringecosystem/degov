@@ -48,9 +48,13 @@ export const User = ({
     <div className="flex flex-col gap-[15px] lg:gap-[20px] rounded-[14px] bg-card p-[15px] lg:p-[20px]">
       <div className="flex w-full flex-col lg:flex-row lg:items-center gap-[15px] lg:gap-[10px] lg:justify-between">
         <div className="flex items-center gap-[10px] lg:gap-[10px]">
-          <AddressAvatar address={address as `0x${string}`} size={60} className="lg:w-[70px] lg:h-[70px]" />
-          <div className="flex flex-col gap-[8px] lg:gap-[10px] flex-1 min-w-0">
-            <div className="flex items-center gap-[5px] flex-wrap">
+          <AddressAvatar
+            address={address as `0x${string}`}
+            size={60}
+            className="lg:w-[70px] lg:h-[70px]"
+          />
+          <div className="flex flex-row lg:flex-col gap-[8px] lg:gap-[10px] flex-1 min-w-0">
+            <div className="flex flex-col items-start lg:flex-row lg:items-center gap-[5px] flex-wrap">
               <AddressResolver
                 address={address as `0x${string}`}
                 showShortAddress
@@ -61,35 +65,46 @@ export const User = ({
                   </span>
                 )}
               </AddressResolver>
-              <span className="text-[12px] lg:text-[14px] text-foreground/40 flex-shrink-0">
-                {formatShortAddress(address)}
-              </span>
-              <ClipboardIconButton text={address} className="size-[14px] lg:size-[16px] flex-shrink-0" />
-              <Link
-                href={`${daoConfig?.chain?.explorers?.[0]}/address/${address}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-shrink-0"
-              >
-                <Image
-                  src="/assets/image/light/external-link.svg"
-                  alt="external-link"
-                  width={14}
-                  height={14}
-                  className="dark:hidden lg:w-4 lg:h-4"
-                />
-                <Image
-                  src="/assets/image/external-link.svg"
-                  alt="external-link"
-                  width={14}
-                  height={14}
-                  className="hidden dark:block lg:w-4 lg:h-4"
-                />
-              </Link>
+              <div className="flex gap-[8px] lg:gap-[10px]">
+                <span className="text-[12px] lg:text-[14px] text-foreground/40 flex-shrink-0">
+                  {formatShortAddress(address)}
+                </span>
+                <div className="flex items-center gap-[5px]">
+                  <ClipboardIconButton
+                    text={address}
+                    className="size-[14px] lg:size-[16px] flex-shrink-0"
+                  />
+                  <Link
+                    href={`${daoConfig?.chain?.explorers?.[0]}/address/${address}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-shrink-0"
+                  >
+                    <Image
+                      src="/assets/image/light/external-link.svg"
+                      alt="external-link"
+                      width={14}
+                      height={14}
+                      className="dark:hidden lg:w-4 lg:h-4"
+                    />
+                    <Image
+                      src="/assets/image/external-link.svg"
+                      alt="external-link"
+                      width={14}
+                      height={14}
+                      className="hidden dark:block lg:w-4 lg:h-4"
+                    />
+                  </Link>
+                </div>
+              </div>
             </div>
-
-            <SocialLinks profile={profile} isAiBot={isAiBot} />
+            <div className="hidden lg:block">
+              <SocialLinks profile={profile} isAiBot={isAiBot} />
+            </div>
           </div>
+        </div>
+        <div className="block lg:hidden">
+          <SocialLinks profile={profile} isAiBot={isAiBot} />
         </div>
         <UserActionGroup
           isOwnProfile={isOwnProfile}
