@@ -15,14 +15,8 @@ import type { NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const detectResult = await config.detectDao(request);
-    if (!detectResult) {
-      return NextResponse.json(
-        Resp.err("failed to detect dao, please contact admin"),
-        { status: 400 }
-      );
-    }
-    const daocode = detectResult.daocode;
+    const degovConfig = await config.degovConfig(request);
+    const daocode = degovConfig.code;
 
     const jwtSecretKey = process.env.JWT_SECRET_KEY;
     if (!jwtSecretKey) {

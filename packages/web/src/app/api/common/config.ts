@@ -4,27 +4,32 @@ import path from "path";
 import yaml from "js-yaml";
 
 import type { Config } from "@/types/config";
-import type { DaoDetectlResult } from "@/types/api";
 import type { NextRequest } from "next/server";
 import {
-  isDegovApiConfigured,
+  isDegovApiConfiguredServer,
   degovApiDaoConfigServer,
-  degovApiDaoDetectServer,
 } from "@/utils/remote-api";
-import { Resp } from "@/types/api";
 
-let cachedConfig: Config | undefined = undefined;
+const cachedConfig: Map<string, Config> = new Map();
 
-export async function degovConfig(
-  reqeust: NextRequest
-): Promise<Config | undefined> {
-  if (cachedConfig) {
-    return cachedConfig;
+export async function degovConfig(reqeust: NextRequest): Promise<Config> {
+  const host = getRequestHost(reqeust);
+  if (!host) {
+    throw new Error("Host header is missing in the request.");
   }
 
-  const host = getRequestHost(reqeust);
+  const cacheKey = host;
 
-  if (isDegovApiConfigured() && host) {
+  // check if the config is already cached
+  if (cachedConfig.has(cacheKey)) {
+    const cachedValue = cachedConfig.get(cacheKey);
+    if (cachedValue) {
+      return cachedValue;
+    }
+    cachedConfig.delete(cacheKey); // Remove stale cache
+  }
+
+  if (isDegovApiConfiguredServer()) {
     const apiUrl = degovApiDaoConfigServer();
     if (!apiUrl) {
       throw new Error("Remote API is not configured properly.");
@@ -42,55 +47,15 @@ export async function degovConfig(
     const yamlText = await response.text();
     const yamlData = yaml.load(yamlText) as Config;
 
-    cachedConfig = yamlData;
+    cachedConfig.set(cacheKey, yamlData);
     return yamlData;
   }
 
   const configPath = path.join(process.cwd(), "public/degov.yml");
   const yamlText = fs.readFileSync(configPath, "utf-8");
   const config = yaml.load(yamlText) as Config;
-  cachedConfig = config;
+  cachedConfig.set(cacheKey, config);
   return config;
-}
-
-export async function detectDao(
-  reqeust: NextRequest
-): Promise<DaoDetectlResult | undefined> {
-  const host = getRequestHost(reqeust);
-  if (!host) {
-    return undefined;
-  }
-
-  const daoCode = process.env.NEXT_PUBLIC_DEGOV_DAO;
-  if (daoCode) {
-    return {
-      daocode: daoCode,
-      daosite: host,
-    };
-  }
-
-  const apiUrl = degovApiDaoDetectServer();
-  if (!apiUrl) {
-    return undefined;
-  }
-  const response = await fetch(apiUrl, {
-    headers: {
-      "x-degov-site": host,
-    },
-  });
-  if (!response.ok) {
-    return undefined;
-  }
-  const resp: Resp<DaoDetectlResult> | undefined = await response.json();
-  if (!resp || !resp.data) {
-    console.error("Failed to detect DAO:", resp);
-    return undefined;
-  }
-  if (resp.code !== 0) {
-    console.error("Failed to detect DAO:", resp);
-    return undefined;
-  }
-  return resp.data;
 }
 
 export function getRequestHost(request: NextRequest): string | null {

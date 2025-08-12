@@ -57,8 +57,3 @@ export interface DAvatar {
   ctime: string;
   utime?: string;
 }
-
-export interface DaoDetectlResult {
-  daocode: string;
-  daosite: string;
-}

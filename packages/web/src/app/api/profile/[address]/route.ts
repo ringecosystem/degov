@@ -27,14 +27,8 @@ export async function GET(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const address = pathname.replace("/api/profile/", "").toLowerCase();
 
-    const detectResult = await config.detectDao(request);
-    if (!detectResult) {
-      return NextResponse.json(
-        Resp.err("failed to detect dao, please contact admin"),
-        { status: 400 }
-      );
-    }
-    const daocode = detectResult.daocode;
+    const degovConfig = await config.degovConfig(request);
+    const daocode = degovConfig.code;
 
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
@@ -78,14 +72,8 @@ export async function POST(request: NextRequest) {
     }
     const body: ProfileModifyForm = await request.json();
 
-    const detectResult = await config.detectDao(request);
-    if (!detectResult) {
-      return NextResponse.json(
-        Resp.err("failed to detect dao, please contact admin"),
-        { status: 400 }
-      );
-    }
-    const daocode = detectResult.daocode;
+    const degovConfig = await config.degovConfig(request);
+    const daocode = degovConfig.code;
 
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {

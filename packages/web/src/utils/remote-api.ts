@@ -1,7 +1,7 @@
 import { env } from "next-runtime-env";
 
 // === Server-side functions (use process.env) ===
-export const isDegovApiConfigured = () => {
+export const isDegovApiConfiguredServer = () => {
   const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
   return !!NEXT_PUBLIC_DEGOV_API;
 };
@@ -15,14 +15,6 @@ export const degovApiDaoConfigServer = (): string | undefined => {
   return NEXT_PUBLIC_DEGOV_DAO
     ? `${NEXT_PUBLIC_DEGOV_API}/dao/config/${NEXT_PUBLIC_DEGOV_DAO}?format=yml`
     : `${NEXT_PUBLIC_DEGOV_API}/dao/config?format=yml`;
-};
-
-export const degovApiDaoDetectServer = (): string | undefined => {
-  const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
-
-  if (!NEXT_PUBLIC_DEGOV_API) return undefined;
-
-  return `${NEXT_PUBLIC_DEGOV_API}/dao/detect`;
 };
 
 // === Client-side functions (use next-runtime-env) ===
