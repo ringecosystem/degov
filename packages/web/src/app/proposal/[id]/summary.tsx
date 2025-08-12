@@ -70,7 +70,7 @@ export const Summary = ({
       {isPending ? (
         <Skeleton className="h-[24px] w-[80%] my-1" />
       ) : (
-        <div className="flex items-center gap-[5px]">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-[5px]">
           <div className="flex items-center gap-[5px]">
             <span>Proposed by</span>
             {!!data?.proposer && (

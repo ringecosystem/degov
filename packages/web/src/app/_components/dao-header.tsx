@@ -2,7 +2,7 @@
 import { TooltipTrigger } from "@radix-ui/react-tooltip";
 import { capitalize } from "lodash-es";
 import Image from "next/image";
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -13,6 +13,7 @@ import { Parameters } from "./parameters";
 
 export const DaoHeader = () => {
   const config = useDaoConfig();
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   const isCustomBanner = useMemo(() => {
     return !!config?.theme?.banner && !!config?.theme?.bannerMobile;
@@ -51,20 +52,33 @@ export const DaoHeader = () => {
           </div>
         </h1>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <p
-              className={cn(
-                "line-clamp-2 text-[14px] text-foreground/80 max-w-[693px] text-white"
-              )}
-            >
-              {config?.description}
-            </p>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-[600px] rounded-[26px] bg-card p-[20px] border border-card-background shadow-sm">
-            <p className="text-[14px]">{config?.description}</p>
-          </TooltipContent>
-        </Tooltip>
+        <div className="lg:hidden">
+          <p
+            className={`text-[13px] lg:text-[14px] text-foreground/80 max-w-[693px] ${
+              !showFullDescription ? "line-clamp-2" : ""
+            } cursor-pointer`}
+            onClick={() => setShowFullDescription(!showFullDescription)}
+          >
+            {config?.description}
+          </p>
+        </div>
+
+        <div className="hidden lg:block">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p
+                className={cn(
+                  "line-clamp-2 text-[14px] text-foreground/80 max-w-[693px] text-white"
+                )}
+              >
+                {config?.description}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[600px] rounded-[26px] bg-card p-[20px] border border-card-background shadow-sm">
+              <p className="text-[14px]">{config?.description}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
 
         <div className="flex items-center gap-[10px]">
           <Parameters />

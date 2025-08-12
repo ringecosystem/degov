@@ -153,9 +153,21 @@ export default function Edit() {
   }
   return (
     <WithConnect>
-      <div className="mx-auto w-full max-w-[820px] space-y-[20px] p-[30px]">
+      <div className="mx-auto w-full max-w-[820px] space-y-[20px] lg:p-[30px]">
         <h3 className="text-[18px] font-semibold">Edit Profile</h3>
-        <div className="grid w-full grid-cols-[600px_200px] gap-[20px]">
+        <ProfileAvatar
+          address={address}
+          onAvatarChange={handleAvatarChange}
+          initialAvatar={profileData?.data?.avatar}
+          isLoading={isUpdatingAvatar || isSigningIn}
+        />
+        <ProfileForm
+          data={profileData?.data}
+          onSubmitForm={handleSubmitForm}
+          isLoading={isUpdatingProfile || isSigningIn}
+        />
+
+        <div className="grid w-full grid-cols-[600px_200px] gap-[20px] hidden lg:block">
           <ProfileForm
             data={profileData?.data}
             onSubmitForm={handleSubmitForm}

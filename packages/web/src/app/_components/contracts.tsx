@@ -25,7 +25,7 @@ export const Contracts = () => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="flex flex-col gap-[20px] rounded-[14px] border-border/20 bg-card p-[20px] max-w-[100vw]"
+        className="flex flex-col gap-[20px] rounded-[14px] border-border/20 bg-card p-[20px] lg:max-w-[100vw] w-[90vw] mr-[5vw] lg:mr-0"
         align="start"
       >
         <div className="flex items-center justify-between text-[16px] font-semibold text-foreground">

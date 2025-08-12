@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
@@ -130,16 +131,22 @@ export function MembersList({
             <div className="flex items-center gap-3">
               <AddressAvatar address={record?.id as `0x${string}`} size={30} />
               <div className="flex items-start justify-start flex-col flex-1 min-w-0">
-                <AddressResolver
-                  address={record?.id as `0x${string}`}
-                  showShortAddress
+                <Link
+                  href={`/delegate/${record?.id as `0x${string}`}`}
+                  target={undefined}
+                  rel={undefined}
                 >
-                  {(ensName) => (
-                    <span className="line-clamp-1 font-mono hover:underline">
-                      {ensName}
-                    </span>
-                  )}
-                </AddressResolver>
+                  <AddressResolver
+                    address={record?.id as `0x${string}`}
+                    showShortAddress
+                  >
+                    {(ensName) => (
+                      <span className="line-clamp-1 font-mono hover:underline">
+                        {ensName}
+                      </span>
+                    )}
+                  </AddressResolver>
+                </Link>
                 <div className="text-left">
                   {isProfilePullLoading || isProposalMetricsLoading ? (
                     <Skeleton className="h-4 w-20" />

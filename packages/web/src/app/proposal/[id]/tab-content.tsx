@@ -66,7 +66,7 @@ export const TabContent = ({
                 href={data?.discussion}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[18px] font-semibold hover:underline"
+                className="text-[14px] lg:text-[18px] font-semibold hover:underline"
               >
                 {data?.discussion}
               </a>

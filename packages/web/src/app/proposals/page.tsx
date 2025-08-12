@@ -141,7 +141,7 @@ function ProposalsContent() {
               )}
             </div>
             <Button
-              className="flex items-center gap-[5px] rounded-[100px]"
+              className="flex items-center gap-[5px] rounded-[100px] hidden lg:block"
               onClick={() => router.push("/proposals/new")}
             >
               <Image
@@ -162,7 +162,15 @@ function ProposalsContent() {
             </Button>
           </div>
           <div className="lg:hidden">
-            <ProposalsList type="all" />
+            <ProposalsList
+              type="all"
+              address={
+                isMyProposals
+                  ? address
+                  : (addressParam as `0x${string}` | undefined)
+              }
+              support={support === "all" ? undefined : support}
+            />
           </div>
           <div className="hidden lg:block">
             <ProposalsTable
