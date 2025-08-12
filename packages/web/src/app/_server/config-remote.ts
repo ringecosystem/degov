@@ -7,7 +7,7 @@ import { degovApiDaoConfigServer } from "@/utils/remote-api";
 
 export async function getConfigCachedByHost(): Promise<Config> {
   const hdr = await headers();
-  const host = hdr.get(":authority") ?? hdr.get("host");
+  const host = hdr.get("host");
 
   const get = unstable_cache(
     async () => {

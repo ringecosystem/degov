@@ -61,5 +61,5 @@ export async function degovConfig(reqeust: NextRequest): Promise<Config> {
 
 export function getRequestHost(request: NextRequest): string | null {
   const headers = request.headers;
-  return headers.get(":authority") ?? headers.get("host");
+  return headers.get("host");
 }
