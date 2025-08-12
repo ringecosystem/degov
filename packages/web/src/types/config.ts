@@ -79,6 +79,13 @@ interface AppItem {
   link: string;
 }
 
+interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+type FaqConfig = FaqItem[];
+
 type SafeConfig = SafeItem[];
 type AppConfig = AppItem[];
 
@@ -99,6 +106,7 @@ interface Config {
   safes?: SafeConfig;
   apps?: AppConfig;
   aiAgent?: AiAgent;
+  faqs?: FaqConfig;
 }
 
 export type {
@@ -116,4 +124,6 @@ export type {
   SafeConfig,
   AppItem,
   AppConfig,
+  FaqItem,
+  FaqConfig,
 };
