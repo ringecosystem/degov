@@ -1,7 +1,4 @@
-import { useReadContract } from "wagmi";
 
-import { abi as tokenAbi } from "@/config/abi/token";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import type { DelegateItem } from "@/services/graphql/types";
 
@@ -39,22 +36,6 @@ const Caption = ({
 export function DelegationList({ address }: DelegationListProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { state, loadMoreData } = useDelegationData(address);
-  const daoConfig = useDaoConfig();
-  const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
-
-  const { data: totalVotes } = useReadContract({
-    address: tokenAddress,
-    abi: tokenAbi,
-    functionName: "getVotes",
-    args: [address],
-    chainId: daoConfig?.chain?.id,
-    query: {
-      enabled:
-        Boolean(address) &&
-        Boolean(tokenAddress) &&
-        Boolean(daoConfig?.chain?.id),
-    },
-  });
 
   if (state.isPending) {
     return (
@@ -94,10 +75,6 @@ export function DelegationList({ address }: DelegationListProps) {
       {state.data.map((record: DelegateItem) => {
         const userPower = record?.power ? BigInt(record.power) : 0n;
         const formattedAmount = formatTokenAmount(userPower);
-        const percentage =
-          totalVotes && totalVotes > 0n 
-            ? Number((userPower * 10000n) / totalVotes) / 100 
-            : 0;
 
         return (
           <div
@@ -106,9 +83,9 @@ export function DelegationList({ address }: DelegationListProps) {
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <AddressAvatar 
-                  address={record?.fromDelegate as `0x${string}`} 
-                  size={40} 
+                <AddressAvatar
+                  address={record?.fromDelegate as `0x${string}`}
+                  size={40}
                 />
                 <div className="flex flex-col gap-1 flex-1 min-w-0">
                   <AddressResolver
@@ -123,7 +100,7 @@ export function DelegationList({ address }: DelegationListProps) {
                   </AddressResolver>
                 </div>
               </div>
-              
+
               <div className="flex flex-col items-end flex-shrink-0">
                 <div className="text-sm font-medium text-foreground">
                   {formattedAmount?.formatted}
@@ -135,10 +112,11 @@ export function DelegationList({ address }: DelegationListProps) {
       })}
 
       {state.hasNextPage && (
-        <Caption loadMoreData={loadMoreData} isLoading={state.isFetchingNextPage} />
+        <Caption
+          loadMoreData={loadMoreData}
+          isLoading={state.isFetchingNextPage}
+        />
       )}
     </div>
   );
 }
-
-
