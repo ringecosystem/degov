@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 import type { AuthPayload, DAvatar, DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
-import { databaseConnection } from "../../common/database";
 import * as config from "../../common/config";
+import { databaseConnection } from "../../common/database";
 
 import type { NextRequest } from "next/server";
 

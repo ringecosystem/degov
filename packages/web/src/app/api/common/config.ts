@@ -4,11 +4,12 @@ import path from "path";
 import yaml from "js-yaml";
 
 import type { Config } from "@/types/config";
-import type { NextRequest } from "next/server";
 import {
   isDegovApiConfiguredServer,
   degovApiDaoConfigServer,
 } from "@/utils/remote-api";
+
+import type { NextRequest } from "next/server";
 
 const cachedConfig: Map<string, Config> = new Map();
 

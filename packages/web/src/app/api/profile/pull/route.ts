@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import { Resp } from "@/types/api";
 
-import { databaseConnection } from "../../common/database";
 import * as config from "../../common/config";
+import { databaseConnection } from "../../common/database";
 
 import type { NextRequest } from "next/server";
 
