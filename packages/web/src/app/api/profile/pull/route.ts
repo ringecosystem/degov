@@ -24,7 +24,6 @@ export async function POST(request: NextRequest) {
     const members = await sql`select * from d_user where address in ${sql(
       body
     )} and dao_code = ${daocode}`;
-
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
     console.warn("err", err);
