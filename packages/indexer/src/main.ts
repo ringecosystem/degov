@@ -11,6 +11,9 @@ async function main() {
 }
 
 function processIndex(config: DegovConfig) {
+  if (!config.code) {
+    throw new Error("config.code is required");
+  }
   const indexLog: DegovConfigIndexLog = config.indexLog;
   processor
     .setRpcEndpoint({
@@ -46,7 +49,7 @@ function processIndex(config: DegovConfig) {
                 await new GovernorHandler(ctx).handle(event);
                 break;
               case "governorToken":
-                await new TokenHandler(ctx, indexContract).handle(event);
+                await new TokenHandler(ctx, indexContract, config).handle(event);
                 break;
             }
           } catch (e) {

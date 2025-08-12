@@ -12,14 +12,15 @@ import {
   DelegateVotesChanged,
   TokenTransfer,
 } from "../model";
-import { MetricsId, DegovConfigIndexLogContract } from "../config";
+import { MetricsId, DegovConfigIndexLogContract, DegovConfig } from "../config";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 export class TokenHandler {
   constructor(
     private readonly ctx: DataHandlerContext<any, any>,
-    private readonly indexContract: DegovConfigIndexLogContract
+    private readonly indexContract: DegovConfigIndexLogContract,
+    private readonly config: DegovConfig,
   ) {}
 
   private contractStandard() {
@@ -402,6 +403,7 @@ export class TokenHandler {
           headers: {
             "Content-Type": "application/json",
             "x-degov-sync-token": syncAuthToken,
+            "x-degov-daocode": this.config.code,
           },
           body: JSON.stringify([
             {

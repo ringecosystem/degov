@@ -3,16 +3,16 @@ import { headers } from "next/headers";
 
 import { getDaoConfigServer } from "@/lib/config";
 import type { Config } from "@/types/config";
-import { buildRemoteApiUrl } from "@/utils/remote-api";
+import { degovApiDaoConfigServer } from "@/utils/remote-api";
 
 export async function getConfigCachedByHost(): Promise<Config> {
   const hdr = await headers();
-  const host = hdr.get(":authority") ?? hdr.get("host");
+  const host = hdr.get("host");
 
   const get = unstable_cache(
     async () => {
       try {
-        const apiUrl = buildRemoteApiUrl();
+        const apiUrl = degovApiDaoConfigServer();
         if (!apiUrl) {
           return getDaoConfigServer();
         }

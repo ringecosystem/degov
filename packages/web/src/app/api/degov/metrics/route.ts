@@ -2,13 +2,20 @@ import { NextResponse } from "next/server";
 
 import { Resp } from "@/types/api";
 
+import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 
-export async function GET() {
+import type { NextRequest } from "next/server";
+
+export async function GET(request: NextRequest) {
   try {
+    const degovConfig = await config.degovConfig(request);
+    const daocode = degovConfig.code;
+
     const sql = databaseConnection();
 
-    const [memberCount] = await sql`select count(1) as c from d_user`;
+    const [memberCount] =
+      await sql`select count(1) as c from d_user where dao_code = ${daocode}`;
 
     const data: MetricsData = {
       member_count: +(memberCount.c ?? 0),

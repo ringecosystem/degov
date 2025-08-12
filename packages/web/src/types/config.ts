@@ -84,6 +84,7 @@ type AppConfig = AppItem[];
 
 interface Config {
   name: string;
+  code: string;
   logo: string;
   siteUrl: string;
   offChainDiscussionUrl?: string;

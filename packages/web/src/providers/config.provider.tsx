@@ -10,7 +10,7 @@ import { useGlobalLoading } from "@/contexts/GlobalLoadingContext";
 import { ConfigContext } from "@/hooks/useDaoConfig";
 import { DAppProvider } from "@/providers/dapp.provider";
 import { processStandardProperties } from "@/utils";
-import { buildRemoteApiUrlClient } from "@/utils/remote-api";
+import { degovApiDaoConfigClient } from "@/utils/remote-api";
 
 import type { Config } from "../types/config";
 
@@ -21,7 +21,7 @@ function ConfigProviderContent({ children }: { children: React.ReactNode }) {
 
   // Manage config loading
   useEffect(() => {
-    const configSource = buildRemoteApiUrlClient() ?? "/degov.yml";
+    const configSource = degovApiDaoConfigClient() ?? "/degov.yml";
 
     fetch(configSource)
       .then((response) => {

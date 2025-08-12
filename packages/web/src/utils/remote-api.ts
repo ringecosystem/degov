@@ -1,12 +1,12 @@
 import { env } from "next-runtime-env";
 
 // === Server-side functions (use process.env) ===
-export const isRemoteApiConfigured = () => {
+export const isDegovApiConfiguredServer = () => {
   const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
   return !!NEXT_PUBLIC_DEGOV_API;
 };
 
-export const buildRemoteApiUrl = (): string | undefined => {
+export const degovApiDaoConfigServer = (): string | undefined => {
   const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
   const NEXT_PUBLIC_DEGOV_DAO = process.env.NEXT_PUBLIC_DEGOV_DAO;
 
@@ -18,12 +18,12 @@ export const buildRemoteApiUrl = (): string | undefined => {
 };
 
 // === Client-side functions (use next-runtime-env) ===
-export const isRemoteApiConfiguredClient = () => {
+export const isDegovApiConfiguredClient = () => {
   const NEXT_PUBLIC_DEGOV_API = env("NEXT_PUBLIC_DEGOV_API");
   return !!NEXT_PUBLIC_DEGOV_API;
 };
 
-export const buildRemoteApiUrlClient = (): string | undefined => {
+export const degovApiDaoConfigClient = (): string | undefined => {
   const NEXT_PUBLIC_DEGOV_API = env("NEXT_PUBLIC_DEGOV_API");
   const NEXT_PUBLIC_DEGOV_DAO = env("NEXT_PUBLIC_DEGOV_DAO");
 
