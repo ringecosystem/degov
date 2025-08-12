@@ -27,10 +27,6 @@ class NonceCache {
     this.cache.del(nonce);
   }
 
-  // // Get cache statistics (optional, for debugging)
-  // getStats() {
-  //   return this.cache.getStats();
-  // }
 }
 
 // Singleton pattern to ensure the entire app uses the same cache instance
