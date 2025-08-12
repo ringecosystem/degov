@@ -13,8 +13,8 @@ import type { NextRequest } from "next/server";
 
 const cachedConfig: Map<string, Config> = new Map();
 
-export async function degovConfig(reqeust: NextRequest): Promise<Config> {
-  const host = getRequestHost(reqeust);
+export async function degovConfig(request: NextRequest): Promise<Config> {
+  const host = getRequestHost(request);
   if (!host) {
     throw new Error("Host header is missing in the request.");
   }
