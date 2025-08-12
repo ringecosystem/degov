@@ -20,7 +20,6 @@ export async function POST(request: NextRequest) {
     const daocode = degovConfig.code;
 
     const sql = databaseConnection();
-
     const members = await sql`select * from d_user where address in ${sql(
       body
     )} and dao_code = ${daocode}`;
