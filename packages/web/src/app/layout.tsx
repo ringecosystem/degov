@@ -45,10 +45,16 @@ function buildMetadata(config: Config | null | undefined): Metadata {
 
   const metadata = {
     title: {
-      template: `%s | ${daoName} | DeGov.AI`,
-      default: `${daoName} | DeGov.AI`,
+      template: `%s | ${daoName}`,
+      default: `${daoName}`,
     },
     description,
+    icons: config?.logo
+      ? {
+          icon: [{ url: config.logo }],
+          shortcut: [config.logo],
+        }
+      : undefined,
     metadataBase,
     openGraph: {
       type: "website",
