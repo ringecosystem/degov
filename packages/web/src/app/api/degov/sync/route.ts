@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
     const inputDaocode = headersList.get("x-degov-daocode");
     if (!inputDaocode) {
-      return NextResponse.json(Resp.err("missing dao code"), { status: 400 });
+      return NextResponse.json(Resp.err("missing dao code please add x-degov-daocode header"), { status: 400 });
     }
 
     const payloads = await request.json();
