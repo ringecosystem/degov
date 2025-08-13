@@ -1,71 +1,82 @@
 import { ArrowUpRight } from "lucide-react";
+import { useMemo } from "react";
 
-const faqList = {
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+
+const defaultFaqList = {
   general: [
     {
-      title: "What is DeGov.AI",
-      link: "https://docs.degov.ai/",
+      question: "What is DeGov.AI?",
+      answer: "https://docs.degov.ai/",
     },
     {
-      title: "How can my DAO get support from DeGov.AI?",
-      link: "https://docs.degov.ai/faqs/#how-can-my-dao-get-support-from-degovai",
+      question: "How can my DAO get support from DeGov.AI?",
+      answer:
+        "https://docs.degov.ai/faqs/#how-can-my-dao-get-support-from-degovai",
     },
     {
-      title: "How is AI integrated into DeGov.AI?",
-      link: "https://docs.degov.ai/faqs/#how-does-degovai-utilize-ai-capabilities",
+      question: "How is AI integrated into DeGov.AI?",
+      answer:
+        "https://docs.degov.ai/faqs/#how-does-degovai-utilize-ai-capabilities",
     },
     {
-      title: "How can I create or vote on proposals?",
-      link: "https://docs.degov.ai/faqs/#how-can-i-create-or-vote-on-proposals",
+      question: "How can I create or vote on proposals?",
+      answer:
+        "https://docs.degov.ai/faqs/#how-can-i-create-or-vote-on-proposals",
     },
     {
-      title: "Is there an off-chain platform for discussing proposals?",
-      link: "https://docs.degov.ai/faqs/#is-there-an-off-chain-platform-for-discussing-proposals",
+      question: "Is there an off-chain platform for discussing proposals?",
+      answer:
+        "https://docs.degov.ai/faqs/#is-there-an-off-chain-platform-for-discussing-proposals",
     },
   ],
   delegate: [
     {
-      title: "What is delegation?",
-      link: "https://docs.degov.ai/faqs/#what-is-delegation",
+      question: "What is delegation?",
+      answer: "https://docs.degov.ai/faqs/#what-is-delegation",
     },
     {
-      title: "What is voting power?",
-      link: "https://docs.degov.ai/faqs/#what-is-voting-power",
+      question: "What is voting power?",
+      answer: "https://docs.degov.ai/faqs/#what-is-voting-power",
     },
     {
-      title: "How are governance tokens and voting power related?",
-      link: "https://docs.degov.ai/faqs/#how-are-governance-tokens-and-voting-power-related",
+      question: "How are governance tokens and voting power related?",
+      answer:
+        "https://docs.degov.ai/faqs/#how-are-governance-tokens-and-voting-power-related",
     },
     {
-      title: "How can I delegate my voting power?",
-      link: "https://docs.degov.ai/faqs/#how-can-i-delegate-my-voting-power",
+      question: "How can I delegate my voting power?",
+      answer: "https://docs.degov.ai/faqs/#how-can-i-delegate-my-voting-power",
     },
     {
-      title:
+      question:
         "Can I split my voting power and delegate it to multiple delegates?",
-      link: "https://docs.degov.ai/faqs/#can-i-split-my-voting-power-and-delegate-it-to-multiple-delegates",
+      answer:
+        "https://docs.degov.ai/faqs/#can-i-split-my-voting-power-and-delegate-it-to-multiple-delegates",
     },
   ],
   proposal: [
     {
-      title: "What is the proposal threshold?",
-      link: "https://docs.degov.ai/faqs/#what-is-the-proposal-threshold",
+      question: "What is the proposal threshold?",
+      answer: "https://docs.degov.ai/faqs/#what-is-the-proposal-threshold",
     },
     {
-      title: "What is the lifecycle of a proposal?",
-      link: "https://docs.degov.ai/faqs/#what-is-the-lifecycle-of-a-proposal",
+      question: "What is the lifecycle of a proposal?",
+      answer: "https://docs.degov.ai/faqs/#what-is-the-lifecycle-of-a-proposal",
     },
     {
-      title: "What are the best practices for creating a proposal?",
-      link: "https://docs.degov.ai/faqs/#what-are-the-best-practices-for-creating-a-proposal",
+      question: "What are the best practices for creating a proposal?",
+      answer:
+        "https://docs.degov.ai/faqs/#what-are-the-best-practices-for-creating-a-proposal",
     },
     {
-      title: "How can I vote on a proposal?",
-      link: "https://docs.degov.ai/faqs/#how-can-i-vote-on-a-proposal",
+      question: "How can I vote on a proposal?",
+      answer: "https://docs.degov.ai/faqs/#how-can-i-vote-on-a-proposal",
     },
     {
-      title: "How can I check the status of a proposal?",
-      link: "https://docs.degov.ai/faqs/#how-can-i-check-the-status-of-a-proposal",
+      question: "How can I check the status of a proposal?",
+      answer:
+        "https://docs.degov.ai/faqs/#how-can-i-check-the-status-of-a-proposal",
     },
   ],
 };
@@ -75,21 +86,32 @@ interface FaqsProps {
 }
 
 export const Faqs = ({ type }: FaqsProps) => {
+  const config = useDaoConfig();
+
+  const faqList = useMemo(() => {
+    if (type === "general") {
+      return config?.theme?.faqs && config.theme.faqs.length > 0
+        ? config.theme.faqs?.slice(0, 5)
+        : defaultFaqList[type];
+    }
+    return defaultFaqList[type];
+  }, [config, type]);
+
   return (
     <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] lg:w-[360px]">
       <h2 className="text-[18px] font-semibold">
         {type.charAt(0).toUpperCase() + type.slice(1)} FAQs
       </h2>
       <div className="h-[1px] w-full bg-card-background"></div>
-      {faqList[type].map((faq) => (
-        <div key={faq.title}>
+      {(Array.isArray(faqList) ? faqList : []).map((faq, index) => (
+        <div key={index}>
           <a
-            href={faq.link}
+            href={faq.answer}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[14px] font-normal hover:underline "
           >
-            {faq.title} <ArrowUpRight className="w-4 h-4 inline-block" />
+            {faq.question} <ArrowUpRight className="w-4 h-4 inline-block" />
           </a>
         </div>
       ))}

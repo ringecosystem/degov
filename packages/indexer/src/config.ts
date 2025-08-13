@@ -8,6 +8,7 @@ export enum MetricsId {
 }
 
 export interface DegovConfig {
+  code: string;
   endpoint: DegovConfigEndpoint;
   indexLog: DegovConfigIndexLog;
   gateway?: string;
@@ -124,7 +125,7 @@ export class DegovConfigNanny {
     const configRaw = await this.readConfigRaw();
     const degovConfig = yaml.parse(configRaw);
 
-    const { chain, indexer, contracts } = degovConfig;
+    const { code, chain, indexer, contracts } = degovConfig;
     let rpcs = chain.rpcs ?? [];
     if (indexer.rpc) {
       rpcs = [indexer.rpc, ...rpcs];
@@ -156,6 +157,7 @@ export class DegovConfigNanny {
       contracts: indexContracts,
     };
     return {
+      code,
       endpoint,
       indexLog,
       gateway: indexer.gateway,

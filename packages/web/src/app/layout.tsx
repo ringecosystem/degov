@@ -10,7 +10,7 @@ import { getDaoConfigServer } from "@/lib/config";
 import { ConfigProvider } from "@/providers/config.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
 import type { Config } from "@/types/config";
-import { isRemoteApiConfigured } from "@/utils/remote-api";
+import { isDegovApiConfiguredServer } from "@/utils/remote-api";
 
 import { ConditionalLayout } from "./conditional-layout";
 import { ToastContainer } from "./toastContainer";
@@ -94,7 +94,7 @@ async function getRemoteConfig(): Promise<Config> {
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-  const apiMode = isRemoteApiConfigured();
+  const apiMode = isDegovApiConfiguredServer();
 
   if (!apiMode) {
     unstable_noStore();

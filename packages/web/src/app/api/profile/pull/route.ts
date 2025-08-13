@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { Resp } from "@/types/api";
 
+import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 
 import type { NextRequest } from "next/server";
@@ -15,12 +16,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const sql = databaseConnection();
+    const degovConfig = await config.degovConfig(request);
+    const daocode = degovConfig.code;
 
+    const sql = databaseConnection();
     const members = await sql`select * from d_user where address in ${sql(
       body
-    )}`;
-
+    )} and dao_code = ${daocode}`;
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
     console.warn("err", err);

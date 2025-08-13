@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import type { AuthPayload, DAvatar, DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
+import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 
 import type { NextRequest } from "next/server";
@@ -26,12 +27,22 @@ export async function GET(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const address = pathname.replace("/api/profile/", "").toLowerCase();
 
+    const degovConfig = await config.degovConfig(request);
+    const daocode = degovConfig.code;
+
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      return NextResponse.json(
+        Resp.err("missing database please contact admin"),
+        { status: 400 }
+      );
+    }
     const sql = databaseConnection();
 
     const [storedUser] = await sql`
       select u.*, a.image as avatar from d_user as u
       left join d_avatar as a on u.id = a.id
-      where u.address = ${address}
+      where u.address = ${address} and u.dao_code = ${daocode}
       limit 1
       `;
 
@@ -61,6 +72,9 @@ export async function POST(request: NextRequest) {
     }
     const body: ProfileModifyForm = await request.json();
 
+    const degovConfig = await config.degovConfig(request);
+    const daocode = degovConfig.code;
+
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       return NextResponse.json(
@@ -71,7 +85,7 @@ export async function POST(request: NextRequest) {
     const sql = databaseConnection();
 
     const [storedUser] =
-      await sql`select * from d_user where address = ${address} limit 1`;
+      await sql`select * from d_user where address = ${address} and dao_code = ${daocode} limit 1`;
     if (!storedUser) {
       return NextResponse.json(Resp.err("unreachable, qed"));
     }
