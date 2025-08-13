@@ -13,6 +13,7 @@ interface Theme {
   logoLight?: string;
   banner?: string;
   bannerMobile?: string;
+  faqs?: FaqConfig;
 }
 
 interface NativeToken {
@@ -79,6 +80,13 @@ interface AppItem {
   link: string;
 }
 
+interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+type FaqConfig = FaqItem[];
+
 type SafeConfig = SafeItem[];
 type AppConfig = AppItem[];
 
@@ -116,4 +124,6 @@ export type {
   SafeConfig,
   AppItem,
   AppConfig,
+  FaqItem,
+  FaqConfig,
 };
