@@ -1,5 +1,8 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
+
 import { Nav } from "@/app/nav";
 import { ConnectButton } from "@/components/connect-button";
 import { IndexerStatus } from "@/components/indexer-status";
@@ -10,8 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useBlockSync } from "@/hooks/useBlockSync";
-
-import { Socials } from "../socials";
 
 interface MobileMenuProps {
   children: React.ReactNode;
@@ -58,9 +59,26 @@ export const MobileMenu = ({
               status={status}
             />
           </div>
-          <div className="mt-[10px] mb-[10px]">
-            <Socials collapsed={false} />
-          </div>
+          <p
+            className="flex text-xs text-muted-foreground items-center justify-center gap-[5px] mb-[15px]"
+          >
+            <span className="text-[12px]">Powered By</span>
+            <Link
+              href="https://degov.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:opacity-80 transition-all duration-300"
+            >
+              <Image
+                src="/assets/image/bottom-logo.svg"
+                alt="logo"
+                width={16}
+                height={16}
+                priority
+              />
+            </Link>
+            <span className="text-[12px]">DeGov.AI</span>
+          </p>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

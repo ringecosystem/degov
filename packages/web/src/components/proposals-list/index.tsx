@@ -1,9 +1,6 @@
 import Link from "next/link";
-import { useCallback } from "react";
-import { useAccount } from "wagmi";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
-import { VoteType } from "@/config/vote";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
@@ -57,47 +54,10 @@ export function ProposalsList({
   address?: Address;
   support?: "1" | "2" | "3";
 }) {
-  const { address: connectedAddress } = useAccount();
   const { state, proposalStatusState, loadMoreData } = useProposalData(
     address,
     support,
     type === "active" ? 8 : DEFAULT_PAGE_SIZE
-  );
-
-  const getUserVoteStatus = useCallback(
-    (record: ProposalItem) => {
-      if (!connectedAddress) return null;
-
-      const userVote = record.voters?.find(
-        (voter) => voter.voter.toLowerCase() === connectedAddress.toLowerCase()
-      );
-
-      if (!userVote) return null;
-
-      switch (userVote.support) {
-        case VoteType.For: // 1
-          return {
-            color: "bg-success",
-            textColor: "text-success",
-            label: "For",
-          };
-        case VoteType.Against: // 0
-          return {
-            color: "bg-danger",
-            textColor: "text-danger",
-            label: "Against",
-          };
-        case VoteType.Abstain: // 2
-          return {
-            color: "bg-muted-foreground",
-            textColor: "text-muted-foreground",
-            label: "Abstain",
-          };
-        default:
-          return null;
-      }
-    },
-    [connectedAddress]
   );
 
   if (state.isPending) {
@@ -153,25 +113,6 @@ export function ProposalsList({
                 />
               )}
             </div>
-
-            {(() => {
-              const userVoteStatus = getUserVoteStatus(record);
-
-              if (userVoteStatus) {
-                return (
-                  <div className="flex items-center gap-[5px]">
-                    <div
-                      className={`w-[10px] h-[10px] rounded-full ${userVoteStatus.color}`}
-                    ></div>
-                    <span className={`${userVoteStatus.textColor} text-[12px]`}>
-                      {userVoteStatus.label}
-                    </span>
-                  </div>
-                );
-              }
-
-              return null;
-            })()}
           </div>
         </div>
       ))}

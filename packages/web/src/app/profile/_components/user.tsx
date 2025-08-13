@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
@@ -43,6 +44,7 @@ export const User = ({
 }: UserProps) => {
   const daoConfig = useDaoConfig();
   const { isAiBot } = useAiBotAddress(address);
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px] rounded-[14px] bg-card p-[15px] lg:p-[20px]">
@@ -118,7 +120,10 @@ export const User = ({
 
       {profile?.delegate_statement || isAiBot ? (
         <p
-          className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-foreground"
+          className={`mb-0 text-[14px] font-normal leading-[18px] text-foreground ${
+            !showFullDescription ? "line-clamp-3" : ""
+          } cursor-pointer`}
+          onClick={() => setShowFullDescription(!showFullDescription)}
           title={profile?.delegate_statement}
           style={{
             wordBreak: "break-word",
@@ -145,7 +150,9 @@ export const User = ({
               </a>
             </span>
           ) : (
-            profile?.delegate_statement
+            <div onClick={() => setShowFullDescription(!showFullDescription)}>
+              {profile?.delegate_statement}
+            </div>
           )}
         </p>
       ) : (

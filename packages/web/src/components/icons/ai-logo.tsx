@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
 
-export const AiLogo = ({ className }: { className?: string }) => {
+export const AiLogo = ({ className, height }: { className?: string, height?: number }) => {
   return (
     <svg
       width="226"
-      height="50"
+      height={height || 50}
       viewBox="0 0 226 50"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

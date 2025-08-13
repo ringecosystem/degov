@@ -38,7 +38,7 @@ export const ConnectButton = ({ onMenuToggle }: { onMenuToggle?: () => void }) =
   }
 
   if (address) {
-    return <Connected address={address} />;
+    return <Connected address={address} onMenuToggle={onMenuToggle} />;
   }
 
   return null;

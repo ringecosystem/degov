@@ -6,7 +6,6 @@ import { useState, useEffect, useMemo } from "react";
 
 import { Nav } from "@/app/nav";
 import { IndexerStatus } from "@/components/indexer-status";
-import { Socials } from "@/components/socials";
 import {
   Tooltip,
   TooltipContent,
@@ -165,7 +164,7 @@ export const Aside = () => {
           <Nav collapsed={collapsed} />
         </div>
 
-        <footer className="space-y-[16px]  duration-300">
+        <footer className="space-y-[16px] duration-300">
           {collapsed ? (
             <div className="flex justify-center">
               <Tooltip>
@@ -195,7 +194,29 @@ export const Aside = () => {
               indexedBlock={indexedBlock}
             />
           )}
-          <Socials collapsed={collapsed} />
+          <p
+            className={cn(
+              "text-xs text-muted-foreground flex items-center gap-[5px]",
+              collapsed ? "hidden" : "flex"
+            )}
+          >
+            <span className="text-[12px]">Powered By</span>
+            <Link
+              href="https://degov.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:opacity-80 transition-all duration-300"
+            >
+              <Image
+                src="/assets/image/bottom-logo.svg"
+                alt="logo"
+                width={16}
+                height={16}
+                priority
+              />
+            </Link>
+            <span className="text-[12px]">DeGov.AI</span>
+          </p>
         </footer>
       </div>
     </aside>

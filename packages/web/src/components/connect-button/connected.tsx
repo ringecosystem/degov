@@ -20,9 +20,10 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 interface ConnectedProps {
   address: `0x${string}`;
+  onMenuToggle?: () => void;
 }
 
-export const Connected = ({ address }: ConnectedProps) => {
+export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   const { disconnectWallet } = useDisconnectWallet();
   const daoConfig = useDaoConfig();
 
@@ -89,7 +90,7 @@ export const Connected = ({ address }: ConnectedProps) => {
             className="w-full gap-[10px] rounded-[100px] border-border bg-card"
             variant="outline"
           >
-            <Link href="/profile">
+            <Link href="/profile" onClick={() => onMenuToggle?.()}>
               <Image
                 src="/assets/image/light/profile.svg"
                 alt="profile"

@@ -54,7 +54,7 @@ export const Summary = ({
         />
       </div>
 
-      <h2 className="text-[26px] font-semibold flex items-center gap-[10px]">
+      <h2 className="text-[16px] lg:text-[26px] font-semibold flex items-center gap-[10px]">
         {isPending ? (
           <Skeleton className="h-[36px] w-[200px]" />
         ) : (
@@ -70,9 +70,9 @@ export const Summary = ({
       {isPending ? (
         <Skeleton className="h-[24px] w-[80%] my-1" />
       ) : (
-        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-[5px]">
+        <div className="flex items-center gap-[20px] lg:gap-[5px]  text-[12px] lg:text-[16px]">
           <div className="flex items-center gap-[5px]">
-            <span>Proposed by</span>
+            <span className="hidden lg:block">Proposed by</span>
             {!!data?.proposer && (
               <AddressWithAvatar
                 address={data?.proposer as `0x${string}`}
@@ -81,8 +81,10 @@ export const Summary = ({
               />
             )}
           </div>
-          <span className="text-foreground">
-            On{" "}
+          <span className="text-foreground flex items-center gap-[5px]">
+            <div className="hidden lg:block">
+              On
+            </div>
             <Link
               href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
               target="_blank"
