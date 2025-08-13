@@ -13,6 +13,7 @@ interface Theme {
   logoLight?: string;
   banner?: string;
   bannerMobile?: string;
+  faqs?: FaqConfig;
 }
 
 interface NativeToken {
@@ -106,7 +107,6 @@ interface Config {
   safes?: SafeConfig;
   apps?: AppConfig;
   aiAgent?: AiAgent;
-  faqs?: FaqConfig;
 }
 
 export type {
