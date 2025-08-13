@@ -23,6 +23,19 @@ theme:
   logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/demo-light.svg
   banner: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo.jpg
   bannerMobile: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo-mobile.jpg
+  faqs:
+    - question: A
+      answer: https://apps.degov.ai/
+    - question: B 
+      answer: https://apps.degov.ai/
+    - question: C
+      answer: https://apps.degov.ai/
+    - question: D
+      answer: https://apps.degov.ai/
+    - question: E
+      answer: https://apps.degov.ai/
+    - question: F
+      answer: https://apps.degov.ai/
 
 # Wallet connection related configuration
 wallet:
