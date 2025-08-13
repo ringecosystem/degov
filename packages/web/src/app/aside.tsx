@@ -214,8 +214,8 @@ export const Aside = () => {
                 height={16}
                 priority
               />
-              <span className="text-[12px]">DeGov.AI</span>
             </Link>
+            <span className="text-[12px]">DeGov.AI</span>
           </p>
         </footer>
       </div>
