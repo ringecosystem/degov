@@ -20,7 +20,7 @@ export const Proposals = () => {
         <div className="flex-1 flex flex-col gap-[8px] lg:gap-[10px]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-[10px] sm:gap-0">
             <h3 className="text-[16px] lg:text-[18px] font-extrabold">Proposals</h3>
-            <div className="flex items-center gap-[8px] lg:gap-[10px] flex-wrap hidden lg:block">
+            <div className="flex items-center gap-[8px] lg:gap-[10px] flex-wrap hidden lg:flex">
               {daoConfig?.offChainDiscussionUrl ? (
                 <Button className="rounded-[100px] cursor-pointer text-[13px] lg:text-sm" asChild>
                   <Link

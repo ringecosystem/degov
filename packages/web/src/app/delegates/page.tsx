@@ -113,7 +113,7 @@ export default function Members() {
                 />
               </div>
             </div>
-            <div className="lg:w-[300px] flex flex-col gap-[15px] lg:gap-[20px] hidden lg:block">
+            <div className="lg:w-[300px] flex flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
               <SystemInfo />
               <Faqs type="delegate" />
             </div>
@@ -152,7 +152,7 @@ export default function Members() {
             />
           </div>
         </div>
-        <div className="lg:w-[300px] flex flex-col gap-[15px] lg:gap-[20px] hidden lg:block">
+        <div className="lg:w-[300px] flex flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
           <SystemInfo />
           <Faqs type="delegate" />
         </div>

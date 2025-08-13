@@ -270,7 +270,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
 
           <ReceivedDelegations address={address} />
         </div>
-        <div className="hidden lg:block flex flex-col gap-[15px] lg:gap-[20px] lg:w-[300px]">
+        <div className="hidden lg:flex flex flex-col gap-[15px] lg:gap-[20px] lg:w-[300px]">
           <SystemInfo />
           <Faqs type="delegate" />
         </div>
