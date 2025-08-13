@@ -116,6 +116,27 @@ const Status: React.FC<StatusProps> = ({
     govParams?.votingPeriodInSeconds,
   ]);
 
+  const hasTimelock = useMemo(() => {
+    return (
+      govParams?.timeLockDelayInSeconds !== undefined &&
+      govParams?.timeLockDelayInSeconds !== null
+    );
+  }, [govParams?.timeLockDelayInSeconds]);
+
+  const executeEnabledTime = useMemo(() => {
+    if (
+      !proposalQueuedById?.blockTimestamp ||
+      !govParams?.timeLockDelayInSeconds
+    ) {
+      return null;
+    }
+
+    return (
+      BigInt(proposalQueuedById.blockTimestamp) +
+      BigInt(govParams.timeLockDelayInSeconds * 1000)
+    );
+  }, [proposalQueuedById?.blockTimestamp, govParams?.timeLockDelayInSeconds]);
+
   const stages: ProposalStage[] = useMemo(() => {
     const baseStages = [
       {
@@ -161,11 +182,6 @@ const Status: React.FC<StatusProps> = ({
         ),
       },
     ];
-
-    // Check if timelock is enabled
-    const hasTimelock =
-      govParams?.timeLockDelayInSeconds !== undefined &&
-      govParams?.timeLockDelayInSeconds !== null;
 
     switch (status) {
       case ProposalState.Pending:
@@ -244,9 +260,25 @@ const Status: React.FC<StatusProps> = ({
 
           if (status === ProposalState.Queued) {
             let title = v.title;
+
             if (v.key === "queue") {
               title = "Proposal queued";
             }
+
+            if (v.key === "execute") {
+              if (executeEnabledTime && hasTimelock) {
+                return {
+                  ...v,
+                  title,
+                  timestamp: formatTimestampToDayTime(
+                    String(executeEnabledTime)
+                  ),
+                  remaining: getTimeRemaining(Number(executeEnabledTime)) ?? "",
+                  isActive: title !== "Execute proposal",
+                };
+              }
+            }
+
             return {
               ...v,
               title,
@@ -370,6 +402,8 @@ const Status: React.FC<StatusProps> = ({
     votingPeriodStarted,
     status,
     govParams?.timeLockDelayInSeconds,
+    executeEnabledTime,
+    hasTimelock,
   ]);
 
   if (isLoading) {
