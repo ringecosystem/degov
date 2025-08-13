@@ -23,19 +23,18 @@ theme:
   logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/demo-light.svg
   banner: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo.jpg
   bannerMobile: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo-mobile.jpg
+  # The general faqs displayed on the dashboard, at most 5 items
   faqs:
-    - question: A
-      answer: https://apps.degov.ai/
-    - question: B 
-      answer: https://apps.degov.ai/
-    - question: C
-      answer: https://apps.degov.ai/
-    - question: D
-      answer: https://apps.degov.ai/
-    - question: E
-      answer: https://apps.degov.ai/
-    - question: F
-      answer: https://apps.degov.ai/
+    - question: What is DeGov.AI?
+      answer: https://docs.degov.ai
+    - question: How is AI integrated into DeGov.AI? 
+      answer: https://docs.degov.ai/faqs/#how-does-degovai-utilize-ai-capabilities
+    - question: What's the difference between DeGov.AI and Tally?
+      answer: https://docs.degov.ai/faqs/#whats-the-difference-between-degovai-and-tally
+    - question: Is DeGov.AI secure?
+      answer: https://docs.degov.ai/faqs/#is-degovai-secure
+    - question: How can I create or vote on proposals?
+      answer: https://docs.degov.ai/faqs/#how-can-i-create-or-vote-on-proposals
 
 # Wallet connection related configuration
 wallet:
