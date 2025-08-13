@@ -201,14 +201,21 @@ export const Aside = () => {
             )}
           >
             <span className="text-[12px]">Powered By</span>
-            <Image
-              src="/assets/image/bottom-logo.svg"
-              alt="logo"
-              width={16}
-              height={16}
-              priority
-            />
-            <span className="text-[12px]">DeGov.AI</span>
+            <Link
+              href="https://degov.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:opacity-80 transition-all duration-300"
+            >
+              <Image
+                src="/assets/image/bottom-logo.svg"
+                alt="logo"
+                width={16}
+                height={16}
+                priority
+              />
+              <span className="text-[12px]">DeGov.AI</span>
+            </Link>
           </p>
         </footer>
       </div>
