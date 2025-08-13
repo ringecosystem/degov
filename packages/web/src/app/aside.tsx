@@ -11,12 +11,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { INDEXER_CONFIG } from "@/config/indexer";
-import { socialConfig } from "@/config/social";
 import { useBlockSync } from "@/hooks/useBlockSync";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
-
-import packageInfo from "../../package.json";
 
 import { Nav } from "./nav";
 
