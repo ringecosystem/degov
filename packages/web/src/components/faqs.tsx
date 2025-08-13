@@ -91,7 +91,7 @@ export const Faqs = ({ type }: FaqsProps) => {
   const faqList = useMemo(() => {
     if (type === "general") {
       return config?.theme?.faqs && config.theme.faqs.length > 0
-        ? config.theme.faqs
+        ? config.theme.faqs?.slice(0, 5)
         : defaultFaqList[type];
     }
     return defaultFaqList[type];
