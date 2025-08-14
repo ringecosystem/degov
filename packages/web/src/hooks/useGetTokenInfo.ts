@@ -86,12 +86,12 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
                 )
             ];
 
-          if (decimalsData !== undefined) {
+          if (decimalsData?.result !== undefined) {
             decimalsValue =
-              typeof decimalsData === "bigint"
-                ? Number(decimalsData)
-                : typeof decimalsData === "number"
-                ? decimalsData
+              typeof decimalsData.result === "bigint"
+                ? Number(decimalsData.result)
+                : typeof decimalsData.result === "number"
+                ? decimalsData.result
                 : 18;
           }
         }
