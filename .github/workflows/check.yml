@@ -4,8 +4,8 @@ on:
   pull_request:
 
 jobs:
-  check:
-    name: Check
+  check-code:
+    name: Check Code
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -27,3 +27,25 @@ jobs:
 
       - name: Check Build
         run: pnpm build:all
+
+  check-config:
+    name: Check Config
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Prepare schema
+        run: |
+          mkdir -p schemas
+          cd schemas
+          curl -LO https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/schemas/dao.schema.json
+
+      - name: validate dao
+        uses: GrantBirki/json-yaml-validate@v3
+        with:
+          json_schema: schemas/dao.schema.json
+          yaml_as_json: true
+          files: degov.yml
+          comment: "true"
+
