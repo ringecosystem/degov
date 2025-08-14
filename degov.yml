@@ -38,7 +38,7 @@ theme:
 
 # Wallet connection related configuration
 wallet:
-  walletConnectProjectId: 2719448e2ce94fdd269a3c8587123bcc
+  walletConnectProjectId: faf5e91ac5ed4d0a94d2648a6fcc9daa
 
 # Chain information: these commented fields are optional if this chain can be accessed by viem.
 chain:
