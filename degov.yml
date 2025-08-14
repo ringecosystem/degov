@@ -15,7 +15,7 @@ links:
   discord: https://discord.gg/RingDAO
   telegram: https://t.me/DeGov_AI
   github: https://github.com/ringecosystem/degov
-  email: # It's ok to leave it empty
+  #email: # It's ok to leave it empty
 
 # The custom theme configuration for the DAO, this is optional.
 theme:
@@ -80,12 +80,12 @@ treasuryAssets:
     contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
     standard: ERC20
     priceId: FT
-    logo: # Default logo if not provided
+    #logo: # Default logo if not provided
   - name: NFT
     contract: "0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A"
     standard: ERC721
     priceId: NFT
-    logo: # Default logo if not provided
+    #logo: # Default logo if not provided
 
 # The DAO Safe information
 safes:
