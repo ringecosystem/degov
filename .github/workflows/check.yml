@@ -30,7 +30,6 @@ jobs:
 
   check-config:
     name: Check Config
-
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
