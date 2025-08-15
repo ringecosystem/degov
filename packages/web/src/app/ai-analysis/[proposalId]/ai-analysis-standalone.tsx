@@ -332,7 +332,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
               <div className="text-[12px] text-muted-foreground">X</div>
               <a
-                href={`https://x.com/user/status/${analysisData.id}`}
+                href={`https://x.com/${analysisData.twitter_user.username}/status/${analysisData.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[14px] font-semibold underline"
