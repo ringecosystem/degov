@@ -401,7 +401,6 @@ const Status: React.FC<StatusProps> = ({
     votingPeriodEnded,
     votingPeriodStarted,
     status,
-    govParams?.timeLockDelayInSeconds,
     executeEnabledTime,
     hasTimelock,
   ]);

@@ -73,12 +73,12 @@ export const TabContent = ({
             )}
             {daoConfig?.aiAgent?.endpoint && !loading && aiAnalysisData?.id && (
               <a
-                href={`https://x.com/user/status/${aiAnalysisData.id}`}
+                href={`https://x.com/${aiAnalysisData.twitter_user.username}/status/${aiAnalysisData.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[14px] lg:text-[18px] font-semibold hover:underline break-all"
               >
-                https://x.com/user/status/{aiAnalysisData.id}
+                https://x.com/{aiAnalysisData.twitter_user.username}/status/{aiAnalysisData.id}
               </a>
             )}
           </div>
