@@ -1,3 +1,4 @@
+import { isNil } from "lodash-es";
 import { useMemo } from "react";
 import { useBlockNumber, useReadContract, useReadContracts } from "wagmi";
 
@@ -105,7 +106,9 @@ export function useStaticGovernanceParams() {
       : Number(votingPeriod);
     // TimeLock delay is always in seconds (not affected by clock mode)
 
-    const timeLockDelayInSeconds = timeLockDelay ? Number(timeLockDelay) : null;
+    const timeLockDelayInSeconds = !isNil(timeLockDelay)
+      ? Number(timeLockDelay)
+      : null;
 
     return {
       proposalThreshold: data[0]?.result as bigint,
