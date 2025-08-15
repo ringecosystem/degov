@@ -36,7 +36,7 @@ export const socialConfig: SocialConfig[] = [
   ),
   createSocialConfig(
     "Telegram",
-    "https://t.me/DeGov_AI",
+    "https://t.me/RingDAO_Hub",
     "/assets/image/light/social/telegram.svg",
     "/assets/image/social/telegram.svg",
     12,

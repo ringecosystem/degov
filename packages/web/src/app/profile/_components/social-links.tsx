@@ -31,8 +31,8 @@ export const SocialLinks = ({ profile, isAiBot }: SocialLinksProps) => {
             },
             {
               name: "Telegram",
-              value: "https://t.me/DeGov_AI",
-              link: "https://t.me/DeGov_AI",
+              value: "https://t.me/RingDAO_Hub",
+              link: "https://t.me/RingDAO_Hub",
             },
           ]
         : [
