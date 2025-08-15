@@ -78,7 +78,7 @@ export const TabContent = ({
                 rel="noopener noreferrer"
                 className="text-[18px] font-semibold hover:underline"
               >
-                https://x.com/${aiAnalysisData.twitter_user.username}/status/{aiAnalysisData.id}
+                https://x.com/{aiAnalysisData.twitter_user.username}/status/{aiAnalysisData.id}
               </a>
             )}
           </div>
