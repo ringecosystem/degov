@@ -13,6 +13,7 @@ import { ProposalStatus } from "@/components/proposal-status";
 import { LoadingState, ErrorState } from "@/components/ui/loading-spinner";
 import { VoteStatusAction } from "@/components/vote-status";
 import { VoteType } from "@/config/vote";
+import { useDeviceDetection } from "@/hooks/useDeviceDetection";
 import type { AiAnalysisData } from "@/types/ai-analysis";
 import { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription } from "@/utils";
@@ -44,9 +45,9 @@ const StarRating = ({
   total?: number;
 }) => {
   return (
-    <div className="flex items-center gap-[10px]">
+    <div className="flex items-center gap-[5px] lg:gap-[10px]">
       {Array.from({ length: total }, (_, i) => (
-        <div key={i} className="w-6 h-6 relative">
+        <div key={i} className="w-4 lg:w-6 h-4 lg:h-6 relative">
           <Image
             src={
               i < rating
@@ -56,7 +57,7 @@ const StarRating = ({
             alt={i < rating ? "Active star" : "Inactive star"}
             width={24}
             height={24}
-            className="w-6 h-6"
+            className="w-4 lg:w-6 h-4 lg:h-6"
           />
         </div>
       ))}
@@ -209,6 +210,8 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
   error = null,
   onRefresh,
 }) => {
+  const { isClient } = useDeviceDetection();
+
   const analysisOutput = analysisData?.fulfilled_explain?.output;
   const votingBreakdown = analysisOutput?.votingBreakdown;
 
@@ -264,7 +267,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-[10px]">
               <AiTitleIcon1 className="w-[32px] h-[32px]" />
-              <h2 className="text-[26px] font-semibold text-foreground">
+              <h2 className="text-[18px] lg:text-[26px] font-semibold text-foreground">
                 Agent Voting Reason Analysis
               </h2>
             </div>
@@ -273,8 +276,8 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               status={getProposalStateFromStatus(analysisData.status)}
             />
           </div>
-          <div className="flex flex-col gap-[20px] bg-card p-[20px] rounded-[14px]">
-            <h3 className="text-[26px] font-semibold text-foreground flex items-center gap-[10px]">
+          <div className="flex flex-col gap-[20px] bg-card p-[10px] lg:p-[20px] rounded-[14px]">
+            <h3 className="text-[16px] lg:text-[26px] font-semibold text-foreground flex items-center gap-[10px]">
               {extractTitleAndDescription(proposalData.description)?.title}
               <Link
                 href={`/proposal/${proposalData.proposalId}`}
@@ -298,22 +301,26 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
                 />
               </Link>
             </h3>
-            <div className="text-[14px] text-foreground">
+            <div className="text-[12px] lg:text-[14px] text-foreground">
               <span className="font-normal">Proposal ID:</span>{" "}
-              <span className="font-semibold">{analysisData.proposal_id}</span>
+              <span className="font-semibold break-all block lg:inline">
+                {analysisData.proposal_id}
+              </span>
             </div>
-            <div className="flex items-center gap-[5px]">
-              <span className="text-[14px] text-foreground">Proposed by</span>
+            <div className="flex items-center gap-[20px] lg:gap-[5px] text-[12px] lg:text-[14px]">
+              <span className=" text-foreground hidden lg:block">
+                Proposed by
+              </span>
               {!!proposalData.proposer && (
                 <AddressWithAvatar
                   address={proposalData.proposer as `0x${string}`}
                   avatarSize={24}
-                  className="gap-[5px] text-[14px] font-semibold"
+                  className="gap-[5px] font-semibold"
                 />
               )}
 
-              <span className="text-[14px] text-foreground">
-                On{" "}
+              <span className="text-foreground flex items-center gap-[20px] lg:gap-[5px]">
+                <div className="hidden lg:block">On</div>
                 <span className="font-semibold">
                   {proposalData.blockTimestamp
                     ? formatTimeAgo(proposalData.blockTimestamp)
@@ -322,14 +329,14 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
               <div className="text-[12px] text-muted-foreground">Chain</div>
               <div className="text-[14px] font-semibold">
                 {analysisData.dao.config.chain.name}
               </div>
             </div>
-            <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
+            <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
               <div className="text-[12px] text-muted-foreground">X</div>
               <a
                 href={`https://x.com/${analysisData.twitter_user.username}/status/${analysisData.id}`}
@@ -340,7 +347,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
                 {analysisData.id}
               </a>
             </div>
-            <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
+            <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
               <div className="text-[12px] text-muted-foreground">DAO</div>
               <a
                 href={analysisData?.dao?.links?.website}
@@ -351,7 +358,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
                 {analysisData.dao.name}
               </a>
             </div>
-            <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[10px]">
+            <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
               <div className="text-[12px] text-muted-foreground">Created</div>
               <div className="text-[14px] font-semibold">
                 {new Date(analysisData.ctime).toISOString()}
@@ -367,7 +374,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             <h3 className="text-[18px] font-semibold">Vote Analysis</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-card p-[20px] rounded-[14px] flex flex-col gap-[20px]">
+            <div className="bg-card p-[10px] lg:p-[20px] rounded-[14px] flex flex-col gap-[20px]">
               <h4 className="text-[18px] font-medium">X Poll</h4>
               <VoteProgressBar
                 forVotes={votingBreakdown.twitterPoll.for.toString()}
@@ -379,7 +386,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               />
             </div>
 
-            <div className="bg-card p-[20px] rounded-[14px] flex flex-col gap-[20px]">
+            <div className="bg-card p-[10px] lg:p-[20px] rounded-[14px] flex flex-col gap-[20px]">
               <h4 className="text-[18px] font-medium">On-Chain Votes</h4>
               <VoteProgressBar
                 forVotes={formatVoteCount(votingBreakdown.onChainVotes.for)}
@@ -419,7 +426,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               />
             </div>
 
-            <div className="bg-card p-[20px] rounded-[14px] flex flex-col gap-[20px]">
+            <div className="bg-card p-[10px] lg:p-[20px] rounded-[14px] flex flex-col gap-[20px]">
               <h4 className="text-[18px] font-medium">Comment Sentiment</h4>
               <SentimentProgressBar
                 positive={votingBreakdown.twitterComments.positive}
@@ -437,22 +444,22 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             <h3 className="text-[18px] font-semibold">Final Decision</h3>
           </div>
 
-          <div className="rounded-[14px] bg-card p-[20px] border border-border/20">
+          <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] border border-border/20">
             <div className="flex items-center justify-between mb-4">
               <VoteStatusAction
                 variant={getVoteTypeFromResult(analysisOutput.finalResult)}
                 type={"active"}
-                className="w-[113px] flex justify-center"
+                className="w-[80px] lg:w-[113px] flex justify-center"
               />
               <div className="flex items-center gap-2">
-                <span className="text-[14px] text-muted-foreground">
+                <span className="text-[14px] text-muted-foreground hidden lg:block">
                   Confidence
                 </span>
                 <StarRating rating={analysisOutput.confidence} />
               </div>
             </div>
 
-            <div className="flex flex-col gap-[10px] bg-card-background rounded-[14px] p-[20px]">
+            <div className="flex flex-col gap-[10px] bg-card-background rounded-[14px] p-[10px] lg:p-[20px]">
               <h4 className="text-[18px] font-semibold">Executive Summary</h4>
               <div
                 className="markdown-body"
@@ -461,11 +468,11 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             </div>
           </div>
 
-          <div className="rounded-[14px] bg-card p-[20px] flex flex-col gap-[20px]">
+          <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[20px]">
             <h3 className="text-[18px] font-semibold">Voting Reason</h3>
             <div className="w-full h-[1px] bg-gray-1"></div>
             <div
-              className="markdown-body"
+              className="markdown-body overflow-y-auto"
               dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
             />
           </div>
@@ -477,9 +484,12 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
   return (
     <div className="min-h-screen bg-background max-w-[1340px] mx-auto">
       <div className="relative">
-        <div className="flex flex-col gap-[60px] p-[60px]">
+        <div className="flex flex-col gap-[20px] lg:gap-[60px] p-[15px] lg:p-[60px]">
           <div className="flex items-center justify-center gap-2">
-            <AiLogo className="h-[50px]" />
+            <AiLogo
+              className="h-[30px] lg:h-[50px]"
+              height={isClient ? 50 : 30}
+            />
           </div>
           <div className="w-full h-[1px] bg-muted-foreground" />
 

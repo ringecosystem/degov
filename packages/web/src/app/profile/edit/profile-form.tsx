@@ -251,7 +251,7 @@ export function ProfileForm({
             name="name"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">
                     Display Name
                   </FormLabel>
@@ -273,7 +273,7 @@ export function ProfileForm({
             name="delegate_statement"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">
                     Delegate Statement
                   </FormLabel>
@@ -295,7 +295,7 @@ export function ProfileForm({
             name="email"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">Email</FormLabel>
                   <FormControl>
                     <Input
@@ -316,7 +316,7 @@ export function ProfileForm({
             name="twitter"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">X</FormLabel>
                   <FormControl>
                     <Input
@@ -336,7 +336,7 @@ export function ProfileForm({
             name="telegram"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">Telegram</FormLabel>
                   <FormControl>
                     <Input
@@ -356,7 +356,7 @@ export function ProfileForm({
             name="github"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">Github</FormLabel>
                   <FormControl>
                     <Input
@@ -376,7 +376,7 @@ export function ProfileForm({
             name="discord"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">Discord</FormLabel>
                   <FormControl>
                     <Input

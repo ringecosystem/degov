@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
 
+import { Nav } from "@/app/nav";
 import { IndexerStatus } from "@/components/indexer-status";
 import {
   Tooltip,
@@ -15,7 +16,6 @@ import { useBlockSync } from "@/hooks/useBlockSync";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 
-import { Nav } from "./nav";
 
 const SIDEBAR_WIDTH = {
   EXPANDED: 240,

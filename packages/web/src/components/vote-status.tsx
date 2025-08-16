@@ -72,7 +72,7 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
   return (
     <div
       className={cn(
-        "t flex cursor-pointer items-center gap-x-2 rounded-full px-4 py-2 text-base font-medium",
+        "t flex cursor-pointer items-center gap-x-2 rounded-full px-1 lg:px-4 py-1 lg:py-2 text-base font-medium",
         isActive ? "text-foreground" : "text-muted-foreground",
         isActive ? text[variant].color : "bg-transparent",
         isActive

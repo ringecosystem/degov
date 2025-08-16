@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { Faqs } from "@/components/faqs";
+import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
 import { SystemInfo } from "@/components/system-info";
 import { Button } from "@/components/ui/button";
@@ -26,9 +27,9 @@ import type { CheckedState } from "@radix-ui/react-checkbox";
 function ProposalsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const typeParam = searchParams.get("type");
-  const supportParam = searchParams.get("support");
-  const addressParam = searchParams.get("address");
+  const typeParam = searchParams?.get("type");
+  const supportParam = searchParams?.get("support");
+  const addressParam = searchParams?.get("address");
   const daoConfig = useDaoConfig();
 
   const [support, setSupport] = useState<"all" | "1" | "2" | "3">(
@@ -52,7 +53,7 @@ function ProposalsContent() {
 
   // Update URL when filters change
   const updateUrlParams = (myProposals: boolean, supportValue: string) => {
-    const params = new URLSearchParams(searchParams);
+    const params = new URLSearchParams(searchParams || undefined);
 
     if (myProposals) {
       params.set("type", "my");
@@ -100,7 +101,7 @@ function ProposalsContent() {
     <div className="flex flex-col gap-[20px]">
       <div className="flex items-start gap-[20px]">
         <div className="flex-1 flex flex-col gap-[20px]">
-          <div className="flex items-center justify-between gap-[20px]">
+          <div className="flex items-start lg:items-center flex-col lg:flex-row justify-between gap-[20px]">
             <h3 className="text-[18px] font-extrabold">{getDisplayTitle()}</h3>
 
             <div className="flex items-center gap-[20px]">
@@ -138,7 +139,8 @@ function ProposalsContent() {
                   </Select>
                 </>
               )}
-
+            </div>
+            <div className="hidden lg:block">
               <Button
                 className="flex items-center gap-[5px] rounded-[100px]"
                 onClick={() => router.push("/proposals/new")}
@@ -161,17 +163,30 @@ function ProposalsContent() {
               </Button>
             </div>
           </div>
-          <ProposalsTable
-            type="all"
-            address={
-              isMyProposals
-                ? address
-                : (addressParam as `0x${string}` | undefined)
-            }
-            support={support === "all" ? undefined : support}
-          />
+          <div className="lg:hidden">
+            <ProposalsList
+              type="all"
+              address={
+                isMyProposals
+                  ? address
+                  : (addressParam as `0x${string}` | undefined)
+              }
+              support={support === "all" ? undefined : support}
+            />
+          </div>
+          <div className="hidden lg:block">
+            <ProposalsTable
+              type="all"
+              address={
+                isMyProposals
+                  ? address
+                  : (addressParam as `0x${string}` | undefined)
+              }
+              support={support === "all" ? undefined : support}
+            />
+          </div>
         </div>
-        <div className="w-[360px] flex flex-col gap-[20px]">
+        <div className="w-[360px] flex flex-col gap-[20px] hidden lg:flex">
           <SystemInfo type="proposal" />
           <Faqs type="proposal" />
         </div>

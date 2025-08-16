@@ -110,7 +110,7 @@ export function ProposalsTable({
         title: "Proposal",
         key: "description",
         width: "70%",
-        className: "text-left",
+        className: "text-left w-full lg:w-[70%]",
         render: (record) => (
           <div className="space-y-2">
             <Link
@@ -165,6 +165,7 @@ export function ProposalsTable({
         title: "Votes",
         key: "votes",
         width: "30%",
+        className: "hidden lg:table-cell",
         render: (record) => {
           return (
             <VoteStatistics

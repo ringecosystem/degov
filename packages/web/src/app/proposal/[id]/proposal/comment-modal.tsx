@@ -26,7 +26,7 @@ export function CommentModal({
   const { isAiBot } = useAiBotAddress(commentData?.voter);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[700px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px] sm:max-w-[700px]">
+      <DialogContent className="w-[90%] lg:w-[700px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px] sm:max-w-[700px]">
         <DialogHeader className="flex w-full flex-row items-center justify-between">
           <DialogTitle className="text-[18px] font-normal">Comment</DialogTitle>
           <Image
@@ -47,7 +47,7 @@ export function CommentModal({
         {isAiBot && (
           <>
             <Separator className="my-0 bg-muted-foreground/40" />
-            <footer className="flex flex-row items-center justify-between">
+            <footer className="flex flex-col lg:flex-row items-start lg:items-center justify-between">
               <div className="flex items-center gap-[5px]">
                 <span className="text-[14px] font-normal">Powered By</span>
                 <Image
@@ -62,7 +62,7 @@ export function CommentModal({
                 href={`/ai-analysis/${id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[14px] font-semibold text-background p-[10px] rounded-[100px] bg-foreground hover:bg-foreground/80 transition-colors"
+                className="text-[14px] mt-2 lg:mt-0 font-semibold text-background p-[10px] rounded-[100px] bg-foreground hover:bg-foreground/80 transition-colors"
               >
                 Decision Details
               </a>

@@ -154,7 +154,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
                 <h4 className="text-[14px] font-normal text-muted-foreground">
                   Target:
                 </h4>
-                <p className="font-mono text-[14px]">{action.address}</p>
+                <p className="font-mono text-[14px] break-all">{action.address}</p>
               </div>
             )}
 
@@ -162,7 +162,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
               <h4 className="text-[14px] font-normal text-muted-foreground">
                 Value:
               </h4>
-              <p className="font-mono text-[14px]">
+              <p className="font-mono text-[14px] break-all">
                 {action.value
                   ? parseUnits(
                       action.value,

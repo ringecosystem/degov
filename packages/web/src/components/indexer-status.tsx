@@ -39,13 +39,13 @@ export function IndexerStatus({
           <Image
             src={networkIcon}
             alt="network icon"
-            width={20}
-            height={20}
-            className="rounded-full size-[20px]"
+            width={30}
+            height={30}
+            className="rounded-full size-[30px] lg:size-[20px]"
           />
         )}
 
-        <div className="h-[20px]  rounded-[100px] bg-secondary flex-1">
+        <div className="h-[30px] lg:h-[20px]  rounded-[100px] bg-secondary flex-1">
           <div
             className={cn(
               "flex h-full items-center justify-start rounded-[100px] px-[5px]",

@@ -16,9 +16,10 @@ import { cn } from "@/lib/utils";
 
 interface NavProps {
   collapsed?: boolean;
+  onMenuToggle?: () => void;
 }
 
-export const Nav = ({ collapsed = false }: NavProps) => {
+export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
   const pathname = usePathname();
   const daoConfig = useDaoConfig();
 
@@ -39,17 +40,18 @@ export const Nav = ({ collapsed = false }: NavProps) => {
         {visibleRoutes.map((route) => {
           const isActive =
             pathname === route.pathname ||
-            pathname.startsWith(route.pathname + "/") ||
-            (pathname.startsWith("/proposal") &&
+            pathname?.startsWith(route.pathname + "/") ||
+            (pathname?.startsWith("/proposal") &&
               route.pathname === "/proposals") ||
-            (pathname.startsWith("/delegate") &&
+            (pathname?.startsWith("/delegate") &&
               route.pathname === "/delegates") ||
-            (pathname.startsWith("/apps") && route.pathname === "/apps");
+            (pathname?.startsWith("/apps") && route.pathname === "/apps");
 
           return (
             <Tooltip key={route.key}>
               <TooltipTrigger asChild>
                 <Link
+                  onClick={onMenuToggle}
                   href={route.pathname}
                   prefetch={false}
                   className={cn(

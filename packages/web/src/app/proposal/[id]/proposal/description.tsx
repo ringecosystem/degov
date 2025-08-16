@@ -66,7 +66,7 @@ export const Description = ({
   return isFetching ? (
     <Loading />
   ) : (
-    <div className="flex flex-col gap-[20px] bg-card p-[20px] rounded-[14px]">
+    <div className="flex flex-col gap-[20px] bg-card p-[10px] lg:p-[20px] rounded-[14px]">
       <div className="flex flex-col gap-[12px]">
         <div
           ref={markdownRef}
