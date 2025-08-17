@@ -43,11 +43,11 @@ export default function AppsPage() {
                 height={100}
                 className="rounded-full flex-shrink-0"
               />
-              <div className="flex flex-col justify-center gap-[5px]">
+              <div className="flex flex-col justify-center gap-[5px] items-start lg:items-center">
                 <h3 className="text-[18px] font-semibold text-center text-foreground mb-[8px] group-hover:text-foreground/80 transition-colors leading-[100%]">
                   {app.name}
                 </h3>
-                <p className="text-[14px] text-muted-foreground text-center line-clamp-3 leading-[1.2]">
+                <p className="text-[14px] text-muted-foreground text-left lg:text-center line-clamp-3 leading-[1.2]">
                   {app.description}
                 </p>
               </div>

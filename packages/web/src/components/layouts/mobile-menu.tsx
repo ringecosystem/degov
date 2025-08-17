@@ -34,12 +34,12 @@ export const MobileMenu = ({
         className="w-screen max-w-none rounded-none border-0 bg-background p-0 shadow-none"
         align="end"
         side="bottom"
-        sideOffset={6}
+        sideOffset={5}
         alignOffset={-10}
         avoidCollisions={false}
       >
         <div
-          className="flex flex-col"
+          className="flex flex-col pb-[150px]"
           style={{ height: "calc(100vh - 45px)", width: "100vw" }}
         >
           <div className="flex items-center justify-between p-4 ">
@@ -50,35 +50,34 @@ export const MobileMenu = ({
           <div className="flex-1 overflow-y-auto p-4">
             <Nav collapsed={false} onMenuToggle={onMenuToggle} />
           </div>
-
-          <div className="p-4">
-            <IndexerStatus
-              currentBlock={currentBlock}
-              indexedBlock={indexedBlock}
-              syncPercentage={syncPercentage}
-              status={status}
-            />
-          </div>
-          <p
-            className="flex text-xs text-muted-foreground items-center justify-center gap-[5px] mb-[15px]"
-          >
-            <span className="text-[12px]">Powered By</span>
-            <Link
-              href="https://degov.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:opacity-80 transition-all duration-300"
-            >
-              <Image
-                src="/assets/image/bottom-logo.svg"
-                alt="logo"
-                width={16}
-                height={16}
-                priority
+          <div className="absolute bottom-0 left-0 w-full">
+            <div className="p-4">
+              <IndexerStatus
+                currentBlock={currentBlock}
+                indexedBlock={indexedBlock}
+                syncPercentage={syncPercentage}
+                status={status}
               />
-            </Link>
-            <span className="text-[12px]">DeGov.AI</span>
-          </p>
+            </div>
+            <p className="flex text-xs text-muted-foreground items-center justify-center gap-[5px] mb-[15px]">
+              <span className="text-[12px]">Powered By</span>
+              <Link
+                href="https://degov.ai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:opacity-80 transition-all duration-300"
+              >
+                <Image
+                  src="/assets/image/bottom-logo.svg"
+                  alt="logo"
+                  width={16}
+                  height={16}
+                  priority
+                />
+              </Link>
+              <span className="text-[12px]">DeGov.AI</span>
+            </p>
+          </div>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

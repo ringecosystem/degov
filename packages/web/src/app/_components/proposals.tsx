@@ -78,9 +78,7 @@ export const Proposals = () => {
             <ProposalsTable type="active" />
           </div>
         </div>
-        <div className="lg:w-[300px]">
-          <Faqs type="general" />
-        </div>
+        <Faqs type="general" />
       </div>
     </div>
   );
