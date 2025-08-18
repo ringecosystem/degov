@@ -133,6 +133,7 @@ export function TreasuryTable({
   useEffect(() => {
     return () => setVisibleItems(5);
   }, []);
+  
   return (
     <div className="rounded-[14px] bg-card p-[20px]">
       {isLoading ? (

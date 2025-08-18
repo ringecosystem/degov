@@ -20,9 +20,10 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 interface ConnectedProps {
   address: `0x${string}`;
+  onMenuToggle?: () => void;
 }
 
-export const Connected = ({ address }: ConnectedProps) => {
+export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   const { disconnectWallet } = useDisconnectWallet();
   const daoConfig = useDaoConfig();
 
@@ -34,7 +35,7 @@ export const Connected = ({ address }: ConnectedProps) => {
       <DropdownMenuTrigger>
         <AddressResolver address={address} showShortAddress>
           {(value) => (
-            <div className="flex items-center gap-[10px] rounded-[10px] border border-border px-4 py-2">
+            <div className="flex items-center gap-[10px] rounded-[20px] lg:rounded-[10px] bg-card lg:bg-transparent lg:border lg:border-border px-4 py-2">
               <AddressAvatar
                 address={address}
                 className="size-[24px] rounded-full"
@@ -89,7 +90,7 @@ export const Connected = ({ address }: ConnectedProps) => {
             className="w-full gap-[10px] rounded-[100px] border-border bg-card"
             variant="outline"
           >
-            <Link href="/profile">
+            <Link href="/profile" onClick={() => onMenuToggle?.()}>
               <Image
                 src="/assets/image/light/profile.svg"
                 alt="profile"

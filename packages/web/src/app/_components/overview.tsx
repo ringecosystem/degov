@@ -38,16 +38,16 @@ export const Overview = () => {
   });
 
   return (
-    <div className="flex flex-col gap-[20px]">
-      <h3 className="text-[18px] font-extrabold text-foreground">Overview</h3>
-      <div className="grid grid-cols-2 gap-[20px] xl:grid-cols-4">
+    <div className="flex flex-col gap-[15px] lg:gap-[20px]">
+      <h3 className="text-[16px] lg:text-[18px] font-extrabold text-foreground">Overview</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-[15px] lg:gap-[20px] xl:grid-cols-4">
         <OverviewItem
           title="Proposals"
           link={`/proposals`}
           icon="/assets/image/proposals-colorful.svg"
           isLoading={isProposalMetricsLoading}
         >
-          <div className="flex items-center gap-[10px]">
+          <div className="flex items-center gap-[8px] lg:gap-[10px]">
             {
               formatNumberForDisplay(
                 isNumber(dataMetrics?.proposalsCount)
