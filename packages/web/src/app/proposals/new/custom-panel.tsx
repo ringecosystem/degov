@@ -146,7 +146,10 @@ export const CustomPanel = ({
             isArray: input.type.includes("[]"),
           }));
 
-        setValue("calldata", calldata);
+        setValue("calldata", calldata, {
+          shouldValidate: true,
+          shouldDirty: true,
+        });
 
         if (method.stateMutability !== "payable") {
           setValue("value", "");
@@ -371,13 +374,7 @@ export const CustomPanel = ({
             {/* Calldata Input */}
             {watch("calldata") && !!watch("calldata")?.length && (
               <div className="flex flex-col gap-[10px]">
-                <h4 className="text-[18px] font-semibold text-foreground">
-                  Calldatas
-                </h4>
-                <label className="text-[14px] text-foreground" htmlFor="abi">
-                  The data for the function arguments you wish to send when the
-                  action executes
-                </label>
+                <h4 className="text-[14px] text-foreground">Parameters</h4>
                 <Controller
                   name="calldata"
                   control={control}

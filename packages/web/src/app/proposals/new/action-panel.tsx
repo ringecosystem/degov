@@ -395,16 +395,15 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
     <>
       {actionPanelInfo?.length > 0 && (
         <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-          <div className="space-y-[20px]">
-            <div className="flex items-center justify-between">
-              <motion.h2
-                className="text-[26px] font-semibold"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: DEFAULT_ANIMATION_DURATION }}
-              >
-                Actions
-              </motion.h2>
+          <header className="flex items-center justify-between border-b border-card-background pb-[10px]">
+            <motion.h4
+              className="text-[18px] font-semibold"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: DEFAULT_ANIMATION_DURATION }}
+            >
+              Actions
+            </motion.h4>
 
               <AnimatePresence mode="wait" initial={false}>
                 {tab === "summary" && (
@@ -450,9 +449,9 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
+          </header>
 
-            <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence mode="wait" initial={false}>
               {tab === "raw" ? (
                 <motion.div
                   key="raw-content"
@@ -482,8 +481,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                   {SummaryView}
                 </motion.div>
               )}
-            </AnimatePresence>
-          </div>
+          </AnimatePresence>
         </div>
       )}
     </>

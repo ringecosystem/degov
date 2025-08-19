@@ -41,9 +41,14 @@ export const XAccountPanel = ({
   });
 
   const xaccountLink = useMemo(() => {
-    const targetAddress = daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
+    const targetAddress =
+      daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
     return `https://xaccount.degov.ai?sourceChainId=${daoConfig?.chain?.id}&targetContractAddress=${targetAddress}`;
-  }, [daoConfig?.chain?.id, daoConfig?.contracts?.timeLock, daoConfig?.contracts?.governor]);
+  }, [
+    daoConfig?.chain?.id,
+    daoConfig?.contracts?.timeLock,
+    daoConfig?.contracts?.governor,
+  ]);
 
   const handleUploadXAccount = useCallback(
     (jsonContent: XAccountContent) => {
@@ -280,10 +285,6 @@ export const XAccountPanel = ({
             {/* Calldatas */}
             <div className="flex flex-col gap-[10px]">
               <h3 className="text-[18px] font-semibold">Parameters</h3>
-              <p className="text-[14px] text-muted-foreground">
-                The data for the function arguments you wish to send when the
-                cross-chain action executes
-              </p>
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">

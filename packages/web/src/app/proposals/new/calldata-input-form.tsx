@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 
 import { ErrorMessage } from "@/components/error-message";
@@ -20,6 +20,8 @@ export function CallDataInputForm({
   calldata,
   onChange,
 }: CallDataInputFormProps) {
+  const prevCalldataRef = useRef<CalldataItem[]>(calldata);
+  
   const {
     control,
     formState: { errors },
@@ -27,6 +29,7 @@ export function CallDataInputForm({
     watch,
     setValue,
     trigger,
+    reset,
   } = useForm<Calldata>({
     resolver: zodResolver(calldataSchema),
     defaultValues: {
@@ -42,6 +45,16 @@ export function CallDataInputForm({
   const getBaseType = useCallback((type: string) => {
     return type.replace("[]", "");
   }, []);
+
+  // Reset form when calldata changes from parent (but avoid infinite loops)
+  useEffect(() => {
+    if (JSON.stringify(prevCalldataRef.current) !== JSON.stringify(calldata)) {
+      reset({
+        calldataItems: calldata,
+      });
+      prevCalldataRef.current = calldata;
+    }
+  }, [calldata, reset]);
 
   useEffect(() => {
     const subscription = watch((data) => {
@@ -118,7 +131,7 @@ export function CallDataInputForm({
       {fields.map((input, index) => (
         <div key={input.name} className="flex flex-col gap-[5px]">
           <div className="flex flex-row gap-[10px]">
-            <span className="inline-flex h-[37px] w-[200px] items-center justify-center truncate rounded-[4px] border border-border bg-card-background px-[10px] text-[14px] text-foreground">
+            <span className="inline-flex h-[37px] w-[200px] items-center justify-start truncate rounded-[4px] border border-border bg-card-background px-[10px] text-[14px] text-foreground">
               {input.name}
             </span>
             <div className="flex flex-1 flex-col gap-[10px]">

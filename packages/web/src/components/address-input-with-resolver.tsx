@@ -51,9 +51,9 @@ export function AddressInputWithResolver({
             <AddressResolver address={value as Address}>
               {(resolvedName) => (
                 <span className="flex-1" title={value}>
-                  {resolvedName === formatShortAddress(value) ? (
+                  {resolvedName === value ? (
                     <span className="text-[14px] text-muted-foreground font-semibold">
-                      {resolvedName}
+                      {formatShortAddress(value)}
                     </span>
                   ) : (
                     <span className="flex items-center gap-[5px]">
