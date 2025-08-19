@@ -156,9 +156,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
             <TableHead className="w-1/3 rounded-l-[14px] px-[10px] text-left">
               Type
             </TableHead>
-            <TableHead className="w-1/3 px-[10px] text-left">
-              Address Data
-            </TableHead>
+            <TableHead className="w-1/3 px-[10px] text-left">To</TableHead>
             <TableHead className="w-1/3 rounded-r-[14px] px-[10px] text-left">
               Details
             </TableHead>

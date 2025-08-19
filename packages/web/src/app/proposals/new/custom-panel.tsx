@@ -262,7 +262,7 @@ export const CustomPanel = ({
             {/* Contract Type Selection */}
             <div className="flex flex-col gap-[10px]">
               <label className="text-[14px] text-foreground">
-                Use the imported ABl or upload yours
+                Use the imported ABI or upload yours
               </label>
               <Controller
                 name="contractType"

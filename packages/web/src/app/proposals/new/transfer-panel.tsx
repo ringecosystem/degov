@@ -7,7 +7,6 @@ import { useBalance } from "wagmi";
 
 import { AddressInputWithResolver } from "@/components/address-input-with-resolver";
 import { ErrorMessage } from "@/components/error-message";
-import { TokenSelect } from "@/components/token-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -86,10 +85,13 @@ export const TransferPanel = ({
   }, [daoConfig]);
 
   const { data: balance, isLoading } = useBalance({
-    address: (daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor) as Address,
+    address: (daoConfig?.contracts?.timeLock ||
+      daoConfig?.contracts?.governor) as Address,
     chainId: daoConfig?.chain?.id,
     query: {
-      enabled: !!(daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor) && !!daoConfig?.chain?.id,
+      enabled:
+        !!(daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor) &&
+        !!daoConfig?.chain?.id,
       gcTime: 0,
     },
   });
@@ -231,7 +233,18 @@ export const TransferPanel = ({
                   />
                 )}
               />
-              <TokenSelect tokenList={[token]} />
+              <div className="flex items-center gap-[10px] rounded-[10px] border border-border bg-card p-[5px] flex-shrink-0">
+                {token?.icon ? (
+                  <Image
+                    src={token.icon}
+                    alt={token.symbol}
+                    width={24}
+                    height={24}
+                    className="rounded-full"
+                  />
+                ) : null}
+                <span className="truncate">{token.symbol}</span>
+              </div>
             </div>
             <div className="flex items-center justify-end gap-[10px]">
               {/* <span className="text-[14px] text-foreground/50"></span> */}
