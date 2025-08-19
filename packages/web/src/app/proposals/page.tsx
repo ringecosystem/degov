@@ -139,28 +139,29 @@ function ProposalsContent() {
                   </Select>
                 </>
               )}
-            </div>
-            <div className="hidden lg:block">
-              <Button
-                className="flex items-center gap-[5px] rounded-[100px]"
-                onClick={() => router.push("/proposals/new")}
-              >
-                <Image
-                  src="/assets/image/light/plus.svg"
-                  alt="plus"
-                  width={20}
-                  height={20}
-                  className="size-[20px] block dark:hidden"
-                />
-                <Image
-                  src="/assets/image/plus.svg"
-                  alt="plus"
-                  width={20}
-                  height={20}
-                  className="size-[20px] hidden dark:block"
-                />
-                New Proposal
-              </Button>
+
+              <div className="hidden lg:block">
+                <Button
+                  className="flex items-center gap-[5px] rounded-[100px]"
+                  onClick={() => router.push("/proposals/new")}
+                >
+                  <Image
+                    src="/assets/image/light/plus.svg"
+                    alt="plus"
+                    width={20}
+                    height={20}
+                    className="size-[20px] block dark:hidden"
+                  />
+                  <Image
+                    src="/assets/image/plus.svg"
+                    alt="plus"
+                    width={20}
+                    height={20}
+                    className="size-[20px] hidden dark:block"
+                  />
+                  New Proposal
+                </Button>
+              </div>
             </div>
           </div>
           <div className="lg:hidden">
