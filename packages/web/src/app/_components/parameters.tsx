@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
+import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { dayjsHumanize } from "@/utils/date";
 
 export const Parameters = () => {
@@ -22,6 +23,32 @@ export const Parameters = () => {
   } = useGovernanceParams();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
+  const { data: governanceToken } = useGovernanceToken();
+
+  const formattedData = useMemo(() => {
+    const proposalThresholdFormatted = governanceParams?.proposalThreshold !== undefined
+      ? `${formatTokenAmount(governanceParams.proposalThreshold)?.formatted ?? "0"} ${governanceToken?.symbol ?? ""}`
+      : "None";
+
+    const votingDelayFormatted = governanceParams?.votingDelayInSeconds
+      ? dayjsHumanize(governanceParams.votingDelayInSeconds)
+      : "None";
+
+    const votingPeriodFormatted = governanceParams?.votingPeriodInSeconds
+      ? dayjsHumanize(governanceParams.votingPeriodInSeconds)
+      : "None";
+
+    const timeLockDelayFormatted = governanceParams?.timeLockDelay !== undefined
+      ? dayjsHumanize(Number(governanceParams.timeLockDelay))
+      : "None";
+
+    return {
+      proposalThresholdFormatted,
+      votingDelayFormatted,
+      votingPeriodFormatted,
+      timeLockDelayFormatted,
+    };
+  }, [governanceParams, formatTokenAmount, governanceToken?.symbol]);
 
   useEffect(() => {
     if (open) {
@@ -55,11 +82,8 @@ export const Parameters = () => {
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
-              ) : governanceParams?.proposalThreshold ? (
-                formatTokenAmount(governanceParams?.proposalThreshold)
-                  ?.formatted
               ) : (
-                "-"
+                formattedData.proposalThresholdFormatted
               )}
             </span>
           </div>
@@ -71,10 +95,8 @@ export const Parameters = () => {
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
-              ) : governanceParams?.votingDelayInSeconds ? (
-                dayjsHumanize(governanceParams.votingDelayInSeconds)
               ) : (
-                "None"
+                formattedData.votingDelayFormatted
               )}
             </span>
           </div>
@@ -86,10 +108,8 @@ export const Parameters = () => {
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
-              ) : governanceParams?.votingPeriodInSeconds ? (
-                dayjsHumanize(governanceParams.votingPeriodInSeconds)
               ) : (
-                "None"
+                formattedData.votingPeriodFormatted
               )}
             </span>
           </div>
@@ -102,10 +122,8 @@ export const Parameters = () => {
               <span className="text-[14px] font-normal text-foreground">
                 {isStaticLoading ? (
                   <Skeleton className="h-[14px] w-[30px]" />
-                ) : governanceParams?.timeLockDelay !== undefined ? (
-                  dayjsHumanize(Number(governanceParams?.timeLockDelay))
                 ) : (
-                  "None"
+                  formattedData.timeLockDelayFormatted
                 )}
               </span>
             </div>
