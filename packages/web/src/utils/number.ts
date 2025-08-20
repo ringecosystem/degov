@@ -3,6 +3,16 @@ import { formatUnits } from "viem";
 import { DECIMAL } from "@/config/base";
 
 /**
+ * toFixed that automatically removes trailing zeros
+ * @param {number} num - The number to format
+ * @param {number} decimals - Maximum number of decimal places
+ * @returns {string} - Formatted number string without trailing zeros
+ */
+export function toFixedTrimZeros(num: number, decimals: number): string {
+  return parseFloat(num.toFixed(decimals)).toString();
+}
+
+/**
  * Formats a number according to its magnitude, returning both abbreviated and full formats.
  * @param {number} num - The number to format.
  * @param {number} decimals - Number of decimal places
@@ -31,15 +41,15 @@ export function formatNumberForDisplay(
   // Abbreviated format with specified decimal places
   let shortFormat = "";
   if (absNum >= 1e12) {
-    shortFormat = (num / 1e12).toFixed(decimals) + "T";
+    shortFormat = toFixedTrimZeros(num / 1e12, decimals) + "T";
   } else if (absNum >= 1e9) {
-    shortFormat = (num / 1e9).toFixed(decimals) + "B";
+    shortFormat = toFixedTrimZeros(num / 1e9, decimals) + "B";
   } else if (absNum >= 1e6) {
-    shortFormat = (num / 1e6).toFixed(decimals) + "M";
+    shortFormat = toFixedTrimZeros(num / 1e6, decimals) + "M";
   } else if (absNum >= 1e3) {
-    shortFormat = (num / 1e3).toFixed(decimals) + "K";
+    shortFormat = toFixedTrimZeros(num / 1e3, decimals) + "K";
   } else {
-    shortFormat = num.toFixed(decimals);
+    shortFormat = toFixedTrimZeros(num, decimals);
   }
 
   return [shortFormat, longFormat];
@@ -73,7 +83,7 @@ export function formatBigIntWithDecimals(
 
   // Convert to number and format with fixed decimals
   const numberValue = Number(originalFormat);
-  const fixedValue = numberValue.toFixed(decimals);
+  const fixedValue = toFixedTrimZeros(numberValue, decimals);
 
   // Format with thousand separators
   const formattedFixed = new Intl.NumberFormat("en-US", {
