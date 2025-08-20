@@ -35,7 +35,8 @@ export function CallDataInputForm({
     defaultValues: {
       calldataItems: calldata,
     },
-    mode: "onBlur",
+    mode: "onChange",
+    reValidateMode: "onChange",
   });
 
   const isArrayType = useCallback((type: string) => {
@@ -151,7 +152,7 @@ export function CallDataInputForm({
                             getFieldError(index) ? "border-danger" : ""
                           }`}
                           value={arrayValue}
-                          onBlur={(e) => {
+                          onChange={(e) => {
                             const newVal = e.target.value;
                             update(index, {
                               name: fields[index].name,
@@ -191,7 +192,7 @@ export function CallDataInputForm({
                     className={`h-[37px] border-border bg-card  ${
                       getFieldError(index) ? "border-danger" : ""
                     }`}
-                    onBlur={(e) => {
+                    onChange={(e) => {
                       const newVal = e.target.value;
                       update(index, {
                         name: fields[index].name,
