@@ -104,7 +104,7 @@ function ProposalsContent() {
           <div className="flex items-start lg:items-center flex-col lg:flex-row justify-between gap-[20px]">
             <h3 className="text-[18px] font-extrabold">{getDisplayTitle()}</h3>
 
-            <div className="flex items-center gap-[20px]">
+            <div className="flex items-center gap-[20px] w-full lg:w-auto">
               {isConnected && (
                 <>
                   <div className="flex items-center space-x-2">
@@ -125,7 +125,7 @@ function ProposalsContent() {
                     onValueChange={handleSupportChange}
                     disabled={!isMyProposals}
                   >
-                    <SelectTrigger className="w-[130px] rounded-[100px] border border-border px-[10px]">
+                    <SelectTrigger className="w-auto flex-1 lg:w-[130px] rounded-[100px] border border-border px-[10px]">
                       <SelectValue placeholder="Select Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -139,28 +139,29 @@ function ProposalsContent() {
                   </Select>
                 </>
               )}
-            </div>
-            <div className="hidden lg:block">
-              <Button
-                className="flex items-center gap-[5px] rounded-[100px]"
-                onClick={() => router.push("/proposals/new")}
-              >
-                <Image
-                  src="/assets/image/light/plus.svg"
-                  alt="plus"
-                  width={20}
-                  height={20}
-                  className="size-[20px] block dark:hidden"
-                />
-                <Image
-                  src="/assets/image/plus.svg"
-                  alt="plus"
-                  width={20}
-                  height={20}
-                  className="size-[20px] hidden dark:block"
-                />
-                New Proposal
-              </Button>
+
+              <div className="hidden lg:block">
+                <Button
+                  className="flex items-center gap-[5px] rounded-[100px]"
+                  onClick={() => router.push("/proposals/new")}
+                >
+                  <Image
+                    src="/assets/image/light/plus.svg"
+                    alt="plus"
+                    width={20}
+                    height={20}
+                    className="size-[20px] block dark:hidden"
+                  />
+                  <Image
+                    src="/assets/image/plus.svg"
+                    alt="plus"
+                    width={20}
+                    height={20}
+                    className="size-[20px] hidden dark:block"
+                  />
+                  New Proposal
+                </Button>
+              </div>
             </div>
           </div>
           <div className="lg:hidden">
