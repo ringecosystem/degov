@@ -245,19 +245,18 @@ export const CustomPanel = ({
               errors.target && "border-danger"
             )}
           />
-          {/* {errors.target && <ErrorMessage message={errors.target.message} />} */}
           {isLoadingBytecode ? (
             <span className="text-sm inline-flex items-center gap-2 text-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading contract info...
             </span>
+          ) : errors.target ? (
+            <ErrorMessage message={errors.target.message} />
           ) : watch("target") &&
             isAddress(watch("target") || "") &&
             !bytecode ? (
             <ErrorMessage message="The address must be a contract address, not an EOA address" />
-          ) : (
-            errors.target && <ErrorMessage message={errors.target.message} />
-          )}
+          ) : null}
         </div>
 
         {isContractAddress && (
