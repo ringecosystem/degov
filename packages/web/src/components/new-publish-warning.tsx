@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { useMemo } from "react";
 
 import {
   Dialog,
@@ -6,13 +7,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 
 import { Button } from "./ui/button";
-import { Separator } from "./ui/separator";
 
 interface NewPublishWarningProps {
-  proposalThreshold?: string;
-  votes?: string;
+  proposalThreshold?: bigint;
+  votes?: bigint;
   open: boolean;
   onOpenChange: (value: boolean) => void;
 }
@@ -23,9 +24,24 @@ export function NewPublishWarning({
   open,
   onOpenChange,
 }: NewPublishWarningProps) {
+  const formatTokenAmount = useFormatGovernanceTokenAmount();
+
+  const formattedData = useMemo(() => {
+    const threshold = proposalThreshold ?? 0n;
+    const userVotes = votes ?? 0n;
+
+    const needed = threshold > userVotes ? threshold - userVotes : 0n;
+
+    return {
+      formattedProposalThreshold:
+        formatTokenAmount(threshold)?.formatted ?? "0",
+      formattedVotes: formatTokenAmount(userVotes)?.formatted ?? "0",
+      formattedVotingPowerNeeded: formatTokenAmount(needed)?.formatted ?? "0",
+    };
+  }, [proposalThreshold, votes, formatTokenAmount]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
+      <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px] flex flex-col gap-[20px]">
         <DialogHeader className="flex w-full flex-row items-center justify-between">
           <DialogTitle className="flex items-center gap-2 text-[18px] font-extrabold">
             <svg viewBox="0 0 24 25" focusable="false" className="size-5">
@@ -34,7 +50,7 @@ export function NewPublishWarning({
                 fill="currentColor"
               ></path>
             </svg>{" "}
-            Not enough voting power
+            Inefficient Voting Power
           </DialogTitle>
           <Image
             src="/assets/image/close.svg"
@@ -45,36 +61,44 @@ export function NewPublishWarning({
             onClick={() => onOpenChange(false)}
           />
         </DialogHeader>
-        <Separator className="my-0 bg-muted-foreground/40" />
-        <div className="flex w-[360px] items-center justify-center gap-[20px] rounded-[10px] bg-secondary p-[20px]">
-          <div className="flex flex-col gap-[10px]">
-            <div className="flex flex-col  gap-[5px]">
-              <span className="text-sm font-semibold">Proposal Threshold</span>
-              <span className="text-sm text-muted-foreground">
-                {proposalThreshold ?? "0"}
-              </span>
-            </div>
-            <div className="flex flex-col gap-[5px]">
-              <span className="text-sm font-semibold">Your Voting Power</span>
-              <span className="text-sm text-muted-foreground">
-                {votes ?? "0"}
-              </span>
-            </div>
-            <p className="text-sm ">
-              You won&apos;t be able to submit this proposal onchain.
-            </p>
+
+        <div className="flex flex-col gap-[20px] border-t border-border/50 pt-[20px]">
+          {/* Required Voting Power Section */}
+          <div className="flex items-center justify-between rounded-[10px] bg-card-background p-[20px]">
+            <span className="text-[14px] font-normal text-foreground">
+              Required Voting Power
+            </span>
+            <span className="text-[26px] font-semibold text-foreground">
+              {formattedData.formattedProposalThreshold}
+            </span>
           </div>
-        </div>
-        <Separator className="my-0 bg-muted-foreground/40" />
-        <div className="flex flex-col gap-[20px]">
-          <Button
-            className="w-full rounded-[100px]"
-            onClick={() => {
-              onOpenChange(false);
-            }}
-          >
-            Continue
-          </Button>
+
+          {/* Your Voting Power Section */}
+          <div className="flex items-center justify-between rounded-[10px] bg-card-background p-[20px]">
+            <span className="text-[14px] font-normal text-foreground">
+              Your Voting Power
+            </span>
+            <span className="text-[26px] font-semibold text-foreground">
+              {formattedData.formattedVotes}
+            </span>
+          </div>
+
+          {/* Need more voting power message */}
+          <p className="text-[14px] text-foreground">
+            Need {formattedData.formattedVotingPowerNeeded} more Voting Power to
+            create the proposal.
+          </p>
+
+          <div className="flex flex-col gap-[20px] border-t border-border/50 pt-[20px]">
+            <Button
+              className="w-full rounded-[100px]"
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              OK
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
