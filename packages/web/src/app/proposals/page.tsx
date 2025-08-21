@@ -2,10 +2,11 @@
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { Faqs } from "@/components/faqs";
+import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
 import { SystemInfo } from "@/components/system-info";
@@ -20,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useMyVotes } from "@/hooks/useMyVotes";
 import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
@@ -36,10 +38,14 @@ function ProposalsContent() {
     (supportParam as "all" | "1" | "2" | "3") || "all"
   );
   const { isConnected, address } = useAccount();
+  const [publishWarningOpen, setPublishWarningOpen] = useState(false);
 
   const [isMyProposals, setIsMyProposals] = useState<CheckedState>(
     typeParam === "my"
   );
+
+  // Get voting power information
+  const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
 
   // Get proposal metrics (including total count)
   const { data: proposalMetrics } = useQuery({
@@ -97,6 +103,15 @@ function ProposalsContent() {
     return "All Proposals";
   };
 
+  const handleNewProposalClick = useCallback(() => {
+    if (isConnected && !hasEnoughVotes) {
+      setPublishWarningOpen(true);
+      return;
+    }
+
+    router.push("/proposals/new");
+  }, [isConnected, hasEnoughVotes, router]);
+
   return (
     <div className="flex flex-col gap-[20px]">
       <div className="flex items-start gap-[20px]">
@@ -143,7 +158,7 @@ function ProposalsContent() {
               <div className="hidden lg:block">
                 <Button
                   className="flex items-center gap-[5px] rounded-[100px]"
-                  onClick={() => router.push("/proposals/new")}
+                  onClick={handleNewProposalClick}
                 >
                   <Image
                     src="/assets/image/light/plus.svg"
@@ -187,11 +202,19 @@ function ProposalsContent() {
             />
           </div>
         </div>
-        <div className="w-[360px] flex flex-col gap-[20px] hidden lg:flex">
+        <div className="w-[360px] hidden lg:flex flex-col gap-[20px]">
           <SystemInfo type="proposal" />
           <Faqs type="proposal" />
         </div>
       </div>
+
+      {/* Insufficient Voting Power Warning Dialog */}
+      <NewPublishWarning
+        open={publishWarningOpen}
+        onOpenChange={setPublishWarningOpen}
+        proposalThreshold={proposalThreshold}
+        votes={votes}
+      />
     </div>
   );
 }
