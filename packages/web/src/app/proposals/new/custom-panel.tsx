@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { isAddress, type Abi, type AbiItem } from "viem";
 import { useBytecode } from "wagmi";
@@ -45,6 +45,7 @@ export const CustomPanel = ({
   onRemove,
 }: CustomPanelProps) => {
   const daoConfig = useDaoConfig();
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
 
   const {
     control,
@@ -85,7 +86,7 @@ export const CustomPanel = ({
       setValue("customAbiContent", []);
       setValue("calldata", []);
 
-      // Reset ABI related fields
+      // Reset ABI fields
       if (value !== "custom") {
         const abi = abiList.find((item) => item.name === value)?.abi as Abi;
         if (isValidAbi(abi)) {
@@ -151,6 +152,8 @@ export const CustomPanel = ({
           shouldDirty: true,
         });
 
+        setTouchedFields(new Set());
+
         if (method.stateMutability !== "payable") {
           setValue("value", "");
         }
@@ -158,6 +161,41 @@ export const CustomPanel = ({
     },
     [setValue, watch]
   );
+
+  const handleFieldTouch = useCallback((index: number, arrayIndex?: number) => {
+    const fieldKey =
+      arrayIndex !== undefined ? `${index}-${arrayIndex}` : `${index}`;
+    setTouchedFields((prev) => new Set(prev).add(fieldKey));
+  }, []);
+
+  // Handle touched state updates when array elements are removed
+  const handleFieldUntouchArray = useCallback((index: number, removedArrayIndex: number) => {
+    setTouchedFields(prev => {
+      const newSet = new Set(prev);
+      // Remove touched state for deleted element
+      newSet.delete(`${index}-${removedArrayIndex}`);
+      
+      // Update indices for subsequent elements
+      const keysToUpdate: string[] = [];
+      const keysToRemove: string[] = [];
+      
+      prev.forEach(key => {
+        const match = key.match(/^(\d+)-(\d+)$/);
+        if (match) {
+          const [, keyIndex, keyArrayIndex] = match;
+          if (parseInt(keyIndex) === index && parseInt(keyArrayIndex) > removedArrayIndex) {
+            keysToRemove.push(key);
+            keysToUpdate.push(`${index}-${parseInt(keyArrayIndex) - 1}`);
+          }
+        }
+      });
+      
+      keysToRemove.forEach(key => newSet.delete(key));
+      keysToUpdate.forEach(key => newSet.add(key));
+      
+      return newSet;
+    });
+  }, []);
 
   // Check if method is payable
   const isPayable = useMemo(() => {
@@ -383,6 +421,14 @@ export const CustomPanel = ({
                       onChange={(newCalldata) => {
                         field.onChange([...newCalldata]);
                       }}
+                      parentErrors={
+                        errors.calldata
+                          ? { calldataItems: errors.calldata }
+                          : undefined
+                      }
+                      onFieldTouch={handleFieldTouch}
+                      onFieldUntouchArray={handleFieldUntouchArray}
+                      touchedFields={touchedFields}
                     />
                   )}
                 />
