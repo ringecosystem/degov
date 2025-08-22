@@ -16,8 +16,7 @@ DeGov.AI is an open-source, on-chain governance platform built for DAOs in the E
 
 ## Integration Guide
 
-The easiest way to deploy your own DeGov instance is by using the [DeGov Launcher](https://github.com/ringecosystem/degov-launcher). This tool simplifies the setup process, allowing you to quickly configure and launch your governance platform.
-For a detailed integration guide, see [Deploy by yourself](https://docs.degov.ai/integration/deploy/).
+The easiest way to deploy your own DeGov instance is by using the [DeGov Launcher](https://github.com/ringecosystem/degov-launcher). This tool simplifies the setup process, allowing you to quickly configure and launch your governance platform. For a detailed integration guide, see [Deploy by yourself](https://docs.degov.ai/integration/deploy/).
 
 We also provide launch assistance. See the [Launch With Assistance](https://docs.degov.ai/integration/launch/) guide for more information.
 
