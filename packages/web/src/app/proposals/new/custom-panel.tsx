@@ -169,33 +169,39 @@ export const CustomPanel = ({
   }, []);
 
   // Handle touched state updates when array elements are removed
-  const handleFieldUntouchArray = useCallback((index: number, removedArrayIndex: number) => {
-    setTouchedFields(prev => {
-      const newSet = new Set(prev);
-      // Remove touched state for deleted element
-      newSet.delete(`${index}-${removedArrayIndex}`);
-      
-      // Update indices for subsequent elements
-      const keysToUpdate: string[] = [];
-      const keysToRemove: string[] = [];
-      
-      prev.forEach(key => {
-        const match = key.match(/^(\d+)-(\d+)$/);
-        if (match) {
-          const [, keyIndex, keyArrayIndex] = match;
-          if (parseInt(keyIndex) === index && parseInt(keyArrayIndex) > removedArrayIndex) {
-            keysToRemove.push(key);
-            keysToUpdate.push(`${index}-${parseInt(keyArrayIndex) - 1}`);
+  const handleFieldUntouchArray = useCallback(
+    (index: number, removedArrayIndex: number) => {
+      setTouchedFields((prev) => {
+        const newSet = new Set(prev);
+        // Remove touched state for deleted element
+        newSet.delete(`${index}-${removedArrayIndex}`);
+
+        // Update indices for subsequent elements
+        const keysToUpdate: string[] = [];
+        const keysToRemove: string[] = [];
+
+        prev.forEach((key) => {
+          const match = key.match(/^(\d+)-(\d+)$/);
+          if (match) {
+            const [, keyIndex, keyArrayIndex] = match;
+            if (
+              parseInt(keyIndex) === index &&
+              parseInt(keyArrayIndex) > removedArrayIndex
+            ) {
+              keysToRemove.push(key);
+              keysToUpdate.push(`${index}-${parseInt(keyArrayIndex) - 1}`);
+            }
           }
-        }
+        });
+
+        keysToRemove.forEach((key) => newSet.delete(key));
+        keysToUpdate.forEach((key) => newSet.add(key));
+
+        return newSet;
       });
-      
-      keysToRemove.forEach(key => newSet.delete(key));
-      keysToUpdate.forEach(key => newSet.add(key));
-      
-      return newSet;
-    });
-  }, []);
+    },
+    []
+  );
 
   // Check if method is payable
   const isPayable = useMemo(() => {
@@ -235,7 +241,7 @@ export const CustomPanel = ({
         <h4 className="text-[18px] font-semibold">Action #{index}</h4>
 
         <Button
-          className="h-[30px] gap-[5px] rounded-[100px] border border-border/20 bg-card"
+          className="h-[30px] gap-[5px] rounded-[100px] border border-foreground bg-card p-[10px]"
           variant="outline"
           onClick={() => onRemove(index)}
         >

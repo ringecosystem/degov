@@ -160,7 +160,7 @@ export const TransferPanel = ({
       <header className="flex items-center justify-between">
         <h4 className="text-[18px] font-semibold">Action #{index}</h4>
         <Button
-          className="h-[30px] gap-[5px] rounded-[100px] border border-border bg-card"
+          className="h-[30px] gap-[5px] rounded-[100px] border  border-foreground bg-card p-[10px]"
           variant="outline"
           onClick={() => onRemove(index)}
         >
