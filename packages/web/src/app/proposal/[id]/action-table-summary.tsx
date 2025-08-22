@@ -21,7 +21,6 @@ import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import { formatFunctionSignature, simplifyFunctionSignature } from "@/utils";
-import { formatShortAddress } from "@/utils/address";
 import { formatBigIntForDisplay } from "@/utils/number";
 
 import type { Action } from "./action-table-raw";
@@ -142,13 +141,13 @@ export function ActionTableSummary({
   const LoadingRows = useMemo(() => {
     return Array.from({ length: 3 }).map((_, index) => (
       <TableRow key={`loading-${index}`}>
-        <TableCell className="text-left" style={{ width: "33%" }}>
+        <TableCell className="text-left" style={{ width: "24.76%" }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: "33%" }}>
+        <TableCell className="text-left" style={{ width: "41.8%" }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: "33%" }}>
+        <TableCell className="text-left" style={{ width: "33.44%" }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
       </TableRow>
@@ -163,16 +162,16 @@ export function ActionTableSummary({
             <TableRow>
               <TableHead
                 className="text-left rounded-l-[14px]"
-                style={{ width: "33%" }}
+                style={{ width: "24.76%" }}
               >
                 Type
               </TableHead>
-              <TableHead className="text-left" style={{ width: "33%" }}>
+              <TableHead className="text-left" style={{ width: "41.8%" }}>
                 To
               </TableHead>
               <TableHead
                 className="text-left rounded-r-[14px]"
-                style={{ width: "33%" }}
+                style={{ width: "33.44%" }}
               >
                 Details
               </TableHead>
@@ -200,7 +199,7 @@ export function ActionTableSummary({
                       >
                         <TableCell
                           className="text-left"
-                          style={{ width: "33%" }}
+                          style={{ width: "24.76%" }}
                         >
                           <div className="flex items-center gap-[10px]">
                             <Image
@@ -235,37 +234,43 @@ export function ActionTableSummary({
 
                         <TableCell
                           className="text-left"
-                          style={{ width: "33%" }}
+                          style={{ width: "41.8%" }}
                         >
-                          <a
-                            href={`${daoConfig?.chain?.explorers?.[0]}/address/${record.target}`}
-                            className="flex items-center gap-[10px] transition-opacity hover:opacity-80"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <span className="font-mono">
-                              {formatShortAddress(record.target)}
+                          {record.target ? (
+                            <span className="flex items-center gap-[5px] font-mono">
+                              {record.target}
+                              <a
+                                href={`${daoConfig?.chain?.explorers?.[0]}/address/${record.target}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="hover:opacity-80 transition-opacity duration-300 cursor-pointer flex-shrink-0"
+                              >
+                                <Image
+                                  src="/assets/image/light/external-link.svg"
+                                  alt="external-link"
+                                  width={16}
+                                  height={16}
+                                  className="dark:hidden"
+                                />
+                                <Image
+                                  src="/assets/image/external-link.svg"
+                                  alt="external-link"
+                                  width={16}
+                                  height={16}
+                                  className="hidden dark:block"
+                                />
+                              </a>
                             </span>
-                            <Image
-                              src="/assets/image/light/external-link.svg"
-                              alt="external-link"
-                              width={16}
-                              height={16}
-                              className="dark:hidden"
-                            />
-                            <Image
-                              src="/assets/image/external-link.svg"
-                              alt="external-link"
-                              width={16}
-                              height={16}
-                              className="hidden dark:block"
-                            />
-                          </a>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              No address
+                            </span>
+                          )}
                         </TableCell>
 
                         <TableCell
                           className="text-left"
-                          style={{ width: "33%", wordWrap: "break-word" }}
+                          style={{ width: "33.44%", wordWrap: "break-word" }}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span

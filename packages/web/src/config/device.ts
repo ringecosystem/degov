@@ -38,7 +38,7 @@ export const DEVICE_CONFIG = {
     desktop: {
       headerHeight: "h-[60px]",
       contentPadding: "p-[30px]",
-      maxWidth: "max-w-[1400px]",
+      maxWidth: "max-w-[1460px]",
     },
   },
 } as const;
