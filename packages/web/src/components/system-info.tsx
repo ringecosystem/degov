@@ -152,7 +152,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
           ? (
               (Number(dataMetrics.powerSum) / Number(totalSupply)) *
               100
-            ).toFixed(1)
+            ).toFixed(2)
           : "0";
 
       return {

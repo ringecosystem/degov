@@ -246,8 +246,9 @@ export const Comments = ({ comments, id }: CommentsProps) => {
 
           return (
             <div className="text-right">
-              <div className="text-[14px] font-semibold text-foreground">
-                {formattedAmount?.formatted} ({percentage})
+              <div className="text-[14px] text-foreground flex items-center justify-end gap-[5px]">
+                <span>{formattedAmount?.formatted}</span>
+                <span>({percentage})</span>
               </div>
             </div>
           );

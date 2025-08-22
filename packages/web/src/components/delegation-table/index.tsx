@@ -121,7 +121,7 @@ function DelegatorVotesDisplay({
       <div className="text-[14px]" title={formattedAmount?.formatted}>
         {formattedAmount?.formatted}
       </div>
-      <div>({percentage.toFixed(1)}%)</div>
+      <div>({percentage.toFixed(2)}%)</div>
     </div>
   );
 }

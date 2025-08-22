@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEnsName } from "wagmi";
 
-import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import { profileService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 
@@ -23,19 +22,16 @@ export function AddressResolver({
     chainId: 1,
   });
 
-  const { isAiBot } = useAiBotAddress(address);
-
   const { data: profileData } = useQuery({
     queryKey: ["profile", address],
     queryFn: () => profileService.getProfile(address),
     enabled: !!address,
   });
 
-  const displayValue = isAiBot
-    ? "DeGov Agent"
-    : profileData?.data?.name ||
-      ensName ||
-      (showShortAddress ? formatShortAddress(address) : address);
+  const displayValue =
+    profileData?.data?.name ||
+    ensName ||
+    (showShortAddress ? formatShortAddress(address) : address);
 
   return <>{children(displayValue)}</>;
 }
