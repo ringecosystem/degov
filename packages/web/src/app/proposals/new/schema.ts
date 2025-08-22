@@ -74,7 +74,7 @@ export const calldataItemSchema = z
       return isValidCalldataValue(data.value, data.type);
     },
     {
-      message: "Value does not match argument type",
+      message: "Parameter value is required and must match the argument type",
       path: ["value"],
     }
   );
@@ -96,6 +96,7 @@ export const isValidCalldataValue = (
 
     if (isArray) {
       if (!Array.isArray(value)) return false;
+      if (value.length === 0) return false;
       return value.every((item) => isValidSingleValue(item, baseType));
     }
 
@@ -107,7 +108,7 @@ export const isValidCalldataValue = (
 };
 
 const isValidSingleValue = (value: string, type: string): boolean => {
-  if (!value) return true;
+  if (!value || value.trim() === "") return false;
 
   switch (true) {
     case type === "address":

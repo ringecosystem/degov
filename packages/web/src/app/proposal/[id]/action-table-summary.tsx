@@ -21,7 +21,6 @@ import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import { formatFunctionSignature, simplifyFunctionSignature } from "@/utils";
-import { formatShortAddress } from "@/utils/address";
 import { formatBigIntForDisplay } from "@/utils/number";
 
 import type { Action } from "./action-table-raw";
@@ -142,13 +141,13 @@ export function ActionTableSummary({
   const LoadingRows = useMemo(() => {
     return Array.from({ length: 3 }).map((_, index) => (
       <TableRow key={`loading-${index}`}>
-        <TableCell className="text-left" style={{ width: "33%" }}>
+        <TableCell className="text-left" style={{ width: "24.76%" }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: "33%" }}>
+        <TableCell className="text-left" style={{ width: "41.8%" }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: "33%" }}>
+        <TableCell className="text-left" style={{ width: "33.44%" }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
       </TableRow>
@@ -163,16 +162,16 @@ export function ActionTableSummary({
             <TableRow>
               <TableHead
                 className="text-left rounded-l-[14px]"
-                style={{ width: "33%" }}
+                style={{ width: "24.76%" }}
               >
                 Type
               </TableHead>
-              <TableHead className="text-left" style={{ width: "33%" }}>
-                Address Data
+              <TableHead className="text-left" style={{ width: "41.8%" }}>
+                To
               </TableHead>
               <TableHead
                 className="text-left rounded-r-[14px]"
-                style={{ width: "33%" }}
+                style={{ width: "33.44%" }}
               >
                 Details
               </TableHead>
@@ -185,169 +184,182 @@ export function ActionTableSummary({
           style={{ maxHeight: "calc(100vh-200px)" }}
         >
           <Table className="table-fixed">
-          <TableBody className="[&_tr:has(+tr[data-expanded])]:border-0">
-            {isLoading
-              ? LoadingRows
-              : data.length > 0
-              ? data.map((record) => (
-                  <React.Fragment key={`${record.target}-${record.calldata}`}>
-                    <TableRow
-                      className={cn(
-                        openParams.includes(record.index) &&
-                          record.hasParams &&
-                          "border-b-0"
-                      )}
-                    >
-                      <TableCell className="text-left" style={{ width: "33%" }}>
-                        <div className="flex items-center gap-[10px]">
-                          <Image
-                            src={
-                              PROPOSAL_ACTIONS_LIGHT[
-                                record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS_LIGHT
-                              ]
-                            }
-                            alt={record.type}
-                            width={24}
-                            height={24}
-                            className="rounded-full block dark:hidden"
-                          />
-                          <Image
-                            src={
-                              PROPOSAL_ACTIONS[
-                                record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS
-                              ]
-                            }
-                            alt={record.type}
-                            width={24}
-                            height={24}
-                            className="rounded-full hidden dark:block"
-                          />
-                          <span className="text-[14px] capitalize">
-                            {record.type === "xAccount"
-                              ? "XAccount Cross-chain"
-                              : record.type}
-                          </span>
-                        </div>
-                      </TableCell>
-
-                      <TableCell className="text-left" style={{ width: "33%" }}>
-                        <a
-                          href={`${daoConfig?.chain?.explorers?.[0]}/address/${record.target}`}
-                          className="flex items-center gap-[10px] transition-opacity hover:opacity-80"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <span className="font-mono">
-                            {formatShortAddress(record.target)}
-                          </span>
-                          <Image
-                            src="/assets/image/light/external-link.svg"
-                            alt="external-link"
-                            width={16}
-                            height={16}
-                            className="dark:hidden"
-                          />
-                          <Image
-                            src="/assets/image/external-link.svg"
-                            alt="external-link"
-                            width={16}
-                            height={16}
-                            className="hidden dark:block"
-                          />
-                        </a>
-                      </TableCell>
-
-                      <TableCell
-                        className="text-left"
-                        style={{ width: "33%", wordWrap: "break-word" }}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span
-                            className="font-mono truncate"
-                            title={record.details}
-                          >
-                            {record.details}
-                          </span>
-                          {record.hasParams && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleParams(record.index)}
-                              className="text-[14px] text-foreground/40 cursor-pointer flex-shrink-0"
-                              asChild
-                            >
-                              <motion.div whileTap={{ scale: 0.95 }}>
-                                {record.params.length} params
-                                <ChevronDown
-                                  className={cn(
-                                    "h-4 w-4 transition-transform duration-200 ml-1",
-                                    openParams.includes(record.index) &&
-                                      "rotate-180"
-                                  )}
-                                />
-                              </motion.div>
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-
-                    <AnimatePresence>
-                      {record.hasParams &&
-                        openParams.includes(record.index) && (
-                          <motion.tr
-                            data-expanded
-                            className="border-t-0"
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{
-                              duration: DEFAULT_ANIMATION_DURATION,
-                            }}
-                          >
-                            <TableCell colSpan={3} className="pt-0">
-                              <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.1 }}
-                              >
-                                <div className="border border-gray-1 bg-background">
-                                  {record.params.map(
-                                    (param: ParsedParam, pIndex: number) => (
-                                      <div
-                                        key={pIndex}
-                                        className={cn(
-                                          "grid grid-cols-[140px_1fr]",
-                                          pIndex > 0 && "border-t border-gray-1"
-                                        )}
-                                      >
-                                        <div className="p-[10px] text-[12px] font-medium border-r border-gray-1 flex items-center">
-                                          {param.name}
-                                        </div>
-                                        <div
-                                          className="p-[10px] text-[12px] font-mono break-words text-left"
-                                          style={{
-                                            wordBreak: "break-all",
-                                          }}
-                                        >
-                                          {Array.isArray(param.value)
-                                            ? `[${param.value.join(", ")}]`
-                                            : param.value}
-                                        </div>
-                                      </div>
-                                    )
-                                  )}
-                                </div>
-                              </motion.div>
-                            </TableCell>
-                          </motion.tr>
+            <TableBody className="[&_tr:has(+tr[data-expanded])]:border-0">
+              {isLoading
+                ? LoadingRows
+                : data.length > 0
+                ? data.map((record) => (
+                    <React.Fragment key={`${record.target}-${record.calldata}`}>
+                      <TableRow
+                        className={cn(
+                          openParams.includes(record.index) &&
+                            record.hasParams &&
+                            "border-b-0"
                         )}
-                    </AnimatePresence>
-                  </React.Fragment>
-                ))
-              : null}
-          </TableBody>
-        </Table>
+                      >
+                        <TableCell
+                          className="text-left"
+                          style={{ width: "24.76%" }}
+                        >
+                          <div className="flex items-center gap-[10px]">
+                            <Image
+                              src={
+                                PROPOSAL_ACTIONS_LIGHT[
+                                  record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS_LIGHT
+                                ]
+                              }
+                              alt={record.type}
+                              width={24}
+                              height={24}
+                              className="rounded-full block dark:hidden"
+                            />
+                            <Image
+                              src={
+                                PROPOSAL_ACTIONS[
+                                  record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS
+                                ]
+                              }
+                              alt={record.type}
+                              width={24}
+                              height={24}
+                              className="rounded-full hidden dark:block"
+                            />
+                            <span className="text-[14px] capitalize">
+                              {record.type === "xAccount"
+                                ? "XAccount Cross-chain"
+                                : record.type}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell
+                          className="text-left"
+                          style={{ width: "41.8%" }}
+                        >
+                          {record.target ? (
+                            <span className="flex items-center gap-[5px] font-mono">
+                              {record.target}
+                              <a
+                                href={`${daoConfig?.chain?.explorers?.[0]}/address/${record.target}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="hover:opacity-80 transition-opacity duration-300 cursor-pointer flex-shrink-0"
+                              >
+                                <Image
+                                  src="/assets/image/light/external-link.svg"
+                                  alt="external-link"
+                                  width={16}
+                                  height={16}
+                                  className="dark:hidden"
+                                />
+                                <Image
+                                  src="/assets/image/external-link.svg"
+                                  alt="external-link"
+                                  width={16}
+                                  height={16}
+                                  className="hidden dark:block"
+                                />
+                              </a>
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              No address
+                            </span>
+                          )}
+                        </TableCell>
+
+                        <TableCell
+                          className="text-left"
+                          style={{ width: "33.44%", wordWrap: "break-word" }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span
+                              className="font-mono truncate"
+                              title={record.details}
+                            >
+                              {record.details}
+                            </span>
+                            {record.hasParams && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleParams(record.index)}
+                                className="text-[14px] text-foreground/40 cursor-pointer flex-shrink-0"
+                                asChild
+                              >
+                                <motion.div whileTap={{ scale: 0.95 }}>
+                                  {record.params.length} params
+                                  <ChevronDown
+                                    className={cn(
+                                      "h-4 w-4 transition-transform duration-200 ml-1",
+                                      openParams.includes(record.index) &&
+                                        "rotate-180"
+                                    )}
+                                  />
+                                </motion.div>
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+
+                      <AnimatePresence>
+                        {record.hasParams &&
+                          openParams.includes(record.index) && (
+                            <motion.tr
+                              data-expanded
+                              className="border-t-0"
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{
+                                duration: DEFAULT_ANIMATION_DURATION,
+                              }}
+                            >
+                              <TableCell colSpan={3} className="pt-0 px-[20px]">
+                                <motion.div
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: 0.1 }}
+                                >
+                                  <div className="border border-gray-1 bg-background">
+                                    {record.params.map(
+                                      (param: ParsedParam, pIndex: number) => (
+                                        <div
+                                          key={pIndex}
+                                          className={cn(
+                                            "grid grid-cols-[140px_1fr]",
+                                            pIndex > 0 &&
+                                              "border-t border-gray-1"
+                                          )}
+                                        >
+                                          <div className="p-[10px] text-[12px] font-medium border-r border-gray-1 flex items-center">
+                                            {param.name}
+                                          </div>
+                                          <div
+                                            className="p-[10px] text-[12px] font-mono break-words text-left"
+                                            style={{
+                                              wordBreak: "break-all",
+                                            }}
+                                          >
+                                            {Array.isArray(param.value)
+                                              ? `[${param.value.join(", ")}]`
+                                              : param.value}
+                                          </div>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                </motion.div>
+                              </TableCell>
+                            </motion.tr>
+                          )}
+                      </AnimatePresence>
+                    </React.Fragment>
+                  ))
+                : null}
+            </TableBody>
+          </Table>
         </div>
 
         {!isLoading && data.length === 0 && (

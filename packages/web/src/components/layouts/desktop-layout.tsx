@@ -17,7 +17,7 @@ export const DesktopLayout = ({ children }: DesktopLayoutProps) => {
       <Aside />
       <main className="flex min-w-0 flex-1 flex-col overflow-y-auto h-dvh">
         <Header />
-        <div className="mx-auto w-full flex-1 p-[15px] lg:p-[30px] gap-[15px] lg:gap-[20px] flex flex-col max-w-[1400px]">
+        <div className="mx-auto w-full flex-1 p-[15px] lg:p-[30px] gap-[15px] lg:gap-[20px] flex flex-col max-w-[1460px]">
           <DemoTips />
           <Alert />
           <PageTransition>{children}</PageTransition>
@@ -25,4 +25,4 @@ export const DesktopLayout = ({ children }: DesktopLayoutProps) => {
       </main>
     </div>
   );
-}; 
+};

@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 
 import { ErrorMessage } from "@/components/error-message";
@@ -14,25 +14,36 @@ import type { FieldError, FieldErrors } from "react-hook-form";
 interface CallDataInputFormProps {
   calldata: CalldataItem[];
   onChange: (calldata: CalldataItem[]) => void;
+  parentErrors?: FieldErrors<{ calldataItems: CalldataItem[] }>;
+  onFieldTouch?: (index: number, arrayIndex?: number) => void;
+  onFieldUntouchArray?: (index: number, removedArrayIndex: number) => void;
+  touchedFields?: Set<string>;
 }
 
 export function CallDataInputForm({
   calldata,
   onChange,
+  parentErrors,
+  onFieldTouch,
+  onFieldUntouchArray,
+  touchedFields,
 }: CallDataInputFormProps) {
+  const prevCalldataRef = useRef<CalldataItem[]>(calldata);
+
   const {
     control,
     formState: { errors },
-    handleSubmit,
     watch,
     setValue,
     trigger,
+    reset,
   } = useForm<Calldata>({
     resolver: zodResolver(calldataSchema),
     defaultValues: {
       calldataItems: calldata,
     },
-    mode: "onBlur",
+    mode: "onChange",
+    reValidateMode: "onChange",
   });
 
   const isArrayType = useCallback((type: string) => {
@@ -42,6 +53,16 @@ export function CallDataInputForm({
   const getBaseType = useCallback((type: string) => {
     return type.replace("[]", "");
   }, []);
+
+  // Reset form when calldata changes from parent
+  useEffect(() => {
+    if (JSON.stringify(prevCalldataRef.current) !== JSON.stringify(calldata)) {
+      reset({
+        calldataItems: calldata,
+      });
+      prevCalldataRef.current = calldata;
+    }
+  }, [calldata, reset]);
 
   useEffect(() => {
     const subscription = watch((data) => {
@@ -55,17 +76,31 @@ export function CallDataInputForm({
     name: "calldataItems",
   });
 
-  const getFieldError = (
+  const getFieldError = useCallback((
     index: number,
     arrayIndex?: number
   ): FieldError | undefined => {
+    const errorSource = parentErrors || errors;
+
     if (arrayIndex !== undefined) {
-      return (errors.calldataItems?.[index]?.value as unknown as FieldErrors)?.[
-        arrayIndex
-      ] as FieldError;
+      return (
+        errorSource.calldataItems?.[index]?.value as unknown as FieldErrors
+      )?.[arrayIndex] as FieldError;
     }
-    return errors.calldataItems?.[index]?.value as FieldError;
-  };
+    return errorSource.calldataItems?.[index]?.value as FieldError;
+  }, [parentErrors, errors]);
+
+  const shouldShowError = useCallback(
+    (index: number, arrayIndex?: number): boolean => {
+      if (!touchedFields) return !!getFieldError(index, arrayIndex);
+
+      const fieldKey =
+        arrayIndex !== undefined ? `${index}-${arrayIndex}` : `${index}`;
+      return touchedFields.has(fieldKey) && !!getFieldError(index, arrayIndex);
+    },
+    [touchedFields, getFieldError]
+  );
+
   const addArrayItem = useCallback(
     (index: number, e: React.MouseEvent) => {
       e.preventDefault();
@@ -91,7 +126,7 @@ export function CallDataInputForm({
       const values = watch("calldataItems");
       if (!values?.[index]) return;
 
-      // Create new values array with the item removed
+      // Remove array item and update values
       const newValues = [...values];
       const currentValue = [...(values[index].value as string[])];
       currentValue.splice(arrayIndex, 1);
@@ -100,25 +135,17 @@ export function CallDataInputForm({
         value: currentValue,
       };
 
-      // Update both form and parent
       setValue("calldataItems", newValues);
     },
     [watch, setValue]
   );
 
-  const onSubmit = useCallback((data: Calldata) => {
-    console.log("data", data);
-  }, []);
-
   return (
-    <form
-      className="flex flex-col gap-[10px]"
-      onSubmit={handleSubmit(onSubmit)}
-    >
+    <div className="flex flex-col gap-[10px]">
       {fields.map((input, index) => (
         <div key={input.name} className="flex flex-col gap-[5px]">
           <div className="flex flex-row gap-[10px]">
-            <span className="inline-flex h-[37px] w-[200px] items-center justify-center truncate rounded-[4px] border border-border bg-card-background px-[10px] text-[14px] text-foreground">
+            <span className="inline-flex h-[37px] w-[200px] items-center justify-start truncate rounded-[4px] border border-border bg-card-background px-[10px] text-[14px] text-foreground">
               {input.name}
             </span>
             <div className="flex flex-1 flex-col gap-[10px]">
@@ -135,11 +162,14 @@ export function CallDataInputForm({
                             input.type
                           )}[${arrayIndex}]`}
                           className={`h-[37px] border-border bg-card ${
-                            getFieldError(index) ? "border-danger" : ""
+                            shouldShowError(index, arrayIndex)
+                              ? "border-danger"
+                              : ""
                           }`}
                           value={arrayValue}
-                          onBlur={(e) => {
+                          onChange={(e) => {
                             const newVal = e.target.value;
+                            onFieldTouch?.(index, arrayIndex);
                             update(index, {
                               name: fields[index].name,
                               type: fields[index].type,
@@ -150,18 +180,18 @@ export function CallDataInputForm({
                                   )
                                 : newVal,
                             });
-                            trigger(`calldataItems.${index}.value`);
+                            trigger(`calldataItems.${index}`);
                           }}
                         />
                         <Trash2
                           className="h-[18px] w-[18px] cursor-pointer transition-opacity hover:opacity-80"
-                          onClick={() => removeArrayItem(index, arrayIndex)}
+                          onClick={() => {
+                            onFieldUntouchArray?.(index, arrayIndex);
+                            removeArrayItem(index, arrayIndex);
+                          }}
                         />
                       </div>
                     ))}
-                  {getFieldError(index) && (
-                    <ErrorMessage message={getFieldError(index)?.message} />
-                  )}
                   <button
                     type="button"
                     className="flex h-[37px] w-[100px] items-center justify-center rounded-[4px] border border-border text-[14px]"
@@ -172,32 +202,32 @@ export function CallDataInputForm({
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-[10px]">
-                  <Input
-                    placeholder={`${input.type}`}
-                    className={`h-[37px] border-border bg-card  ${
-                      getFieldError(index) ? "border-danger" : ""
-                    }`}
-                    onBlur={(e) => {
-                      const newVal = e.target.value;
-                      update(index, {
-                        name: fields[index].name,
-                        type: fields[index].type,
-                        isArray: fields[index].isArray,
-                        value: newVal,
-                      });
-                      trigger(`calldataItems.${index}.value`);
-                    }}
-                  />
-                  {getFieldError(index) && (
-                    <ErrorMessage message={getFieldError(index)?.message} />
-                  )}
-                </div>
+                <Input
+                  placeholder={`${input.type}`}
+                  value={input.value as string}
+                  className={`h-[37px] border-border bg-card  ${
+                    shouldShowError(index) ? "border-danger" : ""
+                  }`}
+                  onChange={(e) => {
+                    const newVal = e.target.value;
+                    onFieldTouch?.(index);
+                    update(index, {
+                      name: fields[index].name,
+                      type: fields[index].type,
+                      isArray: fields[index].isArray,
+                      value: newVal,
+                    });
+                    trigger(`calldataItems.${index}`);
+                  }}
+                />
               )}
             </div>
           </div>
+          {shouldShowError(index) && (
+            <ErrorMessage message={getFieldError(index)?.message} />
+          )}
         </div>
       ))}
-    </form>
+    </div>
   );
 }
