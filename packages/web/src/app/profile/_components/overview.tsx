@@ -46,7 +46,7 @@ export const Overview = ({
     return (
       <div className="flex items-center gap-[5px]">
         <div>{formattedVotes}</div>
-        <div>({percentage.toFixed(1)}%)</div>
+        <div>({percentage.toFixed(2)}%)</div>
       </div>
     );
   }, [formattedVotes, votes, dataMetrics?.powerSum]);
