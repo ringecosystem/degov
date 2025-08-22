@@ -21,7 +21,6 @@ import {
   extractMethodNameFromSignature,
   parseSolidityFunctionParams,
 } from "@/utils";
-import { formatShortAddress } from "@/utils/address";
 
 import { generateFunctionSignature } from "./helper";
 
@@ -153,13 +152,11 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-1/3 rounded-l-[14px] px-[10px] text-left">
+            <TableHead className="w-[22.93%] rounded-l-[14px] px-[10px] text-left">
               Type
             </TableHead>
-            <TableHead className="w-1/3 px-[10px] text-left">
-              Address Data
-            </TableHead>
-            <TableHead className="w-1/3 rounded-r-[14px] px-[10px] text-left">
+            <TableHead className="w-[46.09%] px-[10px] text-left">To</TableHead>
+            <TableHead className="w-[30.98%] rounded-r-[14px] px-[10px] text-left">
               Details
             </TableHead>
           </TableRow>
@@ -168,7 +165,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
           {actionPanelInfo?.map((action, index) => (
             <Fragment key={index}>
               <TableRow>
-                <TableCell className="w-1/3 text-left">
+                <TableCell className="w-[22.93%] text-left">
                   <div className="flex items-center gap-[10px]">
                     <Image
                       src={
@@ -199,37 +196,37 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                     </span>
                   </div>
                 </TableCell>
-                <TableCell className="w-1/3 text-left">
+                <TableCell className="w-[46.09%] text-left">
                   {action.address ? (
-                    <a
-                      href={`${daoConfig?.chain?.explorers?.[0]}/address/${action.address}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-[5px] hover:underline font-mono"
-                    >
-                      {action.address
-                        ? formatShortAddress(action.address)
-                        : "No address"}
-                      <Image
-                        src="/assets/image/light/external-link.svg"
-                        alt="external-link"
-                        width={16}
-                        height={16}
-                        className="dark:hidden"
-                      />
-                      <Image
-                        src="/assets/image/external-link.svg"
-                        alt="external-link"
-                        width={16}
-                        height={16}
-                        className="hidden dark:block"
-                      />
-                    </a>
+                    <span className="flex items-center gap-[5px]  font-mono">
+                      {action.address ? action.address : "No address"}
+                      <a
+                        href={`${daoConfig?.chain?.explorers?.[0]}/address/${action.address}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:opacity-80 transition-opacity duration-300 cursor-pointer"
+                      >
+                        <Image
+                          src="/assets/image/light/external-link.svg"
+                          alt="external-link"
+                          width={16}
+                          height={16}
+                          className="dark:hidden"
+                        />
+                        <Image
+                          src="/assets/image/external-link.svg"
+                          alt="external-link"
+                          width={16}
+                          height={16}
+                          className="hidden dark:block"
+                        />
+                      </a>
+                    </span>
                   ) : (
                     <span className="text-muted-foreground"></span>
                   )}
                 </TableCell>
-                <TableCell className="w-1/3 text-left">
+                <TableCell className="w-[30.98%] text-left">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono">{action.details}</span>
                     {action?.params?.length && (
@@ -258,13 +255,13 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                 {action.params && openParams.includes(index) && (
                   <motion.tr
                     data-expanded
-                    className="border-t-0"
+                    className="border-t-0 "
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: DEFAULT_ANIMATION_DURATION }}
                   >
-                    <TableCell colSpan={3} className="pt-0">
+                    <TableCell colSpan={3} className="pt-0 px-[20px]">
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -397,95 +394,91 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
     <>
       {actionPanelInfo?.length > 0 && (
         <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-          <div className="space-y-[20px]">
-            <div className="flex items-center justify-between">
-              <motion.h2
-                className="text-[26px] font-semibold"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: DEFAULT_ANIMATION_DURATION }}
-              >
-                Actions
-              </motion.h2>
-
-              <AnimatePresence mode="wait" initial={false}>
-                {tab === "summary" && (
-                  <motion.div
-                    key="raw-button"
-                    initial="initial"
-                    animate="animate"
-                    exit="exit"
-                    variants={buttonVariants}
-                    transition={{ duration: DEFAULT_ANIMATION_DURATION }}
-                  >
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setTab("raw")}
-                      className="rounded-full border-border bg-card cursor-pointer"
-                      asChild
-                    >
-                      <motion.div whileTap={{ scale: 0.95 }}>Raw</motion.div>
-                    </Button>
-                  </motion.div>
-                )}
-                {tab === "raw" && (
-                  <motion.div
-                    key="summary-button"
-                    initial="initial"
-                    animate="animate"
-                    exit="exit"
-                    variants={buttonVariants}
-                    transition={{ duration: DEFAULT_ANIMATION_DURATION }}
-                  >
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setTab("summary")}
-                      className="rounded-full border-border bg-card cursor-pointer"
-                      asChild
-                    >
-                      <motion.div whileTap={{ scale: 0.95 }}>
-                        Summary
-                      </motion.div>
-                    </Button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+          <header className="flex items-center justify-between border-b border-card-background pb-[10px]">
+            <motion.h4
+              className="text-[18px] font-semibold"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: DEFAULT_ANIMATION_DURATION }}
+            >
+              Actions
+            </motion.h4>
 
             <AnimatePresence mode="wait" initial={false}>
-              {tab === "raw" ? (
+              {tab === "summary" && (
                 <motion.div
-                  key="raw-content"
+                  key="raw-button"
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  variants={contentVariants}
-                  transition={{
-                    duration: DEFAULT_ANIMATION_DURATION,
-                    ease: "easeInOut",
-                  }}
+                  variants={buttonVariants}
+                  transition={{ duration: DEFAULT_ANIMATION_DURATION }}
                 >
-                  {RawView}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTab("raw")}
+                    className="rounded-full border-border bg-card cursor-pointer"
+                    asChild
+                  >
+                    <motion.div whileTap={{ scale: 0.95 }}>Raw</motion.div>
+                  </Button>
                 </motion.div>
-              ) : (
+              )}
+              {tab === "raw" && (
                 <motion.div
-                  key="summary-content"
+                  key="summary-button"
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  variants={contentVariants}
-                  transition={{
-                    duration: DEFAULT_ANIMATION_DURATION,
-                    ease: "easeInOut",
-                  }}
+                  variants={buttonVariants}
+                  transition={{ duration: DEFAULT_ANIMATION_DURATION }}
                 >
-                  {SummaryView}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTab("summary")}
+                    className="rounded-full border-border bg-card cursor-pointer"
+                    asChild
+                  >
+                    <motion.div whileTap={{ scale: 0.95 }}>Summary</motion.div>
+                  </Button>
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+          </header>
+
+          <AnimatePresence mode="wait" initial={false}>
+            {tab === "raw" ? (
+              <motion.div
+                key="raw-content"
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                variants={contentVariants}
+                transition={{
+                  duration: DEFAULT_ANIMATION_DURATION,
+                  ease: "easeInOut",
+                }}
+              >
+                {RawView}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="summary-content"
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                variants={contentVariants}
+                transition={{
+                  duration: DEFAULT_ANIMATION_DURATION,
+                  ease: "easeInOut",
+                }}
+              >
+                {SummaryView}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </>
