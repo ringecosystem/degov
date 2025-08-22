@@ -109,7 +109,7 @@ export const ProposalPanel = ({
       </div>
       <div className="flex flex-col gap-[10px]">
         <label className="text-[14px] text-foreground" htmlFor="discussion">
-          Discussion(Optional)
+          Offchain discussion (Optional)
         </label>
         <Input
           id="discussion"

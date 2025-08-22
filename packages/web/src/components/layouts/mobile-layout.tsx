@@ -16,7 +16,7 @@ export const MobileLayout = ({ children }: MobileLayoutProps) => {
     <div className="flex h-dvh overflow-hidden bg-background font-sans antialiased">
       <main className="flex min-w-0 flex-1 flex-col overflow-y-auto h-dvh">
         <MobileHeader />
-        <div className="mx-auto w-full flex-1 p-[15px] gap-[20px] flex flex-col max-w-[1400px]">
+        <div className="mx-auto w-full flex-1 p-[15px] gap-[20px] flex flex-col max-w-[1460px]">
           <DemoTips />
           <Alert />
           <PageTransition>{children}</PageTransition>

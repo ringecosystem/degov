@@ -61,13 +61,13 @@ export const FileUploader = ({
       ) : (
         <>
           <p className="text-[18px] font-normal text-foreground">
-            Drag and drop your ABl file
+            Drag and drop your ABI file
           </p>
           <p className="text-[14px] text-muted-foreground">
             Or click to browse your json files
           </p>
           {isError && (
-            <p className="flex items-center gap-[4px] text-[14px] text-foreground">
+            <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
               <Image
                 src="/assets/image/proposal/action/error.svg"
                 alt="abi-file"
@@ -78,7 +78,7 @@ export const FileUploader = ({
             </p>
           )}
           {isUploaded && (
-            <p className="absolute left-[10px] bottom-[10px] flex items-center gap-[4px] text-[14px] text-foreground">
+            <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
               <Image
                 src="/assets/image/proposal/action/check.svg"
                 alt="abi-file"
