@@ -238,7 +238,7 @@ export function ProfileForm({
   }, [data, form]);
 
   return (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] shadow-card">
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit((data) =>

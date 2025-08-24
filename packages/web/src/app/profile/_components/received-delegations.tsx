@@ -44,7 +44,9 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
 
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px]">
-      <h3 className="text-[16px] lg:text-[18px] font-semibold">{getDisplayTitle()}</h3>
+      <h3 className="text-[16px] lg:text-[18px] font-semibold">
+        {getDisplayTitle()}
+      </h3>
       <div className="lg:hidden">
         <DelegationList address={address} />
       </div>

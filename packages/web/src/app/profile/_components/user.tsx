@@ -47,7 +47,7 @@ export const User = ({
   const [showFullDescription, setShowFullDescription] = useState(false);
 
   return (
-    <div className="flex flex-col gap-[15px] lg:gap-[20px] rounded-[14px] bg-card p-[15px] lg:p-[20px]">
+    <div className="flex flex-col gap-[15px] lg:gap-[20px] rounded-[14px] bg-card p-[15px] lg:p-[20px] shadow-card">
       <div className="flex w-full flex-col lg:flex-row lg:items-center gap-[15px] lg:gap-[10px] lg:justify-between">
         <div className="flex items-center gap-[10px] lg:gap-[10px]">
           <AddressAvatar

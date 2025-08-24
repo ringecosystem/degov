@@ -21,7 +21,7 @@ export const DaoHeader = () => {
 
   return (
     <div
-      className="lg:grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-[#202224] p-[20px]"
+      className="lg:grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-[#202224] p-[20px] shadow-card"
       style={{
         backgroundImage: isCustomBanner
           ? `url(${config?.theme?.banner})`
