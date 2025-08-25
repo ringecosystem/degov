@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import React from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
@@ -20,7 +20,8 @@ import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
-import { formatFunctionSignature, simplifyFunctionSignature } from "@/utils";
+import { formatFunctionSignature } from "@/utils";
+import { decodeRecursive, type DecodeRecursiveResult } from "@/utils/decoder";
 import { formatBigIntForDisplay } from "@/utils/number";
 
 import type { Action } from "./action-table-raw";
@@ -28,6 +29,11 @@ import type { Action } from "./action-table-raw";
 interface ActionTableSummaryProps {
   actions: Action[];
   isLoading?: boolean;
+}
+
+interface DecodedAction extends Action {
+  decodedResult?: DecodeRecursiveResult | null;
+  isDecoding?: boolean;
 }
 
 interface ParsedParam {
@@ -43,43 +49,20 @@ function parseCalldataParams(
   if (!signature || !calldata || calldata === "0x") return [];
 
   try {
-    const simplifiedSignature = simplifyFunctionSignature(signature);
-    const iface = new ethers.Interface([`function ${simplifiedSignature}`]);
-    const decoded = iface.decodeFunctionData(
-      simplifiedSignature.split("(")[0],
-      calldata
-    );
+    const iface = new ethers.Interface([`function ${signature}`]);
+    const decoded = iface.parseTransaction({ data: calldata });
 
-    const match = signature.match(/\((.*)\)/);
-    if (!match || !match[1].trim()) return [];
+    if (!decoded) return [];
 
-    const paramsString = match[1];
-    const paramDefinitions = paramsString
-      .split(",")
-      .map((param) => param.trim());
-
-    return paramDefinitions.map((paramDef, index) => {
-      const parts = paramDef.trim().split(/\s+/);
-      const type = parts[0];
-      const name = parts.length >= 2 ? parts.slice(1).join(" ") : type;
-
-      let value = decoded[index];
-      if (typeof value === "bigint") {
-        value = value.toString();
-      } else if (Array.isArray(value)) {
-        value = Array.from(value).map((v) =>
-          typeof v === "bigint" ? v.toString() : v
-        );
-      }
-
+    return decoded.args.map((arg, index) => {
+      const input = decoded.fragment.inputs[index];
       return {
-        name,
-        type,
-        value: Array.isArray(value) ? value : String(value),
+        name: input?.name || `param${index}`,
+        type: input?.type || "unknown",
+        value: Array.isArray(arg) ? arg.map(String) : String(arg),
       };
     });
-  } catch (e) {
-    console.warn("Error parsing calldata:", e);
+  } catch {
     return [];
   }
 }
@@ -90,6 +73,76 @@ export function ActionTableSummary({
 }: ActionTableSummaryProps) {
   const daoConfig = useDaoConfig();
   const [openParams, setOpenParams] = useState<number[]>([]);
+  const [decodedActions, setDecodedActions] = useState<DecodedAction[]>([]);
+
+  // Component-level decoding cache to avoid duplicate decoding
+  const decodingCache = useMemo(() => new Map<string, Promise<DecodeRecursiveResult | null>>(), []);
+
+  // Decode actions using calldata decoder
+  useEffect(() => {
+    const decodeActions = async () => {
+      const decoded = await Promise.all(
+        actions.map(async (action) => {
+          // Skip decoding for simple transfers or empty calldata
+          if (!action.calldata || action.calldata === "0x") {
+            return { ...action, decodedResult: null, isDecoding: false };
+          }
+
+          // Create cache key including all parameters that affect decoding
+          const cacheKey = `${action.calldata}-${action.target}-${daoConfig?.chain?.id}-${action.signature}`;
+          // Check if decoding is already in progress
+          let decodePromise = decodingCache.get(cacheKey);
+          if (!decodePromise) {
+            // Create new decoding promise and cache it
+            decodePromise = (async () => {
+              try {
+                let result = null;
+
+                // Try decoding with contract address first (more accurate)
+                if (daoConfig?.chain?.id && action.target) {
+                  result = await decodeRecursive({
+                    calldata: action.calldata,
+                    address: action.target,
+                    chainId: daoConfig.chain.id,
+                  });
+                }
+
+                // Fallback to signature-based decoding if address decoding fails
+                if (!result && action.signature) {
+                  try {
+                    const iface = new ethers.Interface([`function ${action.signature}`]);
+                    const abi = iface.fragments.map(f => f.format('json')).map(f => JSON.parse(f));
+                    result = await decodeRecursive({
+                      calldata: action.calldata,
+                      abi,
+                    });
+                  } catch {
+                    // Signature decoding failed, continue with null result
+                  }
+                }
+
+                return result;
+              } catch {
+                return null;
+              }
+            })();
+
+            decodingCache.set(cacheKey, decodePromise);
+          }
+
+          const result = await decodePromise;
+          return { ...action, decodedResult: result, isDecoding: false };
+        })
+      );
+      setDecodedActions(decoded);
+    };
+
+    if (actions.length > 0) {
+      // Set initial loading state
+      setDecodedActions(actions.map(action => ({ ...action, isDecoding: true })));
+      decodeActions();
+    }
+  }, [actions, daoConfig?.chain?.id, decodingCache]);
 
   const toggleParams = (index: number) => {
     setOpenParams((prev) =>
@@ -98,10 +151,11 @@ export function ActionTableSummary({
   };
 
   const data = useMemo(() => {
-    return actions.map((action, index) => {
+    return decodedActions.map((action, index) => {
       const isXAccount =
         action?.signature ===
         "send(uint256 toChainId, address toDapp, bytes calldata message, bytes calldata params) external payable";
+
       const type =
         action?.calldata === "0x"
           ? "transfer"
@@ -116,15 +170,32 @@ export function ActionTableSummary({
           daoConfig?.chain?.nativeToken?.decimals ?? 18
         )} ${daoConfig?.chain?.nativeToken?.symbol}`;
       } else {
-        details = action?.signature
-          ? formatFunctionSignature(action?.signature)
-          : "";
+        // Use decoded function name if available, otherwise use formatted signature
+        if (action.decodedResult?.functionName) {
+          details = action.decodedResult.functionName;
+        } else {
+          details = action?.signature
+            ? formatFunctionSignature(action?.signature)
+            : "";
+        }
       }
 
-      const params = parseCalldataParams(
-        action?.signature || "",
-        action?.calldata || ""
-      );
+      // Generate parameters for display
+      let params: ParsedParam[] = [];
+      if (action.decodedResult?.args) {
+        // Use decoded parameters from decoder
+        params = action.decodedResult.args.map((param) => ({
+          name: param.name,
+          type: param.type,
+          value: Array.isArray(param.value) ? param.value : String(param.value),
+        }));
+      } else {
+        // Fallback to signature-based parsing
+        params = parseCalldataParams(
+          action?.signature || "",
+          action?.calldata || ""
+        );
+      }
       const hasParams = params.length > 0 && type !== "transfer";
 
       return {
@@ -134,9 +205,10 @@ export function ActionTableSummary({
         params,
         hasParams,
         index,
+        isDecoding: action.isDecoding,
       };
     });
-  }, [actions, daoConfig]);
+  }, [decodedActions, daoConfig]);
 
   const LoadingRows = useMemo(() => {
     return Array.from({ length: 3 }).map((_, index) => (
