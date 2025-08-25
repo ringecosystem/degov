@@ -19,7 +19,7 @@
     "dotenv": "^16.4.5",
     "pg": "^8.12.0",
     "typeorm": "^0.3.20",
-    "yaml": "^2.7.0"
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@subsquid/evm-typegen": "^4.2.0",
