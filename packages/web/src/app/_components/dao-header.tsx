@@ -54,7 +54,7 @@ export const DaoHeader = () => {
 
         <div className="lg:hidden">
           <p
-            className={`text-[13px] lg:text-[14px] text-foreground/80 max-w-[693px] ${
+            className={`text-[13px] lg:text-[14px] text-white max-w-[693px] ${
               !showFullDescription ? "line-clamp-2" : ""
             } cursor-pointer`}
             onClick={() => setShowFullDescription(!showFullDescription)}
@@ -68,7 +68,7 @@ export const DaoHeader = () => {
             <TooltipTrigger asChild>
               <p
                 className={cn(
-                  "line-clamp-2 text-[14px] text-foreground/80 max-w-[693px] text-white"
+                  "line-clamp-2 text-[14px] max-w-[693px] text-white"
                 )}
               >
                 {config?.description}
