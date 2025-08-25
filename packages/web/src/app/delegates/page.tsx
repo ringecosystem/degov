@@ -86,7 +86,9 @@ export default function Members() {
       <WithConnect>
         <div className="flex flex-col gap-[15px] lg:gap-[20px]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-[10px] sm:gap-[20px]">
-            <h3 className="text-[16px] lg:text-[18px] font-extrabold">{getDisplayTitle()}</h3>
+            <h3 className="text-[16px] lg:text-[18px] font-extrabold">
+              {getDisplayTitle()}
+            </h3>
             <div className="flex h-[36px] w-full sm:w-[388px] items-center gap-[13px] rounded-[20px] border px-[17px] transition-all border-border bg-card">
               <Search className="h-[15px] w-[15px] text-foreground/50" />
               <Input
@@ -105,7 +107,7 @@ export default function Members() {
                   searchTerm={debouncedSearchTerm}
                 />
               </div>
-              
+
               <div className="hidden lg:block">
                 <MembersTable
                   onDelegate={handleDelegate}
@@ -113,7 +115,7 @@ export default function Members() {
                 />
               </div>
             </div>
-            <div className="lg:w-[300px] flex flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
+            <div className="w-[360px] flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
               <SystemInfo />
               <Faqs type="delegate" />
             </div>
@@ -128,7 +130,9 @@ export default function Members() {
       <div className="flex flex-col lg:flex-row lg:items-start gap-[15px] lg:gap-[20px]">
         <div className="flex-1 flex flex-col gap-[15px] lg:gap-[20px]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-[10px] sm:gap-[20px]">
-            <h3 className="text-[16px] lg:text-[18px] font-extrabold">{getDisplayTitle()}</h3>
+            <h3 className="text-[16px] lg:text-[18px] font-extrabold">
+              {getDisplayTitle()}
+            </h3>
             <div className="flex h-[36px] w-full sm:w-[388px] items-center gap-[13px] rounded-[20px] border px-[17px] transition-all border-border bg-card">
               <Search className="h-[15px] w-[15px] text-foreground/50" />
               <Input
@@ -152,7 +156,7 @@ export default function Members() {
             />
           </div>
         </div>
-        <div className="lg:w-[300px] flex flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
+        <div className="w-[360px] flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
           <SystemInfo />
           <Faqs type="delegate" />
         </div>

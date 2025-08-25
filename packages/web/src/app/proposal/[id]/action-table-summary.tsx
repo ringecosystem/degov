@@ -155,8 +155,8 @@ export function ActionTableSummary({
   }, []);
 
   return (
-    <div className="overflow-x-auto lg:overflow-x-visible">
-      <div className="min-w-[600px] lg:min-w-0">
+    <div className="overflow-x-auto">
+      <div className="min-w-[980px]">
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>
@@ -166,7 +166,10 @@ export function ActionTableSummary({
               >
                 Type
               </TableHead>
-              <TableHead className="text-left" style={{ width: "41.8%" }}>
+              <TableHead
+                className="text-left"
+                style={{ width: "41.8%", minWidth: "410px" }}
+              >
                 To
               </TableHead>
               <TableHead
@@ -234,7 +237,7 @@ export function ActionTableSummary({
 
                         <TableCell
                           className="text-left"
-                          style={{ width: "41.8%" }}
+                          style={{ width: "41.8%", minWidth: "410px" }}
                         >
                           {record.target ? (
                             <span className="flex items-center gap-[5px] font-mono">

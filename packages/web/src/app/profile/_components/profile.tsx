@@ -267,10 +267,9 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
             delegationStatusText={delegationStatusText}
             isDelegateMappingsLoading={isDelegateMappingsLoading}
           />
-
           <ReceivedDelegations address={address} />
         </div>
-        <div className="hidden lg:flex flex flex-col gap-[15px] lg:gap-[20px] lg:w-[300px]">
+        <div className="hidden lg:flex flex-col gap-[15px] lg:gap-[20px] w-[360px]">
           <SystemInfo />
           <Faqs type="delegate" />
         </div>
