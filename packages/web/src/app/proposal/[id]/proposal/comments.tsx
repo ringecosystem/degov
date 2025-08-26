@@ -260,7 +260,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
   const hasMoreItems = visibleCount < filteredComments.length;
 
   return (
-    <div className="rounded-[14px] bg-card p-[20px] flex flex-col h-full min-h-0">
+    <div className="rounded-[14px] bg-card p-[20px] flex flex-col h-full min-h-0 shadow-card">
       <div className="overflow-x-auto lg:overflow-x-visible">
         <div className="min-w-[800px] lg:min-w-0">
           <CustomTable

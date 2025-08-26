@@ -84,7 +84,7 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
 
   return (
     <div className="flex flex-col gap-[20px] animate-in fade-in duration-300">
-      <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px]">
+      <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
         <h2 className="text-[16px] lg:text-[26px] font-semibold flex items-center gap-[10px]">
           {proposalContent?.value?.title}
         </h2>
@@ -104,7 +104,7 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
       </div>
 
       {proposalContent?.value?.discussion && (
-        <div className="flex flex-col gap-[20px] p-[10px] lg:p-[20px] rounded-[14px] bg-card">
+        <div className="flex flex-col gap-[20px] p-[10px] lg:p-[20px] rounded-[14px] bg-card shadow-card">
           <div className="flex flex-col gap-[12px]">
             <h3 className="text-[18px] font-semibold text-foreground border-b border-card-background pb-[20px]">
               Offchain discussion
@@ -121,36 +121,38 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
         </div>
       )}
 
-      <div className="flex flex-col gap-[20px] bg-card p-[10px] lg:p-[20px] rounded-[14px]">
-        <div className="flex flex-col gap-[12px]">
-          <div
-            ref={markdownRef}
-            className="markdown-body"
-            style={{
-              overflow: "hidden",
-            }}
-          >
+      {!!sanitizedHtml && (
+        <div className="flex flex-col gap-[20px] bg-card p-[10px] lg:p-[20px] rounded-[14px] shadow-card">
+          <div className="flex flex-col gap-[12px]">
             <div
+              ref={markdownRef}
+              className="markdown-body"
               style={{
-                whiteSpace: "wrap",
-                wordWrap: "break-word",
+                overflow: "hidden",
               }}
-              className="text-balance"
-              dangerouslySetInnerHTML={{
-                __html: sanitizedHtml,
-              }}
-            />
-          </div>
-          {showToggle && (
-            <div
-              className="flex flex-col border-t border-card-background pt-[20px] text-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
-              onClick={toggleExpanded}
             >
-              <span>{isExpanded ? "Show less" : "Show more"}</span>
+              <div
+                style={{
+                  whiteSpace: "wrap",
+                  wordWrap: "break-word",
+                }}
+                className="text-balance"
+                dangerouslySetInnerHTML={{
+                  __html: sanitizedHtml,
+                }}
+              />
             </div>
-          )}
+            {showToggle && (
+              <div
+                className="flex flex-col border-t border-card-background pt-[20px] text-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
+                onClick={toggleExpanded}
+              >
+                <span>{isExpanded ? "Show less" : "Show more"}</span>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <ActionsPanel actions={actions} />
     </div>

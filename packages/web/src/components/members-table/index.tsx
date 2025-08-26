@@ -153,7 +153,7 @@ export function MembersTable({
   );
 
   return (
-    <div className="rounded-[14px] bg-card p-[20px]">
+    <div className="rounded-[14px] bg-card p-[20px] shadow-card">
       <CustomTable
         tableClassName="table-fixed"
         columns={columns}
