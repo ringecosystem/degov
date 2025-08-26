@@ -72,7 +72,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
   );
 
   return (
-    <div className="rounded-[14px] bg-card p-[20px]">
+    <div className="rounded-[14px] bg-card p-[20px] shadow-card">
       <CustomTable
         dataSource={state.data}
         columns={columns}

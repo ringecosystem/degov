@@ -133,9 +133,9 @@ export function TreasuryTable({
   useEffect(() => {
     return () => setVisibleItems(5);
   }, []);
-  
+
   return (
-    <div className="rounded-[14px] bg-card p-[20px]">
+    <div className="rounded-[14px] bg-card p-[20px] shadow-card">
       {isLoading ? (
         <TableSkeleton standard={standard} />
       ) : (
