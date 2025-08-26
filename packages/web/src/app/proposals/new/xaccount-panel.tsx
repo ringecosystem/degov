@@ -83,7 +83,7 @@ export const XAccountPanel = ({
   return (
     <div
       className={cn(
-        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] pb-[50px]",
+        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] pb-[50px] shadow-card",
         visible ? "animate-in fade-in duration-300" : "hidden"
       )}
     >

@@ -168,7 +168,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
 
   if (type === "proposal") {
     return (
-      <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] w-[360px]">
+      <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] w-[360px] shadow-card">
         <div className="flex items-center gap-[10px]">
           <h2 className="text-[18px] font-semibold">System Info</h2>
         </div>
@@ -236,7 +236,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
   }
 
   return (
-    <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] w-[360px]">
+    <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] w-[360px] shadow-card">
       <div className="flex items-center gap-[10px]">
         <h2 className="text-[18px] font-semibold">System Info</h2>
       </div>

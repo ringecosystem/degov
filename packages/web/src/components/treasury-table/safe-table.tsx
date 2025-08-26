@@ -37,7 +37,7 @@ export function SafeTable({ caption }: SafeTableProps) {
     return (daoConfig.safes || []).map((v) => {
       const explorer = flatChainInfo?.[v.chainId ?? ""]?.blockExplorer;
       const icon = flatChainInfo?.[v.chainId ?? ""]?.icon;
-      
+
       return {
         name: v.name,
         address: v.link.split(":")[2],
@@ -66,7 +66,7 @@ export function SafeTable({ caption }: SafeTableProps) {
   }, []);
 
   return (
-    <div className="rounded-[14px] bg-card p-[20px]">
+    <div className="rounded-[14px] bg-card p-[20px] shadow-card">
       {isFetching ? (
         <TableSkeleton />
       ) : (

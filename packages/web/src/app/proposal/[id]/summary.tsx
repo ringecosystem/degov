@@ -37,7 +37,7 @@ export const Summary = ({
   const daoConfig = useDaoConfig();
 
   return (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px]">
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
       <div className="flex items-center justify-between gap-[20px]">
         {isPending ? (
           <Skeleton className="h-[37px] w-[100px]" />
@@ -82,9 +82,7 @@ export const Summary = ({
             )}
           </div>
           <span className="text-foreground flex items-center gap-[5px]">
-            <div className="hidden lg:block">
-              On
-            </div>
+            <div className="hidden lg:block">On</div>
             <Link
               href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
               target="_blank"
