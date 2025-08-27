@@ -1,111 +1,73 @@
-name: DeGov Demo DAO
-code: degov-demo-dao
-logo: https://pbs.twimg.com/profile_images/1912415584257474560/GznnScP3_400x400.jpg
-siteUrl: https://degov-dev.vercel.app
-offChainDiscussionUrl: https://github.com/ringecosystem/degov/discussions
-description: |
-  It's a demo DAO for developers and users to experience DeGov's features, including the
-  latest innovations features like AI agents, token wrapping, and more. The DAO is built
-  on the Darwinia chain, an Ethereum-compatible chain.
-# The following fields in the links are optional and will be used to display basic information about the DAO
+name: ENS DAO
+code: ens-dao
+logo: https://pbs.twimg.com/profile_images/1810706000669798400/nYlIMYkq_400x400.jpg
+siteUrl: https://ens.degov.ai
+offChainDiscussionUrl: https://discuss.ens.domains
+description: AI powered on-chain governance platform for ENS DAO
+
 links:
-  coingecko: https://www.coingecko.com/en/coins/ringdao
-  website: https://degov.ai
-  twitter: https://x.com/ringecosystem
-  discord: https://discord.gg/RingDAO
-  telegram: https://t.me/RingDAO_Hub
-  github: https://github.com/ringecosystem/degov
-  #email: # It's ok to leave it empty
+  coingecko: https://www.coingecko.com/en/coins/ethereum-name-service
+  website: https://ens.domains
+  twitter: https://x.com/ensdomains
+  discord: https://chat.ens.domains
+  github: https://github.com/ensdomains
 
-# The custom theme configuration for the DAO, this is optional.
 theme:
-  logoDark: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/demo-dark.svg
-  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/demo-light.svg
-  banner: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo.jpg
-  bannerMobile: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo-mobile.jpg
-  # The general faqs displayed on the dashboard, at most 5 items
-  faqs:
-    - question: What is DeGov.AI?
-      answer: https://docs.degov.ai
-    - question: How is AI integrated into DeGov.AI? 
-      answer: https://docs.degov.ai/faqs/#how-does-degovai-utilize-ai-capabilities
-    - question: What's the difference between DeGov.AI and Tally?
-      answer: https://docs.degov.ai/faqs/#whats-the-difference-between-degovai-and-tally
-    - question: Is DeGov.AI secure?
-      answer: https://docs.degov.ai/faqs/#is-degovai-secure
-    - question: How can I create or vote on proposals?
-      answer: https://docs.degov.ai/faqs/#how-can-i-create-or-vote-on-proposals
+  logoDark: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/ens-dark.svg
+  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/ens-light.svg
 
-# Wallet connection related configuration
 wallet:
-  walletConnectProjectId: faf5e91ac5ed4d0a94d2648a6fcc9daa
+  walletConnectProjectId: 4e204efdf64201e155ce7ad7123d127d
 
-# Chain information: these commented fields are optional if this chain can be accessed by viem.
 chain:
-  id: 46
-  name: Darwinia Network
-  logo: https://pbs.twimg.com/profile_images/1742030786495500288/merX__YL_400x400.jpg
+  name: Ethereum Network
+  id: 1
+  logo: https://pbs.twimg.com/profile_images/1878738447067652096/tXQbWfpf_400x400.jpg
   rpcs:
-    - https://rpc.darwinia.network
+    - https://ethereum-rpc.publicnode.com
   explorers:
-    - https://explorer.darwinia.network/
+    - https://etherscan.io
   nativeToken:
-    symbol: RING
+    symbol: ETH
+    priceId: ethereum
     decimals: 18
-    priceId: darwinia-network-native-token
-    logo: https://assets.coingecko.com/coins/images/9443/standard/RING.png
+    logo: https://assets.coingecko.com/coins/images/279/standard/ethereum.png
 
-# Indexer related configuration
 indexer:
-  endpoint: https://indexer.degov.ai/degov-demo-dao/graphql
-  startBlock: 5873342
-  # if set this, indexer rpc will be use this first
-  rpc: wss://rpc.darwinia.network
+  endpoint: https://indexer.degov.ai/ens-dao/graphql
+  startBlock: 13533418
+  rpc: https://erpc.ringdao.com/main/evm/1
+  gateway: https://v2.archive.subsquid.io/network/ethereum-mainnet
 
-# AI Agent related configuration
 aiAgent:
   endpoint: https://agent.degov.ai
 
-# Core contracts related to the DAO Governance
 contracts:
-  governor: "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
+  governor: "0x323A76393544d5ecca80cd6ef2A560C6a395b7E3"
   governorToken:
-    address: "0xbC9f58566810F7e853e1eef1b9957ac82F9971df"
+    address: "0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72"
     standard: ERC20
-  timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
+  timeLock: "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7"
 
-# The treasury assets information
 treasuryAssets:
-  - name: FT
-    contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
+  - name: Ethereum Name Service
+    contract: "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72"
     standard: ERC20
-    priceId: FT
-    #logo: # Default logo if not provided
-  - name: NFT
-    contract: "0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A"
-    standard: ERC721
-    priceId: NFT
-    #logo: # Default logo if not provided
+    priceId: ethereum-name-service
+    logo: https://assets.coingecko.com/coins/images/19785/standard/ENS.jpg
+  - name: USDC
+    contract: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    standard: ERC20
+    priceId: usd-coin
+    logo: https://assets.coingecko.com/coins/images/6319/standard/usdc.png
 
-# The DAO Safe information
 safes:
-  - name: Test DAO Safe(Arbitrum)
-    chainId: 42161
-    link: https://app.safe.global/home?safe=arb1:0x80d180621B2f875269216f19A499e6fB9402776C
-  - name: Test DAO Safe(Sepolia)
-    chainId: 11155111
-    link: https://app.safe.global/home?safe=sep:0x80d180621B2f875269216f19A499e6fB9402776C
-
-# The applications shortcuts related to the DAO
-apps:
-  - name: Token Wrap
-    description: Convert back and forth between the native token and the wrapped governance token
-    icon: https://pbs.twimg.com/profile_images/1912415584257474560/GznnScP3_400x400.jpg
-    link: https://token-wrap.degov.ai?config=https://degov-dev.vercel.app/degov.yml
-    params:
-      sourceToken:
-        address: "0x48C817eebE1fD79F946bd6b976EF579540517121"
-        icon: https://assets.coingecko.com/coins/images/9443/standard/RING.png
-      wrapToken:
-        address: "0x0ef0827A9d5D329DFbaA14c7d5Aae364453A4D32"
-        icon: https://assets.coingecko.com/coins/images/9443/standard/RING.png
+  - name: ENS Meta Governance Safe
+    chainId: 1
+    link: https://app.safe.global/home?safe=eth:0x91c32893216dE3eA0a55ABb9851f581d4503d39b
+  - name: ENS Ecosystem Safe
+    chainId: 1
+    link: https://app.safe.global/home?safe=eth:0x2686A8919Df194aA7673244549E68D42C1685d03
+  - name: ENS public goods Safe
+    chainId: 1
+    link: https://app.safe.global/home?safe=eth:0xcD42b4c4D102cc22864e3A1341Bb0529c17fD87d
