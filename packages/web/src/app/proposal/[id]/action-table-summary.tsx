@@ -1,9 +1,8 @@
-import { ethers } from "ethers";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import React from "react";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
@@ -19,53 +18,18 @@ import {
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useDecodeCallData, type Action } from "@/hooks/useDecodeCallData";
 import { cn } from "@/lib/utils";
 import { formatFunctionSignature } from "@/utils";
-import { decodeRecursive, type DecodeRecursiveResult } from "@/utils/decoder";
 import { formatBigIntForDisplay } from "@/utils/number";
-
-import type { Action } from "./action-table-raw";
 
 interface ActionTableSummaryProps {
   actions: Action[];
   isLoading?: boolean;
 }
 
-interface DecodedAction extends Action {
-  decodedResult?: DecodeRecursiveResult | null;
-  isDecoding?: boolean;
-}
 
-interface ParsedParam {
-  name: string;
-  type: string;
-  value: string | string[];
-}
 
-function parseCalldataParams(
-  signature: string,
-  calldata: string
-): ParsedParam[] {
-  if (!signature || !calldata || calldata === "0x") return [];
-
-  try {
-    const iface = new ethers.Interface([`function ${signature}`]);
-    const decoded = iface.parseTransaction({ data: calldata });
-
-    if (!decoded) return [];
-
-    return decoded.args.map((arg, index) => {
-      const input = decoded.fragment.inputs[index];
-      return {
-        name: input?.name || `param${index}`,
-        type: input?.type || "unknown",
-        value: Array.isArray(arg) ? arg.map(String) : String(arg),
-      };
-    });
-  } catch {
-    return [];
-  }
-}
 
 export function ActionTableSummary({
   actions,
@@ -73,104 +37,7 @@ export function ActionTableSummary({
 }: ActionTableSummaryProps) {
   const daoConfig = useDaoConfig();
   const [openParams, setOpenParams] = useState<number[]>([]);
-  const [decodedActions, setDecodedActions] = useState<DecodedAction[]>([]);
-  // Component-level decoding cache to avoid duplicate decoding
-  const decodingCache = useMemo(
-    () => new Map<string, Promise<DecodeRecursiveResult | null>>(),
-    []
-  );
-
-  // Decode actions using calldata decoder
-  useEffect(() => {
-    const decodeActions = async () => {
-      const decoded = await Promise.all(
-        actions.map(async (action) => {
-          // Skip decoding for simple transfers or empty calldata
-          if (!action.calldata || action.calldata === "0x") {
-            return { ...action, decodedResult: null, isDecoding: false };
-          }
-
-          // Create cache key including all parameters that affect decoding
-          const cacheKey = `${action.calldata}-${action.target}-${daoConfig?.chain?.id}-${action.signature}`;
-          // Check if decoding is already in progress
-          let decodePromise = decodingCache.get(cacheKey);
-          if (!decodePromise) {
-            // Create new decoding promise and cache it
-            decodePromise = (async () => {
-              try {
-                // First, try simple signature-based parsing (faster)
-                if (action.signature) {
-                  const simpleParams = parseCalldataParams(
-                    action.signature,
-                    action.calldata
-                  );
-                  if (simpleParams.length > 0) {
-                    // If simple parsing succeeded, return a compatible result
-                    return {
-                      functionName: action.signature.split('(')[0],
-                      args: simpleParams.map(param => ({
-                        name: param.name,
-                        type: param.type,
-                        value: param.value
-                      })),
-                      rawArgs: simpleParams.map(param => param.value)
-                    };
-                  }
-                }
-
-                let result = null;
-
-                // If simple parsing failed, try advanced decoding with contract address
-                if (daoConfig?.chain?.id && action.target) {
-                  result = await decodeRecursive({
-                    calldata: action.calldata,
-                    address: action.target,
-                    chainId: daoConfig.chain.id,
-                  });
-                }
-
-                // Fallback to signature-based ABI decoding if address decoding fails
-                if (!result && action.signature) {
-                  try {
-                    const iface = new ethers.Interface([
-                      `function ${action.signature}`,
-                    ]);
-                    const abi = iface.fragments
-                      .map((f) => f.format("json"))
-                      .map((f) => JSON.parse(f));
-                    result = await decodeRecursive({
-                      calldata: action.calldata,
-                      abi,
-                    });
-                  } catch {
-                    // Signature decoding failed, continue with null result
-                  }
-                }
-
-                return result;
-              } catch {
-                return null;
-              }
-            })();
-
-            decodingCache.set(cacheKey, decodePromise);
-          }
-
-          const result = await decodePromise;
-          return { ...action, decodedResult: result, isDecoding: false };
-        })
-      );
-      setDecodedActions(decoded);
-    };
-
-    if (actions.length > 0) {
-      // Set initial loading state
-      setDecodedActions(
-        actions.map((action) => ({ ...action, isDecoding: true }))
-      );
-      decodeActions();
-    }
-  }, [actions, daoConfig?.chain?.id, daoConfig?.indexer?.endpoint, decodingCache]);
+  const decodedActions = useDecodeCallData(actions);
 
   const toggleParams = (index: number) => {
     setOpenParams((prev) =>
@@ -198,32 +65,16 @@ export function ActionTableSummary({
           daoConfig?.chain?.nativeToken?.decimals ?? 18
         )} ${daoConfig?.chain?.nativeToken?.symbol}`;
       } else {
-        // Use decoded function name if available, otherwise use formatted signature
-        if (action.decodedResult?.functionName) {
-          details = action.decodedResult.functionName;
-        } else {
-          details = action?.signature
-            ? formatFunctionSignature(action?.signature)
-            : "";
-        }
+        // Use function name from hook or formatted signature
+        details = action.functionName
+          ? action.functionName
+          : action?.signature
+          ? formatFunctionSignature(action?.signature)
+          : "";
       }
 
-      // Generate parameters for display
-      let params: ParsedParam[] = [];
-      if (action.decodedResult?.args) {
-        // Use decoded parameters from decoder
-        params = action.decodedResult.args.map((param) => ({
-          name: param.name,
-          type: param.type,
-          value: Array.isArray(param.value) ? param.value : String(param.value),
-        }));
-      } else {
-        // Fallback to signature-based parsing
-        params = parseCalldataParams(
-          action?.signature || "",
-          action?.calldata || ""
-        );
-      }
+      // Use parameters from hook
+      const params = action.parsedCalldata || [];
       const hasParams = params.length > 0 && type !== "transfer";
 
       return {
