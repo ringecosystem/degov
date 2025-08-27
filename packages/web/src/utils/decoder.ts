@@ -183,6 +183,12 @@ async function fetchContractAbiFromGraphQL({
   }
 }
 
+// In-memory cache for ABI requests to avoid duplicate requests for same address
+const abiRequestCache = new Map<
+  string,
+  Promise<{ abi: InterfaceAbi; name: string } | null>
+>();
+
 // Main function to fetch contract ABI
 export const fetchContractAbi = async ({
   address,
@@ -194,33 +200,53 @@ export const fetchContractAbi = async ({
   abi: InterfaceAbi;
   name: string;
 } | null> => {
-  // Check cache first
+  // Check persistent cache first
   const cached = await getCachedAbi(address, chainId);
   if (cached) {
     return { abi: cached.abi, name: cached.name };
   }
 
-  // Try GraphQL ABI service (using environment configured endpoint)
-  const abiEndpoint = process.env.NEXT_PUBLIC_DEGOV_API
-    ? `${process.env.NEXT_PUBLIC_DEGOV_API}/graphql`
-    : "https://api.degov.ai/graphql";
-  if (abiEndpoint) {
-    try {
-      const result = await fetchContractAbiFromGraphQL({
-        address,
-        chainId,
-        endpoint: abiEndpoint,
-      });
-      if (result) {
-        await setCachedAbi(address, chainId, result.abi, result.name);
-        return result;
+  // Check in-memory request cache to avoid duplicate concurrent requests
+  const cacheKey = `${address}-${chainId}`;
+  let abiPromise = abiRequestCache.get(cacheKey);
+
+  if (!abiPromise) {
+    // Create new ABI fetch promise and cache it
+    abiPromise = (async () => {
+      try {
+        // Try GraphQL ABI service (using environment configured endpoint)
+        const abiEndpoint = process.env.NEXT_PUBLIC_DEGOV_API
+          ? `${process.env.NEXT_PUBLIC_DEGOV_API}/graphql`
+          : "https://api.degov.ai/graphql";
+        if (abiEndpoint) {
+          try {
+            const result = await fetchContractAbiFromGraphQL({
+              address,
+              chainId,
+              endpoint: abiEndpoint,
+            });
+            if (result) {
+              await setCachedAbi(address, chainId, result.abi, result.name);
+              return result;
+            }
+          } catch (error) {
+            console.warn("GraphQL ABI query failed:", error);
+          }
+        }
+
+        return null;
+      } catch {
+        return null;
+      } finally {
+        // Remove from cache after completion (success or failure)
+        abiRequestCache.delete(cacheKey);
       }
-    } catch (error) {
-      console.warn("GraphQL ABI query failed:", error);
-    }
+    })();
+
+    abiRequestCache.set(cacheKey, abiPromise);
   }
 
-  return null;
+  return abiPromise;
 };
 
 // Decode calldata using contract address and chain ID
