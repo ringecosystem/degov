@@ -160,9 +160,10 @@ async function fetchContractAbiFromGraphQL({
       throw new Error("No ABI found");
     }
 
-    // Find the implementation ABI (or use the first one if no implementation)
+    // Find the implementation ABI or the proxy if the address is the same as the implementation
     const implementationAbi =
-      results.find((r) => r.type === "IMPLEMENTATION") || results[0];
+      results.find((r) => r.type === "IMPLEMENTATION") ||
+      results.find((r) => r.type == "PROXY" && r.address === address);
 
     if (!implementationAbi?.abi) {
       throw new Error("No valid ABI found");
