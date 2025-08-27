@@ -153,7 +153,7 @@ export const TransferPanel = ({
   return (
     <div
       className={cn(
-        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]",
+        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] shadow-card",
         visible ? "animate-in fade-in duration-300" : "hidden"
       )}
     >

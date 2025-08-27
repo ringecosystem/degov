@@ -54,7 +54,7 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
   };
 
   return Array.isArray(actions) && actions?.length > 0 ? (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] shadow-card">
       <header className="flex items-center justify-between border-b border-card-background pb-[10px]">
         <motion.h4
           className="text-[18px] font-semibold"

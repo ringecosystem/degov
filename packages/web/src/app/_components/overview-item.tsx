@@ -24,7 +24,7 @@ export const OverviewItem = ({
   return (
     <Component
       className={cn(
-        "flex w-full items-center justify-between rounded-[14px] bg-card p-[10px] lg:p-[20px]",
+        "flex w-full items-center justify-between rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card",
         "aspect-[335/69] lg:aspect-[342/105]",
         link && "cursor-pointer",
         link && "hover:bg-card/80 transition-colors"
@@ -32,7 +32,9 @@ export const OverviewItem = ({
       href={link ?? (null as unknown as string)}
     >
       <div className="flex flex-col gap-[6px] lg:gap-[10px]">
-        <p className="!m-0 text-[12px] lg:text-[14px] text-foreground/80">{title}</p>
+        <p className="!m-0 text-[12px] lg:text-[14px] text-foreground/80">
+          {title}
+        </p>
         <div className="!m-0 text-[18px] lg:text-[28px] font-bold text-foreground">
           {isLoading ? (
             <div className="h-[32px] lg:h-[42px] w-[40px] lg:w-[50px] flex flex-col justify-center">
