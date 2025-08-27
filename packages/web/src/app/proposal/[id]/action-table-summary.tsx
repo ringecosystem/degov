@@ -18,7 +18,11 @@ import {
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useDecodeCallData, type Action } from "@/hooks/useDecodeCallData";
+import {
+  type ParsedParam,
+  useDecodeCallData,
+  type Action,
+} from "@/hooks/useDecodeCallData";
 import { cn } from "@/lib/utils";
 import { formatFunctionSignature } from "@/utils";
 import { formatBigIntForDisplay } from "@/utils/number";
@@ -27,9 +31,6 @@ interface ActionTableSummaryProps {
   actions: Action[];
   isLoading?: boolean;
 }
-
-
-
 
 export function ActionTableSummary({
   actions,
