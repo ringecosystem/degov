@@ -74,9 +74,11 @@ export function ActionTableSummary({
   const daoConfig = useDaoConfig();
   const [openParams, setOpenParams] = useState<number[]>([]);
   const [decodedActions, setDecodedActions] = useState<DecodedAction[]>([]);
-
   // Component-level decoding cache to avoid duplicate decoding
-  const decodingCache = useMemo(() => new Map<string, Promise<DecodeRecursiveResult | null>>(), []);
+  const decodingCache = useMemo(
+    () => new Map<string, Promise<DecodeRecursiveResult | null>>(),
+    []
+  );
 
   // Decode actions using calldata decoder
   useEffect(() => {
@@ -96,22 +98,47 @@ export function ActionTableSummary({
             // Create new decoding promise and cache it
             decodePromise = (async () => {
               try {
+                // First, try simple signature-based parsing (faster)
+                if (action.signature) {
+                  const simpleParams = parseCalldataParams(
+                    action.signature,
+                    action.calldata
+                  );
+                  if (simpleParams.length > 0) {
+                    // If simple parsing succeeded, return a compatible result
+                    return {
+                      functionName: action.signature.split('(')[0],
+                      args: simpleParams.map(param => ({
+                        name: param.name,
+                        type: param.type,
+                        value: param.value
+                      })),
+                      rawArgs: simpleParams.map(param => param.value)
+                    };
+                  }
+                }
+
                 let result = null;
 
-                // Try decoding with contract address first (more accurate)
+                // If simple parsing failed, try advanced decoding with contract address
                 if (daoConfig?.chain?.id && action.target) {
                   result = await decodeRecursive({
                     calldata: action.calldata,
                     address: action.target,
                     chainId: daoConfig.chain.id,
+                    endpoint: daoConfig.indexer?.endpoint,
                   });
                 }
 
-                // Fallback to signature-based decoding if address decoding fails
+                // Fallback to signature-based ABI decoding if address decoding fails
                 if (!result && action.signature) {
                   try {
-                    const iface = new ethers.Interface([`function ${action.signature}`]);
-                    const abi = iface.fragments.map(f => f.format('json')).map(f => JSON.parse(f));
+                    const iface = new ethers.Interface([
+                      `function ${action.signature}`,
+                    ]);
+                    const abi = iface.fragments
+                      .map((f) => f.format("json"))
+                      .map((f) => JSON.parse(f));
                     result = await decodeRecursive({
                       calldata: action.calldata,
                       abi,
@@ -139,10 +166,12 @@ export function ActionTableSummary({
 
     if (actions.length > 0) {
       // Set initial loading state
-      setDecodedActions(actions.map(action => ({ ...action, isDecoding: true })));
+      setDecodedActions(
+        actions.map((action) => ({ ...action, isDecoding: true }))
+      );
       decodeActions();
     }
-  }, [actions, daoConfig?.chain?.id, decodingCache]);
+  }, [actions, daoConfig?.chain?.id, daoConfig?.indexer?.endpoint, decodingCache]);
 
   const toggleParams = (index: number) => {
     setOpenParams((prev) =>

@@ -1,27 +1,8 @@
-import { Interface, type InterfaceAbi } from 'ethers';
-import './cache-manager';
+import { Interface, type InterfaceAbi } from "ethers";
 
-// API response types
-interface ContractResponse {
-  status: string;
-  message: string;
-  result: Array<{
-    ABI: string;
-    ContractName: string;
-    Implementation: string;
-  }>;
-}
+import { proposalService } from "../services/graphql";
 
-interface EtherscanAbiResponse {
-  status: string;
-  message: string;
-  result: Array<{
-    ABI: string;
-    ContractName: string;
-    Implementation?: string;
-    Proxy?: string;
-  }>;
-}
+import "./cache-manager";
 
 // ABI cache entry structure
 interface AbiCacheEntry {
@@ -34,12 +15,15 @@ interface AbiCacheEntry {
 
 // Cache configuration
 const abiCache = new Map<string, AbiCacheEntry>();
-const CACHE_PREFIX = 'abi_cache_';
+const CACHE_PREFIX = "abi_cache_";
 
 // Get ABI from cache (memory or localStorage)
-const getCachedAbi = async (address: string, chainId: number): Promise<AbiCacheEntry | null> => {
+const getCachedAbi = async (
+  address: string,
+  chainId: number
+): Promise<AbiCacheEntry | null> => {
   const cacheKey = `${chainId}-${address.toLowerCase()}`;
-  
+
   // Check memory cache first
   const memoryCache = abiCache.get(cacheKey);
   if (memoryCache) {
@@ -47,11 +31,11 @@ const getCachedAbi = async (address: string, chainId: number): Promise<AbiCacheE
   }
 
   // Check localStorage cache (client-side only)
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     try {
       const localStorageKey = `${CACHE_PREFIX}${cacheKey}`;
       const cachedData = localStorage.getItem(localStorageKey);
-      
+
       if (cachedData) {
         const cached = JSON.parse(cachedData) as AbiCacheEntry;
         // Update memory cache
@@ -59,7 +43,7 @@ const getCachedAbi = async (address: string, chainId: number): Promise<AbiCacheE
         return cached;
       }
     } catch (error) {
-      console.warn('Failed to read localStorage cache:', error);
+      console.warn("Failed to read localStorage cache:", error);
     }
   }
 
@@ -67,7 +51,12 @@ const getCachedAbi = async (address: string, chainId: number): Promise<AbiCacheE
 };
 
 // Save ABI to cache (memory and localStorage)
-const setCachedAbi = async (address: string, chainId: number, abi: InterfaceAbi, name: string): Promise<void> => {
+const setCachedAbi = async (
+  address: string,
+  chainId: number,
+  abi: InterfaceAbi,
+  name: string
+): Promise<void> => {
   const cacheKey = `${chainId}-${address.toLowerCase()}`;
   const cacheEntry: AbiCacheEntry = {
     abi,
@@ -81,25 +70,31 @@ const setCachedAbi = async (address: string, chainId: number, abi: InterfaceAbi,
   abiCache.set(cacheKey, cacheEntry);
 
   // Save to localStorage (client-side only)
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     try {
       const localStorageKey = `${CACHE_PREFIX}${cacheKey}`;
       localStorage.setItem(localStorageKey, JSON.stringify(cacheEntry));
     } catch (error) {
-      console.warn('Failed to write localStorage cache:', error);
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('localStorage quota exceeded. Consider clearing cache manually.');
+      console.warn("Failed to write localStorage cache:", error);
+      if (error instanceof Error && error.name === "QuotaExceededError") {
+        console.warn(
+          "localStorage quota exceeded. Consider clearing cache manually."
+        );
       }
     }
   }
 };
 
 // Get cache statistics
-export const getCacheStats = (): { memoryCount: number; localStorageCount: number; totalSize: string } => {
+export const getCacheStats = (): {
+  memoryCount: number;
+  localStorageCount: number;
+  totalSize: string;
+} => {
   let localStorageCount = 0;
   let totalSize = 0;
 
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith(CACHE_PREFIX)) {
@@ -123,91 +118,80 @@ export const getCacheStats = (): { memoryCount: number; localStorageCount: numbe
 export const clearAllCache = (): void => {
   // Clear memory cache
   abiCache.clear();
-  
+
   // Clear localStorage cache
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     const keysToRemove: string[] = [];
-    
+
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith(CACHE_PREFIX)) {
         keysToRemove.push(key);
       }
     }
-    
-    keysToRemove.forEach(key => {
+
+    keysToRemove.forEach((key) => {
       localStorage.removeItem(key);
     });
   }
 };
 
-// Fetch ABI from configured scan API (Etherscan, etc.)
-async function fetchContractAbiFromScanApi({
+// Fetch ABI from GraphQL service
+async function fetchContractAbiFromGraphQL({
   address,
   chainId,
+  endpoint,
 }: {
   address: string;
   chainId: number;
+  endpoint: string;
 }): Promise<{ abi: InterfaceAbi; name: string } | null> {
-  const scanApiUrl = process.env.NEXT_PUBLIC_SCAN_API_URL;
-  const scanApiKey = process.env.NEXT_PUBLIC_SCAN_API_KEY;
-
-  if (!scanApiUrl || !scanApiKey) {
+  if (!endpoint) {
     return null;
   }
 
   try {
-    const url = `${scanApiUrl}?module=contract&action=getsourcecode&address=${address}&apikey=${scanApiKey}`;
-    const response = await fetch(url);
+    const results = await proposalService.getEvmAbi(endpoint, {
+      chain: chainId,
+      contract: address,
+    });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    if (!results || results.length === 0) {
+      throw new Error("No ABI found");
     }
 
-    const data: EtherscanAbiResponse = await response.json();
+    // Find the implementation ABI (or use the first one if no implementation)
+    const implementationAbi =
+      results.find((r) => r.type === "IMPLEMENTATION") || results[0];
 
-    if (data.status !== '1' || !data.result || data.result.length === 0) {
-      throw new Error(`No contract data: ${data.message}`);
+    if (!implementationAbi?.abi) {
+      throw new Error("No valid ABI found");
     }
 
-    const contractData = data.result[0];
+    const parsedAbi =
+      typeof implementationAbi.abi === "string"
+        ? JSON.parse(implementationAbi.abi)
+        : implementationAbi.abi;
 
-    if (!contractData.ABI || contractData.ABI === '') {
-      throw new Error('No ABI found');
-    }
-
-    // Handle proxy contracts
-    const implementation = contractData.Implementation || contractData.Proxy;
-    if (implementation && implementation.length > 0) {
-      const implResult = await fetchContractAbiFromScanApi({ address: implementation, chainId });
-      if (implResult) {
-        return implResult;
-      } else {
-        throw new Error(`Failed to fetch implementation ABI for ${implementation}`);
-      }
-    } else {
-      return { abi: JSON.parse(contractData.ABI), name: contractData.ContractName };
-    }
+    return {
+      abi: parsedAbi,
+      name: implementationAbi.type === "PROXY" ? "Proxy Contract" : "Contract",
+    };
   } catch (error) {
+    console.warn("Failed to fetch ABI from GraphQL:", error);
     throw error;
   }
 }
 
-// Fetch ABI from public sources (placeholder for future expansion)
-async function fetchContractAbiFromPublicSources(): Promise<{ abi: InterfaceAbi; name: string } | null> {
-  // TODO: Implement common contract type detection
-  // Try calling common functions like name(), symbol(), totalSupply()
-  // Return standard ABI (ERC20/ERC721) if successful
-  return null;
-}
-
-// Main function to fetch contract ABI with fallback strategy
+// Main function to fetch contract ABI
 export const fetchContractAbi = async ({
   address,
   chainId,
+  endpoint,
 }: {
   address: string;
   chainId: number;
+  endpoint?: string;
 }): Promise<{
   abi: InterfaceAbi;
   name: string;
@@ -218,107 +202,27 @@ export const fetchContractAbi = async ({
     return { abi: cached.abi, name: cached.name };
   }
 
-  // Try configured scan API
-  try {
-    const result = await fetchContractAbiFromScanApi({ address, chainId });
-    if (result) {
-      await setCachedAbi(address, chainId, result.abi, result.name);
-      return result;
+  // Try GraphQL ABI service (using environment configured endpoint)
+  const abiEndpoint = process.env.NEXT_PUBLIC_DEGOV_API
+    ? `${process.env.NEXT_PUBLIC_DEGOV_API}/graphql`
+    : "https://api.degov.ai/graphql";
+  if (abiEndpoint) {
+    try {
+      const result = await fetchContractAbiFromGraphQL({
+        address,
+        chainId,
+        endpoint: abiEndpoint,
+      });
+      if (result) {
+        await setCachedAbi(address, chainId, result.abi, result.name);
+        return result;
+      }
+    } catch (error) {
+      console.warn("GraphQL ABI query failed:", error);
     }
-  } catch {
-    // Continue to next fallback
   }
 
-  // Try public sources
-  try {
-    const commonAbi = await fetchContractAbiFromPublicSources();
-    if (commonAbi) {
-      await setCachedAbi(address, chainId, commonAbi.abi, commonAbi.name);
-      return commonAbi;
-    }
-  } catch {
-    // Continue to next fallback
-  }
-
-  // Fallback to Swiss Knife API
-  try {
-    const { abi, name, implementation } = await fetchContractAbiRaw({
-      address,
-      chainId,
-    });
-    const finalResult = implementation ? 
-      { abi: implementation.abi, name: implementation.name } : 
-      { abi, name };
-    
-    await setCachedAbi(address, chainId, finalResult.abi, finalResult.name);
-    return finalResult;
-  } catch {
-    return null;
-  }
-};
-
-// Fetch ABI from Swiss Knife API (fallback)
-export const fetchContractAbiRaw = async ({
-  address,
-  chainId,
-}: {
-  address: string;
-  chainId: number;
-}): Promise<{
-  abi: InterfaceAbi;
-  name: string;
-  implementation?: {
-    address: string;
-    abi: InterfaceAbi;
-    name: string;
-  };
-}> => {
-  const apiBasePath = 'https://swiss-knife.xyz';
-  const res = await fetch(
-    `${apiBasePath}/api/source-code?address=${address}&chainId=${chainId}`
-  );
-
-  if (!res.ok) {
-    throw new Error(`Failed to fetch contract data from Swiss Knife: ${res.status}`);
-  }
-
-  const data: ContractResponse = await res.json();
-
-  if (!data.result || data.result.length === 0) {
-    throw new Error(`No contract data found for address ${address} on Swiss Knife`);
-  }
-
-  const { ABI, ContractName, Implementation } = data.result[0];
-
-  if (Implementation && Implementation.length > 0) {
-    const res = await fetch(
-      `${apiBasePath}/api/source-code?address=${Implementation}&chainId=${chainId}`
-    );
-
-    if (!res.ok) {
-      throw new Error(`Failed to fetch implementation contract data: ${res.status}`);
-    }
-
-    const implData: ContractResponse = await res.json();
-
-    if (!implData.result || implData.result.length === 0) {
-      throw new Error(`No implementation contract data found for address ${Implementation}`);
-    }
-
-    const { ABI: implAbi, ContractName: implName } = implData.result[0];
-
-    return {
-      abi: JSON.parse(ABI),
-      name: ContractName,
-      implementation: {
-        address: Implementation,
-        abi: JSON.parse(implAbi),
-        name: implName,
-      },
-    };
-  } else {
-    return { abi: JSON.parse(ABI), name: ContractName };
-  }
+  return null;
 };
 
 // Decode calldata using contract address and chain ID
@@ -326,24 +230,28 @@ export const decodeWithAddress = async ({
   address,
   chainId,
   calldata,
+  endpoint,
 }: {
   address: string;
   chainId: number;
   calldata: string;
+  endpoint?: string;
 }): Promise<{
   abi: InterfaceAbi;
   name: string;
   decodedResult: ParsedTransaction | null;
 } | null> => {
   try {
-    const contractInfo = await fetchContractAbi({ address, chainId });
+    const contractInfo = await fetchContractAbi({ address, chainId, endpoint });
     if (!contractInfo) {
-      throw new Error(`Failed to fetch ABI for contract ${address} on chain ${chainId}`);
+      throw new Error(
+        `Failed to fetch ABI for contract ${address} on chain ${chainId}`
+      );
     }
 
     const { abi, name } = contractInfo;
     const iface = new Interface(abi);
-    
+
     try {
       const parsed = iface.parseTransaction({ data: calldata });
       if (parsed) {
@@ -351,14 +259,14 @@ export const decodeWithAddress = async ({
           name: parsed.name,
           args: parsed.args.map((arg, index) => ({
             name: parsed.fragment.inputs[index]?.name || `param${index}`,
-            type: parsed.fragment.inputs[index]?.type || 'unknown',
+            type: parsed.fragment.inputs[index]?.type || "unknown",
             value: arg,
           })),
           signature: parsed.signature,
           selector: parsed.selector,
           fragment: parsed.fragment,
         };
-        
+
         return {
           abi,
           name,
@@ -390,13 +298,13 @@ export const decodeWithABI = ({
   try {
     const iface = new Interface(abi);
     const parsed = iface.parseTransaction({ data: calldata });
-    
+
     if (parsed) {
       return {
         name: parsed.name,
         args: parsed.args.map((arg, index) => ({
           name: parsed.fragment.inputs[index]?.name || `param${index}`,
-          type: parsed.fragment.inputs[index]?.type || 'unknown',
+          type: parsed.fragment.inputs[index]?.type || "unknown",
           value: arg,
         })),
         signature: parsed.signature,
@@ -404,7 +312,7 @@ export const decodeWithABI = ({
         fragment: parsed.fragment,
       };
     }
-    
+
     return null;
   } catch {
     return null;
@@ -441,11 +349,13 @@ export const decodeRecursive = async ({
   abi,
   address,
   chainId,
+  endpoint,
 }: {
   calldata: string;
   abi?: InterfaceAbi;
   address?: string;
   chainId?: number;
+  endpoint?: string;
 }): Promise<DecodeRecursiveResult | null> => {
   // Only process if we have ABI or (address + chainId)
   if (!abi && (!address || !chainId)) {
@@ -459,10 +369,15 @@ export const decodeRecursive = async ({
     if (abi) {
       parsedTransaction = decodeWithABI({ abi, calldata });
     }
-    
+
     // Try to fetch ABI if no result and address provided
     if (!parsedTransaction && address && chainId) {
-      const result = await decodeWithAddress({ address, chainId, calldata });
+      const result = await decodeWithAddress({
+        address,
+        chainId,
+        calldata,
+        endpoint,
+      });
       if (result?.decodedResult) {
         parsedTransaction = result.decodedResult;
       }
@@ -484,7 +399,7 @@ export const decodeRecursive = async ({
     return {
       functionName: parsedTransaction.name,
       args: decodedArgs,
-      rawArgs: parsedTransaction.args.map(arg => arg.value),
+      rawArgs: parsedTransaction.args.map((arg) => arg.value),
     };
   } catch {
     return null;
@@ -492,19 +407,22 @@ export const decodeRecursive = async ({
 };
 
 // Recursively decode parameter types
-const decodeParamTypes = async (value: unknown, type: string): Promise<unknown> => {
-  if (type === 'bytes' && typeof value === 'string') {
+const decodeParamTypes = async (
+  value: unknown,
+  type: string
+): Promise<unknown> => {
+  if (type === "bytes" && typeof value === "string") {
     return await decodeBytesParam(value);
-  } else if (type.startsWith('tuple') && Array.isArray(value)) {
+  } else if (type.startsWith("tuple") && Array.isArray(value)) {
     return await decodeTupleParam(value);
-  } else if (type.includes('[]') && Array.isArray(value)) {
+  } else if (type.includes("[]") && Array.isArray(value)) {
     return await decodeArrayParam(value, type);
   }
-  
+
   return value;
 };
 
-// Decode bytes parameter (may contain nested calldata)
+// Decode bytes parameter
 const decodeBytesParam = async (value: string): Promise<unknown> => {
   try {
     const decoded = await decodeRecursive({ calldata: value });
@@ -518,7 +436,7 @@ const decodeBytesParam = async (value: string): Promise<unknown> => {
 const decodeTupleParam = async (value: unknown[]): Promise<unknown[]> => {
   return Promise.all(
     value.map(async (item) => {
-      if (typeof item === 'string' && item.startsWith('0x')) {
+      if (typeof item === "string" && item.startsWith("0x")) {
         return await decodeBytesParam(item);
       }
       return item;
@@ -527,8 +445,11 @@ const decodeTupleParam = async (value: unknown[]): Promise<unknown[]> => {
 };
 
 // Decode array parameter
-const decodeArrayParam = async (value: unknown[], type: string): Promise<unknown[]> => {
-  const elementType = type.replace('[]', '');
+const decodeArrayParam = async (
+  value: unknown[],
+  type: string
+): Promise<unknown[]> => {
+  const elementType = type.replace("[]", "");
   return Promise.all(
     value.map(async (item) => await decodeParamTypes(item, elementType))
   );
