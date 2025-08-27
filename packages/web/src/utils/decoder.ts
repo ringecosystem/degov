@@ -187,11 +187,9 @@ async function fetchContractAbiFromGraphQL({
 export const fetchContractAbi = async ({
   address,
   chainId,
-  endpoint,
 }: {
   address: string;
   chainId: number;
-  endpoint?: string;
 }): Promise<{
   abi: InterfaceAbi;
   name: string;
@@ -230,19 +228,17 @@ export const decodeWithAddress = async ({
   address,
   chainId,
   calldata,
-  endpoint,
 }: {
   address: string;
   chainId: number;
   calldata: string;
-  endpoint?: string;
 }): Promise<{
   abi: InterfaceAbi;
   name: string;
   decodedResult: ParsedTransaction | null;
 } | null> => {
   try {
-    const contractInfo = await fetchContractAbi({ address, chainId, endpoint });
+    const contractInfo = await fetchContractAbi({ address, chainId });
     if (!contractInfo) {
       throw new Error(
         `Failed to fetch ABI for contract ${address} on chain ${chainId}`
@@ -349,13 +345,11 @@ export const decodeRecursive = async ({
   abi,
   address,
   chainId,
-  endpoint,
 }: {
   calldata: string;
   abi?: InterfaceAbi;
   address?: string;
   chainId?: number;
-  endpoint?: string;
 }): Promise<DecodeRecursiveResult | null> => {
   // Only process if we have ABI or (address + chainId)
   if (!abi && (!address || !chainId)) {
@@ -376,7 +370,6 @@ export const decodeRecursive = async ({
         address,
         chainId,
         calldata,
-        endpoint,
       });
       if (result?.decodedResult) {
         parsedTransaction = result.decodedResult;

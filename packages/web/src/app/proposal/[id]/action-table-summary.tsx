@@ -126,7 +126,6 @@ export function ActionTableSummary({
                     calldata: action.calldata,
                     address: action.target,
                     chainId: daoConfig.chain.id,
-                    endpoint: daoConfig.indexer?.endpoint,
                   });
                 }
 
