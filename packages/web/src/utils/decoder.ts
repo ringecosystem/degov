@@ -145,7 +145,7 @@ async function fetchContractAbiFromGraphQL({
   address: string;
   chainId: number;
   endpoint: string;
-}): Promise<{ abi: InterfaceAbi; name: string } | null> {
+}): Promise<{ abis: { abi: InterfaceAbi; name: string; type: string }[] } | null> {
   if (!endpoint) {
     return null;
   }
@@ -160,24 +160,23 @@ async function fetchContractAbiFromGraphQL({
       throw new Error("No ABI found");
     }
 
-    // Find the implementation ABI or the proxy if the address is the same as the implementation
-    const implementationAbi =
-      results.find((r) => r.type === "IMPLEMENTATION") ||
-      results.find((r) => r.type == "PROXY" && r.address === address);
+    // Parse and return all ABIs
+    const allAbis = results
+      .filter(r => r.abi) // Only keep results with valid ABI
+      .map(r => {
+        const parsedAbi = typeof r.abi === "string" ? JSON.parse(r.abi) : r.abi;
+        return {
+          abi: parsedAbi,
+          name: r.type === "PROXY" ? "Proxy Contract" : r.type === "IMPLEMENTATION" ? "Implementation Contract" : "Contract",
+          type: r.type
+        };
+      });
 
-    if (!implementationAbi?.abi) {
+    if (allAbis.length === 0) {
       throw new Error("No valid ABI found");
     }
 
-    const parsedAbi =
-      typeof implementationAbi.abi === "string"
-        ? JSON.parse(implementationAbi.abi)
-        : implementationAbi.abi;
-
-    return {
-      abi: parsedAbi,
-      name: implementationAbi.type === "PROXY" ? "Proxy Contract" : "Contract",
-    };
+    return { abis: allAbis };
   } catch (error) {
     console.warn("Failed to fetch ABI from GraphQL:", error);
     throw error;
@@ -187,26 +186,19 @@ async function fetchContractAbiFromGraphQL({
 // In-memory cache for ABI requests to avoid duplicate requests for same address
 const abiRequestCache = new Map<
   string,
-  Promise<{ abi: InterfaceAbi; name: string } | null>
+  Promise<{ abis: { abi: InterfaceAbi; name: string; type: string }[] } | null>
 >();
 
-// Main function to fetch contract ABI
-export const fetchContractAbi = async ({
+// Main function to fetch contract ABIs (returns all available ABIs)
+export const fetchContractAbis = async ({
   address,
   chainId,
 }: {
   address: string;
   chainId: number;
 }): Promise<{
-  abi: InterfaceAbi;
-  name: string;
+  abis: { abi: InterfaceAbi; name: string; type: string }[];
 } | null> => {
-  // Check persistent cache first
-  const cached = await getCachedAbi(address, chainId);
-  if (cached) {
-    return { abi: cached.abi, name: cached.name };
-  }
-
   // Check in-memory request cache to avoid duplicate concurrent requests
   const cacheKey = `${address}-${chainId}`;
   let abiPromise = abiRequestCache.get(cacheKey);
@@ -226,8 +218,10 @@ export const fetchContractAbi = async ({
               chainId,
               endpoint: abiEndpoint,
             });
-            if (result) {
-              await setCachedAbi(address, chainId, result.abi, result.name);
+            if (result && result.abis.length > 0) {
+              // Cache the first successful ABI for backward compatibility
+              const firstAbi = result.abis[0];
+              await setCachedAbi(address, chainId, firstAbi.abi, firstAbi.name);
               return result;
             }
           } catch (error) {
@@ -250,7 +244,34 @@ export const fetchContractAbi = async ({
   return abiPromise;
 };
 
-// Decode calldata using contract address and chain ID
+// Backward compatibility function that returns the first ABI
+export const fetchContractAbi = async ({
+  address,
+  chainId,
+}: {
+  address: string;
+  chainId: number;
+}): Promise<{
+  abi: InterfaceAbi;
+  name: string;
+} | null> => {
+  // Check persistent cache first
+  const cached = await getCachedAbi(address, chainId);
+  if (cached) {
+    return { abi: cached.abi, name: cached.name };
+  }
+
+  const result = await fetchContractAbis({ address, chainId });
+  if (result && result.abis.length > 0) {
+    // Return the first ABI for backward compatibility
+    const firstAbi = result.abis[0];
+    return { abi: firstAbi.abi, name: firstAbi.name };
+  }
+
+  return null;
+};
+
+// Decode calldata using contract address and chain ID (try all ABIs)
 export const decodeWithAddress = async ({
   address,
   chainId,
@@ -265,44 +286,50 @@ export const decodeWithAddress = async ({
   decodedResult: ParsedTransaction | null;
 } | null> => {
   try {
-    const contractInfo = await fetchContractAbi({ address, chainId });
-    if (!contractInfo) {
+    const contractInfo = await fetchContractAbis({ address, chainId });
+    if (!contractInfo || contractInfo.abis.length === 0) {
       throw new Error(
         `Failed to fetch ABI for contract ${address} on chain ${chainId}`
       );
     }
 
-    const { abi, name } = contractInfo;
-    const iface = new Interface(abi);
+    // Try each ABI until one successfully parses the calldata
+    for (const abiInfo of contractInfo.abis) {
+      const { abi, name } = abiInfo;
+      const iface = new Interface(abi);
 
-    try {
-      const parsed = iface.parseTransaction({ data: calldata });
-      if (parsed) {
-        const parsedTransaction: ParsedTransaction = {
-          name: parsed.name,
-          args: parsed.args.map((arg, index) => ({
-            name: parsed.fragment.inputs[index]?.name || `param${index}`,
-            type: parsed.fragment.inputs[index]?.type || "unknown",
-            value: arg,
-          })),
-          signature: parsed.signature,
-          selector: parsed.selector,
-          fragment: parsed.fragment,
-        };
+      try {
+        const parsed = iface.parseTransaction({ data: calldata });
+        if (parsed) {
+          const parsedTransaction: ParsedTransaction = {
+            name: parsed.name,
+            args: parsed.args.map((arg, index) => ({
+              name: parsed.fragment.inputs[index]?.name || `param${index}`,
+              type: parsed.fragment.inputs[index]?.type || "unknown",
+              value: arg,
+            })),
+            signature: parsed.signature,
+            selector: parsed.selector,
+            fragment: parsed.fragment,
+          };
 
-        return {
-          abi,
-          name,
-          decodedResult: parsedTransaction,
-        };
+          return {
+            abi,
+            name,
+            decodedResult: parsedTransaction,
+          };
+        }
+      } catch {
+        // This ABI failed, try the next one
+        continue;
       }
-    } catch {
-      // Parsing failed, return null result
     }
 
+    // None of the ABIs could parse the calldata
+    const firstAbi = contractInfo.abis[0];
     return {
-      abi,
-      name,
+      abi: firstAbi.abi,
+      name: firstAbi.name,
       decodedResult: null,
     };
   } catch {
