@@ -1,10 +1,10 @@
-import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
+import { ExternalLinkIcon } from "@/components/icons";
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { ProfileData } from "@/services/graphql/types/profile";
@@ -82,19 +82,10 @@ export const User = ({
                     rel="noreferrer"
                     className="flex-shrink-0"
                   >
-                    <Image
-                      src="/assets/image/light/external-link.svg"
-                      alt="external-link"
+                    <ExternalLinkIcon
                       width={14}
                       height={14}
-                      className="dark:hidden lg:w-4 lg:h-4"
-                    />
-                    <Image
-                      src="/assets/image/external-link.svg"
-                      alt="external-link"
-                      width={14}
-                      height={14}
-                      className="hidden dark:block lg:w-4 lg:h-4"
+                      className="text-muted-foreground lg:w-4 lg:h-4"
                     />
                   </Link>
                 </div>
@@ -140,12 +131,10 @@ export const User = ({
                 className="hover:underline ml-1"
               >
                 https://docs.degov.ai/governance/agent/overview
-                <Image
-                  src="/assets/image/light/external-link.svg"
-                  alt="external-link"
+                <ExternalLinkIcon
                   width={16}
                   height={16}
-                  className="dark:hidden"
+                  className="text-muted-foreground"
                 />
               </a>
             </span>

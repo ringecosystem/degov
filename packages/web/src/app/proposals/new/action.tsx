@@ -1,13 +1,11 @@
-import Image from "next/image";
-
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { getProposalActionIcon } from "@/components/icons/proposal-actions-map";
+import { QuestionIcon } from "@/components/icons";
 import {
-  PROPOSAL_ACTIONS,
-  PROPOSAL_ACTIONS_LIGHT,
   type ProposalActionType,
 } from "@/config/proposals";
 import { cn } from "@/lib/utils";
@@ -26,6 +24,8 @@ export const NewProposalAction = ({
   error,
   tip,
 }: NewProposalActionProps) => {
+  const IconComponent = getProposalActionIcon(type);
+  
   if (type === "proposal") {
     return (
       <div
@@ -35,19 +35,10 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("proposal")}
       >
-        <Image
-          src={PROPOSAL_ACTIONS_LIGHT["proposal"]}
-          alt="proposal"
+        <IconComponent
           width={24}
           height={24}
-          className="block dark:hidden"
-        />
-        <Image
-          src={PROPOSAL_ACTIONS["proposal"]}
-          alt="proposal"
-          width={24}
-          height={24}
-          className="hidden dark:block"
+          className="text-current"
         />
         <span className="text-[14px] font-normal text-foreground">
           Proposal
@@ -67,19 +58,10 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("transfer")}
       >
-        <Image
-          src={PROPOSAL_ACTIONS_LIGHT["transfer"]}
-          alt="transfer"
+        <IconComponent
           width={24}
           height={24}
-          className="block dark:hidden"
-        />
-        <Image
-          src={PROPOSAL_ACTIONS["transfer"]}
-          alt="transfer"
-          width={24}
-          height={24}
-          className="hidden dark:block"
+          className="text-current"
         />
         <span className="text-[14px] font-normal text-foreground">
           Transfer
@@ -99,19 +81,10 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("custom")}
       >
-        <Image
-          src={PROPOSAL_ACTIONS_LIGHT["custom"]}
-          alt="custom"
+        <IconComponent
           width={24}
           height={24}
-          className="block dark:hidden"
-        />
-        <Image
-          src={PROPOSAL_ACTIONS["custom"]}
-          alt="custom"
-          width={24}
-          height={24}
-          className="hidden dark:block"
+          className="text-current"
         />
         <span className="text-[14px] font-normal text-foreground">Custom</span>
         {error && (
@@ -129,31 +102,20 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("custom")}
       >
-        <Image
-          src={PROPOSAL_ACTIONS_LIGHT["xaccount"]}
-          alt="xaccount"
+        <IconComponent
           width={24}
           height={24}
-          className="block dark:hidden"
-        />
-        <Image
-          src={PROPOSAL_ACTIONS["xaccount"]}
-          alt="xaccount"
-          width={24}
-          height={24}
-          className="hidden dark:block"
+          className="text-current"
         />
         <span className="text-[14px] font-normal text-foreground flex items-center gap-[5px]">
           XAccount Cross-chain
           {tip && (
             <Tooltip>
               <TooltipTrigger>
-                <Image
-                  className="text-[12px] text-muted-foreground"
-                  src="/assets/image/question.svg"
-                  alt="question"
+                <QuestionIcon
                   width={20}
                   height={20}
+                  className="text-muted-foreground"
                 />
               </TooltipTrigger>
               <TooltipContent className="max-w-[300px]">{tip}</TooltipContent>
@@ -175,19 +137,10 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("preview")}
       >
-        <Image
-          src={PROPOSAL_ACTIONS_LIGHT["preview"]}
-          alt="preview"
+        <IconComponent
           width={24}
           height={24}
-          className="block dark:hidden"
-        />
-        <Image
-          src={PROPOSAL_ACTIONS["preview"]}
-          alt="preview"
-          width={24}
-          height={24}
-          className="hidden dark:block"
+          className="text-current"
         />
         <span className="text-[14px] font-normal text-foreground">Preview</span>
       </div>

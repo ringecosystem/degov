@@ -4,6 +4,8 @@ import Image from "next/image";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { isAddress, parseUnits } from "viem";
 
+import { ExternalLinkIcon } from "@/components/icons";
+import { getProposalActionIcon } from "@/components/icons/proposal-actions-map";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -167,28 +169,16 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
               <TableRow>
                 <TableCell className="w-[22.93%] text-left">
                   <div className="flex items-center gap-[10px]">
-                    <Image
-                      src={
-                        PROPOSAL_ACTIONS_LIGHT[
-                          action.type as keyof typeof PROPOSAL_ACTIONS_LIGHT
-                        ]
-                      }
-                      alt={action.type || ""}
-                      className="h-[24px] w-[24px] rounded-full block dark:hidden"
-                      width={24}
-                      height={24}
-                    />
-                    <Image
-                      src={
-                        PROPOSAL_ACTIONS[
-                          action.type as keyof typeof PROPOSAL_ACTIONS
-                        ]
-                      }
-                      alt={action.type || ""}
-                      className="h-[24px] w-[24px] rounded-full hidden dark:block"
-                      width={24}
-                      height={24}
-                    />
+                    {(() => {
+                      const IconComponent = getProposalActionIcon(action.type);
+                      return (
+                        <IconComponent
+                          width={24}
+                          height={24}
+                          className="h-[24px] w-[24px] rounded-full text-current"
+                        />
+                      );
+                    })()}
                     <span className="text-[14px] capitalize">
                       {action.type === "xaccount"
                         ? "XAccount Cross-chain"
@@ -206,19 +196,10 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
                         rel="noreferrer"
                         className="hover:opacity-80 transition-opacity duration-300 cursor-pointer"
                       >
-                        <Image
-                          src="/assets/image/light/external-link.svg"
-                          alt="external-link"
+                        <ExternalLinkIcon
                           width={16}
                           height={16}
-                          className="dark:hidden"
-                        />
-                        <Image
-                          src="/assets/image/external-link.svg"
-                          alt="external-link"
-                          width={16}
-                          height={16}
-                          className="hidden dark:block"
+                          className="text-current"
                         />
                       </a>
                     </span>

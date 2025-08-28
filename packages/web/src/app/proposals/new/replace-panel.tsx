@@ -1,5 +1,4 @@
-import Image from "next/image";
-
+import { ProposalCloseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -31,19 +30,10 @@ export const ReplacePanel = ({
           variant="outline"
           onClick={() => onRemove(index)}
         >
-          <Image
-            src="/assets/image/light/proposal/close.svg"
-            alt="plus"
+          <ProposalCloseIcon
             width={16}
             height={16}
-            className="block dark:hidden"
-          />
-          <Image
-            src="/assets/image/proposal/close.svg"
-            alt="plus"
-            width={16}
-            height={16}
-            className="hidden dark:block"
+            className="text-current"
           />
           <span>Remove action</span>
         </Button>

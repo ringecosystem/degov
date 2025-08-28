@@ -1,9 +1,9 @@
-import Image from "next/image";
 import Link from "next/link";
 import { isAddress } from "viem";
 
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
+import { ExternalLinkIcon, ProposalCloseIcon } from "@/components/icons";
 import { Input } from "@/components/ui/input";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
@@ -66,43 +66,17 @@ export function AddressInputWithResolver({
               href={`${dappConfig?.chain?.explorers?.[0]}/address/${value}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:opacity-80 transition-opacity cursor-pointer duration-300"
+              className="hover:opacity-80 transition-opacity cursor-pointer duration-300 text-muted-foreground"
             >
-              <Image
-                src="/assets/image/light/external-link.svg"
-                alt="external-link"
-                width={16}
-                height={16}
-                className="block dark:hidden"
-              />
-              <Image
-                src="/assets/image/external-link.svg"
-                alt="external-link"
-                width={16}
-                height={16}
-                className="hidden dark:block"
-              />
+              <ExternalLinkIcon width={16} height={16} />
             </Link>
           </span>
 
           <button
             onClick={handleClear}
-            className="ml-2 hover:opacity-70 flex-shrink-0"
+            className="ml-2 hover:opacity-70 flex-shrink-0 text-muted-foreground"
           >
-            <Image
-              src="/assets/image/light/proposal/close.svg"
-              alt="close"
-              width={16}
-              height={16}
-              className="block dark:hidden"
-            />
-            <Image
-              src="/assets/image/proposal/close.svg"
-              alt="close"
-              width={16}
-              height={16}
-              className="hidden dark:block"
-            />
+            <ProposalCloseIcon width={16} height={16} />
           </button>
         </div>
       ) : (

@@ -2,13 +2,13 @@
 
 import BigNumber from "bignumber.js";
 import { isEmpty, isUndefined } from "lodash-es";
-import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
 import { formatUnits } from "viem";
 import { useBalance } from "wagmi";
 
 import ClipboardIconButton from "@/components/clipboard-icon-button";
+import { ExternalLinkIcon, WarningIcon } from "@/components/icons";
 import { TreasuryList } from "@/components/treasury-list";
 import { SafeList } from "@/components/treasury-list/safe-list";
 import { TreasuryTable } from "@/components/treasury-table";
@@ -189,19 +189,10 @@ export default function Treasury() {
                 rel="noopener noreferrer"
                 title="View on Explorer"
               >
-                <Image
-                  src="/assets/image/light/external-link.svg"
-                  alt="address"
+                <ExternalLinkIcon
                   width={20}
                   height={20}
-                  className="dark:hidden"
-                />
-                <Image
-                  src="/assets/image/external-link.svg"
-                  alt="address"
-                  width={20}
-                  height={20}
-                  className="hidden dark:block"
+                  className="text-muted-foreground"
                 />
               </Link>
             </>
@@ -230,19 +221,10 @@ export default function Treasury() {
                   side="left"
                 >
                   <span className="gap-[10px] text-[14px] font-normal leading-normal text-foreground flex items-center">
-                    <Image
-                      src="/assets/image/light/warning.svg"
-                      alt="warning"
+                    <WarningIcon
                       width={20}
                       height={20}
-                      className="dark:hidden"
-                    />
-                    <Image
-                      src="/assets/image/warning.svg"
-                      alt="warning"
-                      width={20}
-                      height={20}
-                      className="hidden dark:block"
+                      className="text-current"
                     />
                     Token price data is not available at this time
                   </span>

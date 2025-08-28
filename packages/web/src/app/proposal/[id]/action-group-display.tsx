@@ -1,7 +1,7 @@
-import Image from "next/image";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ProposalActionCheckIcon, ErrorIcon, CancelIcon, ClockIcon } from "@/components/icons";
 import { VoteType } from "@/config/vote";
 import { ProposalState } from "@/types/proposal";
 interface ActionGroupDisplayProps {
@@ -20,76 +20,57 @@ export const ActionGroupDisplay = ({
   canExecute,
   hasTimelock,
 }: ActionGroupDisplayProps) => {
-  const voteInfo = useMemo(() => {
-    switch (votedSupport) {
+  const getVoteIcon = (voteType?: VoteType) => {
+    switch (voteType) {
       case VoteType.For:
-        return {
-          label: "For",
-          value: VoteType.For,
-
-          icon: "/assets/image/proposal/action/check.svg",
-          lightIcon: "/assets/image/light/proposal/action/check.svg",
-        };
+        return ProposalActionCheckIcon;
       case VoteType.Against:
-        return {
-          label: "Against",
-          value: VoteType.Against,
-          icon: "/assets/image/proposal/action/error.svg",
-          lightIcon: "/assets/image/light/proposal/action/error.svg",
-        };
+        return ErrorIcon;
       case VoteType.Abstain:
-        return {
-          label: "Abstain",
-          value: VoteType.Abstain,
-          icon: "/assets/image/proposal/action/cancel.svg",
-          lightIcon: "/assets/image/light/proposal/action/cancel.svg",
-        };
+        return CancelIcon;
       default:
         return null;
     }
-  }, [votedSupport]);
+  };
+
+  const getVoteLabel = (voteType?: VoteType) => {
+    switch (voteType) {
+      case VoteType.For:
+        return "For";
+      case VoteType.Against:
+        return "Against";
+      case VoteType.Abstain:
+        return "Abstain";
+      default:
+        return null;
+    }
+  };
 
   if (status === ProposalState.Pending) {
     return (
       <div className="flex items-center gap-[10px]">
-        <Image
-          src="/assets/image/light/proposal/action/clock.svg"
-          alt="pending"
+        <ClockIcon
           width={20}
           height={20}
-          className="dark:hidden"
+          className="text-current"
         />
-        <Image
-          src="/assets/image/proposal/action/clock.svg"
-          alt="pending"
-          width={20}
-          height={20}
-          className="hidden dark:block"
-        />
-
         <p>Voting starts soon</p>
       </div>
     );
   }
   if (status === ProposalState.Active) {
-    if (voteInfo) {
+    const VoteIcon = getVoteIcon(votedSupport);
+    const voteLabel = getVoteLabel(votedSupport);
+    
+    if (VoteIcon && voteLabel) {
       return (
         <p className="flex items-center gap-[10px] text-[14px] font-normal">
-          <Image
-            src={voteInfo.lightIcon}
-            alt={voteInfo.label}
+          <VoteIcon
             width={20}
             height={20}
-            className="dark:hidden"
+            className="text-current"
           />
-          <Image
-            alt={voteInfo.label}
-            src={voteInfo.icon}
-            width={20}
-            height={20}
-            className="hidden dark:block"
-          />
-          You voted {voteInfo.label}
+          You voted {voteLabel}
         </p>
       );
     }
@@ -144,19 +125,10 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Executed) {
     return (
       <div className="flex items-center gap-[10px]">
-        <Image
-          src="/assets/image/light/proposal/action/check.svg"
-          alt="executed"
+        <ProposalActionCheckIcon
           width={20}
           height={20}
-          className="dark:hidden"
-        />
-        <Image
-          src="/assets/image/proposal/action/check.svg"
-          alt="executed"
-          width={20}
-          height={20}
-          className="hidden dark:block"
+          className="text-current"
         />
         <p>Proposal executed</p>
       </div>
@@ -165,19 +137,10 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Canceled) {
     return (
       <div className="flex items-center gap-[10px]">
-        <Image
-          src="/assets/image/light/proposal/action/cancel.svg"
-          alt="canceled"
+        <CancelIcon
           width={20}
           height={20}
-          className="dark:hidden"
-        />
-        <Image
-          src="/assets/image/proposal/action/cancel.svg"
-          alt="canceled"
-          width={20}
-          height={20}
-          className="hidden dark:block"
+          className="text-current"
         />
         <p>Proposal canceled</p>
       </div>
@@ -186,19 +149,10 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Expired) {
     return (
       <div className="flex items-center gap-[10px]">
-        <Image
-          src="/assets/image/light/proposal/action/cancel.svg"
-          alt="expired"
+        <CancelIcon
           width={20}
           height={20}
-          className="dark:hidden"
-        />
-        <Image
-          src="/assets/image/proposal/action/cancel.svg"
-          alt="expired"
-          width={20}
-          height={20}
-          className="hidden dark:block"
+          className="text-current"
         />
         <p>Proposal expired</p>
       </div>
@@ -207,19 +161,10 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Defeated) {
     return (
       <div className="flex items-center gap-[10px]">
-        <Image
-          src="/assets/image/light/proposal/action/cancel.svg"
-          alt="defeated"
+        <CancelIcon
           width={20}
           height={20}
-          className="dark:hidden"
-        />
-        <Image
-          src="/assets/image/proposal/action/cancel.svg"
-          alt="defeated"
-          width={20}
-          height={20}
-          className="hidden dark:block"
+          className="text-current"
         />
         <p>Proposal defeated</p>
       </div>

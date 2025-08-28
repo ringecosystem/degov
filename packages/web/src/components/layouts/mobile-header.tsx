@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import React, { useMemo } from "react";
 
+import { AppIcon, LogoIcon } from "@/components/icons";
 import { SearchModal } from "@/components/search-modal";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
@@ -48,47 +49,16 @@ export const MobileHeader = () => {
                   />
                 </>
               ) : (
-                <>
-                  <Image
-                    src="/assets/image/logo.svg"
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] hidden dark:block"
-                  />
-                  <Image
-                    src="/assets/image/light/logo.svg"
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] block dark:hidden"
-                  />
-                </>
+                <LogoIcon width={128} height={26} className="h-[26px] w-[128px]" />
               )}
             </Link>
             <Link
               href="https://apps.degov.ai"
               target="_blank"
               rel="noopener noreferrer"
+              className="text-foreground hover:opacity-80 transition-opacity"
             >
-              <Image
-                src="/assets/image/app.svg"
-                alt="logo"
-                width={24}
-                height={24}
-                priority
-                className="hidden dark:block"
-              />
-              <Image
-                src="/assets/image/light/app.svg"
-                alt="logo"
-                width={24}
-                height={24}
-                priority
-                className="block dark:hidden"
-              />
+              <AppIcon width={24} height={24} />
             </Link>
           </div>
 

@@ -1,9 +1,9 @@
 "use client";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
 
+import { getNavIcon } from "@/components/icons/nav-icon-map";
 import {
   Tooltip,
   TooltipContent,
@@ -67,48 +67,19 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                   }}
                 >
                   <span className="relative flex-shrink-0 h-[32px] w-[32px]">
-                    <Image
-                      src={`/assets/image/light/nav/${route.key}.svg`}
-                      alt={route.key}
-                      width={32}
-                      height={32}
-                      className={cn(
-                        "absolute size-[32px] transition-opacity duration-200 block dark:hidden",
-                        "group-hover:opacity-0"
-                      )}
-                    />
-                    <Image
-                      src={`/assets/image/nav/${route.key}.svg`}
-                      alt={route.key}
-                      width={32}
-                      height={32}
-                      className={cn(
-                        "absolute size-[32px] transition-opacity duration-200 hidden dark:block",
-                        "group-hover:opacity-0"
-                      )}
-                    />
-                    <Image
-                      src={`/assets/image/light/nav/${route.key}-active.svg`}
-                      alt={route.key}
-                      width={32}
-                      height={32}
-                      className={cn(
-                        "absolute size-[32px] transition-opacity duration-200 block dark:hidden",
-                        isActive ? "opacity-100" : "opacity-0",
-                        "group-hover:opacity-100"
-                      )}
-                    />
-                    <Image
-                      src={`/assets/image/nav/${route.key}-active.svg`}
-                      alt={route.key}
-                      width={32}
-                      height={32}
-                      className={cn(
-                        "absolute size-[32px] transition-opacity duration-200 hidden dark:block",
-                        isActive ? "opacity-100" : "opacity-0",
-                        "group-hover:opacity-100"
-                      )}
-                    />
+                    {(() => {
+                      const IconComponent = getNavIcon(route.key);
+                      return (
+                        <IconComponent
+                          width={32}
+                          height={32}
+                          className={cn(
+                            "size-[32px] transition-opacity duration-200",
+                            isActive || "group-hover:opacity-80" ? "opacity-100" : "opacity-60"
+                          )}
+                        />
+                      );
+                    })()}
                   </span>
 
                   {!collapsed && (

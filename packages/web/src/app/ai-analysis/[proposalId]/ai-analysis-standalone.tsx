@@ -5,6 +5,7 @@ import Link from "next/link";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
+import { ExternalLinkIcon } from "@/components/icons";
 import { AiLogo } from "@/components/icons/ai-logo";
 import { AiTitleIcon as AiTitleIcon1 } from "@/components/icons/ai-title-icon-1";
 import { AiTitleIcon as AiTitleIcon2 } from "@/components/icons/ai-title-icon-2";
@@ -285,19 +286,10 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
                 rel="noopener noreferrer"
                 className="hover:opacity-80 transition-opacity"
               >
-                <Image
-                  src="/assets/image/light/external-link.svg"
-                  alt="external-link"
-                  className="h-[24px] w-[24px] dark:hidden"
+                <ExternalLinkIcon
                   width={24}
                   height={24}
-                />
-                <Image
-                  src="/assets/image/external-link.svg"
-                  alt="external-link"
-                  className="h-[24px] w-[24px] hidden dark:block"
-                  width={24}
-                  height={24}
+                  className="h-[24px] w-[24px] text-muted-foreground"
                 />
               </Link>
             </h3>

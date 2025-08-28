@@ -1,7 +1,8 @@
 import { ChevronDown, Power } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback } from "react";
+
+import { ExternalLinkIcon, ProfileIcon } from "@/components/icons";
 
 import {
   DropdownMenu,
@@ -67,19 +68,10 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
             target="_blank"
             rel="noopener noreferrer"
           >
-            <Image
-              src="/assets/image/light/external-link.svg"
-              alt="external link"
+            <ExternalLinkIcon
               width={22}
               height={20}
-              className="block dark:hidden flex-shrink-0 mt-[2px]"
-            />
-            <Image
-              src="/assets/image/external-link.svg"
-              alt="external link"
-              width={22}
-              height={20}
-              className="hidden dark:block flex-shrink-0 mt-[2px]"
+              className="flex-shrink-0 mt-[2px] text-current"
             />
           </Link>
         </div>
@@ -91,19 +83,10 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
             variant="outline"
           >
             <Link href="/profile" onClick={() => onMenuToggle?.()}>
-              <Image
-                src="/assets/image/light/profile.svg"
-                alt="profile"
+              <ProfileIcon
                 width={20}
                 height={20}
-                className="dark:hidden"
-              />
-              <Image
-                src="/assets/image/profile.svg"
-                alt="profile"
-                width={20}
-                height={20}
-                className="hidden dark:block"
+                className="text-current"
               />
               <span className="text-[14px]">Profile</span>
             </Link>

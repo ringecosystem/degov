@@ -1,5 +1,4 @@
-import Image from "next/image";
-
+import { EmptyIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 import type { ReactNode } from "react";
@@ -20,19 +19,10 @@ export function Empty({
       )}
       style={style}
     >
-      <Image
-        src="/assets/image/light/empty.svg"
-        alt="empty"
-        className="size-[60px] dark:hidden"
+      <EmptyIcon
         width={60}
         height={60}
-      />
-      <Image
-        src="/assets/image/empty.svg"
-        alt="empty"
-        className="size-[60px] hidden dark:block"
-        width={60}
-        height={60}
+        className="size-[60px] text-current"
       />
       <div className="max-w-[320px] text-balance text-center text-[12px] font-normal text-foreground">
         {label || "No data"}

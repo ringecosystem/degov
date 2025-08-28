@@ -1,9 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { ProposalCloseIcon, ProposalPlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { XAccountFileUploader } from "@/components/xaccount-file-uploader";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -91,24 +91,11 @@ export const XAccountPanel = ({
         <h4 className="text-[18px] font-semibold">Action #{index}</h4>
 
         <Button
-          className="h-[30px] gap-[5px] rounded-[100px] border border-foreground bg-card p-[10px]"
+          className="h-[30px] gap-[5px] rounded-[100px] border border-foreground bg-card p-[10px] text-foreground"
           variant="outline"
           onClick={() => onRemove(index)}
         >
-          <Image
-            src="/assets/image/light/proposal/close.svg"
-            alt="plus"
-            width={16}
-            height={16}
-            className="block dark:hidden"
-          />
-          <Image
-            src="/assets/image/proposal/close.svg"
-            alt="plus"
-            width={16}
-            height={16}
-            className="hidden dark:block"
-          />
+          <ProposalCloseIcon width={16} height={16} />
           <span>Remove action</span>
         </Button>
       </div>
@@ -129,22 +116,9 @@ export const XAccountPanel = ({
           execute it in this chain.
         </p>
         <div className="flex justify-center">
-          <Button className="rounded-[100px] bg-foreground" asChild>
+          <Button className="rounded-[100px] bg-foreground text-background" asChild>
             <Link href={xaccountLink} target="_blank" rel="noreferrer">
-              <Image
-                src="/assets/image/light/proposal/plus.svg"
-                alt="plus"
-                width={20}
-                height={20}
-                className="dark:hidden"
-              />
-              <Image
-                src="/assets/image/proposal/plus.svg"
-                alt="plus"
-                width={20}
-                height={20}
-                className="hidden dark:block"
-              />
+              <ProposalPlusIcon width={20} height={20} />
               Generate Action on XAccount Box
             </Link>
           </Button>

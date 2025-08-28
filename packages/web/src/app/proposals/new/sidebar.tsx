@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
-import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
+import { PlusIcon } from "@/components/icons";
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 
 import { NewProposalAction } from "./action";
@@ -75,19 +75,10 @@ export const Sidebar = ({
           className="gap-[5px] rounded-[100px] w-full"
           onClick={onAddAction}
         >
-          <Image
-            src="/assets/image/light/proposal/plus.svg"
-            alt="plus"
+          <PlusIcon
             width={16}
             height={16}
-            className="dark:hidden"
-          />
-          <Image
-            src="/assets/image/proposal/plus.svg"
-            alt="plus"
-            width={16}
-            height={16}
-            className="hidden dark:block"
+            className="text-current"
           />
           <span>Add Action</span>
         </Button>

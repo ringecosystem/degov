@@ -3,6 +3,7 @@ import Image from "next/image";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
+import { ExternalLinkIcon } from "@/components/icons";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -462,19 +463,10 @@ const Status: React.FC<StatusProps> = ({
                 title="View on Explorer"
                 className="hover:opacity-80 transition-opacity duration-300"
               >
-                <Image
-                  src="/assets/image/light/external-link.svg"
-                  alt="arrow"
+                <ExternalLinkIcon
                   width={16}
                   height={16}
-                  className="dark:hidden"
-                />
-                <Image
-                  src="/assets/image/external-link.svg"
-                  alt="arrow"
-                  width={16}
-                  height={16}
-                  className="hidden dark:block"
+                  className="text-current"
                 />
               </a>
             )}

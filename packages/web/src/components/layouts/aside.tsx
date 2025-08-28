@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
 
 import { Nav } from "@/app/nav";
+import { AppIcon, LogoIcon } from "@/components/icons";
 import { IndexerStatus } from "@/components/indexer-status";
 import {
   Tooltip,
@@ -115,47 +116,16 @@ export const Aside = () => {
                       />
                     </>
                   ) : (
-                    <>
-                      <Image
-                        src="/assets/image/logo.svg"
-                        alt="logo"
-                        width={128}
-                        height={26}
-                        priority
-                        className="h-[26px] w-[128px] hidden dark:block"
-                      />
-                      <Image
-                        src="/assets/image/light/logo.svg"
-                        alt="logo"
-                        width={128}
-                        height={26}
-                        priority
-                        className="h-[26px] w-[128px] block dark:hidden"
-                      />
-                    </>
+                    <LogoIcon width={128} height={26} className="h-[26px] w-[128px]" />
                   )}
                 </Link>
                 <Link
                   href="https://apps.degov.ai"
                   target="_blank"
                   rel="noopener noreferrer"
+                  className="text-foreground hover:opacity-80 transition-opacity"
                 >
-                  <Image
-                    src="/assets/image/app.svg"
-                    alt="logo"
-                    width={32}
-                    height={32}
-                    priority
-                    className="hidden dark:block"
-                  />
-                  <Image
-                    src="/assets/image/light/app.svg"
-                    alt="logo"
-                    width={32}
-                    height={32}
-                    priority
-                    className="block dark:hidden"
-                  />
+                  <AppIcon width={32} height={32} />
                 </Link>
               </div>
             )}

@@ -6,6 +6,7 @@ import { parseUnits, formatUnits, type Address } from "viem";
 import { useBalance } from "wagmi";
 
 import { AddressInputWithResolver } from "@/components/address-input-with-resolver";
+import { ProposalCloseIcon } from "@/components/icons";
 import { ErrorMessage } from "@/components/error-message";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -164,19 +165,10 @@ export const TransferPanel = ({
           variant="outline"
           onClick={() => onRemove(index)}
         >
-          <Image
-            src="/assets/image/light/proposal/close.svg"
-            alt="plus"
+          <ProposalCloseIcon
             width={16}
             height={16}
-            className="block dark:hidden"
-          />
-          <Image
-            src="/assets/image/proposal/close.svg"
-            alt="plus"
-            width={16}
-            height={16}
-            className="hidden dark:block"
+            className="text-current"
           />
           <span>Remove action</span>
         </Button>

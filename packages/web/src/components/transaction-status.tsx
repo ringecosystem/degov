@@ -1,5 +1,4 @@
-import Image from "next/image";
-
+import { ExternalLinkIcon } from "@/components/icons";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 type TransactionStatusType = "pending" | "success" | "failed";
@@ -44,19 +43,10 @@ export function TransactionStatus({
           rel="noopener noreferrer"
         >
           Tx:{transactionHash.slice(0, 6)}...{transactionHash.slice(-4)}
-          <Image
-            src="/assets/image/light/link.svg"
-            alt="link"
+          <ExternalLinkIcon
             width={8}
             height={8}
-            className="dark:hidden"
-          />
-          <Image
-            src="/assets/image/link.svg"
-            alt="link"
-            width={8}
-            height={8}
-            className="hidden dark:block"
+            className="text-current"
           />
         </a>
       </div>

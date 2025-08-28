@@ -1,11 +1,11 @@
 "use client";
-import Image from "next/image";
 
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { getSocialIcon } from "@/components/icons/social-icon-map";
 import { socialConfig } from "@/config/social";
 import { cn } from "@/lib/utils";
 
@@ -34,20 +34,16 @@ export const Socials = ({ collapsed }: { collapsed: boolean }) => {
                 social.name === "Github" && "px-[5px] w-auto gap-[5px]"
               )}
             >
-              <Image
-                src={social.lightAssetPath}
-                alt={social.name}
-                width={social?.width || 24}
-                height={social?.height || 24}
-                className="object-contain block dark:hidden"
-              />
-              <Image
-                src={social.assetPath}
-                alt={social.name}
-                width={social?.width || 24}
-                height={social?.height || 24}
-                className="object-contain hidden dark:block"
-              />
+              {(() => {
+                const IconComponent = getSocialIcon(social.name);
+                return (
+                  <IconComponent
+                    width={social?.width || 24}
+                    height={social?.height || 24}
+                    className="object-contain text-current"
+                  />
+                );
+              })()}
 
               {social.name === "Github" && (
                 <span className="text-xs text-muted-foreground">

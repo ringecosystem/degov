@@ -1,7 +1,7 @@
-import Image from "next/image";
 import { useMemo } from "react";
 import { useReadContract } from "wagmi";
 
+import { ProposalActionCheckIcon, ErrorIcon } from "@/components/icons";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { abi as governorAbi } from "@/config/abi/governor";
@@ -151,28 +151,19 @@ export const CurrentVotes = ({
               <Skeleton className="h-[20px] w-[20px] rounded-full" />
             ) : (
               <>
-                <Image
-                  src={
-                    quorum > proposalVotesData?.againstVotes
-                      ? "/assets/image/light/proposal/check.svg"
-                      : "/assets/image/light/proposal/error.svg"
-                  }
-                  alt="error"
-                  width={20}
-                  height={20}
-                  className="rounded-full block dark:hidden"
-                />
-                <Image
-                  src={
-                    quorum > proposalVotesData?.againstVotes
-                      ? "/assets/image/proposal/check.svg"
-                      : "/assets/image/proposal/error.svg"
-                  }
-                  alt="error"
-                  width={20}
-                  height={20}
-                  className="rounded-full hidden dark:block"
-                />
+                {quorum > proposalVotesData?.againstVotes ? (
+                  <ProposalActionCheckIcon
+                    width={20}
+                    height={20}
+                    className="rounded-full text-current"
+                  />
+                ) : (
+                  <ErrorIcon
+                    width={20}
+                    height={20}
+                    className="rounded-full text-current"
+                  />
+                )}
               </>
             )}
             <span className="text-[14px] font-normal">Quorum</span>
@@ -190,28 +181,19 @@ export const CurrentVotes = ({
         <div className="flex flex-col gap-[10px]">
           <div className="flex items-center justify-between gap-[10px]">
             <div className="flex items-center gap-[5px]">
-              <Image
-                src={
-                  calculateMajoritySupport(proposalVotesData) === "Yes"
-                    ? "/assets/image/light/proposal/check.svg"
-                    : "/assets/image/light/proposal/error.svg"
-                }
-                alt="check"
-                width={20}
-                height={20}
-                className="rounded-full block dark:hidden"
-              />
-              <Image
-                src={
-                  calculateMajoritySupport(proposalVotesData) === "Yes"
-                    ? "/assets/image/proposal/check.svg"
-                    : "/assets/image/proposal/error.svg"
-                }
-                alt="check"
-                width={20}
-                height={20}
-                className="rounded-full hidden dark:block"
-              />
+              {calculateMajoritySupport(proposalVotesData) === "Yes" ? (
+                <ProposalActionCheckIcon
+                  width={20}
+                  height={20}
+                  className="rounded-full text-current"
+                />
+              ) : (
+                <ErrorIcon
+                  width={20}
+                  height={20}
+                  className="rounded-full text-current"
+                />
+              )}
               <span className="text-[14px] font-normal">Majority support</span>
             </div>
 

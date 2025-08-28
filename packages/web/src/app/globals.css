@@ -33,11 +33,6 @@ body {
 
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
 
     /* 00B403 */
     --success: 121 100% 35%;
@@ -55,8 +50,6 @@ body {
     --canceled: var(--muted-foreground);
 
     --radius: 0.5rem;
-    --skeleton-bg: 0 0% 15%;
-    
     --scrollbar-track: hsl(var(--muted));
     --scrollbar-thumb: hsl(var(--secondary));
     --scrollbar-thumb-hover: hsl(var(--border));
@@ -86,7 +79,6 @@ body {
     --primary-foreground: 0 0% 9%;
     --secondary: 0 0% 28%;
     --secondary-foreground: 0 0% 100% / 0.8;
-    /* --muted: 0 0% 14.9%; */
     --muted: 240 3.7% 15.9%;
 
     /* #979797 */
@@ -102,11 +94,6 @@ body {
     /* #202224 */
     --input: 210 6% 13%;
     --ring: 0 0% 100% / 0;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
 
     /* #00B624 */
     --success: 132 100% 36%;
@@ -124,13 +111,6 @@ body {
     --canceled: var(--muted-foreground);
 
     --radius: 0.5rem;
-    --skeleton-bg: 0 0% 15%;
-    
-    --scrollbar-track: hsl(var(--muted));
-    --scrollbar-thumb: hsl(var(--secondary));
-    --scrollbar-thumb-hover: hsl(var(--border));
-    --scrollbar-width: 8px;
-    --scrollbar-height: 8px;
 
     /* #2E2E2E */
     --card-background: 0 0% 18%;

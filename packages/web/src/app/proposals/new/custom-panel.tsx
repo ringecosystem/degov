@@ -1,12 +1,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { isAddress, type Abi, type AbiItem } from "viem";
 import { useBytecode } from "wagmi";
 
 import { AddressInputWithResolver } from "@/components/address-input-with-resolver";
+import { ProposalCloseIcon } from "@/components/icons";
 import { ErrorMessage } from "@/components/error-message";
 import { FileUploader } from "@/components/file-uploader";
 import { Button } from "@/components/ui/button";
@@ -245,19 +245,10 @@ export const CustomPanel = ({
           variant="outline"
           onClick={() => onRemove(index)}
         >
-          <Image
-            src="/assets/image/light/proposal/close.svg"
-            alt="plus"
+          <ProposalCloseIcon
             width={16}
             height={16}
-            className="block dark:hidden"
-          />
-          <Image
-            src="/assets/image/proposal/close.svg"
-            alt="plus"
-            width={16}
-            height={16}
-            className="hidden dark:block"
+            className="text-current"
           />
           <span>Remove action</span>
         </Button>

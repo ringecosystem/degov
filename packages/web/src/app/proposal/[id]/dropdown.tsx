@@ -1,5 +1,4 @@
-import Image from "next/image";
-
+import { MoreIcon, CancelIcon } from "@/components/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,19 +20,10 @@ export const Dropdown = ({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <span>
-            <Image
-              src="/assets/image/light/more.svg"
-              alt="more"
+            <MoreIcon
               width={36}
               height={36}
-              className="cursor-pointer transition-opacity hover:opacity-80 dark:hidden"
-            />
-            <Image
-              src="/assets/image/more.svg"
-              alt="more"
-              width={36}
-              height={36}
-              className="cursor-pointer transition-opacity hover:opacity-80 hidden dark:block"
+              className="cursor-pointer transition-opacity hover:opacity-80 text-current"
             />
           </span>
         </DropdownMenuTrigger>
@@ -46,11 +36,10 @@ export const Dropdown = ({
               className="cursor-pointer p-[10px]"
               onSelect={handleCancelProposal}
             >
-              <Image
-                src="/assets/image/proposal/cancel.svg"
-                alt="cancel"
+              <CancelIcon
                 width={20}
                 height={20}
+                className="text-current"
               />
               <span>Cancel Proposal</span>
             </DropdownMenuItem>
