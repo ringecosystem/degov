@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { simplifyFunctionSignature } from "@/utils";
@@ -74,15 +74,11 @@ function parseCalldataParams(
   }
 }
 
+const decodingCache = new Map<string, Promise<DecodeRecursiveResult | null>>();
+
 export function useDecodeCallData(actions: Action[]): DecodedAction[] {
   const daoConfig = useDaoConfig();
   const [decodedActions, setDecodedActions] = useState<DecodedAction[]>([]);
-  
-  // Component-level decoding cache to avoid duplicate decoding
-  const decodingCache = useMemo(
-    () => new Map<string, Promise<DecodeRecursiveResult | null>>(),
-    []
-  );
 
   // Decode actions using calldata decoder
   useEffect(() => {
@@ -133,24 +129,6 @@ export function useDecodeCallData(actions: Action[]): DecodedAction[] {
                   });
                 }
 
-                // Fallback to signature-based ABI decoding if address decoding fails
-                if (!result && action.signature) {
-                  try {
-                    const iface = new ethers.Interface([
-                      `function ${action.signature}`,
-                    ]);
-                    const abi = iface.fragments
-                      .map((f) => f.format("json"))
-                      .map((f) => JSON.parse(f));
-                    result = await decodeRecursive({
-                      calldata: action.calldata,
-                      abi,
-                    });
-                  } catch {
-                    // Signature decoding failed, continue with null result
-                  }
-                }
-
                 return result;
               } catch {
                 return null;
@@ -164,7 +142,6 @@ export function useDecodeCallData(actions: Action[]): DecodedAction[] {
           return { ...action, decodedResult: result, isDecoding: false };
         })
       );
-      
       // Process decoded results to add parsed calldata and function info
       const processedDecoded = decoded.map((action) => {
         // Extract parsed calldata from decoded result
@@ -173,17 +150,22 @@ export function useDecodeCallData(actions: Action[]): DecodedAction[] {
           parsedCalldata = action.decodedResult.args.map((param) => ({
             name: param.name,
             type: param.type,
-            value: Array.isArray(param.value) ? param.value : String(param.value),
+            value: Array.isArray(param.value)
+              ? param.value
+              : String(param.value),
           }));
         }
 
         // Extract function name
-        const functionName = action.decodedResult?.functionName || action.signature?.split("(")[0];
+        const functionName =
+          action.decodedResult?.functionName || action.signature?.split("(")[0];
 
         // Construct full function signature with parameter names
         let fullFunctionSignature = "";
         if (action.decodedResult?.functionName && parsedCalldata.length > 0) {
-          const params = parsedCalldata.map(param => `${param.type} ${param.name}`).join(", ");
+          const params = parsedCalldata
+            .map((param) => `${param.type} ${param.name}`)
+            .join(", ");
           fullFunctionSignature = `${action.decodedResult.functionName}(${params})`;
         } else if (action.signature) {
           fullFunctionSignature = action.signature;
@@ -209,7 +191,7 @@ export function useDecodeCallData(actions: Action[]): DecodedAction[] {
       );
       decodeActions();
     }
-  }, [actions, daoConfig?.chain?.id, decodingCache]);
+  }, [actions, daoConfig?.chain?.id]);
 
   return decodedActions;
 }
