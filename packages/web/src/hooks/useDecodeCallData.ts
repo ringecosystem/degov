@@ -1,9 +1,5 @@
 import { ethers } from "ethers";
-<<<<<<< HEAD
 import { useState, useEffect } from "react";
-=======
-import { useMemo, useState, useEffect } from "react";
->>>>>>> origin/main
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { simplifyFunctionSignature } from "@/utils";
