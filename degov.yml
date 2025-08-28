@@ -1,32 +1,26 @@
-name: Unlock Protocol
-code: unlock-dao
-logo: https://pbs.twimg.com/profile_images/1510010252787212290/Kuiapnmy_400x400.jpg
-siteUrl: https://unlock.degov.ai
-offChainDiscussionUrl: https://discord.unlock-protocol.com
-description: AI powered on-chain governance platform for Unlock Protocol.
+name: RnDAO
+code: rn-dao
+logo: https://pbs.twimg.com/profile_images/1498337715661778946/7YEners2_400x400.jpg
+siteUrl: https://rndao.degov.ai
+offChainDiscussionUrl: https://discord.gg/ASraQetMhU
+description: AI powered on-chain governance platform for RnDAO.
 
 links:
-  coingecko: https://www.coingecko.com/en/coins/unlockprotocoltoken
-  website: https://unlock-protocol.com/
-  twitter: https://x.com/UnlockProtocol
-  github: https://github.com/unlock-protocol
-  discord: https://discord.unlock-protocol.com
-
-theme:
-  logoDark: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/unlock-dark.svg
-  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/unlock-light.svg
+  website: https://www.rndao.io
+  twitter: https://x.com/RnDAO__
+  discord: https://discord.gg/ASraQetMhU
 
 wallet:
   walletConnectProjectId: 4e204efdf64201e155ce7ad7123d127d
 
 chain:
-  name: Base Network
-  id: 8453
-  logo: https://pbs.twimg.com/profile_images/1821025913976287232/l0WGRm5B_400x400.jpg
+  name: Arbitrum
+  id: 42161
+  logo: https://pbs.twimg.com/profile_images/1952411676621295616/KUOmiy3l_400x400.jpg
   rpcs:
-    - https://base-rpc.publicnode.com
+    - https://arbitrum-one-rpc.publicnode.com
   explorers:
-    - https://basescan.org
+    - https://arbiscan.io
   nativeToken:
     symbol: ETH
     priceId: ethereum
@@ -34,35 +28,16 @@ chain:
     logo: https://assets.coingecko.com/coins/images/279/standard/ethereum.png
 
 indexer:
-  endpoint: https://indexer.degov.ai/unlock-dao/graphql
-  startBlock: 18035311
-  rpc: https://erpc.ringdao.com/main/evm/8453
-  gateway: https://v2.archive.subsquid.io/network/base-mainnet
+  endpoint: https://indexer.degov.ai/rn-dao/graphql
+  startBlock: 191754212
+  rpc: https://erpc.ringdao.com/main/evm/42161
+  gateway: https://v2.archive.subsquid.io/network/arbitrum-one
 
 aiAgent:
   endpoint: https://agent.degov.ai
 
 contracts:
-  governor: "0x65bA0624403Fc5Ca2b20479e9F626eD4D78E0aD9"
+  governor: "0xf73EE8B7AE7ddA64CF88CD4f722241BF88237157"
   governorToken:
-    address: "0xaC27fa800955849d6D17cC8952Ba9dD6EAA66187"
+    address: "0x33dB29274D2499F4afa91804850412C8473b83e2"
     standard: ERC20
-  timeLock: "0xB34567C4cA697b39F72e1a8478f285329A98ed1b"
-
-treasuryAssets:
-  - name: Unlock Protocol Token
-    contract: "0xaC27fa800955849d6D17cC8952Ba9dD6EAA66187"
-    standard: ERC20
-    priceId: unlockprotocoltoken
-    logo: https://assets.coingecko.com/coins/images/51457/standard/up2.png
-  - name: USDC
-    contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-    standard: ERC20
-    priceId: usd-coin
-    logo: https://assets.coingecko.com/coins/images/6319/standard/usdc.png
-
-apps:
-  - name: Unlock Base Migration
-    description: Migrate your UDT from Ethereum to UP on Base.
-    icon: https://pbs.twimg.com/profile_images/1510010252787212290/Kuiapnmy_400x400.jpg
-    link: https://up-swap.unlock-protocol.com
