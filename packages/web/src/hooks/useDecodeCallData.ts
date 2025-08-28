@@ -1,5 +1,9 @@
 import { ethers } from "ethers";
+<<<<<<< HEAD
 import { useState, useEffect } from "react";
+=======
+import { useMemo, useState, useEffect } from "react";
+>>>>>>> origin/main
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { simplifyFunctionSignature } from "@/utils";
@@ -142,7 +146,6 @@ export function useDecodeCallData(actions: Action[]): DecodedAction[] {
           return { ...action, decodedResult: result, isDecoding: false };
         })
       );
-
       // Process decoded results to add parsed calldata and function info
       const processedDecoded = decoded.map((action) => {
         // Extract parsed calldata from decoded result
