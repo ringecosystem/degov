@@ -96,8 +96,8 @@ const Status: React.FC<StatusProps> = ({
   const { data: govParams } = useGovernanceParams();
 
   const votingPeriodStarted = useMemo(() => {
-    if (isNil(data?.blockTimestamp) || isNil(govParams?.votingDelayInSeconds))
-      return "";
+    if (isNil(data?.blockTimestamp) || isNil(govParams?.votingDelayInSeconds) || isNaN(govParams?.votingDelayInSeconds))
+      return BigInt(0);
 
     return (
       BigInt(data?.blockTimestamp) +
@@ -106,10 +106,16 @@ const Status: React.FC<StatusProps> = ({
   }, [data?.blockTimestamp, govParams?.votingDelayInSeconds]);
 
   const votingPeriodEnded = useMemo(() => {
+    const votingDelay = govParams?.votingDelayInSeconds;
+    const votingPeriod = govParams?.votingPeriodInSeconds;
+    
+    const safeVotingDelay = isNil(votingDelay) || isNaN(votingDelay) ? 0 : votingDelay;
+    const safeVotingPeriod = isNil(votingPeriod) || isNaN(votingPeriod) ? 0 : votingPeriod;
+    
     return (
       BigInt(data?.blockTimestamp ?? 0) +
-      BigInt((govParams?.votingDelayInSeconds || 0) * 1000) +
-      BigInt((govParams?.votingPeriodInSeconds || 0) * 1000)
+      BigInt(safeVotingDelay * 1000) +
+      BigInt(safeVotingPeriod * 1000)
     );
   }, [
     data?.blockTimestamp,
@@ -127,7 +133,8 @@ const Status: React.FC<StatusProps> = ({
   const executeEnabledTime = useMemo(() => {
     if (
       !proposalQueuedById?.blockTimestamp ||
-      !govParams?.timeLockDelayInSeconds
+      !govParams?.timeLockDelayInSeconds ||
+      isNaN(govParams?.timeLockDelayInSeconds)
     ) {
       return null;
     }

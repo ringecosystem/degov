@@ -75,12 +75,12 @@ export function useStaticGovernanceParams() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     contracts: contracts as any,
     query: {
-      retry: false,
-      staleTime: Infinity, // Governance params don't change
-      gcTime: Infinity,
+      retry: 3,
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000, 
       refetchOnMount: false,
       refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      refetchOnReconnect: true, 
       enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
@@ -88,9 +88,14 @@ export function useStaticGovernanceParams() {
   const formattedData: StaticGovernanceParams | null = useMemo(() => {
     if (!data) return null;
 
+    const proposalThreshold = data[0]?.result as bigint;
     const votingDelay = data[1]?.result as bigint;
     const votingPeriod = data[2]?.result as bigint;
     const timeLockDelay = (data?.[3]?.result as bigint) ?? undefined;
+
+    if (isNil(proposalThreshold) || isNil(votingDelay) || isNil(votingPeriod)) {
+      return null;
+    }
 
     // Convert blocknumber values to seconds if needed (only if clock mode is determined)
     const fallbackBlockTime = 12; // Default Ethereum block time
@@ -111,7 +116,7 @@ export function useStaticGovernanceParams() {
       : null;
 
     return {
-      proposalThreshold: data[0]?.result as bigint,
+      proposalThreshold,
       votingDelay,
       votingPeriod,
       timeLockDelay,

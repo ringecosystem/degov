@@ -30,11 +30,15 @@ export const Parameters = () => {
       ? `${formatTokenAmount(governanceParams.proposalThreshold)?.formatted ?? "0"} ${governanceToken?.symbol ?? ""}`
       : "None";
 
-    const votingDelayFormatted = governanceParams?.votingDelayInSeconds
+    const votingDelayFormatted = governanceParams?.votingDelayInSeconds !== undefined && 
+      governanceParams?.votingDelayInSeconds !== null && 
+      !isNaN(governanceParams.votingDelayInSeconds)
       ? dayjsHumanize(governanceParams.votingDelayInSeconds)
       : "None";
 
-    const votingPeriodFormatted = governanceParams?.votingPeriodInSeconds
+    const votingPeriodFormatted = governanceParams?.votingPeriodInSeconds !== undefined && 
+      governanceParams?.votingPeriodInSeconds !== null && 
+      !isNaN(governanceParams.votingPeriodInSeconds)
       ? dayjsHumanize(governanceParams.votingPeriodInSeconds)
       : "None";
 
