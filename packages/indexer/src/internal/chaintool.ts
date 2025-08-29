@@ -5,8 +5,8 @@ export interface SimpleBlock {
 
 export interface BlockIntervalOptions {
   chainId: number;
-  // Accepts an array of RPC endpoints
-  rpcs: string[];
+  // User-provided RPCs are now optional, as they can be merged with the built-in list.
+  rpcs?: string[];
   enableFloatValue?: boolean;
 }
 
@@ -15,36 +15,183 @@ const BLOCK_SAMPLE_SIZE = 10;
 export class ChainTool {
   private blockIntervalCache = new Map<string, number>();
 
-  /**
-   * Queries multiple RPC endpoints and returns the average of their block times.
-   */
-  async blockIntervalSeconds(options: BlockIntervalOptions): Promise<number> {
-    const { chainId, rpcs, enableFloatValue = false } = options;
-    const cacheKey = `${chainId}`;
+  // A built-in list of default RPCs for common chains.
+  private readonly defaultRpcs = new Map<number, string[]>([
+    [
+      1,
+      [
+        "https://eth-mainnet.public.blastapi.io",
+        "https://ethereum-rpc.publicnode.com",
+        "https://mainnet.gateway.tenderly.co",
+        "https://eth.blockrazor.xyz",
+        "https://0xrpc.io/eth",
+        "https://eth.llamarpc.com",
+      ],
+    ],
+    [
+      10,
+      [
+        "https://mainnet.optimism.io",
+        "https://optimism-rpc.publicnode.com",
+        "https://optimism.drpc.org",
+        "https://rpc.ankr.com/optimism",
+        "https://optimism.gateway.tenderly.co",
+        "https://0xrpc.io/op",
+        "https://optimism.drpc.org",
+      ],
+    ],
+    [46, ["https://rpc.darwinia.network"]],
+    [
+      56,
+      [
+        "https://bsc-dataseed1.binance.org",
+        "https://bsc-rpc.publicnode.com",
+        "https://bsc.therpc.io",
+        "https://bsc.rpc.blxrbdn.com",
+        "https://bsc.blockrazor.xyz",
+        "https://api.zan.top/bsc-mainnet",
+        "https://bsc-dataseed1.bnbchain.org",
+        "https://bsc-dataseed3.defibit.io",
+      ],
+    ],
+    [
+      100,
+      [
+        "https://rpc.gnosischain.com",
+        "https://0xrpc.io/gno",
+        "https://gnosis-mainnet.public.blastapi.io",
+        "https://1rpc.io/gnosis",
+        "https://gno-mainnet.gateway.tatum.io",
+        "https://gnosis.oat.farm",
+      ],
+    ],
+    [
+      137,
+      [
+        "https://polygon-rpc.com",
+        "https://polygon-public.nodies.app",
+        "https://1rpc.io/matic",
+        "https://polygon-bor-rpc.publicnode.com",
+        "https://polygon-mainnet.gateway.tatum.io",
+        "https://api.zan.top/polygon-mainnet",
+      ],
+    ],
+    [2710, ["https://rpc.morphl2.io", "https://rpc-quicknode.morphl2.io"]],
+    [
+      5000,
+      [
+        "https://rpc.mantle.xyz",
+        "https://1rpc.io/mantle",
+        "https://mantle-mainnet.public.blastapi.io",
+        "https://mantle-rpc.publicnode.com",
+        "https://mantle.drpc.org",
+        "https://mantle.api.onfinality.io/public",
+      ],
+    ],
+    [
+      8453,
+      [
+        "https://mainnet.base.org",
+        "https://base-rpc.publicnode.com",
+        "https://base.llamarpc.com",
+        "https://base-mainnet.gateway.tatum.io",
+        "https://base-public.nodies.app",
+        "https://base.api.onfinality.io/public",
+        "https://base.llamarpc.com",
+        "https://base-mainnet.public.blastapi.io",
+      ],
+    ],
+    [
+      42161,
+      [
+        "https://arb1.arbitrum.io/rpc",
+        "https://arbitrum-one-rpc.publicnode.com",
+        "https://arbitrum-one.public.blastapi.io",
+        "https://arbitrum.drpc.org",
+        "https://arb1.lava.build",
+        "https://rpc.poolz.finance/arbitrum",
+        "https://arbitrum.rpc.subquery.network/public",
+      ],
+    ],
+    [
+      43114,
+      [
+        "https://api.avax.network/ext/bc/C/rpc",
+        "https://avalanche-c-chain-rpc.publicnode.com",
+        "https://0xrpc.io/avax",
+        "https://avalanche.drpc.org",
+        "https://avalanche.therpc.io",
+        "https://api.zan.top/avax-mainnet/ext/bc/C/rpc",
+      ],
+    ],
+    [
+      59144,
+      [
+        "https://rpc.linea.build",
+        "https://linea-rpc.publicnode.com",
+        "https://linea.therpc.io",
+        "https://1rpc.io/linea",
+      ],
+    ],
+    [
+      81457,
+      [
+        "https://rpc.blast.io",
+        "https://blast-public.nodies.app",
+        "https://rpc.ankr.com/blast",
+        "https://blastl2-mainnet.public.blastapi.io",
+      ],
+    ],
+    [
+      534352,
+      [
+        "https://rpc.scroll.io",
+        "https://1rpc.io/scroll",
+        "https://scroll-mainnet.public.blastapi.io",
+        "https://scroll.drpc.org",
+      ],
+    ],
+  ]);
 
-    if (!rpcs || rpcs.length === 0) {
-      throw new Error("At least one RPC endpoint is required.");
+  async pickRpc(options: { rpcs?: string[] }): Promise<string> {
+    if (!options || !options.rpcs || options.rpcs.length === 0) {
+      throw new Error("No RPC endpoints provided");
     }
+    return options.rpcs[0];
+  }
+
+  async blockIntervalSeconds(options: BlockIntervalOptions): Promise<number> {
+    const { chainId, rpcs = [], enableFloatValue = false } = options;
+    const cacheKey = `${chainId}`;
 
     if (this.blockIntervalCache.has(cacheKey)) {
       console.log(`Using cached block interval for chain ${chainId}`);
       return this.blockIntervalCache.get(cacheKey)!;
     }
 
-    // 1. Concurrently send requests to all RPC endpoints
-    const promises = rpcs.map((rpc) =>
+    // 1. Merge user-provided RPCs with the built-in list and remove duplicates.
+    const builtInRpcs = this.defaultRpcs.get(chainId) || [];
+    const allRpcs = [...new Set([...builtInRpcs, ...rpcs])];
+
+    if (allRpcs.length === 0) {
+      throw new Error(
+        `No RPC endpoints found or provided for chainId: ${chainId}.`
+      );
+    }
+
+    // 2. Concurrently send requests to all unique RPC endpoints.
+    const promises = allRpcs.map((rpc) =>
       this._calculateIntervalForSingleRpc(rpc, enableFloatValue)
     );
     const results = await Promise.allSettled(promises);
 
-    // 2. Collect all successful results and log the failed requests
     const successfulIntervals: number[] = [];
     results.forEach((result, index) => {
       if (result.status === "fulfilled") {
         successfulIntervals.push(result.value);
       } else {
         console.warn(
-          `[ChainTool] RPC request to ${rpcs[index]} failed: ${result.reason.message}`
+          `[ChainTool] RPC request to ${allRpcs[index]} failed: ${result.reason.message}`
         );
       }
     });
@@ -53,7 +200,6 @@ export class ChainTool {
       throw new Error(`All RPC requests failed for chain ${chainId}.`);
     }
 
-    // 3. Calculate the average of the successful results
     const totalInterval = successfulIntervals.reduce(
       (sum, interval) => sum + interval,
       0
@@ -64,10 +210,9 @@ export class ChainTool {
       averageInterval = Math.floor(averageInterval);
     }
 
-    // 4. Cache and return the final average value
     this.blockIntervalCache.set(cacheKey, averageInterval);
     console.log(
-      `Calculated final average block interval for chain ${chainId} from ${successfulIntervals.length} RPCs: ${averageInterval}s`
+      `Calculated final average block interval for chain ${chainId} from ${successfulIntervals.length} RPC(s): ${averageInterval}s`
     );
 
     return averageInterval;
@@ -139,14 +284,10 @@ export class ChainTool {
       }
       return averageInterval;
     } catch (error) {
-      // Propagate the error upwards to be handled by the main method
       throw error;
     }
   }
 
-  /**
-   * Gets the latest block number (unchanged).
-   */
   private async getLatestBlockNumber(endpoint: string): Promise<string> {
     const response = await fetch(endpoint, {
       method: "POST",
