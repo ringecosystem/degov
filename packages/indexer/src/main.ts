@@ -58,7 +58,11 @@ async function runProcessorEvm(processorConfig: IndexerProcessorConfig) {
             try {
               switch (indexContract.name) {
                 case "governor":
-                  await new GovernorHandler(ctx, chainTool).handle(event);
+                  await new GovernorHandler(
+                    ctx,
+                    indexContract,
+                    chainTool
+                  ).handle(event);
                   break;
                 case "governorToken":
                   await new TokenHandler(

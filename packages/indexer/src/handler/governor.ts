@@ -12,13 +12,14 @@ import {
   VoteCastGroup,
   VoteCastWithParams,
 } from "../model";
-import { MetricsId, EvmFieldSelection } from "../types";
+import { MetricsId, EvmFieldSelection, IndexerContract } from "../types";
 import { ChainTool } from "../internal/chaintool";
 
 export class GovernorHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
-    private readonly chainTool: ChainTool,
+    private readonly indexContract: IndexerContract,
+    private readonly chainTool: ChainTool
   ) {}
 
   async handle(eventLog: EvmLog<EvmFieldSelection>) {
