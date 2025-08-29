@@ -4,7 +4,9 @@ import { request } from "./client";
 import * as Queries from "./queries";
 import * as Types from "./types";
 
+
 import type { ProfileData } from "./types/profile";
+import type { EvmAbiResponse, EvmAbiInput, } from "./types/proposals";
 
 export const proposalService = {
   getAllProposals: async (
@@ -92,6 +94,17 @@ export const proposalService = {
     );
     return response?.proposalQueueds?.[0];
   },
+  getEvmAbi: async (endpoint: string, input: EvmAbiInput) => {
+    const response = await request<EvmAbiResponse>(
+      endpoint,
+      Queries.GET_EVM_ABI,
+      {
+        chain: input.chain,
+        contract: input.contract,
+      }
+    );
+    return response?.evmAbi;
+  },
 };
 
 export const delegateService = {
@@ -133,6 +146,22 @@ export const delegateService = {
     );
     return response?.delegateMappings ?? [];
   },
+  getDelegateMappingsConnection: async (
+    endpoint: string,
+    options: {
+      where: {
+        to_eq: string;
+      };
+      orderBy: string[];
+    }
+  ) => {
+    const response = await request<Types.DelegateMappingConnectionResponse>(
+      endpoint,
+      Queries.GET_DELEGATE_MAPPINGS_CONNECTION,
+      options
+    );
+    return response?.delegateMappingsConnection;
+  },
 };
 
 export const squidStatusService = {
@@ -145,6 +174,8 @@ export const squidStatusService = {
   },
 };
 
+
+
 export const contributorService = {
   getAllContributors: async (
     endpoint: string,
@@ -153,12 +184,15 @@ export const contributorService = {
       offset: number;
       where?: {
         id_in?: string[];
+        id_not_eq?: string;
+        id_eq?: string;
       };
     } = {
       limit: 10,
       offset: 0,
       where: {
         id_in: [],
+        id_not_eq: undefined,
       },
     }
   ) => {
@@ -184,7 +218,7 @@ export const profileService = {
     data: ProfileData;
   }> => {
     const response = await fetch(`/api/profile/${address}`, {
-      cache: "no-store",
+      next: { revalidate: 300, tags: [`profile-${address}`] }, // 5分钟缓存，带标签
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${getToken()}`,
@@ -271,7 +305,7 @@ export const memberService = {
 
   getMemberTotal: async (): Promise<Types.MemberTotalResponse> => {
     const response = await fetch(`/api/degov/metrics`, {
-      cache: "no-store",
+      next: { revalidate: 60, tags: ["member-metrics"] },
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${getToken()}`,

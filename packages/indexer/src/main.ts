@@ -2,15 +2,15 @@ import { TypeormDatabase } from "@subsquid/typeorm-store";
 import { GovernorHandler } from "./handler/governor";
 import { TokenHandler } from "./handler/token";
 import { EvmBatchProcessor } from "@subsquid/evm-processor";
-import { evmFieldSelection } from "./types";
-import { DegovDataSource, IndexerProcessorConfig } from "./datasource";
+import { evmFieldSelection, IndexerProcessorConfig } from "./types";
+import { DegovDataSource } from "./datasource";
 
 async function main() {
   const degovConfigPath = process.env.DEGOV_CONFIG_PATH;
   if (!degovConfigPath) {
     throw new Error("DEGOV_CONFIG_PATH not set");
   }
-  const processorConfig = await DegovDataSource.fromDegovConfig(
+  const processorConfig = await DegovDataSource.fromDegovConfigPath(
     degovConfigPath
   );
   await runProcessorEvm(processorConfig);
@@ -58,7 +58,7 @@ async function runProcessorEvm(processorConfig: IndexerProcessorConfig) {
                   await new GovernorHandler(ctx).handle(event);
                   break;
                 case "governorToken":
-                  await new TokenHandler(ctx, indexContract).handle(event);
+                  await new TokenHandler(ctx, indexContract, processorConfig).handle(event);
                   break;
               }
             } catch (e) {

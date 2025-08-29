@@ -5,6 +5,7 @@ import React from "react";
 import { ConnectButton } from "@/components/connect-button";
 import { SearchModal } from "@/components/search-modal";
 import { ThemeButton } from "@/components/theme-button";
+
 export const Header = () => {
   const [open, setOpen] = React.useState(false);
   return (

@@ -46,7 +46,6 @@ export const TableDropdownMenu = React.forwardRef<
     const editor = useTiptapEditor(providedEditor);
     const [isOpen, setIsOpen] = React.useState(false);
 
-    // 所有钩子必须在条件判断前定义
     const handleOpenChange = React.useCallback(
       (open: boolean) => {
         setIsOpen(open);
@@ -55,7 +54,6 @@ export const TableDropdownMenu = React.forwardRef<
       [onOpenChange]
     );
 
-    // 所有表格操作函数
     const insertTable = React.useCallback(() => {
       if (!editor) return;
       editor
@@ -105,7 +103,7 @@ export const TableDropdownMenu = React.forwardRef<
       editor.chain().focus().mergeOrSplit().run();
     }, [editor]);
 
-    // 在所有钩子和函数定义之后再进行条件判断
+    //
     if (!editor || !editor.isEditable) {
       return null;
     }
@@ -180,7 +178,6 @@ export const TableDropdownMenu = React.forwardRef<
                 </DropdownMenuItem>
               </DropdownMenuGroup>
 
-              {/* 其余部分保持不变 */}
               <DropdownMenuGroup>
                 <div className="px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                   Rows

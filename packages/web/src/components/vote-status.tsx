@@ -56,7 +56,7 @@ interface VoteStatusActionProps {
   variant: VoteType;
   className?: string;
   type: "default" | "active";
-  onChangeVote: () => void;
+  onChangeVote?: () => void;
 }
 
 export const VoteStatusAction: FC<VoteStatusActionProps> = ({
@@ -72,7 +72,7 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
   return (
     <div
       className={cn(
-        "t flex cursor-pointer items-center gap-x-2 rounded-full px-4 py-2 text-base font-medium",
+        "t flex cursor-pointer items-center gap-x-2 rounded-full px-1 lg:px-4 py-1 lg:py-2 text-base font-medium",
         isActive ? "text-foreground" : "text-muted-foreground",
         isActive ? text[variant].color : "bg-transparent",
         isActive
@@ -82,7 +82,7 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={onChangeVote}
+      onClick={onChangeVote ? onChangeVote : undefined}
     >
       <Image
         src={isActive ? text[variant].icon : text[variant].defaultIcon}

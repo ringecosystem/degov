@@ -209,24 +209,43 @@ export default function ActionGroup({
     onRefetch();
   }, [onRefetch]);
 
+  const hasTimelock = useMemo(() => {
+    return (
+      govParams?.timeLockDelayInSeconds !== undefined &&
+      govParams?.timeLockDelayInSeconds !== null
+    );
+  }, [govParams?.timeLockDelayInSeconds]);
+
   const canExecute = useMemo(() => {
+    if (!hasTimelock && status === ProposalState.Succeeded) {
+      return true;
+    }
+
     if (status === ProposalState.Queued) {
       const queuedBlockTimestamp = proposalQueuedById?.blockTimestamp
         ? BigInt(proposalQueuedById?.blockTimestamp)
         : undefined;
+      const timeLockDelayInSeconds = govParams?.timeLockDelayInSeconds;
 
-      const timeLockDelay = govParams?.timeLockDelay
-        ? BigInt(govParams?.timeLockDelay * 1000n)
-        : undefined;
+      const timeLockDelay =
+        timeLockDelayInSeconds !== undefined && timeLockDelayInSeconds !== null
+          ? BigInt(BigInt(timeLockDelayInSeconds) * 1000n)
+          : undefined;
+
       if (!queuedBlockTimestamp) return false;
-      if (!timeLockDelay) return true;
+      if (timeLockDelay === undefined) return true;
 
-      return (
-        BigInt(new Date().getTime()) > queuedBlockTimestamp + timeLockDelay
-      );
+      const currentTime = BigInt(new Date().getTime());
+      const timeLockDelayBigInt = timeLockDelay ?? 0n;
+      return currentTime > queuedBlockTimestamp + timeLockDelayBigInt;
     }
     return false;
-  }, [status, proposalQueuedById, govParams?.timeLockDelay]);
+  }, [
+    status,
+    proposalQueuedById,
+    govParams?.timeLockDelayInSeconds,
+    hasTimelock,
+  ]);
 
   const handleAction = useCallback(
     (action: "vote" | "queue" | "execute") => {
@@ -264,6 +283,7 @@ export default function ActionGroup({
           status={status}
           votedSupport={votedSupport}
           canExecute={canExecute}
+          hasTimelock={hasTimelock}
           isLoading={
             isPendingCastVote ||
             !!castVoteHash ||

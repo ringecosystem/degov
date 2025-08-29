@@ -39,14 +39,17 @@ body {
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
 
-
-    --success: 132 100% 36%;
-    --warning: 42 100% 48%;
+    /* 00B403 */
+    --success: 121 100% 35%;
+    /* #FF8400 */
+    --warning: 31 100% 50%;
     --danger: 359 100% 62%;
 
+    /* #FF8400 */
     --pending: var(--warning);
     --active: 197 100% 50%;
-    --succeeded: 132 100% 36%;
+    /* 00B403 */
+    --succeeded: 121 100% 35%;
     --executed: 276 100% 67%;
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
@@ -63,6 +66,7 @@ body {
     --card-background: 192 4% 97%;
 
     --gray-1: 0 0% 90%;
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.15);
 
   }
   .dark {
@@ -104,12 +108,16 @@ body {
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
 
+    /* #00B624 */
     --success: 132 100% 36%;
+    /* #F3AB00 */
     --warning: 42 100% 48%;
     --danger: 359 100% 62%;
 
+    /* #F3AB00 */
     --pending: var(--warning);
     --active: 197 100% 50%;
+    /* #00B624 */
     --succeeded: 132 100% 36%;
     --executed: 276 100% 67%;
     --defeated: var(--danger);
@@ -129,6 +137,7 @@ body {
 
     /* 474747 */
     --gray-1: 0 0% 28%;
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
   }
 }
 

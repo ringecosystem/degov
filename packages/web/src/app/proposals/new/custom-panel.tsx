@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { isAddress, type Abi, type AbiItem } from "viem";
 import { useBytecode } from "wagmi";
@@ -45,6 +45,7 @@ export const CustomPanel = ({
   onRemove,
 }: CustomPanelProps) => {
   const daoConfig = useDaoConfig();
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
 
   const {
     control,
@@ -69,7 +70,7 @@ export const CustomPanel = ({
   const { data: bytecode, isFetching: isLoadingBytecode } = useBytecode({
     address: watch("target"),
     query: {
-      enabled: !!watch("target") && isAddress(watch("target")),
+      enabled: !!watch("target") && isAddress(watch("target") || ""),
     },
   });
 
@@ -85,7 +86,7 @@ export const CustomPanel = ({
       setValue("customAbiContent", []);
       setValue("calldata", []);
 
-      // Reset ABI related fields
+      // Reset ABI fields
       if (value !== "custom") {
         const abi = abiList.find((item) => item.name === value)?.abi as Abi;
         if (isValidAbi(abi)) {
@@ -146,7 +147,12 @@ export const CustomPanel = ({
             isArray: input.type.includes("[]"),
           }));
 
-        setValue("calldata", calldata);
+        setValue("calldata", calldata, {
+          shouldValidate: true,
+          shouldDirty: true,
+        });
+
+        setTouchedFields(new Set());
 
         if (method.stateMutability !== "payable") {
           setValue("value", "");
@@ -156,12 +162,53 @@ export const CustomPanel = ({
     [setValue, watch]
   );
 
+  const handleFieldTouch = useCallback((index: number, arrayIndex?: number) => {
+    const fieldKey =
+      arrayIndex !== undefined ? `${index}-${arrayIndex}` : `${index}`;
+    setTouchedFields((prev) => new Set(prev).add(fieldKey));
+  }, []);
+
+  // Handle touched state updates when array elements are removed
+  const handleFieldUntouchArray = useCallback(
+    (index: number, removedArrayIndex: number) => {
+      setTouchedFields((prev) => {
+        const newSet = new Set(prev);
+        // Remove touched state for deleted element
+        newSet.delete(`${index}-${removedArrayIndex}`);
+
+        // Update indices for subsequent elements
+        const keysToUpdate: string[] = [];
+        const keysToRemove: string[] = [];
+
+        prev.forEach((key) => {
+          const match = key.match(/^(\d+)-(\d+)$/);
+          if (match) {
+            const [, keyIndex, keyArrayIndex] = match;
+            if (
+              parseInt(keyIndex) === index &&
+              parseInt(keyArrayIndex) > removedArrayIndex
+            ) {
+              keysToRemove.push(key);
+              keysToUpdate.push(`${index}-${parseInt(keyArrayIndex) - 1}`);
+            }
+          }
+        });
+
+        keysToRemove.forEach((key) => newSet.delete(key));
+        keysToUpdate.forEach((key) => newSet.add(key));
+
+        return newSet;
+      });
+    },
+    []
+  );
+
   // Check if method is payable
   const isPayable = useMemo(() => {
     const abiJson = watch("customAbiContent") as Abi;
     const methodValue = watch("contractMethod");
 
-    const [name, paramCountNum] = methodValue.split("-") || [];
+    const [name, paramCountNum] = methodValue?.split("-") || [];
 
     if (!name || !paramCountNum) return false;
 
@@ -186,7 +233,7 @@ export const CustomPanel = ({
   return (
     <div
       className={cn(
-        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] pb-[50px]",
+        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] pb-[50px] shadow-card",
         visible ? "animate-in fade-in duration-300" : "hidden"
       )}
     >
@@ -194,7 +241,7 @@ export const CustomPanel = ({
         <h4 className="text-[18px] font-semibold">Action #{index}</h4>
 
         <Button
-          className="h-[30px] gap-[5px] rounded-[100px] border border-border/20 bg-card"
+          className="h-[30px] gap-[5px] rounded-[100px] border border-foreground bg-card p-[10px]"
           variant="outline"
           onClick={() => onRemove(index)}
         >
@@ -242,17 +289,18 @@ export const CustomPanel = ({
               errors.target && "border-danger"
             )}
           />
-          {/* {errors.target && <ErrorMessage message={errors.target.message} />} */}
           {isLoadingBytecode ? (
             <span className="text-sm inline-flex items-center gap-2 text-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading contract info...
             </span>
-          ) : watch("target") && isAddress(watch("target")) && !bytecode ? (
+          ) : errors.target ? (
+            <ErrorMessage message={errors.target.message} />
+          ) : watch("target") &&
+            isAddress(watch("target") || "") &&
+            !bytecode ? (
             <ErrorMessage message="The address must be a contract address, not an EOA address" />
-          ) : (
-            errors.target && <ErrorMessage message={errors.target.message} />
-          )}
+          ) : null}
         </div>
 
         {isContractAddress && (
@@ -260,7 +308,7 @@ export const CustomPanel = ({
             {/* Contract Type Selection */}
             <div className="flex flex-col gap-[10px]">
               <label className="text-[14px] text-foreground">
-                Use the imported ABl or upload yours
+                Use the imported ABI or upload yours
               </label>
               <Controller
                 name="contractType"
@@ -303,7 +351,7 @@ export const CustomPanel = ({
                   onUpload={handleUploadAbi}
                   className={`${errors?.customAbiContent && "border-danger"}`}
                   isError={!!errors.customAbiContent}
-                  isUploaded={isValidAbi(watch("customAbiContent"))}
+                  isUploaded={isValidAbi(watch("customAbiContent") || [])}
                 />
               </div>
             )}
@@ -337,21 +385,23 @@ export const CustomPanel = ({
                           <SelectValue placeholder="Select the contract method..." />
                         </SelectTrigger>
                         <SelectContent className="border-border/20 bg-card">
-                          {watch("customAbiContent")?.map(
-                            (item) =>
-                              item?.type === "function" && (
-                                <SelectItem
-                                  key={`${item.name}-${
-                                    item.inputs?.length ?? 0
-                                  }`}
-                                  value={`${item.name}-${
-                                    item.inputs?.length ?? 0
-                                  }`}
-                                >
-                                  {item.name}
-                                </SelectItem>
-                              )
-                          )}
+                          {watch("customAbiContent")
+                            ?.filter(
+                              (item) =>
+                                item?.type === "function" &&
+                                (item.stateMutability === "payable" ||
+                                  item.stateMutability === "nonpayable")
+                            )
+                            ?.map((item) => (
+                              <SelectItem
+                                key={`${item.name}-${item.inputs?.length ?? 0}`}
+                                value={`${item.name}-${
+                                  item.inputs?.length ?? 0
+                                }`}
+                              >
+                                {item.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -367,13 +417,7 @@ export const CustomPanel = ({
             {/* Calldata Input */}
             {watch("calldata") && !!watch("calldata")?.length && (
               <div className="flex flex-col gap-[10px]">
-                <h4 className="text-[18px] font-semibold text-foreground">
-                  Calldatas
-                </h4>
-                <label className="text-[14px] text-foreground" htmlFor="abi">
-                  The data for the function arguments you wish to send when the
-                  action executes
-                </label>
+                <h4 className="text-[14px] text-foreground">Parameters</h4>
                 <Controller
                   name="calldata"
                   control={control}
@@ -383,6 +427,14 @@ export const CustomPanel = ({
                       onChange={(newCalldata) => {
                         field.onChange([...newCalldata]);
                       }}
+                      parentErrors={
+                        errors.calldata
+                          ? { calldataItems: errors.calldata }
+                          : undefined
+                      }
+                      onFieldTouch={handleFieldTouch}
+                      onFieldUntouchArray={handleFieldUntouchArray}
+                      touchedFields={touchedFields}
                     />
                   )}
                 />

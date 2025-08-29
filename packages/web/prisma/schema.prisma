@@ -9,7 +9,8 @@ datasource db {
 
 model d_user {
   id                 String    @id
-  address            String    @unique
+  address            String
+  dao_code           String? // todo: make this required and add unique constraint with address
   power              String?
   name               String?
   email              String?

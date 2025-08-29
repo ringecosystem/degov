@@ -5,6 +5,7 @@ import { useReadContract } from "wagmi";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { abi as governorAbi } from "@/config/abi/governor";
+import { useClockMode } from "@/hooks/useClockMode";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 
@@ -71,26 +72,40 @@ interface CurrentVotesProps {
   };
   isLoading?: boolean;
   blockTimestamp?: string;
+  blockNumber?: string;
 }
 export const CurrentVotes = ({
   proposalVotesData,
   blockTimestamp,
+  blockNumber,
   isLoading,
 }: CurrentVotesProps) => {
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
+  const { isBlockNumberMode, isLoading: isClockModeLoading } = useClockMode();
+
+  const quorumParameter = useMemo(() => {
+    if (isClockModeLoading) return BigInt(0);
+
+    if (isBlockNumberMode) {
+      return blockNumber ? BigInt(blockNumber) : BigInt(0);
+    } else {
+      return blockTimestamp ? BigInt(Number(blockTimestamp) / 1000) : BigInt(0);
+    }
+  }, [isBlockNumberMode, isClockModeLoading, blockNumber, blockTimestamp]);
 
   const { data: quorumData, isLoading: isQuorumLoading } = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: governorAbi,
     functionName: "quorum" as const,
-    args: [blockTimestamp ? BigInt(Number(blockTimestamp) / 1000) : BigInt(0)],
+    args: [quorumParameter],
     chainId: daoConfig?.chain?.id,
     query: {
       enabled:
         Boolean(daoConfig?.contracts?.governor) &&
-        Boolean(blockTimestamp) &&
-        Boolean(daoConfig?.chain?.id),
+        Boolean(daoConfig?.chain?.id) &&
+        !isClockModeLoading &&
+        (isBlockNumberMode ? Boolean(blockNumber) : Boolean(blockTimestamp)),
     },
   });
 
@@ -125,45 +140,51 @@ export const CurrentVotes = ({
   }
 
   return (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
       <h3 className="text-[18px] font-semibold">Current Votes</h3>
       <Separator className="!my-0 bg-border/20" />
 
       <div className="flex flex-col gap-[20px]">
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
-            <Image
-              src={
-                quorum > proposalVotesData?.againstVotes
-                  ? "/assets/image/light/proposal/check.svg"
-                  : "/assets/image/light/proposal/error.svg"
-              }
-              alt="error"
-              width={20}
-              height={20}
-              className="rounded-full block dark:hidden"
-            />
-            <Image
-              src={
-                quorum > proposalVotesData?.againstVotes
-                  ? "/assets/image/proposal/check.svg"
-                  : "/assets/image/proposal/error.svg"
-              }
-              alt="error"
-              width={20}
-              height={20}
-              className="rounded-full hidden dark:block"
-            />
+            {isQuorumLoading || isClockModeLoading ? (
+              <Skeleton className="h-[20px] w-[20px] rounded-full" />
+            ) : (
+              <>
+                <Image
+                  src={
+                    quorum > proposalVotesData?.againstVotes
+                      ? "/assets/image/light/proposal/check.svg"
+                      : "/assets/image/light/proposal/error.svg"
+                  }
+                  alt="error"
+                  width={20}
+                  height={20}
+                  className="rounded-full block dark:hidden"
+                />
+                <Image
+                  src={
+                    quorum > proposalVotesData?.againstVotes
+                      ? "/assets/image/proposal/check.svg"
+                      : "/assets/image/proposal/error.svg"
+                  }
+                  alt="error"
+                  width={20}
+                  height={20}
+                  className="rounded-full hidden dark:block"
+                />
+              </>
+            )}
             <span className="text-[14px] font-normal">Quorum</span>
           </div>
-          {isQuorumLoading ? (
-            <Skeleton className="h-[18px] w-[120px]" />
-          ) : (
-            <span>
-              {formatTokenAmount(quorum).formatted} of{" "}
-              {formatTokenAmount(quorumData ?? 0n).formatted}
-            </span>
-          )}
+          <span className="flex items-center gap-[5px]">
+            {formatTokenAmount(quorum).formatted} of{" "}
+            {isQuorumLoading || isClockModeLoading ? (
+              <Skeleton className="inline-block h-[18px] w-[60px]" />
+            ) : (
+              formatTokenAmount(quorumData ?? 0n).formatted
+            )}
+          </span>
         </div>
 
         <div className="flex flex-col gap-[10px]">

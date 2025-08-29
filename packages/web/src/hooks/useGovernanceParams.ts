@@ -1,8 +1,11 @@
+import { isNil } from "lodash-es";
 import { useMemo } from "react";
-import { useReadContract, useReadContracts } from "wagmi";
+import { useBlockNumber, useReadContract, useReadContracts } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as timeLockAbi } from "@/config/abi/timeLock";
+import { useBlockInterval } from "@/contexts/BlockContext";
+import { useClockModeContext } from "@/contexts/ClockModeContext";
 
 import { useDaoConfig } from "./useDaoConfig";
 
@@ -12,7 +15,11 @@ interface StaticGovernanceParams {
   proposalThreshold: bigint;
   votingDelay: bigint;
   votingPeriod: bigint;
-  timeLockDelay: bigint;
+  timeLockDelay?: bigint;
+  // Time conversion info for blocknumber mode
+  votingDelayInSeconds: number | null;
+  votingPeriodInSeconds: number | null;
+  timeLockDelayInSeconds?: number | null;
 }
 
 interface GovernanceParams extends StaticGovernanceParams {
@@ -24,53 +31,100 @@ export function useStaticGovernanceParams() {
   const governorAddress = daoConfig?.contracts?.governor as Address;
   const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
 
-  const { data, isLoading, error, isFetching } = useReadContracts({
-    contracts: [
+  // Get clock mode and block time for conversion
+  const { isBlockNumberMode, isClockModeLoading } = useClockModeContext();
+  const averageBlockTime = useBlockInterval(); // Get from BlockContext
+
+  const contracts = useMemo(() => {
+    const baseContracts = [
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "proposalThreshold" as const,
+        functionName: "proposalThreshold",
         chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "votingDelay" as const,
+        functionName: "votingDelay",
         chainId: daoConfig?.chain?.id,
       },
       {
         address: governorAddress as `0x${string}`,
         abi: governorAbi,
-        functionName: "votingPeriod" as const,
+        functionName: "votingPeriod",
         chainId: daoConfig?.chain?.id,
       },
-      {
+    ];
+
+    if (timeLockAddress) {
+      baseContracts.push({
         address: timeLockAddress as `0x${string}`,
+        // @ts-expect-error: The wagmi library's type definitions for the `abi` property are overly strict and do not account for all valid ABI formats.
+        // This is a known issue, and the provided `timeLockAbi` is valid for the `getMinDelay` function.
         abi: timeLockAbi,
-        functionName: "getMinDelay" as const,
+        functionName: "getMinDelay",
         chainId: daoConfig?.chain?.id,
-      },
-    ],
+      });
+    }
+
+    return baseContracts;
+  }, [governorAddress, timeLockAddress, daoConfig?.chain?.id]);
+
+  const { data, isLoading, error, isFetching } = useReadContracts({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    contracts: contracts as any,
     query: {
       retry: false,
-      staleTime: 24 * 60 * 60 * 1000,
+      staleTime: Infinity, // Governance params don't change
+      gcTime: Infinity,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
       enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
 
-  const formattedData: StaticGovernanceParams | null = data
-    ? {
-        proposalThreshold: data[0]?.result as bigint,
-        votingDelay: data[1]?.result as bigint,
-        votingPeriod: data[2]?.result as bigint,
-        timeLockDelay: data[3]?.result as bigint,
-      }
-    : null;
+  const formattedData: StaticGovernanceParams | null = useMemo(() => {
+    if (!data) return null;
+
+    const votingDelay = data[1]?.result as bigint;
+    const votingPeriod = data[2]?.result as bigint;
+    const timeLockDelay = (data?.[3]?.result as bigint) ?? undefined;
+
+    // Convert blocknumber values to seconds if needed (only if clock mode is determined)
+    const fallbackBlockTime = 12; // Default Ethereum block time
+    const blockTime = averageBlockTime || fallbackBlockTime;
+    const shouldConvert = !isClockModeLoading && isBlockNumberMode;
+
+    const votingDelayInSeconds = shouldConvert
+      ? Number(votingDelay) * blockTime
+      : Number(votingDelay);
+
+    const votingPeriodInSeconds = shouldConvert
+      ? Number(votingPeriod) * blockTime
+      : Number(votingPeriod);
+    // TimeLock delay is always in seconds (not affected by clock mode)
+
+    const timeLockDelayInSeconds = !isNil(timeLockDelay)
+      ? Number(timeLockDelay)
+      : null;
+
+    return {
+      proposalThreshold: data[0]?.result as bigint,
+      votingDelay,
+      votingPeriod,
+      timeLockDelay,
+      votingDelayInSeconds,
+      votingPeriodInSeconds,
+      timeLockDelayInSeconds,
+    };
+  }, [data, isBlockNumberMode, isClockModeLoading, averageBlockTime]);
 
   return {
     data: formattedData,
-    isLoading,
-    isFetching,
+    isLoading: isLoading || isClockModeLoading,
+    isFetching: isFetching || isClockModeLoading,
     error: error as Error | null,
   };
 }
@@ -78,6 +132,19 @@ export function useStaticGovernanceParams() {
 export function useQuorum() {
   const daoConfig = useDaoConfig();
   const governorAddress = daoConfig?.contracts?.governor as Address;
+
+  // Use the dedicated clock mode hook
+  const {
+    isBlockNumberMode,
+    rawClockMode,
+    isClockModeLoading,
+    clockModeError,
+  } = useClockModeContext();
+
+  // Get current block number from BlockContext
+  const { data: blockNumber } = useBlockNumber({
+    chainId: daoConfig?.chain?.id,
+  });
 
   const {
     data: clockData,
@@ -95,6 +162,13 @@ export function useQuorum() {
     },
   });
 
+  // Determine the correct parameter for quorum function based on clock mode
+  // Use a slightly older block for stability (current block - 10)
+  const stableBlockNumber = blockNumber ? blockNumber - BigInt(10) : BigInt(0);
+  const quorumParameter: bigint = isBlockNumberMode
+    ? stableBlockNumber
+    : BigInt(clockData ?? 0);
+
   const {
     data: quorumData,
     isLoading: isQuorumLoading,
@@ -104,22 +178,27 @@ export function useQuorum() {
     address: governorAddress as `0x${string}`,
     abi: governorAbi,
     functionName: "quorum" as const,
-    args: [clockData ? BigInt(clockData) : BigInt(0)],
+    args: [quorumParameter],
     chainId: daoConfig?.chain?.id,
     query: {
       enabled:
         Boolean(governorAddress) &&
-        Boolean(clockData) &&
-        Boolean(daoConfig?.chain?.id),
+        Boolean(daoConfig?.chain?.id) &&
+        !isClockModeLoading &&
+        (isBlockNumberMode
+          ? Boolean(blockNumber && blockNumber > BigInt(10))
+          : Boolean(clockData)),
     },
   });
 
   return {
     quorum: quorumData as bigint | undefined,
     clockData: clockData as bigint | undefined,
-    isLoading: isClockLoading || isQuorumLoading,
+    clockMode: rawClockMode,
+    isBlocknumberMode: isBlockNumberMode,
+    isLoading: isClockLoading || isQuorumLoading || isClockModeLoading,
     isFetching: isClockFetching || isQuorumFetching,
-    error: quorumError as Error | null,
+    error: quorumError || clockModeError,
     refetchClock,
   };
 }
@@ -128,6 +207,8 @@ export function useGovernanceParams() {
   const staticParams = useStaticGovernanceParams();
   const {
     quorum,
+    clockMode,
+    isBlocknumberMode,
     isLoading: isQuorumLoading,
     isFetching: isQuorumFetching,
     error: quorumError,
@@ -135,17 +216,24 @@ export function useGovernanceParams() {
   } = useQuorum();
 
   const formattedData: GovernanceParams | null = useMemo(() => {
+    if (!staticParams.data) return null;
+
     return {
-      proposalThreshold: staticParams.data?.proposalThreshold ?? 0n,
-      votingDelay: staticParams.data?.votingDelay ?? 0n,
-      votingPeriod: staticParams.data?.votingPeriod ?? 0n,
-      timeLockDelay: staticParams.data?.timeLockDelay ?? 0n,
+      proposalThreshold: staticParams.data.proposalThreshold,
+      votingDelay: staticParams.data.votingDelay,
+      votingPeriod: staticParams.data.votingPeriod,
+      timeLockDelay: staticParams.data.timeLockDelay,
+      votingDelayInSeconds: staticParams.data.votingDelayInSeconds,
+      votingPeriodInSeconds: staticParams.data.votingPeriodInSeconds,
+      timeLockDelayInSeconds: staticParams.data.timeLockDelayInSeconds,
       quorum: quorum ?? 0n,
     };
   }, [staticParams.data, quorum]);
 
   return {
     data: formattedData,
+    clockMode,
+    isBlocknumberMode,
     isQuorumLoading,
     isQuorumFetching,
     isStaticLoading: staticParams.isLoading,

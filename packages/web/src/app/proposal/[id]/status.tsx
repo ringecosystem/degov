@@ -25,7 +25,7 @@ const StatusSkeleton = () => {
       <h3 className="text-[18px] text-foreground">Status</h3>
       <Separator className="bg-border/20" />
       <div className="relative">
-        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-foreground/10" />
+        <div className="absolute bottom-0 left-[14px] top-3 h-[calc(100%-40px)] w-0.5 bg-foreground/10" />
 
         {stages.map((_, index) => (
           <div
@@ -95,16 +95,47 @@ const Status: React.FC<StatusProps> = ({
   const { data: govParams } = useGovernanceParams();
 
   const votingPeriodStarted = useMemo(() => {
-    if (isNil(data?.blockTimestamp) || isNil(govParams?.votingDelay)) return "";
+    if (isNil(data?.blockTimestamp) || isNil(govParams?.votingDelayInSeconds))
+      return "";
+
     return (
-      BigInt(data?.blockTimestamp) + (govParams?.votingDelay ?? 0n) * 1000n
+      BigInt(data?.blockTimestamp) +
+      BigInt(govParams.votingDelayInSeconds) * 1000n
     );
-  }, [data?.blockTimestamp, govParams?.votingDelay]);
+  }, [data?.blockTimestamp, govParams?.votingDelayInSeconds]);
 
   const votingPeriodEnded = useMemo(() => {
-    if (votingPeriodStarted === "" || isNil(govParams?.votingPeriod)) return "";
-    return votingPeriodStarted + (govParams?.votingPeriod ?? 0n) * 1000n;
-  }, [votingPeriodStarted, govParams?.votingPeriod]);
+    return (
+      BigInt(data?.blockTimestamp ?? 0) +
+      BigInt((govParams?.votingDelayInSeconds || 0) * 1000) +
+      BigInt((govParams?.votingPeriodInSeconds || 0) * 1000)
+    );
+  }, [
+    data?.blockTimestamp,
+    govParams?.votingDelayInSeconds,
+    govParams?.votingPeriodInSeconds,
+  ]);
+
+  const hasTimelock = useMemo(() => {
+    return (
+      govParams?.timeLockDelayInSeconds !== undefined &&
+      govParams?.timeLockDelayInSeconds !== null
+    );
+  }, [govParams?.timeLockDelayInSeconds]);
+
+  const executeEnabledTime = useMemo(() => {
+    if (
+      !proposalQueuedById?.blockTimestamp ||
+      !govParams?.timeLockDelayInSeconds
+    ) {
+      return null;
+    }
+
+    return (
+      BigInt(proposalQueuedById.blockTimestamp) +
+      BigInt(govParams.timeLockDelayInSeconds * 1000)
+    );
+  }, [proposalQueuedById?.blockTimestamp, govParams?.timeLockDelayInSeconds]);
 
   const stages: ProposalStage[] = useMemo(() => {
     const baseStages = [
@@ -140,6 +171,7 @@ const Status: React.FC<StatusProps> = ({
         key: "end" as ProposalStageKey,
         title: "End voting period",
         timestamp: formatTimestampToDayTime(String(votingPeriodEnded)),
+        remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
         icon: (
           <Image
             src="/assets/image/proposal/status-ended.svg"
@@ -148,18 +180,20 @@ const Status: React.FC<StatusProps> = ({
             height={28}
           />
         ),
-        remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
       },
     ];
+
     switch (status) {
       case ProposalState.Pending:
       case ProposalState.Active:
       case ProposalState.Queued:
       case ProposalState.Executed:
       case ProposalState.Succeeded:
-        return [
-          ...baseStages,
-          {
+        const additionalStages = [];
+
+        // Only add queue stage if timelock is enabled
+        if (hasTimelock) {
+          additionalStages.push({
             key: "queue" as ProposalStageKey,
             title: "Queue proposal",
             timestamp: proposalQueuedById?.blockTimestamp
@@ -176,26 +210,30 @@ const Status: React.FC<StatusProps> = ({
             viewOnExplorer: proposalQueuedById?.transactionHash
               ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalQueuedById?.transactionHash}`
               : "",
-          },
-          {
-            key: "execute" as ProposalStageKey,
-            title: "Execute proposal",
-            timestamp: proposalExecutedById?.blockTimestamp
-              ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
-              : "",
-            icon: (
-              <Image
-                src="/assets/image/proposal/status-executed.svg"
-                alt="executed"
-                width={28}
-                height={28}
-              />
-            ),
-            viewOnExplorer: proposalExecutedById?.transactionHash
-              ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`
-              : "",
-          },
-        ]?.map((v) => {
+          });
+        }
+
+        // Always add execute stage
+        additionalStages.push({
+          key: "execute" as ProposalStageKey,
+          title: "Execute proposal",
+          timestamp: proposalExecutedById?.blockTimestamp
+            ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
+            : "",
+          icon: (
+            <Image
+              src="/assets/image/proposal/status-executed.svg"
+              alt="executed"
+              width={28}
+              height={28}
+            />
+          ),
+          viewOnExplorer: proposalExecutedById?.transactionHash
+            ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalExecutedById?.transactionHash}`
+            : "",
+        });
+
+        return [...baseStages, ...additionalStages]?.map((v) => {
           if (status === ProposalState.Pending) {
             return {
               ...v,
@@ -222,9 +260,25 @@ const Status: React.FC<StatusProps> = ({
 
           if (status === ProposalState.Queued) {
             let title = v.title;
+
             if (v.key === "queue") {
               title = "Proposal queued";
             }
+
+            if (v.key === "execute") {
+              if (executeEnabledTime && hasTimelock) {
+                return {
+                  ...v,
+                  title,
+                  timestamp: formatTimestampToDayTime(
+                    String(executeEnabledTime)
+                  ),
+                  remaining: getTimeRemaining(Number(executeEnabledTime)) ?? "",
+                  isActive: title !== "Execute proposal",
+                };
+              }
+            }
+
             return {
               ...v,
               title,
@@ -347,6 +401,8 @@ const Status: React.FC<StatusProps> = ({
     votingPeriodEnded,
     votingPeriodStarted,
     status,
+    executeEnabledTime,
+    hasTimelock,
   ]);
 
   if (isLoading) {
@@ -354,11 +410,11 @@ const Status: React.FC<StatusProps> = ({
   }
 
   return (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <h3 className="text-[18px] text-foreground">Status</h3>
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
+      <h3 className="text-[18px] text-foreground font-semibold">Status</h3>
       <Separator className="bg-border/20" />
       <div className="relative">
-        <div className="absolute bottom-0 left-[14px] top-3 w-0.5 bg-foreground/10" />
+        <div className="absolute bottom-0 left-[14px] top-3 h-[calc(100%-40px)] w-0.5 bg-foreground/10" />
 
         {stages.map((stage, index) => (
           <div

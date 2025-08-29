@@ -41,14 +41,18 @@ export const XAccountPanel = ({
   });
 
   const xaccountLink = useMemo(() => {
-    return `https://xaccount.degov.ai?sourceChainId=${daoConfig?.chain?.id}&targetContractAddress=${daoConfig?.contracts?.timeLock}`;
-  }, [daoConfig?.chain?.id, daoConfig?.contracts?.timeLock]);
+    const targetAddress =
+      daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
+    return `https://xaccount.degov.ai?sourceChainId=${daoConfig?.chain?.id}&targetContractAddress=${targetAddress}`;
+  }, [
+    daoConfig?.chain?.id,
+    daoConfig?.contracts?.timeLock,
+    daoConfig?.contracts?.governor,
+  ]);
 
-  // 处理XAccount JSON上传
   const handleUploadXAccount = useCallback(
     (jsonContent: XAccountContent) => {
       try {
-        // 使用zod验证JSON是否符合schema
         const result = xaccountSchema.safeParse(jsonContent);
 
         if (result.success) {
@@ -57,7 +61,6 @@ export const XAccountPanel = ({
           setValidationError(null);
           onChange(result.data);
         } else {
-          // 提取验证错误信息
           const errorMessages = result.error.errors.map(
             (err) => `${err.path.join(".")} - ${err.message}`
           );
@@ -80,7 +83,7 @@ export const XAccountPanel = ({
   return (
     <div
       className={cn(
-        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] pb-[50px]",
+        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] pb-[50px] shadow-card",
         visible ? "animate-in fade-in duration-300" : "hidden"
       )}
     >
@@ -88,7 +91,7 @@ export const XAccountPanel = ({
         <h4 className="text-[18px] font-semibold">Action #{index}</h4>
 
         <Button
-          className="h-[30px] gap-[5px] rounded-[100px] border border-border/20 bg-card"
+          className="h-[30px] gap-[5px] rounded-[100px] border border-foreground bg-card p-[10px]"
           variant="outline"
           onClick={() => onRemove(index)}
         >
@@ -282,10 +285,6 @@ export const XAccountPanel = ({
             {/* Calldatas */}
             <div className="flex flex-col gap-[10px]">
               <h3 className="text-[18px] font-semibold">Parameters</h3>
-              <p className="text-[14px] text-muted-foreground">
-                The data for the function arguments you wish to send when the
-                cross-chain action executes
-              </p>
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">

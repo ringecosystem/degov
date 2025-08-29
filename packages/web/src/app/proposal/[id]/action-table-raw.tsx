@@ -1,26 +1,17 @@
-import { ethers } from "ethers";
-import { parseUnits } from "ethers";
 import { useMemo } from "react";
 
-import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { simplifyFunctionSignature } from "@/utils";
-
-export interface Action {
-  target: string;
-  calldata: string;
-  signature?: string;
-  value: string;
-}
+import { useDecodeCallData, type Action } from "@/hooks/useDecodeCallData";
 
 interface ActionTableRawProps {
   actions: Action[];
 }
 
+
 export function ActionTableRaw({ actions }: ActionTableRawProps) {
-  const daoConfig = useDaoConfig();
+  const decodedActions = useDecodeCallData(actions);
 
   const processedActions = useMemo(() => {
-    return actions.map((action) => {
+    return decodedActions.map((action) => {
       let inferredType = "transfer";
       const isXAccount =
         action?.signature ===
@@ -32,57 +23,19 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
         inferredType = isXAccount ? "xaccount" : "custom";
       }
 
-      let parsedCalldata: { name: string; value: string | string[] }[] = [];
-      if (
-        (inferredType === "custom" || inferredType === "xaccount") &&
-        action.signature
-      ) {
-        try {
-          const signature = isXAccount
-            ? simplifyFunctionSignature(action.signature)
-            : action.signature;
-
-          const iface = new ethers.Interface([`function ${signature}`]);
-          const decoded = iface.decodeFunctionData(
-            signature.split("(")[0],
-            action.calldata
-          );
-
-          const paramTypes =
-            signature
-              .match(/\((.*)\)/)?.[1]
-              .split(",")
-              .filter(Boolean) || [];
-
-          parsedCalldata = paramTypes.map((type, i) => {
-            let value = decoded[i];
-
-            if (typeof value === "bigint") {
-              value = value.toString();
-            } else if (Array.isArray(value)) {
-              value = Array.from(value).map((v) =>
-                typeof v === "bigint" ? v.toString() : v
-              );
-            }
-
-            return {
-              name: type,
-              value,
-            };
-          });
-        } catch (e) {
-          console.warn("Error parsing calldata:", e);
-        }
-      }
+      // Use parameters from hook
+      const parsedCalldata = action.parsedCalldata || [];
 
       return {
         ...action,
         inferredType,
         parsedCalldata,
         address: action.target,
+        functionName: action.functionName,
+        fullFunctionSignature: action.fullFunctionSignature,
       };
     });
-  }, [actions]);
+  }, [decodedActions]);
 
   return (
     <div className="space-y-[20px]">
@@ -92,7 +45,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
             Function {index + 1}
           </h3>
 
-          <div className="space-y-[20px] rounded-[4px] border p-[20px]">
+          <div className="space-y-[10px] rounded-[4px] border p-[10px] bg-background">
             {(action.inferredType === "custom" ||
               action.inferredType === "xaccount") && (
               <div>
@@ -103,9 +56,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
                   className="font-mono text-[14px]"
                   style={{ wordWrap: "break-word" }}
                 >
-                  {action.inferredType === "xaccount"
-                    ? simplifyFunctionSignature(action.signature ?? "")
-                    : action.signature}
+                  {action.fullFunctionSignature || action.signature || action.functionName || ""}
                 </p>
               </div>
             )}
@@ -117,25 +68,40 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
                   <h4 className="text-[14px] font-normal text-muted-foreground">
                     Calldata:
                   </h4>
-                  {action.parsedCalldata.map(({ name, value }, cIndex) => (
+                  {action.parsedCalldata.map((param, cIndex) => (
                     <div
                       key={cIndex}
                       className="font-mono text-[14px]"
                       style={{ wordWrap: "break-word" }}
                     >
-                      {name}:{" "}
-                      {Array.isArray(value) ? `[${value.join(", ")}]` : value}
+                      {param.name}:{" "}
+                      {Array.isArray(param.value)
+                        ? `[${param.value.join(", ")}]`
+                        : param.value}
                     </div>
                   ))}
                 </div>
               )}
+
+            {action.isDecoding && (
+              <div>
+                <h4 className="text-[14px] font-normal text-muted-foreground">
+                  Status:
+                </h4>
+                <p className="text-[14px] text-muted-foreground">
+                  🔄 Decoding parameters...
+                </p>
+              </div>
+            )}
 
             {action.address && (
               <div>
                 <h4 className="text-[14px] font-normal text-muted-foreground">
                   Target:
                 </h4>
-                <p className="font-mono text-[14px]">{action.address}</p>
+                <p className="font-mono text-[14px] break-all">
+                  {action.address}
+                </p>
               </div>
             )}
 
@@ -143,13 +109,8 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
               <h4 className="text-[14px] font-normal text-muted-foreground">
                 Value:
               </h4>
-              <p className="font-mono text-[14px]">
-                {action.value
-                  ? parseUnits(
-                      action.value,
-                      daoConfig?.chain?.nativeToken?.decimals ?? 18
-                    )
-                  : "0"}
+              <p className="font-mono text-[14px] break-all">
+                {action.value || "0"}
               </p>
             </div>
           </div>

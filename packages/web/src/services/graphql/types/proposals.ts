@@ -34,6 +34,7 @@ export type ProposalItem = {
   metricsVotesCount: string;
   voters: ProposalVoterItem[];
   signatureContent?: string[];
+  discussion?: string;
 };
 
 export type ProposalResponse = {
@@ -43,6 +44,22 @@ export type ProposalResponse = {
 export type ProposalTotalResponse = {
   proposals: string[];
 };
+
+export interface EvmAbiResponse {
+  evmAbi: EvmAbiOutput[];
+}
+
+export interface EvmAbiOutput {
+  abi: string;
+  address: string;
+  type: 'PROXY' | 'IMPLEMENTATION';
+  implementation?: string;
+}
+
+export interface EvmAbiInput {
+  chain: number;
+  contract: string;
+}
 
 export type ProposalByIdResponse = {
   proposalCreatedById: ProposalItem;

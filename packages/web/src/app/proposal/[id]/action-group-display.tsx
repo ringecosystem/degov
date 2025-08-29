@@ -9,6 +9,7 @@ interface ActionGroupDisplayProps {
   isLoading: boolean;
   votedSupport?: VoteType;
   canExecute: boolean;
+  hasTimelock: boolean;
   onClick: (action: "vote" | "queue" | "execute") => void;
 }
 export const ActionGroupDisplay = ({
@@ -17,6 +18,7 @@ export const ActionGroupDisplay = ({
   onClick,
   votedSupport,
   canExecute,
+  hasTimelock,
 }: ActionGroupDisplayProps) => {
   const voteInfo = useMemo(() => {
     switch (votedSupport) {
@@ -102,6 +104,21 @@ export const ActionGroupDisplay = ({
     );
   }
   if (status === ProposalState.Succeeded) {
+    // If no timelock, show Execute button directly
+    if (!hasTimelock) {
+      return (
+        <Button
+          className="h-[37px] rounded-[100px] focus-visible:ring-0"
+          isLoading={isLoading}
+          disabled={!canExecute}
+          onClick={() => onClick("execute")}
+        >
+          Execute
+        </Button>
+      );
+    }
+    
+    // If timelock is enabled, show Queue button
     return (
       <Button
         className="h-[37px] rounded-[100px] focus-visible:ring-0"

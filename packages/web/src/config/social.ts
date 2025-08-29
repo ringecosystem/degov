@@ -36,7 +36,7 @@ export const socialConfig: SocialConfig[] = [
   ),
   createSocialConfig(
     "Telegram",
-    "https://t.me/DeGov_AI",
+    "https://t.me/RingDAO_Hub",
     "/assets/image/light/social/telegram.svg",
     "/assets/image/social/telegram.svg",
     12,
@@ -49,6 +49,14 @@ export const socialConfig: SocialConfig[] = [
     "/assets/image/social/email.svg",
     13.333,
     10
+  ),
+  createSocialConfig(
+    "Docs",
+    "https://docs.degov.ai",
+    "/assets/image/light/social/docs.svg",
+    "/assets/image/social/docs.svg",
+    16,
+    16
   ),
   createSocialConfig(
     "Github",

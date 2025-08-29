@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
+import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { ProfileData } from "@/services/graphql/types/profile";
 import { formatShortAddress } from "@/utils";
@@ -41,51 +43,70 @@ export const User = ({
   onDelegate,
 }: UserProps) => {
   const daoConfig = useDaoConfig();
+  const { isAiBot } = useAiBotAddress(address);
+  const [showFullDescription, setShowFullDescription] = useState(false);
+
   return (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <div className="flex w-full items-center gap-[10px] justify-between">
-        <div className="flex items-center gap-[10px]">
-          <AddressAvatar address={address as `0x${string}`} size={70} />
-          <div className="flex flex-col gap-[10px]">
-            <div className="flex items-center gap-[5px]">
+    <div className="flex flex-col gap-[15px] lg:gap-[20px] rounded-[14px] bg-card p-[15px] lg:p-[20px] shadow-card">
+      <div className="flex w-full flex-col lg:flex-row lg:items-center gap-[15px] lg:gap-[10px] lg:justify-between">
+        <div className="flex items-center gap-[10px] lg:gap-[10px]">
+          <AddressAvatar
+            address={address as `0x${string}`}
+            size={60}
+            className="lg:w-[70px] lg:h-[70px]"
+          />
+          <div className="flex flex-row lg:flex-col gap-[8px] lg:gap-[10px] flex-1 min-w-0">
+            <div className="flex flex-col items-start lg:flex-row lg:items-center gap-[5px] flex-wrap">
               <AddressResolver
                 address={address as `0x${string}`}
                 showShortAddress
               >
                 {(value) => (
-                  <span className="text-[26px] font-semibold leading-[100%]">
+                  <span className="text-[20px] lg:text-[26px] font-semibold leading-[100%] break-words">
                     {value}
                   </span>
                 )}
               </AddressResolver>
-              <span className="text-[14px] text-foreground/40">
-                {formatShortAddress(address)}
-              </span>
-              <ClipboardIconButton text={address} className="size-[16px]" />
-              <Link
-                href={`${daoConfig?.chain?.explorers?.[0]}/address/${address}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <Image
-                  src="/assets/image/light/external-link.svg"
-                  alt="external-link"
-                  width={16}
-                  height={16}
-                  className="dark:hidden"
-                />
-                <Image
-                  src="/assets/image/external-link.svg"
-                  alt="external-link"
-                  width={16}
-                  height={16}
-                  className="hidden dark:block"
-                />
-              </Link>
+              <div className="flex gap-[8px] lg:gap-[10px]">
+                <span className="text-[12px] lg:text-[14px] text-foreground/40 flex-shrink-0">
+                  {formatShortAddress(address)}
+                </span>
+                <div className="flex items-center gap-[5px]">
+                  <ClipboardIconButton
+                    text={address}
+                    className="size-[14px] lg:size-[16px] flex-shrink-0"
+                  />
+                  <Link
+                    href={`${daoConfig?.chain?.explorers?.[0]}/address/${address}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-shrink-0"
+                  >
+                    <Image
+                      src="/assets/image/light/external-link.svg"
+                      alt="external-link"
+                      width={14}
+                      height={14}
+                      className="dark:hidden lg:w-4 lg:h-4"
+                    />
+                    <Image
+                      src="/assets/image/external-link.svg"
+                      alt="external-link"
+                      width={14}
+                      height={14}
+                      className="hidden dark:block lg:w-4 lg:h-4"
+                    />
+                  </Link>
+                </div>
+              </div>
             </div>
-
-            <SocialLinks profile={profile} />
+            <div className="hidden lg:block">
+              <SocialLinks profile={profile} isAiBot={isAiBot} />
+            </div>
           </div>
+        </div>
+        <div className="block lg:hidden">
+          <SocialLinks profile={profile} isAiBot={isAiBot} />
         </div>
         <UserActionGroup
           isOwnProfile={isOwnProfile}
@@ -97,19 +118,46 @@ export const User = ({
       </div>
       <div className="w-full h-[1px] bg-border/20"></div>
 
-      {profile?.delegate_statement ? (
+      {profile?.delegate_statement || isAiBot ? (
         <p
-          className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-foreground"
+          className={`mb-0 text-[14px] font-normal leading-[18px] text-foreground ${
+            !showFullDescription ? "line-clamp-3" : ""
+          } cursor-pointer`}
+          onClick={() => setShowFullDescription(!showFullDescription)}
           title={profile?.delegate_statement}
           style={{
             wordBreak: "break-word",
           }}
         >
-          {profile?.delegate_statement}
+          {isAiBot ? (
+            <span>
+              An AI-powered delegate that actively votes on governance
+              proposals. Learn more at
+              <a
+                href="https://docs.degov.ai/governance/agent/overview"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:underline ml-1"
+              >
+                https://docs.degov.ai/governance/agent/overview
+                <Image
+                  src="/assets/image/light/external-link.svg"
+                  alt="external-link"
+                  width={16}
+                  height={16}
+                  className="dark:hidden"
+                />
+              </a>
+            </span>
+          ) : (
+            <div onClick={() => setShowFullDescription(!showFullDescription)}>
+              {profile?.delegate_statement}
+            </div>
+          )}
         </p>
       ) : (
         <p className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-muted-foreground">
-          No delegate statement found, please create one to attract more votes.
+          No delegate statement found.
         </p>
       )}
 

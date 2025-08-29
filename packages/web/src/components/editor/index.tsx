@@ -174,7 +174,7 @@ export function Editor({
   });
   const toolbarRef = React.useRef<HTMLDivElement>(null);
 
-  // 用于存储初始内容的引用值
+  //
   const initialContent = React.useRef(value);
 
   const editor = useEditor({

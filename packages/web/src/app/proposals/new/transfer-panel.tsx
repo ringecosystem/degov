@@ -7,7 +7,6 @@ import { useBalance } from "wagmi";
 
 import { AddressInputWithResolver } from "@/components/address-input-with-resolver";
 import { ErrorMessage } from "@/components/error-message";
-import { TokenSelect } from "@/components/token-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -86,10 +85,13 @@ export const TransferPanel = ({
   }, [daoConfig]);
 
   const { data: balance, isLoading } = useBalance({
-    address: daoConfig?.contracts?.timeLock as Address,
+    address: (daoConfig?.contracts?.timeLock ||
+      daoConfig?.contracts?.governor) as Address,
     chainId: daoConfig?.chain?.id,
     query: {
-      enabled: !!daoConfig?.contracts?.timeLock && !!daoConfig?.chain?.id,
+      enabled:
+        !!(daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor) &&
+        !!daoConfig?.chain?.id,
       gcTime: 0,
     },
   });
@@ -151,14 +153,14 @@ export const TransferPanel = ({
   return (
     <div
       className={cn(
-        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]",
+        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] shadow-card",
         visible ? "animate-in fade-in duration-300" : "hidden"
       )}
     >
       <header className="flex items-center justify-between">
         <h4 className="text-[18px] font-semibold">Action #{index}</h4>
         <Button
-          className="h-[30px] gap-[5px] rounded-[100px] border border-border bg-card"
+          className="h-[30px] gap-[5px] rounded-[100px] border  border-foreground bg-card p-[10px]"
           variant="outline"
           onClick={() => onRemove(index)}
         >
@@ -231,7 +233,18 @@ export const TransferPanel = ({
                   />
                 )}
               />
-              <TokenSelect tokenList={[token]} />
+              <div className="flex items-center gap-[10px] rounded-[10px] border border-border bg-card p-[5px] flex-shrink-0">
+                {token?.icon ? (
+                  <Image
+                    src={token.icon}
+                    alt={token.symbol}
+                    width={24}
+                    height={24}
+                    className="rounded-full"
+                  />
+                ) : null}
+                <span className="truncate">{token.symbol}</span>
+              </div>
             </div>
             <div className="flex items-center justify-end gap-[10px]">
               {/* <span className="text-[14px] text-foreground/50"></span> */}

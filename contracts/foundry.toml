@@ -11,7 +11,7 @@ optimizer_runs = 999999
 evm_version = "london"
 bytecode_hash = "ipfs"
 extra_output_files = ["metadata"]
-eth_rpc_url  = "https://darwinia-rpc.itering.io"
+eth_rpc_url  = "https://erpc.ringdao.com/main/evm/46"
 
 [rpc_endpoints]
 crab = "https://crab-rpc.darwinia.network"

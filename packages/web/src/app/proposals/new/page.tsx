@@ -13,7 +13,6 @@ import { toast } from "react-toastify";
 import { useImmer } from "use-immer";
 import { toHex } from "viem";
 
-import { NewPublishWarning } from "@/components/new-publish-warning";
 import type { SuccessType } from "@/components/transaction-toast";
 import { TransactionToast } from "@/components/transaction-toast";
 import { Button } from "@/components/ui/button";
@@ -99,7 +98,6 @@ export default function NewProposal() {
   const [actions, setActions] = useImmer<Action[]>(DEFAULT_ACTIONS);
   const [publishLoading, setPublishLoading] = useState(false);
   const [actionUuid, setActionUuid] = useState<string>(DEFAULT_ACTIONS[0].id);
-  const [publishWarningOpen, setPublishWarningOpen] = useState(false);
   const [hash, setHash] = useState<string | null>(null);
   const [tab, setTab] = useState<"edit" | "add" | "preview">("edit");
 
@@ -107,9 +105,6 @@ export default function NewProposal() {
 
   const actionsChanged = useMemo(() => {
     const currentActionsJson = JSON.stringify(actions);
-
-    console.log("currentActionsJson", currentActionsJson);
-    console.log("initialActionsRef", initialActionsRef.current);
     return currentActionsJson !== initialActionsRef.current;
   }, [actions]);
 
@@ -121,12 +116,7 @@ export default function NewProposal() {
 
   const { createProposal, isPending, proposalId } = useProposal();
 
-  const {
-    formattedVotes,
-    formattedProposalThreshold,
-    hasEnoughVotes,
-    isLoading,
-  } = useMyVotes();
+  const { isLoading } = useMyVotes();
 
   const handleProposalContentChange = useCallback(
     (content: ProposalContent) => {
@@ -223,6 +213,7 @@ export default function NewProposal() {
         const result = proposalSchema.safeParse({
           title: action.content?.title,
           markdown: action.content?.markdown,
+          discussion: action.content?.discussion,
         });
         state.set(action.id, result.success);
       } else if (action.type === "transfer") {
@@ -253,14 +244,13 @@ export default function NewProposal() {
 
   const handlePublish = useCallback(async () => {
     try {
-      if (!hasEnoughVotes) {
-        setPublishWarningOpen(true);
-        return;
-      }
-
       const result = await transformActionsToProposalParams(actions);
 
-      const hash = await createProposal(result.description, result.actions);
+      const hash = await createProposal(
+        result.description,
+        result.actions,
+        result.discussion
+      );
       if (hash) {
         setHash(hash);
         resetChanges();
@@ -275,7 +265,7 @@ export default function NewProposal() {
     } finally {
       setPublishLoading(false);
     }
-  }, [actions, createProposal, hasEnoughVotes, resetChanges]);
+  }, [actions, createProposal, resetChanges]);
 
   const handlePublishSuccess: SuccessType = useCallback(() => {
     if (proposalId) {
@@ -335,7 +325,7 @@ export default function NewProposal() {
           )}
         </header>
 
-        <div className="flex gap-[30px]">
+        <div className="flex gap-[30px] flex-col lg:flex-row">
           <Sidebar
             actions={actions}
             actionUuid={actionUuid}
@@ -409,12 +399,6 @@ export default function NewProposal() {
           </main>
         </div>
       </div>
-      <NewPublishWarning
-        open={publishWarningOpen}
-        onOpenChange={setPublishWarningOpen}
-        proposalThreshold={formattedProposalThreshold}
-        votes={formattedVotes}
-      />
       {hash && (
         <TransactionToast
           hash={hash as `0x${string}`}

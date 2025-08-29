@@ -8,6 +8,14 @@ interface Links {
   email?: string | null;
 }
 
+interface Theme {
+  logoDark?: string;
+  logoLight?: string;
+  banner?: string;
+  bannerMobile?: string;
+  faqs?: FaqConfig;
+}
+
 interface NativeToken {
   symbol: string;
   decimals: number;
@@ -37,7 +45,7 @@ interface GovernorToken {
 interface Contracts {
   governor: string;
   governorToken: GovernorToken;
-  timeLock: string;
+  timeLock?: string;
 }
 
 interface TokenDetails {
@@ -48,7 +56,7 @@ interface TokenDetails {
   logo: string | null;
 }
 
-type TimelockAssets = TokenDetails[];
+type TreasuryAssets = TokenDetails[];
 
 interface Indexer {
   endpoint: string;
@@ -61,21 +69,44 @@ interface SafeItem {
   link: string;
 }
 
+interface AiAgent {
+  endpoint?: string;
+}
+
+interface AppItem {
+  name: string;
+  description: string;
+  icon: string;
+  link: string;
+}
+
+interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+type FaqConfig = FaqItem[];
+
 type SafeConfig = SafeItem[];
+type AppConfig = AppItem[];
 
 interface Config {
   name: string;
+  code: string;
   logo: string;
   siteUrl: string;
   offChainDiscussionUrl?: string;
   description: string;
   links: Links;
+  theme?: Theme;
   wallet: Wallet;
   chain: Chain;
   contracts: Contracts;
-  timeLockAssets: TimelockAssets;
+  treasuryAssets: TreasuryAssets;
   indexer: Indexer;
   safes?: SafeConfig;
+  apps?: AppConfig;
+  aiAgent?: AiAgent;
 }
 
 export type {
@@ -87,8 +118,12 @@ export type {
   GovernorToken,
   Contracts,
   TokenDetails,
-  TimelockAssets,
+  TreasuryAssets,
   Indexer,
   SafeItem,
   SafeConfig,
+  AppItem,
+  AppConfig,
+  FaqItem,
+  FaqConfig,
 };

@@ -14,7 +14,7 @@ export function ThemeButton() {
     <Button
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       variant="outline"
-      className="border border-border rounded-[10px]"
+      className="lg:border lg:border-border rounded-full w-[44px] h-[44px] lg:rounded-[10px]"
     >
       {resolvedTheme === "dark" ? <Moon /> : <Sun />}
     </Button>

@@ -1,12 +1,21 @@
 import type { ContributorItem } from "@/services/graphql/types";
 
-import { degovConfig } from "./config";
+import * as config from "./config";
 
+import type { NextRequest } from "next/server";
 
-export function inspectContributor(
-  address: string
-): Promise<ContributorItem | undefined> {
-  const dc = degovConfig();
+export async function inspectContributor(options: {
+  request: NextRequest;
+  address: string;
+}): Promise<ContributorItem | undefined> {
+  const address = options.address.toLowerCase();
+
+  const dc = await config.degovConfig(options.request);
+  if (!dc) {
+    console.error("degovConfig is not available");
+    return undefined;
+  }
+
   const endpoint = dc.indexer.endpoint;
   const query = `
   query QueryContributor($id: String!) {
@@ -28,6 +37,10 @@ export function inspectContributor(
       query,
       variables: { id: address },
     }),
+    next: {
+      revalidate: 60, // Cache for 1 minute
+      tags: [`contributor-${address}`],
+    },
   })
     .then((res) => res.json())
     .then((res) => {

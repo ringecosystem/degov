@@ -69,7 +69,6 @@
   }
 }
 
-/* 只在编辑器为空时的第一行显示placeholder */
 .tiptap p.is-editor-empty:first-child::before {
   color: #adb5bd;
   content: attr(data-placeholder);

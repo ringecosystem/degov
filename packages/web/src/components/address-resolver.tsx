@@ -21,6 +21,7 @@ export function AddressResolver({
     address,
     chainId: 1,
   });
+
   const { data: profileData } = useQuery({
     queryKey: ["profile", address],
     queryFn: () => profileService.getProfile(address),

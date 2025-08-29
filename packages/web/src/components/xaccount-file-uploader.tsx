@@ -55,36 +55,36 @@ export const XAccountFileUploader = ({
       <input {...getInputProps()} />
       {isDragActive ? (
         <p className="text-[18px] font-semibold text-foreground">
-          Drop your cross-chain action file here
+          Drop your json file here
         </p>
       ) : (
         <>
           <p className="text-[18px] font-normal text-foreground">
-            Drag and drop the generated cross-chain action file
+            Drag and drop your json file
           </p>
           <p className="text-[14px] text-muted-foreground">
             Or click to browse your json files
           </p>
           {isError && (
-            <p className="flex items-center gap-[4px] text-[14px] text-foreground">
+            <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
               <Image
                 src="/assets/image/proposal/action/error.svg"
                 alt="xaccount-file"
                 width={16}
                 height={16}
               />
-              Must be a valid cross-chain action json file.
+              Must be a valid json file.
             </p>
           )}
           {isUploaded && (
-            <p className="absolute left-[10px] bottom-[10px] flex items-center gap-[4px] text-[14px] text-foreground">
+            <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
               <Image
                 src="/assets/image/proposal/action/check.svg"
                 alt="xaccount-file"
                 width={16}
                 height={16}
               />
-              Cross-chain action file uploaded
+              JSON file uploaded
             </p>
           )}
         </>

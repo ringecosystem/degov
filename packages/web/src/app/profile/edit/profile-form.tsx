@@ -20,6 +20,70 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProfileData } from "@/services/graphql/types/profile";
 
+// Social platform URL parsers
+function parseTwitterUrl(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("https://x.com/")) {
+    return trimmed.substring("https://x.com/".length);
+  }
+  if (trimmed.startsWith("https://twitter.com/")) {
+    return trimmed.substring("https://twitter.com/".length);
+  }
+  if (trimmed.startsWith("x.com/")) {
+    return trimmed.substring("x.com/".length);
+  }
+  if (trimmed.startsWith("twitter.com/")) {
+    return trimmed.substring("twitter.com/".length);
+  }
+  if (trimmed.startsWith("@")) {
+    return trimmed.substring(1);
+  }
+  return trimmed;
+}
+
+function parseTelegramUrl(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("https://t.me/")) {
+    return trimmed.substring("https://t.me/".length);
+  }
+  if (trimmed.startsWith("t.me/")) {
+    return trimmed.substring("t.me/".length);
+  }
+  if (trimmed.startsWith("@")) {
+    return trimmed.substring(1);
+  }
+  return trimmed;
+}
+
+function parseGithubUrl(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("https://github.com/")) {
+    return trimmed.substring("https://github.com/".length);
+  }
+  if (trimmed.startsWith("github.com/")) {
+    return trimmed.substring("github.com/".length);
+  }
+  if (trimmed.startsWith("@")) {
+    return trimmed.substring(1);
+  }
+  return trimmed;
+}
+
+function parseDiscordUrl(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("https://discordapp.com/users/")) {
+    return trimmed.substring("https://discordapp.com/users/".length);
+  }
+  if (trimmed.startsWith("https://discord.com/users/")) {
+    return trimmed.substring("https://discord.com/users/".length);
+  }
+  return trimmed;
+}
+
 const FormSchema = z.object({
   name: z
     .string()
@@ -48,46 +112,41 @@ const FormSchema = z.object({
 
   twitter: z
     .string()
-    .regex(/^[A-Za-z0-9_]{1,15}$/, "Invalid X name")
-    .transform((val) => val.replace("@", ""))
+    .transform(parseTwitterUrl)
+    .refine(
+      (val) => {
+        if (val === "") return true;
+        return /^[A-Za-z0-9_]{1,15}$/.test(val);
+      },
+      {
+        message: "Invalid X username",
+      }
+    )
     .optional()
     .or(z.literal("")),
 
   telegram: z
     .string()
-    .regex(/^[A-Za-z0-9_]{5,32}$/, "Invalid Telegram username")
-    .transform((val) => val.replace("@", ""))
+    .transform(parseTelegramUrl)
+    .refine(
+      (val) => {
+        if (val === "") return true;
+        return /^[A-Za-z0-9_]{5,32}$/.test(val);
+      },
+      {
+        message: "Invalid Telegram username",
+      }
+    )
     .optional()
     .or(z.literal("")),
 
   github: z
     .string()
-    .transform((val) => {
-      val = val.trim();
-
-      if (val.startsWith("@https://github.com/")) {
-        return val.substring("@https://github.com/".length);
-      }
-
-      if (val.startsWith("https://github.com/")) {
-        return val.substring("https://github.com/".length);
-      }
-
-      if (val.startsWith("github.com/")) {
-        return val.substring("github.com/".length);
-      }
-
-      if (val.startsWith("@")) {
-        return val.substring(1);
-      }
-
-      return val;
-    })
+    .transform(parseGithubUrl)
     .refine(
       (val) => {
         if (val === "") return true;
-
-        return /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(val);
+        return /^[A-Za-z0-9](?!.*--)([A-Za-z0-9-]){0,37}[A-Za-z0-9]$/.test(val);
       },
       {
         message: "Invalid GitHub username",
@@ -98,7 +157,20 @@ const FormSchema = z.object({
 
   discord: z
     .string()
-    .regex(/^.{2,32}#[0-9]{4}$/, "Invalid Discord username")
+    .transform(parseDiscordUrl)
+    .refine(
+      (val) => {
+        if (val === "") return true;
+        const newFormat = /^[a-z0-9._]{2,32}$/.test(val) && !/\.\./.test(val);
+        const userIdFormat = /^[0-9]{17,19}$/.test(val);
+        const legacyFormat = /^.{2,32}#[0-9]{4}$/.test(val);
+
+        return newFormat || userIdFormat || legacyFormat;
+      },
+      {
+        message: "Invalid Discord username",
+      }
+    )
     .optional()
     .or(z.literal("")),
 });
@@ -166,7 +238,7 @@ export function ProfileForm({
   }, [data, form]);
 
   return (
-    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
+    <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] shadow-card">
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit((data) =>
@@ -179,7 +251,7 @@ export function ProfileForm({
             name="name"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">
                     Display Name
                   </FormLabel>
@@ -201,7 +273,7 @@ export function ProfileForm({
             name="delegate_statement"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">
                     Delegate Statement
                   </FormLabel>
@@ -223,7 +295,7 @@ export function ProfileForm({
             name="email"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">Email</FormLabel>
                   <FormControl>
                     <Input
@@ -244,11 +316,11 @@ export function ProfileForm({
             name="twitter"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">X</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="@username"
+                      placeholder="username or https://x.com/username"
                       {...field}
                       className="w-full border-border bg-transparent"
                     />
@@ -264,11 +336,11 @@ export function ProfileForm({
             name="telegram"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">Telegram</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="@username"
+                      placeholder="username or https://t.me/username"
                       {...field}
                       className="w-full border-border bg-transparent"
                     />
@@ -284,7 +356,7 @@ export function ProfileForm({
             name="github"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">Github</FormLabel>
                   <FormControl>
                     <Input
@@ -304,11 +376,11 @@ export function ProfileForm({
             name="discord"
             render={({ field }) => (
               <FormItem>
-                <div className="flex flex-row items-center justify-between gap-[10px]">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">Discord</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="username#1234"
+                      placeholder="userid or https://discordapp.com/users/userid"
                       {...field}
                       className="w-full border-border bg-transparent"
                     />

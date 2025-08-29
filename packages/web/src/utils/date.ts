@@ -43,37 +43,6 @@ export function formatFriendlyDate(dateString: string): string {
 }
 
 /**
- * Format Unix timestamp (seconds) to friendly date format
- * @param timestamp Unix timestamp in seconds
- * @returns formatted date string (e.g. "Jan 7th, 2025")
- */
-export function formatTimestampToFriendlyDate(
-  timestamp?: number | string
-): string {
-  if (!timestamp) return "";
-
-  const timestampNum =
-    typeof timestamp === "string" ? parseInt(timestamp, 10) : timestamp;
-
-  if (isNaN(timestampNum)) {
-    console.error(`Invalid timestamp: "${timestamp}"`);
-    return "";
-  }
-
-  const date = dayjs.unix(timestampNum / 1000);
-
-  if (!date.isValid()) {
-    console.error(`Invalid date from timestamp: "${timestamp}"`);
-    return "";
-  }
-
-  const day = date.date();
-  const suffix = getOrdinalSuffix(day);
-
-  return date.format(`MMM D[${suffix}], YYYY`);
-}
-
-/**
  * Format Unix timestamp (milliseconds) to day and time format
  * @param timestamp Unix timestamp in milliseconds
  * @returns formatted date string (e.g. "Tue Feb 25, 09:02 pm")

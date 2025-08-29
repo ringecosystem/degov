@@ -35,6 +35,7 @@ export interface AuthPayload {
 export interface DUser {
   id: string;
   address: string;
+  dao_code: string;
   name?: string;
   power?: string;
   email?: string;
