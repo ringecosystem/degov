@@ -1283,17 +1283,16 @@
     cors "^2.8.5"
     parseurl "^1.3.3"
 
-"@subsquid/cli@^3.0.4":
-  version "3.0.4"
-  resolved "https://registry.yarnpkg.com/@subsquid/cli/-/cli-3.0.4.tgz#5c66e8838dcf00bddad8d69538a7676bcb9f0aa2"
-  integrity sha512-TPbakJU1dMxGu7kDS6AZzIPi0OTZm/8bdwhN/FHWTQNkp0vmmhS6OpMD9z3HpCRPIxnO54sy4Ci0/PFcU0p+wA==
+"@subsquid/cli@^3.2.3":
+  version "3.2.3"
+  resolved "https://registry.yarnpkg.com/@subsquid/cli/-/cli-3.2.3.tgz#907d0dcaa7d51315fe34d759974594de7dd3965b"
+  integrity sha512-7Uspn37f25TMnjsIMPemp5KTpVT5mCEv+0k7QWSS02K/KFX9Mm5BVApXZ7oqQXTbiuQ0CJcy1j750Npx03srcg==
   dependencies:
     "@oclif/core" "3.27.0"
     "@oclif/plugin-autocomplete" "3.2.2"
     "@oclif/plugin-warn-if-update-available" "^3.1.13"
     "@subsquid/commands" "^2.3.1"
-    "@subsquid/manifest" "^2.0.0-beta.14"
-    "@subsquid/manifest-expr" "^0.0.1"
+    "@subsquid/manifest" "^2.0.0-beta.20"
     "@types/fast-levenshtein" "^0.0.4"
     "@types/lodash" "^4.17.7"
     "@types/targz" "^1.0.4"
@@ -1338,7 +1337,7 @@
     glob "^10.3.10"
     supports-color "^8.1.1"
 
-"@subsquid/evm-abi@^0.3.0", "@subsquid/evm-abi@^0.3.1":
+"@subsquid/evm-abi@^0.3.1":
   version "0.3.1"
   resolved "https://registry.yarnpkg.com/@subsquid/evm-abi/-/evm-abi-0.3.1.tgz#c68dc9e86b41d0dd856c500deb5c1c5aa69e0ca8"
   integrity sha512-kWD8KjPBj4bR7u2Ct0xZmmVVkto0DKbSv9LQoh3fdGpS1UXbMg1jt4idupd970U8O7u3JJoTosgtApaXbKfoig==
@@ -1353,32 +1352,32 @@
   dependencies:
     "@subsquid/util-internal-hex" "^1.2.2"
 
-"@subsquid/evm-processor@^1.27.1":
-  version "1.27.1"
-  resolved "https://registry.yarnpkg.com/@subsquid/evm-processor/-/evm-processor-1.27.1.tgz#79b37094357c35c67d01cd1f75e35c0b964cb3bb"
-  integrity sha512-dQBDbztfPikHTerKRdKwJrNC0pdDW71Z1QHn6tVjCT7RDNZGteMxp062gZ+09OzKQMS4R3J57yXoHXK4BNeemw==
+"@subsquid/evm-processor@^1.27.3":
+  version "1.27.3"
+  resolved "https://registry.yarnpkg.com/@subsquid/evm-processor/-/evm-processor-1.27.3.tgz#9e99da8e13281460cabb99b31b787f949aa8c98c"
+  integrity sha512-Ace1/G4DKXFK8Wr56TmEkszJCwyhzMT6yeoVXUzdY2bqGSGh2bWCQEvtwfo2vxfkuPbix3seucQ7g+kH2BVIig==
   dependencies:
-    "@subsquid/http-client" "^1.6.0"
+    "@subsquid/http-client" "^1.6.1"
     "@subsquid/logger" "^1.4.0"
-    "@subsquid/rpc-client" "^4.11.0"
+    "@subsquid/rpc-client" "^4.13.0"
     "@subsquid/util-internal" "^3.2.0"
     "@subsquid/util-internal-archive-client" "^0.1.2"
     "@subsquid/util-internal-hex" "^1.2.2"
     "@subsquid/util-internal-ingest-tools" "^1.1.4"
     "@subsquid/util-internal-processor-tools" "^4.2.1"
     "@subsquid/util-internal-range" "^0.3.0"
-    "@subsquid/util-internal-validation" "^0.7.0"
+    "@subsquid/util-internal-validation" "^0.8.0"
     "@subsquid/util-timeout" "^2.3.2"
 
-"@subsquid/evm-typegen@^4.2.0":
-  version "4.3.0"
-  resolved "https://registry.yarnpkg.com/@subsquid/evm-typegen/-/evm-typegen-4.3.0.tgz#ed65a2c016b4ad16ed0bfd94b792cff3a1467dda"
-  integrity sha512-a/9MyePxlKmWpcsAopcZXBeNv+W0Mf39j7USOeHyE9QYJ7avF6baMsOQFvzbOwlk8s6w/uEURMxAMvnKgCWo5Q==
+"@subsquid/evm-typegen@^4.4.0":
+  version "4.4.0"
+  resolved "https://registry.yarnpkg.com/@subsquid/evm-typegen/-/evm-typegen-4.4.0.tgz#b4cc8885d76a8ea592897c01ee6871f4a24de288"
+  integrity sha512-NcrmHRALoduuJcTk7MZIuY9ld3ltI5d/192mv7F4AnZwCzmEJpzeIq1taIvyDiFI4KALPZUokVjm+QZSaU/6iQ==
   dependencies:
-    "@subsquid/evm-abi" "^0.3.0"
+    "@subsquid/evm-abi" "^0.3.1"
     "@subsquid/evm-codec" "^0.3.0"
-    "@subsquid/http-client" "^1.4.0"
-    "@subsquid/logger" "^1.3.3"
+    "@subsquid/http-client" "^1.6.0"
+    "@subsquid/logger" "^1.4.0"
     "@subsquid/util-internal" "^3.2.0"
     "@subsquid/util-internal-code-printer" "^1.2.2"
     "@subsquid/util-internal-commander" "^1.4.0"
@@ -1389,10 +1388,10 @@
   resolved "https://registry.yarnpkg.com/@subsquid/graphiql-console/-/graphiql-console-0.3.0.tgz#415d305f1b7df7f737c788a3311cfa3179b6dbd1"
   integrity sha512-C89mus6IXnNi0xMQrZqUFBZwLj8tbuq9lye8Gq/lHmmERAUpi6UsWEyLdJLx2mneZzF3JtY8eNiiZ16jmjtvfw==
 
-"@subsquid/graphql-server@^4.9.0":
-  version "4.10.0"
-  resolved "https://registry.yarnpkg.com/@subsquid/graphql-server/-/graphql-server-4.10.0.tgz#72eeb4149b5e202268822b5c8df22fda4b2b538c"
-  integrity sha512-/iIcPZAhQTWxN7vlZ3l6itRFRwJpe8zpAreof8P5j6rR98yVgBrsWobow2FbQBcgf2mZTl8wPLN4FYOZt2ZLLA==
+"@subsquid/graphql-server@^4.11.0":
+  version "4.11.0"
+  resolved "https://registry.yarnpkg.com/@subsquid/graphql-server/-/graphql-server-4.11.0.tgz#d6cb9b01e9f3e46827344c324f7d436826a20419"
+  integrity sha512-QXQxT1zP2optQKaJU53Y4XxNEhrFO3F2KPPN6ZN/0C/hYui50wdtMAS6HTzeCKvlUTvqRio0fzzSEtFmNpjg/A==
   dependencies:
     "@apollo/utils.keyvadapter" "~1.1.2"
     "@apollo/utils.keyvaluecache" "~1.0.2"
@@ -1419,12 +1418,21 @@
     pg "^8.11.3"
     ws "^8.14.2"
 
-"@subsquid/http-client@^1.4.0", "@subsquid/http-client@^1.5.0", "@subsquid/http-client@^1.6.0":
+"@subsquid/http-client@^1.6.0":
   version "1.6.0"
   resolved "https://registry.yarnpkg.com/@subsquid/http-client/-/http-client-1.6.0.tgz#e9e90b1401460f9b28368361d273a3c8f071feb4"
   integrity sha512-0QnOiMLTjR7j5RA33qJpAEOj2Eu9SIEqOp773ItbMObdAhWVNXL54Tu0a/p2Gk3Rq5+lYa4oFEpeFGbEdjtajg==
   dependencies:
     "@subsquid/logger" "^1.3.3"
+    "@subsquid/util-internal" "^3.2.0"
+    node-fetch "^3.3.2"
+
+"@subsquid/http-client@^1.6.1":
+  version "1.6.1"
+  resolved "https://registry.yarnpkg.com/@subsquid/http-client/-/http-client-1.6.1.tgz#437605e79ac657b0066dd0802f503bdf3453bc54"
+  integrity sha512-jzHUxNopsEfHQilS0v/T9oSKTRcooT7ezSG1/sRILAMtYR4b11VUkrxVCFWCUDEwahfDDPw1g/Cw68rMnRqkzg==
+  dependencies:
+    "@subsquid/logger" "^1.4.0"
     "@subsquid/util-internal" "^3.2.0"
     node-fetch "^3.3.2"
 
@@ -1437,15 +1445,10 @@
     "@subsquid/util-internal-json" "^1.2.3"
     supports-color "^8.1.1"
 
-"@subsquid/manifest-expr@^0.0.1":
-  version "0.0.1"
-  resolved "https://registry.yarnpkg.com/@subsquid/manifest-expr/-/manifest-expr-0.0.1.tgz#da8078dcdc8e765b6b82cca1a0db9dbf5bff0297"
-  integrity sha512-QKrgq+BPVX03SPm/kxXr3kDRDFn+ddBAuA9ysvae3PBA0jlj5DUSFxNjIoGZoy+RBwu82t4T0Xt4oTXR8e0OBw==
-
-"@subsquid/manifest@^2.0.0-beta.14":
-  version "2.0.0-beta.18"
-  resolved "https://registry.yarnpkg.com/@subsquid/manifest/-/manifest-2.0.0-beta.18.tgz#cb5cfc235ee413e4d07335fbca958078120ffe03"
-  integrity sha512-qT9z0dS32Pv1VZo5oRRdoB9YPjiCJKpUQRH6UVCFlSKctjPHfbKIgiL7Ulv0l/BXgxSK9kcODUvqmgWzpprvbg==
+"@subsquid/manifest@^2.0.0-beta.20":
+  version "2.0.0-beta.20"
+  resolved "https://registry.yarnpkg.com/@subsquid/manifest/-/manifest-2.0.0-beta.20.tgz#0cd01971fd6ff93777b1af343d914342dd6ec47a"
+  integrity sha512-0jX1/Gf8kT5lTT4mER4Wim0mQ7VHjUkx45cbeOhqWKPBQyLecdNEbodXz0HPbpJNn9KFW8ciIOvOvojcqp2NbA==
   dependencies:
     joi "17.13.3"
     js-yaml "^4.1.0"
@@ -1501,20 +1504,20 @@
     pg "^8.11.3"
     ws "^8.14.2"
 
-"@subsquid/rpc-client@^4.11.0":
-  version "4.11.0"
-  resolved "https://registry.yarnpkg.com/@subsquid/rpc-client/-/rpc-client-4.11.0.tgz#1183a9c6f65c7ffcb862af57992d28bd69b7730e"
-  integrity sha512-0vVCqNEsi7OW/9sAEAQL6ljxQ2qmowtfMBVOBefw/l4AAib9e/PR1aS7EuBaiKq56e/iKzMOJigqvnEiS3EwFQ==
+"@subsquid/rpc-client@^4.13.0":
+  version "4.13.0"
+  resolved "https://registry.yarnpkg.com/@subsquid/rpc-client/-/rpc-client-4.13.0.tgz#85ed04d7a815cabcdb5741c6706c90d6b1d619f9"
+  integrity sha512-61lY/aaopNyDIaHmwjXH+HW02D1c1LbWQnfY0G/BkCy1sHhhI/4pUX6UyhvZAxMuy09sMep8+tib3a+VJcIAcA==
   dependencies:
-    "@subsquid/http-client" "^1.5.0"
-    "@subsquid/logger" "^1.3.3"
+    "@subsquid/http-client" "^1.6.1"
+    "@subsquid/logger" "^1.4.0"
     "@subsquid/util-internal" "^3.2.0"
     "@subsquid/util-internal-binary-heap" "^1.0.0"
     "@subsquid/util-internal-counters" "^1.3.2"
     "@subsquid/util-internal-json-fix-unsafe-integers" "^0.0.0"
     websocket "^1.0.34"
 
-"@subsquid/typeorm-codegen@^2.0.1":
+"@subsquid/typeorm-codegen@^2.0.2":
   version "2.0.2"
   resolved "https://registry.yarnpkg.com/@subsquid/typeorm-codegen/-/typeorm-codegen-2.0.2.tgz#8848f00d08ca303fb31e909c6ad93a7513473784"
   integrity sha512-MDeA4LrqbRIYpmlwRdO1GyPzq+pfIS17VAgkMbYx2LtyqMbSvIaYU5D+iE0QMJr/XvO4bXC8+qZ6Fx4kIMuvfw==
@@ -1662,10 +1665,10 @@
   resolved "https://registry.yarnpkg.com/@subsquid/util-internal-ts-node/-/util-internal-ts-node-0.0.0.tgz#186f5eee276af8f2bfb42201a62e4639a5cf37c4"
   integrity sha512-VBnrKrkNcqbT3hMLrjpEPuwMAihFhW9oUmK53bccBCCXrUiATNUblQD2S4IWd9/UBO5Q33ohpbE9sAodDq2DXw==
 
-"@subsquid/util-internal-validation@^0.7.0":
-  version "0.7.0"
-  resolved "https://registry.yarnpkg.com/@subsquid/util-internal-validation/-/util-internal-validation-0.7.0.tgz#d85576cae18a6f60147b98e8a184cdd88d705608"
-  integrity sha512-Y8o7am+btlHxJuPtS/0+qNe+QkyAOuxSSXhccRwj2mRUlYG81MnxWFgYs4ac+pWeayLfU/3SBvQJH5g7L82fTQ==
+"@subsquid/util-internal-validation@^0.8.0":
+  version "0.8.0"
+  resolved "https://registry.yarnpkg.com/@subsquid/util-internal-validation/-/util-internal-validation-0.8.0.tgz#0215b6d1677830341e1dab20582a853a960f05f9"
+  integrity sha512-qrQ1L871pAtVy0LJ+JLTZk6x4QyHZqgMGCrlSJvXw3VZLBXDBDycTcKlZ96p5VcQRp6xFnYmVSPy9dl9SPXZHQ==
 
 "@subsquid/util-internal@^3.0.0", "@subsquid/util-internal@^3.1.0", "@subsquid/util-internal@^3.2.0":
   version "3.2.0"
@@ -1860,12 +1863,12 @@
   resolved "https://registry.yarnpkg.com/@types/node/-/node-10.17.60.tgz#35f3d6213daed95da7f0f73e75bcc6980e90597b"
   integrity sha512-F0KIgDJfy2nA3zMLmWGKxcH2ZVEtCZXHHdOQs2gSaQ27+lNeEfGxzkIw90aXswATX7AZ33tahPbzy6KAfUreVw==
 
-"@types/node@^20.14.8":
-  version "20.17.23"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-20.17.23.tgz#d228a57bbab954f763a883e495bacea8264efcd5"
-  integrity sha512-8PCGZ1ZJbEZuYNTMqywO+Sj4vSKjSjT6Ua+6RFOYlEvIvKQABPtrNkoVSLSKDb4obYcMhspVKmsw8Cm10NFRUg==
+"@types/node@^24.3.0":
+  version "24.3.0"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-24.3.0.tgz#89b09f45cb9a8ee69466f18ee5864e4c3eb84dec"
+  integrity sha512-aPTXCrfwnDLj4VvXrm+UUCQjNEvJgNA8s5F1cvwQU+3KNltTOkBm1j30uNLyqqPNe7gE3KFzImYoZEfLhp4Yow==
   dependencies:
-    undici-types "~6.19.2"
+    undici-types "~7.10.0"
 
 "@types/qs@*":
   version "6.9.18"
@@ -3049,6 +3052,11 @@ dotenv@^16.4.7:
   version "16.5.0"
   resolved "https://registry.yarnpkg.com/dotenv/-/dotenv-16.5.0.tgz#092b49f25f808f020050051d1ff258e404c78692"
   integrity sha512-m/C+AwOAr9/W1UOIZUo232ejMNnJAJtYQjUbHoNTBNTJSvqzzDh7vnrei3o3r3m9blf6ZoDkvcw0VmozNRFJxg==
+
+dotenv@^17.2.1:
+  version "17.2.1"
+  resolved "https://registry.yarnpkg.com/dotenv/-/dotenv-17.2.1.tgz#6f32e10faf014883515538dc922a0fb8765d9b32"
+  integrity sha512-kQhDYKZecqnM0fCnzI5eIv5L4cAe/iRI+HqMbO/hbRdTAeXDG+M9FjipUxNfbARuEg4iHIbhnhs78BCHNbSxEQ==
 
 drawille-blessed-contrib@>=0.0.1:
   version "1.0.0"
@@ -4476,7 +4484,7 @@ jest-worker@30.1.0:
     merge-stream "^2.0.0"
     supports-color "^8.1.1"
 
-jest@^30.0.5:
+jest@^30.1.1:
   version "30.1.1"
   resolved "https://registry.yarnpkg.com/jest/-/jest-30.1.1.tgz#43c4ea62f280ea978f17629d507f0c44eb552bef"
   integrity sha512-yC3JvpP/ZcAZX5rYCtXO/g9k6VTCQz0VFE2v1FpxytWzUqfDtu0XL/pwnNvptzYItvGwomh1ehomRNMOyhCJKw==
@@ -5126,27 +5134,47 @@ pg-cloudflare@^1.1.1:
   resolved "https://registry.yarnpkg.com/pg-cloudflare/-/pg-cloudflare-1.1.1.tgz#e6d5833015b170e23ae819e8c5d7eaedb472ca98"
   integrity sha512-xWPagP/4B6BgFO+EKz3JONXv3YDgvkbVrGw2mTo3D6tVDQRh1e7cqVGvyR3BE+eQgAvx1XhW/iEASj4/jCWl3Q==
 
+pg-cloudflare@^1.2.7:
+  version "1.2.7"
+  resolved "https://registry.yarnpkg.com/pg-cloudflare/-/pg-cloudflare-1.2.7.tgz#a1f3d226bab2c45ae75ea54d65ec05ac6cfafbef"
+  integrity sha512-YgCtzMH0ptvZJslLM1ffsY4EuGaU0cx4XSdXLRFae8bPP4dS5xL1tNB3k2o/N64cHJpwU7dxKli/nZ2lUa5fLg==
+
 pg-connection-string@^2.7.0:
   version "2.7.0"
   resolved "https://registry.yarnpkg.com/pg-connection-string/-/pg-connection-string-2.7.0.tgz#f1d3489e427c62ece022dba98d5262efcb168b37"
   integrity sha512-PI2W9mv53rXJQEOb8xNR8lH7Hr+EKa6oJa38zsK0S/ky2er16ios1wLKhZyxzD7jUReiWokc9WK5nxSnC7W1TA==
+
+pg-connection-string@^2.9.1:
+  version "2.9.1"
+  resolved "https://registry.yarnpkg.com/pg-connection-string/-/pg-connection-string-2.9.1.tgz#bb1fd0011e2eb76ac17360dc8fa183b2d3465238"
+  integrity sha512-nkc6NpDcvPVpZXxrreI/FOtX3XemeLl8E0qFr6F2Lrm/I8WOnaWNhIPK2Z7OHpw7gh5XJThi6j6ppgNoaT1w4w==
 
 pg-int8@1.0.1:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/pg-int8/-/pg-int8-1.0.1.tgz#943bd463bf5b71b4170115f80f8efc9a0c0eb78c"
   integrity sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==
 
+pg-pool@^3.10.1:
+  version "3.10.1"
+  resolved "https://registry.yarnpkg.com/pg-pool/-/pg-pool-3.10.1.tgz#481047c720be2d624792100cac1816f8850d31b2"
+  integrity sha512-Tu8jMlcX+9d8+QVzKIvM/uJtp07PKr82IUOYEphaWcoBhIYkoHpLXN3qO59nAI11ripznDsEzEv8nUxBVWajGg==
+
 pg-pool@^3.7.1:
   version "3.7.1"
   resolved "https://registry.yarnpkg.com/pg-pool/-/pg-pool-3.7.1.tgz#d1aaf618618d8f878acf185e86084928b8cd5b3c"
   integrity sha512-xIOsFoh7Vdhojas6q3596mXFsR8nwBQBXX5JiV7p9buEVAGqYL4yFzclON5P9vFrpu1u7Zwl2oriyDa89n0wbw==
+
+pg-protocol@^1.10.3:
+  version "1.10.3"
+  resolved "https://registry.yarnpkg.com/pg-protocol/-/pg-protocol-1.10.3.tgz#ac9e4778ad3f84d0c5670583bab976ea0a34f69f"
+  integrity sha512-6DIBgBQaTKDJyxnXaLiLR8wBpQQcGWuAESkRBX/t6OwA8YsqP+iVSiond2EDy6Y/dsGk8rh/jtax3js5NeV7JQ==
 
 pg-protocol@^1.7.1:
   version "1.7.1"
   resolved "https://registry.yarnpkg.com/pg-protocol/-/pg-protocol-1.7.1.tgz#aad61a6f927b51e89dcf721408b76c0e536d43dc"
   integrity sha512-gjTHWGYWsEgy9MsY0Gp6ZJxV24IjDqdpTW7Eh0x+WfJLFsm/TJx1MzL6T0D88mBvkpxotCQ6TwW6N+Kko7lhgQ==
 
-pg-types@^2.1.0:
+pg-types@2.2.0, pg-types@^2.1.0:
   version "2.2.0"
   resolved "https://registry.yarnpkg.com/pg-types/-/pg-types-2.2.0.tgz#2d0250d636454f7cfa3b6ae0382fdfa8063254a3"
   integrity sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==
@@ -5157,7 +5185,7 @@ pg-types@^2.1.0:
     postgres-date "~1.0.4"
     postgres-interval "^1.1.0"
 
-pg@^8.11.3, pg@^8.12.0:
+pg@^8.11.3:
   version "8.13.3"
   resolved "https://registry.yarnpkg.com/pg/-/pg-8.13.3.tgz#19cd021d1f9e9d26d860b80cd450f109a8652738"
   integrity sha512-P6tPt9jXbL9HVu/SSRERNYaYG++MjnscnegFh9pPHihfoBSujsrka0hyuymMzeJKFWrcG8wvCKy8rCe8e5nDUQ==
@@ -5170,7 +5198,20 @@ pg@^8.11.3, pg@^8.12.0:
   optionalDependencies:
     pg-cloudflare "^1.1.1"
 
-pgpass@1.x:
+pg@^8.16.3:
+  version "8.16.3"
+  resolved "https://registry.yarnpkg.com/pg/-/pg-8.16.3.tgz#160741d0b44fdf64680e45374b06d632e86c99fd"
+  integrity sha512-enxc1h0jA/aq5oSDMvqyW3q89ra6XIIDZgCX9vkMrnz5DFTw/Ny3Li2lFQ+pt3L6MCgm/5o2o8HW9hiJji+xvw==
+  dependencies:
+    pg-connection-string "^2.9.1"
+    pg-pool "^3.10.1"
+    pg-protocol "^1.10.3"
+    pg-types "2.2.0"
+    pgpass "1.0.5"
+  optionalDependencies:
+    pg-cloudflare "^1.2.7"
+
+pgpass@1.0.5, pgpass@1.x:
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/pgpass/-/pgpass-1.0.5.tgz#9b873e4a564bb10fa7a7dbd55312728d422a223d"
   integrity sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug==
@@ -6019,10 +6060,10 @@ typedarray-to-buffer@^3.1.5:
   dependencies:
     is-typedarray "^1.0.0"
 
-typeorm@^0.3.21:
-  version "0.3.24"
-  resolved "https://registry.yarnpkg.com/typeorm/-/typeorm-0.3.24.tgz#e05ab51d60036d2beb35f942783c37f2af02b4ef"
-  integrity sha512-4IrHG7A0tY8l5gEGXfW56VOMfUVWEkWlH/h5wmcyZ+V8oCiLj7iTPp0lEjMEZVrxEkGSdP9ErgTKHKXQApl/oA==
+typeorm@^0.3.26:
+  version "0.3.26"
+  resolved "https://registry.yarnpkg.com/typeorm/-/typeorm-0.3.26.tgz#89d10d9fa130d61e82454c8137517b6cba494971"
+  integrity sha512-o2RrBNn3lczx1qv4j+JliVMmtkPSqEGpG0UuZkt9tCfWkoXKu8MZnjvp2GjWPll1SehwemQw6xrbVRhmOglj8Q==
   dependencies:
     "@sqltools/formatter" "^1.2.5"
     ansis "^3.17.0"
@@ -6039,20 +6080,20 @@ typeorm@^0.3.21:
     uuid "^11.1.0"
     yargs "^17.7.2"
 
-typescript@~5.5.2:
-  version "5.5.4"
-  resolved "https://registry.yarnpkg.com/typescript/-/typescript-5.5.4.tgz#d9852d6c82bad2d2eda4fd74a5762a8f5909e9ba"
-  integrity sha512-Mtq29sKDAEYP7aljRgtPOpTvOfbwRWlS6dPRzwjdE+C0R4brX/GUyhHSecbHMFLNBLcJIPt9nl9yG5TZ1weH+Q==
-
-undici-types@~6.19.2:
-  version "6.19.8"
-  resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-6.19.8.tgz#35111c9d1437ab83a7cdc0abae2f26d88eda0a02"
-  integrity sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw==
+typescript@~5.9.2:
+  version "5.9.2"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-5.9.2.tgz#d93450cddec5154a2d5cabe3b8102b83316fb2a6"
+  integrity sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==
 
 undici-types@~6.20.0:
   version "6.20.0"
   resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-6.20.0.tgz#8171bf22c1f588d1554d55bf204bc624af388433"
   integrity sha512-Ny6QZ2Nju20vw1SRHe3d9jVu6gJ+4e3+MMpqu7pqE5HT6WsTSlce++GQmK5UXS8mzV8DSYHrQH+Xrf2jVcuKNg==
+
+undici-types@~7.10.0:
+  version "7.10.0"
+  resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-7.10.0.tgz#4ac2e058ce56b462b056e629cc6a02393d3ff350"
+  integrity sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag==
 
 unpipe@1.0.0, unpipe@~1.0.0:
   version "1.0.0"
@@ -6384,7 +6425,7 @@ yocto-queue@^0.1.0:
   resolved "https://registry.yarnpkg.com/yocto-queue/-/yocto-queue-0.1.0.tgz#0294eb3dee05028d31ee1a5fa2c556a6aaf10a1b"
   integrity sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==
 
-zx@^8.4.1:
-  version "8.4.1"
-  resolved "https://registry.yarnpkg.com/zx/-/zx-8.4.1.tgz#611980034d1f3afa7f5b3517b0bbd63a72f96184"
-  integrity sha512-1Cb+Tfwt/daKV6wckBeDbB6h3IMauqj9KWp+EcbYzi9doeJeIHCktxp/yWspXOXRdoUzBCQSKoUgm3g8r9fz5A==
+zx@^8.8.1:
+  version "8.8.1"
+  resolved "https://registry.yarnpkg.com/zx/-/zx-8.8.1.tgz#5c30645d3383d961771d911c63defa6a6e58014c"
+  integrity sha512-qvsKBnvWHstHKCluKPlEgI/D3+mdiQyMoSSeFR8IX/aXzWIas5A297KxKgPJhuPXdrR6ma0Jzx43+GQ/8sqbrw==
