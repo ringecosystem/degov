@@ -145,6 +145,7 @@ type Proposal @entity {
   title: String
   voteStartTimestamp: BigInt
   voteEndTimestamp: BigInt
+  blockInterval: Int
 }
 
 
