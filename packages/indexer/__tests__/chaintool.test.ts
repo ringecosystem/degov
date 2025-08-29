@@ -8,28 +8,74 @@ describe("Chain Tool Test", () => {
     "should fetch block intervals and print all results at once",
     async () => {
       const chains = [
-        { id: 1, name: "ethereum", endpoint: "https://eth-mainnet.public.blastapi.io" },
-        { id: 10, name: "op", endpoint: "https://mainnet.optimism.io" },
-        { id: 46, name: "darwinia", endpoint: "https://rpc.darwinia.network" },
-        { id: 56, name: "bsc", endpoint: "https://bsc-dataseed1.binance.org" },
-        { id: 100, name: "gnosis", endpoint: "https://rpc.gnosischain.com" },
-        { id: 137, name: "polygon", endpoint: "https://polygon-rpc.com" },
-        { id: 2710, name: "morph", endpoint: "https://rpc.morphl2.io" },
-        { id: 5000, name: "mantle", endpoint: "https://rpc.mantle.xyz" },
-        { id: 8453, name: "base", endpoint: "https://mainnet.base.org" },
+        {
+          id: 1,
+          name: "ethereum",
+          rpcs: [
+            "https://eth-mainnet.public.blastapi.io",
+            "https://ethereum-rpc.publicnode.com",
+          ],
+        },
+        {
+          id: 10,
+          name: "op",
+          rpcs: [
+            "https://mainnet.optimism.io",
+            "https://optimism-rpc.publicnode.com",
+            "https://optimism.drpc.org",
+          ],
+        },
+        { id: 46, name: "darwinia", rpcs: ["https://rpc.darwinia.network"] },
+        {
+          id: 56,
+          name: "bsc",
+          rpcs: [
+            "https://bsc-dataseed1.binance.org",
+            "https://bsc-rpc.publicnode.com",
+            "https://bsc.therpc.io",
+          ],
+        },
+        {
+          id: 100,
+          name: "gnosis",
+          rpcs: [
+            "https://rpc.gnosischain.com",
+            "https://0xrpc.io/gno",
+            "https://gnosis-mainnet.public.blastapi.io",
+          ],
+        },
+        {
+          id: 137,
+          name: "polygon",
+          rpcs: [
+            "https://polygon-rpc.com",
+            "https://polygon-public.nodies.app",
+          ],
+        },
+        { id: 2710, name: "morph", rpcs: ["https://rpc.morphl2.io"] },
+        { id: 5000, name: "mantle", rpcs: ["https://rpc.mantle.xyz"] },
+        { id: 8453, name: "base", rpcs: ["https://mainnet.base.org"] },
         {
           id: 42161,
           name: "arbitrum",
-          endpoint: "https://arb1.arbitrum.io/rpc",
+          rpcs: [
+            "https://arb1.arbitrum.io/rpc",
+            "https://arbitrum-one-rpc.publicnode.com",
+            "https://arbitrum-one.public.blastapi.io",
+            "https://arbitrum.drpc.org",
+            "https://arb1.lava.build",
+            "https://rpc.poolz.finance/arbitrum",
+            "https://arbitrum.rpc.subquery.network/public",
+          ],
         },
         {
           id: 43114,
           name: "avalanche-c",
-          endpoint: "https://api.avax.network/ext/bc/C/rpc",
+          rpcs: ["https://api.avax.network/ext/bc/C/rpc"],
         },
-        { id: 59144, name: "linea", endpoint: "https://rpc.linea.build" },
-        { id: 81457, name: "blast", endpoint: "https://rpc.blast.io" },
-        { id: 534352, name: "scroll", endpoint: "https://rpc.scroll.io" },
+        { id: 59144, name: "linea", rpcs: ["https://rpc.linea.build"] },
+        { id: 81457, name: "blast", rpcs: ["https://rpc.blast.io"] },
+        { id: 534352, name: "scroll", rpcs: ["https://rpc.scroll.io"] },
       ];
 
       console.log("Starting to fetch block intervals for all chains...\n");
@@ -39,7 +85,7 @@ describe("Chain Tool Test", () => {
           try {
             const interval = await chainTool.blockIntervalSeconds({
               chainId: chain.id,
-              endpoint: chain.endpoint,
+              rpcs: chain.rpcs,
               enableFloatValue: true,
             });
             return {
