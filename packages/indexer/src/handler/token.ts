@@ -12,16 +12,20 @@ import {
   DelegateVotesChanged,
   TokenTransfer,
 } from "../model";
-import { MetricsId, DegovConfigIndexLogContract, DegovConfig } from "../config";
-import { EvmFieldSelection } from "../types";
+// import { MetricsId, DegovConfigIndexLogContract } from "../config";
+import {
+  EvmFieldSelection,
+  IndexerContract,
+  IndexerProcessorConfig,
+} from "../types";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 export class TokenHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
-    private readonly indexContract: DegovConfigIndexLogContract,
-    private readonly config: DegovConfig,
+    private readonly indexContract: IndexerContract,
+    private readonly config: IndexerProcessorConfig
   ) {}
 
   private contractStandard() {
@@ -43,7 +47,6 @@ export class TokenHandler {
       eventLog.topics.findIndex(
         (item) => item === itokenAbi.events.DelegateChanged.topic
       ) != -1;
-
     if (isDelegateChanged) {
       await this.storeDelegateChanged(eventLog);
     }
@@ -63,7 +66,6 @@ export class TokenHandler {
     if (isTokenTransfer) {
       await this.storeTokenTransfer(eventLog);
     }
-
   }
 
   private async storeDelegateChanged(eventLog: EvmLog<EvmFieldSelection>) {

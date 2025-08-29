@@ -2,51 +2,26 @@ import { setTimeout } from "timers/promises";
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
-
-export interface IndexerProcessorConfig {
-  chainId: number;
-  rpc: string;
-  finalityConfirmation: number;
-
-  capacity?: number;
-  maxBatchCallSize?: number;
-  gateway?: string;
-
-  logs: IndexerWatchLog[];
-
-  state: IndexerProcessorState;
-}
-
-export interface IndexerWatchLog {
-  startBlock: number;
-  endBlock?: number;
-  contracts: IndexerContract[];
-}
-
-export interface IndexerContract {
-  name: ContractName;
-  address: string;
-}
-
-export interface IndexerProcessorState {
-  running: boolean;
-}
-
-export type ContractName = "governor" | "governorToken";
+import {
+  IndexerContract,
+  IndexerProcessorConfig,
+  IndexerProcessorState,
+  IndexerWatchLog,
+} from "./types";
 
 export class DegovDataSource {
-  constructor(private readonly _config: IndexerProcessorConfig) {}
+  constructor() {}
 
-  static async fromDegovConfig(
-    degovConfig: string
+  static async fromDegovConfigPath(
+    degovConfigPath: string
   ): Promise<IndexerProcessorConfig> {
-    const dcds = new DegovConfigDataSource(degovConfig);
+    const dcds = new DegovConfigDataSource(degovConfigPath);
     return await dcds.processorConfig();
   }
 }
 
 class DegovConfigDataSource {
-  constructor(private readonly config: string) {}
+  constructor(private readonly configPath: string) {}
 
   async processorConfig(): Promise<IndexerProcessorConfig> {
     const raw = await this.readDegovConfigRaw();
@@ -56,7 +31,7 @@ class DegovConfigDataSource {
 
   private packDataSource(rawDegovConfig: string): IndexerProcessorConfig {
     const degovConfig = yaml.parse(rawDegovConfig);
-    const { chain, indexer, contracts } = degovConfig;
+    const { chain, code, indexer, contracts } = degovConfig;
     let rpcs = chain.rpcs ?? [];
     if (indexer.rpc) {
       rpcs = [indexer.rpc, ...rpcs];
@@ -83,6 +58,7 @@ class DegovConfigDataSource {
 
     const ipc: IndexerProcessorConfig = {
       chainId: chain.id,
+      code,
       rpc: rpcs[0],
       finalityConfirmation: indexer.finalityConfirmation ?? 50,
       capacity: indexer.capacity ?? 30,
@@ -107,11 +83,11 @@ class DegovConfigDataSource {
 
       try {
         if (
-          this.config.startsWith("http://") ||
-          this.config.startsWith("https://")
+          this.configPath.startsWith("http://") ||
+          this.configPath.startsWith("https://")
         ) {
           // read from http
-          const response = await fetch(this.config);
+          const response = await fetch(this.configPath);
           if (!response.ok) {
             throw new Error(
               `failed to load config, http error! status: ${response.status}`
@@ -121,9 +97,9 @@ class DegovConfigDataSource {
           break;
         } else {
           // read from file system
-          const filePath = path.isAbsolute(this.config)
-            ? this.config
-            : path.join(process.cwd(), this.config);
+          const filePath = path.isAbsolute(this.configPath)
+            ? this.configPath
+            : path.join(process.cwd(), this.configPath);
           await fs.access(filePath); // Check if file exists
           degovConfigRaw = await fs.readFile(filePath, "utf-8");
           break;
