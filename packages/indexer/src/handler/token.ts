@@ -12,8 +12,8 @@ import {
   DelegateVotesChanged,
   TokenTransfer,
 } from "../model";
-// import { MetricsId, DegovConfigIndexLogContract } from "../config";
 import {
+  MetricsId,
   EvmFieldSelection,
   IndexerContract,
   IndexerProcessorConfig,

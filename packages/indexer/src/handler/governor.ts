@@ -12,8 +12,7 @@ import {
   VoteCastGroup,
   VoteCastWithParams,
 } from "../model";
-import { MetricsId } from "../config";
-import { EvmFieldSelection } from "../types";
+import { MetricsId, EvmFieldSelection } from "../types";
 
 export class GovernorHandler {
   constructor(
