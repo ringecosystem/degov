@@ -12,6 +12,17 @@ export interface BlockIntervalOptions {
 
 const BLOCK_SAMPLE_SIZE = 10;
 
+
+const ABI_FUNCTION_QUORUM = [
+  {
+    inputs: [{ internalType: "uint256", name: "timepoint", type: "uint256" }],
+    name: "quorum",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
 export class ChainTool {
   private blockIntervalCache = new Map<string, number>();
 
@@ -152,13 +163,6 @@ export class ChainTool {
       ],
     ],
   ]);
-
-  async pickRpc(options: { rpcs?: string[] }): Promise<string> {
-    if (!options || !options.rpcs || options.rpcs.length === 0) {
-      throw new Error("No RPC endpoints provided");
-    }
-    return options.rpcs[0];
-  }
 
   async blockIntervalSeconds(options: BlockIntervalOptions): Promise<number> {
     const { chainId, rpcs = [], enableFloatValue = false } = options;

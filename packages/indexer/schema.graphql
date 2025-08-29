@@ -147,6 +147,7 @@ type Proposal @entity {
   voteEndTimestamp: BigInt
   blockInterval: Int
   clockMode: String
+  quorum: BigInt
 }
 
 
