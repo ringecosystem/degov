@@ -638,7 +638,7 @@ delegates:  [
     id: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d_0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d'
   }
 ]
-  
+
 mapping:  [
   {
     id: '0xebd9a48ed1128375eb4383ed4d53478b4fd85a8d',
@@ -1598,12 +1598,12 @@ const recordsFor_0x0F60F8a = [
 // ];
 
 test("testTokens", () => {
-  const records = recordsFor_0x92e9fb9;
+  const records: any[] = recordsFor_0x92e9fb9;
 
   const ds = new DelegateStorage();
   for (const record of records) {
     // const currentDelegates = [];
-    let cdg;
+    let cdg: DelegateChanged | undefined;
     for (const entry of record) {
       const method = entry.method.toLowerCase();
       switch (method) {
@@ -1612,8 +1612,8 @@ test("testTokens", () => {
             from: entry.from.toLowerCase(),
             to: entry.to.toLowerCase(),
             value: BigInt(entry.value),
-          });
-          cdg = null; // reset cdg after transfer
+          } as Transfer);
+          cdg = undefined; // reset cdg after transfer
           break;
         case "delegatechanged":
           cdg = {
@@ -1626,7 +1626,8 @@ test("testTokens", () => {
             cdg.fromDelegate === zeroAddress &&
             cdg.delegator === cdg.toDelegate
           ) {
-            const cdelegate = {
+            const cdelegate: Delegate = {
+              delegator: cdg.toDelegate,
               fromDelegate: cdg.delegator,
               toDelegate: cdg.toDelegate,
               power: 0n,
@@ -1663,10 +1664,10 @@ test("testTokens", () => {
             toDelegate =
               cdg.delegator === cdg.toDelegate ? cdg.delegator : cdg.toDelegate;
           }
-          const cdelegate = {
+          const cdelegate: Delegate = {
             ...cdg,
-            fromDelegate,
-            toDelegate,
+            fromDelegate: fromDelegate!,
+            toDelegate: toDelegate!,
             power: BigInt(entry.newVotes) - BigInt(entry.previousVotes),
           };
           console.log("check --------> ", cdg, cdelegate, entry);
@@ -1683,79 +1684,183 @@ test("testTokens", () => {
   console.log("mapping: ", ds.getMapping());
 });
 
-function DelegateStorage() {
-  this.delegates = [];
-  this.delegateMapping = [];
-}
-const dsfn = DelegateStorage.prototype;
+class DelegateStorage {
+  private delegates: Delegate[] = [];
+  private delegateMapping: DelegateMapping[] = [];
 
-dsfn.getMapping = function () {
-  return this.delegateMapping;
-};
+  constructor() {}
 
-dsfn.getDelegates = function () {
-  return this.delegates;
-};
-
-dsfn.pushMapping = function (delegateChange) {
-  const delegator = delegateChange.delegator;
-  const clearifyMapping = this.delegateMapping.filter(
-    (item) => item.from !== delegator
-  );
-  clearifyMapping.push({
-    id: delegator,
-    from: delegator,
-    to: delegateChange.toDelegate,
-  });
-  this.delegateMapping = clearifyMapping;
-};
-
-dsfn.pushDelegator = function (delegator, options) {
-  delegator.id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
-
-  const storedDelegateFromWithTo = this.delegates.find(
-    (item) => item.id === delegator.id
-  );
-  if (!storedDelegateFromWithTo) {
-    this.delegates.push(delegator);
-    return;
+  getMapping(): DelegateMapping[] {
+    return this.delegateMapping;
   }
-  storedDelegateFromWithTo.power += delegator.power;
-  if (storedDelegateFromWithTo.power === 0n) {
-    this.delegates = this.delegates.filter(
-      (item) => item.id !== storedDelegateFromWithTo.id
+
+  getDelegates(): Delegate[] {
+    return this.delegates;
+  }
+
+  pushMapping(delegateChange: DelegateChanged) {
+    const delegator = delegateChange.delegator;
+    const clearifyMapping: DelegateMapping[] = this.delegateMapping.filter(
+      (item) => item.from !== delegator
     );
-  }
-};
-
-dsfn.pushTransfer = function (transfer) {
-  const { from, to, value } = transfer;
-
-  const fromDelegateMapping = this.delegateMapping.find(
-    (item) => item.from === from
-  );
-  const toDelegateMappings = this.delegateMapping.find(
-    (item) => item.from === to
-  );
-  if (fromDelegateMapping) {
-    console.log("better from mapping ====>", fromDelegateMapping);
-    const transferFromDelegateFrom = {
-      delegator: from,
-      fromDelegate: fromDelegateMapping.from,
-      toDelegate: fromDelegateMapping.to,
-      power: -value,
-    };
-    this.pushDelegator(transferFromDelegateFrom);
+    clearifyMapping.push({
+      id: delegator,
+      from: delegator,
+      to: delegateChange.toDelegate,
+    });
+    this.delegateMapping = clearifyMapping;
   }
 
-  if (toDelegateMappings) {
-    console.log("better to mapping ====>", toDelegateMappings);
-    const transferDelegateTo = {
-      delegator: to,
-      fromDelegate: toDelegateMappings.from,
-      toDelegate: toDelegateMappings.to,
-      power: value,
-    };
-    this.pushDelegator(transferDelegateTo);
+  pushDelegator(delegator: Delegate) {
+    delegator.id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
+
+    const storedDelegateFromWithTo = this.delegates.find(
+      (item) => item.id === delegator.id
+    );
+    if (!storedDelegateFromWithTo) {
+      this.delegates.push(delegator);
+      return;
+    }
+    storedDelegateFromWithTo.power += delegator.power;
+    if (storedDelegateFromWithTo.power === 0n) {
+      this.delegates = this.delegates.filter(
+        (item) => item.id !== storedDelegateFromWithTo.id
+      );
+    }
   }
-};
+
+  pushTransfer(transfer: Transfer) {
+    const { from, to, value } = transfer;
+
+    const fromDelegateMapping = this.delegateMapping.find(
+      (item) => item.from === from
+    );
+    const toDelegateMappings = this.delegateMapping.find(
+      (item) => item.from === to
+    );
+    if (fromDelegateMapping) {
+      console.log("better from mapping ====>", fromDelegateMapping);
+      const transferFromDelegateFrom: Delegate = {
+        delegator: from,
+        fromDelegate: fromDelegateMapping.from,
+        toDelegate: fromDelegateMapping.to,
+        power: -value,
+      };
+      this.pushDelegator(transferFromDelegateFrom);
+    }
+
+    if (toDelegateMappings) {
+      console.log("better to mapping ====>", toDelegateMappings);
+      const transferDelegateTo = {
+        delegator: to,
+        fromDelegate: toDelegateMappings.from,
+        toDelegate: toDelegateMappings.to,
+        power: value,
+      };
+      this.pushDelegator(transferDelegateTo);
+    }
+  }
+}
+
+// function DelegateStoragex() {
+//   this.delegates = [];
+//   this.delegateMapping = [];
+// }
+// const dsfn = DelegateStorage.prototype;
+
+// dsfn.getMapping = function () {
+//   return this.delegateMapping;
+// };
+
+// dsfn.getDelegates = function () {
+//   return this.delegates;
+// };
+
+// dsfn.pushMapping = function (delegateChange) {
+//   const delegator = delegateChange.delegator;
+//   const clearifyMapping = this.delegateMapping.filter(
+//     (item) => item.from !== delegator
+//   );
+//   clearifyMapping.push({
+//     id: delegator,
+//     from: delegator,
+//     to: delegateChange.toDelegate,
+//   });
+//   this.delegateMapping = clearifyMapping;
+// };
+
+// dsfn.pushDelegator = function (delegator, options) {
+//   delegator.id = `${delegator.fromDelegate}_${delegator.toDelegate}`;
+
+//   const storedDelegateFromWithTo = this.delegates.find(
+//     (item) => item.id === delegator.id
+//   );
+//   if (!storedDelegateFromWithTo) {
+//     this.delegates.push(delegator);
+//     return;
+//   }
+//   storedDelegateFromWithTo.power += delegator.power;
+//   if (storedDelegateFromWithTo.power === 0n) {
+//     this.delegates = this.delegates.filter(
+//       (item) => item.id !== storedDelegateFromWithTo.id
+//     );
+//   }
+// };
+
+// dsfn.pushTransfer = function (transfer) {
+//   const { from, to, value } = transfer;
+
+//   const fromDelegateMapping = this.delegateMapping.find(
+//     (item) => item.from === from
+//   );
+//   const toDelegateMappings = this.delegateMapping.find(
+//     (item) => item.from === to
+//   );
+//   if (fromDelegateMapping) {
+//     console.log("better from mapping ====>", fromDelegateMapping);
+//     const transferFromDelegateFrom = {
+//       delegator: from,
+//       fromDelegate: fromDelegateMapping.from,
+//       toDelegate: fromDelegateMapping.to,
+//       power: -value,
+//     };
+//     this.pushDelegator(transferFromDelegateFrom);
+//   }
+
+//   if (toDelegateMappings) {
+//     console.log("better to mapping ====>", toDelegateMappings);
+//     const transferDelegateTo = {
+//       delegator: to,
+//       fromDelegate: toDelegateMappings.from,
+//       toDelegate: toDelegateMappings.to,
+//       power: value,
+//     };
+//     this.pushDelegator(transferDelegateTo);
+//   }
+// };
+
+interface Delegate {
+  id?: string;
+  delegator: string;
+  fromDelegate: string;
+  toDelegate: string;
+  power: bigint;
+}
+
+interface DelegateChanged {
+  delegator: string;
+  fromDelegate: string;
+  toDelegate: string;
+}
+
+interface DelegateMapping {
+  id: string;
+  from: string;
+  to: string;
+}
+
+interface Transfer {
+  from: string;
+  to: string;
+  value: bigint;
+}

@@ -7,7 +7,8 @@
     "codegen:schema": "npx sqd codegen",
     "codegen": "npm run codegen:abi && npm run codegen:schema",
     "migrate:db": "zx scripts/sqd-migration.mjs",
-    "build": "npm run codegen && rm -rf lib && tsc"
+    "build": "npm run codegen && rm -rf lib && tsc",
+    "postbuild": "mv lib/src build && rm -rf lib && mv build lib"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^1.1.2",
@@ -29,6 +30,7 @@
     "typescript": "~5.9.2",
     "reflect-metadata": "^0.2.2",
     "jest": "^30.1.1",
+    "ts-jest": "^29.4.1",
     "@types/jest": "30.0.0",
     "zx": "^8.8.1",
     "@subsquid/cli": "^3.2.3"
