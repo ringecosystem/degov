@@ -1112,6 +1112,11 @@
     lodash "^4.17.21"
     registry-auth-token "^5.1.0"
 
+"@openrouter/ai-sdk-provider@^1.1.2":
+  version "1.1.2"
+  resolved "https://registry.yarnpkg.com/@openrouter/ai-sdk-provider/-/ai-sdk-provider-1.1.2.tgz#7db44576f04b5e2ff01f93af2cce637396dec9e4"
+  integrity sha512-cfiKVpNygGFaJojBHFvtTf7UiF458Xh9yPcTg4FXF7bGYN5V33Rxx9dXNE12fjv6lHeC5C7jwQHDrzUIFol1iQ==
+
 "@pkgjs/parseargs@^0.11.0":
   version "0.11.0"
   resolved "https://registry.yarnpkg.com/@pkgjs/parseargs/-/parseargs-0.11.0.tgz#a77ea742fab25775145434eb1d2328cf5013ac33"
