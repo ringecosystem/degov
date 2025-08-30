@@ -1,6 +1,6 @@
-import { Log } from "../processor";
 import * as igovernorAbi from "../abi/igovernor";
-import { DataHandlerContext } from "@subsquid/evm-processor";
+import { Store } from "@subsquid/typeorm-store";
+import { DataHandlerContext, Log as EvmLog } from "@subsquid/evm-processor";
 import {
   DataMetric,
   Proposal,
@@ -12,12 +12,31 @@ import {
   VoteCastGroup,
   VoteCastWithParams,
 } from "../model";
-import { MetricsId } from "../config";
+import {
+  MetricsId,
+  EvmFieldSelection,
+  IndexerContract,
+  IndexerWork,
+} from "../types";
+import { ChainTool, ClockMode } from "../internal/chaintool";
+import { TextPlus } from "../internal/textplus";
+
+export interface GovernorHandlerOptions {
+  chainId: number;
+  rpcs: string[];
+  work: IndexerWork;
+  indexContract: IndexerContract;
+  chainTool: ChainTool;
+  textPlus: TextPlus;
+}
 
 export class GovernorHandler {
-  constructor(private readonly ctx: DataHandlerContext<any, any>) {}
+  constructor(
+    private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
+    private readonly options: GovernorHandlerOptions
+  ) {}
 
-  async handle(eventLog: Log) {
+  async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const isProposalCreated =
       eventLog.topics.findIndex(
         (item) => item === igovernorAbi.events.ProposalCreated.topic
@@ -71,7 +90,7 @@ export class GovernorHandler {
     return `0x${proposalId.toString(16)}`;
   }
 
-  private async storeProposalCreated(eventLog: Log) {
+  private async storeProposalCreated(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalCreated.decode(eventLog);
     const entity = new ProposalCreated({
       id: eventLog.id,
@@ -90,6 +109,42 @@ export class GovernorHandler {
     });
     await this.ctx.store.insert(entity);
 
+    const { chainTool, textPlus, indexContract, work } = this.options;
+    const governorTokenContract = work.contracts.find(
+      (item) => item.name === "governorToken"
+    );
+    if (!governorTokenContract) {
+      throw new Error(
+        `governorToken contract not found in work daoCode: ${work.daoCode} -> governorContrace: ${indexContract.address}`
+      );
+    }
+    const qmr = await chainTool.quorum({
+      chainId: this.options.chainId,
+      rpcs: this.options.rpcs,
+      contractAddress: indexContract.address,
+      governorTokenAddress: governorTokenContract.address,
+    });
+    let voteStartTimestamp = Number(event.voteStart) * 1000;
+    let voteEndTimestamp = Number(event.voteEnd) * 1000;
+    let blockInterval: number | undefined;
+    if (qmr.clockMode == ClockMode.BlockNumber) {
+      blockInterval = await chainTool.blockIntervalSeconds({
+        chainId: this.options.chainId,
+        rpcs: this.options.rpcs,
+        enableFloatValue: true,
+      });
+      const cpvt = calculateProposalVoteTimestamp({
+        clockMode: ClockMode.BlockNumber,
+        proposalVoteEnd: Number(event.voteEnd),
+        proposalCreatedBlock: eventLog.block.height,
+        proposalStartTimestamp: eventLog.block.timestamp,
+        blockInterval,
+      });
+      voteStartTimestamp = cpvt.voteStart;
+      voteEndTimestamp = cpvt.voteEnd;
+    }
+    const eifo = await textPlus.extractInfo(event.description);
+
     const proposal = new Proposal({
       id: eventLog.id,
       proposalId: this.stdProposalId(event.proposalId),
@@ -104,7 +159,17 @@ export class GovernorHandler {
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
+      // ---
+      voteStartTimestamp: BigInt(voteStartTimestamp),
+      voteEndTimestamp: BigInt(voteEndTimestamp),
+      clockMode: qmr.clockMode,
+      quorum: qmr.quorum,
+      decimals: qmr.decimals,
+      title: eifo.title,
     });
+    if (blockInterval) {
+      proposal.blockInterval = blockInterval.toString();
+    }
     await this.ctx.store.insert(proposal);
 
     await this.storeGlobalDataMetric({
@@ -112,7 +177,7 @@ export class GovernorHandler {
     });
   }
 
-  private async storeProposalQueued(eventLog: Log) {
+  private async storeProposalQueued(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalQueued.decode(eventLog);
     const entity = new ProposalQueued({
       id: eventLog.id,
@@ -125,7 +190,7 @@ export class GovernorHandler {
     await this.ctx.store.insert(entity);
   }
 
-  private async storeProposalExecuted(eventLog: Log) {
+  private async storeProposalExecuted(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalExecuted.decode(eventLog);
     const entity = new ProposalExecuted({
       id: eventLog.id,
@@ -137,7 +202,7 @@ export class GovernorHandler {
     await this.ctx.store.insert(entity);
   }
 
-  private async storeProposalCanceled(eventLog: Log) {
+  private async storeProposalCanceled(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalCanceled.decode(eventLog);
     const entity = new ProposalCanceled({
       id: eventLog.id,
@@ -149,7 +214,7 @@ export class GovernorHandler {
     await this.ctx.store.insert(entity);
   }
 
-  private async storeVoteCast(eventLog: Log) {
+  private async storeVoteCast(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.VoteCast.decode(eventLog);
     const entity = new VoteCast({
       id: eventLog.id,
@@ -179,7 +244,7 @@ export class GovernorHandler {
     await this.storeVoteCastGroup(vcg);
   }
 
-  private async storeVoteCastWithParams(eventLog: Log) {
+  private async storeVoteCastWithParams(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.VoteCastWithParams.decode(eventLog);
     const entity = new VoteCastWithParams({
       id: eventLog.id,
@@ -315,4 +380,37 @@ interface DataMetricOptions {
   votesWeightForSum?: bigint;
   votesWeightAgainstSum?: bigint;
   votesWeightAbstainSum?: bigint;
+}
+
+interface ProposalVoteTimestamp {
+  voteStart: number;
+  voteEnd: number;
+}
+
+function calculateProposalVoteTimestamp(options: {
+  clockMode: ClockMode;
+  proposalVoteEnd: number; // seconds (if clockMode is Timestamp)
+  proposalCreatedBlock: number; // block number
+  proposalStartTimestamp: number; // milliseconds
+  blockInterval: number;
+}): ProposalVoteTimestamp {
+  let proposalEndTimestamp;
+  switch (options.clockMode) {
+    case ClockMode.BlockNumber:
+      const blocksSinceCreation =
+        options.proposalVoteEnd - options.proposalCreatedBlock;
+      const additionalSeconds = blocksSinceCreation * options.blockInterval;
+      const voteEndSeconds =
+        options.proposalStartTimestamp + additionalSeconds * 1000;
+      proposalEndTimestamp = new Date(Math.round(voteEndSeconds));
+      break;
+    case ClockMode.Timestamp:
+      proposalEndTimestamp = new Date(+options.proposalVoteEnd * 1000);
+      break;
+  }
+
+  return {
+    voteStart: options.proposalStartTimestamp,
+    voteEnd: +proposalEndTimestamp,
+  };
 }

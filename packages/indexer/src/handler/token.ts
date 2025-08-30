@@ -1,5 +1,5 @@
-import { DataHandlerContext } from "@subsquid/evm-processor";
-import { Log } from "../processor";
+import { DataHandlerContext, Log as EvmLog } from "@subsquid/evm-processor";
+import { Store } from "@subsquid/typeorm-store";
 import * as itokenerc20 from "../abi/itokenerc20";
 import * as itokenerc721 from "../abi/itokenerc721";
 import {
@@ -12,20 +12,30 @@ import {
   DelegateVotesChanged,
   TokenTransfer,
 } from "../model";
-import { MetricsId, DegovConfigIndexLogContract, DegovConfig } from "../config";
+import {
+  MetricsId,
+  EvmFieldSelection,
+  IndexerContract,
+  IndexerWork,
+} from "../types";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
+export interface TokenhandlerOptions {
+  chainId: number;
+  work: IndexerWork;
+  indexContract: IndexerContract;
+}
+
 export class TokenHandler {
   constructor(
-    private readonly ctx: DataHandlerContext<any, any>,
-    private readonly indexContract: DegovConfigIndexLogContract,
-    private readonly config: DegovConfig,
+    private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
+    private readonly options: TokenhandlerOptions
   ) {}
 
   private contractStandard() {
     const contractStandard = (
-      this.indexContract.standard ?? "erc20"
+      this.options.indexContract.standard ?? "erc20"
     ).toLowerCase();
     return contractStandard;
   }
@@ -36,13 +46,12 @@ export class TokenHandler {
     return isErc721 ? itokenerc721 : itokenerc20;
   }
 
-  async handle(eventLog: Log) {
+  async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const isDelegateChanged =
       eventLog.topics.findIndex(
         (item) => item === itokenAbi.events.DelegateChanged.topic
       ) != -1;
-
     if (isDelegateChanged) {
       await this.storeDelegateChanged(eventLog);
     }
@@ -62,15 +71,9 @@ export class TokenHandler {
     if (isTokenTransfer) {
       await this.storeTokenTransfer(eventLog);
     }
-
-    // console.log('---------->', eventLog.topics, [
-    //   itokenAbi.events.DelegateChanged.topic,
-    //   itokenAbi.events.DelegateVotesChanged.topic,
-    //   itokenAbi.events.Transfer.topic,
-    // ]);
   }
 
-  private async storeDelegateChanged(eventLog: Log) {
+  private async storeDelegateChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
     this.ctx.log.info(
@@ -130,7 +133,7 @@ export class TokenHandler {
     }
   }
 
-  private async storeDelegateVotesChanged(eventLog: Log) {
+  private async storeDelegateVotesChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
     this.ctx.log.info(
@@ -239,7 +242,7 @@ export class TokenHandler {
     await this.storeDelegate(delegate);
   }
 
-  private async storeTokenTransfer(eventLog: Log) {
+  private async storeTokenTransfer(eventLog: EvmLog<EvmFieldSelection>) {
     const contractStandard = this.contractStandard();
     const isErc721 = contractStandard === "erc721";
     const itokenAbi = this.itokenAbi();
@@ -403,7 +406,7 @@ export class TokenHandler {
           headers: {
             "Content-Type": "application/json",
             "x-degov-sync-token": syncAuthToken,
-            "x-degov-daocode": this.config.code,
+            "x-degov-daocode": this.options.work.daoCode,
           },
           body: JSON.stringify([
             {

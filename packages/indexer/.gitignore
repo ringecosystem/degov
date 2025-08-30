@@ -1,5 +1,7 @@
 /node_modules
 /lib
+/build
+/dist
 /builds
 
 /**Versions.json
@@ -10,3 +12,5 @@
 *.local.*
 
 .env
+
+generated

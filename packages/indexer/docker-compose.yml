@@ -1,10 +1,12 @@
 services:
   db:
-    image: postgres:15
+    image: postgres:17-alpine
     environment:
-      POSTGRES_DB: squid
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: "${DB_NAME:-squid}"
+      POSTGRES_USER: "${DB_USER:-postgres}"
+      POSTGRES_PASSWORD: "${DB_PASS:-password}"
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
     ports:
-      - "${DB_PORT}:5432"
-      # command: ["postgres", "-c", "log_statement=all"]
+      - "${DB_PORT:-5432}:5432"
     shm_size: 1gb
