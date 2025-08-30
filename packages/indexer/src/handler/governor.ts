@@ -19,6 +19,7 @@ import {
   IndexerWork,
 } from "../types";
 import { ChainTool, ClockMode } from "../internal/chaintool";
+import { TextPlus } from "../internal/textplus";
 
 export interface GovernorHandlerOptions {
   chainId: number;
@@ -26,6 +27,7 @@ export interface GovernorHandlerOptions {
   work: IndexerWork;
   indexContract: IndexerContract;
   chainTool: ChainTool;
+  textPlus: TextPlus;
 }
 
 export class GovernorHandler {
@@ -107,7 +109,7 @@ export class GovernorHandler {
     });
     await this.ctx.store.insert(entity);
 
-    const { chainTool, indexContract, work } = this.options;
+    const { chainTool, textPlus, indexContract, work } = this.options;
     const governorTokenContract = work.contracts.find(
       (item) => item.name === "governorToken"
     );
@@ -141,6 +143,7 @@ export class GovernorHandler {
       voteStartTimestamp = cpvt.voteStart;
       voteEndTimestamp = cpvt.voteEnd;
     }
+    const eifo = await textPlus.extractInfo(event.description);
 
     const proposal = new Proposal({
       id: eventLog.id,
@@ -162,7 +165,7 @@ export class GovernorHandler {
       clockMode: qmr.clockMode,
       quorum: qmr.quorum,
       decimals: qmr.decimals,
-      title: '',
+      title: eifo.title,
     });
     if (blockInterval) {
       proposal.blockInterval = blockInterval.toString();
