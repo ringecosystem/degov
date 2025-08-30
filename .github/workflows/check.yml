@@ -23,7 +23,6 @@ jobs:
         run: |
           pnpm install
           cd packages/indexer
-          yarn cache clean
           yarn install
 
       - name: Check Build
