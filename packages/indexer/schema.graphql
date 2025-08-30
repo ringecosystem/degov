@@ -148,6 +148,7 @@ type Proposal @entity {
   blockInterval: Int
   clockMode: String
   quorum: BigInt
+  decimals: BigInt
 }
 
 

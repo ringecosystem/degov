@@ -1,3 +1,7 @@
+import { createPublicClient, http, PublicClient, Abi } from "viem";
+
+// --- INTERFACES AND TYPES ---
+
 export interface SimpleBlock {
   number: string;
   timestamp: string;
@@ -5,15 +9,57 @@ export interface SimpleBlock {
 
 export interface BlockIntervalOptions {
   chainId: number;
-  // User-provided RPCs are now optional, as they can be merged with the built-in list.
   rpcs?: string[];
   enableFloatValue?: boolean;
 }
 
+export interface BaseContractOptions {
+  chainId: number;
+  contractAddress: `0x${string}`;
+  rpcs?: string[];
+}
+
+export interface QueryQuorumOptions extends BaseContractOptions {
+  standard?: "ERC20" | "ERC721";
+  governorTokenAddress: `0x${string}`;
+}
+
+export interface QuorumResult {
+  clockMode: ClockMode;
+  quorum: bigint;
+  decimals: bigint;
+}
+
+export enum ClockMode {
+  Timestamp = "timestamp",
+  BlockNumber = "blocknumber",
+}
+
+// --- CONSTANTS AND ABIS ---
+
 const BLOCK_SAMPLE_SIZE = 10;
 
+const ABI_FUNCTION_CLOCK_MODE: Abi = [
+  {
+    inputs: [],
+    name: "CLOCK_MODE",
+    outputs: [{ internalType: "string", name: "", type: "string" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
 
-const ABI_FUNCTION_QUORUM = [
+const ABI_FUNCTION_CLOCK: Abi = [
+  {
+    inputs: [],
+    name: "clock",
+    outputs: [{ internalType: "uint48", name: "", type: "uint48" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_QUORUM: Abi = [
   {
     inputs: [{ internalType: "uint256", name: "timepoint", type: "uint256" }],
     name: "quorum",
@@ -22,6 +68,18 @@ const ABI_FUNCTION_QUORUM = [
     type: "function",
   },
 ];
+
+const ABI_FUNCTION_DECIMALS: Abi = [
+  {
+    inputs: [],
+    name: "decimals",
+    outputs: [{ internalType: "uint8", name: "", type: "uint8" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+// --- CHAINTOOL CLASS ---
 
 export class ChainTool {
   private blockIntervalCache = new Map<string, number>();
@@ -33,10 +91,12 @@ export class ChainTool {
       [
         "https://eth-mainnet.public.blastapi.io",
         "https://ethereum-rpc.publicnode.com",
-        "https://mainnet.gateway.tenderly.co",
-        "https://eth.blockrazor.xyz",
-        "https://0xrpc.io/eth",
+        // "https://mainnet.gateway.tenderly.co",
+        "https://1rpc.io/eth",
         "https://eth.llamarpc.com",
+        "https://eth.rpc.blxrbdn.com",
+        "https://eth.blockrazor.xyz",
+        "https://eth.drpc.org"
       ],
     ],
     [
@@ -44,10 +104,6 @@ export class ChainTool {
       [
         "https://mainnet.optimism.io",
         "https://optimism-rpc.publicnode.com",
-        "https://optimism.drpc.org",
-        "https://rpc.ankr.com/optimism",
-        "https://optimism.gateway.tenderly.co",
-        "https://0xrpc.io/op",
         "https://optimism.drpc.org",
       ],
     ],
@@ -58,22 +114,14 @@ export class ChainTool {
         "https://bsc-dataseed1.binance.org",
         "https://bsc-rpc.publicnode.com",
         "https://bsc.therpc.io",
-        "https://bsc.rpc.blxrbdn.com",
-        "https://bsc.blockrazor.xyz",
-        "https://api.zan.top/bsc-mainnet",
-        "https://bsc-dataseed1.bnbchain.org",
-        "https://bsc-dataseed3.defibit.io",
       ],
     ],
     [
       100,
       [
         "https://rpc.gnosischain.com",
-        "https://0xrpc.io/gno",
         "https://gnosis-mainnet.public.blastapi.io",
         "https://1rpc.io/gnosis",
-        "https://gno-mainnet.gateway.tatum.io",
-        "https://gnosis.oat.farm",
       ],
     ],
     [
@@ -82,9 +130,6 @@ export class ChainTool {
         "https://polygon-rpc.com",
         "https://polygon-public.nodies.app",
         "https://1rpc.io/matic",
-        "https://polygon-bor-rpc.publicnode.com",
-        "https://polygon-mainnet.gateway.tatum.io",
-        "https://api.zan.top/polygon-mainnet",
       ],
     ],
     [2710, ["https://rpc.morphl2.io", "https://rpc-quicknode.morphl2.io"]],
@@ -94,22 +139,14 @@ export class ChainTool {
         "https://rpc.mantle.xyz",
         "https://1rpc.io/mantle",
         "https://mantle-mainnet.public.blastapi.io",
-        "https://mantle-rpc.publicnode.com",
-        "https://mantle.drpc.org",
-        "https://mantle.api.onfinality.io/public",
       ],
     ],
     [
       8453,
       [
-        "https://mainnet.base.org",
+        // "https://mainnet.base.org",
         "https://base-rpc.publicnode.com",
         "https://base.llamarpc.com",
-        "https://base-mainnet.gateway.tatum.io",
-        "https://base-public.nodies.app",
-        "https://base.api.onfinality.io/public",
-        "https://base.llamarpc.com",
-        "https://base-mainnet.public.blastapi.io",
       ],
     ],
     [
@@ -118,10 +155,6 @@ export class ChainTool {
         "https://arb1.arbitrum.io/rpc",
         "https://arbitrum-one-rpc.publicnode.com",
         "https://arbitrum-one.public.blastapi.io",
-        "https://arbitrum.drpc.org",
-        "https://arb1.lava.build",
-        "https://rpc.poolz.finance/arbitrum",
-        "https://arbitrum.rpc.subquery.network/public",
       ],
     ],
     [
@@ -130,9 +163,6 @@ export class ChainTool {
         "https://api.avax.network/ext/bc/C/rpc",
         "https://avalanche-c-chain-rpc.publicnode.com",
         "https://0xrpc.io/avax",
-        "https://avalanche.drpc.org",
-        "https://avalanche.therpc.io",
-        "https://api.zan.top/avax-mainnet/ext/bc/C/rpc",
       ],
     ],
     [
@@ -141,7 +171,6 @@ export class ChainTool {
         "https://rpc.linea.build",
         "https://linea-rpc.publicnode.com",
         "https://linea.therpc.io",
-        "https://1rpc.io/linea",
       ],
     ],
     [
@@ -150,7 +179,6 @@ export class ChainTool {
         "https://rpc.blast.io",
         "https://blast-public.nodies.app",
         "https://rpc.ankr.com/blast",
-        "https://blastl2-mainnet.public.blastapi.io",
       ],
     ],
     [
@@ -159,11 +187,53 @@ export class ChainTool {
         "https://rpc.scroll.io",
         "https://1rpc.io/scroll",
         "https://scroll-mainnet.public.blastapi.io",
-        "https://scroll.drpc.org",
       ],
     ],
   ]);
 
+  /**
+   * Helper to execute a viem action with multiple RPC fallbacks for reliability.
+   * It tries each RPC endpoint in sequence until one succeeds.
+   */
+  private async _executeWithFallbacks<T>(
+    options: { chainId: number; rpcs?: string[] },
+    action: (client: PublicClient) => Promise<T>
+  ): Promise<T> {
+    const { chainId, rpcs = [] } = options;
+    const builtInRpcs = this.defaultRpcs.get(chainId) || [];
+    const allRpcs = [...new Set([...rpcs, ...builtInRpcs])]; // User RPCs are prioritized
+
+    if (allRpcs.length === 0) {
+      throw new Error(
+        `No RPC endpoints found or provided for chainId: ${chainId}.`
+      );
+    }
+
+    let lastError: any;
+
+    for (const rpcUrl of allRpcs) {
+      try {
+        const client = createPublicClient({
+          transport: http(rpcUrl),
+        });
+        return await action(client);
+      } catch (error) {
+        lastError = error;
+        console.warn(
+          `[ChainTool] RPC request to ${rpcUrl} failed. Trying next...`,
+          error
+        );
+      }
+    }
+
+    throw new Error(
+      `All RPC requests failed for chain ${chainId}. Last error: ${lastError?.message}`
+    );
+  }
+
+  /**
+   * Calculates the average block interval using multiple RPCs for redundancy.
+   */
   async blockIntervalSeconds(options: BlockIntervalOptions): Promise<number> {
     const { chainId, rpcs = [], enableFloatValue = false } = options;
     const cacheKey = `${chainId}`;
@@ -173,9 +243,8 @@ export class ChainTool {
       return this.blockIntervalCache.get(cacheKey)!;
     }
 
-    // 1. Merge user-provided RPCs with the built-in list and remove duplicates.
     const builtInRpcs = this.defaultRpcs.get(chainId) || [];
-    const allRpcs = [...new Set([...builtInRpcs, ...rpcs])];
+    const allRpcs = [...new Set([...rpcs, ...builtInRpcs])];
 
     if (allRpcs.length === 0) {
       throw new Error(
@@ -183,10 +252,11 @@ export class ChainTool {
       );
     }
 
-    // 2. Concurrently send requests to all unique RPC endpoints.
-    const promises = allRpcs.map((rpc) =>
-      this._calculateIntervalForSingleRpc(rpc, enableFloatValue)
-    );
+    const promises = allRpcs.map((rpc) => {
+      const client = createPublicClient({ transport: http(rpc) });
+      return this._calculateIntervalForSingleRpc(client, enableFloatValue);
+    });
+
     const results = await Promise.allSettled(promises);
 
     const successfulIntervals: number[] = [];
@@ -223,96 +293,172 @@ export class ChainTool {
   }
 
   /**
-   * An internal helper method to calculate the average block time for a single RPC endpoint.
+   * An internal helper using viem to calculate block time for a single client.
    */
   private async _calculateIntervalForSingleRpc(
-    endpoint: string,
+    client: PublicClient,
     enableFloatValue: boolean
   ): Promise<number> {
+    const latestBlockNumber = await client.getBlockNumber();
+    const fromBlock = latestBlockNumber - BigInt(BLOCK_SAMPLE_SIZE - 1);
+
+    const blockPromises: Promise<any>[] = [];
+    for (let i = 0; i < BLOCK_SAMPLE_SIZE; i++) {
+      const blockNum = fromBlock + BigInt(i);
+      blockPromises.push(client.getBlock({ blockNumber: blockNum }));
+    }
+
+    const resolvedBlocks = await Promise.all(blockPromises);
+
+    const blocks: SimpleBlock[] = resolvedBlocks
+      .filter(Boolean)
+      .map((b) => ({
+        number: b.number!.toString(),
+        timestamp: b.timestamp.toString(),
+      }))
+      .sort((a, b) => parseInt(a.number) - parseInt(b.number));
+
+    if (blocks.length < 2) {
+      throw new Error("Need at least 2 blocks to calculate interval");
+    }
+
+    let totalInterval = 0;
+    for (let i = 1; i < blocks.length; i++) {
+      const currentTimestamp = BigInt(blocks[i].timestamp);
+      const previousTimestamp = BigInt(blocks[i - 1].timestamp);
+      totalInterval += Number(currentTimestamp - previousTimestamp);
+    }
+
+    const intervalCount = blocks.length - 1;
+    if (intervalCount === 0) {
+      throw new Error("No valid block intervals found");
+    }
+
+    let averageInterval = totalInterval / intervalCount;
+    return enableFloatValue ? averageInterval : Math.floor(averageInterval);
+  }
+
+  /**
+   * Determines the clock mode of a contract, trying multiple RPCs.
+   */
+  async clockMode(options: BaseContractOptions): Promise<ClockMode> {
     try {
-      const latestBlockNumberHex = await this.getLatestBlockNumber(endpoint);
-      const latestBlockNumber = BigInt(latestBlockNumberHex);
-      const fromBlock = latestBlockNumber - BigInt(BLOCK_SAMPLE_SIZE - 1);
+      const result = await this._executeWithFallbacks(options, (client) =>
+        client.readContract({
+          address: options.contractAddress,
+          abi: ABI_FUNCTION_CLOCK_MODE,
+          functionName: "CLOCK_MODE",
+        })
+      );
 
-      const batchPayload = Array.from({ length: BLOCK_SAMPLE_SIZE }, (_, i) => {
-        const blockNum = fromBlock + BigInt(i);
-        return {
-          jsonrpc: "2.0",
-          method: "eth_getBlockByNumber",
-          params: [`0x${blockNum.toString(16)}`, false],
-          id: Number(blockNum),
-        };
-      });
+      if (typeof result !== "string") return ClockMode.BlockNumber;
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(batchPayload),
-      });
+      const mode = new URLSearchParams(result.replace(/&/g, ";"))
+        .get("mode")
+        ?.toLowerCase();
 
-      if (!response.ok) {
-        throw new Error(
-          `HTTP error! status: ${response.status} ${response.statusText}`
-        );
+      if (mode === "timestamp") return ClockMode.Timestamp;
+      if (mode === "blocknumber") return ClockMode.BlockNumber;
+
+      console.warn(`Unknown clock mode: ${mode} in result: ${result}`);
+      return ClockMode.BlockNumber; // Default for unknown values
+    } catch (error: any) {
+      const message = error.message;
+      // If the function doesn't exist on the contract, default to BlockNumber.
+      if (
+        message &&
+        (message.includes("contract function not found") ||
+          message.includes("CLOCK_MODE"))
+      ) {
+        return ClockMode.BlockNumber;
       }
-
-      const responseData: any[] = await response.json();
-      if (!responseData || !Array.isArray(responseData)) {
-        throw new Error("Invalid response from RPC endpoint");
-      }
-
-      const blocks: SimpleBlock[] = responseData
-        .map((res: any) => res.result)
-        .filter(Boolean)
-        .sort((a, b) => parseInt(a.number, 16) - parseInt(b.number, 16));
-
-      if (blocks.length < 2) {
-        throw new Error("Need at least 2 blocks to calculate interval");
-      }
-
-      let totalInterval = 0;
-      for (let i = 1; i < blocks.length; i++) {
-        const currentTimestamp = BigInt(blocks[i].timestamp);
-        const previousTimestamp = BigInt(blocks[i - 1].timestamp);
-        totalInterval += Number(currentTimestamp - previousTimestamp);
-      }
-
-      const intervalCount = blocks.length - 1;
-      if (intervalCount === 0) {
-        throw new Error("No valid block intervals found");
-      }
-
-      let averageInterval = totalInterval / intervalCount;
-      if (!enableFloatValue) {
-        return Math.floor(averageInterval);
-      }
-      return averageInterval;
-    } catch (error) {
       throw error;
     }
   }
 
-  private async getLatestBlockNumber(endpoint: string): Promise<string> {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "eth_blockNumber",
-        params: [],
-        id: 1,
-      }),
-    });
+  /**
+   * Retrieves the quorum for a contract, trying multiple RPCs for each call.
+   */
+  async quorum(options: QueryQuorumOptions): Promise<QuorumResult> {
+    const clockMode = await this.clockMode(options);
+    let timepoint: bigint;
 
-    if (!response.ok) {
+    try {
+      // 1. Try to get the specific `clock` value from the contract
+      const clockResult = await this._executeWithFallbacks(options, (client) =>
+        client.readContract({
+          address: options.contractAddress,
+          abi: ABI_FUNCTION_CLOCK,
+          functionName: "clock",
+        })
+      );
+      timepoint = BigInt(clockResult as string);
+    } catch (e: any) {
+      // 2. If `clock()` fails, fallback to the latest block
+      console.warn(
+        `failed to query clock, falling back to latest block: ${e.message}`
+      );
+      const latestBlock = await this._executeWithFallbacks(options, (client) =>
+        client.getBlock()
+      );
+      timepoint =
+        clockMode === ClockMode.Timestamp
+          ? latestBlock.timestamp
+          : latestBlock.number;
+    }
+
+    // 3. Adjust timepoint to be safely in the past
+    switch (clockMode) {
+      case ClockMode.Timestamp:
+        timepoint -= 60n * 3n; // 3 minutes ago
+        break;
+      case ClockMode.BlockNumber:
+        timepoint -= 15n; // 15 blocks ago
+        break;
+    }
+
+    // 4. Get the quorum at that timepoint
+    const quorumResult = await this._executeWithFallbacks(options, (client) =>
+      client.readContract({
+        address: options.contractAddress,
+        abi: ABI_FUNCTION_QUORUM,
+        functionName: "quorum",
+        args: [timepoint],
+      })
+    );
+    if (quorumResult === undefined || quorumResult === null) {
+      throw new Error("Failed to retrieve quorum from contract");
+    }
+
+    const quorum = BigInt(quorumResult as string);
+
+    let decimals: bigint | undefined;
+    // 5. Optionally, get the token decimals
+    const contractStandard = (options.standard ?? "ERC20").toUpperCase();
+    try {
+      if (contractStandard === "ERC721") {
+        decimals = 1n;
+      } else if (contractStandard === "ERC20") {
+        const decimalsResult = await this._executeWithFallbacks(
+          options,
+          (client) =>
+            client.readContract({
+              address: options.governorTokenAddress!,
+              abi: ABI_FUNCTION_DECIMALS,
+              functionName: "decimals",
+            })
+        );
+        decimals = BigInt(decimalsResult as number);
+      }
+    } catch (e: any) {
       throw new Error(
-        `HTTP error! status: ${response.status} ${response.statusText}`
+        `Failed to query decimals for token ${options.governorTokenAddress}: ${e.message}`
       );
     }
-    const data = await response.json();
-    if (data.error) {
-      throw new Error(`RPC Error: ${data.error.message}`);
+    if (decimals == undefined) {
+      throw new Error("missing decimals value");
     }
-    return data.result;
+
+    return { clockMode, quorum, decimals };
   }
 }

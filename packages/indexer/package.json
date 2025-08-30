@@ -21,18 +21,19 @@
     "dotenv": "^17.2.1",
     "pg": "^8.16.3",
     "typeorm": "^0.3.26",
+    "viem": "^2.36.0",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
+    "@subsquid/cli": "^3.2.3",
     "@subsquid/evm-typegen": "^4.4.0",
     "@subsquid/typeorm-codegen": "^2.0.2",
-    "@types/node": "^24.3.0",
-    "typescript": "~5.9.2",
-    "reflect-metadata": "^0.2.2",
-    "jest": "^30.1.1",
-    "ts-jest": "^29.4.1",
     "@types/jest": "30.0.0",
-    "zx": "^8.8.1",
-    "@subsquid/cli": "^3.2.3"
+    "@types/node": "^24.3.0",
+    "jest": "^30.1.1",
+    "reflect-metadata": "^0.2.2",
+    "ts-jest": "^29.4.1",
+    "typescript": "~5.9.2",
+    "zx": "^8.8.1"
   }
 }
