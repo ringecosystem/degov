@@ -206,7 +206,9 @@ export function ActionTableSummary({
                         >
                           <div className="flex items-center gap-[10px]">
                             {(() => {
-                              const IconComponent = getProposalActionIcon(record.type?.toLowerCase());
+                              const IconComponent = getProposalActionIcon(
+                                record.type?.toLowerCase()
+                              );
                               return (
                                 <IconComponent
                                   width={24}
@@ -266,7 +268,7 @@ export function ActionTableSummary({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => toggleParams(record.index)}
-                                className="text-[14px] text-foreground/40 cursor-pointer flex-shrink-0"
+                                className="text-[14px] text-foreground/40 font-normal cursor-pointer flex-shrink-0"
                                 asChild
                               >
                                 <motion.div whileTap={{ scale: 0.95 }}>

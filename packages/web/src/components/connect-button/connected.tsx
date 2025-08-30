@@ -79,24 +79,24 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
         <div className="flex flex-col justify-center gap-[20px]">
           <Button
             asChild
-            className="w-full gap-[10px] rounded-[100px] border-border bg-card"
+            className="w-full gap-[10px] rounded-[100px] border-foreground bg-card"
             variant="outline"
           >
-            <Link href="/profile" onClick={() => onMenuToggle?.()}>
-              <ProfileIcon
-                width={20}
-                height={20}
-                className="text-current"
-              />
+            <Link
+              href="/profile"
+              onClick={() => onMenuToggle?.()}
+              className="text-foreground"
+            >
+              <ProfileIcon width={20} height={20} className="text-current" />
               <span className="text-[14px]">Profile</span>
             </Link>
           </Button>
           <Button
             onClick={handleDisconnect}
-            className="w-full gap-[10px] rounded-[100px] border-border bg-card"
+            className="w-full gap-[10px] rounded-[100px] border-foreground bg-card text-foreground"
             variant="outline"
           >
-            <Power size={20} className="text-foreground" strokeWidth={2} />
+            <Power size={20} className="text-current" strokeWidth={2} />
             <span className="text-[14px]">Disconnect</span>
           </Button>
         </div>

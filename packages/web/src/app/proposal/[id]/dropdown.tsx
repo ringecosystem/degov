@@ -33,14 +33,10 @@ export const Dropdown = ({
         >
           {showCancel && (
             <DropdownMenuItem
-              className="cursor-pointer p-[10px]"
+              className="cursor-pointer p-[10px] text-foreground hover:opacity-80 focus:text-foreground"
               onSelect={handleCancelProposal}
             >
-              <CancelIcon
-                width={20}
-                height={20}
-                className="text-current"
-              />
+              <CancelIcon width={20} height={20} className="text-current" />
               <span>Cancel Proposal</span>
             </DropdownMenuItem>
           )}

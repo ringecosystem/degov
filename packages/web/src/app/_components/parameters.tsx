@@ -26,25 +26,32 @@ export const Parameters = () => {
   const { data: governanceToken } = useGovernanceToken();
 
   const formattedData = useMemo(() => {
-    const proposalThresholdFormatted = governanceParams?.proposalThreshold !== undefined
-      ? `${formatTokenAmount(governanceParams.proposalThreshold)?.formatted ?? "0"} ${governanceToken?.symbol ?? ""}`
-      : "None";
+    const proposalThresholdFormatted =
+      governanceParams?.proposalThreshold !== undefined
+        ? `${
+            formatTokenAmount(governanceParams.proposalThreshold)?.formatted ??
+            "0"
+          } ${governanceToken?.symbol ?? ""}`
+        : "None";
 
-    const votingDelayFormatted = governanceParams?.votingDelayInSeconds !== undefined && 
-      governanceParams?.votingDelayInSeconds !== null && 
+    const votingDelayFormatted =
+      governanceParams?.votingDelayInSeconds !== undefined &&
+      governanceParams?.votingDelayInSeconds !== null &&
       !isNaN(governanceParams.votingDelayInSeconds)
-      ? dayjsHumanize(governanceParams.votingDelayInSeconds)
-      : "None";
+        ? dayjsHumanize(governanceParams.votingDelayInSeconds)
+        : "None";
 
-    const votingPeriodFormatted = governanceParams?.votingPeriodInSeconds !== undefined && 
-      governanceParams?.votingPeriodInSeconds !== null && 
+    const votingPeriodFormatted =
+      governanceParams?.votingPeriodInSeconds !== undefined &&
+      governanceParams?.votingPeriodInSeconds !== null &&
       !isNaN(governanceParams.votingPeriodInSeconds)
-      ? dayjsHumanize(governanceParams.votingPeriodInSeconds)
-      : "None";
+        ? dayjsHumanize(governanceParams.votingPeriodInSeconds)
+        : "None";
 
-    const timeLockDelayFormatted = governanceParams?.timeLockDelay !== undefined
-      ? dayjsHumanize(Number(governanceParams.timeLockDelay))
-      : "None";
+    const timeLockDelayFormatted =
+      governanceParams?.timeLockDelay !== undefined
+        ? dayjsHumanize(Number(governanceParams.timeLockDelay))
+        : "None";
 
     return {
       proposalThresholdFormatted,
@@ -65,7 +72,7 @@ export const Parameters = () => {
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          className="rounded-full border-border bg-[#202224] text-white"
+          className="rounded-full border-always-light bg-transparent text-always-light hover:bg-transparent hover:text-always-light hover:opacity-80 duration-300 transition-opacity"
           size="sm"
         >
           Parameters

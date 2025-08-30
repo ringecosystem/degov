@@ -1,9 +1,16 @@
 import { isNil } from "lodash-es";
-import Image from "next/image";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
-import { ExternalLinkIcon } from "@/components/icons";
+import {
+  ExternalLinkIcon,
+  StatusPublishedIcon,
+  StatusStartedIcon,
+  StatusEndedIcon,
+  StatusQueuedIcon,
+  StatusExecutedIcon,
+  CancelIcon,
+} from "@/components/icons";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -68,6 +75,7 @@ interface ProposalStage {
   icon: React.ReactNode;
   timestamp?: string;
   isActive?: boolean;
+  isCurrent?: boolean;
   tag?: string;
   address?: `0x${string}`;
   viewOnExplorer?: string;
@@ -96,7 +104,11 @@ const Status: React.FC<StatusProps> = ({
   const { data: govParams } = useGovernanceParams();
 
   const votingPeriodStarted = useMemo(() => {
-    if (isNil(data?.blockTimestamp) || isNil(govParams?.votingDelayInSeconds) || isNaN(govParams?.votingDelayInSeconds))
+    if (
+      isNil(data?.blockTimestamp) ||
+      isNil(govParams?.votingDelayInSeconds) ||
+      isNaN(govParams?.votingDelayInSeconds)
+    )
       return BigInt(0);
 
     return (
@@ -108,10 +120,12 @@ const Status: React.FC<StatusProps> = ({
   const votingPeriodEnded = useMemo(() => {
     const votingDelay = govParams?.votingDelayInSeconds;
     const votingPeriod = govParams?.votingPeriodInSeconds;
-    
-    const safeVotingDelay = isNil(votingDelay) || isNaN(votingDelay) ? 0 : votingDelay;
-    const safeVotingPeriod = isNil(votingPeriod) || isNaN(votingPeriod) ? 0 : votingPeriod;
-    
+
+    const safeVotingDelay =
+      isNil(votingDelay) || isNaN(votingDelay) ? 0 : votingDelay;
+    const safeVotingPeriod =
+      isNil(votingPeriod) || isNaN(votingPeriod) ? 0 : votingPeriod;
+
     return (
       BigInt(data?.blockTimestamp ?? 0) +
       BigInt(safeVotingDelay * 1000) +
@@ -152,11 +166,10 @@ const Status: React.FC<StatusProps> = ({
         title: "Publish onChain",
         timestamp: formatTimestampToDayTime(data?.blockTimestamp),
         icon: (
-          <Image
-            src="/assets/image/proposal/status-published.svg"
-            alt="published"
+          <StatusPublishedIcon
             width={28}
             height={28}
+            className="text-current"
           />
         ),
         address: data?.proposer as `0x${string}`,
@@ -167,12 +180,7 @@ const Status: React.FC<StatusProps> = ({
         title: "Start voting period",
         timestamp: formatTimestampToDayTime(String(votingPeriodStarted)),
         icon: (
-          <Image
-            src="/assets/image/proposal/status-started.svg"
-            alt="started"
-            width={28}
-            height={28}
-          />
+          <StatusStartedIcon width={28} height={28} className="text-current" />
         ),
       },
       {
@@ -181,12 +189,7 @@ const Status: React.FC<StatusProps> = ({
         timestamp: formatTimestampToDayTime(String(votingPeriodEnded)),
         remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
         icon: (
-          <Image
-            src="/assets/image/proposal/status-ended.svg"
-            alt="ended"
-            width={28}
-            height={28}
-          />
+          <StatusEndedIcon width={28} height={28} className="text-current" />
         ),
       },
     ];
@@ -208,11 +211,10 @@ const Status: React.FC<StatusProps> = ({
               ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
               : "",
             icon: (
-              <Image
-                src="/assets/image/proposal/status-queued.svg"
-                alt="queued"
+              <StatusQueuedIcon
                 width={28}
                 height={28}
+                className="text-current"
               />
             ),
             viewOnExplorer: proposalQueuedById?.transactionHash
@@ -229,11 +231,10 @@ const Status: React.FC<StatusProps> = ({
             ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
             : "",
           icon: (
-            <Image
-              src="/assets/image/proposal/status-executed.svg"
-              alt="executed"
+            <StatusExecutedIcon
               width={28}
               height={28}
+              className="text-current"
             />
           ),
           viewOnExplorer: proposalExecutedById?.transactionHash
@@ -246,6 +247,7 @@ const Status: React.FC<StatusProps> = ({
             return {
               ...v,
               isActive: v.title === "Publish onChain",
+              isCurrent: v.title === "Publish onChain",
             };
           }
           if (status === ProposalState.Active) {
@@ -254,6 +256,7 @@ const Status: React.FC<StatusProps> = ({
               isActive:
                 v.title === "Publish onChain" ||
                 v.title === "Start voting period",
+              isCurrent: v.title === "Start voting period",
             };
           }
           if (status === ProposalState.Succeeded) {
@@ -263,14 +266,17 @@ const Status: React.FC<StatusProps> = ({
                 v.title === "Publish onChain" ||
                 v.title === "Start voting period" ||
                 v.title === "End voting period",
+              isCurrent: v.title === "End voting period",
             };
           }
 
           if (status === ProposalState.Queued) {
             let title = v.title;
+            let isCurrent = false;
 
             if (v.key === "queue") {
               title = "Proposal queued";
+              isCurrent = true;
             }
 
             if (v.key === "execute") {
@@ -283,6 +289,7 @@ const Status: React.FC<StatusProps> = ({
                   ),
                   remaining: getTimeRemaining(Number(executeEnabledTime)) ?? "",
                   isActive: title !== "Execute proposal",
+                  isCurrent: false,
                 };
               }
             }
@@ -291,27 +298,32 @@ const Status: React.FC<StatusProps> = ({
               ...v,
               title,
               isActive: title !== "Execute proposal",
+              isCurrent,
             };
           }
 
           if (status === ProposalState.Executed) {
             let title = v.title;
+            let isCurrent = false;
             if (v.key === "queue") {
               title = "Proposal queued";
             }
             if (v.key === "execute") {
               title = "Proposal executed";
+              isCurrent = true; // 当前在执行完成阶段
             }
             return {
               ...v,
               title,
               isActive: title !== "Execute proposal",
+              isCurrent,
             };
           }
 
           return {
             ...v,
             isActive: true,
+            isCurrent: false,
           };
         });
       case ProposalState.Canceled:
@@ -319,6 +331,7 @@ const Status: React.FC<StatusProps> = ({
           ...baseStages?.map((v) => ({
             ...v,
             isActive: true,
+            isCurrent: false,
           })),
 
           {
@@ -328,14 +341,10 @@ const Status: React.FC<StatusProps> = ({
               proposalCanceledById?.blockTimestamp
             ),
             icon: (
-              <Image
-                src="/assets/image/proposal/done.svg"
-                alt="done"
-                width={28}
-                height={28}
-              />
+              <CancelIcon width={28} height={28} className="text-current" />
             ),
             isActive: true,
+            isCurrent: true,
             viewOnExplorer: proposalCanceledById?.transactionHash
               ? `${daoConfig?.chain?.explorers?.[0]}/tx/${proposalCanceledById?.transactionHash}`
               : "",
@@ -346,19 +355,16 @@ const Status: React.FC<StatusProps> = ({
           ...baseStages?.map((v) => ({
             ...v,
             isActive: true,
+            isCurrent: false,
           })),
           {
             key: "defeated" as ProposalStageKey,
             title: "Proposal defeated",
             icon: (
-              <Image
-                src="/assets/image/proposal/done.svg"
-                alt="done"
-                width={28}
-                height={28}
-              />
+              <CancelIcon width={28} height={28} className="text-current" />
             ),
             isActive: true,
+            isCurrent: true,
           },
         ];
       case ProposalState.Expired:
@@ -366,6 +372,7 @@ const Status: React.FC<StatusProps> = ({
           ...baseStages?.map((v) => ({
             ...v,
             isActive: true,
+            isCurrent: false,
           })),
           {
             key: "expired" as ProposalStageKey,
@@ -374,31 +381,30 @@ const Status: React.FC<StatusProps> = ({
               ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
               : "",
             icon: (
-              <Image
-                src="/assets/image/proposal/status-queued.svg"
-                alt="queued"
+              <StatusQueuedIcon
                 width={28}
                 height={28}
+                className="text-current"
               />
             ),
             isActive: true,
+            isCurrent: true,
           },
           {
             key: "execute" as ProposalStageKey,
             title: "Execute proposal",
             icon: (
-              <Image
-                src="/assets/image/proposal/done.svg"
-                alt="done"
-                width={28}
-                height={28}
-              />
+              <CancelIcon width={28} height={28} className="text-current" />
             ),
             isActive: false,
+            isCurrent: false,
           },
         ];
       default:
-        return baseStages;
+        return baseStages.map(v => ({
+          ...v,
+          isCurrent: false
+        }));
     }
   }, [
     data,
@@ -433,7 +439,29 @@ const Status: React.FC<StatusProps> = ({
           >
             <div className="flex items-center gap-[10px]">
               <div className="z-10 mr-[13px] h-[28px] w-[28px] text-foreground">
-                {stage.icon}
+                {(() => {
+                  const iconElement = stage.icon as React.ReactElement;
+
+                  // 只有支持 invert 属性的图标才添加此属性
+                  if (
+                    iconElement.type &&
+                    (iconElement.type as any).name &&
+                    [
+                      "StatusPublishedIcon",
+                      "StatusStartedIcon", 
+                      "StatusEndedIcon",
+                      "StatusQueuedIcon",
+                      "StatusExecutedIcon",
+                      "CancelIcon",
+                    ].includes((iconElement.type as any).name)
+                  ) {
+                    return React.cloneElement(iconElement as any, {
+                      invert: stage.isCurrent,
+                    });
+                  }
+
+                  return iconElement;
+                })()}
               </div>
               <div className="flex items-center justify-between gap-[10px]">
                 <div>

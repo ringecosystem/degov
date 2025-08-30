@@ -8,6 +8,7 @@ body {
 
 @layer base {
   :root {
+
     --background: 240 9% 98%;
 
     --foreground: 210 6% 13%;
@@ -61,50 +62,54 @@ body {
     --gray-1: 0 0% 90%;
     --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.15);
 
+    /* Always Light - #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark - #202224 */
+    --always-dark: 210 6% 13%;
+
   }
   .dark {
-    /* #000000 */
+    /*BG #000000 */
     --background: 0 0% 0%;
 
-    /* #FFFFFF */
+    /*Light #FFFFFF */
     --foreground: 0 0% 100%;
 
-
-    /* #202224 */
+    /*Dark #202224 */
     --card: 210 6% 13%;
-    --card-foreground: 0 0% 100% / 0.8;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 28%;
-    --secondary-foreground: 0 0% 100% / 0.8;
-    --muted: 240 3.7% 15.9%;
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 210 6% 13%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
 
-    /* #979797 */
+    /* Grey2 #979797 */
     --muted-foreground: 0 0% 59%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 359 100% 62%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    /* #979797 */
+    /* Grey2 #979797 */
     --border: 0 0% 59%;
 
-    /* #202224 */
+    /*Dark  #202224 */
     --input: 210 6% 13%;
-    --ring: 0 0% 100% / 0;
+    --ring: 0 0% 100%;
 
-    /* #00B624 */
+    /*Green #00B624 */
     --success: 132 100% 36%;
-    /* #F3AB00 */
+    /*Yellow #F3AB00 */
     --warning: 42 100% 48%;
     --danger: 359 100% 62%;
 
-    /* #F3AB00 */
+    /*Yellow #F3AB00 */
     --pending: var(--warning);
-    --active: 197 100% 50%;
-    /* #00B624 */
+    --active: 195 100% 50%;
+    /*Green #00B624 */
     --succeeded: 132 100% 36%;
     --executed: 276 100% 67%;
     --defeated: var(--danger);
@@ -112,17 +117,323 @@ body {
 
     --radius: 0.5rem;
 
-    /* #2E2E2E */
+    /* BG2 - #2E2E2E */
     --card-background: 0 0% 18%;
 
-    /* 474747 */
+    /*Grey1 #474747 */
     --gray-1: 0 0% 28%;
     --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
+
+    /* Always Light - #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark - #202224 */
+    --always-dark: 210 6% 13%;
+  }
+
+  /* 暗蓝主题 - DarkBlue */
+  .dark-blue {
+    /* 基础色彩 - 基于调色板DarkBlue列 */
+    --background: /* #08092B */ 240 76% 7%;
+    --foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --card: /* #0C233B */ 210 64% 15%;
+    --card-foreground: /* #87A4FA */ 228 92% 76%;
+    --popover: /* #0C233B */ 210 64% 15%;
+    --popover-foreground: /* #87A4FA */ 228 92% 76%;
+    
+    --primary: /* #87A4FA */ 228 92% 76%;
+    --primary-foreground: /* #08092B */ 240 76% 7%;
+    --secondary: /* #4946C6C */ 225 44% 64%;
+    --secondary-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --muted: /* #646A99 */ 230 27% 53%;
+    --muted-foreground: /* #87A4FA */ 228 92% 76%;
+    --accent: /* #00B7FF */ 195 100% 50%;
+    --accent-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --destructive: /* #FF3CB1 */ 325 100% 61%;
+    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --border: /* #4946C6C */ 225 44% 64%;
+    --input: /* #131132 */ 241 43% 13%;
+    --ring: /* #00B7FF */ 195 100% 50%;
+    
+    --success: /* #00B67F */ 161 100% 36%;
+    --warning: /* #FF8400 */ 31 100% 50%;
+    --danger: /* #FF3CB1 */ 325 100% 61%;
+    
+    --pending: var(--warning);
+    --active: /* #00B7FF */ 195 100% 50%;
+    --succeeded: var(--success);
+    --executed: /* #BC57FF */ 273 100% 67%;
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: /* #0C233B */ 210 64% 15%;
+    --gray-1: /* #4946C6C */ 225 44% 64%;
+    --card-shadow: 6px 6px 54px 0 rgba(135, 164, 250, 0.15);
+
+    /* Always Light - #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark - #0C233B */
+    --always-dark: 210 64% 15%;
+  }
+
+  /* 暗红主题 - DarkRed */
+  .dark-red {
+    /* 基础色彩 - 基于调色板DarkRed列 */
+    --background: /* #300813 */ 343 74% 11%;
+    --foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --card: /* #300813 */ 343 74% 11%;
+    --card-foreground: /* #FFFFFF */ 0 0% 100%;
+    --popover: /* #300813 */ 343 74% 11%;
+    --popover-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --primary: /* #3F0513 */ 347 85% 16%;
+    --primary-foreground: /* #FFFFFF */ 0 0% 100%;
+    --secondary: /* #992D47 */ 346 56% 39%;
+    --secondary-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --muted: /* #FFFFFF */ 0 0% 100%;
+    --muted-foreground: /* #992D47 */ 346 56% 39%;
+    --accent: /* #FFFFFF */ 0 0% 100%;
+    --accent-foreground: /* #300813 */ 343 74% 11%;
+    
+    --destructive: /* #FF3C3F */ 359 100% 62%;
+    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --border: /* #820C2D */ 345 84% 29%;
+    --input: /* #300813 */ 343 74% 11%;
+    --ring: /* #FF3C3F */ 359 100% 62%;
+    
+    --success: /* #00B403 */ 121 100% 35%;
+    --warning: /* #FF8400 */ 31 100% 50%;
+    --danger: /* #FF3C3F */ 359 100% 62%;
+    
+    --pending: var(--warning);
+    --active: /* #FF3C3F */ 359 100% 62%;
+    --succeeded: var(--success);
+    --executed: /* #BC57FF */ 273 100% 67%;
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: /* #300813 */ 343 74% 11%;
+    --gray-1: /* #FFFFFF */ 0 0% 100%;
+    --card-shadow: 6px 6px 54px 0 rgba(153, 45, 71, 0.15);
+
+    /* Always Light - #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark - #300813 */
+    --always-dark: 343 74% 11%;
+  }
+
+  /* 浅绿主题 - LightGreen */
+  .light-green {
+    /* BG #F9F9FA */
+    --background: 240 9% 98%;
+    /* #09613C */
+    --foreground:  155 83% 21%;
+    
+    --card: /* #F9F9FA */ 240 11% 98%;
+    --card-foreground: /* #E5E5E5 */ 0 0% 90%;
+    --popover: /* #F9F9FA */ 240 11% 98%;
+    --popover-foreground: /* #979797 */ 0 0% 59%;
+    
+    --primary: /* #09613C */ 145 84% 21%;
+    --primary-foreground: /* #FFFFFF */ 0 0% 100%;
+    --secondary: /* #E5E5E5 */ 0 0% 90%;
+    --secondary-foreground: /* #979797 */ 0 0% 59%;
+    
+    --muted: /* #979797 */ 0 0% 59%;
+    /* Grey2 - #979797 */
+    --muted-foreground: 0 0% 59%;
+    --accent: /* #F7F7F7 */ 0 0% 97%;
+    --accent-foreground: /* #F7F7F7 */ 0 0% 97%;
+    
+    --destructive: /* #FF3C3F */ 359 100% 62%;
+    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    /* Grey2 - #979797 */
+    --border: 0 0% 59%;
+    --input: /* #F7F7F7 */ 0 0% 97%;
+    --ring: /* #006FFF */ 215 100% 50%;
+    
+    --success: /* #00B403 */ 121 100% 35%;
+    --warning: /* #FF8400 */ 31 100% 50%;
+    --danger: /* #FF3C3F */ 359 100% 62%;
+    
+    --pending: var(--warning);
+    --active: /* #09613C */ 145 84% 21%;
+    --succeeded: var(--success);
+    --executed: /* #BC57FF */ 273 100% 67%;
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    /* BG2 - #F7F7F7 */
+    --card-background:  0 0% 97%;
+    /* Grey1 #E5E5E5 */
+    --gray-1: 0 0% 90%;
+    --card-shadow: 6px 6px 54px 0 rgba(9, 97, 60, 0.15);
+
+    /* Always Light - #09613C */
+    --always-light: 145 84% 21%;
+    /* Always Dark - #FFFFFF */
+    --always-dark: 0 0% 100%;
+  }
+
+  /* 浅粉主题 - LightPink */
+  .light-pink {
+    /* 基础色彩 - 基于调色板LightPink列 */
+    --background: /* #FAFAF9 */ 60 11% 98%;
+    --foreground: /* #F26D00 */ 27 100% 47%;
+    
+    --card: /* #FAFAF9 */ 60 11% 98%;
+    --card-foreground: /* #FFE4CE */ 28 100% 90%;
+    --popover: /* #FAFAF9 */ 60 11% 98%;
+    --popover-foreground: /* #F9AB6A */ 33 92% 69%;
+    
+    --primary: /* #F26D00 */ 28 100% 47%;
+    --primary-foreground: /* #FFFFFF */ 0 0% 100%;
+    --secondary: /* #FFE4CE */ 28 100% 90%;
+    --secondary-foreground: /* #F9AB6A */ 33 92% 69%;
+    
+    --muted: /* #F9AB6A */ 33 92% 69%;
+    --muted-foreground: /* #F7F7F7 */ 0 0% 97%;
+    --accent: /* #F7F7F7 */ 0 0% 97%;
+    --accent-foreground: /* #F7F7F7 */ 0 0% 97%;
+    
+    --destructive: /* #FF3C3F */ 359 100% 62%;
+    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --border: /* #006FFF */ 215 100% 50%;
+    --input: /* #F7F7F7 */ 0 0% 97%;
+    --ring: /* #006FFF */ 215 100% 50%;
+    
+    --success: /* #00B403 */ 121 100% 35%;
+    --warning: /* #FF8400 */ 31 100% 50%;
+    --danger: /* #FF3C3F */ 359 100% 62%;
+    
+    --pending: var(--warning);
+    --active: /* #F26D00 */ 28 100% 47%;
+    --succeeded: var(--success);
+    --executed: /* #BC57FF */ 273 100% 67%;
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: /* #FAFAF9 */ 60 11% 98%;
+    --gray-1: /* #FFE4CE */ 28 100% 90%;
+    --card-shadow: 6px 6px 54px 0 rgba(242, 109, 0, 0.15);
+
+    /* Always Light - #F26D00 */
+    --always-light: 28 100% 47%;
+    /* Always Dark - #FFFFFF */
+    --always-dark: 0 0% 100%;
+  }
+
+  /* 暗绿主题 - DarkGreen */
+  .dark-green {
+    /* 基础色彩 - 基于调色板DarkGreen列 */
+    --background: /* #09220B */ 125 55% 9%;
+    --foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --card: /* #24333E */ 201 26% 19%;
+    --card-foreground: /* #74FFDE */ 166 100% 72%;
+    --popover: /* #24333E */ 201 26% 19%;
+    --popover-foreground: /* #2A92A7 */ 189 61% 42%;
+    
+    --primary: /* #74FFDE */ 166 100% 72%;
+    --primary-foreground: /* #09220B */ 125 55% 9%;
+    --secondary: /* #7EFDFF */ 181 100% 75%;
+    --secondary-foreground: /* #09220B */ 125 55% 9%;
+    
+    --muted: /* #1E4041 */ 181 36% 19%;
+    --muted-foreground: /* #32C5FF */ 195 100% 60%;
+    --accent: /* #32C5FF */ 195 100% 60%;
+    --accent-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --destructive: /* #FF3C3F */ 359 100% 62%;
+    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --border: /* #32C5FF */ 195 100% 60%;
+    --input: /* #1E4041 */ 181 36% 19%;
+    --ring: /* #00B624 */ 132 100% 36%;
+    
+    --success: /* #00B624 */ 132 100% 36%;
+    --warning: /* #F3AB00 */ 42 100% 48%;
+    --danger: /* #FF3C3F */ 359 100% 62%;
+    
+    --pending: var(--warning);
+    --active: /* #74FFDE */ 166 100% 72%;
+    --succeeded: var(--success);
+    --executed: /* #BC57FF */ 273 100% 67%;
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: /* #24333E */ 201 26% 19%;
+    --gray-1: /* #2A92A7 */ 189 61% 42%;
+    --card-shadow: 6px 6px 54px 0 rgba(116, 255, 222, 0.15);
+
+    /* Always Light - #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark - #24333E */
+    --always-dark: 201 26% 19%;
+  }
+
+  /* 暗紫主题 - DarkPurple */
+  .dark-purple {
+    /* 基础色彩 - 基于调色板DarkPurple列 */
+    --background: /* #18041B */ 295 61% 6%;
+    --foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --card: /* #2C0936 */ 289 73% 12%;
+    --card-foreground: /* #F1CBFF */ 286 100% 90%;
+    --popover: /* #2C0936 */ 289 73% 12%;
+    --popover-foreground: /* #52466C */ 253 23% 36%;
+    
+    --primary: /* #F1CBFF */ 286 100% 90%;
+    --primary-foreground: /* #2C0936 */ 289 73% 12%;
+    --secondary: /* #6F6499 */ 253 23% 51%;
+    --secondary-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --muted: /* #331E4C */ 263 39% 21%;
+    --muted-foreground: /* #00B7FF */ 195 100% 50%;
+    --accent: /* #00B7FF */ 195 100% 50%;
+    --accent-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --destructive: /* #E62E31 */ 359 74% 54%;
+    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
+    
+    --border: /* #00B7FF */ 195 100% 50%;
+    --input: /* #331E4C */ 263 39% 21%;
+    --ring: /* #00B67F */ 161 100% 36%;
+    
+    --success: /* #00B67F */ 161 100% 36%;
+    --warning: /* #F3AB00 */ 42 100% 48%;
+    --danger: /* #E62E31 */ 359 74% 54%;
+    
+    --pending: var(--warning);
+    --active: /* #F1CBFF */ 286 100% 90%;
+    --succeeded: var(--success);
+    --executed: /* #BC57FF */ 273 100% 67%;
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: /* #2C0936 */ 289 73% 12%;
+    --gray-1: /* #52466C */ 253 23% 36%;
+    --card-shadow: 6px 6px 54px 0 rgba(241, 203, 255, 0.15);
+
+    /* Always Light - #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark - #2C0936 */
+    --always-dark: 289 73% 12%;
   }
 }
 
 @layer base {
   * {
+
+
     @apply border-border;
   }
   body {
@@ -163,4 +474,11 @@ body {
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
   
+}
+
+
+/* components */
+.Toastify__toast {
+  @apply bg-card;
+  @apply text-foreground;
 }

@@ -66,7 +66,7 @@ export const TabContent = ({
                 href={data?.discussion}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[14px] lg:text-[18px] font-semibold hover:underline"
+                className="text-[14px] lg:text-[16px] underline"
               >
                 {data?.discussion}
               </a>
@@ -76,7 +76,7 @@ export const TabContent = ({
                 href={`https://x.com/${aiAnalysisData.twitter_user.username}/status/${aiAnalysisData.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[14px] lg:text-[18px] font-semibold hover:underline break-all"
+                className="text-[14px] lg:text-[16px] underline break-all"
               >
                 https://x.com/{aiAnalysisData.twitter_user.username}/status/
                 {aiAnalysisData.id}

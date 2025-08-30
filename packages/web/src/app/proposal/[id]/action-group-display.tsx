@@ -1,7 +1,12 @@
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
-import { ProposalActionCheckIcon, ErrorIcon, CancelIcon, ClockIcon } from "@/components/icons";
+import {
+  ProposalActionCheckIcon,
+  ErrorIcon,
+  CancelIcon,
+  ClockIcon,
+} from "@/components/icons";
 import { VoteType } from "@/config/vote";
 import { ProposalState } from "@/types/proposal";
 interface ActionGroupDisplayProps {
@@ -49,11 +54,7 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Pending) {
     return (
       <div className="flex items-center gap-[10px]">
-        <ClockIcon
-          width={20}
-          height={20}
-          className="text-current"
-        />
+        <ClockIcon width={20} height={20} className="text-current" />
         <p>Voting starts soon</p>
       </div>
     );
@@ -61,15 +62,11 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Active) {
     const VoteIcon = getVoteIcon(votedSupport);
     const voteLabel = getVoteLabel(votedSupport);
-    
+
     if (VoteIcon && voteLabel) {
       return (
         <p className="flex items-center gap-[10px] text-[14px] font-normal">
-          <VoteIcon
-            width={20}
-            height={20}
-            className="text-current"
-          />
+          <VoteIcon width={20} height={20} className="text-current" />
           You voted {voteLabel}
         </p>
       );
@@ -98,7 +95,7 @@ export const ActionGroupDisplay = ({
         </Button>
       );
     }
-    
+
     // If timelock is enabled, show Queue button
     return (
       <Button
@@ -137,11 +134,7 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Canceled) {
     return (
       <div className="flex items-center gap-[10px]">
-        <CancelIcon
-          width={20}
-          height={20}
-          className="text-current"
-        />
+        <CancelIcon width={20} height={20} className="text-current" />
         <p>Proposal canceled</p>
       </div>
     );
@@ -149,11 +142,7 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Expired) {
     return (
       <div className="flex items-center gap-[10px]">
-        <CancelIcon
-          width={20}
-          height={20}
-          className="text-current"
-        />
+        <CancelIcon width={20} height={20} className="text-current" />
         <p>Proposal expired</p>
       </div>
     );
@@ -161,11 +150,7 @@ export const ActionGroupDisplay = ({
   if (status === ProposalState.Defeated) {
     return (
       <div className="flex items-center gap-[10px]">
-        <CancelIcon
-          width={20}
-          height={20}
-          className="text-current"
-        />
+        <CancelIcon width={20} height={20} className="text-current" />
         <p>Proposal defeated</p>
       </div>
     );

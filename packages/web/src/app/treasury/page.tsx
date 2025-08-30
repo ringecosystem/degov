@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { formatUnits } from "viem";
 import { useBalance } from "wagmi";
-
+import Image from "next/image";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { ExternalLinkIcon, WarningIcon } from "@/components/icons";
 import { TreasuryList } from "@/components/treasury-list";
@@ -216,10 +216,7 @@ export default function Treasury() {
                     height={20}
                   />
                 </TooltipTrigger>
-                <TooltipContent
-                  className="rounded-[14px] p-[10px]"
-                  side="left"
-                >
+                <TooltipContent className="rounded-[14px] p-[10px]" side="left">
                   <span className="gap-[10px] text-[14px] font-normal leading-normal text-foreground flex items-center">
                     <WarningIcon
                       width={20}
@@ -229,7 +226,7 @@ export default function Treasury() {
                     Token price data is not available at this time
                   </span>
                 </TooltipContent>
-                </Tooltip>
+              </Tooltip>
             </div>
           ) : (
             <div className="text-[20px] lg:text-[26px] font-semibold leading-normal flex items-center gap-[10px]">

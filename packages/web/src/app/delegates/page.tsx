@@ -133,13 +133,13 @@ export default function Members() {
             <h3 className="text-[16px] lg:text-[18px] font-extrabold">
               {getDisplayTitle()}
             </h3>
-            <div className="flex h-[36px] w-full sm:w-[388px] items-center gap-[13px] rounded-[20px] border px-[17px] transition-all border-border bg-card">
+            <div className="flex h-[36px] w-full sm:w-[388px] items-center gap-[13px] rounded-[20px] border px-[17px] transition-all border-gray-1 bg-card">
               <Search className="h-[15px] w-[15px] text-foreground/50" />
               <Input
                 placeholder="Search by address"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-full flex-1 appearance-none bg-transparent outline-none border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
+                className="h-full flex-1 appearance-none bg-transparent outline-none border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
               />
             </div>
           </div>

@@ -22,6 +22,13 @@ export { ClockIcon } from './clock-icon';
 export { DiscussionIcon } from './discussion-icon';
 export { WarningIcon } from './warning-icon';
 
+// Status Icons
+export { StatusPublishedIcon } from './status-published-icon';
+export { StatusStartedIcon } from './status-started-icon';
+export { StatusEndedIcon } from './status-ended-icon';
+export { StatusQueuedIcon } from './status-queued-icon';
+export { StatusExecutedIcon } from './status-executed-icon';
+
 // Navigation Icons
 export { DashboardIcon, ProposalsIcon, TreasuryIcon } from './nav';
 

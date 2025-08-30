@@ -21,7 +21,7 @@ export const DaoHeader = () => {
 
   return (
     <div
-      className="lg:grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-[#202224] p-[20px] shadow-card"
+      className="lg:grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-always-dark p-[20px] shadow-card"
       style={{
         backgroundImage: isCustomBanner
           ? `url(${config?.theme?.banner})`
@@ -33,7 +33,7 @@ export const DaoHeader = () => {
       <div className="flex flex-col gap-[10px]">
         <h1
           className={cn(
-            "flex items-center gap-[10px] text-[26px] font-extrabold text-white"
+            "flex items-center gap-[10px] text-[26px] font-extrabold text-always-light"
           )}
         >
           <Image
@@ -45,8 +45,8 @@ export const DaoHeader = () => {
           />
 
           {config?.name}
-          <div className="px-2.5 py-[5px] bg-white rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-foreground/80 transition-colors">
-            <div className="justify-start text-[#202224] text-xs font-semibold font-['SF_UI_Display']">
+          <div className="px-2.5 py-[5px] bg-always-light rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-foreground/80 transition-colors">
+            <div className="justify-start text-always-dark text-xs font-semibold font-['SF_UI_Display']">
               {config?.chain?.name}
             </div>
           </div>
@@ -54,7 +54,7 @@ export const DaoHeader = () => {
 
         <div className="lg:hidden">
           <p
-            className={`text-[13px] lg:text-[14px] text-white max-w-[693px] ${
+            className={`text-[13px] lg:text-[14px] text-always-light max-w-[693px] ${
               !showFullDescription ? "line-clamp-2" : ""
             } cursor-pointer`}
             onClick={() => setShowFullDescription(!showFullDescription)}
@@ -68,7 +68,7 @@ export const DaoHeader = () => {
             <TooltipTrigger asChild>
               <p
                 className={cn(
-                  "line-clamp-2 text-[14px] max-w-[693px] text-white"
+                  "line-clamp-2 text-[14px] max-w-[693px] text-always-light"
                 )}
               >
                 {config?.description}
@@ -96,7 +96,7 @@ export const DaoHeader = () => {
                 target="_blank"
                 rel="noopener noreferrer"
                 title={capitalize(key)}
-                className="size-[24px] items-center justify-center rounded-full bg-white transition-colors hover:bg-white/80 "
+                className="size-[24px] items-center justify-center rounded-full bg-always-light transition-colors hover:bg-always-light/80 "
                 style={{
                   backgroundImage: `url(/assets/image/user_social/${key}.svg)`,
                   backgroundRepeat: "no-repeat",

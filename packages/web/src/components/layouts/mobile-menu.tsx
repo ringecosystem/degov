@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Nav } from "@/app/nav";
 import { ConnectButton } from "@/components/connect-button";
 import { IndexerStatus } from "@/components/indexer-status";
-import { ThemeButton } from "@/components/theme-button";
+import { ThemeSelector } from "@/components/theme-selector";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,7 +44,7 @@ export const MobileMenu = ({
         >
           <div className="flex items-center justify-between p-4 ">
             <ConnectButton onMenuToggle={onMenuToggle} />
-            <ThemeButton />
+            <ThemeSelector />
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">

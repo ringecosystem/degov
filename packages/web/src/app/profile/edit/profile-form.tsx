@@ -259,7 +259,7 @@ export function ProfileForm({
                     <Input
                       placeholder="Enter your name"
                       {...field}
-                      className="w-full border-border bg-transparent"
+                      className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
                   </FormControl>
                 </div>
@@ -281,7 +281,7 @@ export function ProfileForm({
                     <Textarea
                       placeholder="You statement that shows your commitment to the community and what you will do for the community."
                       {...field}
-                      className="w-full border-border bg-transparent"
+                      className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
                   </FormControl>
                 </div>
@@ -302,7 +302,7 @@ export function ProfileForm({
                       type="email"
                       placeholder="email@example.com"
                       {...field}
-                      className="w-full border-border bg-transparent"
+                      className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
                   </FormControl>
                 </div>
@@ -322,7 +322,7 @@ export function ProfileForm({
                     <Input
                       placeholder="username or https://x.com/username"
                       {...field}
-                      className="w-full border-border bg-transparent"
+                      className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
                   </FormControl>
                 </div>
@@ -342,7 +342,7 @@ export function ProfileForm({
                     <Input
                       placeholder="username or https://t.me/username"
                       {...field}
-                      className="w-full border-border bg-transparent"
+                      className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
                   </FormControl>
                 </div>
@@ -382,7 +382,7 @@ export function ProfileForm({
                     <Input
                       placeholder="userid or https://discordapp.com/users/userid"
                       {...field}
-                      className="w-full border-border bg-transparent"
+                      className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
                   </FormControl>
                 </div>
@@ -397,7 +397,7 @@ export function ProfileForm({
             <Button
               type="button"
               variant="outline"
-              className="w-[155px] rounded-[100px] border-border bg-card"
+              className="w-[155px] rounded-[100px]"
               onClick={() => {
                 form.reset();
                 router.push("/profile");

@@ -60,6 +60,8 @@ export default {
         executed: "hsl(var(--executed))",
         defeated: "hsl(var(--defeated))",
         canceled: "hsl(var(--canceled))",
+        "always-light": "hsl(var(--always-light))",
+        "always-dark": "hsl(var(--always-dark))",
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -145,7 +145,7 @@ export const User = ({
           )}
         </p>
       ) : (
-        <p className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-muted-foreground">
+        <p className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-foreground">
           No delegate statement found.
         </p>
       )}

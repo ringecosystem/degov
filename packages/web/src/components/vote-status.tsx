@@ -47,7 +47,7 @@ export const VoteStatus: FC<VoteStatusProps> = ({ variant, className }) => {
         width={20}
         height={20}
       />
-      <span className="text-white">{text[variant].label}</span>
+      <span className="text-always-light">{text[variant].label}</span>
     </div>
   );
 };
@@ -90,7 +90,7 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
         width={20}
         height={20}
       />
-      <span className={cn(isActive && "text-white")}>
+      <span className={cn(isActive && "text-always-light")}>
         {text[variant].label}
       </span>
     </div>

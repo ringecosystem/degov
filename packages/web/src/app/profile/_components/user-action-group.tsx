@@ -18,7 +18,7 @@ export const UserActionGroup = ({
     <div className="flex items-center gap-[10px]">
       {isOwnProfile ? (
         <Button
-          className="rounded-full border-border bg-card"
+          className="rounded-full"
           variant="outline"
           size="sm"
           onClick={onEditProfile}

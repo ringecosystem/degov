@@ -16,7 +16,7 @@ export function DemoTips() {
               width={24}
               height={24}
             />
-            <span className="text-[16px] text-white">
+            <span className="text-[16px] text-always-light font-semibold">
               Note: Welcome to the DeGov demo. Comment your ETH address at{" "}
               <a
                 href="https://github.com/ringecosystem/degov/discussions/48"
