@@ -12,12 +12,13 @@ import {
   VoteCastGroup,
   VoteCastWithParams,
 } from "../model";
-import { MetricsId, EvmFieldSelection, IndexerContract } from "../types";
+import { MetricsId, EvmFieldSelection, IndexerContract, IndexerProcessorConfig } from "../types";
 import { ChainTool } from "../internal/chaintool";
 
 export class GovernorHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
+    private readonly processorConfig: IndexerProcessorConfig,
     private readonly indexContract: IndexerContract,
     private readonly chainTool: ChainTool
   ) {}
@@ -94,6 +95,13 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+
+    // this.chainTool.quorum({
+    //   chainId: this.processorConfig.chainId,
+    //   contractAddress: this.processorConfig.
+    //   governorTokenAddress: eventLog.address,
+    // });
 
     const proposal = new Proposal({
       id: eventLog.id,

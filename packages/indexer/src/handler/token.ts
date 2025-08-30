@@ -24,8 +24,8 @@ const zeroAddress = "0x0000000000000000000000000000000000000000";
 export class TokenHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
-    private readonly indexContract: IndexerContract,
-    private readonly config: IndexerProcessorConfig
+    private readonly config: IndexerProcessorConfig,
+    private readonly indexContract: IndexerContract
   ) {}
 
   private contractStandard() {

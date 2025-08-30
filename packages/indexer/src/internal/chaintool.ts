@@ -30,6 +30,12 @@ export interface QuorumResult {
   decimals: bigint;
 }
 
+// Added interface for the quorum cache entry
+export interface QuorumCacheEntry {
+  result: QuorumResult;
+  timestamp: number; // The timestamp when the data was cached
+}
+
 export enum ClockMode {
   Timestamp = "timestamp",
   BlockNumber = "blocknumber",
@@ -38,6 +44,7 @@ export enum ClockMode {
 // --- CONSTANTS AND ABIS ---
 
 const BLOCK_SAMPLE_SIZE = 10;
+const QUORUM_CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 const ABI_FUNCTION_CLOCK_MODE: Abi = [
   {
@@ -83,6 +90,8 @@ const ABI_FUNCTION_DECIMALS: Abi = [
 
 export class ChainTool {
   private blockIntervalCache = new Map<string, number>();
+  private clockModeCache = new Map<string, ClockMode>();
+  private quorumCache = new Map<string, QuorumCacheEntry>();
 
   // A built-in list of default RPCs for common chains.
   private readonly defaultRpcs = new Map<number, string[]>([
@@ -92,11 +101,11 @@ export class ChainTool {
         "https://eth-mainnet.public.blastapi.io",
         "https://ethereum-rpc.publicnode.com",
         // "https://mainnet.gateway.tenderly.co",
-        "https://1rpc.io/eth",
+        // "https://1rpc.io/eth",
         "https://eth.llamarpc.com",
         "https://eth.rpc.blxrbdn.com",
         "https://eth.blockrazor.xyz",
-        "https://eth.drpc.org"
+        "https://eth.drpc.org",
       ],
     ],
     [
@@ -121,7 +130,7 @@ export class ChainTool {
       [
         "https://rpc.gnosischain.com",
         "https://gnosis-mainnet.public.blastapi.io",
-        "https://1rpc.io/gnosis",
+        // "https://1rpc.io/gnosis",
       ],
     ],
     [
@@ -129,7 +138,7 @@ export class ChainTool {
       [
         "https://polygon-rpc.com",
         "https://polygon-public.nodies.app",
-        "https://1rpc.io/matic",
+        // "https://1rpc.io/matic",
       ],
     ],
     [2710, ["https://rpc.morphl2.io", "https://rpc-quicknode.morphl2.io"]],
@@ -137,16 +146,20 @@ export class ChainTool {
       5000,
       [
         "https://rpc.mantle.xyz",
-        "https://1rpc.io/mantle",
+        // "https://1rpc.io/mantle",
         "https://mantle-mainnet.public.blastapi.io",
       ],
     ],
     [
       8453,
       [
-        // "https://mainnet.base.org",
         "https://base-rpc.publicnode.com",
         "https://base.llamarpc.com",
+        "https://api.zan.top/base-mainnet",
+        "https://base-mainnet.public.blastapi.io",
+        "https://base.drpc.org",
+        "https://base.lava.build",
+        // "https://1rpc.io/base",
       ],
     ],
     [
@@ -185,7 +198,7 @@ export class ChainTool {
       534352,
       [
         "https://rpc.scroll.io",
-        "https://1rpc.io/scroll",
+        // "https://1rpc.io/scroll",
         "https://scroll-mainnet.public.blastapi.io",
       ],
     ],
@@ -220,8 +233,7 @@ export class ChainTool {
       } catch (error) {
         lastError = error;
         console.warn(
-          `[ChainTool] RPC request to ${rpcUrl} failed. Trying next...`,
-          error
+          `[ChainTool] RPC request to ${rpcUrl} failed. Trying next...`
         );
       }
     }
@@ -338,10 +350,15 @@ export class ChainTool {
     return enableFloatValue ? averageInterval : Math.floor(averageInterval);
   }
 
-  /**
-   * Determines the clock mode of a contract, trying multiple RPCs.
-   */
   async clockMode(options: BaseContractOptions): Promise<ClockMode> {
+    const cacheKey = `${options.chainId}:${options.contractAddress}`;
+    if (this.clockModeCache.has(cacheKey)) {
+      console.log(
+        `Using cached clock mode for ${options.contractAddress} on chain ${options.chainId}`
+      );
+      return this.clockModeCache.get(cacheKey)!;
+    }
+
     try {
       const result = await this._executeWithFallbacks(options, (client) =>
         client.readContract({
@@ -351,114 +368,174 @@ export class ChainTool {
         })
       );
 
-      if (typeof result !== "string") return ClockMode.BlockNumber;
+      let modeToCache: ClockMode;
+      if (typeof result === "string") {
+        const mode = new URLSearchParams(result.replace(/&/g, ";"))
+          .get("mode")
+          ?.toLowerCase();
 
-      const mode = new URLSearchParams(result.replace(/&/g, ";"))
-        .get("mode")
-        ?.toLowerCase();
+        modeToCache =
+          mode === "timestamp" ? ClockMode.Timestamp : ClockMode.BlockNumber;
+        if (mode !== "timestamp" && mode !== "blocknumber") {
+          console.warn(
+            `Unknown clock mode: ${mode} in result: ${result}. Defaulting to blocknumber.`
+          );
+        }
+      } else {
+        modeToCache = ClockMode.BlockNumber;
+      }
 
-      if (mode === "timestamp") return ClockMode.Timestamp;
-      if (mode === "blocknumber") return ClockMode.BlockNumber;
-
-      console.warn(`Unknown clock mode: ${mode} in result: ${result}`);
-      return ClockMode.BlockNumber; // Default for unknown values
+      this.clockModeCache.set(cacheKey, modeToCache);
+      return modeToCache;
     } catch (error: any) {
       const message = error.message;
-      // If the function doesn't exist on the contract, default to BlockNumber.
       if (
         message &&
         (message.includes("contract function not found") ||
           message.includes("CLOCK_MODE"))
       ) {
+        // If the function doesn't exist, it's a blocknumber-based contract. Cache this result.
+        console.warn(
+          `CLOCK_MODE function not found for ${options.contractAddress}. Caching as ${ClockMode.BlockNumber}.`
+        );
+        this.clockModeCache.set(cacheKey, ClockMode.BlockNumber);
         return ClockMode.BlockNumber;
       }
       throw error;
     }
   }
 
-  /**
-   * Retrieves the quorum for a contract, trying multiple RPCs for each call.
-   */
+
   async quorum(options: QueryQuorumOptions): Promise<QuorumResult> {
-    const clockMode = await this.clockMode(options);
-    let timepoint: bigint;
+    const cacheKey = `${options.chainId}:${options.contractAddress}`;
+    const cachedEntry = this.quorumCache.get(cacheKey);
 
+    // 1. Check if a valid, non-expired cache entry exists.
+    if (
+      cachedEntry &&
+      Date.now() - cachedEntry.timestamp < QUORUM_CACHE_DURATION_MS
+    ) {
+      console.log(
+        `Using fresh cached quorum for ${options.contractAddress} on chain ${options.chainId}`
+      );
+      return cachedEntry.result;
+    }
+
+    // 2. If cache is stale or empty, try to fetch new data.
     try {
-      // 1. Try to get the specific `clock` value from the contract
-      const clockResult = await this._executeWithFallbacks(options, (client) =>
-        client.readContract({
-          address: options.contractAddress,
-          abi: ABI_FUNCTION_CLOCK,
-          functionName: "clock",
-        })
-      );
-      timepoint = BigInt(clockResult as string);
-    } catch (e: any) {
-      // 2. If `clock()` fails, fallback to the latest block
-      console.warn(
-        `failed to query clock, falling back to latest block: ${e.message}`
-      );
-      const latestBlock = await this._executeWithFallbacks(options, (client) =>
-        client.getBlock()
-      );
-      timepoint =
-        clockMode === ClockMode.Timestamp
-          ? latestBlock.timestamp
-          : latestBlock.number;
-    }
+      if (cachedEntry) {
+        console.log(
+          `Cached quorum for ${options.contractAddress} is stale. Refetching...`
+        );
+      }
 
-    // 3. Adjust timepoint to be safely in the past
-    switch (clockMode) {
-      case ClockMode.Timestamp:
-        timepoint -= 60n * 3n; // 3 minutes ago
-        break;
-      case ClockMode.BlockNumber:
-        timepoint -= 15n; // 15 blocks ago
-        break;
-    }
+      const clockMode = await this.clockMode(options);
+      let timepoint: bigint;
 
-    // 4. Get the quorum at that timepoint
-    const quorumResult = await this._executeWithFallbacks(options, (client) =>
-      client.readContract({
-        address: options.contractAddress,
-        abi: ABI_FUNCTION_QUORUM,
-        functionName: "quorum",
-        args: [timepoint],
-      })
-    );
-    if (quorumResult === undefined || quorumResult === null) {
-      throw new Error("Failed to retrieve quorum from contract");
-    }
-
-    const quorum = BigInt(quorumResult as string);
-
-    let decimals: bigint | undefined;
-    // 5. Optionally, get the token decimals
-    const contractStandard = (options.standard ?? "ERC20").toUpperCase();
-    try {
-      if (contractStandard === "ERC721") {
-        decimals = 1n;
-      } else if (contractStandard === "ERC20") {
-        const decimalsResult = await this._executeWithFallbacks(
+      try {
+        const clockResult = await this._executeWithFallbacks(
           options,
           (client) =>
             client.readContract({
-              address: options.governorTokenAddress!,
-              abi: ABI_FUNCTION_DECIMALS,
-              functionName: "decimals",
+              address: options.contractAddress,
+              abi: ABI_FUNCTION_CLOCK,
+              functionName: "clock",
             })
         );
-        decimals = BigInt(decimalsResult as number);
+        timepoint = BigInt(clockResult as any);
+      } catch (e: any) {
+        console.warn(
+          `Failed to query clock for ${options.contractAddress}, falling back to latest block: ${e.message}`
+        );
+        const latestBlock = await this._executeWithFallbacks(
+          options,
+          (client) => client.getBlock()
+        );
+        timepoint =
+          clockMode === ClockMode.Timestamp
+            ? latestBlock.timestamp
+            : latestBlock.number!;
       }
-    } catch (e: any) {
+
+      switch (clockMode) {
+        case ClockMode.Timestamp:
+          timepoint -= 60n * 3n; // 3 minutes ago
+          break;
+        case ClockMode.BlockNumber:
+          timepoint -= 15n; // 15 blocks ago
+          break;
+      }
+
+      const quorumResult = await this._executeWithFallbacks(options, (client) =>
+        client.readContract({
+          address: options.contractAddress,
+          abi: ABI_FUNCTION_QUORUM,
+          functionName: "quorum",
+          args: [timepoint],
+        })
+      );
+      if (quorumResult === undefined || quorumResult === null) {
+        throw new Error("Failed to retrieve quorum from contract");
+      }
+      const quorum = BigInt(quorumResult as any);
+
+      let decimals: bigint;
+      const contractStandard = (options.standard ?? "ERC20").toUpperCase();
+      try {
+        if (contractStandard === "ERC721") {
+          decimals = 1n;
+        } else {
+          const decimalsResult = await this._executeWithFallbacks(
+            options,
+            (client) =>
+              client.readContract({
+                address: options.governorTokenAddress,
+                abi: ABI_FUNCTION_DECIMALS,
+                functionName: "decimals",
+              })
+          );
+          decimals = BigInt(decimalsResult as number);
+        }
+      } catch (e: any) {
+        throw new Error(
+          `Failed to query decimals for token ${options.governorTokenAddress}: ${e.message}`
+        );
+      }
+
+      if (decimals == undefined) {
+        throw new Error("Missing decimals value");
+      }
+
+      const freshResult: QuorumResult = { clockMode, quorum, decimals };
+
+      // Cache the newly fetched result
+      this.quorumCache.set(cacheKey, {
+        result: freshResult,
+        timestamp: Date.now(),
+      });
+      console.log(
+        `Successfully fetched and cached new quorum for ${options.contractAddress} on chain ${options.chainId}`
+      );
+
+      return freshResult;
+    } catch (error) {
+      // 3. If fetching fails, use stale data if available.
+      console.error(
+        `[ChainTool] Failed to fetch new quorum for ${options.contractAddress}:`,
+        error
+      );
+
+      if (cachedEntry) {
+        console.warn(
+          `[ChainTool] Serving stale quorum data for ${options.contractAddress} due to fetch failure.`
+        );
+        return cachedEntry.result;
+      }
+
+      // If there's no cached entry at all, we must throw the error.
       throw new Error(
-        `Failed to query decimals for token ${options.governorTokenAddress}: ${e.message}`
+        `All attempts to fetch quorum for ${options.contractAddress} failed, and no cached value was available.`
       );
     }
-    if (decimals == undefined) {
-      throw new Error("missing decimals value");
-    }
-
-    return { clockMode, quorum, decimals };
   }
 }

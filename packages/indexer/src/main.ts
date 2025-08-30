@@ -60,6 +60,7 @@ async function runProcessorEvm(processorConfig: IndexerProcessorConfig) {
                 case "governor":
                   await new GovernorHandler(
                     ctx,
+                    processorConfig,
                     indexContract,
                     chainTool
                   ).handle(event);
@@ -67,8 +68,8 @@ async function runProcessorEvm(processorConfig: IndexerProcessorConfig) {
                 case "governorToken":
                   await new TokenHandler(
                     ctx,
+                    processorConfig,
                     indexContract,
-                    processorConfig
                   ).handle(event);
                   break;
               }
