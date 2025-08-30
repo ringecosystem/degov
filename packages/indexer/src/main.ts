@@ -11,33 +11,34 @@ async function main() {
   if (!degovConfigPath) {
     throw new Error("DEGOV_CONFIG_PATH not set");
   }
-  const processorConfig = await DegovDataSource.fromDegovConfigPath(
-    degovConfigPath
-  );
-  await runProcessorEvm(processorConfig);
+  const config = await DegovDataSource.fromDegovConfigPath(degovConfigPath);
+  await runProcessorEvm(config);
 }
 
-async function runProcessorEvm(processorConfig: IndexerProcessorConfig) {
+async function runProcessorEvm(config: IndexerProcessorConfig) {
+  if (!config.rpcs.length) {
+    throw new Error("no RPC endpoints configured");
+  }
   const processor = new EvmBatchProcessor()
     .setFields(evmFieldSelection)
     .setRpcEndpoint({
       // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
-      url: processorConfig.rpc,
-      capacity: processorConfig.capacity ?? 30,
-      maxBatchCallSize: processorConfig.maxBatchCallSize ?? 200,
+      url: config.rpcs[0],
+      capacity: config.capacity ?? 30,
+      maxBatchCallSize: config.maxBatchCallSize ?? 200,
     });
-  if (processorConfig.gateway) {
-    processor.setGateway(processorConfig.gateway);
+  if (config.gateway) {
+    processor.setGateway(config.gateway);
   }
-  processor.setFinalityConfirmation(processorConfig.finalityConfirmation ?? 50);
-  const logs = processorConfig.logs;
-  for (const log of logs) {
+  processor.setFinalityConfirmation(config.finalityConfirmation ?? 50);
+
+  config.works.forEach((work) => {
     processor.addLog({
-      range: { from: log.startBlock, to: log.endBlock },
-      address: log.contracts.map((item) => item.address),
+      range: { from: config.startBlock, to: config.endBlock },
+      address: work.contracts.map((item) => item.address),
       transaction: true,
     });
-  }
+  });
 
   const chainTool = new ChainTool();
 
@@ -46,11 +47,12 @@ async function runProcessorEvm(processorConfig: IndexerProcessorConfig) {
     async (ctx) => {
       for (const c of ctx.blocks) {
         for (const event of c.logs) {
-          for (const indexLog of logs) {
-            const indexContract = indexLog.contracts.find(
+          for (const work of config.works) {
+            const indexContract = work.contracts.find(
               (item) =>
                 item.address.toLowerCase() === event.address.toLowerCase()
             );
+
             if (!indexContract) {
               continue;
             }
@@ -58,19 +60,20 @@ async function runProcessorEvm(processorConfig: IndexerProcessorConfig) {
             try {
               switch (indexContract.name) {
                 case "governor":
-                  await new GovernorHandler(
-                    ctx,
-                    processorConfig,
+                  await new GovernorHandler(ctx, {
+                    chainId: config.chainId,
+                    rpcs: config.rpcs,
+                    work,
                     indexContract,
-                    chainTool
-                  ).handle(event);
+                    chainTool,
+                  }).handle(event);
                   break;
                 case "governorToken":
-                  await new TokenHandler(
-                    ctx,
-                    processorConfig,
+                  await new TokenHandler(ctx, {
+                    chainId: config.chainId,
+                    work,
                     indexContract,
-                  ).handle(event);
+                  }).handle(event);
                   break;
               }
             } catch (e) {

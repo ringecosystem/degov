@@ -19,28 +19,28 @@ export type ContractName = "governor" | "governorToken";
 
 export interface IndexerProcessorConfig {
   chainId: number;
-  code: string;
-  rpc: string;
-  finalityConfirmation: number;
+  rpcs: string[];
 
+  finalityConfirmation: number;
   capacity?: number;
   maxBatchCallSize?: number;
   gateway?: string;
+  startBlock: number;
+  endBlock?: number;
 
-  logs: IndexerWatchLog[];
+  works: IndexerWork[]
 
   state: IndexerProcessorState;
 }
 
-export interface IndexerWatchLog {
-  startBlock: number;
-  endBlock?: number;
+export interface IndexerWork {
+  daoCode: string;
   contracts: IndexerContract[];
 }
 
 export interface IndexerContract {
   name: ContractName;
-  address: string;
+  address: `0x${string}`;
   standard?: string;
 }
 

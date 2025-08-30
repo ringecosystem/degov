@@ -1,4 +1,4 @@
-import { createPublicClient, http, PublicClient, Abi } from "viem";
+import { createPublicClient, http, webSocket, PublicClient, Abi } from "viem";
 
 // --- INTERFACES AND TYPES ---
 
@@ -204,6 +204,16 @@ export class ChainTool {
     ],
   ]);
 
+  private stdHttpUrl(input: string): string {
+    if (input.startsWith("ws://")) {
+      return input.replace("ws://", "http://");
+    }
+    if (input.startsWith("wss://")) {
+      return input.replace("wss://", "https://");
+    }
+    return input;
+  }
+
   /**
    * Helper to execute a viem action with multiple RPC fallbacks for reliability.
    * It tries each RPC endpoint in sequence until one succeeds.
@@ -227,7 +237,7 @@ export class ChainTool {
     for (const rpcUrl of allRpcs) {
       try {
         const client = createPublicClient({
-          transport: http(rpcUrl),
+          transport: http(this.stdHttpUrl(rpcUrl)),
         });
         return await action(client);
       } catch (error) {
@@ -265,7 +275,9 @@ export class ChainTool {
     }
 
     const promises = allRpcs.map((rpc) => {
-      const client = createPublicClient({ transport: http(rpc) });
+      const client = createPublicClient({
+        transport: http(this.stdHttpUrl(rpc)),
+      });
       return this._calculateIntervalForSingleRpc(client, enableFloatValue);
     });
 
@@ -404,7 +416,6 @@ export class ChainTool {
       throw error;
     }
   }
-
 
   async quorum(options: QueryQuorumOptions): Promise<QuorumResult> {
     const cacheKey = `${options.chainId}:${options.contractAddress}`;

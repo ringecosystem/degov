@@ -6,7 +6,6 @@ import {
   IndexerContract,
   IndexerProcessorConfig,
   IndexerProcessorState,
-  IndexerWatchLog,
 } from "./types";
 
 export class DegovDataSource {
@@ -41,30 +40,35 @@ class DegovConfigDataSource {
     }
 
     const contractNames = Object.keys(contracts);
-    const indexContracts: IndexerContract[] = contractNames.map((item) => {
-      const c = contracts[item];
-      const addr = c.address ? c.address : c;
-      return {
-        name: item,
-        address: addr,
-        standard: c.standard,
-      } as IndexerContract;
-    });
-    const indexLog: IndexerWatchLog = {
-      startBlock: indexer.startBlock,
-      endBlock: indexer.endBlock,
-      contracts: indexContracts,
-    };
+    const indexContracts: IndexerContract[] = contractNames
+      .filter((item) => {
+        return ["governor", "governorToken"].indexOf(item) != 0;
+      })
+      .map((item) => {
+        const c = contracts[item];
+        const addr = c.address ? c.address : c;
+        return {
+          name: item,
+          address: addr,
+          standard: c.standard,
+        } as IndexerContract;
+      });
 
     const ipc: IndexerProcessorConfig = {
       chainId: chain.id,
-      code,
-      rpc: rpcs[0],
+      rpcs: rpcs,
       finalityConfirmation: indexer.finalityConfirmation ?? 50,
       capacity: indexer.capacity ?? 30,
       maxBatchCallSize: indexer.maxBatchCallSize ?? 200,
       gateway: indexer.gateway,
-      logs: [indexLog],
+      startBlock: indexer.startBlock,
+      endBlock: indexer.endBlock,
+      works: [
+        {
+          daoCode: code,
+          contracts: indexContracts,
+        },
+      ],
       state: {
         running: true,
       } as IndexerProcessorState,

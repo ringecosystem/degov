@@ -16,21 +16,26 @@ import {
   MetricsId,
   EvmFieldSelection,
   IndexerContract,
-  IndexerProcessorConfig,
+  IndexerWork,
 } from "../types";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
+export interface TokenhandlerOptions {
+  chainId: number;
+  work: IndexerWork;
+  indexContract: IndexerContract;
+}
+
 export class TokenHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
-    private readonly config: IndexerProcessorConfig,
-    private readonly indexContract: IndexerContract
+    private readonly options: TokenhandlerOptions
   ) {}
 
   private contractStandard() {
     const contractStandard = (
-      this.indexContract.standard ?? "erc20"
+      this.options.indexContract.standard ?? "erc20"
     ).toLowerCase();
     return contractStandard;
   }
@@ -401,7 +406,7 @@ export class TokenHandler {
           headers: {
             "Content-Type": "application/json",
             "x-degov-sync-token": syncAuthToken,
-            "x-degov-daocode": this.config.code,
+            "x-degov-daocode": this.options.work.daoCode,
           },
           body: JSON.stringify([
             {
