@@ -1,12 +1,10 @@
-import { useMemo } from "react";
-
-import { Button } from "@/components/ui/button";
 import {
   ProposalActionCheckIcon,
   ErrorIcon,
   CancelIcon,
   ClockIcon,
 } from "@/components/icons";
+import { Button } from "@/components/ui/button";
 import { VoteType } from "@/config/vote";
 import { ProposalState } from "@/types/proposal";
 interface ActionGroupDisplayProps {

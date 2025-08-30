@@ -68,7 +68,7 @@ export const User = ({
                 )}
               </AddressResolver>
               <div className="flex gap-[8px] lg:gap-[10px]">
-                <span className="text-[12px] lg:text-[14px] text-foreground/40 flex-shrink-0">
+                <span className="text-[12px] lg:text-[14px] text-foreground/60 flex-shrink-0">
                   {formatShortAddress(address)}
                 </span>
                 <div className="flex items-center gap-[5px]">
@@ -85,7 +85,7 @@ export const User = ({
                     <ExternalLinkIcon
                       width={14}
                       height={14}
-                      className="text-muted-foreground lg:w-4 lg:h-4"
+                      className="text-foreground lg:w-4 lg:h-4"
                     />
                   </Link>
                 </div>

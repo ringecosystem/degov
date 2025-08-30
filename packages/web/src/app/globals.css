@@ -236,28 +236,27 @@ body {
     --foreground:  155 83% 21%;
     
     --card: /* #F9F9FA */ 240 11% 98%;
-    --card-foreground: /* #E5E5E5 */ 0 0% 90%;
-    --popover: /* #F9F9FA */ 240 11% 98%;
-    --popover-foreground: /* #979797 */ 0 0% 59%;
+    --card-foreground: 0 0% 100% / 0.8;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
     
     --primary: /* #09613C */ 145 84% 21%;
-    --primary-foreground: /* #FFFFFF */ 0 0% 100%;
-    --secondary: /* #E5E5E5 */ 0 0% 90%;
-    --secondary-foreground: /* #979797 */ 0 0% 59%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
     
-    --muted: /* #979797 */ 0 0% 59%;
+    --muted: 240 4.8% 95.9%;
     /* Grey2 - #979797 */
     --muted-foreground: 0 0% 59%;
-    --accent: /* #F7F7F7 */ 0 0% 97%;
-    --accent-foreground: /* #F7F7F7 */ 0 0% 97%;
-    
-    --destructive: /* #FF3C3F */ 359 100% 62%;
-    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
     
     /* Grey2 - #979797 */
     --border: 0 0% 59%;
-    --input: /* #F7F7F7 */ 0 0% 97%;
-    --ring: /* #006FFF */ 215 100% 50%;
+    --input: 0 0% 97%;
+    --ring: 240 5.9% 10%;
     
     --success: /* #00B403 */ 121 100% 35%;
     --warning: /* #FF8400 */ 31 100% 50%;

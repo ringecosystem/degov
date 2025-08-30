@@ -1,5 +1,6 @@
 import Image from "next/image";
 
+import { CloseIcon } from "@/components/icons";
 import {
   Dialog,
   DialogContent,
@@ -28,10 +29,10 @@ export function CommentModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[90%] lg:w-[700px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px] sm:max-w-[700px]">
         <DialogHeader className="flex w-full flex-row items-center justify-between">
-          <DialogTitle className="text-[18px] font-normal">Comment</DialogTitle>
-          <Image
-            src="/assets/image/close.svg"
-            alt="close"
+          <DialogTitle className="text-[18px] font-semibold">
+            Comment
+          </DialogTitle>
+          <CloseIcon
             width={24}
             height={24}
             className="cursor-pointer transition-opacity hover:opacity-80"

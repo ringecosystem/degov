@@ -1,6 +1,13 @@
-import Image from "next/image";
 import { useState } from "react";
 
+import {
+  VoteForIcon,
+  VoteAgainstIcon,
+  VoteAbstainIcon,
+  VoteForDefaultIcon,
+  VoteAgainstDefaultIcon,
+  VoteAbstainDefaultIcon,
+} from "@/components/icons";
 import { VoteType } from "@/config/vote";
 import { cn } from "@/lib/utils";
 
@@ -10,20 +17,20 @@ const text = {
   [VoteType.For]: {
     label: "For",
     color: "bg-success",
-    icon: "/assets/image/proposal/vote-for.svg",
-    defaultIcon: "/assets/image/proposal/vote-for-default.svg",
+    icon: VoteForIcon,
+    defaultIcon: VoteForDefaultIcon,
   },
   [VoteType.Against]: {
     label: "Against",
     color: "bg-danger",
-    icon: "/assets/image/proposal/vote-against.svg",
-    defaultIcon: "/assets/image/proposal/vote-against-default.svg",
+    icon: VoteAgainstIcon,
+    defaultIcon: VoteAgainstDefaultIcon,
   },
   [VoteType.Abstain]: {
     label: "Abstain",
     color: "bg-muted-foreground",
-    icon: "/assets/image/proposal/vote-abstain.svg",
-    defaultIcon: "/assets/image/proposal/vote-abstain-default.svg",
+    icon: VoteAbstainIcon,
+    defaultIcon: VoteAbstainDefaultIcon,
   },
 };
 
@@ -33,6 +40,8 @@ interface VoteStatusProps {
 }
 
 export const VoteStatus: FC<VoteStatusProps> = ({ variant, className }) => {
+  const IconComponent = text[variant].icon;
+
   return (
     <div
       className={cn(
@@ -41,12 +50,7 @@ export const VoteStatus: FC<VoteStatusProps> = ({ variant, className }) => {
         className
       )}
     >
-      <Image
-        src={text[variant].icon}
-        alt={text[variant].label}
-        width={20}
-        height={20}
-      />
+      <IconComponent width={20} height={20} className="text-always-light" />
       <span className="text-always-light">{text[variant].label}</span>
     </div>
   );
@@ -68,11 +72,14 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
   const [isHovered, setIsHovered] = useState(false);
 
   const isActive = type === "active" || isHovered;
+  const IconComponent = isActive
+    ? text[variant].icon
+    : text[variant].defaultIcon;
 
   return (
     <div
       className={cn(
-        "t flex cursor-pointer items-center gap-x-2 rounded-full px-1 lg:px-4 py-1 lg:py-2 text-base font-medium",
+        "flex cursor-pointer items-center gap-x-2 rounded-full px-1 lg:px-4 py-1 lg:py-2 text-base font-medium",
         isActive ? "text-foreground" : "text-muted-foreground",
         isActive ? text[variant].color : "bg-transparent",
         isActive
@@ -84,11 +91,10 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
       onMouseLeave={() => setIsHovered(false)}
       onClick={onChangeVote ? onChangeVote : undefined}
     >
-      <Image
-        src={isActive ? text[variant].icon : text[variant].defaultIcon}
-        alt={text[variant].label}
+      <IconComponent
         width={20}
         height={20}
+        className={cn(isActive ? "text-always-light" : "text-muted-foreground")}
       />
       <span className={cn(isActive && "text-always-light")}>
         {text[variant].label}

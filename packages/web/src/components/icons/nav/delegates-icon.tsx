@@ -1,4 +1,6 @@
-import { IconProps, getIconProps } from '../types';
+import { getIconProps } from '../types';
+
+import type { IconProps} from '../types';
 
 export const DelegatesIcon = (props: IconProps) => {
   const svgProps = getIconProps(props);

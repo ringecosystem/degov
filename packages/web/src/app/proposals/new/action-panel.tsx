@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import Image from "next/image";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { isAddress, parseUnits } from "viem";
 
@@ -16,7 +15,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
-import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import {

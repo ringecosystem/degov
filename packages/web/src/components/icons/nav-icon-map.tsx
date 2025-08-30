@@ -1,5 +1,6 @@
 import { DashboardIcon, ProposalsIcon, TreasuryIcon, DelegatesIcon, ProfileNavIcon, AppsIcon } from './nav';
-import { IconProps } from './types';
+
+import type { IconProps } from './types';
 
 // Generic icon component for routes that don't have specific icons yet
 const GenericNavIcon = (props: IconProps) => (

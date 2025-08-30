@@ -19,7 +19,7 @@ export const ReplacePanel = ({
   return (
     <div
       className={cn(
-        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]",
+        "flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] shadow-card",
         visible ? "animate-in fade-in duration-300" : "hidden"
       )}
     >
@@ -30,11 +30,7 @@ export const ReplacePanel = ({
           variant="outline"
           onClick={() => onRemove(index)}
         >
-          <ProposalCloseIcon
-            width={16}
-            height={16}
-            className="text-current"
-          />
+          <ProposalCloseIcon width={16} height={16} className="text-current" />
           <span>Remove action</span>
         </Button>
       </header>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
 
 import { Nav } from "@/app/nav";
-import { AppIcon, LogoIcon } from "@/components/icons";
+import { AppIcon, LogoIcon, BottomLogoIcon } from "@/components/icons";
 import { IndexerStatus } from "@/components/indexer-status";
 import {
   Tooltip,
@@ -16,7 +16,6 @@ import { INDEXER_CONFIG } from "@/config/indexer";
 import { useBlockSync } from "@/hooks/useBlockSync";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
-
 
 const SIDEBAR_WIDTH = {
   EXPANDED: 240,
@@ -116,7 +115,11 @@ export const Aside = () => {
                       />
                     </>
                   ) : (
-                    <LogoIcon width={128} height={26} className="h-[26px] w-[128px]" />
+                    <LogoIcon
+                      width={128}
+                      height={26}
+                      className="h-[26px] w-[128px]"
+                    />
                   )}
                 </Link>
                 <Link
@@ -177,13 +180,7 @@ export const Aside = () => {
               rel="noopener noreferrer"
               className="hover:opacity-80 transition-all duration-300"
             >
-              <Image
-                src="/assets/image/bottom-logo.svg"
-                alt="logo"
-                width={16}
-                height={16}
-                priority
-              />
+              <BottomLogoIcon width={16} height={16} />
             </Link>
             <span className="text-[12px]">DeGov.AI</span>
           </p>

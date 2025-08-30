@@ -1,5 +1,5 @@
-import Image from "next/image";
 
+import { CloseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,9 +32,7 @@ export function CancelProposal({
           <DialogTitle className="text-[18px] font-normal">
             Cancel proposal
           </DialogTitle>
-          <Image
-            src="/assets/image/close.svg"
-            alt="close"
+          <CloseIcon
             width={24}
             height={24}
             className="cursor-pointer transition-opacity hover:opacity-80"

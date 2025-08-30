@@ -1,7 +1,7 @@
-import Image from "next/image";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
+import { CloseIcon } from "@/components/icons";
 import { TransactionToast } from "@/components/transaction-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,9 +45,7 @@ export function JoinDelegate({
             <DialogTitle className="text-[18px] font-extrabold">
               Join as Delegate
             </DialogTitle>
-            <Image
-              src="/assets/image/close.svg"
-              alt="close"
+            <CloseIcon
               width={24}
               height={24}
               className="cursor-pointer transition-opacity hover:opacity-80"

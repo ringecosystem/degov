@@ -1,8 +1,8 @@
-import Image from "next/image";
 import { useCallback, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount, useReadContract } from "wagmi";
 
+import { CloseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -79,9 +79,7 @@ export function DelegateAction({
             <DialogTitle className="text-[18px] font-extrabold">
               Delegate
             </DialogTitle>
-            <Image
-              src="/assets/image/close.svg"
-              alt="close"
+            <CloseIcon
               width={24}
               height={24}
               className="cursor-pointer transition-opacity hover:opacity-80"
@@ -89,7 +87,7 @@ export function DelegateAction({
             />
           </DialogHeader>
           <Separator className="my-0 bg-muted-foreground/40" />
-          <div className="flex h-[87px] w-[360px] items-center justify-center gap-[20px] rounded-[10px] bg-secondary p-[20px]">
+          <div className="flex h-[87px] w-[360px] items-center justify-center gap-[20px] rounded-[10px] bg-card-background p-[20px]">
             <AddressWithAvatar
               address={address ?? "0x0000000000000000000000000000000000000000"}
               avatarSize={40}

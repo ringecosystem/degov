@@ -1,5 +1,6 @@
 import { TransferOutlineIcon, CustomOutlineIcon, CrossChainOutlineIcon, ProposalsOutlineIcon, PreviewOutlineIcon } from './proposal-actions';
-import { IconProps } from './types';
+
+import type { IconProps } from './types';
 
 export const ProposalActionIconMap: Record<string, React.ComponentType<IconProps>> = {
   proposal: ProposalsOutlineIcon,

@@ -6,9 +6,9 @@ import { isAddress, type Abi, type AbiItem } from "viem";
 import { useBytecode } from "wagmi";
 
 import { AddressInputWithResolver } from "@/components/address-input-with-resolver";
-import { ProposalCloseIcon } from "@/components/icons";
 import { ErrorMessage } from "@/components/error-message";
 import { FileUploader } from "@/components/file-uploader";
+import { ProposalCloseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

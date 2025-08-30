@@ -1,6 +1,8 @@
 export { LogoIcon } from './logo-icon';
+export { BottomLogoIcon } from './bottom-logo-icon';
 export { ExternalLinkIcon } from './external-link-icon';
 export { CloseIcon } from './close-icon';
+export { CopyIcon } from './copy-icon';
 export { PlusIcon } from './plus-icon';
 export { AppIcon } from './app-icon';
 export { ProposalCloseIcon } from './proposal-close-icon';
@@ -9,6 +11,10 @@ export { ProposalActionCheckIcon } from './proposal-action-check-icon';
 export { ProposalActionCancelIcon } from './proposal-action-cancel-icon';
 export { VoteForIcon } from './vote-for-icon';
 export { VoteAgainstIcon } from './vote-against-icon';
+export { VoteAbstainIcon } from './vote-abstain-icon';
+export { VoteForDefaultIcon } from './vote-for-default-icon';
+export { VoteAgainstDefaultIcon } from './vote-against-default-icon';
+export { VoteAbstainDefaultIcon } from './vote-abstain-default-icon';
 export { AiIcon } from './ai-icon';
 export { AiLogo } from './ai-logo';
 export { NotFoundIcon } from './not-found-icon';
@@ -34,5 +40,8 @@ export { DashboardIcon, ProposalsIcon, TreasuryIcon } from './nav';
 
 // Social Icons
 export { XIcon, TelegramIcon, EmailIcon, DocsIcon, GithubIcon } from './social';
+
+// User Social Icons
+export { GithubIcon as UserGithubIcon, WebsiteIcon, TelegramIcon as UserTelegramIcon, TwitterIcon, EmailIcon as UserEmailIcon, DiscordIcon, CoingeckoIcon } from './user-social';
 
 export type { IconProps } from './types';

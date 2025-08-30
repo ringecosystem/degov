@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 
 import { NotFoundIcon } from "@/components/icons";
+
 import { Button } from "./ui/button";
 
 const NotFound = () => {

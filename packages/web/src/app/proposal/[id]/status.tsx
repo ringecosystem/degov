@@ -401,9 +401,9 @@ const Status: React.FC<StatusProps> = ({
           },
         ];
       default:
-        return baseStages.map(v => ({
+        return baseStages.map((v) => ({
           ...v,
-          isCurrent: false
+          isCurrent: false,
         }));
     }
   }, [
@@ -442,13 +442,12 @@ const Status: React.FC<StatusProps> = ({
                 {(() => {
                   const iconElement = stage.icon as React.ReactElement;
 
-                  // 只有支持 invert 属性的图标才添加此属性
                   if (
                     iconElement.type &&
                     (iconElement.type as any).name &&
                     [
                       "StatusPublishedIcon",
-                      "StatusStartedIcon", 
+                      "StatusStartedIcon",
                       "StatusEndedIcon",
                       "StatusQueuedIcon",
                       "StatusExecutedIcon",

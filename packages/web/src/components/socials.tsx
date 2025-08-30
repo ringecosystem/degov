@@ -1,11 +1,11 @@
 "use client";
 
+import { getSocialIcon } from "@/components/icons/social-icon-map";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getSocialIcon } from "@/components/icons/social-icon-map";
 import { socialConfig } from "@/config/social";
 import { cn } from "@/lib/utils";
 

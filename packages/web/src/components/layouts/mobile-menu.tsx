@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 
 import { Nav } from "@/app/nav";
 import { ConnectButton } from "@/components/connect-button";
+import { BottomLogoIcon } from "@/components/icons";
 import { IndexerStatus } from "@/components/indexer-status";
 import { ThemeSelector } from "@/components/theme-selector";
 import {
@@ -67,12 +67,9 @@ export const MobileMenu = ({
                 rel="noopener noreferrer"
                 className="hover:opacity-80 transition-all duration-300"
               >
-                <Image
-                  src="/assets/image/bottom-logo.svg"
-                  alt="logo"
+                <BottomLogoIcon
                   width={16}
                   height={16}
-                  priority
                 />
               </Link>
               <span className="text-[12px]">DeGov.AI</span>

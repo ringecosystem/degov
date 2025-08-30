@@ -95,19 +95,19 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         icon: "✓",
         label: "For",
         bgColor: "bg-success",
-        textColor: "text-white",
+        textColor: "text-foreground",
       },
       [VoteType.Against]: {
         icon: "✕",
         label: "Against",
         bgColor: "bg-danger",
-        textColor: "text-white",
+        textColor: "text-foreground",
       },
       [VoteType.Abstain]: {
         icon: "—",
         label: "Abstain",
         bgColor: "bg-muted-foreground",
-        textColor: "text-white",
+        textColor: "text-foreground",
       },
     };
 

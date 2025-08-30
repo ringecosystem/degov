@@ -4,6 +4,8 @@ import { ChevronDown } from "lucide-react";
 import React from "react";
 import { useMemo, useState } from "react";
 
+import { ExternalLinkIcon } from "@/components/icons";
+import { getProposalActionIcon } from "@/components/icons/proposal-actions-map";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,8 +17,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ExternalLinkIcon } from "@/components/icons";
-import { getProposalActionIcon } from "@/components/icons/proposal-actions-map";
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";

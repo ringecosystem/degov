@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 
-import { Button } from "@/components/ui/button";
 import { PlusIcon } from "@/components/icons";
+import { Button } from "@/components/ui/button";
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 
 import { NewProposalAction } from "./action";

@@ -4,12 +4,31 @@ import { capitalize } from "lodash-es";
 import Image from "next/image";
 import { Fragment, useMemo, useState } from "react";
 
+import {
+  UserGithubIcon,
+  WebsiteIcon,
+  UserTelegramIcon,
+  TwitterIcon,
+  UserEmailIcon,
+  DiscordIcon,
+  CoingeckoIcon,
+} from "@/components/icons";
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 
 import { Contracts } from "./contracts";
 import { Parameters } from "./parameters";
+
+const socialIconMap = {
+  github: UserGithubIcon,
+  website: WebsiteIcon,
+  telegram: UserTelegramIcon,
+  twitter: TwitterIcon,
+  email: UserEmailIcon,
+  discord: DiscordIcon,
+  coingecko: CoingeckoIcon,
+} as const;
 
 export const DaoHeader = () => {
   const config = useDaoConfig();
@@ -75,7 +94,9 @@ export const DaoHeader = () => {
               </p>
             </TooltipTrigger>
             <TooltipContent className="max-w-[600px] rounded-[26px] bg-card p-[20px] border border-card-background shadow-sm">
-              <p className="text-[14px]">{config?.description}</p>
+              <p className="text-[14px] text-foreground">
+                {config?.description}
+              </p>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -88,23 +109,29 @@ export const DaoHeader = () => {
       <div className="flex items-center lg:justify-end gap-[20px] mt-4 lg:mt-0">
         {Object.entries(config?.links ?? {})
           .filter(([, value]) => value && value.trim() !== "")
-          .map(([key, value]) => (
-            <Fragment key={key}>
-              <a
-                key={key}
-                href={value}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={capitalize(key)}
-                className="size-[24px] items-center justify-center rounded-full bg-always-light transition-colors hover:bg-always-light/80 "
-                style={{
-                  backgroundImage: `url(/assets/image/user_social/${key}.svg)`,
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "center",
-                }}
-              ></a>
-            </Fragment>
-          ))}
+          .map(([key, value]) => {
+            const IconComponent =
+              socialIconMap[key as keyof typeof socialIconMap];
+            if (!IconComponent) return null;
+
+            return (
+              <Fragment key={key}>
+                <a
+                  href={value}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={capitalize(key)}
+                  className="flex size-[24px] items-center justify-center rounded-full bg-always-light transition-colors hover:bg-always-light/80"
+                >
+                  <IconComponent
+                    width={12}
+                    height={12}
+                    className="text-always-dark"
+                  />
+                </a>
+              </Fragment>
+            );
+          })}
       </div>
     </div>
   );

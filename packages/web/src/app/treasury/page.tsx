@@ -2,11 +2,12 @@
 
 import BigNumber from "bignumber.js";
 import { isEmpty, isUndefined } from "lodash-es";
+import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
 import { formatUnits } from "viem";
 import { useBalance } from "wagmi";
-import Image from "next/image";
+
 import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { ExternalLinkIcon, WarningIcon } from "@/components/icons";
 import { TreasuryList } from "@/components/treasury-list";

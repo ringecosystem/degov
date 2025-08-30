@@ -1,8 +1,10 @@
-import { IconProps, getIconProps } from './types';
+import { getIconProps } from "./types";
+
+import type { IconProps} from "./types";
 
 export const VoteForIcon = (props: IconProps) => {
   const svgProps = getIconProps(props);
-  
+
   return (
     <svg
       viewBox="0 0 20 20"
