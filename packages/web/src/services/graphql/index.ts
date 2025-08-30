@@ -4,7 +4,9 @@ import { request } from "./client";
 import * as Queries from "./queries";
 import * as Types from "./types";
 
+
 import type { ProfileData } from "./types/profile";
+import type { EvmAbiResponse, EvmAbiInput, } from "./types/proposals";
 
 export const proposalService = {
   getAllProposals: async (
@@ -92,6 +94,17 @@ export const proposalService = {
     );
     return response?.proposalQueueds?.[0];
   },
+  getEvmAbi: async (endpoint: string, input: EvmAbiInput) => {
+    const response = await request<EvmAbiResponse>(
+      endpoint,
+      Queries.GET_EVM_ABI,
+      {
+        chain: input.chain,
+        contract: input.contract,
+      }
+    );
+    return response?.evmAbi;
+  },
 };
 
 export const delegateService = {
@@ -160,6 +173,8 @@ export const squidStatusService = {
     return response?.squidStatus;
   },
 };
+
+
 
 export const contributorService = {
   getAllContributors: async (

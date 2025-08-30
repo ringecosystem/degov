@@ -128,3 +128,14 @@ export const GET_PROPOSAL_METRICS = gql`
     }
   }
 `;
+
+export const GET_EVM_ABI = gql`
+  query QueryEvmAbi($chain: Int!, $contract: String!) {
+    evmAbi(input: { chain: $chain, contract: $contract }) {
+      abi
+      address
+      type
+      implementation
+    }
+  }
+`;
