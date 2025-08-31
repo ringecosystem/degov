@@ -1,8 +1,9 @@
 import * as CryptoJS from "crypto-js";
 import { NextResponse } from "next/server";
-import { degovGraphqlApi } from "@/utils/remote-api";
 
 import { Resp } from "@/types/api";
+import { degovGraphqlApi } from "@/utils/remote-api";
+
 
 import { nonceCache } from "../../common/nonce-cache";
 
