@@ -19,10 +19,10 @@ async function main() {
 async function runProcessorEvm(config: IndexerProcessorConfig) {
   const configRpcs = config.rpcs || [];
 
-  const envVarName = `CHAIN_RPC_${config.chainId}`;
+  const envVarName = `CHAIN_RPC_${config.chainId}`.trim();
   const envRpcsRaw = process.env[envVarName];
   let envRpcs: string[] = [];
-  console.log(`ENV RPCS Raw: ${envRpcsRaw} of key ${envVarName}`);
+  console.log(`ENV RPCS Raw: ${envRpcsRaw} of key [${envVarName}]`);
 
   if (envRpcsRaw) {
     envRpcs = envRpcsRaw
