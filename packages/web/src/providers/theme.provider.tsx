@@ -1,4 +1,5 @@
 import { ThemeProvider } from "next-themes";
+
 import { THEME_COLORS } from "@/config/theme";
 
 export function NextThemeProvider({ children }: { children: React.ReactNode }) {
