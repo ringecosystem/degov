@@ -4,8 +4,6 @@ import {
 } from "@openrouter/ai-sdk-provider";
 import { generateObject } from "ai";
 import { z } from "zod";
-import * as cheerio from "cheerio";
-import { marked } from "marked";
 
 export interface ExtractTextInfo {
   title: string;
@@ -23,7 +21,6 @@ export class TextPlus {
 
   private openrouter(): OpenRouterProvider | undefined {
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-    console.log(OPENROUTER_API_KEY);
     if (!OPENROUTER_API_KEY) {
       console.warn(
         "OPENROUTER_API_KEY is not set. AI features will be disabled."
@@ -46,41 +43,57 @@ export class TextPlus {
   }
 
   /**
-   * Extracts info from the description using a local fallback mechanism.
-   * This method follows the same priority rules as the AI prompt.
-   * @param description The text content to analyze.
-   * @returns A string containing the extracted info, or an empty string if none is found.
+   * from Markdown description to extract title and rich text content
+   * description format is usually `# {title} \n\n{content}`
+   * @param description Markdown description text
+   * @returns an object containing the extracted title and rich text content
    */
-  private async _extractTitleLocally(description: string): Promise<string> {
-    let content = description?.trim();
-    if (!content) {
+  _extractTitleSimplify(description?: string): string {
+    if (!description || !description.trim()) {
       return "";
     }
 
-    content = await marked.parse(content);
-
-    const $ = cheerio.load(content);
-    const h1FromHtml = $("h1").first().text()?.trim();
-    if (h1FromHtml) {
-      return h1FromHtml;
-    }
-
-    const h2FromHtml = $("h2").first().text()?.trim();
-    if (h2FromHtml) {
-      return h2FromHtml;
-    }
-
-    const firstLine = content.split("\n").find((line) => line.trim() !== "");
-    if (firstLine) {
-      return firstLine.trim();
+    const titleMatch = description.match(/^\s*#\s+(.+?)\s*$/m);
+    if (titleMatch && titleMatch[1]) {
+      return titleMatch[1].trim();
     }
 
     return "";
   }
 
+  _extractTitleFullback(description?: string): string {
+    if (!description || !description.trim()) {
+      return "";
+    }
+
+    const cleanText = description
+      .replace(/<\/?[^>]+(>|$)/g, "")
+      .replace(/^\s*#+\s+/gm, "")
+      .replace(/^\s*[-*+]\s+/gm, "")
+      .replace(/!?\[(.*?)\]\(.*?\)/g, "$1")
+      .replace(/^\s*[-*_]{3,}\s*$/gm, "")
+      .replace(/^\s*>\s?/gm, "")
+      .trim();
+
+    const firstLine = cleanText.split("\n")[0]?.trim();
+
+    if (!firstLine) {
+      return "";
+    }
+
+    const maxLength = 50;
+    return firstLine.length > maxLength
+      ? `${firstLine.substring(0, maxLength)}...`
+      : firstLine;
+  }
+
   async extractInfo(description: string): Promise<ExtractTextInfo> {
     const openrouter = this.openrouter();
-    let title = "";
+    let title = this._extractTitleSimplify(description);
+    if (title) {
+      console.log("Extracted title simplify:", title);
+      return { title };
+    }
 
     if (openrouter) {
       try {
@@ -102,7 +115,6 @@ And you must return the content in pure JSON format as required.
 - If the user provides specific requirements, they take precedence.
 - The returned content must be a raw JSON string.
 - If the original content does not specify a date, do not include year, month, or day information in the title to avoid inaccuracies and prevent misleading the reader.
-
 
 ## Output Format
 
@@ -135,14 +147,13 @@ Extract a title from the content above, following these rules in order:
       }
     }
 
-    // **Fallback Logic Trigger**
     // If the title is still empty (because AI failed, returned nothing, or was never called),
     // use the local extraction method.
     if (!title) {
       console.log(
-        "AI did not provide a title. Using local fallback extractor."
+        "No suitable title was found. Using local fallback extractor."
       );
-      title = await this._extractTitleLocally(description);
+      title = await this._extractTitleFullback(description);
     }
 
     return {

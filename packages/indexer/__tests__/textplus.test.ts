@@ -15,7 +15,7 @@ async function queryDescriptions(): Promise<DescriptionResult[]> {
     },
     body: JSON.stringify({
       query: `query QueryProposals {
-        proposals(limit: 10) {
+        proposals(limit: 10, offset: 5) {
           description
           proposalId
         }
@@ -38,7 +38,7 @@ describe("Chain Tool Test", () => {
 
       const resultsPromises = drs.map(async (dr) => {
         const r = await textPlus.extractInfo(dr.description);
-        return `- ${r.title} -> ${dr.proposalId}`;
+        return `- ${r.title} -> ${dr.proposalId}`; // -> ${dr.proposalId}
       });
 
       const allResults = await Promise.all(resultsPromises);
