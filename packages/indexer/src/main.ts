@@ -17,17 +17,39 @@ async function main() {
 }
 
 async function runProcessorEvm(config: IndexerProcessorConfig) {
-  if (!config.rpcs.length) {
-    throw new Error("no RPC endpoints configured");
+  const configRpcs = config.rpcs || [];
+
+  const envVarName = `CHAIN_RPC_${config.chainId}`;
+  const envRpcsRaw = process.env[envVarName];
+  let envRpcs: string[] = [];
+
+  if (envRpcsRaw) {
+    envRpcs = envRpcsRaw
+      .replace(/\r\n|\n/g, ",")
+      .split(",")
+      .map((url) => url.trim())
+      .filter((url) => url);
   }
+
+  const allRpcs = [...new Set([...configRpcs, ...envRpcs])];
+
+  if (allRpcs.length === 0) {
+    throw new Error(
+      `No RPC endpoints configured. Checked config file and environment variable "${envVarName}".`
+    );
+  }
+
+  const randomRpcUrl = allRpcs[Math.floor(Math.random() * allRpcs.length)];
+  console.log(`Using RPC endpoint: ${randomRpcUrl}`);
+
   const processor = new EvmBatchProcessor()
     .setFields(evmFieldSelection)
     .setRpcEndpoint({
-      // More RPC connection options at https://docs.subsquid.io/evm-indexing/configuration/initialization/#set-data-source
-      url: config.rpcs[0],
+      url: randomRpcUrl,
       capacity: config.capacity ?? 30,
       maxBatchCallSize: config.maxBatchCallSize ?? 200,
     });
+
   if (config.gateway) {
     processor.setGateway(config.gateway);
   }
@@ -81,7 +103,6 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
               }
             } catch (e) {
               ctx.log.warn(
-                // indexContract
                 `(evm) unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}, reason: ${e}, stopped from ${ctx.blocks[0].header.height} block`
               );
               throw e;
