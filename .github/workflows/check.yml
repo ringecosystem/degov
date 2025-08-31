@@ -4,8 +4,8 @@ on:
   pull_request:
 
 jobs:
-  check-web:
-    name: Check web
+  check-workspace:
+    name: Check Workspace
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,10 +20,9 @@ jobs:
           version: 9
 
       - name: Check build
-        working-directory: packages/web
         run: |
           pnpm install --no-frozen-lockfile
-          pnpm build
+          pnpm build:all
 
   check-indexer:
     name: Check indexer
