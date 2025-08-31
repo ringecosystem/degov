@@ -5,6 +5,7 @@ import { EvmBatchProcessor } from "@subsquid/evm-processor";
 import { evmFieldSelection, IndexerProcessorConfig } from "./types";
 import { DegovDataSource } from "./datasource";
 import { ChainTool } from "./internal/chaintool";
+import { TextPlus } from "./internal/textplus";
 
 async function main() {
   const degovConfigPath = process.env.DEGOV_CONFIG_PATH;
@@ -41,6 +42,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   });
 
   const chainTool = new ChainTool();
+  const textPlus = new TextPlus();
 
   processor.run(
     new TypeormDatabase({ supportHotBlocks: true }),
@@ -66,6 +68,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
                     work,
                     indexContract,
                     chainTool,
+                    textPlus,
                   }).handle(event);
                   break;
                 case "governorToken":
