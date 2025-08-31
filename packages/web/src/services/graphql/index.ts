@@ -203,7 +203,7 @@ export const profileService = {
     data: ProfileData;
   }> => {
     const response = await fetch(`/api/profile/${address}`, {
-      next: { revalidate: 300, tags: [`profile-${address}`] }, // 5分钟缓存，带标签
+      next: { revalidate: 300, tags: [`profile-${address}`] },
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${getToken()}`,

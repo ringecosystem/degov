@@ -1,20 +1,12 @@
 import { ThemeProvider } from "next-themes";
+import { THEME_COLORS } from "@/config/theme";
 
 export function NextThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider
       attribute="class"
       defaultTheme="light"
-      themes={[
-        "light",
-        "dark",
-        "dark-blue",
-        "dark-red",
-        "light-green",
-        "light-pink",
-        "dark-green",
-        "dark-purple",
-      ]}
+      themes={Object.keys(THEME_COLORS)}
     >
       {children}
     </ThemeProvider>

@@ -8,45 +8,76 @@ body {
 
 @layer base {
   :root {
+    /* Light #202224 */
+    --light: 210 6% 13%;
+    /* Dark #FFFFFF */
+    --dark: 0 0% 100%;
+    /* Grey1 #E5E5E5 */
+    --grey-1: 0 0% 90%;
+    /* Grey2 #979797 */
+    --grey-2: 0 0% 59%;
+    /* BG #F9F9FA */
+    --bg: 240 9% 98%;
+    /* BG2 #F7F7F7 */
+    --bg-2: 0 0% 97%;
+    /* Blue #006FFF */
+    --blue: 214 100% 50%;
+    /* Green #00B403 */
+    --green: 121 100% 35%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #FF8400 */
+    --yellow: 31 100% 50%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #202224 */
+    --always-dark: 210 6% 13%;
 
-    --background: 240 9% 98%;
+    /* BG #F9F9FA */
+    --background: var(--bg);
 
-    --foreground: 210 6% 13%;
+    /* Light #202224 */
+    --foreground: var(--light);
 
-    --card: 0 0% 100%;
+    /* Dark #FFFFFF */
+    --card: var(--dark);
     --card-foreground: 0 0% 100% / 0.8;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
 
     --muted: 240 4.8% 95.9%;
 
-    --muted-foreground: 0 0% 59%;
+    /* Grey2 #979797 */
+    --muted-foreground: var(--grey-2);
     --accent: 240 4.8% 95.9%;
     --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --destructive: var(--red);
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 59%;
+    /* Grey2 #979797 */
+    --border: var(--grey-2);
 
     --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    --ring: var(--light);
 
-    /* 00B403 */
-    --success: 121 100% 35%;
-    /* #FF8400 */
-    --warning: 31 100% 50%;
-    --danger: 359 100% 62%;
+    /* Green #00B403 */
+    --success: var(--green);
+    /* Yellow #FF8400 */
+    --warning: var(--yellow);
+    --danger: var(--red);
 
-    /* #FF8400 */
+    /* Yellow #FF8400 */
     --pending: var(--warning);
-    --active: 197 100% 50%;
-    /* 00B403 */
-    --succeeded: 121 100% 35%;
-    --executed: 276 100% 67%;
+    --active: var(--blue);
+    /* Green #00B403 */
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
 
@@ -57,376 +88,485 @@ body {
     --scrollbar-width: 8px;
     --scrollbar-height: 8px;
 
-    --card-background: 192 4% 97%;
+    /* BG2 #F7F7F7 */
+    --card-background: var(--bg-2);
 
-    --gray-1: 0 0% 90%;
+    /* Grey1 #E5E5E5 */
+    --gray-1: var(--grey-1);
     --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.15);
-
-    /* Always Light - #FFFFFF */
-    --always-light: 0 0% 100%;
-    /* Always Dark - #202224 */
-    --always-dark: 210 6% 13%;
 
   }
   .dark {
+    /* Light #FFFFFF */
+    --light: 0 0% 100%;
+    /* Dark #202224 */
+    --dark: 210 6% 13%;
+    /* Grey1 #474747 */
+    --grey-1: 0 0% 28%;
+    /* Grey2 #979797 */
+    --grey-2: 0 0% 59%;
+    /* BG #000000 */
+    --bg: 0 0% 0%;
+    /* BG2 #2E2E2E */
+    --bg-2: 0 0% 18%;
+    /* Blue #00B7FF */
+    --blue: 197 100% 50%;
+    /* Green #00B624 */
+    --green: 132 100% 36%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #F3AB00 */
+    --yellow: 42 100% 48%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always */
+    --always-light: 0 0% 100%;
+    --always-dark: 210 6% 13%;
+
     /*BG #000000 */
-    --background: 0 0% 0%;
+    --background: var(--bg);
 
     /*Light #FFFFFF */
-    --foreground: 0 0% 100%;
+    --foreground: var(--light);
 
     /*Dark #202224 */
-    --card: 210 6% 13%;
+    --card: var(--dark);
     --card-foreground: 0 0% 100%;
     --popover: 210 6% 13%;
     --popover-foreground: 0 0% 100%;
-    --primary: 0 0% 100%;
-    --primary-foreground: 210 6% 13%;
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
     --secondary: 0 0% 18%;
     --secondary-foreground: 0 0% 100%;
     --muted: 0 0% 18%;
 
     /* Grey2 #979797 */
-    --muted-foreground: 0 0% 59%;
+    --muted-foreground: var(--grey-2);
     --accent: 0 0% 18%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 359 100% 62%;
+    --destructive: var(--red);
     --destructive-foreground: 0 0% 100%;
 
     /* Grey2 #979797 */
-    --border: 0 0% 59%;
+    --border: var(--grey-2);
 
     /*Dark  #202224 */
-    --input: 210 6% 13%;
-    --ring: 0 0% 100%;
+    --input: var(--dark);
+    --ring: var(--light);
 
     /*Green #00B624 */
-    --success: 132 100% 36%;
+    --success: var(--green);
     /*Yellow #F3AB00 */
-    --warning: 42 100% 48%;
-    --danger: 359 100% 62%;
+    --warning: var(--yellow);
+    --danger: var(--red);
 
     /*Yellow #F3AB00 */
     --pending: var(--warning);
-    --active: 195 100% 50%;
+    --active: var(--blue);
     /*Green #00B624 */
-    --succeeded: 132 100% 36%;
-    --executed: 276 100% 67%;
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
 
     --radius: 0.5rem;
 
     /* BG2 - #2E2E2E */
-    --card-background: 0 0% 18%;
+    --card-background: var(--bg-2);
 
     /*Grey1 #474747 */
-    --gray-1: 0 0% 28%;
+    --gray-1: var(--grey-1);
     --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
-
-    /* Always Light - #FFFFFF */
-    --always-light: 0 0% 100%;
-    /* Always Dark - #202224 */
-    --always-dark: 210 6% 13%;
   }
 
-  /* 暗蓝主题 - DarkBlue */
   .dark-blue {
-    /* 基础色彩 - 基于调色板DarkBlue列 */
-    --background: /* #08092B */ 240 76% 7%;
-    --foreground: /* #FFFFFF */ 0 0% 100%;
+    /* Light #87A4FA */
+    --light: 225 92% 75%;
+    /* Dark #0C233B */
+    --dark: 211 66% 14%;
+    /* Grey1 #49466C */
+    --grey-1: 245 21% 35%;
+    /* Grey2 #646A99 */
+    --grey-2: 233 21% 50%;
+    /* BG #08092B */
+    --bg: 238 69% 10%;
+    /* BG2 #131132 */
+    --bg-2: 244 49% 13%;
+    /* Blue #00B7FF */
+    --blue: 197 100% 50%;
+    /* Green #00B67F */
+    --green: 162 100% 36%;
+    /* Red #FF3CB1 */
+    --red: 324 100% 62%;
+    /* Yellow #F3AB00 */
+    --yellow: 42 100% 48%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #0C233B */
+    --always-dark: 211 66% 14%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--dark);
+    --ring: var(--light);
     
-    --card: /* #0C233B */ 210 64% 15%;
-    --card-foreground: /* #87A4FA */ 228 92% 76%;
-    --popover: /* #0C233B */ 210 64% 15%;
-    --popover-foreground: /* #87A4FA */ 228 92% 76%;
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
     
-    --primary: /* #87A4FA */ 228 92% 76%;
-    --primary-foreground: /* #08092B */ 240 76% 7%;
-    --secondary: /* #4946C6C */ 225 44% 64%;
-    --secondary-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --muted: /* #646A99 */ 230 27% 53%;
-    --muted-foreground: /* #87A4FA */ 228 92% 76%;
-    --accent: /* #00B7FF */ 195 100% 50%;
-    --accent-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --destructive: /* #FF3CB1 */ 325 100% 61%;
-    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --border: /* #4946C6C */ 225 44% 64%;
-    --input: /* #131132 */ 241 43% 13%;
-    --ring: /* #00B7FF */ 195 100% 50%;
-    
-    --success: /* #00B67F */ 161 100% 36%;
-    --warning: /* #FF8400 */ 31 100% 50%;
-    --danger: /* #FF3CB1 */ 325 100% 61%;
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
     
     --pending: var(--warning);
-    --active: /* #00B7FF */ 195 100% 50%;
-    --succeeded: var(--success);
-    --executed: /* #BC57FF */ 273 100% 67%;
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
     
-    --card-background: /* #0C233B */ 210 64% 15%;
-    --gray-1: /* #4946C6C */ 225 44% 64%;
-    --card-shadow: 6px 6px 54px 0 rgba(135, 164, 250, 0.15);
-
-    /* Always Light - #FFFFFF */
-    --always-light: 0 0% 100%;
-    /* Always Dark - #0C233B */
-    --always-dark: 210 64% 15%;
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
   }
 
-  /* 暗红主题 - DarkRed */
   .dark-red {
-    /* 基础色彩 - 基于调色板DarkRed列 */
-    --background: /* #300813 */ 343 74% 11%;
-    --foreground: /* #FFFFFF */ 0 0% 100%;
+    /* Light #FFFFFF */
+    --light: 0 0% 100%;
+    /* Dark #3F0513 */
+    --dark: 346 85% 13%;
+    /* Grey1 #992D47 */
+    --grey-1: 346 55% 39%;
+    /* Grey2 #FFFFFF */
+    --grey-2: 0 0% 100%;
+    /* BG #300813 */
+    --bg: 344 71% 11%;
+    /* BG2 #820C2D */
+    --bg-2: 343 83% 28%;
+    /* Blue #FFFFFF */
+    --blue: 0 0% 100%;
+    /* Green #00B403 */
+    --green: 121 100% 35%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #FF8400 */
+    --yellow: 31 100% 50%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #3F0513 */
+    --always-dark: 346 85% 13%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--dark);
+    --ring: var(--light);
     
-    --card: /* #300813 */ 343 74% 11%;
-    --card-foreground: /* #FFFFFF */ 0 0% 100%;
-    --popover: /* #300813 */ 343 74% 11%;
-    --popover-foreground: /* #FFFFFF */ 0 0% 100%;
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
     
-    --primary: /* #3F0513 */ 347 85% 16%;
-    --primary-foreground: /* #FFFFFF */ 0 0% 100%;
-    --secondary: /* #992D47 */ 346 56% 39%;
-    --secondary-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --muted: /* #FFFFFF */ 0 0% 100%;
-    --muted-foreground: /* #992D47 */ 346 56% 39%;
-    --accent: /* #FFFFFF */ 0 0% 100%;
-    --accent-foreground: /* #300813 */ 343 74% 11%;
-    
-    --destructive: /* #FF3C3F */ 359 100% 62%;
-    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --border: /* #820C2D */ 345 84% 29%;
-    --input: /* #300813 */ 343 74% 11%;
-    --ring: /* #FF3C3F */ 359 100% 62%;
-    
-    --success: /* #00B403 */ 121 100% 35%;
-    --warning: /* #FF8400 */ 31 100% 50%;
-    --danger: /* #FF3C3F */ 359 100% 62%;
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
     
     --pending: var(--warning);
-    --active: /* #FF3C3F */ 359 100% 62%;
-    --succeeded: var(--success);
-    --executed: /* #BC57FF */ 273 100% 67%;
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
     
-    --card-background: /* #300813 */ 343 74% 11%;
-    --gray-1: /* #FFFFFF */ 0 0% 100%;
-    --card-shadow: 6px 6px 54px 0 rgba(153, 45, 71, 0.15);
-
-    /* Always Light - #FFFFFF */
-    --always-light: 0 0% 100%;
-    /* Always Dark - #300813 */
-    --always-dark: 343 74% 11%;
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
   }
 
-  /* 浅绿主题 - LightGreen */
   .light-green {
+    /* Light #09613C */
+    --light: 155 83% 21%;
+    /* Dark #FFFFFF */
+    --dark: 0 0% 100%;
+    /* Grey1 #E5E5E5 */
+    --grey-1: 0 0% 90%;
+    /* Grey2 #979797 */
+    --grey-2: 0 0% 59%;
     /* BG #F9F9FA */
-    --background: 240 9% 98%;
-    /* #09613C */
-    --foreground:  155 83% 21%;
+    --bg: 240 9% 98%;
+    /* BG2 #F7F7F7 */
+    --bg-2: 0 0% 97%;
+    /* Blue #006FFF */
+    --blue: 214 100% 50%;
+    /* Green #00B403 */
+    --green: 121 100% 35%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #FF8400 */
+    --yellow: 31 100% 50%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #09613C */
+    --always-light: 155 83% 21%;
+    /* Always Dark #FFFFFF */
+    --always-dark: 0 0% 100%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--bg-2);
+    --ring: var(--light);
     
-    /*DARK #FFFFFF */
-    --card: 0 0% 100%;
     --card-foreground: 0 0% 100% / 0.8;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    
-    --primary: /* #09613C */ 145 84% 21%;
-    --primary-foreground: 0 0% 98%;
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
-    
     --muted: 240 4.8% 95.9%;
-    /* Grey2 - #979797 */
-    --muted-foreground: 0 0% 59%;
     --accent: 240 4.8% 95.9%;
     --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
     
-    /* Grey2 - #979797 */
-    --border: 0 0% 59%;
-    --input: 0 0% 97%;
-    --ring: 240 5.9% 10%;
-    
-    --success: /* #00B403 */ 121 100% 35%;
-    --warning: /* #FF8400 */ 31 100% 50%;
-    --danger: /* #FF3C3F */ 359 100% 62%;
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
     
     --pending: var(--warning);
-    --active: /* #09613C */ 145 84% 21%;
-    --succeeded: var(--success);
-    --executed: /* #BC57FF */ 273 100% 67%;
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
     
-    /* BG2 - #F7F7F7 */
-    --card-background:  0 0% 97%;
-    /* Grey1 #E5E5E5 */
-    --gray-1: 0 0% 90%;
-    --card-shadow: 6px 6px 54px 0 rgba(9, 97, 60, 0.15);
-
-    /* Always Light - #09613C */
-    --always-light: 145 84% 21%;
-    /* Always Dark - #FFFFFF */
-    --always-dark: 0 0% 100%;
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.15);
   }
 
-  /* 浅粉主题 - LightPink */
   .light-pink {
-    /* 基础色彩 - 基于调色板LightPink列 */
-    --background: /* #FAFAF9 */ 60 11% 98%;
-    --foreground: /* #F26D00 */ 27 100% 47%;
-    
-    --card: /* #FAFAF9 */ 60 11% 98%;
-    --card-foreground: /* #FFE4CE */ 28 100% 90%;
-    --popover: /* #FAFAF9 */ 60 11% 98%;
-    --popover-foreground: /* #F9AB6A */ 33 92% 69%;
-    
-    --primary: /* #F26D00 */ 28 100% 47%;
-    --primary-foreground: /* #FFFFFF */ 0 0% 100%;
-    --secondary: /* #FFE4CE */ 28 100% 90%;
-    --secondary-foreground: /* #F9AB6A */ 33 92% 69%;
-    
-    --muted: /* #F9AB6A */ 33 92% 69%;
-    --muted-foreground: /* #F7F7F7 */ 0 0% 97%;
-    --accent: /* #F7F7F7 */ 0 0% 97%;
-    --accent-foreground: /* #F7F7F7 */ 0 0% 97%;
-    
-    --destructive: /* #FF3C3F */ 359 100% 62%;
-    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --border: /* #006FFF */ 215 100% 50%;
-    --input: /* #F7F7F7 */ 0 0% 97%;
-    --ring: /* #006FFF */ 215 100% 50%;
-    
-    --success: /* #00B403 */ 121 100% 35%;
-    --warning: /* #FF8400 */ 31 100% 50%;
-    --danger: /* #FF3C3F */ 359 100% 62%;
-    
-    --pending: var(--warning);
-    --active: /* #F26D00 */ 28 100% 47%;
-    --succeeded: var(--success);
-    --executed: /* #BC57FF */ 273 100% 67%;
-    --defeated: var(--danger);
-    --canceled: var(--muted-foreground);
-    
-    --card-background: /* #FAFAF9 */ 60 11% 98%;
-    --gray-1: /* #FFE4CE */ 28 100% 90%;
-    --card-shadow: 6px 6px 54px 0 rgba(242, 109, 0, 0.15);
-
-    /* Always Light - #F26D00 */
-    --always-light: 28 100% 47%;
-    /* Always Dark - #FFFFFF */
+    /* Light #F26D00 */
+    --light: 27 100% 47%;
+    /* Dark #FFFFFF */
+    --dark: 0 0% 100%;
+    /* Grey1 #FFE4CE */
+    --grey-1: 27 100% 90%;
+    /* Grey2 #F9AB6A */
+    --grey-2: 27 92% 70%;
+    /* BG #FAFAF9 */
+    --bg: 60 9% 98%;
+    /* BG2 #F7F7F7 */
+    --bg-2: 0 0% 97%;
+    /* Blue #006FFF */
+    --blue: 214 100% 50%;
+    /* Green #00B403 */
+    --green: 121 100% 35%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #FF8400 */
+    --yellow: 31 100% 50%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #F26D00 */
+    --always-light: 27 100% 47%;
+    /* Always Dark #FFFFFF */
     --always-dark: 0 0% 100%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--bg-2);
+    --ring: var(--light);
+    
+    --card-foreground: 0 0% 100% / 0.8;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
+    
+    --pending: var(--warning);
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.15);
   }
 
-  /* 暗绿主题 - DarkGreen */
   .dark-green {
-    /* 基础色彩 - 基于调色板DarkGreen列 */
-    --background: /* #09220B */ 125 55% 9%;
-    --foreground: /* #FFFFFF */ 0 0% 100%;
+    /* Light #74FFDE */
+    --light: 166 100% 73%;
+    /* Dark #24333E */
+    --dark: 205 27% 19%;
+    /* Grey1 #2A92A7 */
+    --grey-1: 190 60% 41%;
+    /* Grey2 #7EFDFF */
+    --grey-2: 181 100% 75%;
+    /* BG #09220B */
+    --bg: 125 58% 8%;
+    /* BG2 #1E4041 */
+    --bg-2: 182 37% 19%;
+    /* Blue #32C5FF */
+    --blue: 197 100% 60%;
+    /* Green #00B624 */
+    --green: 132 100% 36%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #F3AB00 */
+    --yellow: 42 100% 48%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #24333E */
+    --always-dark: 205 27% 19%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--dark);
+    --ring: var(--light);
     
-    --card: /* #24333E */ 201 26% 19%;
-    --card-foreground: /* #74FFDE */ 166 100% 72%;
-    --popover: /* #24333E */ 201 26% 19%;
-    --popover-foreground: /* #2A92A7 */ 189 61% 42%;
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
     
-    --primary: /* #74FFDE */ 166 100% 72%;
-    --primary-foreground: /* #09220B */ 125 55% 9%;
-    --secondary: /* #7EFDFF */ 181 100% 75%;
-    --secondary-foreground: /* #09220B */ 125 55% 9%;
-    
-    --muted: /* #1E4041 */ 181 36% 19%;
-    --muted-foreground: /* #32C5FF */ 195 100% 60%;
-    --accent: /* #32C5FF */ 195 100% 60%;
-    --accent-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --destructive: /* #FF3C3F */ 359 100% 62%;
-    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --border: /* #32C5FF */ 195 100% 60%;
-    --input: /* #1E4041 */ 181 36% 19%;
-    --ring: /* #00B624 */ 132 100% 36%;
-    
-    --success: /* #00B624 */ 132 100% 36%;
-    --warning: /* #F3AB00 */ 42 100% 48%;
-    --danger: /* #FF3C3F */ 359 100% 62%;
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
     
     --pending: var(--warning);
-    --active: /* #74FFDE */ 166 100% 72%;
-    --succeeded: var(--success);
-    --executed: /* #BC57FF */ 273 100% 67%;
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
     
-    --card-background: /* #24333E */ 201 26% 19%;
-    --gray-1: /* #2A92A7 */ 189 61% 42%;
-    --card-shadow: 6px 6px 54px 0 rgba(116, 255, 222, 0.15);
-
-    /* Always Light - #FFFFFF */
-    --always-light: 0 0% 100%;
-    /* Always Dark - #24333E */
-    --always-dark: 201 26% 19%;
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
   }
 
-  /* 暗紫主题 - DarkPurple */
   .dark-purple {
-    /* 基础色彩 - 基于调色板DarkPurple列 */
-    --background: /* #18041B */ 295 61% 6%;
-    --foreground: /* #FFFFFF */ 0 0% 100%;
+    /* Light #F1CBFF */
+    --light: 284 100% 90%;
+    /* Dark #2C0936 */
+    --dark: 287 71% 12%;
+    /* Grey1 #52466C */
+    --grey-1: 253 23% 36%;
+    /* Grey2 #6F6499 */
+    --grey-2: 253 23% 50%;
+    /* BG #19041B */
+    --bg: 295 74% 6%;
+    /* BG2 #331E4C */
+    --bg-2: 267 43% 21%;
+    /* Blue #00B7FF */
+    --blue: 197 100% 50%;
+    /* Green #00B67F */
+    --green: 162 100% 36%;
+    /* Red #E62E31 */
+    --red: 359 79% 54%;
+    /* Yellow #F3AB00 */
+    --yellow: 42 100% 48%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #2C0936 */
+    --always-dark: 287 71% 12%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--dark);
+    --ring: var(--light);
     
-    --card: /* #2C0936 */ 289 73% 12%;
-    --card-foreground: /* #F1CBFF */ 286 100% 90%;
-    --popover: /* #2C0936 */ 289 73% 12%;
-    --popover-foreground: /* #52466C */ 253 23% 36%;
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
     
-    --primary: /* #F1CBFF */ 286 100% 90%;
-    --primary-foreground: /* #2C0936 */ 289 73% 12%;
-    --secondary: /* #6F6499 */ 253 23% 51%;
-    --secondary-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --muted: /* #331E4C */ 263 39% 21%;
-    --muted-foreground: /* #00B7FF */ 195 100% 50%;
-    --accent: /* #00B7FF */ 195 100% 50%;
-    --accent-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --destructive: /* #E62E31 */ 359 74% 54%;
-    --destructive-foreground: /* #FFFFFF */ 0 0% 100%;
-    
-    --border: /* #00B7FF */ 195 100% 50%;
-    --input: /* #331E4C */ 263 39% 21%;
-    --ring: /* #00B67F */ 161 100% 36%;
-    
-    --success: /* #00B67F */ 161 100% 36%;
-    --warning: /* #F3AB00 */ 42 100% 48%;
-    --danger: /* #E62E31 */ 359 74% 54%;
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
     
     --pending: var(--warning);
-    --active: /* #F1CBFF */ 286 100% 90%;
-    --succeeded: var(--success);
-    --executed: /* #BC57FF */ 273 100% 67%;
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
     
-    --card-background: /* #2C0936 */ 289 73% 12%;
-    --gray-1: /* #52466C */ 253 23% 36%;
-    --card-shadow: 6px 6px 54px 0 rgba(241, 203, 255, 0.15);
-
-    /* Always Light - #FFFFFF */
-    --always-light: 0 0% 100%;
-    /* Always Dark - #2C0936 */
-    --always-dark: 289 73% 12%;
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
   }
 }
 

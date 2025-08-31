@@ -1,4 +1,5 @@
 import { XIcon, TelegramIcon, EmailIcon, DocsIcon, GithubIcon } from "./social";
+
 import type { IconProps } from "./types";
 
 export const SocialIconMap: Record<string, React.ComponentType<IconProps>> = {

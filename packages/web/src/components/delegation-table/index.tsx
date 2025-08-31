@@ -49,6 +49,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
           <AddressWithAvatar
             address={record?.fromDelegate as `0x${string}`}
             avatarSize={30}
+            align="start"
           />
         ),
       },

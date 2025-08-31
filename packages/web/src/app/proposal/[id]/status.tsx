@@ -310,7 +310,7 @@ const Status: React.FC<StatusProps> = ({
             }
             if (v.key === "execute") {
               title = "Proposal executed";
-              isCurrent = true; // 当前在执行完成阶段
+              isCurrent = true;
             }
             return {
               ...v,

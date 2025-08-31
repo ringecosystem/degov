@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/tooltip";
 import { INDEXER_CONFIG } from "@/config/indexer";
 import { useBlockSync } from "@/hooks/useBlockSync";
+import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ export const Aside = () => {
   const config = useDaoConfig();
   const [collapsed, setCollapsed] = useState(false);
   const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
+  const { isDarkTheme } = useCustomTheme();
 
   const isCustomLogo = useMemo(() => {
     return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
@@ -96,24 +98,14 @@ export const Aside = () => {
               <div className="flex items-center gap-[10px]">
                 <Link href="/">
                   {isCustomLogo ? (
-                    <>
-                      <Image
-                        src={config?.theme?.logoDark ?? ""}
-                        alt="logo"
-                        width={128}
-                        height={26}
-                        priority
-                        className="h-[26px] w-[128px] rounded-full hidden dark:block border border-[var(--card-background)]"
-                      />
-                      <Image
-                        src={config?.theme?.logoLight ?? ""}
-                        alt="logo"
-                        width={128}
-                        height={26}
-                        priority
-                        className="h-[26px] w-[128px] rounded-full block dark:hidden border border-[var(--card-background)]"
-                      />
-                    </>
+                    <Image
+                      src={isDarkTheme ? (config?.theme?.logoDark ?? "") : (config?.theme?.logoLight ?? "")}
+                      alt="logo"
+                      width={128}
+                      height={26}
+                      priority
+                      className="h-[26px] w-[128px] rounded-full border border-[var(--card-background)]"
+                    />
                   ) : (
                     <LogoIcon
                       width={128}
