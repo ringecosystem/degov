@@ -2,6 +2,7 @@
   "name": "@degov/root",
   "version": "0.10.1",
   "private": true,
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev:web": "pnpm --filter @degov/web dev",
     "start:web": "pnpm --filter @degov/web start",
