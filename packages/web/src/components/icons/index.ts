@@ -27,6 +27,7 @@ export { ErrorIcon } from './error-icon';
 export { ClockIcon } from './clock-icon';
 export { DiscussionIcon } from './discussion-icon';
 export { WarningIcon } from './warning-icon';
+export { AlertIcon } from './alert-icon';
 
 // Status Icons
 export { StatusPublishedIcon } from './status-published-icon';
