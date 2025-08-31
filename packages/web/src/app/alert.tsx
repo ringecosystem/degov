@@ -12,7 +12,7 @@ export function Alert() {
     <AlertUI
       message={
         <span className="flex items-center gap-[10px] bg-danger p-[20px] rounded-[14px]">
-          <AlertIcon width={24} height={24} />
+          <AlertIcon width={24} height={24} className="flex-shrink-0" />
           <span className="text-[16px] text-always-light">
             Warning: The indexer service is currently below 95%. Data displayed
             on this site may be outdated. Please wait until the indexer fully

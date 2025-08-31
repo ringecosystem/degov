@@ -25,10 +25,10 @@ export const ViewOnExplorer = ({
             className
           )}
         >
-          <ExternalLinkIcon 
+          <ExternalLinkIcon
             width={16}
             height={16}
-            className={cn("h-full w-full text-muted-foreground", imgClassName)}
+            className={cn("h-full w-full text-foreground", imgClassName)}
           />
         </a>
       </TooltipTrigger>
