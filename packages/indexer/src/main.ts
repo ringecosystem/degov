@@ -86,7 +86,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
                 case "governor":
                   await new GovernorHandler(ctx, {
                     chainId: config.chainId,
-                    rpcs: config.rpcs,
+                    rpcs: allRpcs,
                     work,
                     indexContract,
                     chainTool,
