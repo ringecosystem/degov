@@ -6,7 +6,14 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    dependencies:
+      github-markdown-css:
+        specifier: ^5.8.1
+        version: 5.8.1
+      next-themes:
+        specifier: ^0.4.6
+        version: 0.4.6(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
 
   packages/web:
     dependencies:
@@ -3066,6 +3073,10 @@ packages:
   giget@2.0.0:
     resolution: {integrity: sha512-L5bGsVkxJbJgdnwyuheIunkGatUF/zssUoxxjACCseZYAVbaqdh9Tsmmlkl8vYan09H7sbvKt4pS8GqKLBrEzA==}
     hasBin: true
+
+  github-markdown-css@5.8.1:
+    resolution: {integrity: sha512-8G+PFvqigBQSWLQjyzgpa2ThD9bo7+kDsriUIidGcRhXgmcaAWUIpCZf8DavJgc+xifjbCG+GvMyWr0XMXmc7g==}
+    engines: {node: '>=10'}
 
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
@@ -8778,6 +8789,8 @@ snapshots:
       node-fetch-native: 1.6.7
       nypm: 0.6.1
       pathe: 2.0.3
+
+  github-markdown-css@5.8.1: {}
 
   glob-parent@5.1.2:
     dependencies:
