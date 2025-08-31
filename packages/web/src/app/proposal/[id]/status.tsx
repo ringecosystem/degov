@@ -72,7 +72,7 @@ type ProposalStageKey =
 
 interface ProposalStage {
   title: string;
-  icon: React.ReactNode;
+  icon: React.ReactElement<{ invert?: boolean }>;
   timestamp?: string;
   isActive?: boolean;
   isCurrent?: boolean;
@@ -160,7 +160,7 @@ const Status: React.FC<StatusProps> = ({
   }, [proposalQueuedById?.blockTimestamp, govParams?.timeLockDelayInSeconds]);
 
   const stages: ProposalStage[] = useMemo(() => {
-    const baseStages = [
+    const baseStages: ProposalStage[] = [
       {
         key: "publish" as ProposalStageKey,
         title: "Publish onChain",
@@ -200,7 +200,7 @@ const Status: React.FC<StatusProps> = ({
       case ProposalState.Queued:
       case ProposalState.Executed:
       case ProposalState.Succeeded:
-        const additionalStages = [];
+        const additionalStages: ProposalStage[] = [];
 
         // Only add queue stage if timelock is enabled
         if (hasTimelock) {
@@ -439,28 +439,9 @@ const Status: React.FC<StatusProps> = ({
           >
             <div className="flex items-center gap-[10px]">
               <div className="z-10 mr-[13px] h-[28px] w-[28px] text-foreground">
-                {(() => {
-                  const iconElement = stage.icon as React.ReactElement;
-
-                  if (
-                    iconElement.type &&
-                    (iconElement.type as any).name &&
-                    [
-                      "StatusPublishedIcon",
-                      "StatusStartedIcon",
-                      "StatusEndedIcon",
-                      "StatusQueuedIcon",
-                      "StatusExecutedIcon",
-                      "CancelIcon",
-                    ].includes((iconElement.type as any).name)
-                  ) {
-                    return React.cloneElement(iconElement as any, {
-                      invert: stage.isCurrent,
-                    });
-                  }
-
-                  return iconElement;
-                })()}
+                {React.cloneElement(stage.icon, {
+                  invert: stage.isCurrent,
+                })}
               </div>
               <div className="flex items-center justify-between gap-[10px]">
                 <div>

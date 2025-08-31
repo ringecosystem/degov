@@ -6,10 +6,7 @@ import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 
 import { NewProposalAction } from "./action";
 
-interface Action {
-  id: string;
-  type: string;
-}
+import type { Action, AddAction } from "./type";
 
 interface SidebarProps {
   actions: Action[];
@@ -30,10 +27,11 @@ export const Sidebar = ({
   onAddAction,
   onSetTab,
 }: SidebarProps) => {
+  const isNotAddAction = (a: Action): a is Exclude<Action, AddAction> => a.type !== "add";
   return (
     <aside className="flex w-[300px] flex-shrink-0 flex-col gap-[10px] rounded-[14px]">
       <AnimatePresence initial={false}>
-        {actions.map((action) => (
+        {actions.filter(isNotAddAction).map((action) => (
           <motion.div
             key={action.id}
             initial={{ opacity: 0, height: 0 }}

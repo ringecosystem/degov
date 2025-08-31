@@ -1,8 +1,19 @@
-import { TransferOutlineIcon, CustomOutlineIcon, CrossChainOutlineIcon, ProposalsOutlineIcon, PreviewOutlineIcon } from './proposal-actions';
+import type { ProposalActionType } from "@/config/proposals";
 
-import type { IconProps } from './types';
+import {
+  TransferOutlineIcon,
+  CustomOutlineIcon,
+  CrossChainOutlineIcon,
+  ProposalsOutlineIcon,
+  PreviewOutlineIcon,
+} from "./proposal-actions";
 
-export const ProposalActionIconMap: Record<string, React.ComponentType<IconProps>> = {
+import type { IconProps } from "./types";
+
+export const ProposalActionIconMap: Record<
+  Exclude<ProposalActionType, "add">,
+  React.ComponentType<IconProps>
+> = {
   proposal: ProposalsOutlineIcon,
   transfer: TransferOutlineIcon,
   custom: CustomOutlineIcon,
@@ -10,6 +21,13 @@ export const ProposalActionIconMap: Record<string, React.ComponentType<IconProps
   xaccount: CrossChainOutlineIcon,
 };
 
-export const getProposalActionIcon = (actionType: string): React.ComponentType<IconProps> => {
-  return ProposalActionIconMap[actionType] || ProposalsOutlineIcon; // fallback to proposals icon
+export const getProposalActionIcon = (
+  actionType: Exclude<ProposalActionType, "add"> | string
+): React.ComponentType<IconProps> => {
+  if ((actionType as string) in ProposalActionIconMap) {
+    return ProposalActionIconMap[
+      actionType as Exclude<ProposalActionType, "add">
+    ];
+  }
+  return ProposalsOutlineIcon;
 };

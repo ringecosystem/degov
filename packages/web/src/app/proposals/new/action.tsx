@@ -8,9 +8,9 @@ import {
 import { type ProposalActionType } from "@/config/proposals";
 import { cn } from "@/lib/utils";
 interface NewProposalActionProps {
-  type: Omit<ProposalActionType, "add">;
+  type: Exclude<ProposalActionType, "add">;
   tip?: string;
-  onSwitch?: (type: Omit<ProposalActionType, "add">) => void;
+  onSwitch?: (type: Exclude<ProposalActionType, "add">) => void;
   active?: boolean;
   error?: boolean;
 }
