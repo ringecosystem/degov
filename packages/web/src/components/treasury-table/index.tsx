@@ -49,7 +49,7 @@ function TableSkeleton({
               </div>
             </TableCell>
             <TableCell className="text-center">
-              <div className="flex items-center gap-[10px] justify-end">
+              <div className="flex items-center gap-[10px] justify-center">
                 <Skeleton className="h-6 w-[80px]" />
               </div>
             </TableCell>
