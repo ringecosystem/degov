@@ -22,6 +22,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   const envVarName = `CHAIN_RPC_${config.chainId}`;
   const envRpcsRaw = process.env[envVarName];
   let envRpcs: string[] = [];
+  console.log(`ENV RPCS Raw: ${envRpcsRaw} of key ${envVarName}`);
 
   if (envRpcsRaw) {
     envRpcs = envRpcsRaw
@@ -41,6 +42,14 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
 
   const pickedIndex = Math.floor(Math.random() * allRpcs.length);
   const randomRpcUrl = allRpcs[pickedIndex];
+  console.log("Loaded ENV RPC endpoints:");
+  envRpcs.forEach((url, index) => {
+    console.log(` - [${index}] ${url}`);
+  });
+  console.log("Loaded Config RPC endpoints:");
+  configRpcs.forEach((url, index) => {
+    console.log(` - [${index}] ${url}`);
+  });
   console.log(
     `Using RPC endpoint: ${randomRpcUrl} picked index ${pickedIndex} from ${allRpcs.length}`
   );
