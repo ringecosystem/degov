@@ -192,7 +192,7 @@ export const TransferPanel = ({
             )}
           />
           {errors.recipient && (
-            <ErrorMessage message={errors.recipient.message} />
+            <ErrorMessage message={errors?.recipient?.message} />
           )}
         </div>
 

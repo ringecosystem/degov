@@ -1,7 +1,10 @@
-import Image from "next/image";
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 
+import {
+  ProposalActionErrorIcon,
+  ProposalActionCheckIcon,
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 import type { AbiItem } from "viem";
@@ -68,23 +71,13 @@ export const FileUploader = ({
           </p>
           {isError && (
             <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
-              <Image
-                src="/assets/image/proposal/action/error.svg"
-                alt="abi-file"
-                width={16}
-                height={16}
-              />
+              <ProposalActionErrorIcon width={16} height={16} />
               Must be a valid abi json file.
             </p>
           )}
           {isUploaded && (
             <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
-              <Image
-                src="/assets/image/proposal/action/check.svg"
-                alt="abi-file"
-                width={16}
-                height={16}
-              />
+              <ProposalActionCheckIcon width={16} height={16} />
               ABI file uploaded
             </p>
           )}

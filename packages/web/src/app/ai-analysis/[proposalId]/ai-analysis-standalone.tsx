@@ -1,11 +1,10 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import Image from "next/image";
 import Link from "next/link";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
-import { ExternalLinkIcon } from "@/components/icons";
+import { ExternalLinkIcon, StarIcon, StarActiveIcon } from "@/components/icons";
 import { AiLogo } from "@/components/icons/ai-logo";
 import { AiTitleIcon as AiTitleIcon1 } from "@/components/icons/ai-title-icon-1";
 import { AiTitleIcon as AiTitleIcon2 } from "@/components/icons/ai-title-icon-2";
@@ -49,17 +48,11 @@ const StarRating = ({
     <div className="flex items-center gap-[5px] lg:gap-[10px]">
       {Array.from({ length: total }, (_, i) => (
         <div key={i} className="w-4 lg:w-6 h-4 lg:h-6 relative">
-          <Image
-            src={
-              i < rating
-                ? "/assets/image/star-active.svg"
-                : "/assets/image/star.svg"
-            }
-            alt={i < rating ? "Active star" : "Inactive star"}
-            width={24}
-            height={24}
-            className="w-4 lg:w-6 h-4 lg:h-6"
-          />
+          {i < rating ? (
+            <StarActiveIcon className="w-4 lg:w-6 h-4 lg:h-6" />
+          ) : (
+            <StarIcon className="w-4 lg:w-6 h-4 lg:h-6" />
+          )}
         </div>
       ))}
     </div>
@@ -289,7 +282,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
                 <ExternalLinkIcon
                   width={24}
                   height={24}
-                  className="h-[24px] w-[24px] text-muted-foreground"
+                  className="h-[24px] w-[24px] text-foreground"
                 />
               </Link>
             </h3>
@@ -323,13 +316,13 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-muted-foreground">Chain</div>
+              <div className="text-[12px] text-foreground">Chain</div>
               <div className="text-[14px] font-semibold">
                 {analysisData.dao.config.chain.name}
               </div>
             </div>
             <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-muted-foreground">X</div>
+              <div className="text-[12px] text-foreground">X</div>
               <a
                 href={`https://x.com/${analysisData.twitter_user.username}/status/${analysisData.id}`}
                 target="_blank"
@@ -340,7 +333,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               </a>
             </div>
             <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-muted-foreground">DAO</div>
+              <div className="text-[12px] text-foreground">DAO</div>
               <a
                 href={analysisData?.dao?.links?.website}
                 target="_blank"
@@ -351,7 +344,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               </a>
             </div>
             <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-muted-foreground">Created</div>
+              <div className="text-[12px] text-foreground">Created</div>
               <div className="text-[14px] font-semibold">
                 {new Date(analysisData.ctime).toISOString()}
               </div>

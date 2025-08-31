@@ -1,8 +1,11 @@
-import Image from "next/image";
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 
 import type { XAccountContent } from "@/app/proposals/new/schema";
+import {
+  ProposalActionErrorIcon,
+  ProposalActionCheckIcon,
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 interface XAccountFileUploaderProps {
@@ -67,23 +70,13 @@ export const XAccountFileUploader = ({
           </p>
           {isError && (
             <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
-              <Image
-                src="/assets/image/proposal/action/error.svg"
-                alt="xaccount-file"
-                width={16}
-                height={16}
-              />
+              <ProposalActionErrorIcon width={16} height={16} />
               Must be a valid json file.
             </p>
           )}
           {isUploaded && (
             <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
-              <Image
-                src="/assets/image/proposal/action/check.svg"
-                alt="xaccount-file"
-                width={16}
-                height={16}
-              />
+              <ProposalActionCheckIcon width={16} height={16} />
               JSON file uploaded
             </p>
           )}

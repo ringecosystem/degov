@@ -9,6 +9,7 @@ export { ProposalCloseIcon } from './proposal-close-icon';
 export { ProposalPlusIcon } from './proposal-plus-icon';
 export { ProposalActionCheckIcon } from './proposal-action-check-icon';
 export { ProposalActionCancelIcon } from './proposal-action-cancel-icon';
+export { ProposalActionErrorIcon } from './proposal-action-error-icon';
 export { VoteForIcon } from './vote-for-icon';
 export { VoteAgainstIcon } from './vote-against-icon';
 export { VoteAbstainIcon } from './vote-abstain-icon';
@@ -28,6 +29,9 @@ export { ClockIcon } from './clock-icon';
 export { DiscussionIcon } from './discussion-icon';
 export { WarningIcon } from './warning-icon';
 export { AlertIcon } from './alert-icon';
+export { AvatarIcon } from './avatar-icon';
+export { StarIcon } from './star-icon';
+export { StarActiveIcon } from './star-active-icon';
 
 // Status Icons
 export { StatusPublishedIcon } from './status-published-icon';

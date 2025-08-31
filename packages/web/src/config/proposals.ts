@@ -8,28 +8,6 @@ export type ProposalActionType =
   | "preview"
   | "add";
 
-export interface ProposalAction {
-  type: ProposalActionType;
-  label: string;
-  icon: string;
-}
-
-export const PROPOSAL_ACTIONS = {
-  proposal: "/assets/image/proposals-outline.svg",
-  transfer: "/assets/image/transfer-outline.svg",
-  custom: "/assets/image/custom-outline.svg",
-  preview: "/assets/image/preview-outline.svg",
-  xaccount: "/assets/image/cross-chain-outline.svg",
-} as const;
-
-export const PROPOSAL_ACTIONS_LIGHT = {
-  proposal: "/assets/image/light/proposals-outline.svg",
-  transfer: "/assets/image/light/transfer-outline.svg",
-  custom: "/assets/image/light/custom-outline.svg",
-  preview: "/assets/image/light/preview-outline.svg",
-  xaccount: "/assets/image/light/cross-chain-outline.svg",
-} as const;
-
 export const getDisplayText = (status: ProposalState) => {
   switch (status) {
     case ProposalState.Pending:
