@@ -89,12 +89,7 @@ export class TextPlus {
 
   async extractInfo(description: string): Promise<ExtractTextInfo> {
     const openrouter = this.openrouter();
-    let title = this._extractTitleSimplify(description);
-    if (title) {
-      console.log("Extracted title simplify:", title);
-      return { title };
-    }
-
+    let title: string | undefined;
     if (openrouter) {
       try {
         const aiResp = await generateObject({
@@ -145,6 +140,11 @@ Extract a title from the content above, following these rules in order:
         );
         // AI failed, title is still ""
       }
+    }
+
+    if (!title) {
+      title = this._extractTitleSimplify(description);
+      console.log("Extracted title simplify:", title);
     }
 
     // If the title is still empty (because AI failed, returned nothing, or was never called),
