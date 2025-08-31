@@ -56,11 +56,18 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   processor.setFinalityConfirmation(config.finalityConfirmation ?? 50);
 
   config.works.forEach((work) => {
+    const range = { from: config.startBlock, to: config.endBlock };
+    const address = work.contracts.map((item) => item.address);
     processor.addLog({
-      range: { from: config.startBlock, to: config.endBlock },
-      address: work.contracts.map((item) => item.address),
+      range,
+      address,
       transaction: true,
     });
+    console.log(
+      `Add log watch for ${address.join(", ")} for range ${JSON.stringify(
+        range
+      )}`
+    );
   });
 
   const chainTool = new ChainTool();

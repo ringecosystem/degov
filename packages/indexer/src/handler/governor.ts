@@ -20,6 +20,7 @@ import {
 } from "../types";
 import { ChainTool, ClockMode } from "../internal/chaintool";
 import { TextPlus } from "../internal/textplus";
+import { DegovIndexerHelpers } from "../internal/helpers";
 
 export interface GovernorHandlerOptions {
   chainId: number;
@@ -92,9 +93,10 @@ export class GovernorHandler {
 
   private async storeProposalCreated(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalCreated.decode(eventLog);
+    const proposalId = this.stdProposalId(event.proposalId);
     const entity = new ProposalCreated({
       id: eventLog.id,
-      proposalId: this.stdProposalId(event.proposalId),
+      proposalId,
       proposer: event.proposer,
       targets: event.targets,
       values: event.values.map((item) => item.toString()),
@@ -108,6 +110,7 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+    this.ctx.log.info(`Proposal created event: ${proposalId}`);
 
     const { chainTool, textPlus, indexContract, work } = this.options;
     const governorTokenContract = work.contracts.find(
@@ -144,10 +147,15 @@ export class GovernorHandler {
       voteEndTimestamp = cpvt.voteEnd;
     }
     const eifo = await textPlus.extractInfo(event.description);
+    this.ctx.log.info(
+      `Extracted info for proposal ${proposalId}: ${DegovIndexerHelpers.safeJsonStringify(
+        eifo
+      )}`
+    );
 
     const proposal = new Proposal({
       id: eventLog.id,
-      proposalId: this.stdProposalId(event.proposalId),
+      proposalId,
       proposer: event.proposer,
       targets: event.targets,
       values: event.values.map((item) => item.toString()),

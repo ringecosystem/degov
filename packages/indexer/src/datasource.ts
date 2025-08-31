@@ -42,7 +42,7 @@ class DegovConfigDataSource {
     const contractNames = Object.keys(contracts);
     const indexContracts: IndexerContract[] = contractNames
       .filter((item) => {
-        return ["governor", "governorToken"].indexOf(item) != 0;
+        return ["governor", "governorToken"].indexOf(item) != -1;
       })
       .map((item) => {
         const c = contracts[item];
