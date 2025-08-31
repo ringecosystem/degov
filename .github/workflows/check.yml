@@ -20,8 +20,6 @@ jobs:
       - name: Install deps
         run: |
           pnpm install --no-frozen-lockfile
-          cd packages/indexer
-          yarn install
 
       - name: Check Build
         run: pnpm build:all
