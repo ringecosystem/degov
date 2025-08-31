@@ -142,13 +142,13 @@ type Proposal @entity {
   metricsVotesWeightAgainstSum: BigInt
   metricsVotesWeightAbstainSum: BigInt
 
-  title: String
-  voteStartTimestamp: BigInt
-  voteEndTimestamp: BigInt
+  title: String!
+  voteStartTimestamp: BigInt!
+  voteEndTimestamp: BigInt!
   blockInterval: String
-  clockMode: String
-  quorum: BigInt
-  decimals: BigInt
+  clockMode: String!
+  quorum: BigInt!
+  decimals: BigInt!
 }
 
 

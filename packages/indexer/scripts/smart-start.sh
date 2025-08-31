@@ -10,6 +10,10 @@ cd ${WORK_PATH}
 
 docker compose down || true
 
+if [ "$1" = "force" ]; then
+  rm -rf ${WORK_PATH}/.data || true
+fi
+
 docker compose up -d || true
 
 if [ "$1" = "force" ]; then
