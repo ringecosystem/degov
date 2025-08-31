@@ -4,8 +4,8 @@ on:
   pull_request:
 
 jobs:
-  check-code:
-    name: Check Code
+  check-web:
+    name: Check web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,12 +19,28 @@ jobs:
         with:
           version: 9
 
-      - name: Install deps
+      - name: Check build
+        working-directory: packages/web
         run: |
           pnpm install --no-frozen-lockfile
+          pnpm build
 
-      - name: Check Build
-        run: pnpm build:all
+  check-indexer:
+    name: Check indexer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check build
+        working-directory: packages/indexer
+        run: |
+          yarn install
+          yarn build
 
   check-config:
     name: Check Config
