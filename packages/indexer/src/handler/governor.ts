@@ -129,13 +129,12 @@ export class GovernorHandler {
     });
     let voteStartTimestamp = Number(event.voteStart) * 1000;
     let voteEndTimestamp = Number(event.voteEnd) * 1000;
-    let blockInterval: number | undefined;
+    const blockInterval = await chainTool.blockIntervalSeconds({
+      chainId: this.options.chainId,
+      rpcs: this.options.rpcs,
+      enableFloatValue: true,
+    });
     if (qmr.clockMode == ClockMode.BlockNumber) {
-      blockInterval = await chainTool.blockIntervalSeconds({
-        chainId: this.options.chainId,
-        rpcs: this.options.rpcs,
-        enableFloatValue: true,
-      });
       const cpvt = calculateProposalVoteTimestamp({
         clockMode: ClockMode.BlockNumber,
         proposalVoteEnd: Number(event.voteEnd),
@@ -174,10 +173,8 @@ export class GovernorHandler {
       quorum: qmr.quorum,
       decimals: qmr.decimals,
       title: eifo.title,
+      blockInterval: blockInterval.toString(),
     });
-    if (blockInterval) {
-      proposal.blockInterval = blockInterval.toString();
-    }
     await this.ctx.store.insert(proposal);
 
     await this.storeGlobalDataMetric({

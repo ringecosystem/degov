@@ -77,7 +77,7 @@ export class TokenHandler {
   private async storeDelegateChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
-    this.ctx.log.debug(
+    this.ctx.log.info(
       `Received delegate chanaged event: ${DegovIndexerHelpers.safeJsonStringify(
         event
       )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
@@ -137,7 +137,7 @@ export class TokenHandler {
   private async storeDelegateVotesChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
-    this.ctx.log.debug(
+    this.ctx.log.info(
       `Received delegate votes changed event: ${DegovIndexerHelpers.safeJsonStringify(
         event
       )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
@@ -165,7 +165,7 @@ export class TokenHandler {
         },
       });
     if (!delegateRolling) {
-      this.ctx.log.debug(
+      this.ctx.log.info(
         `skipped delegate votes changed, because it's from transfer (checked no delegatechanged event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
       );
       return;
@@ -175,12 +175,12 @@ export class TokenHandler {
       dvcDelegate !== delegateRolling.fromDelegate &&
       dvcDelegate !== delegateRolling.toDelegate
     ) {
-      this.ctx.log.debug(
+      this.ctx.log.info(
         `skipped delegate votes changed, because it's from transfer (checked no there is no matching delegated changed event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
       );
       return;
     }
-    this.ctx.log.debug(
+    this.ctx.log.info(
       `Queried delegate rolling (update rolling): ${DegovIndexerHelpers.safeJsonStringify(
         delegateRolling
       )} options: ${DegovIndexerHelpers.safeJsonStringify(options)} => tx: ${
@@ -249,7 +249,7 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
 
     const event = itokenAbi.events.Transfer.decode(eventLog);
-    this.ctx.log.debug(
+    this.ctx.log.info(
       `Received token transfer event: ${DegovIndexerHelpers.safeJsonStringify(
         event
       )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
