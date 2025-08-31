@@ -44,9 +44,9 @@ export function TransactionStatus({
         >
           Tx:{transactionHash.slice(0, 6)}...{transactionHash.slice(-4)}
           <ExternalLinkIcon
-            width={8}
-            height={8}
-            className="text-current"
+            width={14}
+            height={14}
+            className="text-current flex-shrink-0"
           />
         </a>
       </div>

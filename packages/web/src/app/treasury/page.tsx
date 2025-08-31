@@ -184,7 +184,7 @@ export default function Treasury() {
             Treasury Assets
           </h3>
           {Boolean(timeLockAddress) && (
-            <>
+            <span className="flex items-center gap-[5px]">
               <ClipboardIconButton text={timeLockAddress} size={16} />
               <Link
                 className="cursor-pointer hover:opacity-80"
@@ -194,12 +194,12 @@ export default function Treasury() {
                 title="View on Explorer"
               >
                 <ExternalLinkIcon
-                  width={20}
-                  height={20}
-                  className="text-muted-foreground"
+                  width={16}
+                  height={16}
+                  className="text-foreground"
                 />
               </Link>
-            </>
+            </span>
           )}
         </div>
         <div className="flex items-center gap-[10px]">
