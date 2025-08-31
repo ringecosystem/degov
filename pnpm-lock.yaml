@@ -6,14 +6,7 @@ settings:
 
 importers:
 
-  .:
-    dependencies:
-      github-markdown-css:
-        specifier: ^5.8.1
-        version: 5.8.1
-      next-themes:
-        specifier: ^0.4.6
-        version: 0.4.6(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+  .: {}
 
   packages/web:
     dependencies:
@@ -167,6 +160,9 @@ importers:
       framer-motion:
         specifier: ^12.4.10
         version: 12.23.12(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+      github-markdown-css:
+        specifier: ^5.8.1
+        version: 5.8.1
       graphql:
         specifier: ^16.10.0
         version: 16.11.0

@@ -91,7 +91,8 @@
     "viem": "2.x",
     "wagmi": "^2.14.13",
     "zod": "^3.24.2",
-    "zustand": "^5.0.8"
+    "zustand": "^5.0.8",
+    "github-markdown-css": "^5.8.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
