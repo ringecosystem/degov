@@ -7,8 +7,7 @@
     "codegen:schema": "npx sqd codegen",
     "codegen": "npm run codegen:abi && npm run codegen:schema",
     "migrate:db": "zx scripts/sqd-migration.mjs",
-    "build": "npm run codegen && rm -rf lib && tsc",
-    "postbuild": "mv lib/src build && rm -rf lib && mv build lib"
+    "build": "npm run codegen && rm -rf lib && tsc"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^0.7.5",
