@@ -39,8 +39,11 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
     );
   }
 
-  const randomRpcUrl = allRpcs[Math.floor(Math.random() * allRpcs.length)];
-  console.log(`Using RPC endpoint: ${randomRpcUrl}`);
+  const pickedIndex = Math.floor(Math.random() * allRpcs.length);
+  const randomRpcUrl = allRpcs[pickedIndex];
+  console.log(
+    `Using RPC endpoint: ${randomRpcUrl} picked index ${pickedIndex} from ${allRpcs.length}`
+  );
 
   const processor = new EvmBatchProcessor()
     .setFields(evmFieldSelection)
