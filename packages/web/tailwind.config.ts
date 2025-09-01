@@ -86,6 +86,12 @@ export default {
     "text-succeeded",
     "bg-executed/10",
     "text-executed",
+    "dark-blue",
+    "dark-red", 
+    "dark-green",
+    "light-pink",
+    "light-green", 
+    "dark-purple",
   ],
   plugins: [typography, animate],
 } satisfies Config;
