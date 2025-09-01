@@ -332,10 +332,10 @@ body {
     --yellow: 31 100% 50%;
     /* Purple #BC57FF */
     --purple: 276 100% 67%;
-    /* Always Light #09613C */
-    --always-light: 155 83% 21%;
-    /* Always Dark #FFFFFF */
-    --always-dark: 0 0% 100%;
+    /* Always Light #FFFFFF */ 
+    --always-light: 0 0% 100%;
+    /* Always Dark  #09613C */
+    --always-dark: 155 83% 21%;
 
     --background: var(--bg);
     --foreground: var(--light);
@@ -397,10 +397,10 @@ body {
     --yellow: 31 100% 50%;
     /* Purple #BC57FF */
     --purple: 276 100% 67%;
-    /* Always Light #F26D00 */
-    --always-light: 27 100% 47%;
-    /* Always Dark #FFFFFF */
-    --always-dark: 0 0% 100%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark  #F26D00 */ 
+    --always-dark: 27 100% 47%; 
 
     --background: var(--bg);
     --foreground: var(--light);
