@@ -1,4 +1,3 @@
-import { ethers } from "ethers";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import React from "react";
@@ -19,69 +18,18 @@ import {
 } from "@/components/ui/table";
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import {
+  type ParsedParam,
+  useDecodeCallData,
+  type Action,
+} from "@/hooks/useDecodeCallData";
 import { cn } from "@/lib/utils";
-import { formatFunctionSignature, simplifyFunctionSignature } from "@/utils";
+import { formatFunctionSignature } from "@/utils";
 import { formatBigIntForDisplay } from "@/utils/number";
-
-import type { Action } from "./action-table-raw";
 
 interface ActionTableSummaryProps {
   actions: Action[];
   isLoading?: boolean;
-}
-
-interface ParsedParam {
-  name: string;
-  type: string;
-  value: string | string[];
-}
-
-function parseCalldataParams(
-  signature: string,
-  calldata: string
-): ParsedParam[] {
-  if (!signature || !calldata || calldata === "0x") return [];
-
-  try {
-    const simplifiedSignature = simplifyFunctionSignature(signature);
-    const iface = new ethers.Interface([`function ${simplifiedSignature}`]);
-    const decoded = iface.decodeFunctionData(
-      simplifiedSignature.split("(")[0],
-      calldata
-    );
-
-    const match = signature.match(/\((.*)\)/);
-    if (!match || !match[1].trim()) return [];
-
-    const paramsString = match[1];
-    const paramDefinitions = paramsString
-      .split(",")
-      .map((param) => param.trim());
-
-    return paramDefinitions.map((paramDef, index) => {
-      const parts = paramDef.trim().split(/\s+/);
-      const type = parts[0];
-      const name = parts.length >= 2 ? parts.slice(1).join(" ") : type;
-
-      let value = decoded[index];
-      if (typeof value === "bigint") {
-        value = value.toString();
-      } else if (Array.isArray(value)) {
-        value = Array.from(value).map((v) =>
-          typeof v === "bigint" ? v.toString() : v
-        );
-      }
-
-      return {
-        name,
-        type,
-        value: Array.isArray(value) ? value : String(value),
-      };
-    });
-  } catch (e) {
-    console.warn("Error parsing calldata:", e);
-    return [];
-  }
 }
 
 export function ActionTableSummary({
@@ -90,6 +38,7 @@ export function ActionTableSummary({
 }: ActionTableSummaryProps) {
   const daoConfig = useDaoConfig();
   const [openParams, setOpenParams] = useState<number[]>([]);
+  const decodedActions = useDecodeCallData(actions);
 
   const toggleParams = (index: number) => {
     setOpenParams((prev) =>
@@ -98,10 +47,11 @@ export function ActionTableSummary({
   };
 
   const data = useMemo(() => {
-    return actions.map((action, index) => {
+    return decodedActions.map((action, index) => {
       const isXAccount =
         action?.signature ===
         "send(uint256 toChainId, address toDapp, bytes calldata message, bytes calldata params) external payable";
+
       const type =
         action?.calldata === "0x"
           ? "transfer"
@@ -116,15 +66,16 @@ export function ActionTableSummary({
           daoConfig?.chain?.nativeToken?.decimals ?? 18
         )} ${daoConfig?.chain?.nativeToken?.symbol}`;
       } else {
-        details = action?.signature
+        // Use function name from hook or formatted signature
+        details = action.functionName
+          ? action.functionName
+          : action?.signature
           ? formatFunctionSignature(action?.signature)
           : "";
       }
 
-      const params = parseCalldataParams(
-        action?.signature || "",
-        action?.calldata || ""
-      );
+      // Use parameters from hook
+      const params = action.parsedCalldata || [];
       const hasParams = params.length > 0 && type !== "transfer";
 
       return {
@@ -134,9 +85,10 @@ export function ActionTableSummary({
         params,
         hasParams,
         index,
+        isDecoding: action.isDecoding,
       };
     });
-  }, [actions, daoConfig]);
+  }, [decodedActions, daoConfig]);
 
   const LoadingRows = useMemo(() => {
     return Array.from({ length: 3 }).map((_, index) => (
