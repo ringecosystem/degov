@@ -21,8 +21,8 @@ importers:
         specifier: ^0.3.0
         version: 0.3.1
       '@subsquid/evm-processor':
-        specifier: ^1.19.1
-        version: 1.27.0
+        specifier: ^1.27.3
+        version: 1.27.3
       '@subsquid/graphql-server':
         specifier: ^4.6.0
         version: 4.9.0(@subsquid/big-decimal@1.0.0)(bufferutil@4.0.9)(typeorm@0.3.21(ioredis@5.6.0)(pg@8.13.3)(reflect-metadata@0.2.2))(utf-8-validate@5.0.10)
@@ -2412,8 +2412,8 @@ packages:
   '@subsquid/evm-codec@0.3.0':
     resolution: {integrity: sha512-W6EIiC7MJN2oWdbgzpUSDop+UtROdFAlvsrzc10g3AnCAaK31nH59tkTjylRxgECewWFCFWZrwsVp+a+lwvXMA==}
 
-  '@subsquid/evm-processor@1.27.0':
-    resolution: {integrity: sha512-TEwMygbB8mz5kj2HIVVF5U9ma+wCSZ7zpVX/4U1qgo+6inEQDF1PRns5hZvmU/vwn6PO9OsJR7KM3P3E6CK8ww==}
+  '@subsquid/evm-processor@1.27.3':
+    resolution: {integrity: sha512-Ace1/G4DKXFK8Wr56TmEkszJCwyhzMT6yeoVXUzdY2bqGSGh2bWCQEvtwfo2vxfkuPbix3seucQ7g+kH2BVIig==}
 
   '@subsquid/evm-typegen@4.3.0':
     resolution: {integrity: sha512-a/9MyePxlKmWpcsAopcZXBeNv+W0Mf39j7USOeHyE9QYJ7avF6baMsOQFvzbOwlk8s6w/uEURMxAMvnKgCWo5Q==}
@@ -2443,6 +2443,9 @@ packages:
   '@subsquid/http-client@1.6.0':
     resolution: {integrity: sha512-0QnOiMLTjR7j5RA33qJpAEOj2Eu9SIEqOp773ItbMObdAhWVNXL54Tu0a/p2Gk3Rq5+lYa4oFEpeFGbEdjtajg==}
 
+  '@subsquid/http-client@1.6.1':
+    resolution: {integrity: sha512-jzHUxNopsEfHQilS0v/T9oSKTRcooT7ezSG1/sRILAMtYR4b11VUkrxVCFWCUDEwahfDDPw1g/Cw68rMnRqkzg==}
+
   '@subsquid/logger@1.4.0':
     resolution: {integrity: sha512-Yep4hzpLfmm4pJMXuTnd3n7Hlo18Dce8vwKZduGE9n/p56cHq4BTbAuaXLK50vYKWx7Lyt2obVbJ4otVMWkyYg==}
 
@@ -2455,8 +2458,8 @@ packages:
       '@subsquid/big-decimal':
         optional: true
 
-  '@subsquid/rpc-client@4.11.0':
-    resolution: {integrity: sha512-0vVCqNEsi7OW/9sAEAQL6ljxQ2qmowtfMBVOBefw/l4AAib9e/PR1aS7EuBaiKq56e/iKzMOJigqvnEiS3EwFQ==}
+  '@subsquid/rpc-client@4.13.0':
+    resolution: {integrity: sha512-61lY/aaopNyDIaHmwjXH+HW02D1c1LbWQnfY0G/BkCy1sHhhI/4pUX6UyhvZAxMuy09sMep8+tib3a+VJcIAcA==}
 
   '@subsquid/typeorm-codegen@2.0.2':
     resolution: {integrity: sha512-MDeA4LrqbRIYpmlwRdO1GyPzq+pfIS17VAgkMbYx2LtyqMbSvIaYU5D+iE0QMJr/XvO4bXC8+qZ6Fx4kIMuvfw==}
@@ -2542,10 +2545,10 @@ packages:
   '@subsquid/util-internal-ts-node@0.0.0':
     resolution: {integrity: sha512-VBnrKrkNcqbT3hMLrjpEPuwMAihFhW9oUmK53bccBCCXrUiATNUblQD2S4IWd9/UBO5Q33ohpbE9sAodDq2DXw==}
 
-  '@subsquid/util-internal-validation@0.7.0':
-    resolution: {integrity: sha512-Y8o7am+btlHxJuPtS/0+qNe+QkyAOuxSSXhccRwj2mRUlYG81MnxWFgYs4ac+pWeayLfU/3SBvQJH5g7L82fTQ==}
+  '@subsquid/util-internal-validation@0.8.0':
+    resolution: {integrity: sha512-qrQ1L871pAtVy0LJ+JLTZk6x4QyHZqgMGCrlSJvXw3VZLBXDBDycTcKlZ96p5VcQRp6xFnYmVSPy9dl9SPXZHQ==}
     peerDependencies:
-      '@subsquid/logger': ^1.3.3
+      '@subsquid/logger': ^1.4.0
     peerDependenciesMeta:
       '@subsquid/logger':
         optional: true
@@ -9188,18 +9191,18 @@ snapshots:
     dependencies:
       '@subsquid/util-internal-hex': 1.2.2
 
-  '@subsquid/evm-processor@1.27.0':
+  '@subsquid/evm-processor@1.27.3':
     dependencies:
-      '@subsquid/http-client': 1.6.0
+      '@subsquid/http-client': 1.6.1
       '@subsquid/logger': 1.4.0
-      '@subsquid/rpc-client': 4.11.0
+      '@subsquid/rpc-client': 4.13.0
       '@subsquid/util-internal': 3.2.0
-      '@subsquid/util-internal-archive-client': 0.1.2(@subsquid/http-client@1.6.0)(@subsquid/logger@1.4.0)
+      '@subsquid/util-internal-archive-client': 0.1.2(@subsquid/http-client@1.6.1)(@subsquid/logger@1.4.0)
       '@subsquid/util-internal-hex': 1.2.2
-      '@subsquid/util-internal-ingest-tools': 1.1.4(@subsquid/util-internal-archive-client@0.1.2(@subsquid/http-client@1.6.0)(@subsquid/logger@1.4.0))
+      '@subsquid/util-internal-ingest-tools': 1.1.4(@subsquid/util-internal-archive-client@0.1.2(@subsquid/http-client@1.6.1)(@subsquid/logger@1.4.0))
       '@subsquid/util-internal-processor-tools': 4.2.1
       '@subsquid/util-internal-range': 0.3.0
-      '@subsquid/util-internal-validation': 0.7.0(@subsquid/logger@1.4.0)
+      '@subsquid/util-internal-validation': 0.8.0(@subsquid/logger@1.4.0)
       '@subsquid/util-timeout': 2.3.2
     transitivePeerDependencies:
       - supports-color
@@ -9259,6 +9262,12 @@ snapshots:
       '@subsquid/util-internal': 3.2.0
       node-fetch: 3.3.2
 
+  '@subsquid/http-client@1.6.1':
+    dependencies:
+      '@subsquid/logger': 1.4.0
+      '@subsquid/util-internal': 3.2.0
+      node-fetch: 3.3.2
+
   '@subsquid/logger@1.4.0':
     dependencies:
       '@subsquid/util-internal-hex': 1.2.2
@@ -9295,9 +9304,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@subsquid/rpc-client@4.11.0':
+  '@subsquid/rpc-client@4.13.0':
     dependencies:
-      '@subsquid/http-client': 1.6.0
+      '@subsquid/http-client': 1.6.1
       '@subsquid/logger': 1.4.0
       '@subsquid/util-internal': 3.2.0
       '@subsquid/util-internal-binary-heap': 1.0.0
@@ -9347,9 +9356,9 @@ snapshots:
       '@subsquid/util-internal': 3.2.0
       typeorm: 0.3.21(ioredis@5.6.0)(pg@8.13.3)(reflect-metadata@0.2.2)
 
-  '@subsquid/util-internal-archive-client@0.1.2(@subsquid/http-client@1.6.0)(@subsquid/logger@1.4.0)':
+  '@subsquid/util-internal-archive-client@0.1.2(@subsquid/http-client@1.6.1)(@subsquid/logger@1.4.0)':
     dependencies:
-      '@subsquid/http-client': 1.6.0
+      '@subsquid/http-client': 1.6.1
       '@subsquid/util-internal': 3.2.0
       '@subsquid/util-internal-range': 0.3.0
     optionalDependencies:
@@ -9372,13 +9381,13 @@ snapshots:
       '@subsquid/logger': 1.4.0
       stoppable: 1.1.0
 
-  '@subsquid/util-internal-ingest-tools@1.1.4(@subsquid/util-internal-archive-client@0.1.2(@subsquid/http-client@1.6.0)(@subsquid/logger@1.4.0))':
+  '@subsquid/util-internal-ingest-tools@1.1.4(@subsquid/util-internal-archive-client@0.1.2(@subsquid/http-client@1.6.1)(@subsquid/logger@1.4.0))':
     dependencies:
       '@subsquid/logger': 1.4.0
       '@subsquid/util-internal': 3.2.0
       '@subsquid/util-internal-range': 0.3.0
     optionalDependencies:
-      '@subsquid/util-internal-archive-client': 0.1.2(@subsquid/http-client@1.6.0)(@subsquid/logger@1.4.0)
+      '@subsquid/util-internal-archive-client': 0.1.2(@subsquid/http-client@1.6.1)(@subsquid/logger@1.4.0)
 
   '@subsquid/util-internal-json-fix-unsafe-integers@0.0.0': {}
 
@@ -9410,7 +9419,7 @@ snapshots:
 
   '@subsquid/util-internal-ts-node@0.0.0': {}
 
-  '@subsquid/util-internal-validation@0.7.0(@subsquid/logger@1.4.0)':
+  '@subsquid/util-internal-validation@0.8.0(@subsquid/logger@1.4.0)':
     optionalDependencies:
       '@subsquid/logger': 1.4.0
 
