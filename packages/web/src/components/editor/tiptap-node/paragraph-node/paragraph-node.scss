@@ -21,7 +21,11 @@
   --tiptap-mathematics-bg-color: var(--tt-gray-light-a-200);
   --tiptap-mathematics-border-color: var(--tt-brand-color-500);
 
-  .dark & {
+  .dark &,
+  .dark-red &,
+  .dark-blue &,
+  .dark-green &,
+  .dark-purple & {
     --blockquote-bg-color: var(--tt-gray-dark-900);
     --link-text-color: var(--tt-brand-color-400);
     --separator-color: var(--tt-gray-dark-a-200);

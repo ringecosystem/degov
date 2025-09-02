@@ -5,7 +5,11 @@
   --tt-popover-border-color: var(--tt-gray-light-a-100);
   --tt-popover-text-color: var(--tt-gray-light-a-600);
 
-  .dark & {
+  .dark &,
+  .dark-red &,
+  .dark-blue &,
+  .dark-green &,
+  .dark-purple & {
     --white: rgba(255, 255, 255, 1);
     --tt-gray-light-a-100: rgba(15, 22, 36, 0.05);
     --tt-gray-light-a-600: rgba(36, 39, 46, 0.78);

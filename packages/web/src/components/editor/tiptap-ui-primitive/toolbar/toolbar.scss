@@ -5,7 +5,11 @@
   --tt-toolbar-border-color: var(--tt-gray-light-a-100);
 }
 
-.dark {
+.dark,
+.dark-red,
+.dark-blue,
+.dark-green,
+.dark-purple {
   --tt-toolbar-bg-color: var(--black);
   --tt-toolbar-border-color: var(--tt-gray-dark-a-50);
 }

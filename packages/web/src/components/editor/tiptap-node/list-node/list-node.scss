@@ -6,7 +6,11 @@
   --tt-checklist-check-icon-color: #fff;
   --tt-checklist-text-active: var(--tt-gray-light-a-500);
 
-  .dark & {
+  .dark &,
+  .dark-red &,
+  .dark-blue &,
+  .dark-green &,
+  .dark-purple & {
     --tt-checklist-bg-color: var(--tt-gray-dark-a-100);
     --tt-checklist-bg-active-color: var(--tt-gray-dark-a-900);
     --tt-checklist-border-color: var(--tt-gray-dark-a-200);
