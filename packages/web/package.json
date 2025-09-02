@@ -64,7 +64,7 @@
     "ethers": "^6.13.5",
     "framer-motion": "^12.4.10",
     "graphql": "^16.10.0",
-    "graphql-request": "^7.1.2",
+    "graphql-request": "^7.2.0",
     "jose": "^6.0.8",
     "js-yaml": "^4.1.0",
     "lodash-es": "^4.17.21",
