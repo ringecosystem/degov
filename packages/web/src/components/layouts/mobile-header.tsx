@@ -6,6 +6,7 @@ import React, { useMemo } from "react";
 
 import { AppIcon, LogoIcon } from "@/components/icons";
 import { SearchModal } from "@/components/search-modal";
+import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import { MobileMenu } from "./mobile-menu";
@@ -14,6 +15,7 @@ export const MobileHeader = () => {
   const [open, setOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const config = useDaoConfig();
+  const { isDarkTheme } = useCustomTheme();
 
   const isCustomLogo = useMemo(() => {
     return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
@@ -30,24 +32,14 @@ export const MobileHeader = () => {
           <div className="flex items-center gap-[10px]">
             <Link href="/">
               {isCustomLogo ? (
-                <>
-                  <Image
-                    src={config?.theme?.logoDark ?? ""}
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] rounded-full hidden dark:block border border-[var(--card-background)]"
-                  />
-                  <Image
-                    src={config?.theme?.logoLight ?? ""}
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] rounded-full block dark:hidden border border-[var(--card-background)]"
-                  />
-                </>
+                <Image
+                  src={isDarkTheme ? (config?.theme?.logoDark ?? "") : (config?.theme?.logoLight ?? "")}
+                  alt="logo"
+                  width={128}
+                  height={26}
+                  priority
+                  className="h-[26px] w-[128px] rounded-full border border-[var(--card-background)]"
+                />
               ) : (
                 <LogoIcon width={128} height={26} className="h-[26px] w-[128px]" />
               )}

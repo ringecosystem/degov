@@ -68,9 +68,9 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
             rel="noopener noreferrer"
           >
             <ExternalLinkIcon
-              width={22}
+              width={20}
               height={20}
-              className="flex-shrink-0 mt-[2px] text-current"
+              className="flex-shrink-0 mt-[2px] text-foreground"
             />
           </Link>
         </div>
