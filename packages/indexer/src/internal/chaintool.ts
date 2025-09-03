@@ -494,7 +494,7 @@ export class ChainTool {
       const contractStandard = (options.standard ?? "ERC20").toUpperCase();
       try {
         if (contractStandard === "ERC721") {
-          decimals = 1n;
+          decimals = 0n;
         } else {
           const decimalsResult = await this._executeWithFallbacks(
             options,
