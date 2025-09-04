@@ -6,6 +6,12 @@ export const isDegovApiConfiguredServer = () => {
   return !!NEXT_PUBLIC_DEGOV_API;
 };
 
+export const degovGraphqlApi = (): string | undefined => {
+  const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
+  if (!NEXT_PUBLIC_DEGOV_API) return undefined;
+  return `${NEXT_PUBLIC_DEGOV_API}/graphql`;
+};
+
 export const degovApiDaoConfigServer = (): string | undefined => {
   const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
   const NEXT_PUBLIC_DEGOV_DAO = process.env.NEXT_PUBLIC_DEGOV_DAO;
