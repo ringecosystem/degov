@@ -513,7 +513,7 @@ export class ChainTool {
         );
       }
 
-      if (decimals == undefined) {
+      if (decimals === undefined) {
         throw new Error("Missing decimals value");
       }
 
