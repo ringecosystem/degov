@@ -4,7 +4,7 @@ services:
     shm_size: 1gb
     environment:
       POSTGRES_DB: postgres
-      POSTGRES_PASSWORD: let-me-in
+      POSTGRES_PASSWORD: ${DEGOV_DB_PASSWORD}
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
       - ./init-scripts/postgres:/docker-entrypoint-initdb.d
@@ -24,11 +24,16 @@ services:
       DB_HOST: postgres
       DB_NAME: indexer
       DB_USER: postgres
-      DB_PASS: let-me-in
+      DB_PASS: ${DEGOV_DB_PASSWORD}
       DB_PORT: 5432
       GQL_PORT: 4350
       DEGOV_SYNC_ENDPOINT: http://web:3000/api/degov/sync
-      DEGOV_SYNC_AUTH_TOKEN: 69a61f05a147f65fe27a654cd5b98e07
+      DEGOV_SYNC_AUTH_TOKEN: ${DEGOV_SYNC_AUTH_TOKEN}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_DEFAULT_MODEL: ${OPENROUTER_DEFAULT_MODEL}
+      CHAIN_RPC_1: ${CHAIN_RPC_1}
+      # CHAIN_RPC_10: ${CHAIN_RPC_10}
+      # CHAIN_RPC_...: ${CHAIN_RPC_...}
 
   web:
     image: degov-web
@@ -38,8 +43,8 @@ services:
       context: .
       dockerfile: docker/web.Dockerfile
     ports:
-      - "0.0.0.0:${DEGOV_WEB_PORT:-3002}:3000"
+      - "${DEGOV_WEB_PORT:-3002}:3000"
     environment:
-      JWT_SECRET_KEY: 575276a8eb83abc2
-      DATABASE_URL: postgresql://postgres:let-me-in@postgres:5432/degov
-      DEGOV_SYNC_AUTH_TOKEN: 69a61f05a147f65fe27a654cd5b98e07
+      JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET}
+      DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD}@postgres/degov
+      DEGOV_SYNC_AUTH_TOKEN: ${DEGOV_SYNC_AUTH_TOKEN}
