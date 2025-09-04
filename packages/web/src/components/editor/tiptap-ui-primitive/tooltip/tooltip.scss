@@ -4,7 +4,11 @@
   --tt-tooltip-text: var(--white);
   --tt-kbd: var(--tt-gray-dark-a-400);
 
-  .dark & {
+  .dark &,
+  .dark-red &,
+  .dark-blue &,
+  .dark-green &,
+  .dark-purple & {
     --white: rgba(255, 255, 255, 1);
     --tt-tooltip-bg: var(--white);
     --tt-tooltip-text: var(--tt-gray-light-600);

@@ -53,9 +53,9 @@ export function IndexerStatus({
             )}
             style={{ width: `${syncPercentage}%` }}
           >
-            <span className="text-xs text-white inline-flex gap-1">
+            <span className="text-xs text-always-light inline-flex gap-1">
               <span>{syncPercentage.toFixed(1)}%</span>
-              <span className="text-xs capitalize text-white">{status}</span>
+              <span className="text-xs capitalize text-always-light">{status}</span>
             </span>
           </div>
         </div>

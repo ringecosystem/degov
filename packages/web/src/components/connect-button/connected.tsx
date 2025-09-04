@@ -1,8 +1,8 @@
 import { ChevronDown, Power } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback } from "react";
 
+import { ExternalLinkIcon, ProfileIcon } from "@/components/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,19 +67,10 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
             target="_blank"
             rel="noopener noreferrer"
           >
-            <Image
-              src="/assets/image/light/external-link.svg"
-              alt="external link"
-              width={22}
+            <ExternalLinkIcon
+              width={20}
               height={20}
-              className="block dark:hidden flex-shrink-0 mt-[2px]"
-            />
-            <Image
-              src="/assets/image/external-link.svg"
-              alt="external link"
-              width={22}
-              height={20}
-              className="hidden dark:block flex-shrink-0 mt-[2px]"
+              className="flex-shrink-0 mt-[2px] text-foreground"
             />
           </Link>
         </div>
@@ -87,33 +78,24 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
         <div className="flex flex-col justify-center gap-[20px]">
           <Button
             asChild
-            className="w-full gap-[10px] rounded-[100px] border-border bg-card"
+            className="w-full gap-[10px] rounded-[100px] border-foreground bg-card"
             variant="outline"
           >
-            <Link href="/profile" onClick={() => onMenuToggle?.()}>
-              <Image
-                src="/assets/image/light/profile.svg"
-                alt="profile"
-                width={20}
-                height={20}
-                className="dark:hidden"
-              />
-              <Image
-                src="/assets/image/profile.svg"
-                alt="profile"
-                width={20}
-                height={20}
-                className="hidden dark:block"
-              />
+            <Link
+              href="/profile"
+              onClick={() => onMenuToggle?.()}
+              className="text-foreground"
+            >
+              <ProfileIcon width={20} height={20} className="text-current" />
               <span className="text-[14px]">Profile</span>
             </Link>
           </Button>
           <Button
             onClick={handleDisconnect}
-            className="w-full gap-[10px] rounded-[100px] border-border bg-card"
+            className="w-full gap-[10px] rounded-[100px] border-foreground bg-card text-foreground"
             variant="outline"
           >
-            <Power size={20} className="text-foreground" strokeWidth={2} />
+            <Power size={20} className="text-current" strokeWidth={2} />
             <span className="text-[14px]">Disconnect</span>
           </Button>
         </div>

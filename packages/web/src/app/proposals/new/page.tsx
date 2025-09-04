@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Fragment,
@@ -13,6 +12,7 @@ import { toast } from "react-toastify";
 import { useImmer } from "use-immer";
 import { toHex } from "viem";
 
+import { PlusIcon } from "@/components/icons";
 import type { SuccessType } from "@/components/transaction-toast";
 import { TransactionToast } from "@/components/transaction-toast";
 import { Button } from "@/components/ui/button";
@@ -73,19 +73,10 @@ const PublishButton = ({
       disabled={disabled}
       isLoading={isLoading}
     >
-      <Image
-        src="/assets/image/light/proposal/plus.svg"
-        alt="plus"
+      <PlusIcon
         width={16}
         height={16}
-        className="block dark:hidden"
-      />
-      <Image
-        src="/assets/image/proposal/plus.svg"
-        alt="plus"
-        width={16}
-        height={16}
-        className="hidden dark:block"
+        className="text-current"
       />
       <span>Publish</span>
     </Button>
@@ -306,19 +297,10 @@ export default function NewProposal() {
               onClick={handlePublish}
               isLoading={publishLoading || isPending || isLoading}
             >
-              <Image
-                src="/assets/image/light/proposal/plus.svg"
-                alt="plus"
+              <PlusIcon
                 width={16}
                 height={16}
-                className="block dark:hidden"
-              />
-              <Image
-                src="/assets/image/proposal/plus.svg"
-                alt="plus"
-                width={16}
-                height={16}
-                className="hidden dark:block"
+                className="text-current"
               />
               <span>Publish</span>
             </Button>

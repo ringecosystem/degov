@@ -2,7 +2,11 @@
   --tt-toolbar-height: 44px;
   --tt-theme-text: var(--tt-gray-light-900);
 
-  .dark & {
+  .dark &,
+  .dark-red &,
+  .dark-blue &,
+  .dark-green &,
+  .dark-purple & {
     --tt-theme-text: var(--tt-gray-dark-900);
   }
 }

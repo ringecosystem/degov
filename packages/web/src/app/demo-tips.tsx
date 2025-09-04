@@ -1,7 +1,7 @@
 "use client";
-import Image from "next/image";
 
 import AlertUI from "@/components/alert";
+import { AlertIcon } from "@/components/icons";
 import { useIsDemoDao } from "@/hooks/useIsDemoDao";
 export function DemoTips() {
   const isDemoDao = useIsDemoDao();
@@ -10,13 +10,8 @@ export function DemoTips() {
       <AlertUI
         message={
           <span className="flex items-center gap-[10px] bg-success p-[20px] rounded-[14px]">
-            <Image
-              src="/assets/image/alert.svg"
-              alt="warning"
-              width={24}
-              height={24}
-            />
-            <span className="text-[16px] text-white">
+            <AlertIcon width={24} height={24} className="flex-shrink-0" />
+            <span className="text-[16px] text-always-light font-semibold">
               Note: Welcome to the DeGov demo. Comment your ETH address at{" "}
               <a
                 href="https://github.com/ringecosystem/degov/discussions/48"

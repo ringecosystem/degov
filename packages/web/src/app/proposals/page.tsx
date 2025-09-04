@@ -1,11 +1,11 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { Faqs } from "@/components/faqs";
+import { PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
@@ -160,19 +160,10 @@ function ProposalsContent() {
                   className="flex items-center gap-[5px] rounded-[100px]"
                   onClick={handleNewProposalClick}
                 >
-                  <Image
-                    src="/assets/image/light/plus.svg"
-                    alt="plus"
+                  <PlusIcon
                     width={20}
                     height={20}
-                    className="size-[20px] block dark:hidden"
-                  />
-                  <Image
-                    src="/assets/image/plus.svg"
-                    alt="plus"
-                    width={20}
-                    height={20}
-                    className="size-[20px] hidden dark:block"
+                    className="size-[20px] text-current"
                   />
                   New Proposal
                 </Button>

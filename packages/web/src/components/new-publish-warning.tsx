@@ -1,6 +1,6 @@
-import Image from "next/image";
 import { useMemo } from "react";
 
+import { CloseIcon } from "@/components/icons";
 import {
   Dialog,
   DialogContent,
@@ -52,9 +52,7 @@ export function NewPublishWarning({
             </svg>{" "}
             Inefficient Voting Power
           </DialogTitle>
-          <Image
-            src="/assets/image/close.svg"
-            alt="close"
+          <CloseIcon
             width={24}
             height={24}
             className="cursor-pointer transition-opacity hover:opacity-80"

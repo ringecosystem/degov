@@ -1,7 +1,8 @@
 import { capitalize } from "lodash-es";
 import Link from "next/link";
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
 
+import { getSocialIcon } from "@/components/icons/social-icon-map";
 import type { ProfileData } from "@/services/graphql/types/profile";
 import {
   getDiscordLink,
@@ -66,34 +67,26 @@ export const SocialLinks = ({ profile, isAiBot }: SocialLinksProps) => {
   );
   return (
     <div className="flex items-center gap-[10px]">
-      {socialLinks.map((social) => (
-        <Fragment key={social.name}>
+      {socialLinks.map((social) => {
+        const IconComponent = getSocialIcon(social.name.toLowerCase());
+        
+        return (
           <Link
+            key={social.name}
             href={social.link || "#"}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-foreground transition-opacity hover:opacity-80 dark:hidden"
+            className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-foreground transition-opacity hover:opacity-80"
             title={capitalize(social.name)}
-            style={{
-              backgroundImage: `url(/assets/image/light/user_social/${social.name.toLowerCase()}.svg)`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "center",
-            }}
-          ></Link>
-          <Link
-            href={social.link || "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="size-[24px] cursor-pointer items-center justify-center rounded-full bg-foreground transition-opacity hover:opacity-80 hidden dark:flex"
-            title={capitalize(social.name)}
-            style={{
-              backgroundImage: `url(/assets/image/user_social/${social.name.toLowerCase()}.svg)`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "center",
-            }}
-          ></Link>
-        </Fragment>
-      ))}
+          >
+            <IconComponent
+              width={16}
+              height={16}
+              className="text-background"
+            />
+          </Link>
+        );
+      })}
     </div>
   );
 };

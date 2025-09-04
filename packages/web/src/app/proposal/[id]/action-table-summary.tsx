@@ -1,9 +1,10 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import Image from "next/image";
 import React from "react";
 import { useMemo, useState } from "react";
 
+import { ExternalLinkIcon } from "@/components/icons";
+import { getProposalActionIcon } from "@/components/icons/proposal-actions-map";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,7 +17,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
-import { PROPOSAL_ACTIONS, PROPOSAL_ACTIONS_LIGHT } from "@/config/proposals";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import {
   type ParsedParam,
@@ -157,28 +157,18 @@ export function ActionTableSummary({
                           style={{ width: "24.76%" }}
                         >
                           <div className="flex items-center gap-[10px]">
-                            <Image
-                              src={
-                                PROPOSAL_ACTIONS_LIGHT[
-                                  record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS_LIGHT
-                                ]
-                              }
-                              alt={record.type}
-                              width={24}
-                              height={24}
-                              className="rounded-full block dark:hidden"
-                            />
-                            <Image
-                              src={
-                                PROPOSAL_ACTIONS[
-                                  record.type?.toLowerCase() as keyof typeof PROPOSAL_ACTIONS
-                                ]
-                              }
-                              alt={record.type}
-                              width={24}
-                              height={24}
-                              className="rounded-full hidden dark:block"
-                            />
+                            {(() => {
+                              const IconComponent = getProposalActionIcon(
+                                record.type?.toLowerCase()
+                              );
+                              return (
+                                <IconComponent
+                                  width={24}
+                                  height={24}
+                                  className="rounded-full text-current"
+                                />
+                              );
+                            })()}
                             <span className="text-[14px] capitalize">
                               {record.type === "xAccount"
                                 ? "XAccount Cross-chain"
@@ -200,19 +190,10 @@ export function ActionTableSummary({
                                 rel="noreferrer"
                                 className="hover:opacity-80 transition-opacity duration-300 cursor-pointer flex-shrink-0"
                               >
-                                <Image
-                                  src="/assets/image/light/external-link.svg"
-                                  alt="external-link"
+                                <ExternalLinkIcon
                                   width={16}
                                   height={16}
-                                  className="dark:hidden"
-                                />
-                                <Image
-                                  src="/assets/image/external-link.svg"
-                                  alt="external-link"
-                                  width={16}
-                                  height={16}
-                                  className="hidden dark:block"
+                                  className="text-muted-foreground"
                                 />
                               </a>
                             </span>
@@ -239,7 +220,7 @@ export function ActionTableSummary({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => toggleParams(record.index)}
-                                className="text-[14px] text-foreground/40 cursor-pointer flex-shrink-0"
+                                className="text-[14px] text-foreground/40 font-normal cursor-pointer flex-shrink-0"
                                 asChild
                               >
                                 <motion.div whileTap={{ scale: 0.95 }}>

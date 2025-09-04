@@ -1,8 +1,8 @@
-import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { AddressWithAvatarFull } from "@/components/address-with-avatar-full";
+import { CloseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -71,9 +71,7 @@ export function Voting({
       <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
         <DialogHeader className="flex w-full flex-row items-center justify-between">
           <DialogTitle className="text-[18px] font-bold">Voting</DialogTitle>
-          <Image
-            src="/assets/image/close.svg"
-            alt="close"
+          <CloseIcon
             width={24}
             height={24}
             className="cursor-pointer transition-opacity hover:opacity-80"
@@ -107,7 +105,7 @@ export function Voting({
             </span>
           </div>
 
-          <div className="flex flex-col gap-[20px]">
+          <div className="flex flex-col gap-[5px]">
             <h4 className="text-[14px] font-normal">Vote</h4>
             <div className="flex items-center justify-between gap-[10px]">
               <VoteStatusAction
@@ -131,17 +129,16 @@ export function Voting({
             </div>
           </div>
 
-          <div className="flex flex-col gap-[20px]">
+          <div className="flex flex-col gap-[5px]">
             <h4 className="text-[14px] font-normal">Add comment</h4>
             <Textarea
-              className="rounded-[10px] border border-border/20 bg-card p-[10px]"
+              className="rounded-[10px] border border-border text--muted-foreground bg-card p-[10px]"
               placeholder="Why are you voting this way?"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
           </div>
         </div>
-        <Separator className="my-0 bg-muted-foreground/40" />
         <Button
           className="rounded-[100px]"
           onClick={handleCastVote}

@@ -39,7 +39,9 @@ export const Overview = () => {
 
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px]">
-      <h3 className="text-[16px] lg:text-[18px] font-extrabold text-foreground">Overview</h3>
+      <h3 className="text-[16px] lg:text-[18px] font-extrabold text-foreground">
+        Overview
+      </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-[15px] lg:gap-[20px] xl:grid-cols-4">
         <OverviewItem
           title="Proposals"

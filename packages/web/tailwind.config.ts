@@ -60,13 +60,8 @@ export default {
         executed: "hsl(var(--executed))",
         defeated: "hsl(var(--defeated))",
         canceled: "hsl(var(--canceled))",
-        chart: {
-          "1": "hsl(var(--chart-1))",
-          "2": "hsl(var(--chart-2))",
-          "3": "hsl(var(--chart-3))",
-          "4": "hsl(var(--chart-4))",
-          "5": "hsl(var(--chart-5))",
-        },
+        "always-light": "hsl(var(--always-light))",
+        "always-dark": "hsl(var(--always-dark))",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -91,6 +86,12 @@ export default {
     "text-succeeded",
     "bg-executed/10",
     "text-executed",
+    "dark-blue",
+    "dark-red", 
+    "dark-green",
+    "light-pink",
+    "light-green", 
+    "dark-purple",
   ],
   plugins: [typography, animate],
 } satisfies Config;

@@ -18,7 +18,7 @@ export const Contracts = () => {
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          className="rounded-full border-border bg-[#202224] text-white"
+          className="rounded-full border-always-light bg-transparent text-always-light hover:bg-transparent hover:text-always-light hover:opacity-80 duration-300 transition-opacity"
           size="sm"
         >
           Contracts

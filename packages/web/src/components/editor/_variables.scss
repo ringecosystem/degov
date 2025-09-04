@@ -188,7 +188,11 @@
 }
 
 /* Global colors - Dark mode */
-.dark {
+.dark,
+.dark-red,
+.dark-blue,
+.dark-green,
+.dark-purple {
   --tt-bg-color: var(--black);
   --tt-border-color: var(--tt-gray-dark-a-200);
   --tt-border-color-tint: var(--tt-gray-dark-a-100);

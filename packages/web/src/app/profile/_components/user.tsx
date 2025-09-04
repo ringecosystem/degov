@@ -1,10 +1,10 @@
-import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
+import { ExternalLinkIcon } from "@/components/icons";
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { ProfileData } from "@/services/graphql/types/profile";
@@ -68,7 +68,7 @@ export const User = ({
                 )}
               </AddressResolver>
               <div className="flex gap-[8px] lg:gap-[10px]">
-                <span className="text-[12px] lg:text-[14px] text-foreground/40 flex-shrink-0">
+                <span className="text-[12px] lg:text-[14px] text-foreground/60 flex-shrink-0">
                   {formatShortAddress(address)}
                 </span>
                 <div className="flex items-center gap-[5px]">
@@ -82,19 +82,10 @@ export const User = ({
                     rel="noreferrer"
                     className="flex-shrink-0"
                   >
-                    <Image
-                      src="/assets/image/light/external-link.svg"
-                      alt="external-link"
+                    <ExternalLinkIcon
                       width={14}
                       height={14}
-                      className="dark:hidden lg:w-4 lg:h-4"
-                    />
-                    <Image
-                      src="/assets/image/external-link.svg"
-                      alt="external-link"
-                      width={14}
-                      height={14}
-                      className="hidden dark:block lg:w-4 lg:h-4"
+                      className="text-foreground lg:w-4 lg:h-4"
                     />
                   </Link>
                 </div>
@@ -140,12 +131,10 @@ export const User = ({
                 className="hover:underline ml-1"
               >
                 https://docs.degov.ai/governance/agent/overview
-                <Image
-                  src="/assets/image/light/external-link.svg"
-                  alt="external-link"
+                <ExternalLinkIcon
                   width={16}
                   height={16}
-                  className="dark:hidden"
+                  className="text-muted-foreground"
                 />
               </a>
             </span>
@@ -156,7 +145,7 @@ export const User = ({
           )}
         </p>
       ) : (
-        <p className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-muted-foreground">
+        <p className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-foreground">
           No delegate statement found.
         </p>
       )}

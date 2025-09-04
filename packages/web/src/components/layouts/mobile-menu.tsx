@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 
 import { Nav } from "@/app/nav";
 import { ConnectButton } from "@/components/connect-button";
+import { BottomLogoIcon } from "@/components/icons";
 import { IndexerStatus } from "@/components/indexer-status";
-import { ThemeButton } from "@/components/theme-button";
+import { ThemeSelector } from "@/components/theme-selector";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,7 +44,7 @@ export const MobileMenu = ({
         >
           <div className="flex items-center justify-between p-4 ">
             <ConnectButton onMenuToggle={onMenuToggle} />
-            <ThemeButton />
+            <ThemeSelector />
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">
@@ -67,12 +67,9 @@ export const MobileMenu = ({
                 rel="noopener noreferrer"
                 className="hover:opacity-80 transition-all duration-300"
               >
-                <Image
-                  src="/assets/image/bottom-logo.svg"
-                  alt="logo"
+                <BottomLogoIcon
                   width={16}
                   height={16}
-                  priority
                 />
               </Link>
               <span className="text-[12px]">DeGov.AI</span>

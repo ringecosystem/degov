@@ -180,7 +180,7 @@ export function ProfileAvatar({
 
       <Button
         variant="outline"
-        className="w-full rounded-[100px] border-border bg-card"
+        className="w-full rounded-[100px]"
         onClick={handleButtonClick}
         isLoading={isProcessing || isLoading}
       >

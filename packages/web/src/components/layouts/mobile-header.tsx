@@ -4,7 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import React, { useMemo } from "react";
 
+import { AppIcon, LogoIcon } from "@/components/icons";
 import { SearchModal } from "@/components/search-modal";
+import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import { MobileMenu } from "./mobile-menu";
@@ -13,6 +15,7 @@ export const MobileHeader = () => {
   const [open, setOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const config = useDaoConfig();
+  const { isDarkTheme } = useCustomTheme();
 
   const isCustomLogo = useMemo(() => {
     return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
@@ -29,66 +32,25 @@ export const MobileHeader = () => {
           <div className="flex items-center gap-[10px]">
             <Link href="/">
               {isCustomLogo ? (
-                <>
-                  <Image
-                    src={config?.theme?.logoDark ?? ""}
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] rounded-full hidden dark:block border border-[var(--card-background)]"
-                  />
-                  <Image
-                    src={config?.theme?.logoLight ?? ""}
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] rounded-full block dark:hidden border border-[var(--card-background)]"
-                  />
-                </>
+                <Image
+                  src={isDarkTheme ? (config?.theme?.logoDark ?? "") : (config?.theme?.logoLight ?? "")}
+                  alt="logo"
+                  width={128}
+                  height={26}
+                  priority
+                  className="h-[26px] w-[128px] rounded-full border border-[var(--card-background)]"
+                />
               ) : (
-                <>
-                  <Image
-                    src="/assets/image/logo.svg"
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] hidden dark:block"
-                  />
-                  <Image
-                    src="/assets/image/light/logo.svg"
-                    alt="logo"
-                    width={128}
-                    height={26}
-                    priority
-                    className="h-[26px] w-[128px] block dark:hidden"
-                  />
-                </>
+                <LogoIcon width={128} height={26} className="h-[26px] w-[128px]" />
               )}
             </Link>
             <Link
               href="https://apps.degov.ai"
               target="_blank"
               rel="noopener noreferrer"
+              className="text-foreground hover:opacity-80 transition-opacity"
             >
-              <Image
-                src="/assets/image/app.svg"
-                alt="logo"
-                width={24}
-                height={24}
-                priority
-                className="hidden dark:block"
-              />
-              <Image
-                src="/assets/image/light/app.svg"
-                alt="logo"
-                width={24}
-                height={24}
-                priority
-                className="block dark:hidden"
-              />
+              <AppIcon width={24} height={24} />
             </Link>
           </div>
 

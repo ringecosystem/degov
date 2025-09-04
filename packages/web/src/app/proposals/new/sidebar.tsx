@@ -1,15 +1,12 @@
 import { motion, AnimatePresence } from "framer-motion";
-import Image from "next/image";
 
+import { PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
 
 import { NewProposalAction } from "./action";
 
-interface Action {
-  id: string;
-  type: string;
-}
+import type { Action, AddAction } from "./type";
 
 interface SidebarProps {
   actions: Action[];
@@ -30,10 +27,11 @@ export const Sidebar = ({
   onAddAction,
   onSetTab,
 }: SidebarProps) => {
+  const isNotAddAction = (a: Action): a is Exclude<Action, AddAction> => a.type !== "add";
   return (
     <aside className="flex w-[300px] flex-shrink-0 flex-col gap-[10px] rounded-[14px]">
       <AnimatePresence initial={false}>
-        {actions.map((action) => (
+        {actions.filter(isNotAddAction).map((action) => (
           <motion.div
             key={action.id}
             initial={{ opacity: 0, height: 0 }}
@@ -75,19 +73,10 @@ export const Sidebar = ({
           className="gap-[5px] rounded-[100px] w-full"
           onClick={onAddAction}
         >
-          <Image
-            src="/assets/image/light/proposal/plus.svg"
-            alt="plus"
+          <PlusIcon
             width={16}
             height={16}
-            className="dark:hidden"
-          />
-          <Image
-            src="/assets/image/proposal/plus.svg"
-            alt="plus"
-            width={16}
-            height={16}
-            className="hidden dark:block"
+            className="text-current"
           />
           <span>Add Action</span>
         </Button>

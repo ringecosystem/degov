@@ -80,7 +80,7 @@ export function MembersTable({
         className: "text-center",
         render: (record) => {
           if (isProfilePullLoading || isProposalMetricsLoading) {
-            return <Skeleton className="h-[30px] w-[140px]" />;
+            return <Skeleton className="h-[30px] w-full" />;
           }
 
           const userPower = record?.power ? BigInt(record.power) : 0n;

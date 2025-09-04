@@ -1,23 +1,18 @@
 'use client';
 import { darkTheme, lightTheme } from '@rainbow-me/rainbowkit';
-import { useTheme } from 'next-themes';
 
+
+import { useCustomTheme } from './useCustomTheme';
 import { useMounted } from './useMounted';
 
-export const dark = darkTheme({
-  borderRadius: 'medium'
-});
-
-export const light = lightTheme({
-  borderRadius: 'medium'
-});
-
 export function useRainbowKitTheme() {
-  const { theme, systemTheme } = useTheme();
+  const { isDarkTheme } = useCustomTheme();
   const mounted = useMounted();
 
   // Use default theme for server-side rendering to avoid hydration mismatch
-  const defaultTheme = dark; // Use dark theme as default on server
+  const defaultTheme = lightTheme({
+    borderRadius: 'medium'
+  });
 
   // During server-side rendering and initial client render before mounting,
   // return the default theme to prevent hydration mismatch
@@ -25,6 +20,17 @@ export function useRainbowKitTheme() {
     return defaultTheme;
   }
 
-  const resolvedTheme = theme === 'system' ? systemTheme : theme;
-  return resolvedTheme === 'dark' ? dark : light;
+  if (isDarkTheme) {
+    return darkTheme({
+      borderRadius: 'medium',
+      accentColor: 'hsl(var(--foreground))',
+      accentColorForeground: 'hsl(var(--card))',
+    });
+  } else {
+    return lightTheme({
+      borderRadius: 'medium',
+      accentColor: 'hsl(var(--foreground))',
+      accentColorForeground: 'hsl(var(--card))',
+    });
+  }
 }

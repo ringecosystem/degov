@@ -45,7 +45,7 @@ export function ActionTableRaw({ actions }: ActionTableRawProps) {
             Function {index + 1}
           </h3>
 
-          <div className="space-y-[10px] rounded-[4px] border p-[10px] bg-background">
+          <div className="space-y-[10px] rounded-[4px] border border-gray-1 p-[10px] bg-background">
             {(action.inferredType === "custom" ||
               action.inferredType === "xaccount") && (
               <div>

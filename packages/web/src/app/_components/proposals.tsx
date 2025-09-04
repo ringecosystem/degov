@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { Faqs } from "@/components/faqs";
+import { DiscussionIcon, PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
@@ -51,19 +51,10 @@ export const Proposals = () => {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Image
-                      src="/assets/image/light/discussion.svg"
-                      alt="plus"
+                    <DiscussionIcon
                       width={16}
                       height={16}
-                      className="dark:hidden size-[16px] lg:size-[20px]"
-                    />
-                    <Image
-                      src="/assets/image/discussion.svg"
-                      alt="plus"
-                      width={16}
-                      height={16}
-                      className="hidden dark:block size-[16px] lg:size-[20px]"
+                      className="size-[16px] lg:size-[20px] text-current"
                     />
                     <span className="hidden sm:inline">Join Discussion</span>
                     <span className="sm:hidden">Discussion</span>
@@ -74,19 +65,10 @@ export const Proposals = () => {
                 className="flex items-center gap-[4px] lg:gap-[5px] rounded-[100px] text-[13px] lg:text-sm"
                 onClick={handleNewProposalClick}
               >
-                <Image
-                  src="/assets/image/light/plus.svg"
-                  alt="plus"
+                <PlusIcon
                   width={16}
                   height={16}
-                  className="size-[16px] lg:size-[20px] block dark:hidden"
-                />
-                <Image
-                  src="/assets/image/plus.svg"
-                  alt="plus"
-                  width={16}
-                  height={16}
-                  className="size-[16px] lg:size-[20px] hidden dark:block"
+                  className="size-[16px] lg:size-[20px] text-current"
                 />
                 <span className="hidden sm:inline">New Proposal</span>
                 <span className="sm:hidden">New</span>

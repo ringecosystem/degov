@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -11,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { useDelegate } from "@/hooks/useDelegate";
 
+import { CloseIcon } from "./icons";
 import { TransactionToast } from "./transaction-toast";
 import { Separator } from "./ui/separator";
 
@@ -44,12 +44,10 @@ export function DelegateSelector({
             <DialogTitle className="text-[18px] font-extrabold">
               Delegate
             </DialogTitle>
-            <Image
-              src="/assets/image/close.svg"
-              alt="close"
+            <CloseIcon
               width={24}
               height={24}
-              className="cursor-pointer transition-opacity hover:opacity-80"
+              className="cursor-pointer transition-opacity hover:opacity-80 text-foreground"
               onClick={() => onOpenChange(false)}
             />
           </DialogHeader>

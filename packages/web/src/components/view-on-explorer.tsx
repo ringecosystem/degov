@@ -1,7 +1,6 @@
-import Image from "next/image";
-
 import { cn } from "@/lib/utils";
 
+import { ExternalLinkIcon } from "./icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 interface ViewOnExplorerProps {
@@ -26,19 +25,10 @@ export const ViewOnExplorer = ({
             className
           )}
         >
-          <Image
-            src="/assets/image/light/external-link.svg"
-            alt="external-link"
+          <ExternalLinkIcon
             width={16}
             height={16}
-            className={cn("h-full w-full dark:hidden", imgClassName)}
-          />
-          <Image
-            src="/assets/image/external-link.svg"
-            alt="external-link"
-            width={16}
-            height={16}
-            className={cn("h-full w-full hidden dark:block", imgClassName)}
+            className={cn("h-full w-full text-foreground", imgClassName)}
           />
         </a>
       </TooltipTrigger>

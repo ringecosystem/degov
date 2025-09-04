@@ -18,11 +18,15 @@ interface AddressWithAvatarProps {
   className?: string;
   textClassName?: string;
   customLink?: (address: `0x${string}`) => string;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
 }
 
 export function AddressWithAvatar({
   address,
   avatarSize = 30,
+  side = "bottom",
+  align = "start",
   className,
   textClassName,
   customLink,
@@ -52,7 +56,7 @@ export function AddressWithAvatar({
             )}
           </AddressResolver>
         </TooltipTrigger>
-        <TooltipContent>
+        <TooltipContent side={side} align={align}>
           <p>{address}</p>
         </TooltipContent>
       </Tooltip>
@@ -61,7 +65,7 @@ export function AddressWithAvatar({
           <TooltipTrigger>
             <AiIcon />
           </TooltipTrigger>
-          <TooltipContent className="max-w-[200px]">
+          <TooltipContent className="max-w-[200px]" side={side} align={align}>
             An AI-Powered delegate that can accept delegations and vote on your
             behalf based on the community&apos;s preferences.
           </TooltipContent>

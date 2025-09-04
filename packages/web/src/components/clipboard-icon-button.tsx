@@ -1,8 +1,9 @@
 "use client";
-import { Copy, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useCopyToClipboard } from "react-use";
 
+import { CopyIcon } from "@/components/icons";
 import {
   Tooltip,
   TooltipTrigger,
@@ -86,11 +87,11 @@ const ClipboardIconButton = ({
               copied ? "block" : "hidden"
             )}
           />
-          <Copy
-            strokeWidth={strokeWidth}
-            size={size}
+          <CopyIcon
+            width={size}
+            height={size}
             className={cn(
-              "text-muted-foreground  hover:text-muted-foreground/80",
+              "text-foreground  hover:text-foreground/80",
               className,
               copied ? "hidden" : "block"
             )}

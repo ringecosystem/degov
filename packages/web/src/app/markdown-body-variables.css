@@ -17,7 +17,7 @@
     --h6-size: 0.75rem;
     --fgColor-accent: Highlight;
   }
-  .dark .markdown-body {
+  .dark .markdown-body, .dark-blue .markdown-body, .dark-red .markdown-body, .dark-green .markdown-body {
     /* dark */
     color-scheme: dark;
     --fgColor-accent: #4493f8;
@@ -125,7 +125,7 @@
     --color-prettylights-syntax-markup-bold: #1f2328;
     --color-prettylights-syntax-markup-italic: #1f2328;
     --color-prettylights-syntax-storage-modifier-import: #1f2328;
-    --fgColor-default: #1f2328;
+    --fgColor-default: hsl(var(--foreground));
     --focus-outlineColor: var(--borderColor-accent-emphasis);
     --selection-bgColor: #0969da33;
     --borderColor-neutral-muted: var(--borderColor-muted);

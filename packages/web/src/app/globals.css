@@ -8,141 +8,572 @@ body {
 
 @layer base {
   :root {
-    --background: 240 9% 98%;
+    /* Light #202224 */
+    --light: 210 6% 13%;
+    /* Dark #FFFFFF */
+    --dark: 0 0% 100%;
+    /* Grey1 #E5E5E5 */
+    --grey-1: 0 0% 90%;
+    /* Grey2 #979797 */
+    --grey-2: 0 0% 59%;
+    /* BG #F9F9FA */
+    --bg: 240 9% 98%;
+    /* BG2 #F7F7F7 */
+    --bg-2: 0 0% 97%;
+    /* Blue #006FFF */
+    --blue: 214 100% 50%;
+    /* Green #00B403 */
+    --green: 121 100% 35%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #FF8400 */
+    --yellow: 31 100% 50%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #202224 */
+    --always-dark: 210 6% 13%;
 
-    --foreground: 210 6% 13%;
+    /* BG #F9F9FA */
+    --background: var(--bg);
 
-    --card: 0 0% 100%;
+    /* Light #202224 */
+    --foreground: var(--light);
+
+    /* Dark #FFFFFF */
+    --card: var(--dark);
     --card-foreground: 0 0% 100% / 0.8;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
 
     --muted: 240 4.8% 95.9%;
 
-    --muted-foreground: 0 0% 59%;
+    /* Grey2 #979797 */
+    --muted-foreground: var(--grey-2);
     --accent: 240 4.8% 95.9%;
     --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --destructive: var(--red);
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 59%;
+    /* Grey2 #979797 */
+    --border: var(--grey-2);
 
     --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --ring: var(--light);
 
-    /* 00B403 */
-    --success: 121 100% 35%;
-    /* #FF8400 */
-    --warning: 31 100% 50%;
-    --danger: 359 100% 62%;
+    /* Green #00B403 */
+    --success: var(--green);
+    /* Yellow #FF8400 */
+    --warning: var(--yellow);
+    --danger: var(--red);
 
-    /* #FF8400 */
+    /* Yellow #FF8400 */
     --pending: var(--warning);
-    --active: 197 100% 50%;
-    /* 00B403 */
-    --succeeded: 121 100% 35%;
-    --executed: 276 100% 67%;
+    --active: var(--blue);
+    /* Green #00B403 */
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
 
     --radius: 0.5rem;
-    --skeleton-bg: 0 0% 15%;
-    
     --scrollbar-track: hsl(var(--muted));
     --scrollbar-thumb: hsl(var(--secondary));
     --scrollbar-thumb-hover: hsl(var(--border));
     --scrollbar-width: 8px;
     --scrollbar-height: 8px;
 
-    --card-background: 192 4% 97%;
+    /* BG2 #F7F7F7 */
+    --card-background: var(--bg-2);
 
-    --gray-1: 0 0% 90%;
+    /* Grey1 #E5E5E5 */
+    --gray-1: var(--grey-1);
     --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.15);
 
   }
   .dark {
-    /* #000000 */
-    --background: 0 0% 0%;
+    /* Light #FFFFFF */
+    --light: 0 0% 100%;
+    /* Dark #202224 */
+    --dark: 210 6% 13%;
+    /* Grey1 #474747 */
+    --grey-1: 0 0% 28%;
+    /* Grey2 #979797 */
+    --grey-2: 0 0% 59%;
+    /* BG #000000 */
+    --bg: 0 0% 0%;
+    /* BG2 #2E2E2E */
+    --bg-2: 0 0% 18%;
+    /* Blue #00B7FF */
+    --blue: 197 100% 50%;
+    /* Green #00B624 */
+    --green: 132 100% 36%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #F3AB00 */
+    --yellow: 42 100% 48%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always */
+    --always-light: 0 0% 100%;
+    --always-dark: 210 6% 13%;
 
-    /* #FFFFFF */
-    --foreground: 0 0% 100%;
+    /*BG #000000 */
+    --background: var(--bg);
 
+    /*Light #FFFFFF */
+    --foreground: var(--light);
 
-    /* #202224 */
-    --card: 210 6% 13%;
-    --card-foreground: 0 0% 100% / 0.8;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 28%;
-    --secondary-foreground: 0 0% 100% / 0.8;
-    /* --muted: 0 0% 14.9%; */
-    --muted: 240 3.7% 15.9%;
+    /*Dark #202224 */
+    --card: var(--dark);
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
 
-    /* #979797 */
-    --muted-foreground: 0 0% 59%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 359 100% 62%;
-    --destructive-foreground: 0 0% 98%;
+    /* Grey2 #979797 */
+    --muted-foreground: var(--grey-2);
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: var(--red);
+    --destructive-foreground: 0 0% 100%;
 
-    /* #979797 */
-    --border: 0 0% 59%;
+    /* Grey2 #979797 */
+    --border: var(--grey-2);
 
-    /* #202224 */
-    --input: 210 6% 13%;
-    --ring: 0 0% 100% / 0;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    /*Dark  #202224 */
+    --input: var(--dark);
+    --ring: var(--light);
 
-    /* #00B624 */
-    --success: 132 100% 36%;
-    /* #F3AB00 */
-    --warning: 42 100% 48%;
-    --danger: 359 100% 62%;
+    /*Green #00B624 */
+    --success: var(--green);
+    /*Yellow #F3AB00 */
+    --warning: var(--yellow);
+    --danger: var(--red);
 
-    /* #F3AB00 */
+    /*Yellow #F3AB00 */
     --pending: var(--warning);
-    --active: 197 100% 50%;
-    /* #00B624 */
-    --succeeded: 132 100% 36%;
-    --executed: 276 100% 67%;
+    --active: var(--blue);
+    /*Green #00B624 */
+    --succeeded: var(--green);
+    --executed: var(--purple);
     --defeated: var(--danger);
     --canceled: var(--muted-foreground);
 
     --radius: 0.5rem;
-    --skeleton-bg: 0 0% 15%;
+
+    /* BG2 - #2E2E2E */
+    --card-background: var(--bg-2);
+
+    /*Grey1 #474747 */
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  .dark-blue {
+    /* Light #87A4FA */
+    --light: 225 92% 75%;
+    /* Dark #0C233B */
+    --dark: 211 66% 14%;
+    /* Grey1 #49466C */
+    --grey-1: 245 21% 35%;
+    /* Grey2 #646A99 */
+    --grey-2: 233 21% 50%;
+    /* BG #08092B */
+    --bg: 238 69% 10%;
+    /* BG2 #131132 */
+    --bg-2: 244 49% 13%;
+    /* Blue #00B7FF */
+    --blue: 197 100% 50%;
+    /* Green #00B67F */
+    --green: 162 100% 36%;
+    /* Red #FF3CB1 */
+    --red: 324 100% 62%;
+    /* Yellow #F3AB00 */
+    --yellow: 42 100% 48%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #0C233B */
+    --always-dark: 211 66% 14%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--dark);
+    --ring: var(--light);
     
-    --scrollbar-track: hsl(var(--muted));
-    --scrollbar-thumb: hsl(var(--secondary));
-    --scrollbar-thumb-hover: hsl(var(--border));
-    --scrollbar-width: 8px;
-    --scrollbar-height: 8px;
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
+    
+    --pending: var(--warning);
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
+  }
 
-    /* #2E2E2E */
-    --card-background: 0 0% 18%;
+  .dark-red {
+    /* Light #FFFFFF */
+    --light: 0 0% 100%;
+    /* Dark #3F0513 */
+    --dark: 346 85% 13%;
+    /* Grey1 #992D47 */
+    --grey-1: 346 55% 39%;
+    /* Grey2 #FFFFFF */
+    --grey-2: 0 0% 100%;
+    /* BG #300813 */
+    --bg: 344 71% 11%;
+    /* BG2 #820C2D */
+    --bg-2: 343 83% 28%;
+    /* Blue #FFFFFF */
+    --blue: 0 0% 100%;
+    /* Green #00B403 */
+    --green: 121 100% 35%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #FF8400 */
+    --yellow: 31 100% 50%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #3F0513 */
+    --always-dark: 346 85% 13%;
 
-    /* 474747 */
-    --gray-1: 0 0% 28%;
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--dark);
+    --ring: var(--light);
+    
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
+    
+    --pending: var(--warning);
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  .light-green {
+    /* Light #09613C */
+    --light: 155 83% 21%;
+    /* Dark #FFFFFF */
+    --dark: 0 0% 100%;
+    /* Grey1 #E5E5E5 */
+    --grey-1: 0 0% 90%;
+    /* Grey2 #979797 */
+    --grey-2: 0 0% 59%;
+    /* BG #F9F9FA */
+    --bg: 240 9% 98%;
+    /* BG2 #F7F7F7 */
+    --bg-2: 0 0% 97%;
+    /* Blue #006FFF */
+    --blue: 214 100% 50%;
+    /* Green #00B403 */
+    --green: 121 100% 35%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #FF8400 */
+    --yellow: 31 100% 50%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */ 
+    --always-light: 0 0% 100%;
+    /* Always Dark  #09613C */
+    --always-dark: 155 83% 21%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--bg-2);
+    --ring: var(--light);
+    
+    --card-foreground: 0 0% 100% / 0.8;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
+    
+    --pending: var(--warning);
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.15);
+  }
+
+  .light-pink {
+    /* Light #F26D00 */
+    --light: 27 100% 47%;
+    /* Dark #FFFFFF */
+    --dark: 0 0% 100%;
+    /* Grey1 #FFE4CE */
+    --grey-1: 27 100% 90%;
+    /* Grey2 #F9AB6A */
+    --grey-2: 27 92% 70%;
+    /* BG #FAFAF9 */
+    --bg: 60 9% 98%;
+    /* BG2 #F7F7F7 */
+    --bg-2: 0 0% 97%;
+    /* Blue #006FFF */
+    --blue: 214 100% 50%;
+    /* Green #00B403 */
+    --green: 121 100% 35%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #FF8400 */
+    --yellow: 31 100% 50%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark  #F26D00 */ 
+    --always-dark: 27 100% 47%; 
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--bg-2);
+    --ring: var(--light);
+    
+    --card-foreground: 0 0% 100% / 0.8;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
+    
+    --pending: var(--warning);
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.15);
+  }
+
+  .dark-green {
+    /* Light #74FFDE */
+    --light: 166 100% 73%;
+    /* Dark #24333E */
+    --dark: 205 27% 19%;
+    /* Grey1 #2A92A7 */
+    --grey-1: 190 60% 41%;
+    /* Grey2 #7EFDFF */
+    --grey-2: 181 100% 75%;
+    /* BG #09220B */
+    --bg: 125 58% 8%;
+    /* BG2 #1E4041 */
+    --bg-2: 182 37% 19%;
+    /* Blue #32C5FF */
+    --blue: 197 100% 60%;
+    /* Green #00B624 */
+    --green: 132 100% 36%;
+    /* Red #FF3C3F */
+    --red: 359 100% 62%;
+    /* Yellow #F3AB00 */
+    --yellow: 42 100% 48%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #24333E */
+    --always-dark: 205 27% 19%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--dark);
+    --ring: var(--light);
+    
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
+    
+    --pending: var(--warning);
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
+    --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  .dark-purple {
+    /* Light #F1CBFF */
+    --light: 284 100% 90%;
+    /* Dark #2C0936 */
+    --dark: 287 71% 12%;
+    /* Grey1 #52466C */
+    --grey-1: 253 23% 36%;
+    /* Grey2 #6F6499 */
+    --grey-2: 253 23% 50%;
+    /* BG #19041B */
+    --bg: 295 74% 6%;
+    /* BG2 #331E4C */
+    --bg-2: 267 43% 21%;
+    /* Blue #00B7FF */
+    --blue: 197 100% 50%;
+    /* Green #00B67F */
+    --green: 162 100% 36%;
+    /* Red #E62E31 */
+    --red: 359 79% 54%;
+    /* Yellow #F3AB00 */
+    --yellow: 42 100% 48%;
+    /* Purple #BC57FF */
+    --purple: 276 100% 67%;
+    /* Always Light #FFFFFF */
+    --always-light: 0 0% 100%;
+    /* Always Dark #2C0936 */
+    --always-dark: 287 71% 12%;
+
+    --background: var(--bg);
+    --foreground: var(--light);
+    --card: var(--dark);
+    --primary: var(--light);
+    --primary-foreground: var(--dark);
+    --muted-foreground: var(--grey-2);
+    --destructive: var(--red);
+    --border: var(--grey-2);
+    --input: var(--dark);
+    --ring: var(--light);
+    
+    --card-foreground: 0 0% 100%;
+    --popover: 210 6% 13%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: var(--green);
+    --warning: var(--yellow);
+    --danger: var(--red);
+    
+    --pending: var(--warning);
+    --active: var(--blue);
+    --succeeded: var(--green);
+    --executed: var(--purple);
+    --defeated: var(--danger);
+    --canceled: var(--muted-foreground);
+    
+    --card-background: var(--bg-2);
+    --gray-1: var(--grey-1);
     --card-shadow: 6px 6px 54px 0 rgba(0, 0, 0, 0.05);
   }
 }
 
 @layer base {
   * {
+
+
     @apply border-border;
   }
   body {
@@ -183,4 +614,11 @@ body {
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
   
+}
+
+
+/* components */
+.Toastify__toast {
+  @apply bg-card;
+  @apply text-foreground;
 }
