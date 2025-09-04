@@ -153,7 +153,7 @@ Extract a title from the content above, following these rules in order:
       console.log(
         "No suitable title was found. Using local fallback extractor."
       );
-      title = await this._extractTitleFullback(description);
+      title = this._extractTitleFullback(description);
     }
 
     return {
