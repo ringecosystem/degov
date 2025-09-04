@@ -125,7 +125,15 @@ export class GovernorHandler {
       chainId: this.options.chainId,
       rpcs: this.options.rpcs,
       contractAddress: indexContract.address,
+      standard: indexContract.standard?.toUpperCase() as
+        | "ERC20"
+        | "ERC721"
+        | undefined,
       governorTokenAddress: governorTokenContract.address,
+      governorTokenStandard: governorTokenContract.standard?.toUpperCase() as
+        | "ERC20"
+        | "ERC721"
+        | undefined,
     });
     let voteStartTimestamp = Number(event.voteStart) * 1000;
     let voteEndTimestamp = Number(event.voteEnd) * 1000;

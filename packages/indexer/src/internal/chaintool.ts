@@ -22,6 +22,7 @@ export interface BaseContractOptions {
 export interface QueryQuorumOptions extends BaseContractOptions {
   standard?: "ERC20" | "ERC721";
   governorTokenAddress: `0x${string}`;
+  governorTokenStandard?: "ERC20" | "ERC721";
 }
 
 export interface QuorumResult {
@@ -491,9 +492,9 @@ export class ChainTool {
       const quorum = BigInt(quorumResult as any);
 
       let decimals: bigint;
-      const contractStandard = (options.standard ?? "ERC20").toUpperCase();
+      const governorTokenContractStandard = (options.governorTokenStandard ?? "ERC20").toUpperCase();
       try {
-        if (contractStandard === "ERC721") {
+        if (governorTokenContractStandard === "ERC721") {
           decimals = 0n;
         } else {
           const decimalsResult = await this._executeWithFallbacks(
