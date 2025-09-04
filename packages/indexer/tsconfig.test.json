@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "rootDirs": ["src", "__tests__"],
+    "rootDir": "."
+  },
+  "extends": "./tsconfig.json",
+  "include": ["__tests__/**/*", "**/*.test.ts"],
+  "exclude": ["node_modules", "build", "dist", "target", "lib"]
+}

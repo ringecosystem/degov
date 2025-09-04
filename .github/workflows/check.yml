@@ -4,8 +4,8 @@ on:
   pull_request:
 
 jobs:
-  check-code:
-    name: Check Code
+  check-workspace:
+    name: Check Workspace
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +19,27 @@ jobs:
         with:
           version: 9
 
-      - name: Install deps
+      - name: Check build
         run: |
-          pnpm install
-          cd packages/indexer
-          yarn install
+          pnpm install --no-frozen-lockfile
+          pnpm build:all
 
-      - name: Check Build
-        run: pnpm build:all
+  check-indexer:
+    name: Check indexer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check build
+        working-directory: packages/indexer
+        run: |
+          yarn install
+          yarn build
 
   check-config:
     name: Check Config
@@ -47,4 +60,3 @@ jobs:
           yaml_as_json: true
           files: degov.yml
           comment: "true"
-

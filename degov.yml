@@ -27,7 +27,7 @@ theme:
   faqs:
     - question: What is DeGov.AI?
       answer: https://docs.degov.ai
-    - question: How is AI integrated into DeGov.AI? 
+    - question: How is AI integrated into DeGov.AI?
       answer: https://docs.degov.ai/faqs/#how-does-degovai-utilize-ai-capabilities
     - question: What's the difference between DeGov.AI and Tally?
       answer: https://docs.degov.ai/faqs/#whats-the-difference-between-degovai-and-tally
@@ -61,6 +61,15 @@ indexer:
   startBlock: 5873342
   # if set this, indexer rpc will be use this first
   rpc: wss://rpc.darwinia.network
+
+  ## https://docs.sqd.ai/sdk/reference/processors/evm-batch/general/#set-finality-confirmation
+  #finalityConfirmation: 50
+  ## https://docs.sqd.ai/sdk/reference/processors/substrate-batch/general/#set-rpc-endpoint
+  #capacity: 30
+  ## https://docs.sqd.ai/sdk/reference/processors/substrate-batch/general/#set-rpc-endpoint
+  #maxBatchCallSize: 200
+  ## https://docs.sqd.ai/subsquid-network/reference/networks/#evm--ethereum-compatible
+  #gateway:
 
 # AI Agent related configuration
 aiAgent:

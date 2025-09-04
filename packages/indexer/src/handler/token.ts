@@ -1,5 +1,5 @@
-import { DataHandlerContext } from "@subsquid/evm-processor";
-import { Log } from "../processor";
+import { DataHandlerContext, Log as EvmLog } from "@subsquid/evm-processor";
+import { Store } from "@subsquid/typeorm-store";
 import * as itokenerc20 from "../abi/itokenerc20";
 import * as itokenerc721 from "../abi/itokenerc721";
 import {
@@ -12,20 +12,31 @@ import {
   DelegateVotesChanged,
   TokenTransfer,
 } from "../model";
-import { MetricsId, DegovConfigIndexLogContract, DegovConfig } from "../config";
+import {
+  MetricsId,
+  EvmFieldSelection,
+  IndexerContract,
+  IndexerWork,
+} from "../types";
+import { DegovIndexerHelpers } from "../internal/helpers";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
+export interface TokenhandlerOptions {
+  chainId: number;
+  work: IndexerWork;
+  indexContract: IndexerContract;
+}
+
 export class TokenHandler {
   constructor(
-    private readonly ctx: DataHandlerContext<any, any>,
-    private readonly indexContract: DegovConfigIndexLogContract,
-    private readonly config: DegovConfig,
+    private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
+    private readonly options: TokenhandlerOptions
   ) {}
 
   private contractStandard() {
     const contractStandard = (
-      this.indexContract.standard ?? "erc20"
+      this.options.indexContract.standard ?? "erc20"
     ).toLowerCase();
     return contractStandard;
   }
@@ -36,13 +47,12 @@ export class TokenHandler {
     return isErc721 ? itokenerc721 : itokenerc20;
   }
 
-  async handle(eventLog: Log) {
+  async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const isDelegateChanged =
       eventLog.topics.findIndex(
         (item) => item === itokenAbi.events.DelegateChanged.topic
       ) != -1;
-
     if (isDelegateChanged) {
       await this.storeDelegateChanged(eventLog);
     }
@@ -62,21 +72,15 @@ export class TokenHandler {
     if (isTokenTransfer) {
       await this.storeTokenTransfer(eventLog);
     }
-
-    // console.log('---------->', eventLog.topics, [
-    //   itokenAbi.events.DelegateChanged.topic,
-    //   itokenAbi.events.DelegateVotesChanged.topic,
-    //   itokenAbi.events.Transfer.topic,
-    // ]);
   }
 
-  private async storeDelegateChanged(eventLog: Log) {
+  private async storeDelegateChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
     this.ctx.log.info(
-      `Received delegate chanaged event: ${_safeJsonStringify(event)}, at ${
-        eventLog.block.height
-      }, tx: ${eventLog.transactionHash}`
+      `Received delegate chanaged event: ${DegovIndexerHelpers.safeJsonStringify(
+        event
+      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
     );
     const entity = new DelegateChanged({
       id: eventLog.id,
@@ -130,11 +134,11 @@ export class TokenHandler {
     }
   }
 
-  private async storeDelegateVotesChanged(eventLog: Log) {
+  private async storeDelegateVotesChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
     this.ctx.log.info(
-      `Received delegate votes changed event: ${_safeJsonStringify(
+      `Received delegate votes changed event: ${DegovIndexerHelpers.safeJsonStringify(
         event
       )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
     );
@@ -161,7 +165,7 @@ export class TokenHandler {
         },
       });
     if (!delegateRolling) {
-      this.ctx.log.debug(
+      this.ctx.log.info(
         `skipped delegate votes changed, because it's from transfer (checked no delegatechanged event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
       );
       return;
@@ -171,15 +175,15 @@ export class TokenHandler {
       dvcDelegate !== delegateRolling.fromDelegate &&
       dvcDelegate !== delegateRolling.toDelegate
     ) {
-      this.ctx.log.debug(
+      this.ctx.log.info(
         `skipped delegate votes changed, because it's from transfer (checked no there is no matching delegated changed event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
       );
       return;
     }
     this.ctx.log.info(
-      `Queried delegate rolling (update rolling): ${_safeJsonStringify(
+      `Queried delegate rolling (update rolling): ${DegovIndexerHelpers.safeJsonStringify(
         delegateRolling
-      )} options: ${_safeJsonStringify(options)} => tx: ${
+      )} options: ${DegovIndexerHelpers.safeJsonStringify(options)} => tx: ${
         options.transactionHash
       }`
     );
@@ -239,16 +243,16 @@ export class TokenHandler {
     await this.storeDelegate(delegate);
   }
 
-  private async storeTokenTransfer(eventLog: Log) {
+  private async storeTokenTransfer(eventLog: EvmLog<EvmFieldSelection>) {
     const contractStandard = this.contractStandard();
     const isErc721 = contractStandard === "erc721";
     const itokenAbi = this.itokenAbi();
 
     const event = itokenAbi.events.Transfer.decode(eventLog);
     this.ctx.log.info(
-      `Received token transfer event: ${_safeJsonStringify(event)}, at ${
-        eventLog.block.height
-      }, tx: ${eventLog.transactionHash}`
+      `Received token transfer event: ${DegovIndexerHelpers.safeJsonStringify(
+        event
+      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
     );
     const entity = new TokenTransfer({
       id: eventLog.id,
@@ -304,7 +308,9 @@ export class TokenHandler {
   private async storeDelegate(currentDelegate: Delegate, options?: {}) {
     if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
       this.ctx.log.warn(
-        `Delegate from or to is not set. ${_safeJsonStringify(currentDelegate)}`
+        `Delegate from or to is not set. ${DegovIndexerHelpers.safeJsonStringify(
+          currentDelegate
+        )}`
       );
     }
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
@@ -403,7 +409,7 @@ export class TokenHandler {
           headers: {
             "Content-Type": "application/json",
             "x-degov-sync-token": syncAuthToken,
-            "x-degov-daocode": this.config.code,
+            "x-degov-daocode": this.options.work.daoCode,
           },
           body: JSON.stringify([
             {
@@ -440,16 +446,4 @@ export class TokenHandler {
     dm.memberCount = (dm.memberCount ?? 0) + 1;
     await this.ctx.store.save(dm);
   }
-}
-
-function _safeJsonStringify(
-  value: any,
-  replacer: (key: string, value: any) => any = (_, v) => v
-): string {
-  return JSON.stringify(value, (_, v) => {
-    if (typeof v === "bigint") {
-      return v.toString();
-    }
-    return v;
-  });
 }

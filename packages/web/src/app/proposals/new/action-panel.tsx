@@ -94,7 +94,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
         };
         switch (action.type) {
           case "transfer":
-            info.address = action.content.recipient;
+            info.address = action.content.recipient as Address;
             info.value = action.content.amount ?? "0";
             info.details = `${action.content.amount} ${daoConfig?.chain?.nativeToken?.symbol}`;
             break;
@@ -102,7 +102,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
             const contractMethod = action?.content?.contractMethod
               ? action?.content?.contractMethod?.split("-")[0]
               : "";
-            info.address = action.content.target;
+            info.address = action.content.target as Address;
             info.value = action.content.value ?? "0";
             info.details = contractMethod;
             info.params = action?.content?.calldata?.map((item) => ({
@@ -125,7 +125,9 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
             break;
 
           case "xaccount":
-            info.address = action.content?.crossChainCall?.port;
+            info.address = action.content?.crossChainCall?.port as
+              | Address
+              | undefined;
             info.details = extractMethodNameFromSignature(
               action.content?.crossChainCall?.function ?? ""
             );

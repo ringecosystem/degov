@@ -141,6 +141,14 @@ type Proposal @entity {
   metricsVotesWeightForSum: BigInt
   metricsVotesWeightAgainstSum: BigInt
   metricsVotesWeightAbstainSum: BigInt
+
+  title: String!
+  voteStartTimestamp: BigInt!
+  voteEndTimestamp: BigInt!
+  blockInterval: String
+  clockMode: String!
+  quorum: BigInt!
+  decimals: BigInt!
 }
 
 
@@ -199,7 +207,7 @@ type DelegateMapping @entity {
   id: ID! # from
   from: String! # address
   to: String! # address
-  
+
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
