@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SettingsPanel } from "./settings-panel";
 import { EmailBindForm } from "./email-bind-form";
+import { useEmailBindingStatus } from "@/hooks/useNotification";
 
 interface NotificationSettings {
   email?: string;
@@ -18,14 +19,14 @@ interface NotificationSettings {
 }
 
 export const NotificationDropdown = () => {
-  const [isEmailBound, setIsEmailBound] = useState(false);
+  const { isEmailBound, emailAddress, isLoading, error } = useEmailBindingStatus();
   const [settings, setSettings] = useState<NotificationSettings>({
     newProposals: true,
     votingEndReminder: false,
   });
 
+  // Update settings when email binding status changes
   const handleVerified = useCallback((verifiedEmail: string) => {
-    setIsEmailBound(true);
     setSettings((prev) => ({ ...prev, email: verifiedEmail }));
   }, []);
 
@@ -55,9 +56,13 @@ export const NotificationDropdown = () => {
         </Button>
       </DropdownMenuTrigger>
 
-      {isEmailBound ? (
+      {isLoading ? (
+        <div className="w-80 p-4 text-center">
+          <p>Loading...</p>
+        </div>
+      ) : isEmailBound ? (
         <SettingsPanel
-          email={settings.email}
+          email={emailAddress}
           newProposals={settings.newProposals}
           votingEndReminder={settings.votingEndReminder}
           onToggle={handleSettingToggle}

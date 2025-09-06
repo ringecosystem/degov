@@ -5,6 +5,7 @@ import {
   SUBSCRIBE_PROPOSAL,
   UNSUBSCRIBE_PROPOSAL,
 } from "./graphql/mutations/notifications";
+import { LIST_NOTIFICATION_CHANNELS } from "./graphql/queries/notifications";
 import { requestNotification } from "./graphql/notification-client";
 import type {
   BindNotificationChannelInput,
@@ -14,9 +15,18 @@ import type {
   ProposalSubscriptionInput,
   ProposalSubscriptionResponse,
   NotificationChannelType,
+  NotificationChannel,
+  ListNotificationChannelsResponse,
 } from "./graphql/types/notifications";
 
 export class NotificationService {
+  static async listNotificationChannels(): Promise<NotificationChannel[]> {
+    const response = await requestNotification<ListNotificationChannelsResponse>(
+      LIST_NOTIFICATION_CHANNELS
+    );
+    
+    return response.listNotificationChannels;
+  }
   static async bindNotificationChannel(
     input: BindNotificationChannelInput
   ): Promise<BindNotificationChannelResponse> {

@@ -1,114 +1,124 @@
-import { useState, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import type {
   BindNotificationChannelInput,
   VerifyNotificationChannelInput,
   ProposalSubscriptionInput,
   NotificationChannelType,
+  NotificationChannel,
 } from "@/services/graphql/types/notifications";
 import { NotificationService } from "@/services/notification";
 
-export const useNotification = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// Query keys
+const NOTIFICATION_KEYS = {
+  all: ['notifications'] as const,
+  channels: () => [...NOTIFICATION_KEYS.all, 'channels'] as const,
+};
 
-  const bindNotificationChannel = useCallback(
-    async (input: BindNotificationChannelInput) => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await NotificationService.bindNotificationChannel(input);
-        return result;
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        setError(errorMessage);
-        throw err;
-      } finally {
-        setIsLoading(false);
+// Hook for listing notification channels
+export const useNotificationChannels = () => {
+  return useQuery({
+    queryKey: NOTIFICATION_KEYS.channels(),
+    queryFn: () => NotificationService.listNotificationChannels(),
+    retry: (failureCount, error: any) => {
+      // Don't retry if it's an auth error
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        return false;
       }
+      return failureCount < 3;
     },
-    []
-  );
+  });
+};
 
-  const resendOTP = useCallback(
-    async (type: NotificationChannelType, value: string) => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await NotificationService.resendOTP(type, value);
-        return result;
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        setError(errorMessage);
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
+// Hook for getting email binding status
+export const useEmailBindingStatus = () => {
+  const { data: channels, isLoading, error } = useNotificationChannels();
+  
+  const emailChannel = channels?.find(
+    (channel) => channel.channelType === 'EMAIL' && channel.verified
   );
-
-  const verifyNotificationChannel = useCallback(
-    async (input: VerifyNotificationChannelInput) => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await NotificationService.verifyNotificationChannel(input);
-        return result;
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        setError(errorMessage);
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
-
-  const subscribeProposal = useCallback(
-    async (input: ProposalSubscriptionInput) => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await NotificationService.subscribeProposal(input);
-        return result;
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        setError(errorMessage);
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
-
-  const unsubscribeProposal = useCallback(
-    async (daoCode: string, proposalId: string) => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await NotificationService.unsubscribeProposal(daoCode, proposalId);
-        return result;
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        setError(errorMessage);
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
-
+  
   return {
+    isEmailBound: !!emailChannel,
+    emailAddress: emailChannel?.channelValue,
+    channels,
     isLoading,
     error,
-    bindNotificationChannel,
-    resendOTP,
-    verifyNotificationChannel,
-    subscribeProposal,
-    unsubscribeProposal,
+  };
+};
+
+// Mutation hooks
+export const useBindNotificationChannel = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (input: BindNotificationChannelInput) =>
+      NotificationService.bindNotificationChannel(input),
+    onSuccess: () => {
+      // Invalidate channels query after binding
+      queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.channels() });
+    },
+  });
+};
+
+export const useResendOTP = () => {
+  return useMutation({
+    mutationFn: ({ type, value }: { type: NotificationChannelType; value: string }) =>
+      NotificationService.resendOTP(type, value),
+  });
+};
+
+export const useVerifyNotificationChannel = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (input: VerifyNotificationChannelInput) =>
+      NotificationService.verifyNotificationChannel(input),
+    onSuccess: () => {
+      // Invalidate channels query after verification
+      queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.channels() });
+    },
+  });
+};
+
+export const useSubscribeProposal = () => {
+  return useMutation({
+    mutationFn: (input: ProposalSubscriptionInput) =>
+      NotificationService.subscribeProposal(input),
+  });
+};
+
+export const useUnsubscribeProposal = () => {
+  return useMutation({
+    mutationFn: ({ daoCode, proposalId }: { daoCode: string; proposalId: string }) =>
+      NotificationService.unsubscribeProposal(daoCode, proposalId),
+  });
+};
+
+// Legacy hook for backward compatibility (deprecated)
+// TODO: Remove this after updating all components
+export const useNotification = () => {
+  console.warn('useNotification is deprecated. Use specific hooks like useBindNotificationChannel, useVerifyNotificationChannel, etc.');
+  
+  const bindChannelMutation = useBindNotificationChannel();
+  const resendOTPMutation = useResendOTP();
+  const verifyChannelMutation = useVerifyNotificationChannel();
+  const subscribeProposalMutation = useSubscribeProposal();
+  const unsubscribeProposalMutation = useUnsubscribeProposal();
+  
+  return {
+    isLoading: bindChannelMutation.isPending || resendOTPMutation.isPending || 
+               verifyChannelMutation.isPending || subscribeProposalMutation.isPending ||
+               unsubscribeProposalMutation.isPending,
+    error: bindChannelMutation.error?.message || resendOTPMutation.error?.message ||
+           verifyChannelMutation.error?.message || subscribeProposalMutation.error?.message ||
+           unsubscribeProposalMutation.error?.message || null,
+    bindNotificationChannel: bindChannelMutation.mutateAsync,
+    resendOTP: (type: NotificationChannelType, value: string) => 
+      resendOTPMutation.mutateAsync({ type, value }),
+    verifyNotificationChannel: verifyChannelMutation.mutateAsync,
+    subscribeProposal: subscribeProposalMutation.mutateAsync,
+    unsubscribeProposal: (daoCode: string, proposalId: string) =>
+      unsubscribeProposalMutation.mutateAsync({ daoCode, proposalId }),
   };
 };

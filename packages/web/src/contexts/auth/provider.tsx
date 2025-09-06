@@ -24,21 +24,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setTokenState(newToken);
     });
 
-    // 定期验证token (每30秒检查一次)
-    const validateInterval = setInterval(async () => {
-      const currentToken = tokenManager.getToken();
-      if (currentToken) {
-        const isValid = await tokenManager.validateToken();
-        if (!isValid) {
-          // Token已失效，tokenManager.validateToken()内部已经清理了
-          console.log('Token validation failed, cleared automatically');
-        }
-      }
-    }, 30000);
-
     return () => {
       unsubscribe();
-      clearInterval(validateInterval);
     };
   }, []);
 

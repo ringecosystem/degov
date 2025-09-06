@@ -34,36 +34,7 @@ class TokenManager {
   }
 
   // 检查token是否仍然有效
-  async validateToken(): Promise<boolean> {
-    const token = this.getToken();
-    if (!token) return false;
-    
-    try {
-      // 调用API验证token
-      const response = await fetch('/api/auth/validate', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        },
-        cache: 'no-store'
-      });
-      
-      if (!response.ok) {
-        // 如果返回401，token已失效
-        if (response.status === 401) {
-          this.clearToken();
-          return false;
-        }
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Token validation failed:', error);
-      return false;
-    }
-  }
+  // 注意：不再进行周期性远端校验，统一依赖 401 时的自动重登策略
 
   // 检查token是否存在且格式正确
   hasValidFormat(): boolean {

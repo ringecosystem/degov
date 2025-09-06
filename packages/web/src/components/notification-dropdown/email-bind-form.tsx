@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { toast } from "react-toastify";
 import { z } from "zod";
 
@@ -15,15 +14,21 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useNotification } from "@/hooks/useNotification";
+import { 
+  useBindNotificationChannel,
+  useResendOTP,
+  useVerifyNotificationChannel,
+} from "@/hooks/useNotification";
 
 interface EmailBindFormProps {
   onVerified: (email: string) => void;
 }
 
 export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
-  const { bindNotificationChannel, resendOTP, verifyNotificationChannel } =
-    useNotification();
+  // Use the new hooks directly
+  const bindEmailMutation = useBindNotificationChannel();
+  const resendOTPMutation = useResendOTP();
+  const verifyEmailMutation = useVerifyNotificationChannel();
 
   const [email, setEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
@@ -35,72 +40,6 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
   const emailSchema = z.string().email();
   const isEmailValid = emailSchema.safeParse(email).success;
 
-  // Bind email mutation
-  const bindEmailMutation = useMutation({
-    mutationFn: (email: string) =>
-      bindNotificationChannel({
-        type: "EMAIL",
-        value: email,
-      }),
-    onSuccess: (data) => {
-      if (data.code === 0) {
-        setChannelId(data.id);
-        setCountdownDuration(data.rateLimit || 60);
-        setCountdownActive(true);
-        setCountdownKey((k) => k + 1);
-      } else {
-        toast.error(data.message || "Failed to bind email");
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to bind email");
-    },
-  });
-
-  // Resend OTP mutation
-  const resendOTPMutation = useMutation({
-    mutationFn: (email: string) => resendOTP("EMAIL", email),
-    onSuccess: (data) => {
-      if (data.code === 0) {
-        setChannelId(data.id);
-        setCountdownDuration(data.rateLimit || 60);
-        setCountdownActive(true);
-        setCountdownKey((k) => k + 1);
-      } else {
-        toast.error(data.message || "Failed to send verification code");
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to send verification code");
-    },
-  });
-
-  // Verify email mutation
-  const verifyEmailMutation = useMutation({
-    mutationFn: ({
-      channelId,
-      otpCode,
-    }: {
-      channelId: string;
-      otpCode: string;
-    }) =>
-      verifyNotificationChannel({
-        id: channelId,
-        otpCode,
-      }),
-    onSuccess: (data) => {
-      if (data.code === 0) {
-        toast.success("Email verified successfully");
-        onVerified(email);
-      } else {
-        toast.error(data.message || "Verification failed");
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Verification failed");
-    },
-  });
-
   const mutationLoading =
     bindEmailMutation.isPending ||
     resendOTPMutation.isPending ||
@@ -109,29 +48,61 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
   const handleSendVerification = useCallback(async () => {
     if (!email || !isEmailValid || mutationLoading) return;
 
-    if (channelId) {
-      resendOTPMutation.mutate(email);
-    } else {
-      bindEmailMutation.mutate(email);
-    }
+    const mutation = channelId ? resendOTPMutation : bindEmailMutation;
+    const mutationParams = channelId 
+      ? { type: "EMAIL" as const, value: email }
+      : { type: "EMAIL" as const, value: email };
+    
+    mutation.mutate(mutationParams, {
+      onSuccess: (data) => {
+        if (data.code === 0) {
+          setChannelId(data.id);
+          setCountdownDuration(data.rateLimit || 60);
+          setCountdownActive(true);
+          setCountdownKey((k) => k + 1);
+        } else {
+          toast.error(data.message || "Failed to send verification code");
+        }
+      },
+      onError: (error: Error) => {
+        toast.error(error.message || "Failed to send verification code");
+      },
+    });
   }, [
     email,
     isEmailValid,
     channelId,
     mutationLoading,
-    resendOTPMutation.mutate,
-    bindEmailMutation.mutate,
+    resendOTPMutation,
+    bindEmailMutation,
   ]);
 
   const handleVerifyCode = useCallback(async () => {
     if (!verificationCode || !channelId || mutationLoading) return;
 
-    verifyEmailMutation.mutate({ channelId, otpCode: verificationCode });
+    verifyEmailMutation.mutate(
+      { id: channelId, otpCode: verificationCode },
+      {
+        onSuccess: (data) => {
+          if (data.code === 0) {
+            toast.success("Email verified successfully");
+            onVerified(email);
+          } else {
+            toast.error(data.message || "Verification failed");
+          }
+        },
+        onError: (error: Error) => {
+          toast.error(error.message || "Verification failed");
+        },
+      }
+    );
   }, [
     verificationCode,
     channelId,
     mutationLoading,
-    verifyEmailMutation.mutate,
+    verifyEmailMutation,
+    email,
+    onVerified,
   ]);
 
   return (

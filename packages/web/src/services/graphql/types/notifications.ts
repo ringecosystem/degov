@@ -1,5 +1,18 @@
 export type NotificationChannelType = 'EMAIL';
 
+export interface NotificationChannel {
+  id: string;
+  channelType: NotificationChannelType;
+  channelValue: string;
+  verified: boolean;
+  payload?: string;
+  ctime: string;
+}
+
+export interface ListNotificationChannelsResponse {
+  listNotificationChannels: NotificationChannel[];
+}
+
 export interface BindNotificationChannelInput {
   type: NotificationChannelType;
   value: string;
