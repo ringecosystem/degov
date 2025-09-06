@@ -32,6 +32,8 @@ export { AlertIcon } from './alert-icon';
 export { AvatarIcon } from './avatar-icon';
 export { StarIcon } from './star-icon';
 export { StarActiveIcon } from './star-active-icon';
+export { NotificationIcon } from './notification-icon';
+export { EmailBindIcon } from './email-bind-icon';
 
 // Status Icons
 export { StatusPublishedIcon } from './status-published-icon';

@@ -3,6 +3,7 @@ import yaml from "js-yaml";
 import { useEffect, useState } from "react";
 
 import ErrorComponent from "@/components/error";
+import { AuthProvider } from "@/contexts/auth";
 import { BlockProvider } from "@/contexts/BlockContext";
 import { ClockModeProvider } from "@/contexts/ClockModeContext";
 import { GlobalLoadingProvider } from "@/contexts/GlobalLoadingContext";
@@ -72,11 +73,13 @@ function ConfigProviderContent({ children }: { children: React.ReactNode }) {
 
   return (
     <ConfigContext.Provider value={config}>
-      <DAppProvider>
-        <BlockProvider>
-          <ClockModeProvider>{children}</ClockModeProvider>
-        </BlockProvider>
-      </DAppProvider>
+      <AuthProvider>
+        <DAppProvider>
+          <BlockProvider>
+            <ClockModeProvider>{children}</ClockModeProvider>
+          </BlockProvider>
+        </DAppProvider>
+      </AuthProvider>
     </ConfigContext.Provider>
   );
 }

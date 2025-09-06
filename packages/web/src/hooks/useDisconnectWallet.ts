@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import { useDisconnect } from 'wagmi';
 
+import { tokenManager } from '@/lib/auth/token-manager';
+
 export const useDisconnectWallet = () => {
   const { disconnect } = useDisconnect();
 
@@ -18,6 +20,8 @@ export const useDisconnectWallet = () => {
         }
       }
 
+      // 清除认证状态
+      tokenManager.clearToken();
       disconnect();
     },
     [disconnect]

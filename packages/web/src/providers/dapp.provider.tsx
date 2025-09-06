@@ -1,13 +1,15 @@
 "use client";
-import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import { RainbowKitProvider, RainbowKitAuthenticationProvider } from "@rainbow-me/rainbowkit";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as React from "react";
 import { WagmiProvider, deserialize, serialize } from "wagmi";
 
 import { createConfig, queryClient } from "@/config/wagmi";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useRainbowKitTheme } from "@/hooks/useRainbowKitTheme";
+import { authenticationAdapter } from "@/lib/rainbowkit-auth";
 import "@rainbow-me/rainbowkit/styles.css";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
@@ -20,6 +22,7 @@ const persister = createSyncStoragePersister({
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   const dappConfig = useDaoConfig();
   const rainbowKitTheme = useRainbowKitTheme();
+  const authStatus = useAuthStatus();
   const currentChain: Chain = React.useMemo(() => {
     return {
       id: Number(dappConfig?.chain?.id),
@@ -66,15 +69,17 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
         client={queryClient}
         persistOptions={{ persister }}
       >
-        <RainbowKitProvider
-          theme={rainbowKitTheme}
-          locale="en-US"
-          appInfo={{ appName: dappConfig?.name }}
-          initialChain={currentChain}
-          id={dappConfig?.chain?.id ? String(dappConfig?.chain?.id) : undefined}
-        >
-          {children}
-        </RainbowKitProvider>
+        <RainbowKitAuthenticationProvider adapter={authenticationAdapter} status={authStatus}>
+          <RainbowKitProvider
+            theme={rainbowKitTheme}
+            locale="en-US"
+            appInfo={{ appName: dappConfig?.name }}
+            initialChain={currentChain}
+            id={dappConfig?.chain?.id ? String(dappConfig?.chain?.id) : undefined}
+          >
+            {children}
+          </RainbowKitProvider>
+        </RainbowKitAuthenticationProvider>
       </PersistQueryClientProvider>
     </WagmiProvider>
   );

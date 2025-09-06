@@ -4,6 +4,7 @@ import { useAccount } from "wagmi";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
+import { NotificationButton } from "../notification-button";
 import { Button } from "../ui/button";
 
 import { Connected } from "./connected";
@@ -38,7 +39,12 @@ export const ConnectButton = ({ onMenuToggle }: { onMenuToggle?: () => void }) =
   }
 
   if (address) {
-    return <Connected address={address} onMenuToggle={onMenuToggle} />;
+    return (
+      <div className="flex items-center gap-[10px]">
+        <Connected address={address} onMenuToggle={onMenuToggle} />
+        <NotificationButton address={address} />
+      </div>
+    );
   }
 
   return null;

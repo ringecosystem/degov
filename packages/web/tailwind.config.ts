@@ -62,6 +62,18 @@ export default {
         canceled: "hsl(var(--canceled))",
         "always-light": "hsl(var(--always-light))",
         "always-dark": "hsl(var(--always-dark))",
+        // Custom semantic colors
+        light: "hsl(var(--light))",
+        dark: "hsl(var(--dark))",
+        "grey-1": "hsl(var(--grey-1))",
+        "grey-2": "hsl(var(--grey-2))",
+        bg: "hsl(var(--bg))",
+        "bg-2": "hsl(var(--bg-2))",
+        blue: "hsl(var(--blue))",
+        green: "hsl(var(--green))",
+        red: "hsl(var(--red))",
+        yellow: "hsl(var(--yellow))",
+        purple: "hsl(var(--purple))",
       },
       borderRadius: {
         lg: "var(--radius)",

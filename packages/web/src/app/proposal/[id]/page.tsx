@@ -8,6 +8,7 @@ import { useReadContract } from "wagmi";
 
 import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
+import { ProposalNotification } from "@/components/proposal-notification";
 import { LoadingState } from "@/components/ui/loading-spinner";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
@@ -275,6 +276,7 @@ export default function ProposalDetailPage() {
               proposalQueuedById={proposalQueuedById}
               isLoading={isAllQueriesFetching || isPending}
             />
+            <ProposalNotification proposalId={id as string} />
             <Faqs type="proposal" />
           </div>
         </div>
@@ -304,6 +306,7 @@ export default function ProposalDetailPage() {
           proposalQueuedById={proposalQueuedById}
           isLoading={isAllQueriesFetching || isPending}
         />
+        <ProposalNotification proposalId={id as string} />
       </div>
     </div>
   );

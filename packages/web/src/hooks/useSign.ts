@@ -4,20 +4,11 @@ import { createSiweMessage } from "viem/siwe";
 import { useAccount, useSignMessage } from "wagmi";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { tokenManager, getToken, setToken, clearToken } from "@/lib/auth/token-manager";
 
-export const TOKEN_KEY = "auth_token";
-
-export const getToken = () => {
-  return localStorage.getItem(TOKEN_KEY);
-};
-
-export const setToken = (token: string) => {
-  localStorage.setItem(TOKEN_KEY, token);
-};
-
-export const clearToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
-};
+// 保持向后兼容性
+export const TOKEN_KEY = "degov_auth_token";
+export { getToken, setToken, clearToken };
 
 export function useSign() {
   const { address } = useAccount();
@@ -76,7 +67,7 @@ export function useSign() {
         throw new Error(verifyData.msg || "Authentication failed");
       }
 
-      setToken(verifyData.data.token);
+      tokenManager.setToken(verifyData.data.token);
       setIsLoading(false);
       return verifyData.data.token;
     } catch (err) {

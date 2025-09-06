@@ -1,6 +1,7 @@
 import { clearToken, getToken } from "@/hooks/useSign";
 
 import { request } from "./client";
+import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
 
@@ -327,6 +328,72 @@ export const memberService = {
     return data;
   },
 };
+export const notificationService = {
+  bindNotificationChannel: async (
+    endpoint: string,
+    input: Types.BindNotificationChannelInput
+  ): Promise<Types.BindNotificationChannelResponse> => {
+    const response = await request<{ bindNotificationChannel: Types.BindNotificationChannelResponse }>(
+      endpoint,
+      Mutations.BIND_NOTIFICATION_CHANNEL,
+      input
+    );
+    return response.bindNotificationChannel;
+  },
+
+  resendOTP: async (
+    endpoint: string,
+    input: Types.BindNotificationChannelInput
+  ): Promise<Types.BindNotificationChannelResponse> => {
+    const response = await request<{ resendOTP: Types.BindNotificationChannelResponse }>(
+      endpoint,
+      Mutations.RESEND_OTP,
+      input
+    );
+    return response.resendOTP;
+  },
+
+  verifyNotificationChannel: async (
+    endpoint: string,
+    input: Types.VerifyNotificationChannelInput
+  ): Promise<Types.VerifyNotificationChannelResponse> => {
+    const response = await request<{ verifyNotificationChannel: Types.VerifyNotificationChannelResponse }>(
+      endpoint,
+      Mutations.VERIFY_NOTIFICATION_CHANNEL,
+      input
+    );
+    return response.verifyNotificationChannel;
+  },
+
+  subscribeProposal: async (
+    endpoint: string,
+    input: Types.ProposalSubscriptionInput
+  ): Promise<Types.ProposalSubscriptionResponse> => {
+    const response = await request<{ subscribeProposal: Types.ProposalSubscriptionResponse }>(
+      endpoint,
+      Mutations.SUBSCRIBE_PROPOSAL,
+      input
+    );
+    return response.subscribeProposal;
+  },
+
+  unsubscribeProposal: async (
+    endpoint: string,
+    input: Omit<Types.ProposalSubscriptionInput, 'features'>
+  ): Promise<Types.ProposalSubscriptionResponse> => {
+    const response = await request<{ unsubscribeProposal: Types.ProposalSubscriptionResponse }>(
+      endpoint,
+      Mutations.UNSUBSCRIBE_PROPOSAL,
+      input
+    );
+    return response.unsubscribeProposal;
+  },
+};
+
 export { Types };
 
 export { Queries };
+
+export { Mutations };
+
+

@@ -2,8 +2,12 @@
 import { createAuthenticationAdapter } from "@rainbow-me/rainbowkit";
 import { createSiweMessage } from "viem/siwe";
 
-import { clearToken, setToken } from "@/hooks/useSign";
+import { tokenManager } from "@/lib/auth/token-manager";
 
+/**
+ * 为 RainbowKit 创建自定义认证适配器，集成现有后端
+ * 该适配器使用现有的 API 处理 SIWE 认证流程
+ */
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
     const response = await fetch("/api/auth/nonce", {
@@ -16,23 +20,18 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
 
   createMessage: ({ nonce, address, chainId }) => {
-    console.log("createMessage", { nonce, address, chainId });
-
     return createSiweMessage({
       domain: window.location.host,
       address,
-      statement: `DeGov.AI wants you to sign in with your Ethereum account: ${address}`,
+      statement: 'Sign in with Ethereum to DeGov.AI',
       uri: window.location.origin,
-      version: "1",
+      version: '1',
       chainId,
       nonce,
     });
   },
 
   verify: async ({ message, signature }) => {
-    console.log("message", message);
-    console.log("signature", signature);
-
     const verifyRes = await fetch("/api/auth/login", {
       method: "POST",
       headers: {
@@ -42,9 +41,10 @@ export const authenticationAdapter = createAuthenticationAdapter({
       cache: "no-store",
     });
     const response = await verifyRes.json();
-    console.log("response", response);
+    
     if (response?.code === 0 && response?.data?.token) {
-      setToken(response.data.token);
+      // 使用统一的token管理器
+      tokenManager.setToken(response.data.token);
       return true;
     }
 
@@ -52,6 +52,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
 
   signOut: async () => {
-    clearToken();
+    // 使用统一的token管理器
+    tokenManager.clearToken();
   },
 });
