@@ -42,7 +42,7 @@ export const ConnectButton = ({ onMenuToggle }: { onMenuToggle?: () => void }) =
     return (
       <div className="flex items-center gap-[10px]">
         <Connected address={address} onMenuToggle={onMenuToggle} />
-        <NotificationButton address={address} />
+        <NotificationButton />
       </div>
     );
   }

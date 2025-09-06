@@ -11,6 +11,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useRainbowKitTheme } from "@/hooks/useRainbowKitTheme";
 import { authenticationAdapter } from "@/lib/rainbowkit-auth";
 import "@rainbow-me/rainbowkit/styles.css";
+import { AuthBridge } from "@/providers/auth-bridge";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
 
@@ -77,6 +78,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
             initialChain={currentChain}
             id={dappConfig?.chain?.id ? String(dappConfig?.chain?.id) : undefined}
           >
+            <AuthBridge />
             {children}
           </RainbowKitProvider>
         </RainbowKitAuthenticationProvider>

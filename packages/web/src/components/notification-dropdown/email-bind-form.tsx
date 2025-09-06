@@ -15,15 +15,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { notificationService } from "@/services/graphql";
+import { useNotification } from "@/hooks/useNotification";
 
 interface EmailBindFormProps {
   onVerified: (email: string) => void;
 }
 
 export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
-  const daoConfig = useDaoConfig();
+  const { bindNotificationChannel, resendOTP, verifyNotificationChannel } =
+    useNotification();
+
   const [email, setEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [countdownActive, setCountdownActive] = useState(false);
@@ -36,10 +37,11 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
 
   // Bind email mutation
   const bindEmailMutation = useMutation({
-    mutationFn: (email: string) => notificationService.bindNotificationChannel(daoConfig?.indexer?.endpoint as string, {
-      type: 'EMAIL',
-      value: email
-    }),
+    mutationFn: (email: string) =>
+      bindNotificationChannel({
+        type: "EMAIL",
+        value: email,
+      }),
     onSuccess: (data) => {
       if (data.code === 0) {
         setChannelId(data.id);
@@ -47,20 +49,17 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
         setCountdownActive(true);
         setCountdownKey((k) => k + 1);
       } else {
-        toast.error(data.message || 'Failed to bind email');
+        toast.error(data.message || "Failed to bind email");
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to bind email');
-    }
+      toast.error(error.message || "Failed to bind email");
+    },
   });
 
-  // Resend OTP mutation  
+  // Resend OTP mutation
   const resendOTPMutation = useMutation({
-    mutationFn: (email: string) => notificationService.resendOTP(daoConfig?.indexer?.endpoint as string, {
-      type: 'EMAIL',
-      value: email
-    }),
+    mutationFn: (email: string) => resendOTP("EMAIL", email),
     onSuccess: (data) => {
       if (data.code === 0) {
         setChannelId(data.id);
@@ -68,55 +67,76 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
         setCountdownActive(true);
         setCountdownKey((k) => k + 1);
       } else {
-        toast.error(data.message || 'Failed to send verification code');
+        toast.error(data.message || "Failed to send verification code");
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to send verification code');
-    }
+      toast.error(error.message || "Failed to send verification code");
+    },
   });
 
   // Verify email mutation
   const verifyEmailMutation = useMutation({
-    mutationFn: ({ channelId, otpCode }: { channelId: string; otpCode: string }) => 
-      notificationService.verifyNotificationChannel(daoConfig?.indexer?.endpoint as string, {
+    mutationFn: ({
+      channelId,
+      otpCode,
+    }: {
+      channelId: string;
+      otpCode: string;
+    }) =>
+      verifyNotificationChannel({
         id: channelId,
-        otpCode
+        otpCode,
       }),
     onSuccess: (data) => {
       if (data.code === 0) {
         toast.success("Email verified successfully");
         onVerified(email);
       } else {
-        toast.error(data.message || 'Verification failed');
+        toast.error(data.message || "Verification failed");
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Verification failed');
-    }
+      toast.error(error.message || "Verification failed");
+    },
   });
 
-  const isLoading = bindEmailMutation.isPending || resendOTPMutation.isPending || verifyEmailMutation.isPending;
+  const mutationLoading =
+    bindEmailMutation.isPending ||
+    resendOTPMutation.isPending ||
+    verifyEmailMutation.isPending;
 
   const handleSendVerification = useCallback(async () => {
-    if (!email || !isEmailValid || isLoading) return;
+    if (!email || !isEmailValid || mutationLoading) return;
 
     if (channelId) {
       resendOTPMutation.mutate(email);
     } else {
       bindEmailMutation.mutate(email);
     }
-  }, [email, isEmailValid, channelId, isLoading, resendOTPMutation.mutate, bindEmailMutation.mutate]);
+  }, [
+    email,
+    isEmailValid,
+    channelId,
+    mutationLoading,
+    resendOTPMutation.mutate,
+    bindEmailMutation.mutate,
+  ]);
 
   const handleVerifyCode = useCallback(async () => {
-    if (!verificationCode || !channelId || isLoading) return;
+    if (!verificationCode || !channelId || mutationLoading) return;
 
     verifyEmailMutation.mutate({ channelId, otpCode: verificationCode });
-  }, [verificationCode, channelId, isLoading, verifyEmailMutation.mutate]);
+  }, [
+    verificationCode,
+    channelId,
+    mutationLoading,
+    verifyEmailMutation.mutate,
+  ]);
 
   return (
     <DropdownMenuContent
-      className="rounded-[26px] border-grey-1 bg-dark p-[20px] shadow-card w-full lg:w-[400px]"
+      className="rounded-[26px] border-grey-1 bg-dark p-[20px] shadow-card min-w-[320px] w-[calc(100vw-40px)] max-w-[400px] lg:w-[400px]"
       align="end"
     >
       <div className="flex flex-col gap-[20px]">
@@ -146,12 +166,15 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
                   <Button
                     onClick={handleSendVerification}
                     disabled={
-                      !email || !isEmailValid || countdownActive || isLoading
+                      !email ||
+                      !isEmailValid ||
+                      countdownActive ||
+                      mutationLoading
                     }
                     className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[95px]"
                     size="sm"
                   >
-                    {isLoading ? (
+                    {mutationLoading ? (
                       "Sending..."
                     ) : countdownActive ? (
                       <Countdown
@@ -190,11 +213,11 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
             />
             <Button
               onClick={handleVerifyCode}
-              disabled={!verificationCode || isLoading}
+              disabled={!verificationCode || mutationLoading}
               className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[95px]"
               size="sm"
             >
-              {isLoading ? "Verifying..." : "Verify"}
+              {mutationLoading ? "Verifying..." : "Verify"}
             </Button>
           </div>
         </div>

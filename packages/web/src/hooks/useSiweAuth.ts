@@ -1,86 +1,82 @@
 'use client';
 import { useCallback, useState } from 'react';
-import { createSiweMessage } from 'viem/siwe';
 import { useAccount, useSignMessage, useChainId } from 'wagmi';
 
-import { useAuth } from '@/contexts/auth';
+import { useAuth as useAuthContext } from '@/contexts/auth';
+import { siweService } from '@/lib/auth/siwe-service';
 
+export interface AuthResult {
+  success: boolean;
+  token?: string;
+  error?: string;
+}
+
+// Imperative SIWE actions: authenticate and signOut.
+// Keeps context/useAuth for reading auth state; avoids name clash.
 export const useSiweAuth = () => {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { setToken } = useAuth();
+  const { setToken } = useAuthContext();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   const { signMessageAsync } = useSignMessage();
 
-  const getNonce = useCallback(async (): Promise<string> => {
-    const response = await fetch('/api/auth/nonce', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-    });
-    const { data } = await response.json();
-    return data.nonce;
-  }, []);
-
-  const createMessage = useCallback((address: `0x${string}`, nonce: string) => {
-    return createSiweMessage({
-      domain: typeof window !== 'undefined' ? window.location.host : 'apps.degov.ai',
-      address,
-      statement: `DeGov.AI wants you to sign in with your Ethereum account: ${address}`,
-      uri: typeof window !== 'undefined' ? window.location.origin : 'https://apps.degov.ai',
-      version: '1',
-      chainId,
-      nonce,
-    });
-  }, [chainId]);
-
-  const authenticate = useCallback(async (): Promise<boolean> => {
+  const authenticate = useCallback(async (): Promise<AuthResult> => {
     if (!isConnected || !address) {
-      console.error('Please connect your wallet first');
-      return false;
+      const errorMsg = 'Please connect your wallet first';
+      setError(new Error(errorMsg));
+      return { success: false, error: errorMsg };
     }
 
     setIsAuthenticating(true);
+    setError(null);
 
     try {
-      const nonce = await getNonce();
-      if (!nonce) {
-        throw new Error('Failed to get nonce');
-      }
-
-      const message = createMessage(address, nonce);
-      const signature = await signMessageAsync({ message });
-
-      const verifyRes = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message, signature }),
-        cache: 'no-store',
+      const result = await siweService.authenticateWithWallet({
+        address,
+        chainId,
+        signMessageAsync,
       });
 
-      const response = await verifyRes.json();
-
-      if (response?.code === 0 && response?.data?.token) {
-        setToken(response.data.token);
-        return true;
+      if (result.success && result.token) {
+        setToken(result.token);
+      } else {
+        setError(new Error(result.error || 'Authentication failed'));
       }
 
-      return false;
-
-    } catch (error) {
-      console.error('Authentication failed:', error);
-      return false;
+      return result;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setError(error);
+      return { success: false, error: error.message };
     } finally {
       setIsAuthenticating(false);
     }
-  }, [isConnected, address, getNonce, createMessage, signMessageAsync, setToken]);
+  }, [isConnected, address, chainId, signMessageAsync, setToken]);
+
+  const signOut = useCallback(async (): Promise<void> => {
+    try {
+      await siweService.signOut();
+      setToken(null);
+      setError(null);
+    } catch (err) {
+      console.error('Sign out failed:', err);
+    }
+  }, [setToken]);
 
   return {
     authenticate,
+    signOut,
+
+    // State
     isAuthenticating,
-    canAuthenticate: isConnected && !!address
+    error,
+    canAuthenticate: isConnected && !!address,
+
+    // Wallet state
+    address,
+    isConnected,
+    chainId,
   };
 };

@@ -1,12 +1,13 @@
 "use client";
 
-import { NotificationIcon } from "@/components/icons";
+import { EmailBindIcon, NotificationIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenuContent,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import Link from "next/link";
 
 interface SettingsPanelProps {
   email?: string;
@@ -23,52 +24,54 @@ export const SettingsPanel = ({
 }: SettingsPanelProps) => {
   return (
     <DropdownMenuContent
-      className="rounded-[26px] border-border/20 bg-card p-[20px] shadow-2xl w-[400px]"
+      className="rounded-[26px] border-grey-1 bg-dark p-[20px] shadow-card flex flex-col gap-[20px] w-[calc(100vw-40px)] max-w-[300px] lg:w-[300px]"
       align="end"
     >
-      <div className="flex items-center gap-3 mb-6">
-        <div className="size-8 bg-foreground rounded-full flex items-center justify-center">
-          <NotificationIcon width={16} height={16} className="text-card" />
+      <div className="flex flex-col gap-[20px]">
+        <div className="flex items-center gap-[5px]">
+          <EmailBindIcon width={24} height={24} className="text-foreground" />
+          <span className="text-foreground text-[14px] font-semibold">
+            {email}
+          </span>
         </div>
-        <span className="text-foreground text-lg font-bold">{email}</span>
-      </div>
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-foreground font-medium text-sm">New proposals</h3>
-            <p className="text-muted-foreground text-xs">
-              Notified of all new proposals of this DAO.
-            </p>
+        <div className="h-[1px] w-full bg-grey-2/50"></div>
+
+        <div className="flex flex-col gap-[5px]">
+          <div className="flex items-center gap-[10px]">
+            <h3 className="text-foreground font-semibold text-[14px] flex-1">
+              New proposals
+            </h3>
+            <Switch
+              checked={newProposals}
+              onCheckedChange={() => onToggle("newProposals")}
+            />
           </div>
-          <Switch
-            checked={newProposals}
-            onCheckedChange={() => onToggle("newProposals")}
-          />
+          <p className="text-muted-foreground text-xs">
+            Notified of all new proposals of this DAO.
+          </p>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-foreground font-medium text-sm">
+        <div className="flex flex-col gap-[5px]">
+          <div className="flex items-center gap-[10px]">
+            <h3 className="text-foreground font-semibold text-[14px] flex-1">
               Voting end reminder
             </h3>
-            <p className="text-muted-foreground text-xs">
-              Receive notifications before the proposal voting ends.
-            </p>
+            <Switch
+              checked={votingEndReminder}
+              onCheckedChange={() => onToggle("votingEndReminder")}
+            />
           </div>
-          <Switch
-            checked={votingEndReminder}
-            onCheckedChange={() => onToggle("votingEndReminder")}
-          />
+          <p className="text-muted-foreground text-xs">
+            Receive notifications before the proposal voting ends.
+          </p>
         </div>
-
-        <DropdownMenuSeparator className="my-4 bg-border/20" />
-
-        <Button className="w-full bg-foreground hover:bg-foreground/90 text-card rounded-[20px] py-2 text-sm">
-          Notification setting
-        </Button>
+        <div className="w-full flex justify-end">
+          <Button className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] py-[5px] px-[10px] h-auto">
+            <Link href="/notification-settings"> Notification setting </Link>
+          </Button>
+        </div>
       </div>
     </DropdownMenuContent>
   );
 };
-

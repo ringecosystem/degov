@@ -48,12 +48,13 @@ export const NotificationDropdown = () => {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          className="size-[40px] rounded-[10px] border border-border p-0 hover:bg-card/80 flex items-center justify-center"
-          variant="ghost"
+          className="lg:border lg:border-border rounded-full w-[42px] bg-card lg:bg-background h-[42px] lg:rounded-[10px] border-input  p-0 flex items-center justify-center"
+          variant="outline"
         >
-          <NotificationIcon className="text-foreground" />
+          <NotificationIcon className="h-[20px] w-[20px]" />
         </Button>
       </DropdownMenuTrigger>
+
       {isEmailBound ? (
         <SettingsPanel
           email={settings.email}

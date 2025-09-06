@@ -21,11 +21,6 @@ class TokenManager {
     
     // 通知所有监听器
     this.listeners.forEach(listener => listener(token));
-    
-    // 触发自定义事件，保持与现有代码的兼容性
-    window.dispatchEvent(new CustomEvent('auth-token-change', {
-      detail: { token }
-    }));
   }
 
   clearToken(): void {
@@ -84,4 +79,3 @@ export const tokenManager = new TokenManager();
 export const getToken = () => tokenManager.getToken();
 export const setToken = (token: string | null) => tokenManager.setToken(token);
 export const clearToken = () => tokenManager.clearToken();
-export const TOKEN_KEY_EXPORT = TOKEN_KEY;

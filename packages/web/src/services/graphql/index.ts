@@ -1,6 +1,7 @@
-import { clearToken, getToken } from "@/hooks/useSign";
+import { clearToken } from "@/lib/auth/token-manager";
 
 import { request } from "./client";
+import { fetchWithAuth } from "@/lib/auth/fetch-with-auth";
 import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
@@ -218,11 +219,10 @@ export const profileService = {
     code: number;
     data: ProfileData;
   }> => {
-    const response = await fetch(`/api/profile/${address}`, {
+    const response = await fetchWithAuth(`/api/profile/${address}`, {
       next: { revalidate: 300, tags: [`profile-${address}`] },
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
       },
     });
     const data = await response.json();
@@ -230,21 +230,18 @@ export const profileService = {
   },
 
   updateProfile: async (address: string, profile: Partial<ProfileData>) => {
-    const response = await fetch(`/api/profile/${address}`, {
+    const response = await fetchWithAuth(`/api/profile/${address}`, {
       method: "POST",
       body: JSON.stringify(profile),
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
       },
     });
     if (response.status === 401) {
+      // fetchWithAuth already attempted re-auth; still 401 means unauthorized
       clearToken();
-      return {
-        code: 401,
-        msg: "Unauthorized",
-      };
+      return { code: 401, msg: "Unauthorized" } as const;
     }
     const data = await response.json();
     return data;
@@ -267,10 +264,9 @@ export const memberService = {
         url.searchParams.set("limit", limit.toString());
       }
 
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithAuth(url.toString(), {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
       });
 
@@ -305,11 +301,10 @@ export const memberService = {
   // ]
 
   getMemberTotal: async (): Promise<Types.MemberTotalResponse> => {
-    const response = await fetch(`/api/degov/metrics`, {
+    const response = await fetchWithAuth(`/api/degov/metrics`, {
       next: { revalidate: 60, tags: ["member-metrics"] },
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
       },
     });
     const data = await response.json();
@@ -328,72 +323,8 @@ export const memberService = {
     return data;
   },
 };
-export const notificationService = {
-  bindNotificationChannel: async (
-    endpoint: string,
-    input: Types.BindNotificationChannelInput
-  ): Promise<Types.BindNotificationChannelResponse> => {
-    const response = await request<{ bindNotificationChannel: Types.BindNotificationChannelResponse }>(
-      endpoint,
-      Mutations.BIND_NOTIFICATION_CHANNEL,
-      input
-    );
-    return response.bindNotificationChannel;
-  },
-
-  resendOTP: async (
-    endpoint: string,
-    input: Types.BindNotificationChannelInput
-  ): Promise<Types.BindNotificationChannelResponse> => {
-    const response = await request<{ resendOTP: Types.BindNotificationChannelResponse }>(
-      endpoint,
-      Mutations.RESEND_OTP,
-      input
-    );
-    return response.resendOTP;
-  },
-
-  verifyNotificationChannel: async (
-    endpoint: string,
-    input: Types.VerifyNotificationChannelInput
-  ): Promise<Types.VerifyNotificationChannelResponse> => {
-    const response = await request<{ verifyNotificationChannel: Types.VerifyNotificationChannelResponse }>(
-      endpoint,
-      Mutations.VERIFY_NOTIFICATION_CHANNEL,
-      input
-    );
-    return response.verifyNotificationChannel;
-  },
-
-  subscribeProposal: async (
-    endpoint: string,
-    input: Types.ProposalSubscriptionInput
-  ): Promise<Types.ProposalSubscriptionResponse> => {
-    const response = await request<{ subscribeProposal: Types.ProposalSubscriptionResponse }>(
-      endpoint,
-      Mutations.SUBSCRIBE_PROPOSAL,
-      input
-    );
-    return response.subscribeProposal;
-  },
-
-  unsubscribeProposal: async (
-    endpoint: string,
-    input: Omit<Types.ProposalSubscriptionInput, 'features'>
-  ): Promise<Types.ProposalSubscriptionResponse> => {
-    const response = await request<{ unsubscribeProposal: Types.ProposalSubscriptionResponse }>(
-      endpoint,
-      Mutations.UNSUBSCRIBE_PROPOSAL,
-      input
-    );
-    return response.unsubscribeProposal;
-  },
-};
-
 export { Types };
 
 export { Queries };
 
 export { Mutations };
-
-
