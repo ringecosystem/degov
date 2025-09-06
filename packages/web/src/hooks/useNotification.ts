@@ -5,7 +5,6 @@ import type {
   VerifyNotificationChannelInput,
   ProposalSubscriptionInput,
   NotificationChannelType,
-  NotificationChannel,
 } from "@/services/graphql/types/notifications";
 import { NotificationService } from "@/services/notification";
 
@@ -95,30 +94,3 @@ export const useUnsubscribeProposal = () => {
   });
 };
 
-// Legacy hook for backward compatibility (deprecated)
-// TODO: Remove this after updating all components
-export const useNotification = () => {
-  console.warn('useNotification is deprecated. Use specific hooks like useBindNotificationChannel, useVerifyNotificationChannel, etc.');
-  
-  const bindChannelMutation = useBindNotificationChannel();
-  const resendOTPMutation = useResendOTP();
-  const verifyChannelMutation = useVerifyNotificationChannel();
-  const subscribeProposalMutation = useSubscribeProposal();
-  const unsubscribeProposalMutation = useUnsubscribeProposal();
-  
-  return {
-    isLoading: bindChannelMutation.isPending || resendOTPMutation.isPending || 
-               verifyChannelMutation.isPending || subscribeProposalMutation.isPending ||
-               unsubscribeProposalMutation.isPending,
-    error: bindChannelMutation.error?.message || resendOTPMutation.error?.message ||
-           verifyChannelMutation.error?.message || subscribeProposalMutation.error?.message ||
-           unsubscribeProposalMutation.error?.message || null,
-    bindNotificationChannel: bindChannelMutation.mutateAsync,
-    resendOTP: (type: NotificationChannelType, value: string) => 
-      resendOTPMutation.mutateAsync({ type, value }),
-    verifyNotificationChannel: verifyChannelMutation.mutateAsync,
-    subscribeProposal: subscribeProposalMutation.mutateAsync,
-    unsubscribeProposal: (daoCode: string, proposalId: string) =>
-      unsubscribeProposalMutation.mutateAsync({ daoCode, proposalId }),
-  };
-};

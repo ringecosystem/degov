@@ -9,7 +9,7 @@ import { NotificationIcon, SettingsIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/auth";
-import { useNotification } from "@/hooks/useNotification";
+import { useSubscribeProposal, useUnsubscribeProposal } from "@/hooks/useNotification";
 
 interface ProposalNotificationProps {
   proposalId?: string;
@@ -22,58 +22,33 @@ export const ProposalNotification = ({
 }: ProposalNotificationProps) => {
   const { address, isConnected } = useAccount();
   const { isAuthenticated } = useAuth();
-  const { subscribeProposal, unsubscribeProposal, isLoading } =
-    useNotification();
+  const subscribeProposalMutation = useSubscribeProposal();
+  const unsubscribeProposalMutation = useUnsubscribeProposal();
 
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [hasEmailRegistered, setHasEmailRegistered] = useState(false);
 
-  // Subscribe to proposal mutation
-  const subscribeMutation = useMutation({
-    mutationFn: ({
-      daoCode,
-      proposalId,
-    }: {
-      daoCode: string;
-      proposalId: string;
-    }) =>
-      subscribeProposal({
-        daoCode,
-        proposalId,
-        features: [
-          { type: "PROPOSAL_VOTING_END", enabled: true },
-          { type: "PROPOSAL_STATUS_CHANGE", enabled: true },
-        ],
-      }),
-    onSuccess: () => {
-      setIsSubscribed(true);
-      toast.success("Successfully subscribed to proposal notifications");
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to subscribe to proposal");
-    },
-  });
+  // Use success/error handlers for the mutations
+  const handleSubscribeSuccess = () => {
+    setIsSubscribed(true);
+    toast.success("Successfully subscribed to proposal notifications");
+  };
 
-  // Unsubscribe from proposal mutation
-  const unsubscribeMutation = useMutation({
-    mutationFn: ({
-      daoCode,
-      proposalId,
-    }: {
-      daoCode: string;
-      proposalId: string;
-    }) => unsubscribeProposal(daoCode, proposalId),
-    onSuccess: () => {
-      setIsSubscribed(false);
-      toast.success("Successfully unsubscribed from proposal notifications");
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to unsubscribe from proposal");
-    },
-  });
+  const handleSubscribeError = (error: Error) => {
+    toast.error(error.message || "Failed to subscribe to proposal");
+  };
+
+  const handleUnsubscribeSuccess = () => {
+    setIsSubscribed(false);
+    toast.success("Successfully unsubscribed from proposal notifications");
+  };
+
+  const handleUnsubscribeError = (error: Error) => {
+    toast.error(error.message || "Failed to unsubscribe from proposal");
+  };
 
   const mutationLoading =
-    subscribeMutation.isPending || unsubscribeMutation.isPending;
+    subscribeProposalMutation.isPending || unsubscribeProposalMutation.isPending;
 
   // TODO: Get email binding status and subscription status from API
   useEffect(() => {
@@ -87,19 +62,42 @@ export const ProposalNotification = ({
 
     if (isSubscribed) {
       // Unsubscribe
-      unsubscribeMutation.mutate({ daoCode, proposalId });
+      unsubscribeProposalMutation.mutate(
+        { daoCode, proposalId },
+        {
+          onSuccess: handleUnsubscribeSuccess,
+          onError: handleUnsubscribeError,
+        }
+      );
     } else {
       // Subscribe
-      subscribeMutation.mutate({ daoCode, proposalId });
+      subscribeProposalMutation.mutate(
+        {
+          daoCode,
+          proposalId,
+          features: [
+            { type: "PROPOSAL_VOTING_END", enabled: true },
+            { type: "PROPOSAL_STATUS_CHANGE", enabled: true },
+          ],
+        },
+        {
+          onSuccess: handleSubscribeSuccess,
+          onError: handleSubscribeError,
+        }
+      );
     }
   }, [
     isSubscribed,
     proposalId,
     daoCode,
-    subscribeMutation.mutate,
-    unsubscribeMutation.mutate,
+    subscribeProposalMutation,
+    unsubscribeProposalMutation,
     isConnected,
     address,
+    handleSubscribeSuccess,
+    handleSubscribeError,
+    handleUnsubscribeSuccess,
+    handleUnsubscribeError,
   ]);
 
   // Don't show if wallet is not connected or email is not registered
@@ -124,10 +122,10 @@ export const ProposalNotification = ({
       <div className="flex flex-col gap-4">
         <Button
           onClick={handleSubscribe}
-          disabled={mutationLoading || isLoading}
+          disabled={mutationLoading}
           className={`w-full rounded-[100px] py-[10px] px-[10px] bg-transparent flex items-center gap-[5px]`}
           variant="outline"
-          isLoading={mutationLoading || isLoading}
+          isLoading={mutationLoading}
         >
           <NotificationIcon width={20} height={20} />
           {isSubscribed ? "Unsubscribe" : "Subscribe"}
