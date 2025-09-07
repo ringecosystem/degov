@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 import { NotificationIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -19,16 +19,26 @@ interface NotificationSettings {
 }
 
 export const NotificationDropdown = () => {
-  const { isEmailBound, emailAddress, isLoading, error } = useEmailBindingStatus();
+  const { emailAddress, isLoading, channels } = useEmailBindingStatus();
+
   const [settings, setSettings] = useState<NotificationSettings>({
-    newProposals: true,
+    newProposals: false,
     votingEndReminder: false,
   });
+  const [locallyVerifiedEmail, setLocallyVerifiedEmail] = useState<
+    string | null
+  >(null);
 
   // Update settings when email binding status changes
   const handleVerified = useCallback((verifiedEmail: string) => {
     setSettings((prev) => ({ ...prev, email: verifiedEmail }));
+    setLocallyVerifiedEmail(verifiedEmail);
   }, []);
+
+  const effectiveEmail = useMemo(
+    () => emailAddress || locallyVerifiedEmail || settings.email,
+    [emailAddress, locallyVerifiedEmail, settings.email]
+  );
 
   const handleSettingToggle = useCallback(
     (
@@ -45,6 +55,12 @@ export const NotificationDropdown = () => {
     []
   );
 
+  // Consider any EMAIL channel (verified or not) as "has email configured"
+  const anyEmailChannel = useMemo(
+    () => channels?.find((c) => c.channelType === "EMAIL"),
+    [channels]
+  );
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -56,13 +72,13 @@ export const NotificationDropdown = () => {
         </Button>
       </DropdownMenuTrigger>
 
-      {isLoading ? (
-        <div className="w-80 p-4 text-center">
-          <p>Loading...</p>
-        </div>
-      ) : isEmailBound ? (
+      {isLoading ? null : emailAddress ? (
         <SettingsPanel
-          email={emailAddress}
+          email={
+            locallyVerifiedEmail ||
+            effectiveEmail ||
+            anyEmailChannel?.channelValue
+          }
           newProposals={settings.newProposals}
           votingEndReminder={settings.votingEndReminder}
           onToggle={handleSettingToggle}

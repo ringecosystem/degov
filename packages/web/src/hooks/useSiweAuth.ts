@@ -8,6 +8,7 @@ import { siweService } from '@/lib/auth/siwe-service';
 export interface AuthResult {
   success: boolean;
   token?: string;
+  remoteToken?: string;
   error?: string;
 }
 

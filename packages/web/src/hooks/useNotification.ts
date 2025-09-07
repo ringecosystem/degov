@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 import type {
   BindNotificationChannelInput,
@@ -7,6 +8,7 @@ import type {
   NotificationChannelType,
 } from "@/services/graphql/types/notifications";
 import { NotificationService } from "@/services/notification";
+import { useSiweAuth } from "@/hooks/useSiweAuth";
 
 // Query keys
 const NOTIFICATION_KEYS = {
@@ -16,29 +18,41 @@ const NOTIFICATION_KEYS = {
 
 // Hook for listing notification channels
 export const useNotificationChannels = () => {
+  const { authenticate } = useSiweAuth();
+
+  const queryFn = useMemo(() => {
+    return async () => {
+      try {
+        return await NotificationService.listNotificationChannels();
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 401) {
+          const res = await authenticate();
+          if (res?.success) {
+            return await NotificationService.listNotificationChannels();
+          }
+        }
+        throw error;
+      }
+    };
+  }, [authenticate]);
+
   return useQuery({
     queryKey: NOTIFICATION_KEYS.channels(),
-    queryFn: () => NotificationService.listNotificationChannels(),
-    retry: (failureCount, error: any) => {
-      // Don't retry if it's an auth error
-      if (error?.response?.status === 401 || error?.response?.status === 403) {
-        return false;
-      }
-      return failureCount < 3;
-    },
+    queryFn,
+    retry: 0,
   });
 };
 
 // Hook for getting email binding status
 export const useEmailBindingStatus = () => {
   const { data: channels, isLoading, error } = useNotificationChannels();
-  
+
   const emailChannel = channels?.find(
-    (channel) => channel.channelType === 'EMAIL' && channel.verified
+    (channel) => channel.channelType === 'EMAIL' && Boolean(channel.channelValue)
   );
   
   return {
-    isEmailBound: !!emailChannel,
     emailAddress: emailChannel?.channelValue,
     channels,
     isLoading,
@@ -49,48 +63,110 @@ export const useEmailBindingStatus = () => {
 // Mutation hooks
 export const useBindNotificationChannel = () => {
   const queryClient = useQueryClient();
-  
+  const { authenticate } = useSiweAuth();
+
   return useMutation({
-    mutationFn: (input: BindNotificationChannelInput) =>
-      NotificationService.bindNotificationChannel(input),
+    mutationFn: async (input: BindNotificationChannelInput) => {
+      try {
+        return await NotificationService.bindNotificationChannel(input);
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 401) {
+          const res = await authenticate();
+          if (res?.success) {
+            return await NotificationService.bindNotificationChannel(input);
+          }
+        }
+        throw error;
+      }
+    },
     onSuccess: () => {
-      // Invalidate channels query after binding
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.channels() });
     },
   });
 };
 
 export const useResendOTP = () => {
+  const { authenticate } = useSiweAuth();
   return useMutation({
-    mutationFn: ({ type, value }: { type: NotificationChannelType; value: string }) =>
-      NotificationService.resendOTP(type, value),
+    mutationFn: async ({ type, value }: { type: NotificationChannelType; value: string }) => {
+      try {
+        return await NotificationService.resendOTP(type, value);
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 401) {
+          const res = await authenticate();
+          if (res?.success) {
+            return await NotificationService.resendOTP(type, value);
+          }
+        }
+        throw error;
+      }
+    },
   });
 };
 
 export const useVerifyNotificationChannel = () => {
   const queryClient = useQueryClient();
-  
+  const { authenticate } = useSiweAuth();
+
   return useMutation({
-    mutationFn: (input: VerifyNotificationChannelInput) =>
-      NotificationService.verifyNotificationChannel(input),
+    mutationFn: async (input: VerifyNotificationChannelInput) => {
+      try {
+        return await NotificationService.verifyNotificationChannel(input);
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 401) {
+          const res = await authenticate();
+          if (res?.success) {
+            return await NotificationService.verifyNotificationChannel(input);
+          }
+        }
+        throw error;
+      }
+    },
     onSuccess: () => {
-      // Invalidate channels query after verification
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.channels() });
     },
   });
 };
 
 export const useSubscribeProposal = () => {
+  const { authenticate } = useSiweAuth();
   return useMutation({
-    mutationFn: (input: ProposalSubscriptionInput) =>
-      NotificationService.subscribeProposal(input),
+    mutationFn: async (input: ProposalSubscriptionInput) => {
+      try {
+        return await NotificationService.subscribeProposal(input);
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 401) {
+          const res = await authenticate();
+          if (res?.success) {
+            return await NotificationService.subscribeProposal(input);
+          }
+        }
+        throw error;
+      }
+    },
   });
 };
 
 export const useUnsubscribeProposal = () => {
+  const { authenticate } = useSiweAuth();
   return useMutation({
-    mutationFn: ({ daoCode, proposalId }: { daoCode: string; proposalId: string }) =>
-      NotificationService.unsubscribeProposal(daoCode, proposalId),
+    mutationFn: async ({ daoCode, proposalId }: { daoCode: string; proposalId: string }) => {
+      try {
+        return await NotificationService.unsubscribeProposal(daoCode, proposalId);
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 401) {
+          const res = await authenticate();
+          if (res?.success) {
+            return await NotificationService.unsubscribeProposal(daoCode, proposalId);
+          }
+        }
+        throw error;
+      }
+    },
   });
 };
-

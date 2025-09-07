@@ -15,6 +15,7 @@ interface CountdownProps {
   className?: string;
   children?: (remaining: number, start: () => void) => ReactNode;
   onStart?: () => void; // 开始倒计时时的回调
+  autoStart?: boolean; // 是否在 start 变化时自动开始
 }
 
 export const Countdown = ({
@@ -24,6 +25,7 @@ export const Countdown = ({
   className,
   children,
   onStart,
+  autoStart = false,
 }: CountdownProps) => {
   // Extract repeated calculation logic
   const sanitizeStart = useCallback(
@@ -66,7 +68,12 @@ export const Countdown = ({
     if (onTickRef.current) {
       onTickRef.current(initial);
     }
-  }, [start, sanitizeStart]);
+    // Auto start when requested and there is time to count
+    if (autoStart && initial > 0) {
+      setIsRunning(true);
+      onStartRef.current?.();
+    }
+  }, [start, sanitizeStart, autoStart]);
 
   useEffect(() => {
     // Clear previous timer

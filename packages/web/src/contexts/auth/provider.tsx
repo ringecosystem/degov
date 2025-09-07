@@ -18,19 +18,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const initialToken = tokenManager.getToken();
     setTokenState(initialToken);
     setIsInitialized(true);
-
-    // 订阅token变化
-    const unsubscribe = tokenManager.subscribe((newToken) => {
-      setTokenState(newToken);
-    });
-
-    return () => {
-      unsubscribe();
-    };
   }, []);
 
   const setToken = (newToken: string | null) => {
     tokenManager.setToken(newToken);
+    setTokenState(newToken);
   };
 
   const isAuthenticated = Boolean(token && tokenManager.hasValidFormat());

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useReducer, useCallback } from "react";
 import { toast } from "react-toastify";
 import { z } from "zod";
 
@@ -14,7 +14,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { 
+import {
   useBindNotificationChannel,
   useResendOTP,
   useVerifyNotificationChannel,
@@ -22,71 +22,136 @@ import {
 
 interface EmailBindFormProps {
   onVerified: (email: string) => void;
+  initialEmail?: string;
+  initialChannelId?: string | null;
 }
 
-export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
-  // Use the new hooks directly
+interface FormState {
+  email: string;
+  verificationCode: string;
+  channelId: string | null;
+  countdown: {
+    active: boolean;
+    duration: number;
+    key: number;
+  };
+}
+
+type FormAction =
+  | { type: "SET_EMAIL"; payload: string }
+  | { type: "SET_VERIFICATION_CODE"; payload: string }
+  | { type: "SET_CHANNEL_ID"; payload: string }
+  | { type: "START_COUNTDOWN"; payload: number }
+  | { type: "END_COUNTDOWN" }
+  | { type: "RESET_VERIFICATION" };
+
+const formReducer = (state: FormState, action: FormAction): FormState => {
+  switch (action.type) {
+    case "SET_EMAIL":
+      return {
+        ...state,
+        email: action.payload,
+        ...(action.payload !== state.email && {
+          channelId: null,
+          verificationCode: "",
+          countdown: { active: false, duration: 60, key: Math.random() },
+        }),
+      };
+    case "SET_VERIFICATION_CODE":
+      return { ...state, verificationCode: action.payload };
+    case "SET_CHANNEL_ID":
+      return { ...state, channelId: action.payload };
+    case "START_COUNTDOWN":
+      return {
+        ...state,
+        countdown: {
+          active: true,
+          duration: action.payload,
+          key: Math.random(),
+        },
+      };
+    case "END_COUNTDOWN":
+      return {
+        ...state,
+        countdown: { ...state.countdown, active: false },
+      };
+    case "RESET_VERIFICATION":
+      return {
+        ...state,
+        channelId: null,
+        verificationCode: "",
+        countdown: { active: false, duration: 60, key: Math.random() },
+      };
+    default:
+      return state;
+  }
+};
+
+export const EmailBindForm = ({
+  onVerified,
+  initialEmail = "",
+  initialChannelId,
+}: EmailBindFormProps) => {
   const bindEmailMutation = useBindNotificationChannel();
   const resendOTPMutation = useResendOTP();
   const verifyEmailMutation = useVerifyNotificationChannel();
 
-  const [email, setEmail] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
-  const [countdownActive, setCountdownActive] = useState(false);
-  const [countdownDuration, setCountdownDuration] = useState(60);
-  const [countdownKey, setCountdownKey] = useState(0);
-  const [channelId, setChannelId] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(formReducer, {
+    email: initialEmail,
+    verificationCode: "",
+    channelId: initialChannelId ?? null,
+    countdown: { active: false, duration: 60, key: 0 },
+  });
 
   const emailSchema = z.string().email();
-  const isEmailValid = emailSchema.safeParse(email).success;
+  const isEmailValid = emailSchema.safeParse(state.email).success;
 
-  const mutationLoading =
-    bindEmailMutation.isPending ||
-    resendOTPMutation.isPending ||
-    verifyEmailMutation.isPending;
+  const sendingLoading =
+    bindEmailMutation.isPending || resendOTPMutation.isPending;
+  const verifyLoading = verifyEmailMutation.isPending;
 
   const handleSendVerification = useCallback(async () => {
-    if (!email || !isEmailValid || mutationLoading) return;
+    if (!state.email || !isEmailValid || sendingLoading) return;
 
-    const mutation = channelId ? resendOTPMutation : bindEmailMutation;
-    const mutationParams = channelId 
-      ? { type: "EMAIL" as const, value: email }
-      : { type: "EMAIL" as const, value: email };
-    
+    const mutation = state.channelId ? resendOTPMutation : bindEmailMutation;
+    const mutationParams = { type: "EMAIL" as const, value: state.email };
+
     mutation.mutate(mutationParams, {
       onSuccess: (data) => {
         if (data.code === 0) {
-          setChannelId(data.id);
-          setCountdownDuration(data.rateLimit || 60);
-          setCountdownActive(true);
-          setCountdownKey((k) => k + 1);
+          const rate = data.rateLimit || 60;
+          dispatch({ type: "SET_CHANNEL_ID", payload: data.id });
+          dispatch({ type: "START_COUNTDOWN", payload: rate });
         } else {
           toast.error(data.message || "Failed to send verification code");
         }
       },
-      onError: (error: Error) => {
-        toast.error(error.message || "Failed to send verification code");
+      onError: (error: any) => {
+        const graphqlError = error.response?.errors?.[0]?.message;
+        const errorMessage =
+          graphqlError || error.message || "Failed to send verification code";
+        toast.error(errorMessage);
       },
     });
   }, [
-    email,
+    state.email,
+    state.channelId,
     isEmailValid,
-    channelId,
-    mutationLoading,
+    sendingLoading,
     resendOTPMutation,
     bindEmailMutation,
   ]);
 
   const handleVerifyCode = useCallback(async () => {
-    if (!verificationCode || !channelId || mutationLoading) return;
+    if (!state.verificationCode || !state.channelId || verifyLoading) return;
 
     verifyEmailMutation.mutate(
-      { id: channelId, otpCode: verificationCode },
+      { id: state.channelId, otpCode: state.verificationCode },
       {
         onSuccess: (data) => {
           if (data.code === 0) {
             toast.success("Email verified successfully");
-            onVerified(email);
+            onVerified(state.email);
           } else {
             toast.error(data.message || "Verification failed");
           }
@@ -97,18 +162,19 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
       }
     );
   }, [
-    verificationCode,
-    channelId,
-    mutationLoading,
+    state.verificationCode,
+    state.channelId,
+    state.email,
     verifyEmailMutation,
-    email,
     onVerified,
+    verifyLoading,
   ]);
 
   return (
     <DropdownMenuContent
       className="rounded-[26px] border-grey-1 bg-dark p-[20px] shadow-card min-w-[320px] w-[calc(100vw-40px)] max-w-[400px] lg:w-[400px]"
       align="end"
+      forceMount
     >
       <div className="flex flex-col gap-[20px]">
         <div className="flex items-center gap-[5px]">
@@ -127,8 +193,10 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
             <Input
               type="email"
               placeholder="yourname@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={state.email}
+              onChange={(e) => {
+                dispatch({ type: "SET_EMAIL", payload: e.target.value });
+              }}
               className="flex-1 bg-input border-border text-foreground placeholder:text-muted-foreground rounded-[100px] px-[10px] text-[16px] font-normal"
             />
             <Tooltip>
@@ -137,31 +205,30 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
                   <Button
                     onClick={handleSendVerification}
                     disabled={
-                      !email ||
-                      !isEmailValid ||
-                      countdownActive ||
-                      mutationLoading
+                      !state.email || !isEmailValid || state.countdown.active
                     }
+                    isLoading={sendingLoading}
                     className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[95px]"
                     size="sm"
                   >
-                    {mutationLoading ? (
+                    {sendingLoading ? (
                       "Sending..."
-                    ) : countdownActive ? (
+                    ) : state.countdown.active ? (
                       <Countdown
-                        key={countdownKey}
-                        start={countdownDuration}
-                        onEnd={() => setCountdownActive(false)}
+                        key={state.countdown.key}
+                        start={state.countdown.duration}
+                        autoStart
+                        onEnd={() => {
+                          dispatch({ type: "END_COUNTDOWN" });
+                        }}
                       />
-                    ) : channelId ? (
-                      "Resend"
                     ) : (
                       "Send"
                     )}
                   </Button>
                 </span>
               </TooltipTrigger>
-              {!isEmailValid && email.length > 0 && (
+              {!isEmailValid && state.email.length > 0 && (
                 <TooltipContent>
                   Please enter a valid email address
                 </TooltipContent>
@@ -178,17 +245,23 @@ export const EmailBindForm = ({ onVerified }: EmailBindFormProps) => {
             <Input
               type="text"
               placeholder="e.g., 123456"
-              value={verificationCode}
-              onChange={(e) => setVerificationCode(e.target.value)}
+              value={state.verificationCode}
+              onChange={(e) =>
+                dispatch({
+                  type: "SET_VERIFICATION_CODE",
+                  payload: e.target.value,
+                })
+              }
               className="flex-1 bg-input border-border text-foreground placeholder:text-muted-foreground rounded-[100px] px-[10px] text-[16px] font-normal"
             />
             <Button
               onClick={handleVerifyCode}
-              disabled={!verificationCode || mutationLoading}
+              disabled={!state.verificationCode}
+              isLoading={verifyLoading}
               className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[95px]"
               size="sm"
             >
-              {mutationLoading ? "Verifying..." : "Verify"}
+              {verifyLoading ? "Verifying..." : "Verify"}
             </Button>
           </div>
         </div>

@@ -1,8 +1,8 @@
-import { GraphQLClient, ClientError } from "graphql-request";
+import { GraphQLClient, type ClientError } from "graphql-request";
 import { cache } from "react";
 
-import { clearToken, getToken } from "@/lib/auth/token-manager";
-import { ensureAuthenticated } from "@/lib/auth/auth-client";
+// Note: re-auth is handled by callers (e.g., hooks/components) explicitly.
+import { clearRemoteToken, getRemoteToken } from "@/lib/auth/token-manager";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
 export const createNotificationGraphQLClient = cache(() => {
@@ -21,7 +21,7 @@ export async function requestNotification<T = any, V extends object = object>(
   const client = createNotificationGraphQLClient();
 
   const doRequest = async (): Promise<T> => {
-    const token = getToken();
+    const token = getRemoteToken();
     if (token) client.setHeaders({ Authorization: `Bearer ${token}` });
     return variables
       ? await client.request<T>(document, variables)
@@ -31,15 +31,12 @@ export async function requestNotification<T = any, V extends object = object>(
   try {
     return await doRequest();
   } catch (error) {
-    // Retry once on 401 after re-authentication
+    // Surface 401 to the caller for manual authentication
     const err = error as ClientError;
-    const status = (err as any)?.response?.status;
+    const status = (err as { response?: { status?: number } })?.response?.status;
     if (status === 401) {
-      clearToken();
-      const ok = await ensureAuthenticated();
-      if (ok) {
-        return await doRequest();
-      }
+      clearRemoteToken();
+      throw err;
     }
     console.error("Notification GraphQL request error:", error);
     throw error;

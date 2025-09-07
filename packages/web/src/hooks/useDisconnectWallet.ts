@@ -20,8 +20,8 @@ export const useDisconnectWallet = () => {
         }
       }
 
-      // 清除认证状态
-      tokenManager.clearToken();
+      // 清除认证状态（本地与远程）
+      tokenManager.clearAllTokens();
       disconnect();
     },
     [disconnect]

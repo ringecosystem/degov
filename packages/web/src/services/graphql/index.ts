@@ -1,7 +1,7 @@
 import { clearToken } from "@/lib/auth/token-manager";
 
 import { request } from "./client";
-import { fetchWithAuth } from "@/lib/auth/fetch-with-auth";
+import { getToken } from "@/lib/auth/token-manager";
 import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
@@ -219,7 +219,7 @@ export const profileService = {
     code: number;
     data: ProfileData;
   }> => {
-    const response = await fetchWithAuth(`/api/profile/${address}`, {
+    const response = await fetch(`/api/profile/${address}`, {
       next: { revalidate: 300, tags: [`profile-${address}`] },
       headers: {
         "Content-Type": "application/json",
@@ -230,16 +230,17 @@ export const profileService = {
   },
 
   updateProfile: async (address: string, profile: Partial<ProfileData>) => {
-    const response = await fetchWithAuth(`/api/profile/${address}`, {
+    const token = getToken();
+    const response = await fetch(`/api/profile/${address}`, {
       method: "POST",
       body: JSON.stringify(profile),
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
     if (response.status === 401) {
-      // fetchWithAuth already attempted re-auth; still 401 means unauthorized
       clearToken();
       return { code: 401, msg: "Unauthorized" } as const;
     }
@@ -264,7 +265,7 @@ export const memberService = {
         url.searchParams.set("limit", limit.toString());
       }
 
-      const response = await fetchWithAuth(url.toString(), {
+      const response = await fetch(url.toString(), {
         headers: {
           "Content-Type": "application/json",
         },
@@ -301,7 +302,7 @@ export const memberService = {
   // ]
 
   getMemberTotal: async (): Promise<Types.MemberTotalResponse> => {
-    const response = await fetchWithAuth(`/api/degov/metrics`, {
+    const response = await fetch(`/api/degov/metrics`, {
       next: { revalidate: 60, tags: ["member-metrics"] },
       headers: {
         "Content-Type": "application/json",

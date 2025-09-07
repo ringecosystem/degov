@@ -1,11 +1,8 @@
 "use client";
 
-import { EmailBindIcon, NotificationIcon } from "@/components/icons";
+import { EmailBindIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenuContent,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 
