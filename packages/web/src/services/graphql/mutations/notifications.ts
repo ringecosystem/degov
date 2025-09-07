@@ -1,7 +1,10 @@
-import { gql } from 'graphql-request';
+import { gql } from "graphql-request";
 
 export const BIND_NOTIFICATION_CHANNEL = gql`
-  mutation BindNotificationsChannel($type: NotificationChannelType!, $value: String!) {
+  mutation BindNotificationsChannel(
+    $type: NotificationChannelType!
+    $value: String!
+  ) {
     bindNotificationChannel(input: { type: $type, value: $value }) {
       id
       code
@@ -37,7 +40,7 @@ export const SUBSCRIBE_PROPOSAL = gql`
   mutation SubscribeProposal(
     $daoCode: String!
     $proposalId: String!
-    $features: [SubscriptionFeatureInput!]
+    $features: [FeatureSettingsInput!]
   ) {
     subscribeProposal(
       input: { daoCode: $daoCode, proposalId: $proposalId, features: $features }
@@ -55,6 +58,24 @@ export const UNSUBSCRIBE_PROPOSAL = gql`
       state
       proposalId
       daoCode
+    }
+  }
+`;
+
+export const SUBSCRIBE_DAO = gql`
+  mutation SubscribeDao($daoCode: String!, $features: [FeatureSettingsInput!]) {
+    subscribeDao(input: { daoCode: $daoCode, features: $features }) {
+      daoCode
+      state
+    }
+  }
+`;
+
+export const UNSUBSCRIBE_DAO = gql`
+  mutation UnsubscribeDao($daoCode: String!) {
+    unsubscribeDao(input: { daoCode: $daoCode }) {
+      daoCode
+      state
     }
   }
 `;

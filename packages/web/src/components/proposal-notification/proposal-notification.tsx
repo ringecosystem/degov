@@ -1,69 +1,86 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
 import { toast } from "react-toastify";
 import { useAccount } from "wagmi";
 
 import { NotificationIcon, SettingsIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { useAuth } from "@/contexts/auth";
-import { useSubscribeProposal, useUnsubscribeProposal } from "@/hooks/useNotification";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import {
+  useSubscribeProposal,
+  useUnsubscribeProposal,
+  useSubscribedProposals,
+  useEmailBindingStatus,
+} from "@/hooks/useNotification";
+import { FeatureName } from "@/services/graphql/types/notifications";
 
 interface ProposalNotificationProps {
   proposalId?: string;
-  daoCode?: string;
 }
 
 export const ProposalNotification = ({
   proposalId,
-  daoCode = "default", // Default DAO code, should be passed from parent component
 }: ProposalNotificationProps) => {
+  const daoConfig = useDaoConfig();
   const { address, isConnected } = useAccount();
-  const { isAuthenticated } = useAuth();
+  const { isEmailBound } = useEmailBindingStatus();
   const subscribeProposalMutation = useSubscribeProposal();
   const unsubscribeProposalMutation = useUnsubscribeProposal();
+  const { data: subscribedProposals, refetch: refetchSubscribedProposals } =
+    useSubscribedProposals();
 
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [hasEmailRegistered, setHasEmailRegistered] = useState(false);
+  // Check if current proposal is subscribed
+  const isSubscribed = useMemo(() => {
+    if (!subscribedProposals || !proposalId || !daoConfig?.code) return false;
+    return subscribedProposals.some(
+      (sub) =>
+        sub.proposal.proposalId === proposalId &&
+        sub.dao.code === daoConfig.code
+    );
+  }, [subscribedProposals, proposalId, daoConfig?.code]);
 
   // Use success/error handlers for the mutations
-  const handleSubscribeSuccess = () => {
-    setIsSubscribed(true);
+  const handleSubscribeSuccess = useCallback(() => {
+    refetchSubscribedProposals();
     toast.success("Successfully subscribed to proposal notifications");
-  };
+  }, [refetchSubscribedProposals]);
 
-  const handleSubscribeError = (error: Error) => {
-    toast.error(error.message || "Failed to subscribe to proposal");
-  };
+  const handleSubscribeError = useCallback((error: unknown) => {
+    const errorMessage =
+      error && typeof error === "object" && "response" in error
+        ? (error as { response?: { errors?: { message?: string }[] } }).response
+            ?.errors?.[0]?.message
+        : undefined;
+    toast.error(errorMessage || "Failed to subscribe to proposal");
+  }, []);
 
-  const handleUnsubscribeSuccess = () => {
-    setIsSubscribed(false);
+  const handleUnsubscribeSuccess = useCallback(() => {
+    refetchSubscribedProposals();
     toast.success("Successfully unsubscribed from proposal notifications");
-  };
+  }, [refetchSubscribedProposals]);
 
-  const handleUnsubscribeError = (error: Error) => {
-    toast.error(error.message || "Failed to unsubscribe from proposal");
-  };
+  const handleUnsubscribeError = useCallback((error: unknown) => {
+    const errorMessage =
+      error && typeof error === "object" && "response" in error
+        ? (error as { response?: { errors?: { message?: string }[] } }).response
+            ?.errors?.[0]?.message
+        : undefined;
+    toast.error(errorMessage || "Failed to unsubscribe from proposal");
+  }, []);
 
   const mutationLoading =
-    subscribeProposalMutation.isPending || unsubscribeProposalMutation.isPending;
-
-  // TODO: Get email binding status and subscription status from API
-  useEffect(() => {
-    // Here should call API to check if user has bound email and subscription status
-    // Temporarily use isAuthenticated as email binding status
-    setHasEmailRegistered(isAuthenticated);
-  }, [isAuthenticated]);
+    subscribeProposalMutation.isPending ||
+    unsubscribeProposalMutation.isPending;
 
   const handleSubscribe = useCallback(async () => {
-    if (!proposalId || !isConnected || !address) return;
+    if (!proposalId || !isConnected || !address || !daoConfig?.code) return;
 
     if (isSubscribed) {
       // Unsubscribe
       unsubscribeProposalMutation.mutate(
-        { daoCode, proposalId },
+        { daoCode: daoConfig?.code as string, proposalId },
         {
           onSuccess: handleUnsubscribeSuccess,
           onError: handleUnsubscribeError,
@@ -73,11 +90,11 @@ export const ProposalNotification = ({
       // Subscribe
       subscribeProposalMutation.mutate(
         {
-          daoCode,
+          daoCode: daoConfig?.code as string,
           proposalId,
           features: [
-            { type: "PROPOSAL_VOTING_END", enabled: true },
-            { type: "PROPOSAL_STATUS_CHANGE", enabled: true },
+            { name: FeatureName.VOTE_END, strategy: "true" },
+            { name: FeatureName.PROPOSAL_STATE_CHANGED, strategy: "true" },
           ],
         },
         {
@@ -89,7 +106,7 @@ export const ProposalNotification = ({
   }, [
     isSubscribed,
     proposalId,
-    daoCode,
+    daoConfig?.code,
     subscribeProposalMutation,
     unsubscribeProposalMutation,
     isConnected,
@@ -100,8 +117,8 @@ export const ProposalNotification = ({
     handleUnsubscribeError,
   ]);
 
-  // Don't show if wallet is not connected or email is not registered
-  if (!isConnected || !address || !hasEmailRegistered) {
+  // Don't show if wallet is not connected or email is not bound
+  if (!isConnected || !address || isEmailBound) {
     return null;
   }
 

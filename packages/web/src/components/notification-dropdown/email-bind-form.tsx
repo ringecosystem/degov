@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useCallback } from "react";
+import { useReducer, useCallback, useEffect } from "react";
 import { toast } from "react-toastify";
 import { z } from "zod";
 
@@ -23,26 +23,26 @@ import {
 interface EmailBindFormProps {
   onVerified: (email: string) => void;
   initialEmail?: string;
-  initialChannelId?: string | null;
+  initialChannelId?: string;
+  countdownActive: boolean;
+  countdownDuration: number;
+  countdownKey: number;
+  onStartCountdown: (duration: number) => void;
+  onEndCountdown: () => void;
+  onCountdownTick: (remaining: number) => void;
+  isLoading?: boolean;
 }
 
 interface FormState {
   email: string;
   verificationCode: string;
   channelId: string | null;
-  countdown: {
-    active: boolean;
-    duration: number;
-    key: number;
-  };
 }
 
 type FormAction =
   | { type: "SET_EMAIL"; payload: string }
   | { type: "SET_VERIFICATION_CODE"; payload: string }
   | { type: "SET_CHANNEL_ID"; payload: string }
-  | { type: "START_COUNTDOWN"; payload: number }
-  | { type: "END_COUNTDOWN" }
   | { type: "RESET_VERIFICATION" };
 
 const formReducer = (state: FormState, action: FormAction): FormState => {
@@ -54,33 +54,17 @@ const formReducer = (state: FormState, action: FormAction): FormState => {
         ...(action.payload !== state.email && {
           channelId: null,
           verificationCode: "",
-          countdown: { active: false, duration: 60, key: Math.random() },
         }),
       };
     case "SET_VERIFICATION_CODE":
       return { ...state, verificationCode: action.payload };
     case "SET_CHANNEL_ID":
       return { ...state, channelId: action.payload };
-    case "START_COUNTDOWN":
-      return {
-        ...state,
-        countdown: {
-          active: true,
-          duration: action.payload,
-          key: Math.random(),
-        },
-      };
-    case "END_COUNTDOWN":
-      return {
-        ...state,
-        countdown: { ...state.countdown, active: false },
-      };
     case "RESET_VERIFICATION":
       return {
         ...state,
         channelId: null,
         verificationCode: "",
-        countdown: { active: false, duration: 60, key: Math.random() },
       };
     default:
       return state;
@@ -91,6 +75,13 @@ export const EmailBindForm = ({
   onVerified,
   initialEmail = "",
   initialChannelId,
+  countdownActive,
+  countdownDuration,
+  countdownKey,
+  onStartCountdown,
+  onEndCountdown,
+  onCountdownTick,
+  isLoading = false,
 }: EmailBindFormProps) => {
   const bindEmailMutation = useBindNotificationChannel();
   const resendOTPMutation = useResendOTP();
@@ -99,16 +90,21 @@ export const EmailBindForm = ({
   const [state, dispatch] = useReducer(formReducer, {
     email: initialEmail,
     verificationCode: "",
-    channelId: initialChannelId ?? null,
-    countdown: { active: false, duration: 60, key: 0 },
+    channelId: initialChannelId || null,
   });
+
+  useEffect(() => {
+    if (initialChannelId && initialChannelId !== state.channelId) {
+      dispatch({ type: "SET_CHANNEL_ID", payload: initialChannelId });
+    }
+  }, [initialChannelId, state.channelId]);
 
   const emailSchema = z.string().email();
   const isEmailValid = emailSchema.safeParse(state.email).success;
 
   const sendingLoading =
     bindEmailMutation.isPending || resendOTPMutation.isPending;
-  const verifyLoading = verifyEmailMutation.isPending;
+  const verifyLoading = verifyEmailMutation.isPending || isLoading;
 
   const handleSendVerification = useCallback(async () => {
     if (!state.email || !isEmailValid || sendingLoading) return;
@@ -120,8 +116,10 @@ export const EmailBindForm = ({
       onSuccess: (data) => {
         if (data.code === 0) {
           const rate = data.rateLimit || 60;
-          dispatch({ type: "SET_CHANNEL_ID", payload: data.id });
-          dispatch({ type: "START_COUNTDOWN", payload: rate });
+          if (!state.channelId) {
+            dispatch({ type: "SET_CHANNEL_ID", payload: data.id });
+          }
+          onStartCountdown(rate);
         } else {
           toast.error(data.message || "Failed to send verification code");
         }
@@ -140,6 +138,7 @@ export const EmailBindForm = ({
     sendingLoading,
     resendOTPMutation,
     bindEmailMutation,
+    onStartCountdown,
   ]);
 
   const handleVerifyCode = useCallback(async () => {
@@ -204,23 +203,18 @@ export const EmailBindForm = ({
                 <span tabIndex={0} className="inline-flex">
                   <Button
                     onClick={handleSendVerification}
-                    disabled={
-                      !state.email || !isEmailValid || state.countdown.active
-                    }
+                    disabled={!state.email || !isEmailValid || countdownActive}
                     isLoading={sendingLoading}
                     className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[95px]"
                     size="sm"
                   >
-                    {sendingLoading ? (
-                      "Sending..."
-                    ) : state.countdown.active ? (
+                    {countdownActive ? (
                       <Countdown
-                        key={state.countdown.key}
-                        start={state.countdown.duration}
+                        key={countdownKey}
+                        start={countdownDuration}
                         autoStart
-                        onEnd={() => {
-                          dispatch({ type: "END_COUNTDOWN" });
-                        }}
+                        onEnd={onEndCountdown}
+                        onTick={onCountdownTick}
                       />
                     ) : (
                       "Send"
@@ -261,7 +255,7 @@ export const EmailBindForm = ({
               className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[95px]"
               size="sm"
             >
-              {verifyLoading ? "Verifying..." : "Verify"}
+              Verify
             </Button>
           </div>
         </div>

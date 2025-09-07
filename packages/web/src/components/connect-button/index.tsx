@@ -1,6 +1,6 @@
 "use client";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
@@ -9,7 +9,11 @@ import { Button } from "../ui/button";
 
 import { Connected } from "./connected";
 
-export const ConnectButton = ({ onMenuToggle }: { onMenuToggle?: () => void }) => {
+export const ConnectButton = ({
+  onMenuToggle,
+}: {
+  onMenuToggle?: () => void;
+}) => {
   const { openConnectModal } = useConnectModal();
   const dappConfig = useDaoConfig();
   const { chainId, address, isConnected, isConnecting, isReconnecting } =
@@ -21,10 +25,13 @@ export const ConnectButton = ({ onMenuToggle }: { onMenuToggle?: () => void }) =
 
   if (!isConnected && openConnectModal) {
     return (
-      <Button onClick={() => {
-        openConnectModal();
-        onMenuToggle?.();
-      }} className="rounded-[100px] flex-1 max-w-[200px]">
+      <Button
+        onClick={() => {
+          openConnectModal();
+          onMenuToggle?.();
+        }}
+        className="rounded-[100px] flex-1 max-w-[200px]"
+      >
         Connect Wallet
       </Button>
     );

@@ -1,16 +1,18 @@
 "use client";
 
+import Link from "next/link";
+
 import { EmailBindIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
-import Link from "next/link";
+import { FeatureName } from "@/services/graphql/types/notifications";
 
 interface SettingsPanelProps {
   email?: string;
   newProposals: boolean;
   votingEndReminder: boolean;
-  onToggle: (setting: "newProposals" | "votingEndReminder") => void;
+  onToggle: (setting: FeatureName.PROPOSAL_NEW | FeatureName.VOTE_END, enabled: boolean) => void;
 }
 
 export const SettingsPanel = ({
@@ -41,7 +43,7 @@ export const SettingsPanel = ({
             </h3>
             <Switch
               checked={newProposals}
-              onCheckedChange={() => onToggle("newProposals")}
+              onCheckedChange={(checked) => onToggle(FeatureName.PROPOSAL_NEW, checked)}
             />
           </div>
           <p className="text-muted-foreground text-xs">
@@ -56,7 +58,7 @@ export const SettingsPanel = ({
             </h3>
             <Switch
               checked={votingEndReminder}
-              onCheckedChange={() => onToggle("votingEndReminder")}
+              onCheckedChange={(checked) => onToggle(FeatureName.VOTE_END, checked)}
             />
           </div>
           <p className="text-muted-foreground text-xs">

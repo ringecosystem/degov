@@ -4,9 +4,12 @@ import {
   VERIFY_NOTIFICATION_CHANNEL,
   SUBSCRIBE_PROPOSAL,
   UNSUBSCRIBE_PROPOSAL,
+  SUBSCRIBE_DAO,
+  UNSUBSCRIBE_DAO,
 } from "./graphql/mutations/notifications";
-import { LIST_NOTIFICATION_CHANNELS } from "./graphql/queries/notifications";
 import { requestNotification } from "./graphql/notification-client";
+import { LIST_NOTIFICATION_CHANNELS, SUBSCRIBED_DAOS, SUBSCRIBED_PROPOSALS } from "./graphql/queries/notifications";
+
 import type {
   BindNotificationChannelInput,
   BindNotificationChannelResponse,
@@ -17,6 +20,12 @@ import type {
   NotificationChannelType,
   NotificationChannel,
   ListNotificationChannelsResponse,
+  SubscribedDao,
+  SubscribedDaosResponse,
+  DaoSubscriptionInput,
+  DaoSubscriptionResponse,
+  SubscribedProposal,
+  SubscribedProposalsResponse,
 } from "./graphql/types/notifications";
 
 export class NotificationService {
@@ -26,6 +35,22 @@ export class NotificationService {
     );
     
     return response.listNotificationChannels;
+  }
+
+  static async getSubscribedDaos(): Promise<SubscribedDao[]> {
+    const response = await requestNotification<SubscribedDaosResponse>(
+      SUBSCRIBED_DAOS
+    );
+    
+    return response.subscribedDaos;
+  }
+
+  static async getSubscribedProposals(): Promise<SubscribedProposal[]> {
+    const response = await requestNotification<SubscribedProposalsResponse>(
+      SUBSCRIBED_PROPOSALS
+    );
+    
+    return response.subscribedProposals;
   }
   static async bindNotificationChannel(
     input: BindNotificationChannelInput
@@ -96,5 +121,34 @@ export class NotificationService {
     );
     
     return response.unsubscribeProposal;
+  }
+
+  static async subscribeDao(
+    input: DaoSubscriptionInput
+  ): Promise<DaoSubscriptionResponse> {
+    const response = await requestNotification<{
+      subscribeDao: DaoSubscriptionResponse;
+    }>(
+      SUBSCRIBE_DAO,
+      {
+        daoCode: input.daoCode,
+        features: input.features,
+      }
+    );
+    
+    return response.subscribeDao;
+  }
+
+  static async unsubscribeDao(
+    daoCode: string
+  ): Promise<DaoSubscriptionResponse> {
+    const response = await requestNotification<{
+      unsubscribeDao: DaoSubscriptionResponse;
+    }>(
+      UNSUBSCRIBE_DAO,
+      { daoCode }
+    );
+    
+    return response.unsubscribeDao;
   }
 }
