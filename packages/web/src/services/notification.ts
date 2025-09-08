@@ -1,5 +1,4 @@
 import {
-  BIND_NOTIFICATION_CHANNEL,
   RESEND_OTP,
   VERIFY_NOTIFICATION_CHANNEL,
   SUBSCRIBE_PROPOSAL,
@@ -8,11 +7,13 @@ import {
   UNSUBSCRIBE_DAO,
 } from "./graphql/mutations/notifications";
 import { requestNotification } from "./graphql/notification-client";
-import { LIST_NOTIFICATION_CHANNELS, SUBSCRIBED_DAOS, SUBSCRIBED_PROPOSALS } from "./graphql/queries/notifications";
+import {
+  LIST_NOTIFICATION_CHANNELS,
+  SUBSCRIBED_DAOS,
+  SUBSCRIBED_PROPOSALS,
+} from "./graphql/queries/notifications";
 
 import type {
-  BindNotificationChannelInput,
-  BindNotificationChannelResponse,
   VerifyNotificationChannelInput,
   VerifyNotificationChannelResponse,
   ProposalSubscriptionInput,
@@ -26,14 +27,16 @@ import type {
   DaoSubscriptionResponse,
   SubscribedProposal,
   SubscribedProposalsResponse,
+  OtpRequestResponse,
 } from "./graphql/types/notifications";
 
 export class NotificationService {
   static async listNotificationChannels(): Promise<NotificationChannel[]> {
-    const response = await requestNotification<ListNotificationChannelsResponse>(
-      LIST_NOTIFICATION_CHANNELS
-    );
-    
+    const response =
+      await requestNotification<ListNotificationChannelsResponse>(
+        LIST_NOTIFICATION_CHANNELS
+      );
+
     return response.listNotificationChannels;
   }
 
@@ -41,7 +44,7 @@ export class NotificationService {
     const response = await requestNotification<SubscribedDaosResponse>(
       SUBSCRIBED_DAOS
     );
-    
+
     return response.subscribedDaos;
   }
 
@@ -49,33 +52,18 @@ export class NotificationService {
     const response = await requestNotification<SubscribedProposalsResponse>(
       SUBSCRIBED_PROPOSALS
     );
-    
+
     return response.subscribedProposals;
-  }
-  static async bindNotificationChannel(
-    input: BindNotificationChannelInput
-  ): Promise<BindNotificationChannelResponse> {
-    const response = await requestNotification<{
-      bindNotificationChannel: BindNotificationChannelResponse;
-    }>(
-      BIND_NOTIFICATION_CHANNEL,
-      { type: input.type, value: input.value }
-    );
-    
-    return response.bindNotificationChannel;
   }
 
   static async resendOTP(
     type: NotificationChannelType,
     value: string
-  ): Promise<BindNotificationChannelResponse> {
+  ): Promise<OtpRequestResponse> {
     const response = await requestNotification<{
-      resendOTP: BindNotificationChannelResponse;
-    }>(
-      RESEND_OTP,
-      { type, value }
-    );
-    
+      resendOTP: OtpRequestResponse;
+    }>(RESEND_OTP, { type, value });
+
     return response.resendOTP;
   }
 
@@ -84,11 +72,12 @@ export class NotificationService {
   ): Promise<VerifyNotificationChannelResponse> {
     const response = await requestNotification<{
       verifyNotificationChannel: VerifyNotificationChannelResponse;
-    }>(
-      VERIFY_NOTIFICATION_CHANNEL,
-      { id: input.id, otpCode: input.otpCode }
-    );
-    
+    }>(VERIFY_NOTIFICATION_CHANNEL, {
+      type: input.type,
+      value: input.value,
+      otpCode: input.otpCode,
+    });
+
     return response.verifyNotificationChannel;
   }
 
@@ -97,15 +86,12 @@ export class NotificationService {
   ): Promise<ProposalSubscriptionResponse> {
     const response = await requestNotification<{
       subscribeProposal: ProposalSubscriptionResponse;
-    }>(
-      SUBSCRIBE_PROPOSAL,
-      {
-        daoCode: input.daoCode,
-        proposalId: input.proposalId,
-        features: input.features,
-      }
-    );
-    
+    }>(SUBSCRIBE_PROPOSAL, {
+      daoCode: input.daoCode,
+      proposalId: input.proposalId,
+      features: input.features,
+    });
+
     return response.subscribeProposal;
   }
 
@@ -115,11 +101,8 @@ export class NotificationService {
   ): Promise<ProposalSubscriptionResponse> {
     const response = await requestNotification<{
       unsubscribeProposal: ProposalSubscriptionResponse;
-    }>(
-      UNSUBSCRIBE_PROPOSAL,
-      { daoCode, proposalId }
-    );
-    
+    }>(UNSUBSCRIBE_PROPOSAL, { daoCode, proposalId });
+
     return response.unsubscribeProposal;
   }
 
@@ -128,14 +111,11 @@ export class NotificationService {
   ): Promise<DaoSubscriptionResponse> {
     const response = await requestNotification<{
       subscribeDao: DaoSubscriptionResponse;
-    }>(
-      SUBSCRIBE_DAO,
-      {
-        daoCode: input.daoCode,
-        features: input.features,
-      }
-    );
-    
+    }>(SUBSCRIBE_DAO, {
+      daoCode: input.daoCode,
+      features: input.features,
+    });
+
     return response.subscribeDao;
   }
 
@@ -144,11 +124,8 @@ export class NotificationService {
   ): Promise<DaoSubscriptionResponse> {
     const response = await requestNotification<{
       unsubscribeDao: DaoSubscriptionResponse;
-    }>(
-      UNSUBSCRIBE_DAO,
-      { daoCode }
-    );
-    
+    }>(UNSUBSCRIBE_DAO, { daoCode });
+
     return response.unsubscribeDao;
   }
 }

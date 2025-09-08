@@ -238,46 +238,66 @@ DeGov Apps 的前端應用在加載時，應檢查 URL 中是否存在 `token` �
 
 用戶登入後，可以綁定通知渠道（目前支持郵箱），並對其進行驗證。
 
-### 2.1. 綁定通知渠道
+用戶登入後，可以查詢、綁定、驗證和管理自己的通知渠道。
 
-為用戶賬戶綁定一個新的通知渠道。每種類型 (`type`) 的渠道只能綁定一個值。重複綁定會返回錯誤。
+### 2.1. 查詢已綁定的通知渠道
 
-**GraphQL Mutation**
+登入後，可調用此查詢來獲取用戶當前已綁定的所有通知渠道列表。
+
+**GraphQL Query**
 
 GraphQL
 
 ```
-mutation BindNotificationsChannel($type: NotificationChannelType!, $value: String!) {
-  bindNotificationChannel(input: { type: $type, value: $value }) {
+query ListNotificationChannels {
+  listNotificationChannels {
     id
-    code
-    expiration
-    message
-    rateLimit
+    verified
+    channelType
+    channelValue
+    payload
+    ctime
   }
 }
 ```
-
-**參數說明**
-
-| 參數 | 類型 | 必填 | 描述 |
-| :---- | :---- | :---- | :---- |
-| `type` | Enum | 是 | 通知渠道類型。目前僅支持 `EMAIL`。 |
-| `value` | String | 是 | 渠道的值，例如 `yalin.cai@itering.io`。 |
 
 **響應字段說明**
 
 | 字段 | 類型 | 描述 |
 | :---- | :---- | :---- |
-| `id` | String | 當前渠道的唯一標識符，用於後續驗證。 |
-| `code` | Int | 結果代碼。`0` 為成功，`1` 為失敗。 |
-| `expiration` | Int | 驗證碼的過期時間（分鐘）。 |
-| `message` | String | 操作失敗時的錯誤信息。 |
-| `rateLimit` | Int | 距離下次可發送驗證碼的剩餘秒數。若為 0，則可立即發送。 |
+| `id` | String | 渠道的唯一標識符。 |
+| `verified` | Int | 渠道是否已通過驗證。`1` 為已驗證，`0` 為未驗證。 |
+| `channelType` | String | 渠道類型，例如 `"EMAIL"`。 |
+| `channelValue` | String | 渠道的值，例如 `"yalin.cai@itering.io"`。 |
+| `payload` | JSON | 預留的額外數據字段，目前為 `null`。 |
+| `ctime` | String | 渠道的創建時間 (ISO 8601 格式)。 |
 
-### 2.2. 重發驗證碼 (OTP)
+**響應示例**
 
-如果用戶未收到驗證碼或驗證碼已過期，可調用此接口重新發送。
+JSON
+
+```
+{
+  "data": {
+    "listNotificationChannels": [
+      {
+        "id": "1963035627188391936",
+        "verified": 0,
+        "channelType": "EMAIL",
+        "channelValue": "yalin.cai@itering.io",
+        "payload": null,
+        "ctime": "2025-09-03T00:25:39.617382Z"
+      }
+    ]
+  }
+}
+```
+
+### 2.2. 绑定通知渠道发送驗證碼 (OTP)
+
+用户绑定通知渠道, 先用此接口用于发送验证码, 也可用于重复发送验证码. 每个用户一分钟内只能发送一次, 多次参考 rateLimit 字段给的剩余时间反馈
+
+如果需要切换邮箱, 操作流程与绑定一致
 
 **GraphQL Mutation**
 
@@ -286,7 +306,6 @@ GraphQL
 ```
 mutation ResendOTP($type: NotificationChannelType!, $value: String!) {
   resendOTP(input: { type: $type, value: $value }) {
-    id
     expiration
     code
     message
@@ -295,40 +314,22 @@ mutation ResendOTP($type: NotificationChannelType!, $value: String!) {
 }
 ```
 
-參數與響應
+### 2.3. 驗證通知渠道并绑定通知渠道
 
-參數和響應字段與 bindNotificationChannel 完全相同。
-
-### 2.3. 驗證通知渠道
-
-用戶輸入收到的驗證碼（OTP），完成渠道所有權的驗證。
+用戶輸入收到的驗證碼（OTP），完成渠道所有權的驗證。 验证通过后即绑定成功
 
 **GraphQL Mutation**
 
 GraphQL
 
 ```
-mutation VerifyNotificationChannel($id: String!, $otpCode: String!) {
-  verifyNotificationChannel(input: { id: $id, otpCode: $otpCode }) {
+mutation VerifyNotificationChannel($type: NotificationChannelType!, $value: String!, $otpCode: String!) {
+  verifyNotificationChannel(input: { type: $type, $value: $value, otpCode: $otpCode }) {
     code
     message
   }
 }
 ```
-
-**參數說明**
-
-| 參數 | 類型 | 必填 | 描述 |
-| :---- | :---- | :---- | :---- |
-| `id` | String | 是 | 調用 `bindNotificationChannel` 或 `resendOTP` 時返回的渠道 ID。 |
-| `otpCode` | String | 是 | 用戶收到的驗證碼。 |
-
-**響應字段說明**
-
-| 字段 | 類型 | 描述 |
-| :---- | :---- | :---- |
-| `code` | Int | 結果代碼。`0` 為成功，`1` 為失敗（如驗證碼錯誤、過期等）。 |
-| `message` | String | 驗證失敗時的錯誤信息。 |
 
 ---
 

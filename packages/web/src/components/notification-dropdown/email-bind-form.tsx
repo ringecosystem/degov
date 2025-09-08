@@ -15,15 +15,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  useBindNotificationChannel,
   useResendOTP,
   useVerifyNotificationChannel,
 } from "@/hooks/useNotification";
 
 interface EmailBindFormProps {
   onVerified: (email: string) => void;
-  initialEmail?: string;
-  initialChannelId?: string;
   countdownActive: boolean;
   countdownDuration: number;
   countdownKey: number;
@@ -36,13 +33,11 @@ interface EmailBindFormProps {
 interface FormState {
   email: string;
   verificationCode: string;
-  channelId: string | null;
 }
 
 type FormAction =
   | { type: "SET_EMAIL"; payload: string }
   | { type: "SET_VERIFICATION_CODE"; payload: string }
-  | { type: "SET_CHANNEL_ID"; payload: string }
   | { type: "RESET_VERIFICATION" };
 
 const formReducer = (state: FormState, action: FormAction): FormState => {
@@ -51,19 +46,13 @@ const formReducer = (state: FormState, action: FormAction): FormState => {
       return {
         ...state,
         email: action.payload,
-        ...(action.payload !== state.email && {
-          channelId: null,
-          verificationCode: "",
-        }),
+        ...(action.payload !== state.email && { verificationCode: "" }),
       };
     case "SET_VERIFICATION_CODE":
       return { ...state, verificationCode: action.payload };
-    case "SET_CHANNEL_ID":
-      return { ...state, channelId: action.payload };
     case "RESET_VERIFICATION":
       return {
         ...state,
-        channelId: null,
         verificationCode: "",
       };
     default:
@@ -73,8 +62,6 @@ const formReducer = (state: FormState, action: FormAction): FormState => {
 
 export const EmailBindForm = ({
   onVerified,
-  initialEmail = "",
-  initialChannelId,
   countdownActive,
   countdownDuration,
   countdownKey,
@@ -83,69 +70,61 @@ export const EmailBindForm = ({
   onCountdownTick,
   isLoading = false,
 }: EmailBindFormProps) => {
-  const bindEmailMutation = useBindNotificationChannel();
   const resendOTPMutation = useResendOTP();
   const verifyEmailMutation = useVerifyNotificationChannel();
 
   const [state, dispatch] = useReducer(formReducer, {
-    email: initialEmail,
+    email: "",
     verificationCode: "",
-    channelId: initialChannelId || null,
   });
-
-  useEffect(() => {
-    if (initialChannelId && initialChannelId !== state.channelId) {
-      dispatch({ type: "SET_CHANNEL_ID", payload: initialChannelId });
-    }
-  }, [initialChannelId, state.channelId]);
 
   const emailSchema = z.string().email();
   const isEmailValid = emailSchema.safeParse(state.email).success;
 
-  const sendingLoading =
-    bindEmailMutation.isPending || resendOTPMutation.isPending;
+  const sendingLoading = resendOTPMutation.isPending;
   const verifyLoading = verifyEmailMutation.isPending || isLoading;
 
   const handleSendVerification = useCallback(async () => {
     if (!state.email || !isEmailValid || sendingLoading) return;
 
-    const mutation = state.channelId ? resendOTPMutation : bindEmailMutation;
-    const mutationParams = { type: "EMAIL" as const, value: state.email };
-
-    mutation.mutate(mutationParams, {
-      onSuccess: (data) => {
-        if (data.code === 0) {
-          const rate = data.rateLimit || 60;
-          if (!state.channelId) {
-            dispatch({ type: "SET_CHANNEL_ID", payload: data.id });
+    resendOTPMutation.mutate(
+      { type: "EMAIL" as const, value: state.email },
+      {
+        onSuccess: (data) => {
+          if (data.code === 0) {
+            const rate = data.rateLimit || 60;
+            onStartCountdown(rate);
+          } else {
+            toast.error(data.message || "Failed to send verification code");
           }
-          onStartCountdown(rate);
-        } else {
-          toast.error(data.message || "Failed to send verification code");
-        }
-      },
-      onError: (error: any) => {
-        const graphqlError = error.response?.errors?.[0]?.message;
-        const errorMessage =
-          graphqlError || error.message || "Failed to send verification code";
-        toast.error(errorMessage);
-      },
-    });
+        },
+        onError: (error: any) => {
+          const graphqlError = error.response?.errors?.[0]?.message;
+          const errorMessage =
+            graphqlError || error.message || "Failed to send verification code";
+          toast.error(errorMessage);
+        },
+      }
+    );
   }, [
     state.email,
-    state.channelId,
     isEmailValid,
     sendingLoading,
     resendOTPMutation,
-    bindEmailMutation,
     onStartCountdown,
   ]);
 
   const handleVerifyCode = useCallback(async () => {
-    if (!state.verificationCode || !state.channelId || verifyLoading) return;
+    if (
+      !state.verificationCode ||
+      !state.email ||
+      !isEmailValid ||
+      verifyLoading
+    )
+      return;
 
     verifyEmailMutation.mutate(
-      { id: state.channelId, otpCode: state.verificationCode },
+      { type: "EMAIL", value: state.email, otpCode: state.verificationCode },
       {
         onSuccess: (data) => {
           if (data.code === 0) {
@@ -162,8 +141,8 @@ export const EmailBindForm = ({
     );
   }, [
     state.verificationCode,
-    state.channelId,
     state.email,
+    isEmailValid,
     verifyEmailMutation,
     onVerified,
     verifyLoading,

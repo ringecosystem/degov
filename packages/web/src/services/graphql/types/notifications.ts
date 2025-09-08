@@ -20,27 +20,24 @@ export interface ListNotificationChannelsResponse {
   listNotificationChannels: NotificationChannel[];
 }
 
-export interface BindNotificationChannelInput {
+export interface VerifyNotificationChannelInput {
   type: NotificationChannelType;
   value: string;
-}
-
-export interface BindNotificationChannelResponse {
-  id: string;
-  code: number;
-  expiration: number;
-  message?: string;
-  rateLimit: number;
-}
-
-export interface VerifyNotificationChannelInput {
-  id: string;
   otpCode: string;
 }
 
 export interface VerifyNotificationChannelResponse {
   code: number;
   message?: string;
+}
+
+// Generic response for requesting an OTP (send/resend)
+export interface OtpRequestResponse {
+  id: string;
+  code: number;
+  expiration: number;
+  message?: string;
+  rateLimit: number;
 }
 
 export interface SubscriptionFeatureInput {

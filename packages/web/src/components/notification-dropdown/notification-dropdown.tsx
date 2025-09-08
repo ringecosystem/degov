@@ -36,7 +36,7 @@ interface CountdownState {
 export const NotificationDropdown = () => {
   const config = useDaoConfig();
 
-  const { isEmailBound, emailAddress, id, isLoading, refresh } =
+  const { isEmailBound, emailAddress, isLoading, refresh } =
     useEmailBindingStatus();
   const {
     newProposals,
@@ -228,8 +228,6 @@ export const NotificationDropdown = () => {
       ) : (
         <EmailBindForm
           onVerified={handleVerified}
-          initialEmail={emailAddress}
-          initialChannelId={id}
           countdownActive={countdown.active}
           countdownDuration={countdown.duration}
           countdownKey={countdown.key}

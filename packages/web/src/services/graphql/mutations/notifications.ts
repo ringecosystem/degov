@@ -1,20 +1,5 @@
 import { gql } from "graphql-request";
 
-export const BIND_NOTIFICATION_CHANNEL = gql`
-  mutation BindNotificationsChannel(
-    $type: NotificationChannelType!
-    $value: String!
-  ) {
-    bindNotificationChannel(input: { type: $type, value: $value }) {
-      id
-      code
-      expiration
-      message
-      rateLimit
-    }
-  }
-`;
-
 export const RESEND_OTP = gql`
   mutation ResendOTP($type: NotificationChannelType!, $value: String!) {
     resendOTP(input: { type: $type, value: $value }) {
@@ -28,8 +13,14 @@ export const RESEND_OTP = gql`
 `;
 
 export const VERIFY_NOTIFICATION_CHANNEL = gql`
-  mutation VerifyNotificationChannel($id: String!, $otpCode: String!) {
-    verifyNotificationChannel(input: { id: $id, otpCode: $otpCode }) {
+  mutation VerifyNotificationChannel(
+    $type: NotificationChannelType!
+    $value: String!
+    $otpCode: String!
+  ) {
+    verifyNotificationChannel(
+      input: { type: $type, value: $value, otpCode: $otpCode }
+    ) {
       code
       message
     }
