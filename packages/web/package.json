@@ -105,7 +105,7 @@
     "@types/react-dom": "^19",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "eslint": "^9",
-    "eslint-config-next": "15.1.7",
+    "eslint-config-next": "15.5.2",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-react-compiler": "19.0.0-beta-3229e95-20250315",
     "postcss": "^8",
