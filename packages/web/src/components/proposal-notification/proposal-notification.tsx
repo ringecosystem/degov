@@ -118,7 +118,7 @@ export const ProposalNotification = ({
   ]);
 
   // Don't show if wallet is not connected or email is not bound
-  if (!isConnected || !address || isEmailBound) {
+  if (!isConnected || !address || !isEmailBound) {
     return null;
   }
 
