@@ -86,8 +86,6 @@ export const NotificationDropdown = () => {
         [setting]: newValue,
       }));
 
-      const featureName = setting;
-
       if (newValue) {
         // Subscribe to the specific feature + keep all other active features
         const allFeatureKeys = [FeatureName.PROPOSAL_NEW, FeatureName.VOTE_END];
@@ -133,20 +131,36 @@ export const NotificationDropdown = () => {
         );
 
         if (!hasOtherActiveFeatures) {
-          // Unsubscribe from entire DAO if no other features are active
-          unsubscribeDao.mutate(config?.code, {
-            onError: (error: any) => {
-              // Revert local state on error
-              setSettings((prev) => ({
-                ...prev,
-                [setting]: currentValue,
-              }));
-              toast.error(
-                error?.response?.errors?.[0]?.message ||
-                  `Failed to unsubscribe from ${setting}`
-              );
+          // When no features are enabled, explicitly send all features with strategy "false"
+          const allFeatureKeys = [
+            FeatureName.PROPOSAL_NEW,
+            FeatureName.VOTE_END,
+          ];
+
+          const featuresAllFalse = allFeatureKeys.map((key) => ({
+            name: key,
+            strategy: "false",
+          }));
+
+          subscribeDao.mutate(
+            {
+              daoCode: config?.code,
+              features: featuresAllFalse,
             },
-          });
+            {
+              onError: (error: any) => {
+                // Revert local state on error
+                setSettings((prev) => ({
+                  ...prev,
+                  [setting]: currentValue,
+                }));
+                toast.error(
+                  error?.response?.errors?.[0]?.message ||
+                    `Failed to update subscription for ${setting}`
+                );
+              },
+            }
+          );
         } else {
           // Subscribe with only the remaining active features
           const activeFeatures = otherFeatureKeys
