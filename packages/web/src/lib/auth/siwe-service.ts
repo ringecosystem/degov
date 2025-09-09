@@ -1,8 +1,8 @@
-'use client';
-import { createSiweMessage } from 'viem/siwe';
+"use client";
+import { createSiweMessage } from "viem/siwe";
 
-import { degovGraphqlApi } from '@/utils/remote-api';
-import { tokenManager } from './token-manager';
+import { degovGraphqlApi } from "@/utils/remote-api";
+import { tokenManager } from "./token-manager";
 
 export interface SiweAuthConfig {
   domain?: string;
@@ -17,9 +17,12 @@ export class SiweService {
 
   private constructor() {
     this.config = {
-      domain: typeof window !== 'undefined' ? window.location.host : 'degov.ai',
-      statement: 'DeGov.AI wants you to sign in with your Ethereum account',
-      uri: typeof window !== 'undefined' ? window.location.origin : 'https://degov.ai',
+      domain: typeof window !== "undefined" ? window.location.host : "degov.ai",
+      statement: "DeGov.AI wants you to sign in with your Ethereum account",
+      uri:
+        typeof window !== "undefined"
+          ? window.location.origin
+          : "https://degov.ai",
     };
   }
 
@@ -34,15 +37,15 @@ export class SiweService {
     this.config = { ...this.config, ...config };
   }
 
-  async getNonce(): Promise<{ nonce: string; source: 'generated' | 'remote' }> {
-    const response = await fetch('/api/auth/nonce', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
+  async getNonce(): Promise<{ nonce: string; source: "generated" | "remote" }> {
+    const response = await fetch("/api/auth/nonce", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
     });
 
     if (!response.ok) {
-      throw new Error('Failed to get nonce');
+      throw new Error("Failed to get nonce");
     }
 
     const { data } = await response.json();
@@ -61,7 +64,7 @@ export class SiweService {
       address,
       statement: `${this.config.statement}: ${address}`,
       uri: this.config.uri!,
-      version:  '1',
+      version: "1",
       chainId,
       nonce,
     });
@@ -71,8 +74,13 @@ export class SiweService {
     message: string;
     signature: `0x${string}`;
     address: `0x${string}`;
-    nonceSource?: 'generated' | 'remote';
-  }): Promise<{ success: boolean; token?: string; remoteToken?: string; error?: string }> {
+    nonceSource?: "generated" | "remote";
+  }): Promise<{
+    success: boolean;
+    token?: string;
+    remoteToken?: string;
+    error?: string;
+  }> {
     try {
       const { message, signature, address, nonceSource } = params;
 
@@ -80,7 +88,6 @@ export class SiweService {
       let remoteToken: string | undefined;
       const errors: string[] = [];
 
-      // 总是进行本地登录
       const localResult = await this.loginLocal(message, signature);
       if (localResult.success) {
         localToken = localResult.token;
@@ -89,9 +96,12 @@ export class SiweService {
         errors.push(`Local login failed: ${localResult.error}`);
       }
 
-      // 只有当nonce来源是remote时，才进行远程登录
-      if (nonceSource === 'remote') {
-        const remoteResult = await this.loginRemote(message, signature, address);
+      if (nonceSource === "remote") {
+        const remoteResult = await this.loginRemote(
+          message,
+          signature,
+          address
+        );
         if (remoteResult.success) {
           remoteToken = remoteResult.token;
           tokenManager.setRemoteToken(remoteToken!);
@@ -100,34 +110,37 @@ export class SiweService {
         }
       }
 
-      // 至少有一个登录成功才认为整体成功
       if (localToken || remoteToken) {
-        return { 
-          success: true, 
-          token: localToken, 
+        return {
+          success: true,
+          token: localToken,
           remoteToken,
-          error: errors.length > 0 ? errors.join('; ') : undefined
+          error: errors.length > 0 ? errors.join("; ") : undefined,
         };
       }
 
-      return { 
-        success: false, 
-        error: errors.join('; ') || 'Authentication failed' 
+      return {
+        success: false,
+        error: errors.join("; ") || "Authentication failed",
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return { success: false, error: errorMessage };
     }
   }
 
-  private async loginLocal(message: string, signature: string): Promise<{ success: boolean; token?: string; error?: string }> {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
+  private async loginLocal(
+    message: string,
+    signature: string
+  ): Promise<{ success: boolean; token?: string; error?: string }> {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({ message, signature }),
-      cache: 'no-store',
+      cache: "no-store",
     });
 
     const result = await response.json();
@@ -136,16 +149,22 @@ export class SiweService {
       return { success: true, token: result.data.token };
     }
 
-    return { success: false, error: result.msg || 'Local authentication failed' };
+    return {
+      success: false,
+      error: result.msg || "Local authentication failed",
+    };
   }
 
-  private async loginRemote(message: string, signature: string, address: string): Promise<{ success: boolean; token?: string; error?: string }> {
+  private async loginRemote(
+    message: string,
+    signature: string,
+    address: string
+  ): Promise<{ success: boolean; token?: string; error?: string }> {
     const endpoint = degovGraphqlApi();
     if (!endpoint) {
-      return { success: false, error: 'Remote API endpoint not configured' };
+      return { success: false, error: "Remote API endpoint not configured" };
     }
 
-    // 远程登录使用GraphQL mutation
     const loginMutation = `
       mutation Login($input: LoginInput!) {
         login(input: $input) {
@@ -156,20 +175,20 @@ export class SiweService {
 
     try {
       const response = await fetch(endpoint, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           query: loginMutation,
           variables: {
             input: {
               signature,
-              message
-            }
-          }
+              message,
+            },
+          },
         }),
-        cache: 'no-store',
+        cache: "no-store",
       });
 
       const result = await response.json();
@@ -178,14 +197,17 @@ export class SiweService {
         return { success: true, token: result.data.login.token };
       }
 
-      return { 
-        success: false, 
-        error: result.errors?.[0]?.message || 'Remote authentication failed' 
+      return {
+        success: false,
+        error: result.errors?.[0]?.message || "Remote authentication failed",
       };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Remote authentication error' 
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Remote authentication error",
       };
     }
   }
@@ -194,8 +216,8 @@ export class SiweService {
     tokenManager.clearAllTokens();
     // Clear persisted react-query cache if present
     try {
-      if (typeof window !== 'undefined') {
-        window.localStorage?.removeItem('REACT_QUERY_OFFLINE_CACHE');
+      if (typeof window !== "undefined") {
+        window.localStorage?.removeItem("REACT_QUERY_OFFLINE_CACHE");
       }
     } catch {}
   }
@@ -204,19 +226,28 @@ export class SiweService {
     address: `0x${string}`;
     chainId: number;
     signMessageAsync: (params: { message: string }) => Promise<`0x${string}`>;
-  }): Promise<{ success: boolean; token?: string; remoteToken?: string; error?: string }> {
+  }): Promise<{
+    success: boolean;
+    token?: string;
+    remoteToken?: string;
+    error?: string;
+  }> {
     try {
       const { address, chainId, signMessageAsync } = params;
-      
-      // 获取nonce和它的来源
+
       const { nonce, source } = await this.getNonce();
       const message = this.createMessage({ address, nonce, chainId });
       const signature = await signMessageAsync({ message });
 
-      // 使用nonce的source信息进行认证
-      return await this.verifySignature({ message, signature, address, nonceSource: source });
+      return await this.verifySignature({
+        message,
+        signature,
+        address,
+        nonceSource: source,
+      });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return { success: false, error: errorMessage };
     }
   }

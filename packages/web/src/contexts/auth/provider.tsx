@@ -1,9 +1,9 @@
-'use client';
-import { useState, useEffect, type ReactNode } from 'react';
+"use client";
+import { useState, useEffect, type ReactNode } from "react";
 
-import { tokenManager } from '@/lib/auth/token-manager';
+import { tokenManager } from "@/lib/auth/token-manager";
 
-import { AuthContext } from './context';
+import { AuthContext } from "./context";
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -14,7 +14,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    // 初始化token
     const initialToken = tokenManager.getToken();
     setTokenState(initialToken);
     setIsInitialized(true);
@@ -27,7 +26,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const isAuthenticated = Boolean(token && tokenManager.hasValidFormat());
 
-  // token 初始化完成前不渲染子组件
   if (!isInitialized) {
     return null;
   }

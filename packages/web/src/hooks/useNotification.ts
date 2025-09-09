@@ -155,11 +155,16 @@ export const useNotificationFeatures = () => {
 
     // Check if any DAO has the specified features enabled
     const hasNewProposals = subscribedDaos.some((dao) =>
-      dao.features.some((feature) => feature.name === "PROPOSAL_NEW")
+      dao.features.some(
+        (feature) =>
+          feature.name === "PROPOSAL_NEW" && feature.strategy === "true"
+      )
     );
 
     const hasVotingEndReminder = subscribedDaos.some((dao) =>
-      dao.features.some((feature) => feature.name === "VOTE_END")
+      dao.features.some(
+        (feature) => feature.name === "VOTE_END" && feature.strategy === "true"
+      )
     );
 
     return {

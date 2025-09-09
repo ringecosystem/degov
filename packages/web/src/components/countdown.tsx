@@ -14,8 +14,8 @@ interface CountdownProps {
   onTick?: (remaining: number) => void;
   className?: string;
   children?: (remaining: number, start: () => void) => ReactNode;
-  onStart?: () => void; // 开始倒计时时的回调
-  autoStart?: boolean; // 是否在 start 变化时自动开始
+  onStart?: () => void;
+  autoStart?: boolean;
 }
 
 export const Countdown = ({
@@ -51,7 +51,6 @@ export const Countdown = ({
     onStartRef.current = onStart;
   }, [onEnd, onTick, onStart]);
 
-  // 开始倒计时函数
   const startCountdown = useCallback(() => {
     if (remaining <= 0 || isRunning) return;
 
