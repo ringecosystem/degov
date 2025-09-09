@@ -50,7 +50,7 @@
     "@tiptap/extension-text-align": "^3.4.1",
     "@tiptap/extension-typography": "^2.11.7",
     "@tiptap/extension-underline": "^2.11.7",
-    "@tiptap/pm": "^2.11.7",
+    "@tiptap/pm": "^3.4.2",
     "@tiptap/react": "^2.11.7",
     "@tiptap/starter-kit": "^2.11.7",
     "@types/lodash-es": "^4.17.12",
