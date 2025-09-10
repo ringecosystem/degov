@@ -9,6 +9,7 @@ import type {
   DaoSubscriptionInput,
 } from "@/services/graphql/types/notifications";
 import { NotificationService } from "@/services/notification";
+import { isAuthenticationRequired } from "@/utils/graphql-error-handler";
 
 // Query keys
 const NOTIFICATION_KEYS = {
@@ -19,21 +20,22 @@ const NOTIFICATION_KEYS = {
     [...NOTIFICATION_KEYS.all, "subscribedProposals"] as const,
 };
 
-// Hook for listing notification channels
-export const useNotificationChannels = () => {
+// Hook for listing notification channels with enhanced email binding info
+export const useNotificationChannels = (enabled = false) => {
   const { authenticate } = useSiweAuth();
 
   const queryFn = useMemo(() => {
+    let retryCount = 0;
+    const maxRetries = 1;
+
     return async () => {
       try {
         return await NotificationService.listNotificationChannels();
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error) && retryCount < maxRetries) {
+          retryCount++;
           const res = await authenticate();
+
           if (res?.success) {
             return await NotificationService.listNotificationChannels();
           }
@@ -43,39 +45,42 @@ export const useNotificationChannels = () => {
     };
   }, [authenticate]);
 
-  return useQuery({
+  const query = useQuery({
     queryKey: NOTIFICATION_KEYS.channels(),
     queryFn,
+    enabled,
     retry: 0,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
-};
 
-// Hook for getting email binding status
-export const useEmailBindingStatus = () => {
-  const {
-    data: channels,
-    isLoading,
-    error,
-    refetch,
-  } = useNotificationChannels();
+  // Enhanced return value with email binding info
+  const enhancedData = useMemo(() => {
+    if (!query.data) return null;
 
-  const emailChannel = channels?.find(
-    (channel) => channel.channelType === "EMAIL"
-  );
+    const emailChannel = query.data.find(
+      (channel) => channel.channelType === "EMAIL"
+    );
+
+    return {
+      channels: query.data,
+      isEmailBound: Boolean(emailChannel?.id),
+      emailAddress: emailChannel?.channelValue || null,
+    };
+  }, [query.data]);
 
   return {
-    isEmailBound: Boolean(emailChannel?.id),
-    emailAddress: emailChannel?.channelValue,
-    id: emailChannel?.id,
-    isLoading,
-    error,
-    refresh: refetch,
+    data: enhancedData,
+    error: query.error,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    refetch: query.refetch,
   };
 };
 
 // Hook for getting subscribed DAOs (only when email is verified)
-export const useSubscribedDaos = () => {
-  const { emailAddress } = useEmailBindingStatus();
+export const useSubscribedDaos = (enabled = false) => {
   const { authenticate } = useSiweAuth();
 
   const queryFn = useMemo(() => {
@@ -83,11 +88,7 @@ export const useSubscribedDaos = () => {
       try {
         return await NotificationService.getSubscribedDaos();
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.getSubscribedDaos();
@@ -101,26 +102,23 @@ export const useSubscribedDaos = () => {
   return useQuery({
     queryKey: NOTIFICATION_KEYS.subscribedDaos(),
     queryFn,
-    enabled: !!emailAddress, // Only fetch when email address exists
+    enabled,
     retry: 0,
   });
 };
 
 // Hook for getting subscribed proposals (only when email is verified)
-export const useSubscribedProposals = () => {
-  const { emailAddress } = useEmailBindingStatus();
+export const useSubscribedProposals = (enabled = true) => {
   const { authenticate } = useSiweAuth();
+  const { data: channelData } = useNotificationChannels(enabled);
+  const emailAddress = channelData?.emailAddress;
 
   const queryFn = useMemo(() => {
     return async () => {
       try {
         return await NotificationService.getSubscribedProposals();
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.getSubscribedProposals();
@@ -134,19 +132,17 @@ export const useSubscribedProposals = () => {
   return useQuery({
     queryKey: NOTIFICATION_KEYS.subscribedProposals(),
     queryFn,
-    enabled: !!emailAddress, // Only fetch when email address exists
+    enabled: enabled && !!emailAddress,
     retry: 0,
   });
 };
 
 // Hook for getting notification feature status
-export const useNotificationFeatures = () => {
-  const { emailAddress } = useEmailBindingStatus();
-  const { data: subscribedDaos, isLoading, error } = useSubscribedDaos();
-  console.log("subscribedDaos", subscribedDaos);
+export const useNotificationFeatures = (enabled = false) => {
+  const { data: subscribedDaos, isLoading, error } = useSubscribedDaos(enabled);
 
   const notificationFeatures = useMemo(() => {
-    if (!subscribedDaos || !emailAddress) {
+    if (!subscribedDaos) {
       return {
         newProposals: false,
         votingEndReminder: false,
@@ -171,13 +167,12 @@ export const useNotificationFeatures = () => {
       newProposals: hasNewProposals,
       votingEndReminder: hasVotingEndReminder,
     };
-  }, [subscribedDaos, emailAddress]);
+  }, [subscribedDaos]);
 
   return {
     ...notificationFeatures,
     isLoading,
     error,
-    emailAddress,
   };
 };
 
@@ -195,11 +190,7 @@ export const useResendOTP = () => {
       try {
         return await NotificationService.resendOTP(type, value);
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.resendOTP(type, value);
@@ -220,11 +211,7 @@ export const useVerifyNotificationChannel = () => {
       try {
         return await NotificationService.verifyNotificationChannel(input);
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.verifyNotificationChannel(input);
@@ -240,17 +227,14 @@ export const useVerifyNotificationChannel = () => {
 };
 
 export const useSubscribeProposal = () => {
+  const queryClient = useQueryClient();
   const { authenticate } = useSiweAuth();
   return useMutation({
     mutationFn: async (input: ProposalSubscriptionInput) => {
       try {
         return await NotificationService.subscribeProposal(input);
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.subscribeProposal(input);
@@ -259,10 +243,16 @@ export const useSubscribeProposal = () => {
         throw error;
       }
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: NOTIFICATION_KEYS.subscribedProposals(),
+      });
+    },
   });
 };
 
 export const useUnsubscribeProposal = () => {
+  const queryClient = useQueryClient();
   const { authenticate } = useSiweAuth();
   return useMutation({
     mutationFn: async ({
@@ -278,11 +268,7 @@ export const useUnsubscribeProposal = () => {
           proposalId
         );
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.unsubscribeProposal(
@@ -293,6 +279,11 @@ export const useUnsubscribeProposal = () => {
         }
         throw error;
       }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: NOTIFICATION_KEYS.subscribedProposals(),
+      });
     },
   });
 };
@@ -309,11 +300,7 @@ export const useSubscribeDao = () => {
       try {
         return await NotificationService.subscribeDao(input);
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.subscribeDao(input);
@@ -342,11 +329,7 @@ export const useUnsubscribeDao = () => {
       try {
         return await NotificationService.unsubscribeDao(daoCode);
       } catch (error: unknown) {
-        const status =
-          error && typeof error === "object" && "response" in error
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 401) {
+        if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.unsubscribeDao(daoCode);

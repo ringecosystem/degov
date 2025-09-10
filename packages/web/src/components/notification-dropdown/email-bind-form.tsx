@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useCallback, useEffect } from "react";
+import { useReducer, useCallback } from "react";
 import { toast } from "react-toastify";
 import { z } from "zod";
 
@@ -18,6 +18,7 @@ import {
   useResendOTP,
   useVerifyNotificationChannel,
 } from "@/hooks/useNotification";
+import { extractErrorMessage } from "@/utils/graphql-error-handler";
 
 interface EmailBindFormProps {
   onVerified: (email: string) => void;
@@ -98,10 +99,8 @@ export const EmailBindForm = ({
             toast.error(data.message || "Failed to send verification code");
           }
         },
-        onError: (error: any) => {
-          const graphqlError = error.response?.errors?.[0]?.message;
-          const errorMessage =
-            graphqlError || error.message || "Failed to send verification code";
+        onError: (error: unknown) => {
+          const errorMessage = extractErrorMessage(error) || "Failed to send verification code";
           toast.error(errorMessage);
         },
       }

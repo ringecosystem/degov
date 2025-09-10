@@ -1,10 +1,9 @@
 "use client";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { useAccount, useChainId } from "wagmi";
+import { useAccount } from "wagmi";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
-import { NotificationDropdown } from "../notification-dropdown";
 import { Button } from "../ui/button";
 
 import { Connected } from "./connected";
@@ -49,7 +48,6 @@ export const ConnectButton = ({
     return (
       <div className="flex items-center gap-[10px]">
         <Connected address={address} onMenuToggle={onMenuToggle} />
-        <NotificationDropdown />
       </div>
     );
   }

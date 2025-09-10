@@ -1,7 +1,7 @@
 import { clearToken } from "@/lib/auth/token-manager";
+import { getToken } from "@/lib/auth/token-manager";
 
 import { request } from "./client";
-import { getToken } from "@/lib/auth/token-manager";
 import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";

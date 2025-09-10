@@ -1,18 +1,20 @@
 "use client";
 
-import Link from "next/link";
-
 import { EmailBindIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { useDeGovAppsNavigation } from "@/hooks/useDeGovAppsNavigation";
 import { FeatureName } from "@/services/graphql/types/notifications";
 
 interface SettingsPanelProps {
   email?: string;
   newProposals: boolean;
   votingEndReminder: boolean;
-  onToggle: (setting: FeatureName.PROPOSAL_NEW | FeatureName.VOTE_END, enabled: boolean) => void;
+  onToggle: (
+    setting: FeatureName.PROPOSAL_NEW | FeatureName.VOTE_END,
+    enabled: boolean
+  ) => void;
 }
 
 export const SettingsPanel = ({
@@ -21,6 +23,7 @@ export const SettingsPanel = ({
   votingEndReminder,
   onToggle,
 }: SettingsPanelProps) => {
+  const appUrl = useDeGovAppsNavigation();
   return (
     <DropdownMenuContent
       className="rounded-[26px] border-grey-1 bg-dark p-[20px] shadow-card flex flex-col gap-[20px] w-[calc(100vw-40px)] max-w-[300px] lg:w-[300px]"
@@ -43,7 +46,9 @@ export const SettingsPanel = ({
             </h3>
             <Switch
               checked={newProposals}
-              onCheckedChange={(checked) => onToggle(FeatureName.PROPOSAL_NEW, checked)}
+              onCheckedChange={(checked) =>
+                onToggle(FeatureName.PROPOSAL_NEW, checked)
+              }
             />
           </div>
           <p className="text-muted-foreground text-xs">
@@ -58,18 +63,24 @@ export const SettingsPanel = ({
             </h3>
             <Switch
               checked={votingEndReminder}
-              onCheckedChange={(checked) => onToggle(FeatureName.VOTE_END, checked)}
+              onCheckedChange={(checked) =>
+                onToggle(FeatureName.VOTE_END, checked)
+              }
             />
           </div>
           <p className="text-muted-foreground text-xs">
             Receive notifications before the proposal voting ends.
           </p>
         </div>
-        <div className="w-full flex justify-end">
-          <Button className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] py-[5px] px-[10px] h-auto">
-            <Link href="/notification-settings"> Notification setting </Link>
-          </Button>
-        </div>
+        {appUrl && (
+          <div className="w-full flex justify-end">
+            <Button className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] py-[5px] px-[10px] h-auto">
+              <a href={appUrl} target="_blank" rel="noopener noreferrer">
+                Notification setting
+              </a>
+            </Button>
+          </div>
+        )}
       </div>
     </DropdownMenuContent>
   );

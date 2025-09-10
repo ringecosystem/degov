@@ -17,6 +17,8 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
 
   verify: async ({ message, signature }) => {
+    await siweService.signOut();
+
     const lines = message.split("\n");
     const addressLine = lines.find((line) =>
       line.trim().match(/^0x[a-fA-F0-9]{40}$/)

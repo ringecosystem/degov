@@ -6,16 +6,16 @@ const REMOTE_TOKEN_KEY = "degov_remote_auth_token";
 class TokenManager {
   getToken(): string | null {
     if (typeof window === "undefined") return null;
-    return localStorage.getItem(TOKEN_KEY);
+    return sessionStorage.getItem(TOKEN_KEY);
   }
 
   setToken(token: string | null): void {
     if (typeof window === "undefined") return;
 
     if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem(TOKEN_KEY, token);
     } else {
-      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
     }
   }
 
@@ -25,16 +25,16 @@ class TokenManager {
 
   getRemoteToken(): string | null {
     if (typeof window === "undefined") return null;
-    return localStorage.getItem(REMOTE_TOKEN_KEY);
+    return sessionStorage.getItem(REMOTE_TOKEN_KEY);
   }
 
   setRemoteToken(token: string | null): void {
     if (typeof window === "undefined") return;
 
     if (token) {
-      localStorage.setItem(REMOTE_TOKEN_KEY, token);
+      sessionStorage.setItem(REMOTE_TOKEN_KEY, token);
     } else {
-      localStorage.removeItem(REMOTE_TOKEN_KEY);
+      sessionStorage.removeItem(REMOTE_TOKEN_KEY);
     }
   }
 

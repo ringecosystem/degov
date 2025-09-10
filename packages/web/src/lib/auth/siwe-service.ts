@@ -2,6 +2,7 @@
 import { createSiweMessage } from "viem/siwe";
 
 import { degovGraphqlApi } from "@/utils/remote-api";
+
 import { tokenManager } from "./token-manager";
 
 export interface SiweAuthConfig {
@@ -82,7 +83,7 @@ export class SiweService {
     error?: string;
   }> {
     try {
-      const { message, signature, address, nonceSource } = params;
+      const { message, signature, nonceSource } = params;
 
       let localToken: string | undefined;
       let remoteToken: string | undefined;
@@ -97,11 +98,7 @@ export class SiweService {
       }
 
       if (nonceSource === "remote") {
-        const remoteResult = await this.loginRemote(
-          message,
-          signature,
-          address
-        );
+        const remoteResult = await this.loginRemote(message, signature);
         if (remoteResult.success) {
           remoteToken = remoteResult.token;
           tokenManager.setRemoteToken(remoteToken!);
@@ -157,8 +154,7 @@ export class SiweService {
 
   private async loginRemote(
     message: string,
-    signature: string,
-    address: string
+    signature: string
   ): Promise<{ success: boolean; token?: string; error?: string }> {
     const endpoint = degovGraphqlApi();
     if (!endpoint) {
