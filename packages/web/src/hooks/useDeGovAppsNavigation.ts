@@ -11,5 +11,5 @@ export const useDeGovAppsNavigation = () => {
     return undefined;
   }
 
-  return `https://apps.degov.ai/notification/subscription?token=${remoteToken}&address=${address}`;
+  return `https://apps.degov.ai/notification/subscription?token=${encodeURIComponent(remoteToken)}&address=${encodeURIComponent(address)}`;
 };

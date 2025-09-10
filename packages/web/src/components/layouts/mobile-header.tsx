@@ -15,6 +15,7 @@ export const MobileHeader = () => {
   const [open, setOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const config = useDaoConfig();
+
   const { isDarkTheme } = useCustomTheme();
 
   const isCustomLogo = useMemo(() => {
@@ -33,7 +34,11 @@ export const MobileHeader = () => {
             <Link href="/">
               {isCustomLogo ? (
                 <Image
-                  src={isDarkTheme ? (config?.theme?.logoDark ?? "") : (config?.theme?.logoLight ?? "")}
+                  src={
+                    isDarkTheme
+                      ? config?.theme?.logoDark ?? ""
+                      : config?.theme?.logoLight ?? ""
+                  }
                   alt="logo"
                   width={128}
                   height={26}
@@ -41,7 +46,11 @@ export const MobileHeader = () => {
                   className="h-[26px] w-[128px] rounded-full border border-[var(--card-background)]"
                 />
               ) : (
-                <LogoIcon width={128} height={26} className="h-[26px] w-[128px]" />
+                <LogoIcon
+                  width={128}
+                  height={26}
+                  className="h-[26px] w-[128px]"
+                />
               )}
             </Link>
             <Link
