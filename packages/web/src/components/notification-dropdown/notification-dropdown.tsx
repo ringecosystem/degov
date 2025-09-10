@@ -56,13 +56,11 @@ export const NotificationDropdown = () => {
   const isEmailBound = channelData?.isEmailBound ?? false;
   const emailAddress = channelData?.emailAddress;
 
-  console.log("isEmailBound", isEmailBound);
-
   const {
     newProposals,
     votingEndReminder,
     isLoading: featuresLoading,
-  } = useNotificationFeatures(isEmailBound);
+  } = useNotificationFeatures(isEmailBound && isOpen);
 
   const subscribeDao = useSubscribeDao();
 
