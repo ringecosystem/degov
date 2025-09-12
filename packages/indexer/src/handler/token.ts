@@ -295,26 +295,11 @@ export class TokenHandler {
         power: -power,
       });
       await this.storeDelegate(fromDelegate);
-    }
-    if (storedToDelegate) {
-      const toDelegate = new Delegate({
-        fromDelegate: storedToDelegate.from,
-        toDelegate: storedToDelegate.to,
-        blockNumber: entity.blockNumber,
-        blockTimestamp: entity.blockTimestamp,
-        transactionHash: entity.transactionHash,
-        power: power,
-      });
-      await this.storeDelegate(toDelegate);
-    }
-
-    // issue found by https://etherscan.io/address/0x6a4ae46cd871346a658ebde74b5298aa3c35616a#tokentxns
-    if (!storedFromDelegate && !storedToDelegate) {
-      this.ctx.log.info(
-        `no delegate mapping for from and to, from: ${entity.from}, to: ${entity.to}, tx: ${entity.transactionHash}`
-      );
-
+    } else {
       if (event.from !== zeroAddress) {
+        this.ctx.log.info(
+          `no delegate mapping for transfer from, transfer: ${entity.from} -> ${entity.to}, tx: ${entity.transactionHash}`
+        );
         const storedPotentialPower = await this.ctx.store.findOne(
           PotentialPower,
           {
@@ -331,7 +316,14 @@ export class TokenHandler {
           storedPotentialPower.blockTimestamp = entity.blockTimestamp;
           storedPotentialPower.transactionHash = entity.transactionHash;
           storedPotentialPower.record = record;
-          await this.ctx.store.save(storedPotentialPower);
+          if (storedPotentialPower.power === 0n) {
+            await this.ctx.store.remove(
+              PotentialPower,
+              storedPotentialPower.id
+            );
+          } else {
+            await this.ctx.store.save(storedPotentialPower);
+          }
         } else {
           const potentialPower = new PotentialPower({
             id: entity.from,
@@ -345,7 +337,23 @@ export class TokenHandler {
           await this.ctx.store.insert(potentialPower);
         }
       }
+    }
+
+    if (storedToDelegate) {
+      const toDelegate = new Delegate({
+        fromDelegate: storedToDelegate.from,
+        toDelegate: storedToDelegate.to,
+        blockNumber: entity.blockNumber,
+        blockTimestamp: entity.blockTimestamp,
+        transactionHash: entity.transactionHash,
+        power: power,
+      });
+      await this.storeDelegate(toDelegate);
+    } else {
       if (event.to !== zeroAddress) {
+        this.ctx.log.info(
+          `no delegate mapping for transfer to, transfer: ${entity.from} -> ${entity.to}, tx: ${entity.transactionHash}`
+        );
         const storedPotentialPower = await this.ctx.store.findOne(
           PotentialPower,
           {
@@ -376,6 +384,10 @@ export class TokenHandler {
           await this.ctx.store.insert(potentialPower);
         }
       }
+    }
+
+    // issue found by https://etherscan.io/address/0x6a4ae46cd871346a658ebde74b5298aa3c35616a#tokentxns
+    if (!storedFromDelegate && !storedToDelegate) {
     }
   }
 

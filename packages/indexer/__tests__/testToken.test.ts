@@ -1597,7 +1597,26 @@ const recordsFor_0x0F60F8a = [
 //   ],
 // ];
 
+/*
+delegates:  [
+  {
+    delegator: '0x6a4ae46cd871346a658ebde74b5298aa3c35616a',
+    fromDelegate: '0x6a4ae46cd871346a658ebde74b5298aa3c35616a',
+    toDelegate: '0x6a4ae46cd871346a658ebde74b5298aa3c35616a',
+    power: 1578435432098598n,
+    id: '0x6a4ae46cd871346a658ebde74b5298aa3c35616a_0x6a4ae46cd871346a658ebde74b5298aa3c35616a'
+  }
+]
 
+
+mapping:  [
+  {
+    id: '0x6a4ae46cd871346a658ebde74b5298aa3c35616a',
+    from: '0x6a4ae46cd871346a658ebde74b5298aa3c35616a',
+    to: '0x6a4ae46cd871346a658ebde74b5298aa3c35616a'
+  }
+]
+ */
 const recordsFor_0x6A4Ae46 = [
   [
     {
@@ -1634,12 +1653,48 @@ const recordsFor_0x6A4Ae46 = [
       previousVotes: 1147762345678892n,
       newVotes: 1578435432098598n,
     },
-  ]
+  ],
 ];
 
+const recordsFor_0x6475741 = [
+  [
+    {
+      method: "Transfer",
+      from: "0x4b1A187d7e6D8f2Eb3AC46961DB3468fB824E991",
+      to: "0x6475741806cdF5015ec5542CF417D863bFf330BD",
+      value: 125000000000000n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x6475741806cdF5015ec5542CF417D863bFf330BD",
+      previousVotes: 0n,
+      newVotes: 125000000000000n,
+    },
+  ],
+  [
+    {
+      method: "DelegateChanged",
+      delegator: "0x6475741806cdF5015ec5542CF417D863bFf330BD",
+      fromDelegate: "0x6475741806cdF5015ec5542CF417D863bFf330BD",
+      toDelegate: "0x25Eb8e48Af083b7db8E590Cfc56Eea2Ad1306E52",
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x6475741806cdF5015ec5542CF417D863bFf330BD",
+      previousVotes: 125000000000000n,
+      newVotes: 0n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x25Eb8e48Af083b7db8E590Cfc56Eea2Ad1306E52",
+      previousVotes: 475668044740077n,
+      newVotes: 600668044740077n,
+    },
+  ],
+];
 
 test("testTokens", () => {
-  const records: any[] = recordsFor_0x6A4Ae46;
+  const records: any[] = recordsFor_0x6475741;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -1664,7 +1719,8 @@ test("testTokens", () => {
           };
           ds.pushMapping(cdg);
           if (
-            (cdg.fromDelegate === zeroAddress || cdg.fromDelegate === cdg.delegator) &&
+            (cdg.fromDelegate === zeroAddress ||
+              cdg.fromDelegate === cdg.delegator) &&
             cdg.delegator === cdg.toDelegate
           ) {
             const cdelegate: Delegate = {
@@ -1689,10 +1745,9 @@ test("testTokens", () => {
             cdg.delegator !== cdg.toDelegate;
           if (entry.delegate.toLowerCase() === cdg.fromDelegate) {
             if (
-              (
-                cdg.delegator === cdg.toDelegate &&
-                (cdg.fromDelegate !== zeroAddress && cdg.fromDelegate !== cdg.delegator)
-              ) ||
+              (cdg.delegator === cdg.toDelegate &&
+                cdg.fromDelegate !== zeroAddress &&
+                cdg.fromDelegate !== cdg.delegator) ||
               isDelegateChangeToAnother
             ) {
               fromDelegate = cdg.delegator;
@@ -1744,7 +1799,7 @@ class DelegateStorage {
   }
 
   getPotentialPower(): PotentialPower[] {
-    return this.potentialPower
+    return this.potentialPower;
   }
 
   pushMapping(delegateChange: DelegateChanged) {
@@ -1767,10 +1822,14 @@ class DelegateStorage {
       (item) => item.id === delegator.id
     );
     if (!storedDelegateFromWithTo) {
-      const storedPotential = this.potentialPower.find(item => item.address === delegator.toDelegate);
+      const storedPotential = this.potentialPower.find(
+        (item) => item.address === delegator.toDelegate
+      );
       if (storedPotential) {
         delegator.power += storedPotential.power;
-        this.potentialPower = this.potentialPower.filter(item => item.address !== storedPotential.address);
+        this.potentialPower = this.potentialPower.filter(
+          (item) => item.address !== storedPotential.address
+        );
       }
       this.delegates.push(delegator);
       return;
@@ -1801,6 +1860,25 @@ class DelegateStorage {
         power: -value,
       };
       this.pushDelegator(transferFromDelegateFrom);
+    } else {
+      if (from !== zeroAddress) {
+        const storedPotentialPower = this.potentialPower.find(
+          (item) => item.address === from
+        );
+        if (storedPotentialPower) {
+          storedPotentialPower.power -= value;
+          if (storedPotentialPower.power === 0n) {
+            this.potentialPower = this.potentialPower.filter(
+              (item) => item.address !== storedPotentialPower.address
+            );
+          }
+        } else {
+          this.potentialPower.push({
+            address: from,
+            power: -value,
+          });
+        }
+      }
     }
 
     if (toDelegateMappings) {
@@ -1812,23 +1890,11 @@ class DelegateStorage {
         power: value,
       };
       this.pushDelegator(transferDelegateTo);
-    }
-
-    // issue found by https://etherscan.io/address/0x6a4ae46cd871346a658ebde74b5298aa3c35616a#tokentxns
-    if (!fromDelegateMapping && !toDelegateMappings) {
-      if (from !== zeroAddress) {
-        const storedPotentialPower = this.potentialPower.find((item) => item.address === from);
-        if (storedPotentialPower) {
-          storedPotentialPower.power -= value;
-        } else {
-          this.potentialPower.push({
-            address: from,
-            power: 0n,
-          });
-        }
-      }
+    } else {
       if (to !== zeroAddress) {
-        const storedPotentialPower = this.potentialPower.find((item) => item.address === to);
+        const storedPotentialPower = this.potentialPower.find(
+          (item) => item.address === to
+        );
         if (storedPotentialPower) {
           storedPotentialPower.power += value;
         } else {
