@@ -377,7 +377,6 @@ export class TokenHandler {
         }
       }
     }
-
   }
 
   private async storeDelegate(currentDelegate: Delegate, options?: {}) {
@@ -400,9 +399,12 @@ export class TokenHandler {
       });
 
     if (!storedDelegateFromWithTo) {
-      const storedPotentialPower = await this.ctx.store.findOne(PotentialPower, {
-        where: { id: currentDelegate.toDelegate },
-      });
+      const storedPotentialPower = await this.ctx.store.findOne(
+        PotentialPower,
+        {
+          where: { id: currentDelegate.toDelegate },
+        }
+      );
       if (storedPotentialPower) {
         // use potential power to init delegate power
         currentDelegate.power += storedPotentialPower.power;
@@ -477,7 +479,7 @@ export class TokenHandler {
       await this.ctx.store.insert(contributor);
       storedContributor = contributor;
     }
-    if (storedContributor.power <= 0n) {
+    if (storedContributor.power < 0n) {
       throw new Error(
         `Contributor power is zero or negative, which should not happen. contributor: ${DegovIndexerHelpers.safeJsonStringify(
           storedContributor
