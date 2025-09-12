@@ -119,7 +119,8 @@ export class TokenHandler {
 
     // store self delegate
     if (
-      entity.fromDelegate === zeroAddress &&
+      (entity.fromDelegate === zeroAddress ||
+        entity.fromDelegate === entity.delegator) &&
       entity.delegator === entity.toDelegate
     ) {
       const selfDelegate = new Delegate({
@@ -208,7 +209,8 @@ export class TokenHandler {
       // retuning power to self
       if (
         (delegateRolling.delegator === delegateRolling.toDelegate &&
-          delegateRolling.fromDelegate !== zeroAddress) ||
+          delegateRolling.fromDelegate !== zeroAddress &&
+          delegateRolling.fromDelegate !== delegateRolling.delegator) ||
         isDelegateChangeToAnother
       ) {
         fromDelegate = delegateRolling.delegator;
@@ -281,6 +283,7 @@ export class TokenHandler {
         },
       });
 
+    const power = isErc721 ? 1n : "value" in event ? event.value : 0n;
     if (storedFromDelegate) {
       const fromDelegate = new Delegate({
         fromDelegate: storedFromDelegate.from,
@@ -288,7 +291,7 @@ export class TokenHandler {
         blockNumber: entity.blockNumber,
         blockTimestamp: entity.blockTimestamp,
         transactionHash: entity.transactionHash,
-        power: -(isErc721 ? 1n : "value" in event ? event.value : 0n),
+        power: -power,
       });
       await this.storeDelegate(fromDelegate);
     }
@@ -299,9 +302,23 @@ export class TokenHandler {
         blockNumber: entity.blockNumber,
         blockTimestamp: entity.blockTimestamp,
         transactionHash: entity.transactionHash,
-        power: isErc721 ? 1n : "value" in event ? event.value : 0n,
+        power: power,
       });
       await this.storeDelegate(toDelegate);
+    }
+    if (!storedFromDelegate && !storedToDelegate) {
+      this.ctx.log.info(
+        `skipped token transfer, because there is no delegate mapping for from and to, from: ${entity.from}, to: ${entity.to}, tx: ${entity.transactionHash}`
+      );
+      const noneDelegate = new Delegate({
+        fromDelegate: event.to,
+        toDelegate: event.to,
+        blockNumber: entity.blockNumber,
+        blockTimestamp: entity.blockTimestamp,
+        transactionHash: entity.transactionHash,
+        power: power,
+      });
+      await this.storeDelegate(noneDelegate);
     }
   }
 
@@ -393,6 +410,13 @@ export class TokenHandler {
       // save new contributor
       await this.ctx.store.insert(contributor);
       storedContributor = contributor;
+    }
+    if (storedContributor.power <= 0n) {
+      throw new Error(
+        `Contributor power is zero or negative, which should not happen. contributor: ${DegovIndexerHelpers.safeJsonStringify(
+          storedContributor
+        )}`
+      );
     }
 
     // sync user power

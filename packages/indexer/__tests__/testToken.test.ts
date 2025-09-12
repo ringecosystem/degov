@@ -1597,8 +1597,49 @@ const recordsFor_0x0F60F8a = [
 //   ],
 // ];
 
+
+const recordsFor_0x6A4Ae46 = [
+  [
+    {
+      method: "Transfer",
+      from: "0x0000000000000000000000000000000000000000",
+      to: "0x6A4Ae46CD871346a658ebdE74B5298aa3C35616A",
+      value: 1147762345678892n,
+    },
+    {
+      method: "DelegateVotesChanged",
+      delegate: "0x6A4Ae46CD871346a658ebdE74B5298aa3C35616A",
+      previousVotes: 0n,
+      newVotes: 1147762345678892n,
+    },
+  ],
+  // [
+  //   {
+  //     method: "DelegateChanged",
+  //     delegator: "0x6A4Ae46CD871346a658ebdE74B5298aa3C35616A",
+  //     fromDelegate: "0x6A4Ae46CD871346a658ebdE74B5298aa3C35616A",
+  //     toDelegate: "0x6A4Ae46CD871346a658ebdE74B5298aa3C35616A",
+  //   },
+  // ],
+  // [
+  //   {
+  //     method: "Transfer",
+  //     from: "0x0000000000000000000000000000000000000000",
+  //     to: "0x6A4Ae46CD871346a658ebdE74B5298aa3C35616A",
+  //     value: 430673086419706n,
+  //   },
+  //   {
+  //     method: "DelegateVotesChanged",
+  //     delegate: "0x6A4Ae46CD871346a658ebdE74B5298aa3C35616A",
+  //     previousVotes: 1147762345678892n,
+  //     newVotes: 1578435432098598n,
+  //   },
+  // ]
+];
+
+
 test("testTokens", () => {
-  const records: any[] = recordsFor_0x92e9fb9;
+  const records: any[] = recordsFor_0x6A4Ae46;
 
   const ds = new DelegateStorage();
   for (const record of records) {
@@ -1623,7 +1664,7 @@ test("testTokens", () => {
           };
           ds.pushMapping(cdg);
           if (
-            cdg.fromDelegate === zeroAddress &&
+            (cdg.fromDelegate === zeroAddress || cdg.fromDelegate === cdg.delegator) &&
             cdg.delegator === cdg.toDelegate
           ) {
             const cdelegate: Delegate = {
@@ -1648,8 +1689,10 @@ test("testTokens", () => {
             cdg.delegator !== cdg.toDelegate;
           if (entry.delegate.toLowerCase() === cdg.fromDelegate) {
             if (
-              (cdg.delegator === cdg.toDelegate &&
-                cdg.fromDelegate !== zeroAddress) ||
+              (
+                cdg.delegator === cdg.toDelegate &&
+                (cdg.fromDelegate !== zeroAddress && cdg.fromDelegate !== cdg.delegator)
+              ) ||
               isDelegateChangeToAnother
             ) {
               fromDelegate = cdg.delegator;
@@ -1755,6 +1798,18 @@ class DelegateStorage {
         delegator: to,
         fromDelegate: toDelegateMappings.from,
         toDelegate: toDelegateMappings.to,
+        power: value,
+      };
+      this.pushDelegator(transferDelegateTo);
+    }
+
+    // issue found by https://etherscan.io/address/0x6a4ae46cd871346a658ebde74b5298aa3c35616a#tokentxns
+    if (!fromDelegateMapping && !toDelegateMappings) {
+      console.log("better none mapping ====>", toDelegateMappings);
+      const transferDelegateTo = {
+        delegator: to,
+        fromDelegate: to,
+        toDelegate: to,
         power: value,
       };
       this.pushDelegator(transferDelegateTo);
