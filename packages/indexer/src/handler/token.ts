@@ -10,6 +10,7 @@ import {
   DelegateMapping,
   DelegateRolling,
   DelegateVotesChanged,
+  PotentialPower,
   TokenTransfer,
 } from "../model";
 import {
@@ -119,7 +120,8 @@ export class TokenHandler {
 
     // store self delegate
     if (
-      entity.fromDelegate === zeroAddress &&
+      (entity.fromDelegate === zeroAddress ||
+        entity.fromDelegate === entity.delegator) &&
       entity.delegator === entity.toDelegate
     ) {
       const selfDelegate = new Delegate({
@@ -208,7 +210,8 @@ export class TokenHandler {
       // retuning power to self
       if (
         (delegateRolling.delegator === delegateRolling.toDelegate &&
-          delegateRolling.fromDelegate !== zeroAddress) ||
+          delegateRolling.fromDelegate !== zeroAddress &&
+          delegateRolling.fromDelegate !== delegateRolling.delegator) ||
         isDelegateChangeToAnother
       ) {
         fromDelegate = delegateRolling.delegator;
@@ -281,6 +284,7 @@ export class TokenHandler {
         },
       });
 
+    const power = isErc721 ? 1n : "value" in event ? event.value : 0n;
     if (storedFromDelegate) {
       const fromDelegate = new Delegate({
         fromDelegate: storedFromDelegate.from,
@@ -288,10 +292,53 @@ export class TokenHandler {
         blockNumber: entity.blockNumber,
         blockTimestamp: entity.blockTimestamp,
         transactionHash: entity.transactionHash,
-        power: -(isErc721 ? 1n : "value" in event ? event.value : 0n),
+        power: -power,
       });
       await this.storeDelegate(fromDelegate);
+    } else {
+      if (event.from !== zeroAddress) {
+        this.ctx.log.info(
+          `no delegate mapping for transfer from, transfer: ${entity.from} -> ${entity.to}, tx: ${entity.transactionHash}`
+        );
+        const storedPotentialPower = await this.ctx.store.findOne(
+          PotentialPower,
+          {
+            where: { id: entity.from },
+          }
+        );
+        let record = `${entity.blockNumber} - ${entity.blockTimestamp}`;
+        if (storedPotentialPower) {
+          if (storedPotentialPower.record) {
+            record = `${record}\n-----\n${storedPotentialPower.record}`;
+          }
+          storedPotentialPower.power -= power;
+          storedPotentialPower.blockNumber = entity.blockNumber;
+          storedPotentialPower.blockTimestamp = entity.blockTimestamp;
+          storedPotentialPower.transactionHash = entity.transactionHash;
+          storedPotentialPower.record = record;
+          if (storedPotentialPower.power === 0n) {
+            await this.ctx.store.remove(
+              PotentialPower,
+              storedPotentialPower.id
+            );
+          } else {
+            await this.ctx.store.save(storedPotentialPower);
+          }
+        } else {
+          const potentialPower = new PotentialPower({
+            id: entity.from,
+            address: entity.from,
+            power: -power,
+            blockNumber: entity.blockNumber,
+            blockTimestamp: entity.blockTimestamp,
+            transactionHash: entity.transactionHash,
+            record: record,
+          });
+          await this.ctx.store.insert(potentialPower);
+        }
+      }
     }
+
     if (storedToDelegate) {
       const toDelegate = new Delegate({
         fromDelegate: storedToDelegate.from,
@@ -299,9 +346,48 @@ export class TokenHandler {
         blockNumber: entity.blockNumber,
         blockTimestamp: entity.blockTimestamp,
         transactionHash: entity.transactionHash,
-        power: isErc721 ? 1n : "value" in event ? event.value : 0n,
+        power: power,
       });
       await this.storeDelegate(toDelegate);
+    } else {
+      if (event.to !== zeroAddress) {
+        this.ctx.log.info(
+          `no delegate mapping for transfer to, transfer: ${entity.from} -> ${entity.to}, tx: ${entity.transactionHash}`
+        );
+        const storedPotentialPower = await this.ctx.store.findOne(
+          PotentialPower,
+          {
+            where: { id: entity.to },
+          }
+        );
+        let record = `${entity.blockNumber} - ${entity.blockTimestamp}`;
+        if (storedPotentialPower) {
+          if (storedPotentialPower.record) {
+            record = `${record}\n-----\n${storedPotentialPower.record}`;
+          }
+          storedPotentialPower.power += power;
+          storedPotentialPower.blockNumber = entity.blockNumber;
+          storedPotentialPower.blockTimestamp = entity.blockTimestamp;
+          storedPotentialPower.transactionHash = entity.transactionHash;
+          storedPotentialPower.record = record;
+          await this.ctx.store.save(storedPotentialPower);
+        } else {
+          const potentialPower = new PotentialPower({
+            id: entity.to,
+            address: entity.to,
+            power: power,
+            blockNumber: entity.blockNumber,
+            blockTimestamp: entity.blockTimestamp,
+            transactionHash: entity.transactionHash,
+            record: record,
+          });
+          await this.ctx.store.insert(potentialPower);
+        }
+      }
+    }
+
+    // issue found by https://etherscan.io/address/0x6a4ae46cd871346a658ebde74b5298aa3c35616a#tokentxns
+    if (!storedFromDelegate && !storedToDelegate) {
     }
   }
 
@@ -325,6 +411,17 @@ export class TokenHandler {
       });
 
     if (!storedDelegateFromWithTo) {
+      const storedPotentialPower = await this.ctx.store.findOne(
+        PotentialPower,
+        {
+          where: { id: currentDelegate.toDelegate },
+        }
+      );
+      if (storedPotentialPower) {
+        // use potential power to init delegate power
+        currentDelegate.power += storedPotentialPower.power;
+        await this.ctx.store.remove(PotentialPower, storedPotentialPower.id);
+      }
       await this.ctx.store.insert(currentDelegate);
     } else {
       // update delegate
@@ -393,6 +490,13 @@ export class TokenHandler {
       // save new contributor
       await this.ctx.store.insert(contributor);
       storedContributor = contributor;
+    }
+    if (storedContributor.power < 0n) {
+      throw new Error(
+        `Contributor power is zero or negative, which should not happen. contributor: ${DegovIndexerHelpers.safeJsonStringify(
+          storedContributor
+        )}`
+      );
     }
 
     // sync user power
