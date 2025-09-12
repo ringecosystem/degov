@@ -10,6 +10,7 @@ import {
   DelegateMapping,
   DelegateRolling,
   DelegateVotesChanged,
+  PotentialPower,
   TokenTransfer,
 } from "../model";
 import {
@@ -306,20 +307,77 @@ export class TokenHandler {
       });
       await this.storeDelegate(toDelegate);
     }
+
+    // issue found by https://etherscan.io/address/0x6a4ae46cd871346a658ebde74b5298aa3c35616a#tokentxns
     if (!storedFromDelegate && !storedToDelegate) {
       this.ctx.log.info(
-        `skipped token transfer, because there is no delegate mapping for from and to, from: ${entity.from}, to: ${entity.to}, tx: ${entity.transactionHash}`
+        `no delegate mapping for from and to, from: ${entity.from}, to: ${entity.to}, tx: ${entity.transactionHash}`
       );
-      const noneDelegate = new Delegate({
-        fromDelegate: event.to,
-        toDelegate: event.to,
-        blockNumber: entity.blockNumber,
-        blockTimestamp: entity.blockTimestamp,
-        transactionHash: entity.transactionHash,
-        power: power,
-      });
-      await this.storeDelegate(noneDelegate);
+
+      if (event.from !== zeroAddress) {
+        const storedPotentialPower = await this.ctx.store.findOne(
+          PotentialPower,
+          {
+            where: { id: entity.from },
+          }
+        );
+        let record = `${entity.blockNumber} - ${entity.blockTimestamp}`;
+        if (storedPotentialPower) {
+          if (storedPotentialPower.record) {
+            record = `${record}\n-----\n${storedPotentialPower.record}`;
+          }
+          storedPotentialPower.power -= power;
+          storedPotentialPower.blockNumber = entity.blockNumber;
+          storedPotentialPower.blockTimestamp = entity.blockTimestamp;
+          storedPotentialPower.transactionHash = entity.transactionHash;
+          storedPotentialPower.record = record;
+          await this.ctx.store.save(storedPotentialPower);
+        } else {
+          const potentialPower = new PotentialPower({
+            id: entity.from,
+            address: entity.from,
+            power: -power,
+            blockNumber: entity.blockNumber,
+            blockTimestamp: entity.blockTimestamp,
+            transactionHash: entity.transactionHash,
+            record: record,
+          });
+          await this.ctx.store.insert(potentialPower);
+        }
+      }
+      if (event.to !== zeroAddress) {
+        const storedPotentialPower = await this.ctx.store.findOne(
+          PotentialPower,
+          {
+            where: { id: entity.to },
+          }
+        );
+        let record = `${entity.blockNumber} - ${entity.blockTimestamp}`;
+        if (storedPotentialPower) {
+          if (storedPotentialPower.record) {
+            record = `${record}\n-----\n${storedPotentialPower.record}`;
+          }
+          storedPotentialPower.power += power;
+          storedPotentialPower.blockNumber = entity.blockNumber;
+          storedPotentialPower.blockTimestamp = entity.blockTimestamp;
+          storedPotentialPower.transactionHash = entity.transactionHash;
+          storedPotentialPower.record = record;
+          await this.ctx.store.save(storedPotentialPower);
+        } else {
+          const potentialPower = new PotentialPower({
+            id: entity.to,
+            address: entity.to,
+            power: power,
+            blockNumber: entity.blockNumber,
+            blockTimestamp: entity.blockTimestamp,
+            transactionHash: entity.transactionHash,
+            record: record,
+          });
+          await this.ctx.store.insert(potentialPower);
+        }
+      }
     }
+
   }
 
   private async storeDelegate(currentDelegate: Delegate, options?: {}) {
@@ -342,6 +400,14 @@ export class TokenHandler {
       });
 
     if (!storedDelegateFromWithTo) {
+      const storedPotentialPower = await this.ctx.store.findOne(PotentialPower, {
+        where: { id: currentDelegate.toDelegate },
+      });
+      if (storedPotentialPower) {
+        // use potential power to init delegate power
+        currentDelegate.power += storedPotentialPower.power;
+        await this.ctx.store.remove(PotentialPower, storedPotentialPower.id);
+      }
       await this.ctx.store.insert(currentDelegate);
     } else {
       // update delegate

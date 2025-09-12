@@ -193,6 +193,17 @@ type Delegate @entity {
   power: BigInt!
 }
 
+type PotentialPower @entity {
+  id: ID!
+  address: String! # address
+  power: BigInt!
+
+  record: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
 type Contributor @entity {
   id: ID! # tx hash
 
