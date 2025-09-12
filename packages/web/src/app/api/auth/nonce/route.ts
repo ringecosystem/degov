@@ -66,6 +66,7 @@ export async function POST() {
   }
 
   nonceCache.set(nonce);
+  console.log(`Using nonce from source: ${source} - ${nonce} and is valid: ${nonceCache.isValid(nonce)}`);
 
   return NextResponse.json(Resp.ok({ nonce, source }));
 }

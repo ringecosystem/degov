@@ -7,7 +7,9 @@ export const isDegovApiConfiguredServer = () => {
 };
 
 export const degovGraphqlApi = (): string | undefined => {
-  const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
+  const clientApi = typeof window !== 'undefined' ? env("NEXT_PUBLIC_DEGOV_API") : undefined;
+  const NEXT_PUBLIC_DEGOV_API = clientApi || process.env.NEXT_PUBLIC_DEGOV_API;
+  
   if (!NEXT_PUBLIC_DEGOV_API) return undefined;
   return `${NEXT_PUBLIC_DEGOV_API}/graphql`;
 };

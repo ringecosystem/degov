@@ -1,6 +1,8 @@
-import { clearToken, getToken } from "@/hooks/useSign";
+import { clearToken } from "@/lib/auth/token-manager";
+import { getToken } from "@/lib/auth/token-manager";
 
 import { request } from "./client";
+import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
 
@@ -221,7 +223,6 @@ export const profileService = {
       next: { revalidate: 300, tags: [`profile-${address}`] },
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
       },
     });
     const data = await response.json();
@@ -229,21 +230,19 @@ export const profileService = {
   },
 
   updateProfile: async (address: string, profile: Partial<ProfileData>) => {
+    const token = getToken();
     const response = await fetch(`/api/profile/${address}`, {
       method: "POST",
       body: JSON.stringify(profile),
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
     if (response.status === 401) {
       clearToken();
-      return {
-        code: 401,
-        msg: "Unauthorized",
-      };
+      return { code: 401, msg: "Unauthorized" } as const;
     }
     const data = await response.json();
     return data;
@@ -269,7 +268,6 @@ export const memberService = {
       const response = await fetch(url.toString(), {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
       });
 
@@ -308,7 +306,6 @@ export const memberService = {
       next: { revalidate: 60, tags: ["member-metrics"] },
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
       },
     });
     const data = await response.json();
@@ -330,3 +327,5 @@ export const memberService = {
 export { Types };
 
 export { Queries };
+
+export { Mutations };

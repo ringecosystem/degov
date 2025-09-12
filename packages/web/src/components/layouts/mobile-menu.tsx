@@ -6,6 +6,7 @@ import { Nav } from "@/app/nav";
 import { ConnectButton } from "@/components/connect-button";
 import { BottomLogoIcon } from "@/components/icons";
 import { IndexerStatus } from "@/components/indexer-status";
+import { NotificationDropdown } from "@/components/notification-dropdown";
 import { ThemeSelector } from "@/components/theme-selector";
 import {
   DropdownMenu,
@@ -13,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useBlockSync } from "@/hooks/useBlockSync";
+import { useNotificationVisibility } from "@/hooks/useNotificationVisibility";
 
 interface MobileMenuProps {
   children: React.ReactNode;
@@ -26,6 +28,7 @@ export const MobileMenu = ({
   onMenuToggle,
 }: MobileMenuProps) => {
   const { currentBlock, indexedBlock, syncPercentage, status } = useBlockSync();
+  const showNotification = useNotificationVisibility();
 
   return (
     <DropdownMenu open={open} onOpenChange={onMenuToggle}>
@@ -44,7 +47,10 @@ export const MobileMenu = ({
         >
           <div className="flex items-center justify-between p-4 ">
             <ConnectButton onMenuToggle={onMenuToggle} />
-            <ThemeSelector />
+            <div className="flex items-center gap-[10px]">
+              {showNotification && <NotificationDropdown />}
+              <ThemeSelector />
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">
@@ -67,10 +73,7 @@ export const MobileMenu = ({
                 rel="noopener noreferrer"
                 className="hover:opacity-80 transition-all duration-300"
               >
-                <BottomLogoIcon
-                  width={16}
-                  height={16}
-                />
+                <BottomLogoIcon width={16} height={16} />
               </Link>
               <span className="text-[12px]">DeGov.AI</span>
             </p>

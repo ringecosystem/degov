@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const nonce = fields.data.nonce;
     if (!nonceCache.isValid(nonce)) {
       return NextResponse.json(
-        Resp.err("nonce expired or invalid, please get a new nonce"),
+        Resp.err(`nonce (${nonce}) expired or invalid, please get a new nonce`),
         { status: 400 }
       );
     }

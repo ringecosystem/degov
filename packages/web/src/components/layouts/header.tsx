@@ -3,11 +3,14 @@ import { Search } from "lucide-react";
 import React from "react";
 
 import { ConnectButton } from "@/components/connect-button";
+import { NotificationDropdown } from "@/components/notification-dropdown";
 import { SearchModal } from "@/components/search-modal";
 import { ThemeSelector } from "@/components/theme-selector";
+import { useNotificationVisibility } from "@/hooks/useNotificationVisibility";
 
 export const Header = () => {
   const [open, setOpen] = React.useState(false);
+  const showNotification = useNotificationVisibility();
   return (
     <header className="sticky top-0 z-10 w-full border-b border-gray-1 px-[30px] py-[20px] backdrop-blur-sm bg-background/80 shadow-sm">
       <div className="relative flex h-[36px] items-center justify-between">
@@ -24,7 +27,10 @@ export const Header = () => {
         </div>
         <div className="flex items-center gap-[10px]">
           <ConnectButton />
-          <ThemeSelector />
+          <div className="flex items-center gap-[10px]">
+            {showNotification && <NotificationDropdown />}
+            <ThemeSelector />
+          </div>
         </div>
         <SearchModal open={open} onOpenChange={setOpen}></SearchModal>
       </div>

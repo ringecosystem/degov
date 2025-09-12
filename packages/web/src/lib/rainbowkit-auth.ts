@@ -1,57 +1,55 @@
 "use client";
 import { createAuthenticationAdapter } from "@rainbow-me/rainbowkit";
-import { createSiweMessage } from "viem/siwe";
 
-import { clearToken, setToken } from "@/hooks/useSign";
+import { siweService } from "@/lib/auth/siwe-service";
+
+const nonceSourceMap = new Map<string, "generated" | "remote">();
 
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
-    const response = await fetch("/api/auth/nonce", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-    });
-    const { data } = await response.json();
-    return data.nonce;
+    const { nonce, source } = await siweService.getNonce();
+    nonceSourceMap.set(nonce, source);
+    return nonce;
   },
 
   createMessage: ({ nonce, address, chainId }) => {
-    console.log("createMessage", { nonce, address, chainId });
-
-    return createSiweMessage({
-      domain: window.location.host,
-      address,
-      statement: `DeGov.AI wants you to sign in with your Ethereum account: ${address}`,
-      uri: window.location.origin,
-      version: "1",
-      chainId,
-      nonce,
-    });
+    return siweService.createMessage({ address, nonce, chainId });
   },
 
   verify: async ({ message, signature }) => {
-    console.log("message", message);
-    console.log("signature", signature);
+    await siweService.signOut();
 
-    const verifyRes = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message, signature }),
-      cache: "no-store",
+    const lines = message.split("\n");
+    const addressLine = lines.find((line) =>
+      line.trim().match(/^0x[a-fA-F0-9]{40}$/)
+    );
+    if (!addressLine) {
+      console.error("Cannot parse address from SIWE message");
+      return false;
+    }
+    const address = addressLine.trim() as `0x${string}`;
+
+    const nonceLine = lines.find((line) => line.startsWith("Nonce: "));
+    const nonce = nonceLine?.replace("Nonce: ", "") || "";
+
+    const nonceSource = nonceSourceMap.get(nonce);
+
+    const result = await siweService.verifySignature({
+      message,
+      signature: signature as `0x${string}`,
+      address: address as `0x${string}`,
+      nonceSource,
     });
-    const response = await verifyRes.json();
-    console.log("response", response);
-    if (response?.code === 0 && response?.data?.token) {
-      setToken(response.data.token);
-      return true;
+
+    if (nonce) {
+      nonceSourceMap.delete(nonce);
     }
 
-    return false;
+    return result.success;
   },
 
   signOut: async () => {
-    clearToken();
+    await siweService.signOut();
+    nonceSourceMap.clear();
   },
 });
