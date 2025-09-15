@@ -6,6 +6,7 @@ import React, { useMemo } from "react";
 
 import { AppIcon, LogoIcon } from "@/components/icons";
 import { SearchModal } from "@/components/search-modal";
+import { DEGOV_APPS_URL } from "@/config/base";
 import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
@@ -54,7 +55,7 @@ export const MobileHeader = () => {
               )}
             </Link>
             <Link
-              href="https://apps.degov.ai"
+              href={DEGOV_APPS_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="text-foreground hover:opacity-80 transition-opacity"

@@ -1,15 +1,18 @@
 "use client";
 import { useAccount } from "wagmi";
 
+import { DEGOV_APPS_URL } from "@/config/base";
 import { tokenManager } from "@/lib/auth/token-manager";
 
 export const useDeGovAppsNavigation = () => {
   const { address } = useAccount();
   const remoteToken = tokenManager.getRemoteToken();
-  
+
   if (!address || !remoteToken) {
     return undefined;
   }
 
-  return `https://apps.degov.ai/notification/subscription?token=${encodeURIComponent(remoteToken)}&address=${encodeURIComponent(address)}`;
+  return `${DEGOV_APPS_URL}/notification/subscription?token=${encodeURIComponent(
+    remoteToken
+  )}&address=${encodeURIComponent(address)}`;
 };
