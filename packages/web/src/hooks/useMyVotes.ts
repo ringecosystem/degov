@@ -1,15 +1,13 @@
 import { isNil } from "lodash-es";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount } from "wagmi";
 
-import { abi as tokenAbi } from "@/config/abi/token";
 import { formatBigIntForDisplay } from "@/utils/number";
 
-import { useDaoConfig } from "./useDaoConfig";
 import { useGovernanceParams } from "./useGovernanceParams";
 import { useGovernanceToken } from "./useGovernanceToken";
+import { useCurrentVotingPower } from "./useSmartGetVotes";
 
-import type { QueryObserverResult } from "@tanstack/react-query";
-import type { Address, ReadContractErrorType } from "viem";
+import type { Address } from "viem";
 
 interface UseVotesReturn {
   votes?: bigint;
@@ -20,37 +18,21 @@ interface UseVotesReturn {
   isLoading: boolean;
   isFetching: boolean;
   error: Error | null;
-  refetch: () => Promise<QueryObserverResult<bigint, ReadContractErrorType>>;
+  refetch: () => void;
 }
 
 export function useMyVotes(): UseVotesReturn {
   const { address } = useAccount();
-  const daoConfig = useDaoConfig();
   const { data: tokenData, isLoading: isTokenLoading } = useGovernanceToken();
   const { data: governanceParams, isLoading: isParamsLoading } =
     useGovernanceParams();
 
-  const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
-
   const {
     data: votes,
     isLoading: isVotesLoading,
-    isFetching: isFetchingVotes,
     error,
     refetch,
-  } = useReadContract({
-    address: tokenAddress,
-    abi: tokenAbi,
-    functionName: "getVotes",
-    args: [address!],
-    chainId: daoConfig?.chain?.id,
-    query: {
-      enabled:
-        Boolean(address) &&
-        Boolean(tokenAddress) &&
-        Boolean(daoConfig?.chain?.id),
-    },
-  });
+  } = useCurrentVotingPower(address as Address);
 
   const formattedVotes =
     !isNil(votes) && !isNil(tokenData?.decimals)
@@ -75,7 +57,7 @@ export function useMyVotes(): UseVotesReturn {
     hasEnoughVotes,
     refetch,
     isLoading: isVotesLoading || isTokenLoading || isParamsLoading,
-    isFetching: isFetchingVotes,
+    isFetching: isVotesLoading,
     error,
   };
 }

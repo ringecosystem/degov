@@ -1,9 +1,7 @@
 import { useMemo } from "react";
-import { useReadContract } from "wagmi";
 
-import { abi as tokenAbi } from "@/config/abi/token";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
 import type { DelegateItem } from "@/services/graphql/types";
 
 import { AddressWithAvatar } from "../address-with-avatar";
@@ -21,22 +19,8 @@ interface DelegationTableProps {
 export function DelegationTable({ address }: DelegationTableProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { state, loadMoreData } = useDelegationData(address);
-  const daoConfig = useDaoConfig();
-  const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
 
-  const { data: totalVotes } = useReadContract({
-    address: tokenAddress,
-    abi: tokenAbi,
-    functionName: "getVotes",
-    args: [address],
-    chainId: daoConfig?.chain?.id,
-    query: {
-      enabled:
-        Boolean(address) &&
-        Boolean(tokenAddress) &&
-        Boolean(daoConfig?.chain?.id),
-    },
-  });
+  const { data: totalVotes } = useCurrentVotingPower(address);
 
   const columns = useMemo<ColumnType<DelegateItem>[]>(
     () => [
