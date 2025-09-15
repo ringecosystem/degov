@@ -14,15 +14,17 @@ import { isAuthenticationRequired } from "@/utils/graphql-error-handler";
 // Query keys
 const NOTIFICATION_KEYS = {
   all: ["notifications"] as const,
-  channels: () => [...NOTIFICATION_KEYS.all, "channels"] as const,
-  subscribedDaos: () => [...NOTIFICATION_KEYS.all, "subscribedDaos"] as const,
-  subscribedProposals: () =>
-    [...NOTIFICATION_KEYS.all, "subscribedProposals"] as const,
+  channels: (address?: string) =>
+    [...NOTIFICATION_KEYS.all, "channels", address] as const,
+  subscribedDaos: (address?: string) =>
+    [...NOTIFICATION_KEYS.all, "subscribedDaos", address] as const,
+  subscribedProposals: (address?: string) =>
+    [...NOTIFICATION_KEYS.all, "subscribedProposals", address] as const,
 };
 
 // Hook for listing notification channels with enhanced email binding info
 export const useNotificationChannels = (enabled = false) => {
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
 
   const queryFn = useMemo(() => {
     let retryCount = 0;
@@ -46,7 +48,7 @@ export const useNotificationChannels = (enabled = false) => {
   }, [authenticate]);
 
   const query = useQuery({
-    queryKey: NOTIFICATION_KEYS.channels(),
+    queryKey: NOTIFICATION_KEYS.channels(address),
     queryFn,
     enabled,
     retry: 0,
@@ -81,7 +83,7 @@ export const useNotificationChannels = (enabled = false) => {
 
 // Hook for getting subscribed DAOs (only when email is verified)
 export const useSubscribedDaos = (enabled = false) => {
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
 
   const queryFn = useMemo(() => {
     return async () => {
@@ -100,7 +102,7 @@ export const useSubscribedDaos = (enabled = false) => {
   }, [authenticate]);
 
   return useQuery({
-    queryKey: NOTIFICATION_KEYS.subscribedDaos(),
+    queryKey: NOTIFICATION_KEYS.subscribedDaos(address),
     queryFn,
     enabled,
     retry: 0,
@@ -109,7 +111,7 @@ export const useSubscribedDaos = (enabled = false) => {
 
 // Hook for getting subscribed proposals (only when email is verified)
 export const useSubscribedProposals = (enabled = true) => {
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
   const { data: channelData } = useNotificationChannels(enabled);
   const emailAddress = channelData?.emailAddress;
 
@@ -130,7 +132,7 @@ export const useSubscribedProposals = (enabled = true) => {
   }, [authenticate]);
 
   return useQuery({
-    queryKey: NOTIFICATION_KEYS.subscribedProposals(),
+    queryKey: NOTIFICATION_KEYS.subscribedProposals(address),
     queryFn,
     enabled: enabled && !!emailAddress,
     retry: 0,
@@ -204,7 +206,7 @@ export const useResendOTP = () => {
 
 export const useVerifyNotificationChannel = () => {
   const queryClient = useQueryClient();
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
 
   return useMutation({
     mutationFn: async (input: VerifyNotificationChannelInput) => {
@@ -221,14 +223,16 @@ export const useVerifyNotificationChannel = () => {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.channels() });
+      queryClient.invalidateQueries({
+        queryKey: NOTIFICATION_KEYS.channels(address),
+      });
     },
   });
 };
 
 export const useSubscribeProposal = () => {
   const queryClient = useQueryClient();
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
   return useMutation({
     mutationFn: async (input: ProposalSubscriptionInput) => {
       try {
@@ -245,7 +249,7 @@ export const useSubscribeProposal = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: NOTIFICATION_KEYS.subscribedProposals(),
+        queryKey: NOTIFICATION_KEYS.subscribedProposals(address),
       });
     },
   });
@@ -253,7 +257,7 @@ export const useSubscribeProposal = () => {
 
 export const useUnsubscribeProposal = () => {
   const queryClient = useQueryClient();
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
   return useMutation({
     mutationFn: async ({
       daoCode,
@@ -282,7 +286,7 @@ export const useUnsubscribeProposal = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: NOTIFICATION_KEYS.subscribedProposals(),
+        queryKey: NOTIFICATION_KEYS.subscribedProposals(address),
       });
     },
   });
@@ -290,7 +294,7 @@ export const useUnsubscribeProposal = () => {
 
 export const useSubscribeDao = () => {
   const queryClient = useQueryClient();
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
 
   return useMutation({
     mutationFn: async (input: DaoSubscriptionInput) => {
@@ -311,7 +315,7 @@ export const useSubscribeDao = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: NOTIFICATION_KEYS.subscribedDaos(),
+        queryKey: NOTIFICATION_KEYS.subscribedDaos(address),
       });
     },
   });
@@ -319,7 +323,7 @@ export const useSubscribeDao = () => {
 
 export const useUnsubscribeDao = () => {
   const queryClient = useQueryClient();
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
 
   return useMutation({
     mutationFn: async (daoCode?: string) => {
@@ -340,7 +344,7 @@ export const useUnsubscribeDao = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: NOTIFICATION_KEYS.subscribedDaos(),
+        queryKey: NOTIFICATION_KEYS.subscribedDaos(address),
       });
     },
   });

@@ -3,7 +3,6 @@ import { gql } from "graphql-request";
 export const RESEND_OTP = gql`
   mutation ResendOTP($type: NotificationChannelType!, $value: String!) {
     resendOTP(input: { type: $type, value: $value }) {
-      id
       expiration
       code
       message
