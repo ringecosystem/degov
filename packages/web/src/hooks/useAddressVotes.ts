@@ -16,6 +16,7 @@ export function useAddressVotes(address: Address) {
     error,
     refetch,
   } = useCurrentVotingPower(address);
+
   const formattedVotes =
     !isNil(votes) && !isNil(tokenData?.decimals)
       ? formatBigIntForDisplay(votes, tokenData.decimals ?? 18)

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useReadContract, useBlockNumber } from "wagmi";
+import { useReadContracts, useBlockNumber, useReadContract } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as tokenAbi } from "@/config/abi/token";
@@ -7,6 +7,8 @@ import { useClockMode } from "@/hooks/useClockMode";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import type { Address } from "viem";
+
+const QUERY_STALE_TIME = 5000;
 
 interface UseSmartGetVotesProps {
   address?: Address;
@@ -26,58 +28,44 @@ export function useSmartGetVotes({
   enabled = true,
 }: UseSmartGetVotesProps): SmartGetVotesResult {
   const daoConfig = useDaoConfig();
+  const shouldQuery = Boolean(address && daoConfig && enabled);
+
   const {
     isBlockNumberMode,
     isTimestampMode,
     isLoading: isClockModeLoading,
   } = useClockMode();
-  const { data: currentBlockNumber } = useBlockNumber({
-    chainId: daoConfig?.chain?.id,
-  });
 
-  const { data: clockData } = useReadContract({
+  const { data: currentBlockNumber, isLoading: isBlockNumberLoading } =
+    useBlockNumber({
+      chainId: daoConfig?.chain?.id,
+      query: {
+        enabled: isBlockNumberMode && !isClockModeLoading && shouldQuery,
+      },
+    });
+
+  const { data: clockValue, isLoading: isClockLoading } = useReadContract({
     address: daoConfig?.contracts?.governor as Address,
     abi: governorAbi,
     functionName: "clock",
     chainId: daoConfig?.chain?.id,
     query: {
-      enabled: Boolean(
-        daoConfig?.contracts?.governor &&
-          daoConfig?.chain?.id &&
-          isTimestampMode
-      ),
+      enabled:
+        shouldQuery &&
+        isTimestampMode &&
+        Boolean(daoConfig?.contracts?.governor),
+      staleTime: QUERY_STALE_TIME,
     },
   });
+  const timepoint = useMemo(() => {
+    if (isClockModeLoading) return null;
 
-  const shouldQuery = Boolean(address && daoConfig && enabled);
-
-  const {
-    data: tokenVotingPower,
-    isLoading: isTokenLoading,
-    isError: isTokenError,
-    refetch: refetchToken,
-  } = useReadContract({
-    address: daoConfig?.contracts?.governorToken?.address as Address,
-    abi: tokenAbi,
-    functionName: "getVotes",
-    args: [address!],
-    chainId: daoConfig?.chain?.id,
-    query: {
-      enabled: shouldQuery,
-    },
-  });
-
-  const effectiveTimepoint = useMemo(() => {
-    if (isClockModeLoading) {
-      return null;
+    if (isTimestampMode) {
+      return clockValue ? BigInt(clockValue) : null;
     }
 
-    if (isBlockNumberMode && currentBlockNumber && currentBlockNumber > 0) {
-      return BigInt(currentBlockNumber);
-    }
-
-    if (isTimestampMode && clockData && clockData > 0) {
-      return BigInt(clockData);
+    if (isBlockNumberMode && currentBlockNumber && currentBlockNumber > 1n) {
+      return currentBlockNumber - 1n;
     }
 
     return null;
@@ -86,95 +74,80 @@ export function useSmartGetVotes({
     isTimestampMode,
     isClockModeLoading,
     currentBlockNumber,
-    clockData,
-  ]);
-
-  const shouldQueryGovernor = useMemo(() => {
-    return (
-      shouldQuery &&
-      isTokenError &&
-      !isClockModeLoading &&
-      effectiveTimepoint !== null &&
-      effectiveTimepoint > 0n &&
-      Boolean(daoConfig?.contracts?.governor)
-    );
-  }, [
-    shouldQuery,
-    isTokenError,
-    isClockModeLoading,
-    effectiveTimepoint,
-    daoConfig?.contracts?.governor,
+    clockValue,
   ]);
 
   const {
-    data: governorVotingPower,
-    isLoading: isGovernorLoading,
-    isError: isGovernorError,
-    error: governorError,
-    refetch: refetchGovernor,
-  } = useReadContract({
-    address: daoConfig?.contracts?.governor as Address,
-    abi: governorAbi,
-    functionName: "getVotes",
-    args: [address!, effectiveTimepoint || BigInt(0)],
-    chainId: daoConfig?.chain?.id,
+    data: votingPowerData,
+    isLoading: isVotingPowerLoading,
+    refetch,
+  } = useReadContracts({
+    contracts: [
+      {
+        address: daoConfig?.contracts?.governorToken?.address as Address,
+        abi: tokenAbi,
+        functionName: "getVotes",
+        args: [address!],
+        chainId: daoConfig?.chain?.id,
+      },
+      {
+        address: daoConfig?.contracts?.governor as Address,
+        abi: governorAbi,
+        functionName: "getVotes",
+        args: [address!, timepoint!],
+        chainId: daoConfig?.chain?.id,
+      },
+    ],
+    allowFailure: true,
     query: {
-      enabled: shouldQueryGovernor,
+      enabled: shouldQuery && timepoint !== null && timepoint > 0n,
+      staleTime: QUERY_STALE_TIME,
     },
   });
+  console.log("votingPowerData", votingPowerData);
+  const isLoading =
+    isVotingPowerLoading ||
+    isClockLoading ||
+    isClockModeLoading ||
+    (isBlockNumberMode && isBlockNumberLoading);
 
-  return useMemo(() => {
-    if (!isTokenError && tokenVotingPower !== undefined) {
-      return {
-        data: tokenVotingPower,
-        isLoading: isTokenLoading,
-        isError: false,
-        error: null,
-        refetch: refetchToken,
-      };
-    }
-
-    if (isTokenError && !shouldQueryGovernor && effectiveTimepoint === null) {
-      return {
-        data: undefined,
-        isLoading: isClockModeLoading,
-        isError: true,
-        error: new Error(
-          "Cannot determine voting power: token query failed and timepoint is invalid"
-        ),
-        refetch: () => {
-          refetchToken();
-          if (shouldQueryGovernor) {
-            refetchGovernor();
-          }
-        },
-      };
-    }
-
+  if (isLoading) {
     return {
-      data: governorVotingPower,
-      isLoading: isGovernorLoading || isClockModeLoading,
-      isError: isGovernorError,
-      error: governorError,
-      refetch: () => {
-        refetchToken();
-        refetchGovernor();
-      },
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch,
     };
-  }, [
-    isTokenError,
-    tokenVotingPower,
-    isTokenLoading,
-    refetchToken,
-    shouldQueryGovernor,
-    effectiveTimepoint,
-    isClockModeLoading,
-    governorVotingPower,
-    isGovernorLoading,
-    isGovernorError,
-    governorError,
-    refetchGovernor,
-  ]);
+  }
+
+  const createResult = (
+    data: bigint | undefined,
+    isError: boolean,
+    error: Error | null = null
+  ) => ({
+    data,
+    isLoading: false,
+    isError,
+    error,
+    refetch,
+  });
+
+  if (votingPowerData?.[0]?.status === "success") {
+    const result = votingPowerData[0].result;
+    return createResult(typeof result === "bigint" ? result : undefined, false);
+  }
+
+  if (votingPowerData?.[1]?.status === "success") {
+    const result = votingPowerData[1].result;
+    return createResult(typeof result === "bigint" ? result : undefined, false);
+  }
+
+  return createResult(
+    undefined,
+    true,
+    new Error("Unable to fetch voting power from both token and governor")
+  );
 }
 
 export function useCurrentVotingPower(address?: Address, enabled?: boolean) {
