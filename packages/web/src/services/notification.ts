@@ -31,26 +31,32 @@ import type {
 } from "./graphql/types/notifications";
 
 export class NotificationService {
-  static async listNotificationChannels(): Promise<NotificationChannel[]> {
+  static async listNotificationChannels(address?: string): Promise<NotificationChannel[]> {
     const response =
       await requestNotification<ListNotificationChannelsResponse>(
-        LIST_NOTIFICATION_CHANNELS
+        LIST_NOTIFICATION_CHANNELS,
+        undefined,
+        address
       );
 
     return response.listNotificationChannels;
   }
 
-  static async getSubscribedDaos(): Promise<SubscribedDao[]> {
+  static async getSubscribedDaos(address?: string): Promise<SubscribedDao[]> {
     const response = await requestNotification<SubscribedDaosResponse>(
-      SUBSCRIBED_DAOS
+      SUBSCRIBED_DAOS,
+      undefined,
+      address
     );
 
     return response.subscribedDaos;
   }
 
-  static async getSubscribedProposals(): Promise<SubscribedProposal[]> {
+  static async getSubscribedProposals(address?: string): Promise<SubscribedProposal[]> {
     const response = await requestNotification<SubscribedProposalsResponse>(
-      SUBSCRIBED_PROPOSALS
+      SUBSCRIBED_PROPOSALS,
+      undefined,
+      address
     );
 
     return response.subscribedProposals;
@@ -58,17 +64,19 @@ export class NotificationService {
 
   static async resendOTP(
     type: NotificationChannelType,
-    value: string
+    value: string,
+    address?: string
   ): Promise<OtpRequestResponse> {
     const response = await requestNotification<{
       resendOTP: OtpRequestResponse;
-    }>(RESEND_OTP, { type, value });
+    }>(RESEND_OTP, { type, value }, address);
 
     return response.resendOTP;
   }
 
   static async verifyNotificationChannel(
-    input: VerifyNotificationChannelInput
+    input: VerifyNotificationChannelInput,
+    address?: string
   ): Promise<VerifyNotificationChannelResponse> {
     const response = await requestNotification<{
       verifyNotificationChannel: VerifyNotificationChannelResponse;
@@ -76,13 +84,14 @@ export class NotificationService {
       type: input.type,
       value: input.value,
       otpCode: input.otpCode,
-    });
+    }, address);
 
     return response.verifyNotificationChannel;
   }
 
   static async subscribeProposal(
-    input: ProposalSubscriptionInput
+    input: ProposalSubscriptionInput,
+    address?: string
   ): Promise<ProposalSubscriptionResponse> {
     const response = await requestNotification<{
       subscribeProposal: ProposalSubscriptionResponse;
@@ -90,41 +99,44 @@ export class NotificationService {
       daoCode: input.daoCode,
       proposalId: input.proposalId,
       features: input.features,
-    });
+    }, address);
 
     return response.subscribeProposal;
   }
 
   static async unsubscribeProposal(
     daoCode: string,
-    proposalId: string
+    proposalId: string,
+    address?: string
   ): Promise<ProposalSubscriptionResponse> {
     const response = await requestNotification<{
       unsubscribeProposal: ProposalSubscriptionResponse;
-    }>(UNSUBSCRIBE_PROPOSAL, { daoCode, proposalId });
+    }>(UNSUBSCRIBE_PROPOSAL, { daoCode, proposalId }, address);
 
     return response.unsubscribeProposal;
   }
 
   static async subscribeDao(
-    input: DaoSubscriptionInput
+    input: DaoSubscriptionInput,
+    address?: string
   ): Promise<DaoSubscriptionResponse> {
     const response = await requestNotification<{
       subscribeDao: DaoSubscriptionResponse;
     }>(SUBSCRIBE_DAO, {
       daoCode: input.daoCode,
       features: input.features,
-    });
+    }, address);
 
     return response.subscribeDao;
   }
 
   static async unsubscribeDao(
-    daoCode: string
+    daoCode: string,
+    address?: string
   ): Promise<DaoSubscriptionResponse> {
     const response = await requestNotification<{
       unsubscribeDao: DaoSubscriptionResponse;
-    }>(UNSUBSCRIBE_DAO, { daoCode });
+    }>(UNSUBSCRIBE_DAO, { daoCode }, address);
 
     return response.unsubscribeDao;
   }

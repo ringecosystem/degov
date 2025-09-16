@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useDeGovAppsNavigation } from "@/hooks/useDeGovAppsNavigation";
+import { useEnsureAuth } from "@/hooks/useEnsureAuth";
 import {
   useSubscribeProposal,
   useUnsubscribeProposal,
@@ -26,16 +27,19 @@ export const ProposalNotification = ({
 }: ProposalNotificationProps) => {
   const daoConfig = useDaoConfig();
   const appUrl = useDeGovAppsNavigation();
+  const { ensureAuth, isAuthenticating, isAuthenticated } = useEnsureAuth();
 
   // State to control processing
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Channel data is always loaded for email binding check
+  // Channel data only loaded when authenticated
   const { data: channelData, isLoading: channelsLoading } =
-    useNotificationChannels(true);
-  // Subscribed proposals only loaded when email is bound
+    useNotificationChannels(isAuthenticated);
+  // Subscribed proposals only loaded when authenticated and email is bound
   const { data: subscribedProposals, isLoading: subscriptionsLoading } =
-    useSubscribedProposals(channelData?.isEmailBound ?? false);
+    useSubscribedProposals(
+      isAuthenticated && (channelData?.isEmailBound ?? false)
+    );
 
   // Mutations
   const subscribeProposalMutation = useSubscribeProposal();
@@ -55,7 +59,13 @@ export const ProposalNotification = ({
   const handleSubscribe = useCallback(async () => {
     if (!proposalId || !daoConfig?.code || isProcessing) return;
 
-    // Check email binding first
+    // First ensure authentication
+    const authResult = await ensureAuth();
+    if (!authResult.success) {
+      return;
+    }
+
+    // Check email binding after authentication
     if (!channelData?.isEmailBound) {
       toast.error(
         "Please bind your email address first to receive notifications"
@@ -97,6 +107,7 @@ export const ProposalNotification = ({
     proposalId,
     daoConfig?.code,
     isProcessing,
+    ensureAuth,
     channelData?.isEmailBound,
     isSubscribed,
     unsubscribeProposalMutation,
@@ -105,6 +116,7 @@ export const ProposalNotification = ({
 
   const isLoading =
     isProcessing ||
+    isAuthenticating ||
     channelsLoading ||
     subscriptionsLoading ||
     subscribeProposalMutation.isPending ||

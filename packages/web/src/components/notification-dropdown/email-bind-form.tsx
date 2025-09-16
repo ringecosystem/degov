@@ -100,7 +100,8 @@ export const EmailBindForm = ({
           }
         },
         onError: (error: unknown) => {
-          const errorMessage = extractErrorMessage(error) || "Failed to send verification code";
+          const errorMessage =
+            extractErrorMessage(error) || "Failed to send verification code";
           toast.error(errorMessage);
         },
       }
@@ -183,7 +184,7 @@ export const EmailBindForm = ({
                     onClick={handleSendVerification}
                     disabled={!state.email || !isEmailValid || countdownActive}
                     isLoading={sendingLoading}
-                    className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[95px]"
+                    className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[100px]"
                     size="sm"
                   >
                     {countdownActive ? (
@@ -230,7 +231,7 @@ export const EmailBindForm = ({
               onClick={handleVerifyCode}
               disabled={!state.verificationCode}
               isLoading={verifyLoading}
-              className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[95px]"
+              className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[100px]"
               size="sm"
             >
               Verify

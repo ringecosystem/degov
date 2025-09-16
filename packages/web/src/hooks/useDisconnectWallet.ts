@@ -20,7 +20,7 @@ export const useDisconnectWallet = () => {
         }
       }
 
-      tokenManager.clearAllTokens();
+      tokenManager.clearAllTokens(address);
       disconnect();
     },
     [disconnect]

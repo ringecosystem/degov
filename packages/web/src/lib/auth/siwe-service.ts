@@ -83,7 +83,7 @@ export class SiweService {
     error?: string;
   }> {
     try {
-      const { message, signature, nonceSource } = params;
+      const { message, signature, address, nonceSource } = params;
 
       let localToken: string | undefined;
       let remoteToken: string | undefined;
@@ -92,7 +92,7 @@ export class SiweService {
       const localResult = await this.loginLocal(message, signature);
       if (localResult.success) {
         localToken = localResult.token;
-        tokenManager.setToken(localToken!);
+        tokenManager.setToken(localToken!, address);
       } else {
         errors.push(`Local login failed: ${localResult.error}`);
       }
@@ -101,7 +101,7 @@ export class SiweService {
         const remoteResult = await this.loginRemote(message, signature);
         if (remoteResult.success) {
           remoteToken = remoteResult.token;
-          tokenManager.setRemoteToken(remoteToken!);
+          tokenManager.setRemoteToken(remoteToken!, address);
         } else {
           errors.push(`Remote login failed: ${remoteResult.error}`);
         }

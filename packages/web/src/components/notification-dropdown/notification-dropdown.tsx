@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useEnsureAuth } from "@/hooks/useEnsureAuth";
 import {
   useNotificationFeatures,
   useSubscribeDao,
@@ -46,6 +47,7 @@ interface CountdownState {
 export const NotificationDropdown = () => {
   const config = useDaoConfig();
   const [isOpen, setIsOpen] = useState(false);
+  const { ensureAuth, isAuthenticating } = useEnsureAuth();
 
   const {
     data: channelData,
@@ -84,10 +86,20 @@ export const NotificationDropdown = () => {
     }));
   }, [newProposals, votingEndReminder]);
 
-  // Handle dropdown open change
-  const handleOpenChange = useCallback((open: boolean) => {
-    setIsOpen(open);
-  }, []);
+  // Handle dropdown open change with authentication check
+  const handleOpenChange = useCallback(
+    async (open: boolean) => {
+      if (open) {
+        // When opening dropdown, ensure user is authenticated
+        const authResult = await ensureAuth();
+        if (!authResult.success) {
+          return;
+        }
+      }
+      setIsOpen(open);
+    },
+    [ensureAuth]
+  );
 
   // Refetch channels after email verification
   const handleVerified = useCallback(async () => {
@@ -218,20 +230,25 @@ export const NotificationDropdown = () => {
         <Button
           className="lg:border lg:border-border rounded-full w-[42px] bg-card lg:bg-background h-[42px] lg:rounded-[10px] border-input p-0 flex items-center justify-center focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
           variant="outline"
+          disabled={isAuthenticating}
         >
           <NotificationIcon className="h-[20px] w-[20px]" />
         </Button>
       </DropdownMenuTrigger>
 
-      {!isOpen ? null : channelsLoading || featuresLoading ? (
+      {!isOpen ? null : channelsLoading ? (
         <NotificationSkeleton />
       ) : isEmailBound ? (
-        <SettingsPanel
-          email={emailAddress || undefined}
-          newProposals={settings[FeatureName.PROPOSAL_NEW]}
-          votingEndReminder={settings[FeatureName.VOTE_END]}
-          onToggle={handleSettingToggle}
-        />
+        featuresLoading ? (
+          <NotificationSkeleton />
+        ) : (
+          <SettingsPanel
+            email={emailAddress || undefined}
+            newProposals={settings[FeatureName.PROPOSAL_NEW]}
+            votingEndReminder={settings[FeatureName.VOTE_END]}
+            onToggle={handleSettingToggle}
+          />
+        )
       ) : (
         <EmailBindForm
           onVerified={handleVerified}

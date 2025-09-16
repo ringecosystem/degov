@@ -6,7 +6,7 @@ import { tokenManager } from "@/lib/auth/token-manager";
 
 export const useDeGovAppsNavigation = () => {
   const { address } = useAccount();
-  const remoteToken = tokenManager.getRemoteToken();
+  const remoteToken = address ? tokenManager.getRemoteToken(address) : null;
 
   if (!address || !remoteToken) {
     return undefined;

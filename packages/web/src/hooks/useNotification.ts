@@ -23,8 +23,8 @@ const NOTIFICATION_KEYS = {
 };
 
 // Hook for listing notification channels with enhanced email binding info
-export const useNotificationChannels = (enabled = false) => {
-  const { authenticate, address } = useSiweAuth();
+export const useNotificationChannels = (enabled: boolean = false) => {
+  const { authenticate, address, isConnected } = useSiweAuth();
 
   const queryFn = useMemo(() => {
     let retryCount = 0;
@@ -32,25 +32,25 @@ export const useNotificationChannels = (enabled = false) => {
 
     return async () => {
       try {
-        return await NotificationService.listNotificationChannels();
+        return await NotificationService.listNotificationChannels(address);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error) && retryCount < maxRetries) {
           retryCount++;
           const res = await authenticate();
 
           if (res?.success) {
-            return await NotificationService.listNotificationChannels();
+            return await NotificationService.listNotificationChannels(address);
           }
         }
         throw error;
       }
     };
-  }, [authenticate]);
+  }, [authenticate, address]);
 
   const query = useQuery({
     queryKey: NOTIFICATION_KEYS.channels(address),
     queryFn,
-    enabled,
+    enabled: Boolean(enabled && isConnected),
     retry: 0,
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: false,
@@ -82,65 +82,65 @@ export const useNotificationChannels = (enabled = false) => {
 };
 
 // Hook for getting subscribed DAOs (only when email is verified)
-export const useSubscribedDaos = (enabled = false) => {
-  const { authenticate, address } = useSiweAuth();
+export const useSubscribedDaos = (enabled: boolean = false) => {
+  const { authenticate, address, isConnected } = useSiweAuth();
 
   const queryFn = useMemo(() => {
     return async () => {
       try {
-        return await NotificationService.getSubscribedDaos();
+        return await NotificationService.getSubscribedDaos(address);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.getSubscribedDaos();
+            return await NotificationService.getSubscribedDaos(address);
           }
         }
         throw error;
       }
     };
-  }, [authenticate]);
+  }, [authenticate, address]);
 
   return useQuery({
     queryKey: NOTIFICATION_KEYS.subscribedDaos(address),
     queryFn,
-    enabled,
+    enabled: Boolean(enabled && isConnected),
     retry: 0,
   });
 };
 
 // Hook for getting subscribed proposals (only when email is verified)
-export const useSubscribedProposals = (enabled = true) => {
-  const { authenticate, address } = useSiweAuth();
+export const useSubscribedProposals = (enabled: boolean = true) => {
+  const { authenticate, address, isConnected } = useSiweAuth();
   const { data: channelData } = useNotificationChannels(enabled);
   const emailAddress = channelData?.emailAddress;
 
   const queryFn = useMemo(() => {
     return async () => {
       try {
-        return await NotificationService.getSubscribedProposals();
+        return await NotificationService.getSubscribedProposals(address);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.getSubscribedProposals();
+            return await NotificationService.getSubscribedProposals(address);
           }
         }
         throw error;
       }
     };
-  }, [authenticate]);
+  }, [authenticate, address]);
 
   return useQuery({
     queryKey: NOTIFICATION_KEYS.subscribedProposals(address),
     queryFn,
-    enabled: enabled && !!emailAddress,
+    enabled: Boolean(enabled && isConnected && !!emailAddress),
     retry: 0,
   });
 };
 
 // Hook for getting notification feature status
-export const useNotificationFeatures = (enabled = false) => {
+export const useNotificationFeatures = (enabled: boolean = false) => {
   const { data: subscribedDaos, isLoading, error } = useSubscribedDaos(enabled);
 
   const notificationFeatures = useMemo(() => {
@@ -180,7 +180,7 @@ export const useNotificationFeatures = (enabled = false) => {
 
 // Mutation hooks
 export const useResendOTP = () => {
-  const { authenticate } = useSiweAuth();
+  const { authenticate, address } = useSiweAuth();
   return useMutation({
     mutationFn: async ({
       type,
@@ -190,12 +190,12 @@ export const useResendOTP = () => {
       value: string;
     }) => {
       try {
-        return await NotificationService.resendOTP(type, value);
+        return await NotificationService.resendOTP(type, value, address);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.resendOTP(type, value);
+            return await NotificationService.resendOTP(type, value, address);
           }
         }
         throw error;
@@ -211,12 +211,12 @@ export const useVerifyNotificationChannel = () => {
   return useMutation({
     mutationFn: async (input: VerifyNotificationChannelInput) => {
       try {
-        return await NotificationService.verifyNotificationChannel(input);
+        return await NotificationService.verifyNotificationChannel(input, address);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.verifyNotificationChannel(input);
+            return await NotificationService.verifyNotificationChannel(input, address);
           }
         }
         throw error;
@@ -236,12 +236,12 @@ export const useSubscribeProposal = () => {
   return useMutation({
     mutationFn: async (input: ProposalSubscriptionInput) => {
       try {
-        return await NotificationService.subscribeProposal(input);
+        return await NotificationService.subscribeProposal(input, address);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.subscribeProposal(input);
+            return await NotificationService.subscribeProposal(input, address);
           }
         }
         throw error;
@@ -269,7 +269,8 @@ export const useUnsubscribeProposal = () => {
       try {
         return await NotificationService.unsubscribeProposal(
           daoCode,
-          proposalId
+          proposalId,
+          address
         );
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
@@ -277,7 +278,8 @@ export const useUnsubscribeProposal = () => {
           if (res?.success) {
             return await NotificationService.unsubscribeProposal(
               daoCode,
-              proposalId
+              proposalId,
+              address
             );
           }
         }
@@ -302,12 +304,12 @@ export const useSubscribeDao = () => {
         throw new Error("DAO code is required");
       }
       try {
-        return await NotificationService.subscribeDao(input);
+        return await NotificationService.subscribeDao(input, address);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.subscribeDao(input);
+            return await NotificationService.subscribeDao(input, address);
           }
         }
         throw error;
@@ -331,12 +333,12 @@ export const useUnsubscribeDao = () => {
         throw new Error("DAO code is required");
       }
       try {
-        return await NotificationService.unsubscribeDao(daoCode);
+        return await NotificationService.unsubscribeDao(daoCode, address);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.unsubscribeDao(daoCode);
+            return await NotificationService.unsubscribeDao(daoCode, address);
           }
         }
         throw error;

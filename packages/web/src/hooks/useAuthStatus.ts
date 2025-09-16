@@ -1,25 +1,33 @@
 "use client";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { useAccount } from "wagmi";
 
-import { useAuth } from "@/contexts/auth";
+import { tokenManager } from "@/lib/auth/token-manager";
 
 /**
  * return 'loading' | 'unauthenticated' | 'authenticated'
  */
 export const useAuthStatus = () => {
-  const { token, isAuthenticated } = useAuth();
+  const { address } = useAccount();
+  const token = tokenManager.getToken(address);
 
   const status = useMemo(() => {
     if (token === undefined) {
       return "loading" as const;
     }
 
-    if (isAuthenticated) {
+    if (token) {
       return "authenticated" as const;
     }
 
     return "unauthenticated" as const;
-  }, [token, isAuthenticated]);
+  }, [token]);
+
+  useEffect(() => {
+    return () => {
+      tokenManager.clearAllTokens(address);
+    };
+  }, [address]);
 
   return status;
 };

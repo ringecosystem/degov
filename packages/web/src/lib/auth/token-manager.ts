@@ -1,70 +1,85 @@
 "use client";
 
-const TOKEN_KEY = "degov_auth_token";
-const REMOTE_TOKEN_KEY = "degov_remote_auth_token";
+const TOKEN_KEY_PREFIX = "degov_auth_token";
+const REMOTE_TOKEN_KEY_PREFIX = "degov_remote_auth_token";
 
 class TokenManager {
-  getToken(): string | null {
-    if (typeof window === "undefined") return null;
-    return sessionStorage.getItem(TOKEN_KEY);
+  private getTokenKey(address?: string): string {
+    if (!address) return TOKEN_KEY_PREFIX;
+    return `${TOKEN_KEY_PREFIX}_${address.toLowerCase()}`;
   }
 
-  setToken(token: string | null): void {
+  private getRemoteTokenKey(address?: string): string {
+    if (!address) return REMOTE_TOKEN_KEY_PREFIX;
+    return `${REMOTE_TOKEN_KEY_PREFIX}_${address.toLowerCase()}`;
+  }
+
+  getToken(address?: string): string | null {
+    if (typeof window === "undefined") return null;
+    return sessionStorage.getItem(this.getTokenKey(address));
+  }
+
+  setToken(token: string | null, address?: string): void {
     if (typeof window === "undefined") return;
 
+    const key = this.getTokenKey(address);
     if (token) {
-      sessionStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem(key, token);
     } else {
-      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(key);
     }
   }
 
-  clearToken(): void {
-    this.setToken(null);
+  clearToken(address?: string): void {
+    this.setToken(null, address);
   }
 
-  getRemoteToken(): string | null {
+  getRemoteToken(address?: string): string | null {
     if (typeof window === "undefined") return null;
-    return sessionStorage.getItem(REMOTE_TOKEN_KEY);
+    return sessionStorage.getItem(this.getRemoteTokenKey(address));
   }
 
-  setRemoteToken(token: string | null): void {
+  setRemoteToken(token: string | null, address?: string): void {
     if (typeof window === "undefined") return;
 
+    const key = this.getRemoteTokenKey(address);
     if (token) {
-      sessionStorage.setItem(REMOTE_TOKEN_KEY, token);
+      sessionStorage.setItem(key, token);
     } else {
-      sessionStorage.removeItem(REMOTE_TOKEN_KEY);
+      sessionStorage.removeItem(key);
     }
   }
 
-  clearRemoteToken(): void {
-    this.setRemoteToken(null);
+  clearRemoteToken(address?: string): void {
+    this.setRemoteToken(null, address);
   }
 
-  clearAllTokens(): void {
-    this.clearToken();
-    this.clearRemoteToken();
+  clearAllTokens(address?: string): void {
+    this.clearToken(address);
+    this.clearRemoteToken(address);
   }
 
-  hasValidFormat(): boolean {
-    const token = this.getToken();
-    return !!(token && token.length > 10);
-  }
+  clearAllAddressTokens(): void {
+    if (typeof window === "undefined") return;
 
-  hasValidRemoteFormat(): boolean {
-    const token = this.getRemoteToken();
-    return !!(token && token.length > 10);
+    const keys = Object.keys(sessionStorage);
+    const tokenKeys = keys.filter(
+      (key) =>
+        key.startsWith(TOKEN_KEY_PREFIX) ||
+        key.startsWith(REMOTE_TOKEN_KEY_PREFIX)
+    );
+
+    tokenKeys.forEach((key) => sessionStorage.removeItem(key));
   }
 }
 
 export const tokenManager = new TokenManager();
 
-export const getToken = () => tokenManager.getToken();
-export const setToken = (token: string | null) => tokenManager.setToken(token);
-export const clearToken = () => tokenManager.clearToken();
+export const getToken = (address?: string) => tokenManager.getToken(address);
+export const clearToken = (address?: string) =>
+  tokenManager.clearToken(address);
 
-export const getRemoteToken = () => tokenManager.getRemoteToken();
-export const setRemoteToken = (token: string | null) =>
-  tokenManager.setRemoteToken(token);
-export const clearRemoteToken = () => tokenManager.clearRemoteToken();
+export const getRemoteToken = (address?: string) =>
+  tokenManager.getRemoteToken(address);
+export const clearRemoteToken = (address?: string) =>
+  tokenManager.clearRemoteToken(address);

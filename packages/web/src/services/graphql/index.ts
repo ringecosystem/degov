@@ -229,8 +229,12 @@ export const profileService = {
     return data;
   },
 
-  updateProfile: async (address: string, profile: Partial<ProfileData>) => {
-    const token = getToken();
+  updateProfile: async (
+    address: string,
+    profile: Partial<ProfileData>,
+    currentAddress?: string
+  ) => {
+    const token = currentAddress ? getToken(currentAddress) : getToken();
     const response = await fetch(`/api/profile/${address}`, {
       method: "POST",
       body: JSON.stringify(profile),
@@ -241,7 +245,11 @@ export const profileService = {
       },
     });
     if (response.status === 401) {
-      clearToken();
+      if (currentAddress) {
+        clearToken(currentAddress);
+      } else {
+        clearToken();
+      }
       return { code: 401, msg: "Unauthorized" } as const;
     }
     const data = await response.json();
@@ -252,7 +260,8 @@ export const profileService = {
 export const memberService = {
   getMembers: async (
     checkpoint?: number,
-    limit?: number
+    limit?: number,
+    currentAddress?: string
   ): Promise<Types.MemberResponse> => {
     try {
       const url = new URL("/api/degov/members", window.location.origin);
@@ -272,7 +281,11 @@ export const memberService = {
       });
 
       if (response.status === 401) {
-        clearToken();
+        if (currentAddress) {
+          clearToken(currentAddress);
+        } else {
+          clearToken();
+        }
         return {
           code: 401,
           data: [],
