@@ -23,11 +23,11 @@ export const OverviewItem = ({
         {title}
       </h5>
       {isLoading ? (
-        <Skeleton className="h-[20px] lg:h-[24px] w-[80px] lg:w-[100px]" />
+        <Skeleton className="h-[20px] lg:h-[24px] w-[80px] lg:w-[100px] bg-foreground/10" />
       ) : (
-        <p className="text-[16px] lg:text-[18px] font-semibold leading-[100%] text-foreground break-words">
+        <div className="text-[16px] lg:text-[18px] font-semibold leading-[100%] text-foreground break-words">
           {value || ""}
-        </p>
+        </div>
       )}
     </Link>
   ) : (
@@ -36,11 +36,11 @@ export const OverviewItem = ({
         {title}
       </h5>
       {isLoading ? (
-        <Skeleton className="h-[20px] lg:h-[24px] w-[80px] lg:w-[100px]" />
+        <Skeleton className="h-[20px] lg:h-[24px] w-[80px] lg:w-[100px] bg-foreground/10" />
       ) : (
-        <p className="text-[16px] lg:text-[18px] font-semibold leading-[100%] text-foreground break-words">
+        <div className="text-[16px] lg:text-[18px] font-semibold leading-[100%] text-foreground break-words">
           {value || ""}
-        </p>
+        </div>
       )}
     </div>
   );
