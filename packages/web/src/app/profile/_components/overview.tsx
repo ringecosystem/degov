@@ -25,8 +25,8 @@ export const Overview = ({
   isDelegateMappingsLoading,
 }: OverviewProps) => {
   const { formattedVotes, votes, isLoading } = useAddressVotes(address);
-  const daoConfig = useDaoConfig();
 
+  const daoConfig = useDaoConfig();
   const { data: dataMetrics, isLoading: isMetricsLoading } = useQuery({
     queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
