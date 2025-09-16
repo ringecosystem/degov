@@ -1,120 +1,62 @@
-name: DeGov Demo DAO
-code: degov-demo-dao
-logo: https://pbs.twimg.com/profile_images/1912415584257474560/GznnScP3_400x400.jpg
-siteUrl: https://degov-dev.vercel.app
-offChainDiscussionUrl: https://github.com/ringecosystem/degov/discussions
-description: |
-  It's a demo DAO for developers and users to experience DeGov's features, including the
-  latest innovations features like AI agents, token wrapping, and more. The DAO is built
-  on the Darwinia chain, an Ethereum-compatible chain.
-# The following fields in the links are optional and will be used to display basic information about the DAO
+name: TrueFi
+code: truefi-dao
+logo: https://pbs.twimg.com/profile_images/1963633429951467520/5c3uHtTk_400x400.jpg
+siteUrl: https://truefi.degov.ai
+offChainDiscussionUrl: https://forum.truefi.io
+description: TrueFi is making credit more accessible, transparent, and programmable by bringing debt infrastructure on-chain.
+
 links:
-  coingecko: https://www.coingecko.com/en/coins/ringdao
-  website: https://degov.ai
-  twitter: https://x.com/ringecosystem
-  discord: https://discord.gg/RingDAO
-  telegram: https://t.me/RingDAO_Hub
-  github: https://github.com/ringecosystem/degov
-  #email: # It's ok to leave it empty
+  coingecko: https://www.coingecko.com/en/coins/truefi
+  website: https://truefi.io
+  twitter: https://x.com/TrueFiDAO
+  telegram: https://t.me/jointruefi
+  discord: https://discord.gg/Yx7J4jZ
 
-# The custom theme configuration for the DAO, this is optional.
 theme:
-  logoDark: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/demo-dark.svg
-  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/demo-light.svg
-  banner: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo.jpg
-  bannerMobile: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/banners/demo-mobile.jpg
-  # The general faqs displayed on the dashboard, at most 5 items
-  faqs:
-    - question: What is DeGov.AI?
-      answer: https://docs.degov.ai
-    - question: How is AI integrated into DeGov.AI?
-      answer: https://docs.degov.ai/faqs/#how-does-degovai-utilize-ai-capabilities
-    - question: What's the difference between DeGov.AI and Tally?
-      answer: https://docs.degov.ai/faqs/#whats-the-difference-between-degovai-and-tally
-    - question: Is DeGov.AI secure?
-      answer: https://docs.degov.ai/faqs/#is-degovai-secure
-    - question: How can I create or vote on proposals?
-      answer: https://docs.degov.ai/faqs/#how-can-i-create-or-vote-on-proposals
+  logoDark: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/truefi-dark.svg
+  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/truefi-light.svg
 
-# Wallet connection related configuration
 wallet:
-  walletConnectProjectId: faf5e91ac5ed4d0a94d2648a6fcc9daa
+  walletConnectProjectId: 4e204efdf64201e155ce7ad7123d127d
 
-# Chain information: these commented fields are optional if this chain can be accessed by viem.
 chain:
-  id: 46
-  name: Darwinia Network
-  logo: https://pbs.twimg.com/profile_images/1742030786495500288/merX__YL_400x400.jpg
+  name: Ethereum Network
+  id: 1
+  logo: https://pbs.twimg.com/profile_images/1878738447067652096/tXQbWfpf_400x400.jpg
   rpcs:
-    - https://rpc.darwinia.network
+    - https://ethereum-rpc.publicnode.com
   explorers:
-    - https://explorer.darwinia.network/
+    - https://etherscan.io
   nativeToken:
-    symbol: RING
+    symbol: ETH
+    priceId: ethereum
     decimals: 18
-    priceId: darwinia-network-native-token
-    logo: https://assets.coingecko.com/coins/images/9443/standard/RING.png
+    logo: https://assets.coingecko.com/coins/images/279/standard/ethereum.png
 
-# Indexer related configuration
 indexer:
-  endpoint: https://indexer.degov.ai/degov-demo-dao/graphql
-  startBlock: 5873342
-  # if set this, indexer rpc will be use this first
-  rpc: wss://rpc.darwinia.network
+  endpoint: https://indexer.degov.ai/truefi-dao/graphql
+  startBlock: 11884565
+  rpc: https://erpc.ringdao.com/main/evm/1
+  gateway: https://v2.archive.subsquid.io/network/ethereum-mainnet
 
-  ## https://docs.sqd.ai/sdk/reference/processors/evm-batch/general/#set-finality-confirmation
-  #finalityConfirmation: 50
-  ## https://docs.sqd.ai/sdk/reference/processors/substrate-batch/general/#set-rpc-endpoint
-  #capacity: 30
-  ## https://docs.sqd.ai/sdk/reference/processors/substrate-batch/general/#set-rpc-endpoint
-  #maxBatchCallSize: 200
-  ## https://docs.sqd.ai/subsquid-network/reference/networks/#evm--ethereum-compatible
-  #gateway:
-
-# AI Agent related configuration
 aiAgent:
   endpoint: https://agent.degov.ai
 
-# Core contracts related to the DAO Governance
 contracts:
-  governor: "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
+  governor: "0x585CcA060422ef1779Fb0Dd710A49e7C49A823C9"
   governorToken:
-    address: "0xbC9f58566810F7e853e1eef1b9957ac82F9971df"
+    address: "0x23696914Ca9737466D8553a2d619948f548Ee424"
     standard: ERC20
-  timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
+  timeLock: "0x4f4AC7a7032A14243aEbDa98Ee04a5D7Fe293d07"
 
-# The treasury assets information
 treasuryAssets:
-  - name: FT
-    contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
+  - name: TRU
+    contract: "0x4C19596f5aAfF459fA38B0f7eD92F11AE6543784"
     standard: ERC20
-    priceId: FT
-    #logo: # Default logo if not provided
-  - name: NFT
-    contract: "0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A"
-    standard: ERC721
-    priceId: NFT
-    #logo: # Default logo if not provided
-
-# The DAO Safe information
-safes:
-  - name: Test DAO Safe(Arbitrum)
-    chainId: 42161
-    link: https://app.safe.global/home?safe=arb1:0x80d180621B2f875269216f19A499e6fB9402776C
-  - name: Test DAO Safe(Sepolia)
-    chainId: 11155111
-    link: https://app.safe.global/home?safe=sep:0x80d180621B2f875269216f19A499e6fB9402776C
-
-# The applications shortcuts related to the DAO
-apps:
-  - name: Token Wrap
-    description: Convert back and forth between the native token and the wrapped governance token
-    icon: https://pbs.twimg.com/profile_images/1912415584257474560/GznnScP3_400x400.jpg
-    link: https://token-wrap.degov.ai?config=https://degov-dev.vercel.app/degov.yml
-    params:
-      sourceToken:
-        address: "0x48C817eebE1fD79F946bd6b976EF579540517121"
-        icon: https://assets.coingecko.com/coins/images/9443/standard/RING.png
-      wrapToken:
-        address: "0x0ef0827A9d5D329DFbaA14c7d5Aae364453A4D32"
-        icon: https://assets.coingecko.com/coins/images/9443/standard/RING.png
+    priceId: truefi
+    logo: https://assets.coingecko.com/coins/images/13180/standard/truefi_glyph_color.png
+  - name: USDC
+    contract: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    standard: ERC20
+    priceId: usd-coin
+    logo: https://assets.coingecko.com/coins/images/6319/standard/usdc.png
