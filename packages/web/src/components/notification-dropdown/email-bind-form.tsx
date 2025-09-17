@@ -1,11 +1,11 @@
 "use client";
 
-import { useReducer, useCallback } from "react";
+import { useReducer, useCallback, useState } from "react";
 import { toast } from "react-toastify";
 import { z } from "zod";
 
 import { Countdown } from "@/components/countdown";
-import { EmailBindIcon } from "@/components/icons";
+import { EmailBindIcon, ErrorIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,8 @@ export const EmailBindForm = ({
     verificationCode: "",
   });
 
+  const [verificationError, setVerificationError] = useState<string>("");
+
   const emailSchema = z.string().email();
   const isEmailValid = emailSchema.safeParse(state.email).success;
 
@@ -123,6 +125,8 @@ export const EmailBindForm = ({
     )
       return;
 
+    setVerificationError("");
+
     verifyEmailMutation.mutate(
       { type: "EMAIL", value: state.email, otpCode: state.verificationCode },
       {
@@ -130,12 +134,15 @@ export const EmailBindForm = ({
           if (data.code === 0) {
             toast.success("Email verified successfully");
             onVerified(state.email);
+            setVerificationError("");
           } else {
-            toast.error(data.message || "Verification failed");
+            setVerificationError(
+              "Invalid verification code. Please try again."
+            );
           }
         },
-        onError: (error: Error) => {
-          toast.error(error.message || "Verification failed");
+        onError: () => {
+          setVerificationError("Invalid verification code. Please try again.");
         },
       }
     );
@@ -219,13 +226,16 @@ export const EmailBindForm = ({
               type="text"
               placeholder="e.g., 123456"
               value={state.verificationCode}
-              onChange={(e) =>
+              onChange={(e) => {
                 dispatch({
                   type: "SET_VERIFICATION_CODE",
                   payload: e.target.value,
-                })
-              }
-              className="flex-1 bg-input border-border text-foreground placeholder:text-muted-foreground rounded-[100px] px-[10px] text-[16px] font-normal"
+                });
+                setVerificationError("");
+              }}
+              className={`flex-1 bg-input border-border text-foreground placeholder:text-muted-foreground rounded-[100px] px-[10px] text-[16px] font-normal ${
+                verificationError ? "border-danger" : ""
+              }`}
             />
             <Button
               onClick={handleVerifyCode}
@@ -237,6 +247,12 @@ export const EmailBindForm = ({
               Verify
             </Button>
           </div>
+          {verificationError && (
+            <div className="flex items-center gap-[5px] text-[12px] mt-[5px]">
+              <ErrorIcon className="h-4 w-4 flex-shrink-0 text-danger" />
+              <span>{verificationError}</span>
+            </div>
+          )}
         </div>
       </div>
     </DropdownMenuContent>
