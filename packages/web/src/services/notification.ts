@@ -31,7 +31,7 @@ import type {
 } from "./graphql/types/notifications";
 
 export class NotificationService {
-  static async listNotificationChannels(address?: string): Promise<NotificationChannel[]> {
+  static async listNotificationChannels(address: string): Promise<NotificationChannel[]> {
     const response =
       await requestNotification<ListNotificationChannelsResponse>(
         LIST_NOTIFICATION_CHANNELS,
@@ -42,7 +42,7 @@ export class NotificationService {
     return response.listNotificationChannels;
   }
 
-  static async getSubscribedDaos(address?: string): Promise<SubscribedDao[]> {
+  static async getSubscribedDaos(address: string): Promise<SubscribedDao[]> {
     const response = await requestNotification<SubscribedDaosResponse>(
       SUBSCRIBED_DAOS,
       undefined,
@@ -52,7 +52,7 @@ export class NotificationService {
     return response.subscribedDaos;
   }
 
-  static async getSubscribedProposals(address?: string): Promise<SubscribedProposal[]> {
+  static async getSubscribedProposals(address: string): Promise<SubscribedProposal[]> {
     const response = await requestNotification<SubscribedProposalsResponse>(
       SUBSCRIBED_PROPOSALS,
       undefined,
@@ -65,7 +65,7 @@ export class NotificationService {
   static async resendOTP(
     type: NotificationChannelType,
     value: string,
-    address?: string
+    address: string
   ): Promise<OtpRequestResponse> {
     const response = await requestNotification<{
       resendOTP: OtpRequestResponse;
@@ -76,7 +76,7 @@ export class NotificationService {
 
   static async verifyNotificationChannel(
     input: VerifyNotificationChannelInput,
-    address?: string
+    address: string
   ): Promise<VerifyNotificationChannelResponse> {
     const response = await requestNotification<{
       verifyNotificationChannel: VerifyNotificationChannelResponse;
@@ -91,7 +91,7 @@ export class NotificationService {
 
   static async subscribeProposal(
     input: ProposalSubscriptionInput,
-    address?: string
+    address: string
   ): Promise<ProposalSubscriptionResponse> {
     const response = await requestNotification<{
       subscribeProposal: ProposalSubscriptionResponse;
@@ -107,7 +107,7 @@ export class NotificationService {
   static async unsubscribeProposal(
     daoCode: string,
     proposalId: string,
-    address?: string
+    address: string
   ): Promise<ProposalSubscriptionResponse> {
     const response = await requestNotification<{
       unsubscribeProposal: ProposalSubscriptionResponse;
@@ -118,7 +118,7 @@ export class NotificationService {
 
   static async subscribeDao(
     input: DaoSubscriptionInput,
-    address?: string
+    address: string
   ): Promise<DaoSubscriptionResponse> {
     const response = await requestNotification<{
       subscribeDao: DaoSubscriptionResponse;
@@ -132,7 +132,7 @@ export class NotificationService {
 
   static async unsubscribeDao(
     daoCode: string,
-    address?: string
+    address: string
   ): Promise<DaoSubscriptionResponse> {
     const response = await requestNotification<{
       unsubscribeDao: DaoSubscriptionResponse;

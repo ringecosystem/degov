@@ -2,7 +2,7 @@ import { GraphQLClient, type ClientError } from "graphql-request";
 import { cache } from "react";
 
 // Note: re-auth is handled by callers (e.g., hooks/components) explicitly.
-import { clearRemoteToken, getRemoteToken, tokenManager } from "@/lib/auth/token-manager";
+import { clearRemoteToken, getRemoteToken } from "@/lib/auth/token-manager";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
 export const createNotificationGraphQLClient = cache(() => {
@@ -16,13 +16,13 @@ export const createNotificationGraphQLClient = cache(() => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function requestNotification<T = any, V extends object = object>(
   document: string,
-  variables?: V,
-  address?: string
+  variables: V | undefined,
+  address: string
 ): Promise<T> {
   const client = createNotificationGraphQLClient();
 
   const doRequest = async (): Promise<T> => {
-    const token = address ? getRemoteToken(address) : getRemoteToken();
+    const token = getRemoteToken(address);
     if (token) client.setHeaders({ Authorization: `Bearer ${token}` });
     return variables
       ? await client.request<T>(document, variables)
@@ -36,12 +36,7 @@ export async function requestNotification<T = any, V extends object = object>(
     const err = error as ClientError;
     const status = (err as { response?: { status?: number } })?.response?.status;
     if (status === 401) {
-      if (address) {
-        clearRemoteToken(address);
-      } else {
-        clearRemoteToken();
-        tokenManager.clearAllAddressTokens();
-      }
+      clearRemoteToken(address);
       throw err;
     }
     console.error("Notification GraphQL request error:", error);

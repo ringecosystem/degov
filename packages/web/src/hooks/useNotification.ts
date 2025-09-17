@@ -32,14 +32,14 @@ export const useNotificationChannels = (enabled: boolean = false) => {
 
     return async () => {
       try {
-        return await NotificationService.listNotificationChannels(address);
+        return await NotificationService.listNotificationChannels(address!);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error) && retryCount < maxRetries) {
           retryCount++;
           const res = await authenticate();
 
           if (res?.success) {
-            return await NotificationService.listNotificationChannels(address);
+            return await NotificationService.listNotificationChannels(address!);
           }
         }
         throw error;
@@ -88,12 +88,12 @@ export const useSubscribedDaos = (enabled: boolean = false) => {
   const queryFn = useMemo(() => {
     return async () => {
       try {
-        return await NotificationService.getSubscribedDaos(address);
+        return await NotificationService.getSubscribedDaos(address!);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.getSubscribedDaos(address);
+            return await NotificationService.getSubscribedDaos(address!);
           }
         }
         throw error;
@@ -118,12 +118,12 @@ export const useSubscribedProposals = (enabled: boolean = true) => {
   const queryFn = useMemo(() => {
     return async () => {
       try {
-        return await NotificationService.getSubscribedProposals(address);
+        return await NotificationService.getSubscribedProposals(address!);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.getSubscribedProposals(address);
+            return await NotificationService.getSubscribedProposals(address!);
           }
         }
         throw error;
@@ -190,12 +190,12 @@ export const useResendOTP = () => {
       value: string;
     }) => {
       try {
-        return await NotificationService.resendOTP(type, value, address);
+        return await NotificationService.resendOTP(type, value, address!);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.resendOTP(type, value, address);
+            return await NotificationService.resendOTP(type, value, address!);
           }
         }
         throw error;
@@ -211,12 +211,12 @@ export const useVerifyNotificationChannel = () => {
   return useMutation({
     mutationFn: async (input: VerifyNotificationChannelInput) => {
       try {
-        return await NotificationService.verifyNotificationChannel(input, address);
+        return await NotificationService.verifyNotificationChannel(input, address!);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.verifyNotificationChannel(input, address);
+            return await NotificationService.verifyNotificationChannel(input, address!);
           }
         }
         throw error;
@@ -236,12 +236,12 @@ export const useSubscribeProposal = () => {
   return useMutation({
     mutationFn: async (input: ProposalSubscriptionInput) => {
       try {
-        return await NotificationService.subscribeProposal(input, address);
+        return await NotificationService.subscribeProposal(input, address!);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.subscribeProposal(input, address);
+            return await NotificationService.subscribeProposal(input, address!);
           }
         }
         throw error;
@@ -270,7 +270,7 @@ export const useUnsubscribeProposal = () => {
         return await NotificationService.unsubscribeProposal(
           daoCode,
           proposalId,
-          address
+          address!
         );
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
@@ -279,7 +279,7 @@ export const useUnsubscribeProposal = () => {
             return await NotificationService.unsubscribeProposal(
               daoCode,
               proposalId,
-              address
+              address!
             );
           }
         }
@@ -304,12 +304,12 @@ export const useSubscribeDao = () => {
         throw new Error("DAO code is required");
       }
       try {
-        return await NotificationService.subscribeDao(input, address);
+        return await NotificationService.subscribeDao(input, address!);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.subscribeDao(input, address);
+            return await NotificationService.subscribeDao(input, address!);
           }
         }
         throw error;
@@ -333,12 +333,12 @@ export const useUnsubscribeDao = () => {
         throw new Error("DAO code is required");
       }
       try {
-        return await NotificationService.unsubscribeDao(daoCode, address);
+        return await NotificationService.unsubscribeDao(daoCode, address!);
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.unsubscribeDao(daoCode, address);
+            return await NotificationService.unsubscribeDao(daoCode, address!);
           }
         }
         throw error;
