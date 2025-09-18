@@ -3,5 +3,4 @@ export const DEFAULT_CONFIRMATIONS = 5;
 export const DEFAULT_REFETCH_INTERVAL = 10_000;
 export const DEFAULT_PAGE_SIZE = 10;
 export const DEFAULT_ANIMATION_DURATION = 0.1;
-// export const DEGOV_APPS_URL = "https://square.degov.ai";
-export const DEGOV_APPS_URL = "https://degov-square-stg.vercel.app";
+export const DEGOV_APPS_URL = "https://square.degov.ai";

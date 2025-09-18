@@ -10,11 +10,6 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   useResendOTP,
   useVerifyNotificationChannel,
 } from "@/hooks/useNotification";
@@ -80,6 +75,8 @@ export const EmailBindForm = ({
   });
 
   const [verificationError, setVerificationError] = useState<string>("");
+  const [emailError, setEmailError] = useState<string>("");
+  const [sendError, setSendError] = useState<string>("");
 
   const emailSchema = z.string().email();
   const isEmailValid = emailSchema.safeParse(state.email).success;
@@ -88,7 +85,14 @@ export const EmailBindForm = ({
   const verifyLoading = verifyEmailMutation.isPending || isLoading;
 
   const handleSendVerification = useCallback(async () => {
-    if (!state.email || !isEmailValid || sendingLoading) return;
+    if (!state.email || sendingLoading) return;
+
+    setSendError("");
+
+    if (!isEmailValid) {
+      setSendError("Please enter a valid email address");
+      return;
+    }
 
     resendOTPMutation.mutate(
       { type: "EMAIL" as const, value: state.email },
@@ -97,14 +101,15 @@ export const EmailBindForm = ({
           if (data.code === 0) {
             const rate = data.rateLimit || 60;
             onStartCountdown(rate);
+            setSendError("");
           } else {
-            toast.error(data.message || "Failed to send verification code");
+            setSendError(data.message || "Failed to send verification code");
           }
         },
         onError: (error: unknown) => {
           const errorMessage =
             extractErrorMessage(error) || "Failed to send verification code";
-          toast.error(errorMessage);
+          setSendError(errorMessage);
         },
       }
     );
@@ -180,41 +185,44 @@ export const EmailBindForm = ({
               placeholder="yourname@example.com"
               value={state.email}
               onChange={(e) => {
-                dispatch({ type: "SET_EMAIL", payload: e.target.value });
+                const value = e.target.value.trim();
+                dispatch({ type: "SET_EMAIL", payload: value });
+                setEmailError("");
+                setSendError("");
+                if (value && !emailSchema.safeParse(value).success) {
+                  setEmailError("Invalid email address");
+                }
               }}
-              className="flex-1 bg-input border-border text-foreground placeholder:text-muted-foreground rounded-[100px] px-[10px] text-[16px] font-normal"
+              className={`flex-1 bg-input border-border text-foreground placeholder:text-muted-foreground rounded-[100px] px-[10px] text-[16px] font-normal ${
+                emailError ? "border-danger" : ""
+              }`}
             />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0} className="inline-flex">
-                  <Button
-                    onClick={handleSendVerification}
-                    disabled={!state.email || !isEmailValid || countdownActive}
-                    isLoading={sendingLoading}
-                    className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[100px]"
-                    size="sm"
-                  >
-                    {countdownActive ? (
-                      <Countdown
-                        key={countdownKey}
-                        start={countdownDuration}
-                        autoStart
-                        onEnd={onEndCountdown}
-                        onTick={onCountdownTick}
-                      />
-                    ) : (
-                      "Send"
-                    )}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {!isEmailValid && state.email.length > 0 && (
-                <TooltipContent>
-                  Please enter a valid email address
-                </TooltipContent>
+            <Button
+              onClick={handleSendVerification}
+              disabled={!state.email || !isEmailValid || countdownActive}
+              isLoading={sendingLoading}
+              className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[100px]"
+              size="sm"
+            >
+              {countdownActive ? (
+                <Countdown
+                  key={countdownKey}
+                  start={countdownDuration}
+                  autoStart
+                  onEnd={onEndCountdown}
+                  onTick={onCountdownTick}
+                />
+              ) : (
+                "Send"
               )}
-            </Tooltip>
+            </Button>
           </div>
+          {(emailError || sendError) && (
+            <div className="flex items-center gap-[5px] text-[12px] mt-[5px]">
+              <ErrorIcon className="h-4 w-4 flex-shrink-0 text-danger" />
+              <span>{emailError || sendError}</span>
+            </div>
+          )}
         </div>
 
         <div>
