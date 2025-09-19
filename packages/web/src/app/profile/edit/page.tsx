@@ -9,7 +9,7 @@ import { useAccount } from "wagmi";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
-import { useSign } from "@/hooks/useSign";
+import { useSiweAuth } from "@/hooks/useSiweAuth";
 import { profileService } from "@/services/graphql";
 import type { ProfileData } from "@/services/graphql/types/profile";
 
@@ -65,7 +65,7 @@ export function ProfileEditSkeleton() {
 export default function Edit() {
   const router = useRouter();
   const { address } = useAccount();
-  const { signIn, isLoading: isSigningIn } = useSign();
+  const { authenticate, isAuthenticating } = useSiweAuth();
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
   const { data: profileData, isLoading: isProfileLoading } = useQuery({
@@ -109,7 +109,7 @@ export default function Edit() {
           ...data,
         })?.then(async (res) => {
           if (res.code === 401) {
-            await signIn();
+            await authenticate();
             await updateProfile({
               ...profileData?.data,
               ...data,
@@ -121,7 +121,7 @@ export default function Edit() {
         setIsUpdatingProfile(false);
       }
     },
-    [updateProfile, profileData, signIn]
+    [updateProfile, profileData, authenticate]
   );
 
   const handleAvatarChange = useCallback(
@@ -133,7 +133,7 @@ export default function Edit() {
           avatar: base64,
         })?.then(async (res) => {
           if (res.code === 401) {
-            await signIn();
+            await authenticate();
             await updateProfile({
               ...profileData?.data,
               avatar: base64,
@@ -145,7 +145,7 @@ export default function Edit() {
         setIsUpdatingAvatar(false);
       }
     },
-    [updateProfile, profileData, signIn]
+    [updateProfile, profileData, authenticate]
   );
 
   if (isProfileLoading) {
@@ -160,12 +160,12 @@ export default function Edit() {
             address={address}
             onAvatarChange={handleAvatarChange}
             initialAvatar={profileData?.data?.avatar}
-            isLoading={isUpdatingAvatar || isSigningIn}
+            isLoading={isUpdatingAvatar || isAuthenticating}
           />
           <ProfileForm
             data={profileData?.data}
             onSubmitForm={handleSubmitForm}
-            isLoading={isUpdatingProfile || isSigningIn}
+            isLoading={isUpdatingProfile || isAuthenticating}
           />
         </div>
 
@@ -173,13 +173,13 @@ export default function Edit() {
           <ProfileForm
             data={profileData?.data}
             onSubmitForm={handleSubmitForm}
-            isLoading={isUpdatingProfile || isSigningIn}
+            isLoading={isUpdatingProfile || isAuthenticating}
           />
           <ProfileAvatar
             address={address}
             onAvatarChange={handleAvatarChange}
             initialAvatar={profileData?.data?.avatar}
-            isLoading={isUpdatingAvatar || isSigningIn}
+            isLoading={isUpdatingAvatar || isAuthenticating}
           />
         </div>
       </div>

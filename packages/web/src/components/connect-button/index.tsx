@@ -8,7 +8,11 @@ import { Button } from "../ui/button";
 
 import { Connected } from "./connected";
 
-export const ConnectButton = ({ onMenuToggle }: { onMenuToggle?: () => void }) => {
+export const ConnectButton = ({
+  onMenuToggle,
+}: {
+  onMenuToggle?: () => void;
+}) => {
   const { openConnectModal } = useConnectModal();
   const dappConfig = useDaoConfig();
   const { chainId, address, isConnected, isConnecting, isReconnecting } =
@@ -20,10 +24,13 @@ export const ConnectButton = ({ onMenuToggle }: { onMenuToggle?: () => void }) =
 
   if (!isConnected && openConnectModal) {
     return (
-      <Button onClick={() => {
-        openConnectModal();
-        onMenuToggle?.();
-      }} className="rounded-[100px] flex-1 max-w-[200px]">
+      <Button
+        onClick={() => {
+          openConnectModal();
+          onMenuToggle?.();
+        }}
+        className="rounded-[100px] flex-1 max-w-[200px]"
+      >
         Connect Wallet
       </Button>
     );
@@ -38,7 +45,11 @@ export const ConnectButton = ({ onMenuToggle }: { onMenuToggle?: () => void }) =
   }
 
   if (address) {
-    return <Connected address={address} onMenuToggle={onMenuToggle} />;
+    return (
+      <div className="flex items-center gap-[10px]">
+        <Connected address={address} onMenuToggle={onMenuToggle} />
+      </div>
+    );
   }
 
   return null;

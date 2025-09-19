@@ -12,6 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DEGOV_APPS_URL } from "@/config/base";
 import { INDEXER_CONFIG } from "@/config/indexer";
 import { useBlockSync } from "@/hooks/useBlockSync";
 import { useCustomTheme } from "@/hooks/useCustomTheme";
@@ -115,7 +116,7 @@ export const Aside = () => {
                   )}
                 </Link>
                 <Link
-                  href="https://apps.degov.ai"
+                  href={DEGOV_APPS_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-foreground hover:opacity-80 transition-opacity"

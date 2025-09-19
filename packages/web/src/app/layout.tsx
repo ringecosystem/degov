@@ -121,6 +121,8 @@ export default function RootLayout({
             __html: `window.__ENV = ${JSON.stringify({
               NEXT_PUBLIC_DEGOV_API: process.env.NEXT_PUBLIC_DEGOV_API ?? "",
               NEXT_PUBLIC_DEGOV_DAO: process.env.NEXT_PUBLIC_DEGOV_DAO ?? "",
+              NEXT_PUBLIC_NOTIFICATION_API:
+                process.env.NEXT_PUBLIC_NOTIFICATION_API ?? "",
             })}`,
           }}
         />

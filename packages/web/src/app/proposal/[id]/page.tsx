@@ -8,10 +8,12 @@ import { useReadContract } from "wagmi";
 
 import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
+import { ProposalNotification } from "@/components/proposal-notification";
 import { LoadingState } from "@/components/ui/loading-spinner";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useNotificationVisibility } from "@/hooks/useNotificationVisibility";
 import { proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { parseDescription } from "@/utils";
@@ -30,6 +32,7 @@ const ACTIVE_STATES: ProposalState[] = [
 
 export default function ProposalDetailPage() {
   const daoConfig = useDaoConfig();
+  const showNotification = useNotificationVisibility();
 
   const params = useParams();
   const id = params?.id;
@@ -275,6 +278,9 @@ export default function ProposalDetailPage() {
               proposalQueuedById={proposalQueuedById}
               isLoading={isAllQueriesFetching || isPending}
             />
+            {showNotification && (
+              <ProposalNotification proposalId={id as string} />
+            )}
             <Faqs type="proposal" />
           </div>
         </div>
@@ -304,6 +310,7 @@ export default function ProposalDetailPage() {
           proposalQueuedById={proposalQueuedById}
           isLoading={isAllQueriesFetching || isPending}
         />
+        {showNotification && <ProposalNotification proposalId={id as string} />}
       </div>
     </div>
   );

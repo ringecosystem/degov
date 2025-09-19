@@ -1,0 +1,1 @@
+export { ProposalNotification } from './proposal-notification';

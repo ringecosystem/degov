@@ -6,6 +6,7 @@ import React, { useMemo } from "react";
 
 import { AppIcon, LogoIcon } from "@/components/icons";
 import { SearchModal } from "@/components/search-modal";
+import { DEGOV_APPS_URL } from "@/config/base";
 import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
@@ -15,6 +16,7 @@ export const MobileHeader = () => {
   const [open, setOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const config = useDaoConfig();
+
   const { isDarkTheme } = useCustomTheme();
 
   const isCustomLogo = useMemo(() => {
@@ -33,7 +35,11 @@ export const MobileHeader = () => {
             <Link href="/">
               {isCustomLogo ? (
                 <Image
-                  src={isDarkTheme ? (config?.theme?.logoDark ?? "") : (config?.theme?.logoLight ?? "")}
+                  src={
+                    isDarkTheme
+                      ? config?.theme?.logoDark ?? ""
+                      : config?.theme?.logoLight ?? ""
+                  }
                   alt="logo"
                   width={128}
                   height={26}
@@ -41,11 +47,15 @@ export const MobileHeader = () => {
                   className="h-[26px] w-[128px] rounded-full border border-[var(--card-background)]"
                 />
               ) : (
-                <LogoIcon width={128} height={26} className="h-[26px] w-[128px]" />
+                <LogoIcon
+                  width={128}
+                  height={26}
+                  className="h-[26px] w-[128px]"
+                />
               )}
             </Link>
             <Link
-              href="https://apps.degov.ai"
+              href={DEGOV_APPS_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="text-foreground hover:opacity-80 transition-opacity"

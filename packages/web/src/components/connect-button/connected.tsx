@@ -32,7 +32,7 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   }, [disconnectWallet, address]);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
+      <DropdownMenuTrigger className=" focus-visible:outline-none">
         <AddressResolver address={address} showShortAddress>
           {(value) => (
             <div className="flex items-center gap-[10px] rounded-[20px] lg:rounded-[10px] bg-card lg:bg-transparent lg:border lg:border-border px-4 py-2">
