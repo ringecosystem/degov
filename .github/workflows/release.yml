@@ -12,8 +12,8 @@ env:
 
 jobs:
 
-  build-indexer:
-    name: Build indexer
+  build-packages:
+    name: Build packages
     runs-on: ubuntu-latest
     strategy:
       matrix:
