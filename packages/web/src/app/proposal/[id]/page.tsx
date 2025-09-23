@@ -37,6 +37,19 @@ export default function ProposalDetailPage() {
   const params = useParams();
   const id = params?.id;
 
+  const proposalDisplayId = useMemo(() => {
+    const rawId = Array.isArray(id) ? id[0] : id;
+    if (!rawId) {
+      return "Proposal";
+    }
+
+    if (rawId.length <= 12) {
+      return rawId;
+    }
+
+    return `${rawId.slice(0, 6)}...${rawId.slice(-6)}`;
+  }, [id]);
+
   const validId = useMemo(() => {
     if (!id) return null;
     try {
@@ -245,7 +258,7 @@ export default function ProposalDetailPage() {
           Proposals
         </Link>
         <span className="text-muted-foreground">/</span>
-        <span>Proposal</span>
+        <span>{proposalDisplayId}</span>
       </div>
       <div className="hidden lg:block">
         <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-[20px] flex-1 min-h-0">

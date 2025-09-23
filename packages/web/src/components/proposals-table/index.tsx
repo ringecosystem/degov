@@ -2,6 +2,8 @@ import Link from "next/link";
 import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 
+import { AddressAvatar } from "@/components/address-avatar";
+import { AddressResolver } from "@/components/address-resolver";
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { VoteType } from "@/config/vote";
 import type { ProposalItem } from "@/services/graphql/types";
@@ -130,6 +132,29 @@ export function ProposalsTable({
                   className="text-[12px] py-0 px-0 bg-transparent"
                 />
               )}
+
+              {record.proposer ? (
+                <div className="hidden lg:flex items-center gap-[5px] text-[12px] leading-normal font-normal text-grey-2">
+                  <AddressAvatar
+                    address={record.proposer as Address}
+                    size={14}
+                    className="rounded-full"
+                  />
+                  <AddressResolver
+                    address={record.proposer as Address}
+                    showShortAddress
+                  >
+                    {(resolved) => (
+                      <span
+                        className="font-mono leading-normal"
+                        title={record.proposer}
+                      >
+                        {resolved}
+                      </span>
+                    )}
+                  </AddressResolver>
+                </div>
+              ) : null}
 
               <span className="text-muted-foreground text-[12px]">
                 {record.blockTimestamp

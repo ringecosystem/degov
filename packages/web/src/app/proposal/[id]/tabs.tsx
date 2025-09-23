@@ -42,7 +42,7 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
     if (daoConfig?.aiAgent?.endpoint) {
       baseTabs.push({
         key: "ai-review" as TabType,
-        label: "AI Review",
+        label: "Summary",
       });
     }
 
