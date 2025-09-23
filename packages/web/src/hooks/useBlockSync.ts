@@ -34,7 +34,8 @@ export function useBlockSync() {
 
   const syncPercentage = useMemo(() => {
     if (!currentBlock || !indexedBlock) return 0;
-    return Math.floor((indexedBlock / currentBlock) * 100);
+    const ratio = (indexedBlock / currentBlock) * 100;
+    return Number(ratio.toFixed(1));
   }, [currentBlock, indexedBlock]);
 
   const status: BlockSyncStatus = useMemo(() => {
