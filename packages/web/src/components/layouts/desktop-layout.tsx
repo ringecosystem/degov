@@ -1,6 +1,5 @@
 "use client";
 
-import { Alert } from "@/app/alert";
 import { DemoTips } from "@/app/demo-tips";
 import { Header } from "@/components/layouts/header";
 import { PageTransition } from "@/components/motion/page-transition";
@@ -19,7 +18,7 @@ export const DesktopLayout = ({ children }: DesktopLayoutProps) => {
         <Header />
         <div className="mx-auto w-full flex-1 p-[15px] lg:p-[30px] gap-[15px] lg:gap-[20px] flex flex-col max-w-[1460px]">
           <DemoTips />
-          <Alert />
+
           <PageTransition>{children}</PageTransition>
         </div>
       </main>

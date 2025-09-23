@@ -1,10 +1,7 @@
 "use client";
 
-import Link from "next/link";
-
 import { Nav } from "@/app/nav";
 import { ConnectButton } from "@/components/connect-button";
-import { BottomLogoIcon } from "@/components/icons";
 import { IndexerStatus } from "@/components/indexer-status";
 import { NotificationDropdown } from "@/components/notification-dropdown";
 import { ThemeSelector } from "@/components/theme-selector";
@@ -65,18 +62,6 @@ export const MobileMenu = ({
                 status={status}
               />
             </div>
-            <p className="flex text-xs text-muted-foreground items-center justify-center gap-[5px] mb-[15px]">
-              <span className="text-[12px]">Powered By</span>
-              <Link
-                href="https://degov.ai"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:opacity-80 transition-all duration-300"
-              >
-                <BottomLogoIcon width={16} height={16} />
-              </Link>
-              <span className="text-[12px]">DeGov.AI</span>
-            </p>
           </div>
         </div>
       </DropdownMenuContent>

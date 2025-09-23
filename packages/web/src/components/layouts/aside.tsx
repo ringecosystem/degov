@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
 
 import { Nav } from "@/app/nav";
-import { AppIcon, LogoIcon, BottomLogoIcon } from "@/components/icons";
+import { AppIcon, LogoIcon } from "@/components/icons";
 import { IndexerStatus } from "@/components/indexer-status";
 import {
   Tooltip,
@@ -160,23 +160,6 @@ export const Aside = () => {
               indexedBlock={indexedBlock}
             />
           )}
-          <p
-            className={cn(
-              "text-xs text-muted-foreground flex items-center gap-[5px]",
-              collapsed ? "hidden" : "flex"
-            )}
-          >
-            <span className="text-[12px]">Powered By</span>
-            <Link
-              href="https://degov.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:opacity-80 transition-all duration-300"
-            >
-              <BottomLogoIcon width={16} height={16} />
-            </Link>
-            <span className="text-[12px]">DeGov.AI</span>
-          </p>
         </footer>
       </div>
     </aside>
