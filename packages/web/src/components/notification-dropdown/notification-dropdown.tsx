@@ -62,7 +62,7 @@ export const NotificationDropdown = () => {
     newProposals,
     votingEndReminder,
     isLoading: featuresLoading,
-  } = useNotificationFeatures(isEmailBound && isOpen);
+  } = useNotificationFeatures(isEmailBound && isOpen, config?.code);
 
   const subscribeDao = useSubscribeDao();
 

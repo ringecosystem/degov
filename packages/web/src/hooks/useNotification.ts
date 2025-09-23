@@ -82,7 +82,10 @@ export const useNotificationChannels = (enabled: boolean = false) => {
 };
 
 // Hook for getting subscribed DAOs (only when email is verified)
-export const useSubscribedDaos = (enabled: boolean = false) => {
+export const useSubscribedDaos = (
+  enabled: boolean = false,
+  daoCode?: string
+) => {
   const { authenticate, address, isConnected } = useSiweAuth();
 
   const queryFn = useMemo(() => {
@@ -101,12 +104,29 @@ export const useSubscribedDaos = (enabled: boolean = false) => {
     };
   }, [authenticate, address]);
 
-  return useQuery({
+  const queryResult = useQuery({
     queryKey: NOTIFICATION_KEYS.subscribedDaos(address),
     queryFn,
     enabled: Boolean(enabled && isConnected),
     retry: 0,
   });
+
+  const filteredData = useMemo(() => {
+    if (!queryResult.data) {
+      return queryResult.data;
+    }
+
+    if (!daoCode) {
+      return queryResult.data;
+    }
+
+    return queryResult.data.filter((dao) => dao.dao?.code === daoCode);
+  }, [daoCode, queryResult.data]);
+
+  return {
+    ...queryResult,
+    data: filteredData,
+  };
 };
 
 // Hook for getting subscribed proposals (only when email is verified)
@@ -140,18 +160,25 @@ export const useSubscribedProposals = (enabled: boolean = true) => {
 };
 
 // Hook for getting notification feature status
-export const useNotificationFeatures = (enabled: boolean = false) => {
-  const { data: subscribedDaos, isLoading, error } = useSubscribedDaos(enabled);
+export const useNotificationFeatures = (
+  enabled: boolean = false,
+  daoCode?: string
+) => {
+  const { data: subscribedDaos, isLoading, error } = useSubscribedDaos(
+    enabled,
+    daoCode
+  );
 
   const notificationFeatures = useMemo(() => {
-    if (!subscribedDaos) {
-      return {
-        newProposals: false,
-        votingEndReminder: false,
-      };
+    const defaultFeatures = {
+      newProposals: false,
+      votingEndReminder: false,
+    };
+
+    if (!subscribedDaos || subscribedDaos.length === 0) {
+      return defaultFeatures;
     }
 
-    // Check if any DAO has the specified features enabled
     const hasNewProposals = subscribedDaos.some((dao) =>
       dao.features.some(
         (feature) =>
