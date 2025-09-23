@@ -7,10 +7,20 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { contributorService, memberService } from "@/services/graphql";
 import type { ContributorItem, Member } from "@/services/graphql/types";
 
-export function useMembersData(pageSize = DEFAULT_PAGE_SIZE, searchTerm = "") {
+type PageParam = {
+  offset: number;
+  limit: number;
+};
+
+export function useMembersData(
+  pageSize = DEFAULT_PAGE_SIZE,
+  searchTerm = "",
+  initialPageSize = pageSize
+) {
   const daoConfig = useDaoConfig();
   const { botAddress } = useAiBotAddress();
   const isSearching = searchTerm.trim().length > 0;
+  const normalizedInitialPageSize = Math.max(pageSize, initialPageSize);
 
   const membersQuery = useInfiniteQuery({
     queryKey: [
@@ -20,8 +30,13 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE, searchTerm = "") {
       botAddress,
       searchTerm,
       isSearching,
+      normalizedInitialPageSize,
     ],
     queryFn: async ({ pageParam }) => {
+      const { offset, limit } = (pageParam as PageParam) ?? {
+        offset: 0,
+        limit: normalizedInitialPageSize,
+      };
       // If searching, use exact match or return empty result for non-matches
       if (isSearching) {
         // For exact address match, search with id_eq
@@ -42,8 +57,8 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE, searchTerm = "") {
       const result = await contributorService.getAllContributors(
         daoConfig?.indexer?.endpoint ?? "",
         {
-          limit: pageSize,
-          offset: Number(pageParam),
+          limit,
+          offset,
           where: {
             id_not_eq: botAddress,
           },
@@ -52,7 +67,10 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE, searchTerm = "") {
 
       return result;
     },
-    initialPageParam: 0,
+    initialPageParam: {
+      offset: 0,
+      limit: normalizedInitialPageSize,
+    } as PageParam,
     getNextPageParam: (lastPage, _allPages, lastPageParam) => {
       // If searching, no pagination
       if (isSearching) {
@@ -60,11 +78,19 @@ export function useMembersData(pageSize = DEFAULT_PAGE_SIZE, searchTerm = "") {
       }
 
       // If no data or less than page size, no more pages
-      if (!lastPage || lastPage.length < DEFAULT_PAGE_SIZE) {
+      const lastParam = (lastPageParam as PageParam) ?? {
+        offset: 0,
+        limit: normalizedInitialPageSize,
+      };
+
+      if (!lastPage || lastPage.length < lastParam.limit) {
         return undefined;
       }
       // Return next page number
-      return lastPageParam + pageSize;
+      return {
+        offset: lastParam.offset + lastPage.length,
+        limit: pageSize,
+      } satisfies PageParam;
     },
     retryDelay: 10_000,
     retry: 3,

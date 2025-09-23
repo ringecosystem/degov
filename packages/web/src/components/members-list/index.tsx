@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useMemo } from "react";
 
-import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { proposalService } from "@/services/graphql";
@@ -56,11 +56,14 @@ export function MembersList({
     enabled: !!daoConfig?.indexer?.endpoint,
   });
 
+  const initialPageSize =
+    pageSize === DEFAULT_PAGE_SIZE ? INITIAL_LIST_PAGE_SIZE : pageSize;
+
   const {
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
     profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
-  } = useMembersData(pageSize, searchTerm);
+  } = useMembersData(pageSize, searchTerm, initialPageSize);
 
   // Fetch AI bot contributor data separately and prepend when available (only on the first page)
   const { data: botMember } = useBotMemberData();

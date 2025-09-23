@@ -15,12 +15,19 @@ export type ProposalVotes = {
   abstainVotes: bigint;
 };
 
+type PageParam = {
+  offset: number;
+  limit: number;
+};
+
 export function useProposalData(
   address?: Address,
   support?: "1" | "2" | "3",
-  pageSize: number = DEFAULT_PAGE_SIZE
+  pageSize: number = DEFAULT_PAGE_SIZE,
+  initialPageSize: number = pageSize
 ) {
   const daoConfig = useDaoConfig();
+  const normalizedInitialPageSize = Math.max(pageSize, initialPageSize);
 
   const {
     data,
@@ -37,8 +44,13 @@ export function useProposalData(
       address,
       support,
       pageSize,
+      normalizedInitialPageSize,
     ],
     queryFn: async ({ pageParam }) => {
+      const { offset, limit } = (pageParam as PageParam) ?? {
+        offset: 0,
+        limit: normalizedInitialPageSize,
+      };
       let whereCondition = {};
 
       if (address && !support) {
@@ -62,8 +74,8 @@ export function useProposalData(
       const result = await proposalService.getAllProposals(
         daoConfig?.indexer?.endpoint as string,
         {
-          limit: pageSize,
-          offset: pageParam,
+          limit,
+          offset,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: whereCondition,
         }
@@ -71,12 +83,24 @@ export function useProposalData(
 
       return result;
     },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages, lastPageParam) => {
-      if (!lastPage || lastPage.length < pageSize) {
+    initialPageParam: {
+      offset: 0,
+      limit: normalizedInitialPageSize,
+    } as PageParam,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
+      const lastParam = (lastPageParam as PageParam) ?? {
+        offset: 0,
+        limit: normalizedInitialPageSize,
+      };
+
+      if (!lastPage || lastPage.length < lastParam.limit) {
         return undefined;
       }
-      return lastPageParam + pageSize;
+
+      return {
+        offset: lastParam.offset + lastPage.length,
+        limit: pageSize,
+      } satisfies PageParam;
     },
     enabled: !!daoConfig?.indexer?.endpoint,
     retryDelay: 10_000,

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
@@ -54,10 +54,14 @@ export function ProposalsList({
   address?: Address;
   support?: "1" | "2" | "3";
 }) {
+  const pageSize = type === "active" ? 8 : DEFAULT_PAGE_SIZE;
+  const initialPageSize = type === "active" ? 8 : INITIAL_LIST_PAGE_SIZE;
+
   const { state, proposalStatusState, loadMoreData } = useProposalData(
     address,
     support,
-    type === "active" ? 8 : DEFAULT_PAGE_SIZE
+    pageSize,
+    initialPageSize
   );
 
   if (state.isPending) {
