@@ -1,4 +1,3 @@
-import { isNil } from "lodash-es";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -103,39 +102,27 @@ const Status: React.FC<StatusProps> = ({
   const daoConfig = useDaoConfig();
   const { data: govParams } = useGovernanceParams();
 
-  const votingPeriodStarted = useMemo(() => {
-    if (
-      isNil(data?.blockTimestamp) ||
-      isNil(govParams?.votingDelayInSeconds) ||
-      isNaN(govParams?.votingDelayInSeconds)
-    )
-      return BigInt(0);
+  const voteStartTimestamp = useMemo(() => {
+    if (!data?.voteStartTimestamp) return null;
+    return data.voteStartTimestamp;
+  }, [data?.voteStartTimestamp]);
 
-    return (
-      BigInt(data?.blockTimestamp) +
-      BigInt(govParams.votingDelayInSeconds) * 1000n
-    );
-  }, [data?.blockTimestamp, govParams?.votingDelayInSeconds]);
+  const voteEndTimestamp = useMemo(() => {
+    if (!data?.voteEndTimestamp) return null;
+    return data.voteEndTimestamp;
+  }, [data?.voteEndTimestamp]);
 
-  const votingPeriodEnded = useMemo(() => {
-    const votingDelay = govParams?.votingDelayInSeconds;
-    const votingPeriod = govParams?.votingPeriodInSeconds;
-
-    const safeVotingDelay =
-      isNil(votingDelay) || isNaN(votingDelay) ? 0 : votingDelay;
-    const safeVotingPeriod =
-      isNil(votingPeriod) || isNaN(votingPeriod) ? 0 : votingPeriod;
-
-    return (
-      BigInt(data?.blockTimestamp ?? 0) +
-      BigInt(safeVotingDelay * 1000) +
-      BigInt(safeVotingPeriod * 1000)
-    );
-  }, [
-    data?.blockTimestamp,
-    govParams?.votingDelayInSeconds,
-    govParams?.votingPeriodInSeconds,
-  ]);
+  const votingPeriodRemaining = useMemo(() => {
+    if (!voteEndTimestamp) return "";
+    const numericTimestamp = Number(voteEndTimestamp);
+    if (Number.isNaN(numericTimestamp)) {
+      console.error(
+        `[Status] Invalid voteEndTimestamp provided: ${voteEndTimestamp}`
+      );
+      return "";
+    }
+    return getTimeRemaining(numericTimestamp) ?? "";
+  }, [voteEndTimestamp]);
 
   const hasTimelock = useMemo(() => {
     return (
@@ -178,7 +165,7 @@ const Status: React.FC<StatusProps> = ({
       {
         key: "start" as ProposalStageKey,
         title: "Start voting period",
-        timestamp: formatTimestampToDayTime(String(votingPeriodStarted)),
+        timestamp: formatTimestampToDayTime(voteStartTimestamp ?? ""),
         icon: (
           <StatusStartedIcon width={28} height={28} className="text-current" />
         ),
@@ -186,8 +173,8 @@ const Status: React.FC<StatusProps> = ({
       {
         key: "end" as ProposalStageKey,
         title: "End voting period",
-        timestamp: formatTimestampToDayTime(String(votingPeriodEnded)),
-        remaining: getTimeRemaining(Number(votingPeriodEnded)) ?? "",
+        timestamp: formatTimestampToDayTime(voteEndTimestamp ?? ""),
+        remaining: votingPeriodRemaining,
         icon: (
           <StatusEndedIcon width={28} height={28} className="text-current" />
         ),
@@ -412,8 +399,9 @@ const Status: React.FC<StatusProps> = ({
     proposalExecutedById,
     proposalQueuedById,
     daoConfig?.chain?.explorers,
-    votingPeriodEnded,
-    votingPeriodStarted,
+    voteEndTimestamp,
+    voteStartTimestamp,
+    votingPeriodRemaining,
     status,
     executeEnabledTime,
     hasTimelock,

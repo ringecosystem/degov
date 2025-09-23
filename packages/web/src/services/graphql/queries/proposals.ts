@@ -26,6 +26,13 @@ export const GET_ALL_PROPOSALS = gql`
       values
       voteEnd
       voteStart
+      voteStartTimestamp
+      voteEndTimestamp
+      blockInterval
+      clockMode
+      quorum
+      decimals
+      title
       metricsVotesWeightAbstainSum
       metricsVotesWeightAgainstSum
       metricsVotesWeightForSum
