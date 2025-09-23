@@ -55,7 +55,7 @@ export function IndexerStatus({
 
             <div
               className={cn(
-                "relative h-[30px] flex-1 overflow-hidden rounded-full lg:h-[20px]"
+                "relative h-[30px] flex-1 overflow-hidden rounded-full lg:h-[20px] bg-grey-1"
               )}
             >
               <div
