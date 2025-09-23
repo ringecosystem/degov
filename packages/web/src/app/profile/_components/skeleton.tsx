@@ -33,7 +33,7 @@ export const ProfileSkeleton = ({ isDelegate }: { isDelegate: boolean }) => {
                   <Skeleton className="size-[16px]" />
                 </div>
                 <div className="flex items-center gap-[10px]">
-                  {Array(5)
+                  {Array(4)
                     .fill(0)
                     .map((_, i) => (
                       <Skeleton key={i} className="size-[24px] rounded-full" />

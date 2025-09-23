@@ -38,11 +38,6 @@ export const SocialLinks = ({ profile, isAiBot }: SocialLinksProps) => {
           ]
         : [
             {
-              name: "Email",
-              value: profile?.email,
-              link: `mailto:${profile?.email}`,
-            },
-            {
               name: "Twitter",
               value: profile?.twitter,
               link: getTwitterLink(profile?.twitter),
@@ -69,7 +64,7 @@ export const SocialLinks = ({ profile, isAiBot }: SocialLinksProps) => {
     <div className="flex items-center gap-[10px]">
       {socialLinks.map((social) => {
         const IconComponent = getSocialIcon(social.name.toLowerCase());
-        
+
         return (
           <Link
             key={social.name}
@@ -79,11 +74,7 @@ export const SocialLinks = ({ profile, isAiBot }: SocialLinksProps) => {
             className="flex size-[24px] cursor-pointer items-center justify-center rounded-full bg-foreground transition-opacity hover:opacity-80"
             title={capitalize(social.name)}
           >
-            <IconComponent
-              width={16}
-              height={16}
-              className="text-background"
-            />
+            <IconComponent width={16} height={16} className="text-background" />
           </Link>
         );
       })}
