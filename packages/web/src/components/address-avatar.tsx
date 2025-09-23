@@ -26,7 +26,6 @@ export const AddressAvatar = ({
     queryFn: () => profileService.getProfile(address),
     enabled: !!address,
   });
-
   const { isAiBot } = useAiBotAddress(address);
 
   const avatarUrl = isAiBot

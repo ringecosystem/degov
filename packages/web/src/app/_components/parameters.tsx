@@ -79,7 +79,7 @@ export const Parameters = () => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="flex w-[90vw] lg:w-[240px] flex-col gap-[20px] rounded-[14px] border-border/20 bg-card p-[20px] mr-[5vw] lg:mr-0"
+        className="flex w-[90vw] max-w-[420px] flex-col gap-[20px] rounded-[14px] border-border/20 bg-card p-[20px] mr-[5vw] lg:mr-0"
         align="start"
       >
         <div className="text-[16px] font-semibold text-foreground">
