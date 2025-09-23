@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
 import type { DelegateItem } from "@/services/graphql/types";
+import { formatTimeAgo } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
@@ -27,7 +28,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
       {
         title: "Delegator",
         key: "delegator",
-        width: "70%",
+        width: "33%",
         className: "text-left",
         render: (record) => (
           <AddressWithAvatar
@@ -38,9 +39,20 @@ export function DelegationTable({ address }: DelegationTableProps) {
         ),
       },
       {
+        title: "Date",
+        key: "date",
+        width: "33%",
+        className: "text-center",
+        render: (record) => {
+          const timeAgo = formatTimeAgo(record.blockTimestamp);
+
+          return <span className="text-[14px]">{timeAgo || "-"}</span>;
+        },
+      },
+      {
         title: "Votes",
         key: "votes",
-        width: "30%",
+        width: "33%",
         className: "text-right",
         render: (record) => {
           return (
