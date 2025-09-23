@@ -97,9 +97,7 @@ export const DaoHeader = () => {
               </p>
             </TooltipTrigger>
             <TooltipContent
-              className="max-w-[600px] rounded-[26px] bg-card p-[20px] border border-card-background shadow-card"
-              side="bottom"
-              align="start"
+              className="max-w-[600px] rounded-[26px] bg-card p-[20px] border border-card-background shadow-card z-[200]"
               sideOffset={12}
             >
               <p className="text-[14px] text-foreground">
