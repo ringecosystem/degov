@@ -292,27 +292,6 @@ export function ProfileForm({
 
           <FormField
             control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
-                  <FormLabel className="w-[140px] shrink-0">Email</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      placeholder="email@example.com"
-                      {...field}
-                      className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
-                    />
-                  </FormControl>
-                </div>
-                <FormMessage className="ml-[150px] text-red-500" />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
             name="twitter"
             render={({ field }) => (
               <FormItem>
