@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
+import { useVotingPowerAgainstQuorum } from "@/hooks/useVotingPowerAgainstQuorum";
 import type { DelegateItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
+import { Skeleton } from "../ui/skeleton";
 
 import { useDelegationData } from "./hooks/usedelegationData";
 
@@ -21,7 +22,8 @@ export function DelegationTable({ address }: DelegationTableProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { state, loadMoreData } = useDelegationData(address);
 
-  const { data: totalVotes } = useCurrentVotingPower(address);
+  const { calculatePercentage, isLoading: isQuorumLoading } =
+    useVotingPowerAgainstQuorum();
 
   const columns = useMemo<ColumnType<DelegateItem>[]>(
     () => [
@@ -59,13 +61,14 @@ export function DelegationTable({ address }: DelegationTableProps) {
             <DelegatorVotesDisplay
               record={record}
               formatTokenAmount={formatTokenAmount}
-              totalVotes={totalVotes || 0n}
+              calculatePercentage={calculatePercentage}
+              isQuorumLoading={isQuorumLoading}
             />
           );
         },
       },
     ],
-    [formatTokenAmount, totalVotes]
+    [formatTokenAmount, calculatePercentage, isQuorumLoading]
   );
 
   return (
@@ -99,19 +102,24 @@ export function DelegationTable({ address }: DelegationTableProps) {
 interface DelegatorVotesDisplayProps {
   record: DelegateItem;
   formatTokenAmount: (amount: bigint) => { formatted: string } | undefined;
-  totalVotes: bigint;
+  calculatePercentage: (power?: bigint | null) => number;
+  isQuorumLoading: boolean;
 }
 
 function DelegatorVotesDisplay({
   record,
   formatTokenAmount,
-  totalVotes,
+  calculatePercentage,
+  isQuorumLoading,
 }: DelegatorVotesDisplayProps) {
   const userPower = record?.power ? BigInt(record.power) : 0n;
   const formattedAmount = formatTokenAmount(userPower);
 
-  const percentage =
-    totalVotes > 0n ? Number((userPower * 10000n) / totalVotes) / 100 : 0;
+  if (isQuorumLoading || !formattedAmount) {
+    return <Skeleton className="h-[30px] w-full" />;
+  }
+
+  const percentage = calculatePercentage(userPower);
 
   return (
     <div className="text-right flex items-center justify-end gap-[5px]">
