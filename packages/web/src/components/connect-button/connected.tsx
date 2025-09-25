@@ -71,13 +71,13 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
     (daoConfig?.contracts?.governorToken?.standard === "ERC721" ? 0 : 18);
 
   const formattedVotingPower = useMemo(() => {
-    if (!votingPower) return null;
+    if (!votingPower) return "0";
 
-    return formatTokenAmount(votingPower)?.formatted ?? null;
+    return formatTokenAmount(votingPower)?.formatted ?? "0";
   }, [votingPower, formatTokenAmount]);
 
   const votingPowerPercentage = useMemo(() => {
-    if (!votingPower || !totalSupply || totalSupply === 0n) return null;
+    if (!votingPower || !totalSupply || totalSupply === 0n) return 0;
     if (decimals === undefined) return null;
 
     const votingPowerValue = Number(formatUnits(votingPower, decimals));
@@ -88,23 +88,23 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
       !Number.isFinite(totalSupplyValue) ||
       totalSupplyValue === 0
     ) {
-      return null;
+      return 0;
     }
 
     return (votingPowerValue / totalSupplyValue) * 100;
   }, [votingPower, totalSupply, decimals]);
 
   const formattedVotingPowerPercentage = useMemo(() => {
-    if (votingPowerPercentage === null) return null;
+    if (votingPowerPercentage === null) return "0";
     return new Intl.NumberFormat(undefined, {
       maximumFractionDigits: 2,
     }).format(votingPowerPercentage);
   }, [votingPowerPercentage]);
 
   const formattedBalance = useMemo(() => {
-    if (!tokenBalance) return null;
+    if (!tokenBalance) return "0";
 
-    return formatTokenAmount(tokenBalance)?.formatted ?? null;
+    return formatTokenAmount(tokenBalance)?.formatted ?? "0";
   }, [tokenBalance, formatTokenAmount]);
 
   const isVotingPowerSectionLoading =
