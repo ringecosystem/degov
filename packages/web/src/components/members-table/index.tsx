@@ -1,10 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { proposalService } from "@/services/graphql";
+import { useVotingPowerAgainstQuorum } from "@/hooks/useVotingPowerAgainstQuorum";
 import type { ContributorItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
@@ -29,15 +27,9 @@ export function MembersTable({
   pageSize = DEFAULT_PAGE_SIZE,
   searchTerm = "",
 }: MembersTableProps) {
-  const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-
-  const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
-    queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
-    enabled: !!daoConfig?.indexer?.endpoint,
-  });
+  const { calculatePercentage, isLoading: isQuorumLoading } =
+    useVotingPowerAgainstQuorum();
   const {
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
     profilePullState: { isLoading: isProfilePullLoading },
@@ -79,20 +71,14 @@ export function MembersTable({
         width: "180px",
         className: "text-center",
         render: (record) => {
-          if (isProfilePullLoading || isProposalMetricsLoading) {
+          if (isProfilePullLoading || isQuorumLoading) {
             return <Skeleton className="h-[30px] w-full" />;
           }
 
           const userPower = record?.power ? BigInt(record.power) : 0n;
-          const totalPower = dataMetrics?.powerSum
-            ? BigInt(dataMetrics.powerSum)
-            : 0n;
 
           const formattedAmount = formatTokenAmount(userPower);
-          const percentage =
-            totalPower > 0n
-              ? Number((userPower * 10000n) / totalPower) / 100
-              : 0;
+          const percentage = calculatePercentage(userPower);
 
           return (
             <div className="flex items-center justify-center gap-[5px]">
@@ -147,8 +133,8 @@ export function MembersTable({
       onDelegate,
       isProfilePullLoading,
       formatTokenAmount,
-      dataMetrics,
-      isProposalMetricsLoading,
+      calculatePercentage,
+      isQuorumLoading,
     ]
   );
 

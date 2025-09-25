@@ -1,11 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { proposalService } from "@/services/graphql";
+import { useVotingPowerAgainstQuorum } from "@/hooks/useVotingPowerAgainstQuorum";
 import type { ContributorItem } from "@/services/graphql/types";
 
 import { AddressAvatar } from "../address-avatar";
@@ -46,15 +44,9 @@ export function MembersList({
   pageSize = DEFAULT_PAGE_SIZE,
   searchTerm = "",
 }: MembersListProps) {
-  const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-
-  const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
-    queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
-    enabled: !!daoConfig?.indexer?.endpoint,
-  });
+  const { calculatePercentage, isLoading: isQuorumLoading } =
+    useVotingPowerAgainstQuorum();
 
   const {
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
@@ -116,12 +108,8 @@ export function MembersList({
     <div className="space-y-4">
       {dataSource.map((record) => {
         const userPower = record?.power ? BigInt(record.power) : 0n;
-        const totalPower = dataMetrics?.powerSum
-          ? BigInt(dataMetrics.powerSum)
-          : 0n;
         const formattedAmount = formatTokenAmount(userPower);
-        const percentage =
-          totalPower > 0n ? Number((userPower * 10000n) / totalPower) / 100 : 0;
+        const percentage = calculatePercentage(userPower);
 
         return (
           <div
@@ -148,7 +136,7 @@ export function MembersList({
                   </AddressResolver>
                 </Link>
                 <div className="text-left">
-                  {isProfilePullLoading || isProposalMetricsLoading ? (
+                  {isProfilePullLoading || isQuorumLoading ? (
                     <Skeleton className="h-4 w-20" />
                   ) : (
                     <div className="flex items-center gap-2">

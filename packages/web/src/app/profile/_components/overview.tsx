@@ -1,9 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { useAddressVotes } from "@/hooks/useAddressVotes";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { proposalService } from "@/services/graphql";
+import { useVotingPowerAgainstQuorum } from "@/hooks/useVotingPowerAgainstQuorum";
 
 import { OverviewItem } from "./overview-item";
 
@@ -26,37 +24,36 @@ export const Overview = ({
 }: OverviewProps) => {
   const { formattedVotes, votes, isLoading } = useAddressVotes(address);
 
-  const daoConfig = useDaoConfig();
-  const { data: dataMetrics, isLoading: isMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
-    queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
-    enabled: !!daoConfig?.indexer?.endpoint,
-  });
+  const {
+    calculatePercentage,
+    quorum,
+    isLoading: isQuorumLoading,
+  } = useVotingPowerAgainstQuorum();
 
   const votingPowerWithPercentage = useMemo(() => {
-    if (!votes || !dataMetrics?.powerSum) {
+    if (!formattedVotes || !votes || quorum === 0n) {
       return formattedVotes;
     }
 
-    const totalPower = BigInt(dataMetrics.powerSum);
-    const percentage =
-      totalPower > 0n ? Number((votes * 10000n) / totalPower) / 100 : 0;
+    const percentage = calculatePercentage(votes);
+    const percentageToDisplay = Number.isInteger(percentage)
+      ? percentage.toFixed(0)
+      : percentage.toFixed(2);
 
     return (
       <div className="flex items-center gap-[5px]">
         <div>{formattedVotes}</div>
-        <div>({percentage.toFixed(2)}%)</div>
+        <div>({percentageToDisplay}% of Quorum)</div>
       </div>
     );
-  }, [formattedVotes, votes, dataMetrics?.powerSum]);
+  }, [formattedVotes, votes, quorum, calculatePercentage]);
 
   const data = useMemo(() => {
     return [
       {
         title: "Total Voting Power",
         value: votingPowerWithPercentage,
-        isLoading: isLoading || isMetricsLoading,
+        isLoading: isLoading || isQuorumLoading,
       },
       {
         title: "Governance Balance",
@@ -78,7 +75,7 @@ export const Overview = ({
   }, [
     votingPowerWithPercentage,
     isLoading,
-    isMetricsLoading,
+    isQuorumLoading,
     tokenBalance,
     isLoadingTokenBalance,
     delegationStatusText,
