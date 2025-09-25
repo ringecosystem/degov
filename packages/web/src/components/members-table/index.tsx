@@ -98,7 +98,7 @@ export function MembersTable({
               : 0;
 
           return (
-            <div className="flex items-center justify-center gap-[5px]">
+            <div className="flex items-center justify-start gap-[5px]">
               <div className="text-[14px]" title={formattedAmount?.formatted}>
                 {formattedAmount?.formatted}
               </div>
