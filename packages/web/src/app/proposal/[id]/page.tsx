@@ -111,21 +111,6 @@ export default function ProposalDetailPage() {
     return undefined;
   }, [allData]);
 
-  const proposalVotes = useReadContract({
-    address: daoConfig?.contracts?.governor as `0x${string}`,
-    abi: GovernorAbi,
-    functionName: "proposalVotes",
-    args: [data?.proposalId ? BigInt(data?.proposalId) : 0n],
-    chainId: daoConfig?.chain?.id,
-    query: {
-      refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
-      enabled:
-        !!data?.proposalId &&
-        !!daoConfig?.contracts?.governor &&
-        !!daoConfig?.chain?.id,
-    },
-  });
-
   const [
     {
       data: proposalCanceledById,
@@ -205,17 +190,40 @@ export default function ProposalDetailPage() {
   ].some((query) => query);
 
   const proposalVotesData = useMemo(() => {
-    return {
-      againstVotes: proposalVotes.data?.[0] ?? 0n,
-      forVotes: proposalVotes.data?.[1] ?? 0n,
-      abstainVotes: proposalVotes.data?.[2] ?? 0n,
+    const toBigInt = (value?: string | null) => {
+      if (!value) return 0n;
+      try {
+        return BigInt(value);
+      } catch (error) {
+        console.error("Failed to parse bigint from value", value, error);
+        return 0n;
+      }
     };
-  }, [proposalVotes.data]);
+
+    return {
+      againstVotes: toBigInt(data?.metricsVotesWeightAgainstSum),
+      forVotes: toBigInt(data?.metricsVotesWeightForSum),
+      abstainVotes: toBigInt(data?.metricsVotesWeightAbstainSum),
+    };
+  }, [
+    data?.metricsVotesWeightAgainstSum,
+    data?.metricsVotesWeightForSum,
+    data?.metricsVotesWeightAbstainSum,
+  ]);
+
+  const quorumRequired = useMemo(() => {
+    if (!data?.quorum) return 0n;
+    try {
+      return BigInt(data.quorum);
+    } catch (error) {
+      console.error("Failed to parse quorum value", data.quorum, error);
+      return 0n;
+    }
+  }, [data?.quorum]);
 
   const refetchPageData = useCallback(() => {
     refetchProposal();
     proposalStatus?.refetch();
-    proposalVotes?.refetch();
     [
       refetchProposalCanceledById,
       refetchProposalExecutedById,
@@ -224,7 +232,6 @@ export default function ProposalDetailPage() {
   }, [
     refetchProposal,
     proposalStatus,
-    proposalVotes,
     refetchProposalCanceledById,
     refetchProposalExecutedById,
     refetchProposalQueuedById,
@@ -279,9 +286,8 @@ export default function ProposalDetailPage() {
           <div className="space-y-[20px]">
             <CurrentVotes
               proposalVotesData={proposalVotesData}
-              isLoading={proposalVotes?.isPending}
-              blockTimestamp={data?.blockTimestamp}
-              blockNumber={data?.blockNumber}
+              quorumRequired={quorumRequired}
+              isLoading={isPending || !data}
             />
             <Status
               data={data}
@@ -310,9 +316,8 @@ export default function ProposalDetailPage() {
         />
         <CurrentVotes
           proposalVotesData={proposalVotesData}
-          isLoading={proposalVotes?.isPending}
-          blockTimestamp={data?.blockTimestamp}
-          blockNumber={data?.blockNumber}
+          quorumRequired={quorumRequired}
+          isLoading={isPending || !data}
         />
         <Tabs data={data} isFetching={isPending} />
         <Status

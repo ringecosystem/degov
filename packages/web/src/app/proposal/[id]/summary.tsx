@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
@@ -35,6 +36,17 @@ export const Summary = ({
   id,
 }: SummaryProps) => {
   const daoConfig = useDaoConfig();
+  const proposalTitle = useMemo(() => {
+    if (!data) return "";
+    if (data.title) {
+      return data.title;
+    }
+
+    const fallback = extractTitleAndDescription(
+      data?.originalDescription ?? data?.description
+    );
+    return fallback.title;
+  }, [data]);
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
@@ -58,7 +70,7 @@ export const Summary = ({
         {isPending ? (
           <Skeleton className="h-[36px] w-[200px]" />
         ) : (
-          extractTitleAndDescription(data?.description)?.title
+          proposalTitle
         )}
         <ClipboardIconButton
           text={`${window.location.origin}/proposal/${id}`}

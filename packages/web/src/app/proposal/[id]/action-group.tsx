@@ -39,7 +39,6 @@ export default function ActionGroup({
   isAllQueriesFetching,
   onRefetch,
 }: ActionGroupProps) {
-  const id = data?.proposalId;
   const { isConnected, address } = useAccount();
   const daoConfig = useDaoConfig();
   const [voting, setVoting] = useState(false);
@@ -53,20 +52,39 @@ export default function ActionGroup({
   const [cancelHash, setCancelHash] = useState<`0x${string}` | null>(null);
   const [cancelProposalOpen, setCancelProposalOpen] = useState(false);
   const { validateBeforeExecution } = useContractGuard();
-  const { data: hasVoted } = useReadContract({
+  const { data: hasVotedOnChain } = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
     functionName: "hasVoted",
-    args: [id ? BigInt(id) : 0n, address as `0x${string}`],
+    args: [
+      data?.proposalId ? BigInt(data.proposalId) : 0n,
+      address as `0x${string}`,
+    ],
     chainId: daoConfig?.chain?.id,
     query: {
       enabled:
-        !!id &&
-        !!daoConfig?.contracts?.governor &&
-        !!address &&
-        !!daoConfig?.chain?.id,
+        Boolean(data?.proposalId) &&
+        Boolean(daoConfig?.contracts?.governor) &&
+        Boolean(address) &&
+        Boolean(daoConfig?.chain?.id),
     },
   });
+
+  const hasVotedFromIndexer = useMemo(() => {
+    if (!address) return false;
+    if (!data?.voters?.length) return false;
+    const lowerCasedAddress = address.toLowerCase();
+    return data.voters.some(
+      (voter) => voter.voter?.toLowerCase() === lowerCasedAddress
+    );
+  }, [address, data?.voters]);
+
+  const hasVoted = useMemo(() => {
+    if (typeof hasVotedOnChain === "boolean") {
+      return hasVotedOnChain;
+    }
+    return hasVotedFromIndexer;
+  }, [hasVotedFromIndexer, hasVotedOnChain]);
 
   const { cancelProposal, isPending: isCancelling } = useCancelProposal();
 

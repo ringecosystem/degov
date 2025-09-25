@@ -1,12 +1,8 @@
 import { useMemo } from "react";
-import { useReadContract } from "wagmi";
 
 import { ProposalActionCheckIcon, ErrorIcon } from "@/components/icons";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { abi as governorAbi } from "@/config/abi/governor";
-import { useClockMode } from "@/hooks/useClockMode";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 
 const CurrentVotesSkeleton = () => {
@@ -70,70 +66,48 @@ interface CurrentVotesProps {
     forVotes: bigint;
     abstainVotes: bigint;
   };
+  quorumRequired: bigint;
   isLoading?: boolean;
-  blockTimestamp?: string;
-  blockNumber?: string;
 }
 export const CurrentVotes = ({
   proposalVotesData,
-  blockTimestamp,
-  blockNumber,
+  quorumRequired,
   isLoading,
 }: CurrentVotesProps) => {
-  const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-  const { isBlockNumberMode, isLoading: isClockModeLoading } = useClockMode();
 
-  const quorumParameter = useMemo(() => {
-    if (isClockModeLoading) return BigInt(0);
-
-    if (isBlockNumberMode) {
-      return blockNumber ? BigInt(blockNumber) : BigInt(0);
-    } else {
-      return blockTimestamp ? BigInt(Number(blockTimestamp) / 1000) : BigInt(0);
-    }
-  }, [isBlockNumberMode, isClockModeLoading, blockNumber, blockTimestamp]);
-
-  const { data: quorumData, isLoading: isQuorumLoading } = useReadContract({
-    address: daoConfig?.contracts?.governor as `0x${string}`,
-    abi: governorAbi,
-    functionName: "quorum" as const,
-    args: [quorumParameter],
-    chainId: daoConfig?.chain?.id,
-    query: {
-      enabled:
-        Boolean(daoConfig?.contracts?.governor) &&
-        Boolean(daoConfig?.chain?.id) &&
-        !isClockModeLoading &&
-        (isBlockNumberMode ? Boolean(blockNumber) : Boolean(blockTimestamp)),
-    },
-  });
-
-  const percentage = useMemo(() => {
-    const total =
+  const { totalVotesCast, totalParticipation } = useMemo(() => {
+    const totalVotesCast =
       proposalVotesData.againstVotes +
       proposalVotesData.forVotes +
       proposalVotesData.abstainVotes;
-    if (total === 0n) {
+    const totalParticipation =
+      proposalVotesData.forVotes + proposalVotesData.abstainVotes;
+
+    return { totalVotesCast, totalParticipation };
+  }, [proposalVotesData]);
+
+  const hasReachedQuorum = useMemo(() => {
+    if (quorumRequired === 0n) return false;
+    return totalParticipation >= quorumRequired;
+  }, [quorumRequired, totalParticipation]);
+
+  const percentage = useMemo(() => {
+    if (totalVotesCast === 0n) {
       return { forPercentage: 0, againstPercentage: 0, abstainPercentage: 0 };
     }
 
     const forPercentage =
-      (Number(proposalVotesData.forVotes) / Number(total)) * 100;
+      (Number(proposalVotesData.forVotes) / Number(totalVotesCast)) * 100;
 
     const againstPercentage =
-      (Number(proposalVotesData.againstVotes) / Number(total)) * 100;
+      (Number(proposalVotesData.againstVotes) / Number(totalVotesCast)) * 100;
 
     const abstainPercentage =
-      (Number(proposalVotesData.abstainVotes) / Number(total)) * 100;
+      (Number(proposalVotesData.abstainVotes) / Number(totalVotesCast)) * 100;
 
     return { forPercentage, againstPercentage, abstainPercentage };
-  }, [proposalVotesData]);
-
-  const quorum = useMemo(() => {
-    const total = proposalVotesData.forVotes + proposalVotesData.abstainVotes;
-    return total;
-  }, [proposalVotesData]);
+  }, [proposalVotesData, totalVotesCast]);
 
   if (isLoading) {
     return <CurrentVotesSkeleton />;
@@ -147,34 +121,24 @@ export const CurrentVotes = ({
       <div className="flex flex-col gap-[20px]">
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
-            {isQuorumLoading || isClockModeLoading ? (
-              <Skeleton className="h-[20px] w-[20px] rounded-full" />
+            {hasReachedQuorum ? (
+              <ProposalActionCheckIcon
+                width={20}
+                height={20}
+                className="rounded-full text-current"
+              />
             ) : (
-              <>
-                {quorum > proposalVotesData?.againstVotes ? (
-                  <ProposalActionCheckIcon
-                    width={20}
-                    height={20}
-                    className="rounded-full text-current"
-                  />
-                ) : (
-                  <ErrorIcon
-                    width={20}
-                    height={20}
-                    className="rounded-full text-current"
-                  />
-                )}
-              </>
+              <ErrorIcon
+                width={20}
+                height={20}
+                className="rounded-full text-current"
+              />
             )}
             <span className="text-[14px] font-normal">Quorum</span>
           </div>
           <span className="flex items-center gap-[5px]">
-            {formatTokenAmount(quorum).formatted} of{" "}
-            {isQuorumLoading || isClockModeLoading ? (
-              <Skeleton className="inline-block h-[18px] w-[60px]" />
-            ) : (
-              formatTokenAmount(quorumData ?? 0n).formatted
-            )}
+            {formatTokenAmount(totalParticipation).formatted} of{" "}
+            <span>{formatTokenAmount(quorumRequired).formatted}</span>
           </span>
         </div>
 

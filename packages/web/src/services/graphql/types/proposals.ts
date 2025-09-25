@@ -28,6 +28,13 @@ export type ProposalItem = {
   values: string[];
   voteEnd: string;
   voteStart: string;
+  voteStartTimestamp: string;
+  voteEndTimestamp: string;
+  blockInterval?: string | null;
+  clockMode: string;
+  quorum: string;
+  decimals: string;
+  title: string;
   metricsVotesWeightAbstainSum: string;
   metricsVotesWeightAgainstSum: string;
   metricsVotesWeightForSum: string;
