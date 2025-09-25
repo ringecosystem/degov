@@ -22,6 +22,8 @@ interface AddressWithAvatarProps {
   align?: "start" | "center" | "end";
 }
 
+const defaultDelayDuration = 200;
+
 export function AddressWithAvatar({
   address,
   avatarSize = 30,
@@ -40,10 +42,10 @@ export function AddressWithAvatar({
       className={cn("inline-flex items-center gap-[10px]", className)}
     >
       <AddressAvatar address={address} size={avatarSize} />
-      <Tooltip>
-        <TooltipTrigger>
-          <AddressResolver address={address} showShortAddress>
-            {(ensName) => (
+      <Tooltip delayDuration={defaultDelayDuration}>
+        <AddressResolver address={address} showShortAddress>
+          {(ensName) => (
+            <TooltipTrigger asChild>
               <span
                 className={cn(
                   "line-clamp-1 font-mono hover:underline",
@@ -53,17 +55,19 @@ export function AddressWithAvatar({
               >
                 {ensName}
               </span>
-            )}
-          </AddressResolver>
-        </TooltipTrigger>
+            </TooltipTrigger>
+          )}
+        </AddressResolver>
         <TooltipContent side={side} align={align}>
           <p>{address}</p>
         </TooltipContent>
       </Tooltip>
       {isAiBot && (
-        <Tooltip>
-          <TooltipTrigger>
-            <AiIcon />
+        <Tooltip delayDuration={defaultDelayDuration}>
+          <TooltipTrigger asChild>
+            <span>
+              <AiIcon />
+            </span>
           </TooltipTrigger>
           <TooltipContent className="max-w-[200px]" side={side} align={align}>
             An AI-Powered delegate that can accept delegations and vote on your
