@@ -42,7 +42,7 @@ export function DelegationTable({ address }: DelegationTableProps) {
         title: "Date",
         key: "date",
         width: "33%",
-        className: "text-center",
+        className: "text-left",
         render: (record) => {
           const timeAgo = formatTimeAgo(record.blockTimestamp);
 
