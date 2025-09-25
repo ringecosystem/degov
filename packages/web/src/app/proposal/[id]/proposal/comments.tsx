@@ -225,7 +225,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         title: "Date",
         key: "date",
         width: "22.25%",
-        className: "text-center",
+        className: "text-left",
         render: (record) => <span>{formatTimeAgo(record.blockTimestamp)}</span>,
       },
       {

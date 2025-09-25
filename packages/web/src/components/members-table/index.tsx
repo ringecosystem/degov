@@ -80,7 +80,7 @@ export function MembersTable({
         title: "Voting Power",
         key: "votingPower",
         width: "180px",
-        className: "text-center",
+        className: "text-left",
         render: (record) => {
           if (isProfilePullLoading || isProposalMetricsLoading) {
             return <Skeleton className="h-[30px] w-full" />;
@@ -98,7 +98,7 @@ export function MembersTable({
               : 0;
 
           return (
-            <div className="flex items-center justify-center gap-[5px]">
+            <div className="flex items-center justify-start gap-[5px]">
               <div className="text-[14px]" title={formattedAmount?.formatted}>
                 {formattedAmount?.formatted}
               </div>
@@ -111,7 +111,7 @@ export function MembersTable({
         title: "Last Voted",
         key: "lastVoted",
         width: "150px",
-        className: "text-center",
+        className: "text-left",
         render: (record) => {
           if (!record?.blockTimestamp) {
             return (
