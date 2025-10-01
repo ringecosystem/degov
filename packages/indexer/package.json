@@ -10,7 +10,7 @@
     "build": "npm run codegen && rm -rf lib && tsc"
   },
   "dependencies": {
-    "@openrouter/ai-sdk-provider": "^0.7.5",
+    "@openrouter/ai-sdk-provider": "^1.2.0",
     "@subsquid/evm-abi": "^0.3.1",
     "@subsquid/evm-processor": "^1.27.3",
     "@subsquid/graphql-server": "^4.11.0",
