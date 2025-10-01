@@ -97,7 +97,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tanstack/eslint-plugin-query": "^5.68.0",
+    "@tanstack/eslint-plugin-query": "^5.91.0",
     "@types/crypto-js": "^4.2.2",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20",
