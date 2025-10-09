@@ -68,19 +68,19 @@ export const User = ({
                 )}
               </AddressResolver>
               <div className="flex gap-[8px] lg:gap-[10px]">
-                <span className="text-[12px] lg:text-[14px] text-foreground/60 flex-shrink-0">
+                <span className="text-[12px] lg:text-[14px] text-foreground/60 shrink-0">
                   {formatShortAddress(address)}
                 </span>
                 <div className="flex items-center gap-[5px]">
                   <ClipboardIconButton
                     text={address}
-                    className="size-[14px] lg:size-[16px] flex-shrink-0"
+                    className="size-[14px] lg:size-[16px] shrink-0"
                   />
                   <Link
                     href={`${daoConfig?.chain?.explorers?.[0]}/address/${address}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex-shrink-0"
+                    className="shrink-0"
                   >
                     <ExternalLinkIcon
                       width={14}
@@ -107,7 +107,7 @@ export const User = ({
           onDelegate={onDelegate}
         />
       </div>
-      <div className="w-full h-[1px] bg-border/20"></div>
+      <div className="w-full h-px bg-border/20"></div>
 
       {profile?.delegate_statement || isAiBot ? (
         <p

@@ -188,7 +188,7 @@ export function ActionTableSummary({
                                 href={`${daoConfig?.chain?.explorers?.[0]}/address/${record.target}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="hover:opacity-80 transition-opacity duration-300 cursor-pointer flex-shrink-0"
+                                className="hover:opacity-80 transition-opacity duration-300 cursor-pointer shrink-0"
                               >
                                 <ExternalLinkIcon
                                   width={16}
@@ -220,7 +220,7 @@ export function ActionTableSummary({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => toggleParams(record.index)}
-                                className="text-[14px] text-foreground/40 font-normal cursor-pointer flex-shrink-0"
+                                className="text-[14px] text-foreground/40 font-normal cursor-pointer shrink-0"
                                 asChild
                               >
                                 <motion.div whileTap={{ scale: 0.95 }}>

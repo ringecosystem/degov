@@ -37,7 +37,7 @@ export const SettingsPanel = ({
           </span>
         </div>
 
-        <div className="h-[1px] w-full bg-grey-2/50"></div>
+        <div className="h-px w-full bg-grey-2/50"></div>
 
         <div className="flex flex-col gap-[5px]">
           <div className="flex items-center gap-[10px]">

@@ -9,7 +9,7 @@ const CurrentVotesSkeleton = () => {
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
       <h3 className="text-[18px] font-semibold">Current Votes</h3>
-      <Separator className="!my-0 bg-border/20" />
+      <Separator className="my-0! bg-border/20" />
 
       <div className="flex flex-col gap-[20px]">
         <div className="flex items-center justify-between gap-[10px]">
@@ -116,7 +116,7 @@ export const CurrentVotes = ({
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
       <h3 className="text-[18px] font-semibold">Current Votes</h3>
-      <Separator className="!my-0 bg-border/20" />
+      <Separator className="my-0! bg-border/20" />
 
       <div className="flex flex-col gap-[20px]">
         <div className="flex items-center justify-between gap-[10px]">

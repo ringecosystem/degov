@@ -29,7 +29,7 @@ export const Sidebar = ({
 }: SidebarProps) => {
   const isNotAddAction = (a: Action): a is Exclude<Action, AddAction> => a.type !== "add";
   return (
-    <aside className="flex w-[300px] flex-shrink-0 flex-col gap-[10px] rounded-[14px]">
+    <aside className="flex w-[300px] shrink-0 flex-col gap-[10px] rounded-[14px]">
       <AnimatePresence initial={false}>
         {actions.filter(isNotAddAction).map((action) => (
           <motion.div

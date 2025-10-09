@@ -212,7 +212,7 @@ export const TransferPanel = ({
                 control={control}
                 render={({ field }) => (
                   <input
-                    className="w-full bg-transparent text-[36px] font-semibold tabular-nums text-foreground placeholder:text-foreground/50 focus-visible:outline-none"
+                    className="w-full bg-transparent text-[36px] font-semibold tabular-nums text-foreground placeholder:text-foreground/50 focus-visible:outline-hidden"
                     placeholder="0.000"
                     type="text"
                     inputMode="decimal"
@@ -221,7 +221,7 @@ export const TransferPanel = ({
                   />
                 )}
               />
-              <div className="flex items-center gap-[10px] rounded-[10px] border border-border bg-card p-[5px] flex-shrink-0">
+              <div className="flex items-center gap-[10px] rounded-[10px] border border-border bg-card p-[5px] shrink-0">
                 {token?.icon ? (
                   <Image
                     src={token.icon}
@@ -236,7 +236,7 @@ export const TransferPanel = ({
             </div>
             <div className="flex items-center justify-end gap-[10px]">
               {/* <span className="text-[14px] text-foreground/50"></span> */}
-              <span className="inline-flex flex-shrink-0 items-center gap-[5px] text-[14px] text-muted-foreground">
+              <span className="inline-flex shrink-0 items-center gap-[5px] text-[14px] text-muted-foreground">
                 Balance:
                 {isLoading ? (
                   <Skeleton className="h-[20px] w-[80px] rounded-[4px]" />
@@ -250,7 +250,7 @@ export const TransferPanel = ({
                 )}
               </span>
               <button
-                className="px-2.5  rounded-[100px] outline outline-1 outline-offset-[-1px] outline-neutral-400 inline-flex justify-center items-center gap-2.5 appearance-none hover:opacity-80 transition-opacity duration-200"
+                className="px-2.5  rounded-[100px] outline outline-1 -outline-offset-1 outline-neutral-400 inline-flex justify-center items-center gap-2.5 appearance-none hover:opacity-80 transition-opacity duration-200"
                 onClick={handleMaxAmount}
               >
                 <span className="justify-start text-muted-foreground text-sm font-normal">

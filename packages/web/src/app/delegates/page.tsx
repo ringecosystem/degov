@@ -95,7 +95,7 @@ export default function Members() {
                 placeholder="Search by address"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-full flex-1 appearance-none bg-transparent outline-none border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
+                className="h-full flex-1 appearance-none bg-transparent outline-hidden border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
               />
             </div>
           </div>
@@ -139,7 +139,7 @@ export default function Members() {
                 placeholder="Search by address"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-full flex-1 appearance-none bg-transparent outline-none border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
+                className="h-full flex-1 appearance-none bg-transparent outline-hidden border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
               />
             </div>
           </div>

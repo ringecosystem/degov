@@ -121,7 +121,7 @@ export function SearchModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-[800px] p-[20px] border-none shadow-lg flex flex-col gap-[20px] !rounded-[26px] bg-card backdrop-blur">
+      <DialogContent className="sm:max-w-[800px] p-[20px] border-none shadow-lg flex flex-col gap-[20px] rounded-[26px]! bg-card backdrop-blur">
         <DialogHeader className="hidden">
           <DialogTitle>Search Proposals</DialogTitle>
         </DialogHeader>
@@ -136,7 +136,7 @@ export function SearchModal({
           />
           <button
             onClick={() => onOpenChange?.(false)}
-            className="rounded-full flex items-center justify-center focus:outline-none"
+            className="rounded-full flex items-center justify-center focus:outline-hidden"
           >
             <svg
               width="24"
@@ -176,7 +176,7 @@ export function SearchModal({
                     }}
                     className="flex items-start gap-[12px] py-[12px] border-b border-b-gray-1 last:border-b-0 hover:bg-card-background transition-colors cursor-pointer"
                   >
-                    <div className="flex-shrink-0 mt-[2px]">
+                    <div className="shrink-0 mt-[2px]">
                       <svg
                         width="26"
                         height="20"

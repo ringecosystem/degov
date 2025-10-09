@@ -41,7 +41,7 @@ export default function AppsPage() {
                 alt={app.name}
                 width={100}
                 height={100}
-                className="rounded-full flex-shrink-0"
+                className="rounded-full shrink-0"
               />
               <div className="flex flex-col justify-center gap-[5px] items-start lg:items-center">
                 <h3 className="text-[18px] font-semibold text-center text-foreground mb-[8px] group-hover:text-foreground/80 transition-colors leading-[100%]">

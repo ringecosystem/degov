@@ -21,7 +21,7 @@ const NotFound = () => {
         </p>
         <Button
           onClick={() => router.push("/")}
-          className="h-[2.125rem] gap-[0.3125rem] mt-[20px]"
+          className="h-8.5 gap-1.25 mt-[20px]"
           color="primary"
         >
           Back to Home

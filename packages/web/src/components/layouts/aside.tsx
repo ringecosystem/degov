@@ -61,7 +61,7 @@ export const Aside = () => {
 
   return (
     <aside
-      className="h-auto flex-shrink-0 border-r border-gray-1 bg-background transition-all duration-300"
+      className="h-auto shrink-0 border-r border-gray-1 bg-background transition-all duration-300"
       style={{ width: currentWidth }}
     >
       <div
@@ -74,7 +74,7 @@ export const Aside = () => {
       >
         <button
           onClick={toggleCollapse}
-          className="absolute -right-3 top-[100px] z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-background shadow-md hover:scale-105 transition-all duration-100 focus:outline-none border border-border"
+          className="absolute -right-3 top-[100px] z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-background shadow-md hover:scale-105 transition-all duration-100 focus:outline-hidden border border-border"
           aria-label={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -105,7 +105,7 @@ export const Aside = () => {
                       width={128}
                       height={26}
                       priority
-                      className="h-[26px] w-[128px] rounded-full border border-[var(--card-background)]"
+                      className="h-[26px] w-[128px] rounded-full border border-(--card-background)"
                     />
                   ) : (
                     <LogoIcon

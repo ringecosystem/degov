@@ -52,7 +52,7 @@ export function DelegationList({ address }: DelegationListProps) {
                   <Skeleton className="h-4 w-24" />
                 </div>
               </div>
-              <div className="flex flex-col items-end flex-shrink-0">
+              <div className="flex flex-col items-end shrink-0">
                 <Skeleton className="h-4 w-16" />
               </div>
             </div>
@@ -101,7 +101,7 @@ export function DelegationList({ address }: DelegationListProps) {
                 </div>
               </div>
 
-              <div className="flex flex-col items-end flex-shrink-0">
+              <div className="flex flex-col items-end shrink-0">
                 <div className="text-sm font-medium text-foreground">
                   {formattedAmount?.formatted}
                 </div>
