@@ -568,6 +568,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-light: var(--light);
+  --color-dark: var(--dark);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -580,6 +582,7 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-card-background: var(--card-background);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
@@ -594,9 +597,13 @@
   --color-executed: var(--executed);
   --color-defeated: var(--defeated);
   --color-canceled: var(--canceled);
+  --color-bg-2: var(--bg-2);
   --color-gray-1: var(--gray-1);
+  --color-grey-1: var(--grey-1);
+  --color-grey-2: var(--grey-2);
   --color-always-light: var(--always-light);
   --color-always-dark: var(--always-dark);
+  --color-text-secondary: var(--muted-foreground);
   --shadow-card: var(--card-shadow);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
