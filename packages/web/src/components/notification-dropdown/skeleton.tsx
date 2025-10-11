@@ -16,7 +16,7 @@ export const NotificationSkeleton = () => {
         </div>
 
         {/* Separator */}
-        <div className="h-[1px] w-full bg-grey-2/50"></div>
+        <div className="h-px w-full bg-grey-2/50"></div>
 
         {/* First toggle setting skeleton */}
         <div className="flex flex-col gap-[5px]">

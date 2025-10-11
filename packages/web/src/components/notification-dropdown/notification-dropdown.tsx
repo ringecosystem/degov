@@ -228,7 +228,7 @@ export const NotificationDropdown = () => {
     <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
-          className="lg:border lg:border-border rounded-full w-[42px] bg-card lg:bg-background h-[42px] lg:rounded-[10px] border-input p-0 flex items-center justify-center focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="lg:border lg:border-border rounded-full w-[42px] bg-card lg:bg-background h-[42px] lg:rounded-[10px] border-input p-0 flex items-center justify-center focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0"
           variant="outline"
           disabled={isAuthenticating}
         >

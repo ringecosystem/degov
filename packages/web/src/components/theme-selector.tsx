@@ -28,7 +28,7 @@ export function ThemeSelector() {
               return (
                 <div
                   key={themeName}
-                  className="w-[30px] h-[30px] rounded-full transition-all duration-200 hover:scale-110 focus:outline-none focus:scale-110 relative border cursor-pointer"
+                  className="w-[30px] h-[30px] rounded-full transition-all duration-200 hover:scale-110 focus:outline-hidden focus:scale-110 relative border cursor-pointer"
                   style={{ backgroundColor: color, borderColor: "#7E7E7E" }}
                   onClick={() => setTheme(themeName)}
                   aria-label={`Switch to ${themeName} theme`}

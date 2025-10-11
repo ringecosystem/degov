@@ -45,7 +45,7 @@ export const ProfileSkeleton = ({ isDelegate }: { isDelegate: boolean }) => {
               <Skeleton className="h-[34px] w-[100px] rounded-full" />
             </div>
           </div>
-          <div className="w-full h-[1px] bg-border/20"></div>
+          <div className="w-full h-px bg-border/20"></div>
           <div className="space-y-2">
             <Skeleton className="h-[18px] w-full" />
             <Skeleton className="h-[18px] w-5/6" />

@@ -117,7 +117,7 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   }, [disconnectWallet, address]);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className=" focus-visible:outline-none">
+      <DropdownMenuTrigger className=" focus-visible:outline-hidden">
         <AddressResolver address={address} showShortAddress>
           {(value) => (
             <div className="flex items-center gap-[10px] rounded-[20px] lg:rounded-[10px] bg-card lg:bg-transparent lg:border lg:border-border px-4 py-2">
@@ -155,7 +155,7 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
             <ExternalLinkIcon
               width={20}
               height={20}
-              className="mt-[2px] flex-shrink-0 text-foreground"
+              className="mt-[2px] shrink-0 text-foreground"
             />
           </Link>
         </div>

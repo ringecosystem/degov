@@ -178,7 +178,7 @@ export function TreasuryList({
                 />
               </div>
 
-              <div className="flex flex-col items-end flex-shrink-0">
+              <div className="flex flex-col items-end shrink-0">
                 <div className="text-sm text-muted-foreground">
                   Value{" "}
                   <span className="text-foreground font-medium">

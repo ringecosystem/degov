@@ -14,7 +14,7 @@ const ErrorDisplay = ({ buttonText, action, title, message }: Props) => {
         <h2 className="m-0 text-center text-[3.125rem] font-bold text-foreground">{title}</h2>
         <p className="m-0 text-center text-[0.875rem] font-bold text-foreground">{message}</p>
       </div>
-      <Button onClick={action} className="h-[2.125rem] gap-[0.3125rem]" color="primary">
+      <Button onClick={action} className="h-8.5 gap-1.25" color="primary">
         {buttonText}
       </Button>
     </div>

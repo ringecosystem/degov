@@ -118,7 +118,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         <div className={`flex items-center gap-[10px]`}>
           <span
             className={cn(
-              `w-[16px] h-[16px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background`,
+              `w-[16px] h-[16px] text-[10px] flex items-center justify-center rounded-full shrink-0 text-background`,
               config?.bgColor
             )}
           >
@@ -179,7 +179,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
             <span
               onClick={() => toggleVoteFilter(VoteType.For)}
               className={cn(
-                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
+                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
                 voteFilters[VoteType.For]
                   ? "bg-foreground"
                   : "bg-muted-foreground opacity-50"
@@ -190,7 +190,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
             <span
               onClick={() => toggleVoteFilter(VoteType.Against)}
               className={cn(
-                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
+                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
                 voteFilters[VoteType.Against]
                   ? "bg-foreground"
                   : "bg-muted-foreground opacity-50"
@@ -201,7 +201,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
             <span
               onClick={() => toggleVoteFilter(VoteType.Abstain)}
               className={cn(
-                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full flex-shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
+                `w-[14px] h-[14px] text-[10px] flex items-center justify-center rounded-full shrink-0 text-background cursor-pointer transition-all duration-200 hover:scale-110`,
                 voteFilters[VoteType.Abstain]
                   ? "bg-foreground"
                   : "bg-muted-foreground opacity-50"

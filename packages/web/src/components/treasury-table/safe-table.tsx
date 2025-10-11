@@ -118,7 +118,7 @@ export function SafeTable({ caption }: SafeTableProps) {
                         <Image
                           src={value?.chainIcon}
                           alt="chain-icon"
-                          className="flex-shrink-0"
+                          className="shrink-0"
                           width={20}
                           height={20}
                         />

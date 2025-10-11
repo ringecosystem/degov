@@ -80,7 +80,7 @@ export function IndexerStatus({
           side="top"
           align="start"
           sideOffset={12}
-          className="bg-card border border-card-background shadow-sm max-w-[350px] rounded-[26px] p-[20px] text-[14px]"
+          className="bg-card border border-card-background shadow-xs max-w-[350px] rounded-[26px] p-[20px] text-[14px]"
         >
           {hoverMessage}
         </TooltipContent>

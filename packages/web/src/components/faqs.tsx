@@ -102,7 +102,7 @@ export const Faqs = ({ type }: FaqsProps) => {
       <h2 className="text-[18px] font-semibold">
         {type.charAt(0).toUpperCase() + type.slice(1)} FAQs
       </h2>
-      <div className="h-[1px] w-full bg-card-background"></div>
+      <div className="h-px w-full bg-card-background"></div>
       {(Array.isArray(faqList) ? faqList : []).map((faq, index) => (
         <div key={index}>
           <a

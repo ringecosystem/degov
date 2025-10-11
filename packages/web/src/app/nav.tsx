@@ -66,7 +66,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                     transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
                   }}
                 >
-                  <span className="relative flex-shrink-0 h-[32px] w-[32px]">
+                  <span className="relative shrink-0 h-[32px] w-[32px]">
                     {(() => {
                       const IconComponent = getNavIcon(route.key);
                       return (

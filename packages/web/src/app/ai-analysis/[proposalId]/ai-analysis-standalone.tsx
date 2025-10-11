@@ -455,7 +455,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
 
           <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[20px]">
             <h3 className="text-[18px] font-semibold">Voting Reason</h3>
-            <div className="w-full h-[1px] bg-gray-1"></div>
+            <div className="w-full h-px bg-gray-1"></div>
             <div
               className="markdown-body overflow-y-auto"
               dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
@@ -476,7 +476,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               height={isClient ? 50 : 30}
             />
           </div>
-          <div className="w-full h-[1px] bg-muted-foreground" />
+          <div className="w-full h-px bg-muted-foreground" />
 
           {renderContent()}
         </div>

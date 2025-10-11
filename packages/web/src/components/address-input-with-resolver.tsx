@@ -78,7 +78,7 @@ export function AddressInputWithResolver({
 
           <button
             onClick={handleClear}
-            className="ml-2 hover:opacity-70 flex-shrink-0 text-muted-foreground"
+            className="ml-2 hover:opacity-70 shrink-0 text-muted-foreground"
           >
             <ProposalCloseIcon
               width={16}

@@ -173,7 +173,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
           <h2 className="text-[18px] font-semibold">System Info</h2>
         </div>
 
-        <div className="h-[1px] w-full bg-card-background"></div>
+        <div className="h-px w-full bg-card-background"></div>
 
         <SystemInfoItem
           label="Governor Contract"
@@ -241,7 +241,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         <h2 className="text-[18px] font-semibold">System Info</h2>
       </div>
 
-      <div className="h-[1px] w-full bg-card-background"></div>
+      <div className="h-px w-full bg-card-background"></div>
 
       <SystemInfoItem
         label="Governor Contract"

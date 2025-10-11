@@ -132,7 +132,7 @@ export function SafeList({ caption }: SafeListProps) {
               />
             </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 className="gap-[5px] rounded-[100px] bg-card h-8 px-3"
                 variant="outline"

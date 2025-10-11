@@ -38,7 +38,7 @@ export const AddressAvatar = ({
       alt={`Avatar for ${address}`}
       width={size}
       height={size}
-      className={cn("rounded-full flex-shrink-0", className)}
+      className={cn("rounded-full shrink-0", className)}
       style={{
         width: size,
         height: size,

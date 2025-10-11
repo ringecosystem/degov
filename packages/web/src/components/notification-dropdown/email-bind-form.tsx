@@ -173,7 +173,7 @@ export const EmailBindForm = ({
             Bind Email
           </span>
         </div>
-        <div className="h-[1px] w-full bg-grey-2/50"></div>
+        <div className="h-px w-full bg-grey-2/50"></div>
 
         <div>
           <label className="block text-sm font-normal text-foreground mb-[5px]">
@@ -219,7 +219,7 @@ export const EmailBindForm = ({
           </div>
           {(emailError || sendError) && (
             <div className="flex items-center gap-[5px] text-[12px] mt-[5px]">
-              <ErrorIcon className="h-4 w-4 flex-shrink-0 text-danger" />
+              <ErrorIcon className="h-4 w-4 shrink-0 text-danger" />
               <span>{emailError || sendError}</span>
             </div>
           )}
@@ -257,7 +257,7 @@ export const EmailBindForm = ({
           </div>
           {verificationError && (
             <div className="flex items-center gap-[5px] text-[12px] mt-[5px]">
-              <ErrorIcon className="h-4 w-4 flex-shrink-0 text-danger" />
+              <ErrorIcon className="h-4 w-4 shrink-0 text-danger" />
               <span>{verificationError}</span>
             </div>
           )}

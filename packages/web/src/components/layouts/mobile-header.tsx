@@ -29,7 +29,7 @@ export const MobileHeader = () => {
 
   return (
     <>
-      <header className="sticky top-0 z-10 w-full border-b border-gray-1 px-[10px] py-[10px] backdrop-blur-sm bg-background/80 shadow-sm">
+      <header className="sticky top-0 z-10 w-full border-b border-gray-1 px-[10px] py-[10px] backdrop-blur-xs bg-background/80 shadow-xs">
         <div className="relative flex h-[24px] items-center justify-between">
           <div className="flex items-center gap-[10px]">
             <Link href="/">
@@ -44,7 +44,7 @@ export const MobileHeader = () => {
                   width={128}
                   height={26}
                   priority
-                  className="h-[26px] w-[128px] rounded-full border border-[var(--card-background)]"
+                  className="h-[26px] w-[128px] rounded-full border border-(--card-background)"
                 />
               ) : (
                 <LogoIcon
