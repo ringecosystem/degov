@@ -27,6 +27,7 @@ export { CancelIcon } from './cancel-icon';
 export { ErrorIcon } from './error-icon';
 export { ClockIcon } from './clock-icon';
 export { DiscussionIcon } from './discussion-icon';
+export { OffchainDiscussionIcon } from './offchain-discussion-icon';
 export { WarningIcon } from './warning-icon';
 export { AlertIcon } from './alert-icon';
 export { AvatarIcon } from './avatar-icon';
