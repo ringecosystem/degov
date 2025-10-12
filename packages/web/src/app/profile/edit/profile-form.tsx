@@ -341,7 +341,7 @@ export function ProfileForm({
                     <Input
                       placeholder="username or https://github.com/username"
                       {...field}
-                      className="w-full border-border bg-transparent"
+                      className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
                   </FormControl>
                 </div>
