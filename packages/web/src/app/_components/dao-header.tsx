@@ -72,6 +72,28 @@ export const DaoHeader = () => {
               {config?.chain?.name}
             </div>
           </div>
+          {config?.aiAgent?.endpoint && (
+            <div className="px-2.5 py-[5px] bg-always-light rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-always-light/80 transition-colors">
+              <div className="justify-start text-always-dark text-xs font-semibold font-['SF_UI_Display']">
+                Agent
+              </div>
+            </div>
+          )}
+          {config?.edit_link && (
+            <>
+              <div className="w-px h-2.5 bg-gray-400" />
+              <a
+                href={config.edit_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-6 px-2.5 rounded-[100px] outline outline-1 outline-offset-[-0.50px] outline-always-light inline-flex justify-center items-center gap-[5px] hover:bg-always-light/10 transition-colors"
+              >
+                <span className="text-always-light text-sm font-normal font-['SF_UI_Display']">
+                  Edit
+                </span>
+              </a>
+            </>
+          )}
         </h1>
 
         <div className="lg:hidden">
