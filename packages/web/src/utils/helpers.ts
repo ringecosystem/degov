@@ -228,3 +228,8 @@ export function generateHash<T>(
     return "";
   }
 }
+
+export function removeNetworkSuffix(networkName?: string): string {
+  if (!networkName) return "";
+  return networkName.replace(/\s+Network$/i, "");
+}
