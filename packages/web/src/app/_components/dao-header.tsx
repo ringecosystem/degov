@@ -17,6 +17,7 @@ import {
 import { Tooltip, TooltipContent, TooltipPortal } from "@/components/ui/tooltip";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
+import { removeNetworkSuffix } from "@/utils/helpers";
 
 import { Contracts } from "./contracts";
 import { Parameters } from "./parameters";
@@ -69,7 +70,7 @@ export const DaoHeader = () => {
           {config?.name}
           <div className="px-2.5 py-[5px] bg-always-light rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-always-light/80 transition-colors">
             <div className="justify-start text-always-dark text-xs font-semibold font-['SF_UI_Display']">
-              {config?.chain?.name}
+              {removeNetworkSuffix(config?.chain?.name)}
             </div>
           </div>
         </h1>
