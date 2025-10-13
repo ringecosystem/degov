@@ -14,7 +14,7 @@ import {
   DiscordIcon,
   CoingeckoIcon,
 } from "@/components/icons";
-import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipPortal } from "@/components/ui/tooltip";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import { removeNetworkSuffix } from "@/utils/helpers";
@@ -97,14 +97,16 @@ export const DaoHeader = () => {
                 {config?.description}
               </p>
             </TooltipTrigger>
-            <TooltipContent
-              className="max-w-[600px] rounded-[26px] bg-card p-[20px] border border-card-background shadow-card z-200"
-              sideOffset={12}
-            >
-              <p className="text-[14px] text-foreground">
-                {config?.description}
-              </p>
-            </TooltipContent>
+            <TooltipPortal>
+              <TooltipContent
+                className="max-w-[600px] rounded-[26px] bg-card p-[20px] border border-card-background shadow-card z-200"
+                sideOffset={12}
+              >
+                <p className="text-[14px] text-foreground">
+                  {config?.description}
+                </p>
+              </TooltipContent>
+            </TooltipPortal>
           </Tooltip>
         </div>
 
