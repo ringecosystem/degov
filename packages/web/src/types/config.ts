@@ -107,6 +107,7 @@ interface Config {
   safes?: SafeConfig;
   apps?: AppConfig;
   aiAgent?: AiAgent;
+  editLink?: string;
 }
 
 export type {
