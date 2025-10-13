@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { VoteType } from "@/config/vote";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { cn } from "@/lib/utils";
 import type { ProposalVoterItem } from "@/services/graphql/types";
@@ -33,6 +34,7 @@ interface CommentsProps {
 const PAGE_SIZE = 20;
 export const Comments = ({ comments, id }: CommentsProps) => {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
+  const daoConfig = useDaoConfig();
   const [currentCommentRow, setCurrentCommentRow] = useState<
     ProposalVoterItem | undefined
   >(undefined);
@@ -245,7 +247,25 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         key: "date",
         width: "22.25%",
         className: "text-left",
-        render: (record) => <span>{formatTimeAgo(record.blockTimestamp)}</span>,
+        render: (record) => {
+          const explorerUrl = daoConfig?.chain?.explorers?.[0];
+          const txUrl = explorerUrl
+            ? `${explorerUrl}/tx/${record.transactionHash}`
+            : undefined;
+
+          return txUrl ? (
+            <a
+              href={txUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline transition-colors hover:text-foreground/80"
+            >
+              {formatTimeAgo(record.blockTimestamp)}
+            </a>
+          ) : (
+            <span>{formatTimeAgo(record.blockTimestamp)}</span>
+          );
+        },
       },
       {
         title: (
