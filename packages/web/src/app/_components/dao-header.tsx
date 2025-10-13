@@ -80,11 +80,11 @@ export const DaoHeader = () => {
               </div>
             </div>
           )}
-          {config?.edit_link && (
+          {config?.editLink && (
             <>
               <div className="w-px h-2.5 bg-gray-400" />
               <a
-                href={config.edit_link}
+                href={config.editLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="h-6 px-2.5 rounded-[100px] outline outline-1 outline-offset-[-0.50px] outline-always-light inline-flex justify-center items-center gap-[5px] hover:bg-always-light/10 transition-colors"
