@@ -9,18 +9,21 @@ import {
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import type { ColumnType } from "@/components/custom-table";
 import { CustomTable } from "@/components/custom-table";
+import { SortableCell } from "@/components/sortable-cell";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { VoteType } from "@/config/vote";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { cn } from "@/lib/utils";
 import type { ProposalVoterItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
 import { CommentModal } from "./comment-modal";
+import { useVoteSorting } from "./hooks/useVoteSorting";
 
 interface CommentsProps {
   comments?: ProposalVoterItem[];
@@ -31,6 +34,7 @@ interface CommentsProps {
 const PAGE_SIZE = 20;
 export const Comments = ({ comments, id }: CommentsProps) => {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
+  const daoConfig = useDaoConfig();
   const [currentCommentRow, setCurrentCommentRow] = useState<
     ProposalVoterItem | undefined
   >(undefined);
@@ -55,22 +59,29 @@ export const Comments = ({ comments, id }: CommentsProps) => {
     return filtered;
   }, [deferredComments, voteFilters]);
 
+  const {
+    sortState,
+    sortedComments,
+    handleDateSortChange,
+    handlePowerSortChange,
+  } = useVoteSorting(filteredComments);
+
   const visibleComments = useMemo(() => {
-    if (filteredComments.length <= PAGE_SIZE) {
-      return filteredComments;
+    if (sortedComments.length <= PAGE_SIZE) {
+      return sortedComments;
     }
-    return filteredComments.slice(0, visibleCount);
-  }, [filteredComments, visibleCount]);
+    return sortedComments.slice(0, visibleCount);
+  }, [sortedComments, visibleCount]);
 
   const loadMoreComments = useCallback(() => {
-    if (visibleCount < filteredComments.length) {
+    if (visibleCount < sortedComments.length) {
       startTransition(() => {
         setVisibleCount((prev) =>
-          Math.min(prev + PAGE_SIZE, filteredComments.length)
+          Math.min(prev + PAGE_SIZE, sortedComments.length)
         );
       });
     }
-  }, [visibleCount, filteredComments.length, startTransition]);
+  }, [visibleCount, sortedComments.length, startTransition]);
 
   const resetVisibleCount = useCallback(() => {
     setVisibleCount(PAGE_SIZE);
@@ -222,14 +233,52 @@ export const Comments = ({ comments, id }: CommentsProps) => {
             : null,
       },
       {
-        title: "Date",
+        title: (
+          <SortableCell
+            label="Date"
+            sortState={
+              sortState.field === "date" ? sortState.direction : undefined
+            }
+            onClick={handleDateSortChange}
+            className="justify-start"
+            textClassName="text-[14px]"
+          />
+        ),
         key: "date",
         width: "22.25%",
         className: "text-left",
-        render: (record) => <span>{formatTimeAgo(record.blockTimestamp)}</span>,
+        render: (record) => {
+          const explorerUrl = daoConfig?.chain?.explorers?.[0];
+          const txUrl = explorerUrl
+            ? `${explorerUrl}/tx/${record.transactionHash}`
+            : undefined;
+
+          return txUrl ? (
+            <a
+              href={txUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline transition-colors hover:text-foreground/80"
+            >
+              {formatTimeAgo(record.blockTimestamp)}
+            </a>
+          ) : (
+            <span>{formatTimeAgo(record.blockTimestamp)}</span>
+          );
+        },
       },
       {
-        title: "Voting Power",
+        title: (
+          <SortableCell
+            label="Voting Power"
+            sortState={
+              sortState.field === "power" ? sortState.direction : undefined
+            }
+            onClick={handlePowerSortChange}
+            className="justify-end"
+            textClassName="text-[14px]"
+          />
+        ),
         key: "votingPower",
         width: "22.25%",
         className: "text-right",
@@ -255,9 +304,17 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         },
       },
     ];
-  }, [formatTokenAmount, totalVotingPower, voteFilters, toggleVoteFilter]);
+  }, [
+    formatTokenAmount,
+    totalVotingPower,
+    voteFilters,
+    toggleVoteFilter,
+    sortState,
+    handleDateSortChange,
+    handlePowerSortChange,
+  ]);
 
-  const hasMoreItems = visibleCount < filteredComments.length;
+  const hasMoreItems = visibleCount < sortedComments.length;
 
   return (
     <div className="rounded-[14px] bg-card p-[20px] flex flex-col h-full min-h-0 shadow-card">
@@ -273,7 +330,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
             tableClassName="table-fixed"
             bodyClassName={cn(
               "flex-1 min-h-0",
-              !filteredComments?.length ? "hidden" : ""
+              !sortedComments?.length ? "hidden" : ""
             )}
             caption={
               hasMoreItems ? (
@@ -285,12 +342,12 @@ export const Comments = ({ comments, id }: CommentsProps) => {
                   >
                     {isPending
                       ? "Loading..."
-                      : `Load More (${filteredComments.length - visibleCount})`}
+                      : `Load More (${sortedComments.length - visibleCount})`}
                   </button>
                 </div>
-              ) : filteredComments.length > PAGE_SIZE ? (
+              ) : sortedComments.length > PAGE_SIZE ? (
                 <div className="text-muted-foreground text-xs">
-                  Showing all {filteredComments.length} votes
+                  Showing all {sortedComments.length} votes
                 </div>
               ) : null
             }
