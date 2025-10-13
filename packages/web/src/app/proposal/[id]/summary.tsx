@@ -150,17 +150,6 @@ export const Summary = ({
           {hasDiscussionLinks && (
             <>
               <div className="w-px h-[10px] bg-muted-foreground" />
-              {data?.discussion && (
-                <a
-                  href={data.discussion}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-5 h-5 bg-light rounded-full flex justify-center items-center hover:opacity-80 transition-opacity"
-                  title="Discussion"
-                >
-                  <OffchainDiscussionIcon width={12} height={12} className="text-dark"/>
-                </a>
-              )}
               {daoConfig?.aiAgent?.endpoint && !loading && aiAnalysisData?.id && (
                 <a
                   href={`https://x.com/${aiAnalysisData.twitter_user.username}/status/${aiAnalysisData.id}`}
@@ -172,6 +161,18 @@ export const Summary = ({
                   <XIcon width={12} height={12} className="text-dark" />
                 </a>
               )}
+              {data?.discussion && (
+                <a
+                  href={data.discussion}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-5 h-5 bg-light rounded-full flex justify-center items-center hover:opacity-80 transition-opacity"
+                  title="Discussion"
+                >
+                  <OffchainDiscussionIcon width={12} height={12} className="text-dark"/>
+                </a>
+              )}
+          
             </>
           )}
         </div>
