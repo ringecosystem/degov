@@ -32,6 +32,12 @@ interface ActionTableSummaryProps {
   isLoading?: boolean;
 }
 
+const COLUMN_WIDTHS = {
+  type: "160px",
+  to: "210px",
+  action: "610px",
+} as const;
+
 export function ActionTableSummary({
   actions,
   isLoading = false,
@@ -98,13 +104,16 @@ export function ActionTableSummary({
   const LoadingRows = useMemo(() => {
     return Array.from({ length: 3 }).map((_, index) => (
       <TableRow key={`loading-${index}`}>
-        <TableCell className="text-left" style={{ width: "24.77%" }}>
+        <TableCell
+          className="text-left"
+          style={{ width: COLUMN_WIDTHS.type }}
+        >
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: "25.48%" }}>
+        <TableCell className="text-left" style={{ width: COLUMN_WIDTHS.to }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: "49.75%" }}>
+        <TableCell className="text-left" style={{ width: COLUMN_WIDTHS.action }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
       </TableRow>
@@ -119,19 +128,19 @@ export function ActionTableSummary({
             <TableRow>
               <TableHead
                 className="text-left rounded-l-[14px]"
-                style={{ width: "24.77%" }}
+                style={{ width: COLUMN_WIDTHS.type }}
               >
                 Type
               </TableHead>
               <TableHead
                 className="text-left"
-                style={{ width: "25.48%" }}
+                style={{ width: COLUMN_WIDTHS.to }}
               >
                 To
               </TableHead>
               <TableHead
                 className="text-left rounded-r-[14px]"
-                style={{ width: "49.75%" }}
+                style={{ width: COLUMN_WIDTHS.action }}
               >
                 Action
               </TableHead>
@@ -159,7 +168,7 @@ export function ActionTableSummary({
                       >
                         <TableCell
                           className="text-left"
-                          style={{ width: "24.77%" }}
+                          style={{ width: COLUMN_WIDTHS.type }}
                         >
                           <div className="flex items-center gap-[10px]">
                             {(() => {
@@ -184,7 +193,7 @@ export function ActionTableSummary({
 
                         <TableCell
                           className="text-left"
-                          style={{ width: "25.48%" }}
+                          style={{ width: COLUMN_WIDTHS.to }}
                         >
                           {record.target ? (
                             <span className="flex items-center gap-[5px] font-mono">
@@ -211,7 +220,10 @@ export function ActionTableSummary({
 
                         <TableCell
                           className="text-left"
-                          style={{ width: "49.75%", wordWrap: "break-word" }}
+                          style={{
+                            width: COLUMN_WIDTHS.action,
+                            wordWrap: "break-word",
+                          }}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span
