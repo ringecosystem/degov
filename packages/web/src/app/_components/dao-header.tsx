@@ -56,23 +56,63 @@ export const DaoHeader = () => {
       <div className="flex flex-col gap-[10px]">
         <h1
           className={cn(
-            "flex items-center gap-[10px] text-[26px] font-extrabold text-always-light"
+            "flex flex-col gap-[10px] text-[26px] font-extrabold text-always-light lg:flex-row lg:items-center"
           )}
         >
-          <Image
-            src={config?.logo ?? ""}
-            alt="logo"
-            className={cn("size-[35px] rounded-full")}
-            width={35}
-            height={35}
-          />
+          <div className="flex w-full items-start justify-between gap-[10px] lg:w-auto lg:items-center">
+            <div className="flex items-center gap-[10px]">
+              <Image
+                src={config?.logo ?? ""}
+                alt="logo"
+                className={cn("size-[35px] rounded-full")}
+                width={35}
+                height={35}
+              />
 
-          {config?.name}
-          <div className="px-2.5 py-[5px] bg-always-light rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-always-light/80 transition-colors">
-            <div className="justify-start text-always-dark text-xs font-semibold font-['SF_UI_Display']">
-              {removeNetworkSuffix(config?.chain?.name)}
+              {config?.name}
             </div>
+            {config?.editLink && (
+              <a
+                href={config.editLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-6 px-2.5 rounded-[100px] outline outline-offset-[-0.50px] outline-always-light inline-flex justify-center items-center gap-[5px] hover:bg-always-light/10 transition-colors lg:hidden"
+              >
+                <span className="text-always-light text-sm font-normal font-['SF_UI_Display']">
+                  Edit
+                </span>
+              </a>
+            )}
           </div>
+          <div className="flex flex-wrap items-center gap-[10px]">
+            <div className="px-2.5 py-[5px] bg-always-light rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-always-light/80 transition-colors">
+              <div className="justify-start text-always-dark text-xs font-semibold font-['SF_UI_Display']">
+                {removeNetworkSuffix(config?.chain?.name)}
+              </div>
+            </div>
+            {config?.aiAgent?.endpoint && (
+              <div className="px-2.5 py-[5px] bg-always-light rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-always-light/80 transition-colors">
+                <div className="justify-start text-always-dark text-xs font-semibold font-['SF_UI_Display']">
+                  Agent
+                </div>
+              </div>
+            )}
+          </div>
+          {config?.editLink && (
+            <div className="hidden items-center gap-[10px] lg:flex">
+              <div className="w-px h-2.5 bg-gray-400" />
+              <a
+                href={config.editLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-6 px-2.5 rounded-[100px] outline outline-offset-[-0.50px] outline-always-light inline-flex justify-center items-center gap-[5px] hover:bg-always-light/10 transition-colors"
+              >
+                <span className="text-always-light text-sm font-normal font-['SF_UI_Display']">
+                  Edit
+                </span>
+              </a>
+            </div>
+          )}
         </h1>
 
         <div className="lg:hidden">
