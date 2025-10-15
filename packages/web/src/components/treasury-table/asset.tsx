@@ -2,54 +2,61 @@ import { blo } from "blo";
 import Image from "next/image";
 
 import { ExternalLinkIcon } from "@/components/icons";
-import type { TokenDetails } from "@/types/config";
+import type { TreasuryAssetWithPortfolio } from "@/hooks/useTreasuryAssets";
+
+type AssetSummary = Pick<
+  TreasuryAssetWithPortfolio,
+  "address" | "logo" | "name" | "symbol" | "native"
+>;
 
 interface AssetProps {
-  asset: TokenDetails;
-  explorer: string;
-  symbol: string;
-  isNativeToken?: boolean;
+  asset: AssetSummary;
+  explorer?: string;
 }
-export const Asset = ({
-  asset,
-  explorer,
-  symbol,
-  isNativeToken,
-}: AssetProps) => {
-  return isNativeToken ? (
-    <span className="flex items-center gap-[10px] text-[14px] text-foreground transition-opacity hover:opacity-80">
+
+export const Asset = ({ asset, explorer }: AssetProps) => {
+  const imageSrc =
+    asset.logo ||
+    (asset.address ? blo(asset.address as `0x${string}`) : "") ||
+    "";
+
+  const content = (
+    <>
       <Image
-        src={asset.logo || blo(asset.contract as `0x${string}`) || ""}
-        alt={symbol || "N/A"}
+        src={imageSrc}
+        alt={asset.symbol || asset.name || "Token"}
         className="h-[30px] w-[30px] rounded-full"
         width={30}
         height={30}
       />
-      <span className="text-[14px] capitalize text-foreground">
-        {symbol || "N/A"}
+      <div className="flex flex-col min-w-0">
+        <span className="text-[14px] font-medium text-foreground truncate">
+          {asset.name || asset.symbol || "Unknown"}
+        </span>
+      </div>
+    </>
+  );
+
+  if (asset.native || !explorer) {
+    return (
+      <span className="flex items-center gap-[10px] text-foreground">
+        {content}
       </span>
-    </span>
-  ) : (
+    );
+  }
+
+  return (
     <a
-      className="flex items-center gap-[10px] text-[14px] text-foreground transition-opacity hover:underline hover:opacity-80"
-      href={`${explorer}/token/${asset.contract}`}
+      className="flex items-center gap-[10px] text-foreground transition-opacity hover:underline hover:opacity-80"
+      href={`${explorer}/token/${asset.address}`}
       target="_blank"
       rel="noreferrer"
     >
-      <Image
-        src={asset.logo || blo(asset.contract as `0x${string}`) || ""}
-        alt={symbol || "N/A"}
-        className="h-[30px] w-[30px] rounded-full"
-        width={30}
-        height={30}
-      />
-      <span className="text-[14px] capitalize text-foreground">
-        {symbol || "N/A"}
-      </span>
+      {content}
       <ExternalLinkIcon
         width={16}
         height={16}
-        className="h-[16px] w-[16px] text-current"
+        className="h-[16px] w-[16px] shrink-0 text-current"
       />
     </a>
   );

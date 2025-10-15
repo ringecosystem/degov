@@ -3,14 +3,36 @@ import { useMemo } from "react";
 
 const COINGECKO_API_URL = "https://api.coingecko.com/api/v3/simple/price";
 
-type CoinGeckoResponse = Record<string, { usd: number }>;
+type CoinGeckoResponse = Record<
+  string,
+  {
+    usd: number;
+    usd_24h_change?: number;
+    last_updated_at?: number;
+  }
+>;
 
-export function useCryptoPrices(coinIds: string[] = []) {
-  console.log("coinIds", coinIds);
+type MarketData = {
+  price: number;
+  change24hPercent: number;
+  lastUpdatedAt?: number;
+};
 
+type UseCryptoPricesOptions = {
+  enabled?: boolean;
+};
+
+export function useCryptoPrices(
+  coinIds: string[] = [],
+  options: UseCryptoPricesOptions = {}
+) {
   const priceIds = useMemo(() => {
-    return Array.from(new Set(coinIds.map((id) => id.toLowerCase())));
+    return Array.from(
+      new Set(coinIds.map((id) => id.toLowerCase()).filter(Boolean))
+    );
   }, [coinIds]);
+
+  const isEnabled = options.enabled ?? true;
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["prices", priceIds],
@@ -18,7 +40,9 @@ export function useCryptoPrices(coinIds: string[] = []) {
       if (priceIds.length === 0) return {};
 
       const response = await fetch(
-        COINGECKO_API_URL + "?ids=" + priceIds.join(",") + "&vs_currencies=usd",
+        `${COINGECKO_API_URL}?ids=${priceIds.join(
+          ","
+        )}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`,
         {
           headers: {
             Accept: "application/json",
@@ -35,20 +59,43 @@ export function useCryptoPrices(coinIds: string[] = []) {
       const data = (await response.json()) as CoinGeckoResponse;
       return data;
     },
-    refetchInterval: 60000,
-    staleTime: 30000,
+    enabled: isEnabled && priceIds.length > 0,
+    refetchInterval: isEnabled ? 60_000 : false,
+    staleTime: 30_000,
   });
 
-  const prices = useMemo(() => {
+  const marketData = useMemo(() => {
     if (!data) return {};
 
-    const formattedPrices: Record<string, number> = {};
+    const formatted: Record<string, MarketData> = {};
+
     Object.entries(data).forEach(([coinId, priceData]) => {
-      formattedPrices[coinId.toLowerCase()] = priceData.usd;
+      const lowerId = coinId.toLowerCase();
+      formatted[lowerId] = {
+        price: priceData.usd ?? 0,
+        change24hPercent: priceData.usd_24h_change ?? 0,
+        lastUpdatedAt: priceData.last_updated_at,
+      };
     });
 
-    return formattedPrices;
+    return formatted;
   }, [data]);
+
+  const prices = useMemo(() => {
+    const result: Record<string, number> = {};
+    Object.entries(marketData).forEach(([coinId, info]) => {
+      result[coinId] = info.price;
+    });
+    return result;
+  }, [marketData]);
+
+  const priceChanges24h = useMemo(() => {
+    const result: Record<string, number> = {};
+    Object.entries(marketData).forEach(([coinId, info]) => {
+      result[coinId] = info.change24hPercent;
+    });
+    return result;
+  }, [marketData]);
 
   const getPrice = useMemo(() => {
     return (coinId: string): number => {
@@ -57,9 +104,19 @@ export function useCryptoPrices(coinIds: string[] = []) {
     };
   }, [prices]);
 
+  const getChange24h = useMemo(() => {
+    return (coinId: string): number => {
+      const id = coinId.toLowerCase();
+      return priceChanges24h[id] || 0;
+    };
+  }, [priceChanges24h]);
+
   return {
     prices,
+    priceChanges24h,
+    marketData,
     getPrice,
+    getChange24h,
     isLoading,
     isError,
     error,
