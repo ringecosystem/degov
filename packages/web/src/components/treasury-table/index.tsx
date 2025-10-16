@@ -14,7 +14,11 @@ import {
 } from "@/components/ui/table";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { TreasuryAssetWithPortfolio } from "@/hooks/useTreasuryAssets";
-import { formatBigIntForDisplay } from "@/utils/number";
+import {
+  formatBigIntForDisplay,
+  formatCurrency,
+  formatCurrencyFixed,
+} from "@/utils/number";
 
 import { Skeleton } from "../ui/skeleton";
 import {
@@ -31,14 +35,6 @@ interface TreasuryTableProps {
   caption?: string;
   isLoading?: boolean;
 }
-
-const formatCurrency = (value: number, decimals: number = 2) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
 
 const formatPercent = (value: number, decimals: number = 2) =>
   `${value.toFixed(decimals)}%`;
@@ -183,7 +179,9 @@ export function TreasuryTable({
             <TableHead className="w-[27.083333%] text-center">
               Portfolio %
             </TableHead>
-            <TableHead className="w-[27.083333%] text-center">Price (24h)</TableHead>
+            <TableHead className="w-[27.083333%] text-left">
+              Price (24h)
+            </TableHead>
             <TableHead className="w-[18.75%] text-right rounded-r-[14px]">
               Balance
             </TableHead>
@@ -209,8 +207,8 @@ export function TreasuryTable({
                 <TableCell className="text-center">
                   {formatPercent(portfolioPercent)}
                 </TableCell>
-                <TableCell className="text-center">
-                  <div className="flex flex-col items-center gap-[4px]">
+                <TableCell className="text-left">
+                  <div className="flex flex-col items-start gap-[4px]">
                     <span className="text-[14px] font-medium text-foreground">
                       {priceAvailable
                         ? formatCurrency(asset.priceValue)
@@ -236,7 +234,7 @@ export function TreasuryTable({
                   <div className="flex flex-col items-end gap-[4px]">
                     <span className="text-[14px] font-medium text-foreground">
                       {hasBalanceUSD
-                        ? formatCurrency(asset.balanceUSDValue)
+                        ? formatCurrencyFixed(asset.balanceUSDValue)
                         : "N/A"}
                     </span>
                     <span className="text-[12px] text-muted-foreground">

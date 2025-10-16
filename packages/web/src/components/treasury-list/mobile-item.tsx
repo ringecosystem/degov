@@ -1,7 +1,7 @@
 import BigNumber from "bignumber.js";
 
 import type { TreasuryAssetWithPortfolio } from "@/hooks/useTreasuryAssets";
-import { formatNumberForDisplay } from "@/utils";
+import { formatCurrencyFixed, formatNumberForDisplay } from "@/utils";
 
 import { Asset } from "../treasury-table/asset";
 
@@ -9,14 +9,6 @@ interface MobileAssetItemProps {
   asset: TreasuryAssetWithPortfolio;
   explorer?: string;
 }
-
-const formatCurrency = (value: number, decimals: number = 2) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
 
 const formatTokenAmount = (balance?: string) => {
   if (!balance) return "0";
@@ -35,7 +27,7 @@ export function MobileAssetItem({ asset, explorer }: MobileAssetItemProps) {
   const hasBalanceUSD =
     asset.balanceUSD !== null && asset.balanceUSD !== undefined;
   const valueDisplay = hasBalanceUSD
-    ? formatCurrency(asset.balanceUSDValue)
+    ? formatCurrencyFixed(asset.balanceUSDValue)
     : "N/A";
   const balanceDisplay = `${formatTokenAmount(asset.balance)} ${
     asset.symbol || ""
