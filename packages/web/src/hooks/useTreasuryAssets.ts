@@ -51,10 +51,11 @@ type UseTreasuryAssetsResult = TreasuryAssetsData & {
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const DAY_IN_MS = 86_400_000;
-const DEFAULT_PRICE_PRECISION = 18; // 与 GraphQL 服务对齐，保持价格字符串精度一致
+const DEFAULT_PRICE_PRECISION = 18;
 
 const toOptionalNumber = (value?: number | string) => {
-  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? value : undefined;
   if (typeof value === "string") {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : undefined;
@@ -279,8 +280,7 @@ const useTreasuryAssetsFromConfig = ({
 
   const targetChainId = chainId ?? daoConfig?.chain?.id;
   const resolvedChainId = toOptionalNumber(targetChainId);
-  const chain =
-    targetChainId !== undefined ? String(targetChainId) : undefined;
+  const chain = targetChainId !== undefined ? String(targetChainId) : undefined;
 
   const erc20Assets = useMemo(() => {
     if (!daoConfig?.treasuryAssets) return [];
