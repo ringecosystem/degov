@@ -24,7 +24,7 @@ import {
   type Action,
 } from "@/hooks/useDecodeCallData";
 import { cn } from "@/lib/utils";
-import { formatFunctionSignature } from "@/utils";
+import { formatShortAddress } from "@/utils/address";
 import { formatBigIntForDisplay } from "@/utils/number";
 
 interface ActionTableSummaryProps {
@@ -32,16 +32,31 @@ interface ActionTableSummaryProps {
   isLoading?: boolean;
 }
 
+const COLUMN_WIDTHS = {
+  type: "160px",
+  to: "210px",
+  action: "610px",
+} as const;
+
 export function ActionTableSummary({
   actions,
   isLoading = false,
 }: ActionTableSummaryProps) {
   const daoConfig = useDaoConfig();
   const [openParams, setOpenParams] = useState<number[]>([]);
+  const [jsonViewIndexes, setJsonViewIndexes] = useState<number[]>([]);
   const decodedActions = useDecodeCallData(actions);
 
   const toggleParams = (index: number) => {
     setOpenParams((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+    // Reset JSON view when toggling params
+    setJsonViewIndexes((prev) => prev.filter((i) => i !== index));
+  };
+
+  const toggleJsonView = (index: number) => {
+    setJsonViewIndexes((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
     );
   };
@@ -66,12 +81,8 @@ export function ActionTableSummary({
           daoConfig?.chain?.nativeToken?.decimals ?? 18
         )} ${daoConfig?.chain?.nativeToken?.symbol}`;
       } else {
-        // Use function name from hook or formatted signature
-        details = action.functionName
-          ? action.functionName
-          : action?.signature
-          ? formatFunctionSignature(action?.signature)
-          : "";
+        // Use full function signature for better readability
+        details = action.fullFunctionSignature || action.signature || action.functionName || "";
       }
 
       // Use parameters from hook
@@ -93,13 +104,16 @@ export function ActionTableSummary({
   const LoadingRows = useMemo(() => {
     return Array.from({ length: 3 }).map((_, index) => (
       <TableRow key={`loading-${index}`}>
-        <TableCell className="text-left" style={{ width: "24.76%" }}>
+        <TableCell
+          className="text-left"
+          style={{ width: COLUMN_WIDTHS.type }}
+        >
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: "41.8%" }}>
+        <TableCell className="text-left" style={{ width: COLUMN_WIDTHS.to }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: "33.44%" }}>
+        <TableCell className="text-left" style={{ width: COLUMN_WIDTHS.action }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
       </TableRow>
@@ -114,21 +128,21 @@ export function ActionTableSummary({
             <TableRow>
               <TableHead
                 className="text-left rounded-l-[14px]"
-                style={{ width: "24.76%" }}
+                style={{ width: COLUMN_WIDTHS.type }}
               >
                 Type
               </TableHead>
               <TableHead
                 className="text-left"
-                style={{ width: "41.8%", minWidth: "410px" }}
+                style={{ width: COLUMN_WIDTHS.to }}
               >
                 To
               </TableHead>
               <TableHead
                 className="text-left rounded-r-[14px]"
-                style={{ width: "33.44%" }}
+                style={{ width: COLUMN_WIDTHS.action }}
               >
-                Details
+                Action
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -154,7 +168,7 @@ export function ActionTableSummary({
                       >
                         <TableCell
                           className="text-left"
-                          style={{ width: "24.76%" }}
+                          style={{ width: COLUMN_WIDTHS.type }}
                         >
                           <div className="flex items-center gap-[10px]">
                             {(() => {
@@ -179,11 +193,11 @@ export function ActionTableSummary({
 
                         <TableCell
                           className="text-left"
-                          style={{ width: "41.8%", minWidth: "410px" }}
+                          style={{ width: COLUMN_WIDTHS.to }}
                         >
                           {record.target ? (
                             <span className="flex items-center gap-[5px] font-mono">
-                              {record.target}
+                              {formatShortAddress(record.target)}
                               <a
                                 href={`${daoConfig?.chain?.explorers?.[0]}/address/${record.target}`}
                                 target="_blank"
@@ -206,7 +220,10 @@ export function ActionTableSummary({
 
                         <TableCell
                           className="text-left"
-                          style={{ width: "33.44%", wordWrap: "break-word" }}
+                          style={{
+                            width: COLUMN_WIDTHS.action,
+                            wordWrap: "break-word",
+                          }}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span
@@ -253,40 +270,96 @@ export function ActionTableSummary({
                               }}
                             >
                               <TableCell colSpan={3} className="pt-0 px-[20px]">
-                                <motion.div
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  transition={{ delay: 0.1 }}
-                                >
-                                  <div className="border border-gray-1 bg-background">
-                                    {record.params.map(
-                                      (param: ParsedParam, pIndex: number) => (
-                                        <div
-                                          key={pIndex}
-                                          className={cn(
-                                            "grid grid-cols-[140px_1fr]",
-                                            pIndex > 0 &&
-                                              "border-t border-gray-1"
+                                <div className="space-y-[10px]">
+                                  <AnimatePresence mode="wait">
+                                    {!jsonViewIndexes.includes(record.index) ? (
+                                      <motion.div
+                                        key="params-view"
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -20 }}
+                                        transition={{
+                                          duration: DEFAULT_ANIMATION_DURATION,
+                                        }}
+                                        className="space-y-[10px]"
+                                      >
+                                        <div className="border border-gray-1 bg-background">
+                                          {record.params.map(
+                                            (param: ParsedParam, pIndex: number) => (
+                                              <div
+                                                key={pIndex}
+                                                className={cn(
+                                                  "grid grid-cols-[140px_1fr]",
+                                                  pIndex > 0 &&
+                                                    "border-t border-gray-1"
+                                                )}
+                                              >
+                                                <div className="p-[10px] text-[12px] font-medium border-r border-gray-1 flex items-center">
+                                                  {param.name}
+                                                </div>
+                                                <div
+                                                  className="p-[10px] text-[12px] font-mono break-words text-left"
+                                                  style={{
+                                                    wordBreak: "break-all",
+                                                  }}
+                                                >
+                                                  {Array.isArray(param.value)
+                                                    ? `[${param.value.join(", ")}]`
+                                                    : param.value}
+                                                </div>
+                                              </div>
+                                            )
                                           )}
-                                        >
-                                          <div className="p-[10px] text-[12px] font-medium border-r border-gray-1 flex items-center">
-                                            {param.name}
-                                          </div>
-                                          <div
-                                            className="p-[10px] text-[12px] font-mono break-words text-left"
-                                            style={{
-                                              wordBreak: "break-all",
-                                            }}
-                                          >
-                                            {Array.isArray(param.value)
-                                              ? `[${param.value.join(", ")}]`
-                                              : param.value}
-                                          </div>
                                         </div>
-                                      )
+                                        <div className="flex justify-end">
+                                          <button
+                                            onClick={() => toggleJsonView(record.index)}
+                                            className="h-7 px-2.5 py-1 rounded-[100px] outline-1 outline-offset-[-0.50px] outline-foreground inline-flex justify-center items-center gap-[5px] hover:bg-accent cursor-pointer transition-colors"
+                                          >
+                                            <span className="text-foreground text-sm font-normal">View Json</span>
+                                          </button>
+                                        </div>
+                                      </motion.div>
+                                    ) : (
+                                      <motion.div
+                                        key="json-view"
+                                        initial={{ opacity: 0, x: 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: 20 }}
+                                        transition={{
+                                          duration: DEFAULT_ANIMATION_DURATION,
+                                        }}
+                                        className="space-y-[10px]"
+                                      >
+                                        <div className="p-2.5 bg-background outline-1 outline-offset-[-0.50px] outline-gray-1">
+                                          <pre className="text-left text-foreground text-sm font-normal overflow-x-auto whitespace-pre-wrap break-words">
+                                            {JSON.stringify(
+                                              {
+                                                signature: record.fullFunctionSignature || record.signature || record.functionName,
+                                                calldata: record.params.reduce((acc: Record<string, string | string[]>, param: ParsedParam) => {
+                                                  acc[param.name] = param.value;
+                                                  return acc;
+                                                }, {} as Record<string, string | string[]>),
+                                                target: record.target,
+                                                value: record.value || "0",
+                                              },
+                                              null,
+                                              2
+                                            )}
+                                          </pre>
+                                        </div>
+                                        <div className="flex justify-end">
+                                          <button
+                                            onClick={() => toggleJsonView(record.index)}
+                                            className="h-7 px-2.5 py-1 rounded-[100px] outline-1 outline-offset-[-0.50px] outline-foreground inline-flex justify-center items-center gap-[5px] hover:bg-accent cursor-pointer transition-colors"
+                                          >
+                                            <span className="text-foreground text-sm font-normal">Back</span>
+                                          </button>
+                                        </div>
+                                      </motion.div>
                                     )}
-                                  </div>
-                                </motion.div>
+                                  </AnimatePresence>
+                                </div>
                               </TableCell>
                             </motion.tr>
                           )}
