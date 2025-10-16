@@ -106,11 +106,15 @@ export async function generateMetadata(): Promise<Metadata> {
   return buildMetadata(config);
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
+  // Get config to check for analytics configuration
+  const config = await getRemoteConfig();
+  const gaTag = config.analysis?.ga?.tag;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -126,6 +130,22 @@ export default function RootLayout({
             })}`,
           }}
         />
+        {gaTag && (
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${gaTag}`}
+            strategy="afterInteractive"
+          />
+        )}
+        {gaTag && (
+          <Script id="google-analytics" strategy="afterInteractive">
+            {`
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', '${gaTag}');
+            `}
+          </Script>
+        )}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

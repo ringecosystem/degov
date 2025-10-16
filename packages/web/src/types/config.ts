@@ -90,6 +90,14 @@ type FaqConfig = FaqItem[];
 type SafeConfig = SafeItem[];
 type AppConfig = AppItem[];
 
+interface AnalysisConfig {
+  ga?: AnalysisConfigGa;
+}
+
+interface AnalysisConfigGa {
+  tag: string;
+}
+
 interface Config {
   name: string;
   code: string;
@@ -108,6 +116,7 @@ interface Config {
   apps?: AppConfig;
   aiAgent?: AiAgent;
   editLink?: string;
+  analysis?: AnalysisConfig;
 }
 
 export type {
@@ -127,4 +136,6 @@ export type {
   AppConfig,
   FaqItem,
   FaqConfig,
+  AnalysisConfig,
+  AnalysisConfigGa,
 };
