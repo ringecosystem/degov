@@ -1,3 +1,5 @@
+import BigNumber from "bignumber.js";
+import { clamp, take } from "lodash-es";
 import { formatUnits } from "viem";
 
 import { DECIMAL } from "@/config/base";
@@ -92,4 +94,93 @@ export function formatBigIntWithDecimals(
   }).format(Number(fixedValue));
 
   return [originalFormat, formattedFixed];
+}
+
+/**
+ * Currency formatter: keeps at least two decimals but expands until two significant decimals appear.
+ * @param value numeric amount
+ * @returns formatted USD string
+ */
+export function formatCurrency(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "$0.00";
+  }
+
+  const amount = new BigNumber(value);
+  if (!amount.isFinite()) {
+    return "$0.00";
+  }
+
+  const absolute = amount.abs();
+  const decimals = clamp(absolute.decimalPlaces() ?? 0, 0, 18);
+  const fractionPart =
+    decimals > 0
+      ? absolute
+          .toFixed(decimals, BigNumber.ROUND_DOWN)
+          .split(".")[1] ?? ""
+      : "";
+  const meaningfulPositions = take(
+    [...fractionPart]
+      .map((digit, index) => (digit !== "0" ? index + 1 : 0))
+      .filter(Boolean),
+    2
+  );
+  const lastMeaningful =
+    meaningfulPositions[meaningfulPositions.length - 1] ?? 0;
+  const fractionDigits =
+    decimals === 0
+      ? 2
+      : clamp(
+          Math.max(lastMeaningful, 2),
+          2,
+          Math.max(decimals, 2)
+        );
+
+  const formatted = absolute.toFormat(
+    fractionDigits,
+    BigNumber.ROUND_HALF_UP,
+    {
+      decimalSeparator: ".",
+      groupSeparator: ",",
+      groupSize: 3,
+    }
+  );
+
+  return `${amount.isNegative() ? "-" : ""}$${formatted}`;
+}
+
+/**
+ * Currency formatter with fixed decimals, used when consumers need an exact digit count.
+ * @param value numeric amount
+ * @param decimals desired decimal digits (0-18)
+ */
+export function formatCurrencyFixed(
+  value: number,
+  decimals: number = 2
+): string {
+  const digits = Number.isFinite(decimals)
+    ? clamp(Math.floor(decimals), 0, 18)
+    : 2;
+  const formatAmount = (amount: BigNumber): string => {
+    const formatted = amount
+      .abs()
+      .toFormat(digits, BigNumber.ROUND_HALF_UP, {
+        decimalSeparator: ".",
+        groupSeparator: ",",
+        groupSize: 3,
+      });
+
+    return `${amount.isNegative() ? "-" : ""}$${formatted}`;
+  };
+
+  if (!Number.isFinite(value)) {
+    return formatAmount(new BigNumber(0));
+  }
+
+  const amount = new BigNumber(value);
+  if (!amount.isFinite()) {
+    return formatAmount(new BigNumber(0));
+  }
+
+  return formatAmount(amount);
 }

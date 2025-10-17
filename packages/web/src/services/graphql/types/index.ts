@@ -4,3 +4,4 @@ export * from "./squidStatus";
 export * from "./profile";
 export * from "./contributors";
 export * from "./notifications";
+export * from "./treasury";

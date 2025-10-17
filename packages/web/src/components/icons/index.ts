@@ -36,6 +36,7 @@ export { StarActiveIcon } from './star-active-icon';
 export { NotificationIcon } from './notification-icon';
 export { EmailBindIcon } from './email-bind-icon';
 export { SettingsIcon } from './settings-icon';
+export { TokenMinimalValueIcon } from './token-minimal-value-icon';
 
 // Status Icons
 export { StatusPublishedIcon } from './status-published-icon';

@@ -8,9 +8,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { processChainIconUrl } from "@/utils";
 
 import { Asset } from "../treasury-table/safe-asset";
-import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
-
 
 interface SafeListProps {
   caption?: string;
@@ -77,9 +75,7 @@ export function SafeList({ caption }: SafeListProps) {
   if (isFetching) {
     return (
       <div className="space-y-4">
-        <h4 className="text-[16px] font-semibold text-foreground">
-          Safe Assets
-        </h4>
+        <h4 className="text-[16px] font-semibold text-foreground">Safes</h4>
         {Array.from({ length: 3 }).map((_, index) => (
           <div
             key={index}
@@ -104,9 +100,7 @@ export function SafeList({ caption }: SafeListProps) {
   if (!data?.length) {
     return (
       <div className="space-y-4">
-        <h4 className="text-[16px] font-semibold text-foreground">
-          Safe Assets
-        </h4>
+        <h4 className="text-[16px] font-semibold text-foreground">Safe</h4>
         <div className="rounded-[14px] bg-card p-[20px] text-center text-foreground/60">
           No assets found
         </div>
@@ -116,12 +110,12 @@ export function SafeList({ caption }: SafeListProps) {
 
   return (
     <div className="space-y-4">
-      <h4 className="text-[16px] font-semibold text-foreground">Safe Assets</h4>
+      <h4 className="text-[16px] font-semibold text-foreground">Safes</h4>
 
       {displayData?.map((value, index) => (
         <div
           key={value.link ?? index}
-          className="rounded-[14px] bg-card p-4 border border-border/20"
+          className="rounded-[14px] bg-card p-[10px] shadow-card"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -131,25 +125,24 @@ export function SafeList({ caption }: SafeListProps) {
                 explorer={value?.addressExplorer ?? ""}
               />
             </div>
-
             <div className="flex items-center gap-2 shrink-0">
-              <Button
-                className="gap-[5px] rounded-[100px] bg-card h-8 px-3"
-                variant="outline"
-                size="sm"
-                asChild
-              >
-                <Link href={value?.link ?? ""} target="_blank" rel="noreferrer">
+              <div className="gap-[5px] rounded-[100px] bg-card ">
+                <Link
+                  href={value?.link ?? ""}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-[5px]"
+                >
                   <span className="text-[12px]">view on Safe</span>
                   <Image
                     src="/assets/image/safe.svg"
                     alt="external-link"
                     className="h-[16px] w-[16px]"
-                    width={16}
-                    height={16}
+                    width={20}
+                    height={20}
                   />
                 </Link>
-              </Button>
+              </div>
             </div>
           </div>
         </div>

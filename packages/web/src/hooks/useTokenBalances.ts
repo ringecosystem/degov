@@ -24,19 +24,54 @@ export interface UseTokenBalancesReturn {
   isError: boolean;
 }
 
+type UseTokenBalancesOptions = {
+  address?: string;
+  chainId?: number | string;
+  enabled?: boolean;
+};
+
+const toOptionalNumber = (value?: number | string) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
+
 export function useTokenBalances(
-  assets: TokenDetails[]
+  assets: TokenDetails[],
+  options: UseTokenBalancesOptions = {}
 ): UseTokenBalancesReturn {
   const daoConfig = useDaoConfig();
-  const timeLockAddress = daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
+  const resolvedAddress =
+    options.address ??
+    daoConfig?.contracts?.timeLock ??
+    daoConfig?.contracts?.governor;
+  const resolvedChainId =
+    toOptionalNumber(options.chainId) ?? daoConfig?.chain?.id;
+  const isEnabled = options.enabled ?? true;
+
   const { tokenInfo } = useGetTokenInfo(
     assets.map((v) => ({
       contract: v.contract,
       standard: v.standard,
-    }))
+    })),
+    {
+      chainId: resolvedChainId,
+      enabled: isEnabled && resolvedChainId !== undefined,
+    }
   );
   const contractCalls = useMemo(() => {
-    if (!timeLockAddress || isEmpty(assets)) return [];
+    if (
+      !resolvedAddress ||
+      !isEnabled ||
+      resolvedChainId === undefined ||
+      isEmpty(assets)
+    )
+      return [];
 
     return assets
       .filter((asset) => asset.contract && asset.standard)
@@ -44,10 +79,10 @@ export function useTokenBalances(
         address: asset.contract as `0x${string}`,
         abi: asset.standard === "ERC20" ? erc20Abi : erc721Abi,
         functionName: "balanceOf",
-        args: [timeLockAddress as `0x${string}`],
-        chainId: daoConfig?.chain?.id,
+        args: [resolvedAddress as `0x${string}`],
+        chainId: resolvedChainId,
       }));
-  }, [assets, timeLockAddress, daoConfig?.chain?.id]);
+  }, [assets, isEnabled, resolvedAddress, resolvedChainId]);
 
   const {
     data: balanceResults,
@@ -57,9 +92,10 @@ export function useTokenBalances(
     contracts: contractCalls,
     query: {
       enabled:
+        isEnabled &&
         contractCalls.length > 0 &&
-        Boolean(timeLockAddress) &&
-        Boolean(daoConfig?.chain?.id),
+        Boolean(resolvedAddress) &&
+        resolvedChainId !== undefined,
     },
   });
 
