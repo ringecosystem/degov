@@ -1,7 +1,9 @@
 import { blo } from "blo";
 import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 
 import { ExternalLinkIcon } from "@/components/icons";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { TreasuryAssetWithPortfolio } from "@/hooks/useTreasuryAssets";
 
 type AssetSummary = Pick<
@@ -15,10 +17,51 @@ interface AssetProps {
 }
 
 export const Asset = ({ asset, explorer }: AssetProps) => {
+  const daoConfig = useDaoConfig();
+  const daoLogo = daoConfig?.logo ?? "";
+  const defaultPlaceholder =
+    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+  const fallbackSrc = useMemo(() => {
+    if (asset.native) {
+      if (daoLogo) return daoLogo;
+      if (asset.address) {
+        try {
+          return blo(asset.address as `0x${string}`);
+        } catch {
+          return defaultPlaceholder;
+        }
+      }
+      return defaultPlaceholder;
+    }
+
+    if (asset.address) {
+      try {
+        return blo(asset.address as `0x${string}`);
+      } catch {
+        return daoLogo || defaultPlaceholder;
+      }
+    }
+
+    return daoLogo || defaultPlaceholder;
+  }, [asset.address, asset.native, daoLogo]);
+
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [asset.address, asset.logo, asset.native]);
+
   const imageSrc =
-    asset.logo ||
-    (asset.address ? blo(asset.address as `0x${string}`) : "") ||
-    "";
+    asset.logo && !hasError
+      ? asset.logo
+      : fallbackSrc || daoLogo || defaultPlaceholder;
+
+  const handleImageError = () => {
+    if (!hasError) {
+      setHasError(true);
+    }
+  };
 
   const content = (
     <>
@@ -28,6 +71,7 @@ export const Asset = ({ asset, explorer }: AssetProps) => {
         className="h-[30px] w-[30px] rounded-full"
         width={30}
         height={30}
+        onError={handleImageError}
       />
       <div className="flex flex-col min-w-0">
         <span className="text-[14px] font-medium text-foreground truncate">

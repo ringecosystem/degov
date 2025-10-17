@@ -166,10 +166,7 @@ export const transformTreasuryAssets = (
 ): TreasuryAssetsData => {
   const normalizedAssets = assets.map((asset) => ({
     ...asset,
-    native:
-      typeof asset.native === "number"
-        ? asset.native !== 0
-        : Boolean(asset.native),
+    native: Boolean(asset.native),
   }));
 
   const totalBalance = normalizedAssets.reduce(
