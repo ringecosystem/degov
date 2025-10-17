@@ -120,22 +120,24 @@ const buildHistoricalPrices = (
 const calculatePriceChange = (
   asset: TreasuryAsset
 ): TreasuryAssetPriceChange | undefined => {
-  if (!asset.historicalPrices || asset.historicalPrices.length < 2) {
+  if (!asset.historicalPrices || asset.historicalPrices.length === 0) {
     return undefined;
   }
 
-  const sorted = [...asset.historicalPrices].sort(
-    (a, b) => Number(b.timestamp) - Number(a.timestamp)
-  );
-
-  const latest = toBigNumber(sorted[0]?.price);
-  const previous = toBigNumber(sorted[1]?.price);
-
-  if (latest.isNaN() || previous.isNaN()) {
+  const currentPrice = toBigNumber(asset.price);
+  if (currentPrice.isNaN()) {
     return undefined;
   }
 
-  const absolute = latest.minus(previous);
+  const lastHistoricalPrice =
+    asset.historicalPrices[asset.historicalPrices.length - 1];
+  const previous = toBigNumber(lastHistoricalPrice?.price);
+
+  if (previous.isNaN()) {
+    return undefined;
+  }
+
+  const absolute = currentPrice.minus(previous);
   const percent = previous.isZero()
     ? new BigNumber(0)
     : absolute.dividedBy(previous).multipliedBy(100);
