@@ -65,11 +65,11 @@ const TableSkeleton = () => (
   <Table>
     <TableHeader>
       <TableRow>
-        <TableHead className="w-[27.083333%] rounded-l-[14px] text-left">
+        <TableHead className="w-[36.458333%] rounded-l-[14px] text-left">
           <TokenHeaderLabel />
         </TableHead>
-        <TableHead className="w-[27.083333%] text-right">Portfolio %</TableHead>
-        <TableHead className="w-[27.083333%] text-right">Price (24h)</TableHead>
+        <TableHead className="w-[22.395833%] text-center">Portfolio %</TableHead>
+        <TableHead className="w-[22.395833%] text-left">Price (24h)</TableHead>
         <TableHead className="w-[18.75%] text-right rounded-r-[14px]">
           Balance
         </TableHead>
@@ -173,13 +173,13 @@ export function TreasuryTable({
         )}
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[27.083333%] rounded-l-[14px] text-left">
+            <TableHead className="w-[36.458333%] rounded-l-[14px] text-left">
               <TokenHeaderLabel />
             </TableHead>
-            <TableHead className="w-[27.083333%] text-center">
+            <TableHead className="w-[22.395833%] text-center">
               Portfolio %
             </TableHead>
-            <TableHead className="w-[27.083333%] text-left">
+            <TableHead className="w-[22.395833%] text-left">
               Price (24h)
             </TableHead>
             <TableHead className="w-[18.75%] text-right rounded-r-[14px]">
