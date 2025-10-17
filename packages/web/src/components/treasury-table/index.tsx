@@ -65,12 +65,12 @@ const TableSkeleton = () => (
   <Table>
     <TableHeader>
       <TableRow>
-        <TableHead className="w-[36.458333%] rounded-l-[14px] text-left">
+        <TableHead className="w-[350px] rounded-l-[14px] text-left">
           <TokenHeaderLabel />
         </TableHead>
-        <TableHead className="w-[22.395833%] text-center">Portfolio %</TableHead>
-        <TableHead className="w-[22.395833%] text-left">Price (24h)</TableHead>
-        <TableHead className="w-[18.75%] text-right rounded-r-[14px]">
+        <TableHead className="w-[215px] text-left">Portfolio %</TableHead>
+        <TableHead className="w-[215px] text-left">Price (24h)</TableHead>
+        <TableHead className="w-[180px] text-right rounded-r-[14px]">
           Balance
         </TableHead>
       </TableRow>
@@ -87,11 +87,11 @@ const TableSkeleton = () => (
               </div>
             </div>
           </TableCell>
-          <TableCell className="text-right">
-            <Skeleton className="ml-auto h-[14px] w-[60px]" />
+          <TableCell className="text-left">
+            <Skeleton className="h-[14px] w-[60px]" />
           </TableCell>
-          <TableCell className="text-right">
-            <div className="flex flex-col items-end gap-[6px]">
+          <TableCell className="text-left">
+            <div className="flex flex-col items-start gap-[6px]">
               <Skeleton className="h-[14px] w-[80px]" />
               <Skeleton className="h-[12px] w-[90px]" />
             </div>
@@ -173,16 +173,12 @@ export function TreasuryTable({
         )}
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[36.458333%] rounded-l-[14px] text-left">
+            <TableHead className="w-[350px] rounded-l-[14px] text-left">
               <TokenHeaderLabel />
             </TableHead>
-            <TableHead className="w-[22.395833%] text-center">
-              Portfolio %
-            </TableHead>
-            <TableHead className="w-[22.395833%] text-left">
-              Price (24h)
-            </TableHead>
-            <TableHead className="w-[18.75%] text-right rounded-r-[14px]">
+            <TableHead className="w-[215px] text-left">Portfolio %</TableHead>
+            <TableHead className="w-[215px] text-left">Price (24h)</TableHead>
+            <TableHead className="w-[180px] text-right rounded-r-[14px]">
               Balance
             </TableHead>
           </TableRow>
@@ -204,7 +200,7 @@ export function TreasuryTable({
                 <TableCell className="text-left">
                   <Asset asset={asset} explorer={explorer} />
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="text-left">
                   {formatPercent(portfolioPercent)}
                 </TableCell>
                 <TableCell className="text-left">
