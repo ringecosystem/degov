@@ -1,33 +1,33 @@
-name: ENS
-code: ens-dao
-logo: https://pbs.twimg.com/profile_images/1810706000669798400/nYlIMYkq_400x400.jpg
-siteUrl: https://ens.degov.ai
-offChainDiscussionUrl: https://discuss.ens.domains
-editLink: https://github.com/ringecosystem/degov-registry/blob/main/daos/ens-dao.yml
-description: ENS allows users to register human-readable names for their Ethereum addresses, making it easier to interact with the blockchain.
+name: Unlock Protocol
+code: unlock-dao
+logo: https://pbs.twimg.com/profile_images/1510010252787212290/Kuiapnmy_400x400.jpg
+siteUrl: https://unlock.degov.ai
+offChainDiscussionUrl: https://discord.unlock-protocol.com
+editLink: https://github.com/ringecosystem/degov-registry/blob/main/daos/unlock-dao.yml
+description: Ʉnlock is an open source protocol for onchain memberships & subscriptions.
 
 links:
-  coingecko: https://www.coingecko.com/en/coins/ethereum-name-service
-  website: https://ens.domains
-  twitter: https://x.com/ensdomains
-  discord: https://chat.ens.domains
-  github: https://github.com/ensdomains
+  coingecko: https://www.coingecko.com/en/coins/unlockprotocoltoken
+  website: https://unlock-protocol.com/
+  twitter: https://x.com/UnlockProtocol
+  github: https://github.com/unlock-protocol
+  discord: https://discord.unlock-protocol.com
 
 theme:
-  logoDark: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/ens-dark.svg
-  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/ens-light.svg
+  logoDark: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/unlock-dark.svg
+  logoLight: https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/assets/logos/unlock-light.svg
 
 wallet:
   walletConnectProjectId: 4e204efdf64201e155ce7ad7123d127d
 
 chain:
-  name: Ethereum Network
-  id: 1
-  logo: https://pbs.twimg.com/profile_images/1878738447067652096/tXQbWfpf_400x400.jpg
+  name: Base Network
+  id: 8453
+  logo: https://pbs.twimg.com/profile_images/1821025913976287232/l0WGRm5B_400x400.jpg
   rpcs:
-    - https://ethereum-rpc.publicnode.com
+    - https://base-rpc.publicnode.com
   explorers:
-    - https://etherscan.io
+    - https://basescan.org
   nativeToken:
     symbol: ETH
     priceId: ethereum
@@ -35,27 +35,34 @@ chain:
     logo: https://assets.coingecko.com/coins/images/279/standard/ethereum.png
 
 indexer:
-  endpoint: https://indexer.degov.ai/ens-dao/graphql
-  startBlock: 13533418
-  gateway: https://v2.archive.subsquid.io/network/ethereum-mainnet
+  endpoint: https://indexer.degov.ai/unlock-dao/graphql
+  startBlock: 18035311
+  gateway: https://v2.archive.subsquid.io/network/base-mainnet
 
 aiAgent:
   endpoint: https://agent.degov.ai
 
 contracts:
-  governor: "0x323A76393544d5ecca80cd6ef2A560C6a395b7E3"
+  governor: "0x65bA0624403Fc5Ca2b20479e9F626eD4D78E0aD9"
   governorToken:
-    address: "0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72"
+    address: "0xaC27fa800955849d6D17cC8952Ba9dD6EAA66187"
     standard: ERC20
-  timeLock: "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7"
+  timeLock: "0xB34567C4cA697b39F72e1a8478f285329A98ed1b"
 
-safes:
-  - name: ENS Meta Governance Safe
-    chainId: 1
-    link: https://app.safe.global/home?safe=eth:0x91c32893216dE3eA0a55ABb9851f581d4503d39b
-  - name: ENS Ecosystem Safe
-    chainId: 1
-    link: https://app.safe.global/home?safe=eth:0x2686A8919Df194aA7673244549E68D42C1685d03
-  - name: ENS public goods Safe
-    chainId: 1
-    link: https://app.safe.global/home?safe=eth:0xcD42b4c4D102cc22864e3A1341Bb0529c17fD87d
+treasuryAssets:
+  - name: Unlock Protocol Token
+    contract: "0xaC27fa800955849d6D17cC8952Ba9dD6EAA66187"
+    standard: ERC20
+    priceId: unlockprotocoltoken
+    logo: https://assets.coingecko.com/coins/images/51457/standard/up2.png
+  - name: USDC
+    contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    standard: ERC20
+    priceId: usd-coin
+    logo: https://assets.coingecko.com/coins/images/6319/standard/usdc.png
+
+apps:
+  - name: Unlock Base Migration
+    description: Migrate your UDT from Ethereum to UP on Base.
+    icon: https://pbs.twimg.com/profile_images/1510010252787212290/Kuiapnmy_400x400.jpg
+    link: https://up-swap.unlock-protocol.com
