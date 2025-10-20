@@ -11,7 +11,15 @@ type TokenDetails = {
   standard: string;
 };
 
-export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
+type UseGetTokenInfoOptions = {
+  chainId?: number;
+  enabled?: boolean;
+};
+
+export const useGetTokenInfo = (
+  tokenList: TokenDetails[],
+  options: UseGetTokenInfoOptions = {}
+) => {
   const daoConfig = useDaoConfig();
   const baseContract = useMemo(() => {
     return tokenList.map((v) => {
@@ -23,6 +31,10 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
     });
   }, [tokenList]);
 
+  const resolvedChainId =
+    options.chainId ?? daoConfig?.chain?.id ?? undefined;
+  const isEnabled = options.enabled ?? true;
+
   const contractCalls = useMemo(() => {
     const calls: {
       address: `0x${string}`;
@@ -31,12 +43,14 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
       chainId?: number;
     }[] = [];
 
+    if (resolvedChainId === undefined) return calls;
+
     baseContract.forEach((contract) => {
       calls.push({
         address: contract.address,
         abi: contract.abi,
         functionName: "symbol",
-        chainId: daoConfig?.chain?.id,
+        chainId: resolvedChainId,
       });
     });
 
@@ -46,18 +60,21 @@ export const useGetTokenInfo = (tokenList: TokenDetails[]) => {
           address: contract.address,
           abi: contract.abi,
           functionName: "decimals",
-          chainId: daoConfig?.chain?.id,
+          chainId: resolvedChainId,
         });
       }
     });
 
     return calls;
-  }, [baseContract, daoConfig?.chain?.id]);
+  }, [baseContract, resolvedChainId]);
 
   const symbolResults = useReadContracts({
     contracts: contractCalls,
     query: {
-      enabled: contractCalls.length > 0 && !!daoConfig?.chain?.id,
+      enabled:
+        isEnabled &&
+        contractCalls.length > 0 &&
+        resolvedChainId !== undefined,
     },
   });
 

@@ -104,7 +104,6 @@ export function useSmartGetVotes({
       staleTime: QUERY_STALE_TIME,
     },
   });
-  console.log("votingPowerData", votingPowerData);
   const isLoading =
     isVotingPowerLoading ||
     isClockLoading ||

@@ -176,6 +176,23 @@ export const squidStatusService = {
   },
 };
 
+export const treasuryService = {
+  getTreasuryAssets: async (
+    endpoint: string,
+    input: Types.TreasuryAssetsRequestVariables
+  ) => {
+    const response = await request<
+      Types.TreasuryAssetsResponse,
+      Types.TreasuryAssetsRequestVariables
+    >(endpoint, Queries.GET_TREASURY_ASSETS, {
+      chain: input.chain,
+      address: input.address,
+    });
+
+    return response?.treasuryAssets ?? [];
+  },
+};
+
 
 
 export const contributorService = {
