@@ -6,15 +6,19 @@ FROM base AS builder
 
 COPY . /code
 
-ENV DEGOV_CONFIG_PATH=/app/degov.yml
+ENV DEGOV_CONFIG_PATH=/code/degov.yml
 
 RUN corepack enable pnpm \
-  && mv /code/packages/web /app \
-  && mv /code/degov.yml /app \
-  && rm -rf /code \
-  && cd /app \
+  && cd /code \
   && pnpm install --frozen-lockfile \
-  && pnpm build
+  && cd /code/packages/web \
+  && pnpm build \
+  && mkdir -p /app \
+  && cp -r /code/packages/web/.next /app/ \
+  && cp -r /code/packages/web/public /app/ \
+  && cp -r /code/packages/web/scripts /app/ \
+  && cp -r /code/packages/web/prisma /app/ \
+  && cp /code/degov.yml /app/
 
 FROM base AS runner
 WORKDIR /app
