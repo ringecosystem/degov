@@ -13,7 +13,7 @@ RUN corepack enable pnpm \
   && mv /code/degov.yml /app \
   && rm -rf /code \
   && cd /app \
-  && pnpm install \
+  && pnpm install --frozen-lockfile \
   && pnpm build
 
 FROM base AS runner
