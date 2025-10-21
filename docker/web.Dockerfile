@@ -6,6 +6,8 @@ FROM base AS builder
 
 COPY . /code
 
+ENV DEGOV_CONFIG_PATH=/app/degov.yml
+
 RUN corepack enable pnpm \
   && mv /code/packages/web /app \
   && mv /code/degov.yml /app \
