@@ -1,10 +1,10 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useMemo, useState, useRef, useEffect } from "react";
-import { useAsync } from "react-use";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
+import { OffchainDiscussionIcon } from "@/components/icons";
 
 import { ActionsPanel } from "./action-panel";
 
@@ -26,56 +26,46 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
   const [showToggle, setShowToggle] = useState(false);
   const markdownRef = useRef<HTMLDivElement>(null);
 
-  const proposalContent = useAsync(async () => {
-    const title =
-      actions[0]?.type === "proposal"
-        ? (actions[0]?.content as ProposalContent).title || "Untitled"
-        : "Untitled";
-    const markdown =
-      actions[0]?.type === "proposal"
-        ? (actions[0]?.content as ProposalContent).markdown
-        : "";
-    const discussion =
-      actions[0]?.type === "proposal"
-        ? (actions[0]?.content as ProposalContent).discussion
-        : undefined;
-    return { title, markdown, discussion };
+  const proposalContent = useMemo(() => {
+    if (actions[0]?.type === "proposal") {
+      const content = actions[0]?.content as ProposalContent;
+      return {
+        title: content.title?.trim() || "Untitled",
+        markdown: content.markdown ?? "",
+        discussion: content.discussion,
+      };
+    }
+
+    return {
+      title: "Untitled",
+      markdown: "",
+      discussion: undefined,
+    };
   }, [actions]);
 
   const sanitizedHtml = useMemo(() => {
-    const html = marked.parse(proposalContent?.value?.markdown ?? "") as string;
+    const html = marked.parse(proposalContent.markdown ?? "") as string;
     if (!html) return "";
     return DOMPurify.sanitize(html);
-  }, [proposalContent?.value?.markdown]);
+  }, [proposalContent.markdown]);
 
   useEffect(() => {
-    const checkHeight = () => {
-      if (markdownRef.current && sanitizedHtml) {
-        markdownRef.current.style.maxHeight = "none";
-        const height = markdownRef.current.scrollHeight;
-        setShowToggle(height > MAX_COLLAPSED_HEIGHT);
+    if (!sanitizedHtml || !markdownRef.current) {
+      setShowToggle(false);
+      return;
+    }
 
-        if (height > MAX_COLLAPSED_HEIGHT && !isExpanded) {
-          markdownRef.current.style.maxHeight = `${MAX_COLLAPSED_HEIGHT}px`;
-        }
-      }
+    const updateHeight = () => {
+      if (!markdownRef.current) return;
+      const height = markdownRef.current.scrollHeight;
+      setShowToggle(height > MAX_COLLAPSED_HEIGHT);
     };
 
-    if (sanitizedHtml) {
-      setTimeout(checkHeight, 0);
-    }
-  }, [sanitizedHtml, isExpanded]);
+    requestAnimationFrame(updateHeight);
+  }, [sanitizedHtml]);
 
   const toggleExpanded = () => {
-    setIsExpanded((prev) => {
-      const newExpanded = !prev;
-      if (markdownRef.current) {
-        markdownRef.current.style.maxHeight = newExpanded
-          ? "none"
-          : `${MAX_COLLAPSED_HEIGHT}px`;
-      }
-      return newExpanded;
-    });
+    setIsExpanded((prev) => !prev);
   };
 
   if (!visible) {
@@ -86,10 +76,10 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
     <div className="flex flex-col gap-[20px] animate-in fade-in duration-300">
       <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
         <h2 className="text-[16px] lg:text-[26px] font-semibold flex items-center gap-[10px]">
-          {proposalContent?.value?.title}
+          {proposalContent.title}
         </h2>
 
-        <div className="flex items-center gap-[20px] lg:gap-[5px] text-[12px] lg:text-[16px]">
+        <div className="flex items-center gap-[10px] text-[12px] lg:text-[16px]">
           <div className="flex items-center gap-[5px]">
             <span className="hidden lg:block">Proposed by</span>
             {address && (
@@ -100,26 +90,26 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
               />
             )}
           </div>
+          {proposalContent.discussion && (
+            <>
+              <div className="w-px h-[10px] bg-muted-foreground" />
+              <a
+                href={proposalContent.discussion}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-5 h-5 bg-light rounded-full flex justify-center items-center hover:opacity-80 transition-opacity"
+                title="Discussion"
+              >
+                <OffchainDiscussionIcon
+                  width={12}
+                  height={12}
+                  className="text-dark"
+                />
+              </a>
+            </>
+          )}
         </div>
       </div>
-
-      {proposalContent?.value?.discussion && (
-        <div className="flex flex-col gap-[20px] p-[10px] lg:p-[20px] rounded-[14px] bg-card shadow-card">
-          <div className="flex flex-col gap-[12px]">
-            <h3 className="text-[18px] font-semibold text-foreground border-b border-card-background pb-[20px]">
-              Offchain discussion
-            </h3>
-            <a
-              href={proposalContent.value.discussion}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[14px] lg:text-[18px] font-semibold hover:underline"
-            >
-              {proposalContent.value.discussion}
-            </a>
-          </div>
-        </div>
-      )}
 
       {!!sanitizedHtml && (
         <div className="flex flex-col gap-[20px] bg-card p-[10px] lg:p-[20px] rounded-[14px] shadow-card">
@@ -128,6 +118,10 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
               ref={markdownRef}
               className="markdown-body"
               style={{
+                maxHeight:
+                  showToggle && !isExpanded
+                    ? `${MAX_COLLAPSED_HEIGHT}px`
+                    : "none",
                 overflow: "hidden",
               }}
             >
