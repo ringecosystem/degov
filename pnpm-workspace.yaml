@@ -1,6 +1,0 @@
-packages:
-  - packages/*
-  - '!packages/indexer'
-
-# ignoredBuiltDependencies:
-#   - '@prisma/client'
