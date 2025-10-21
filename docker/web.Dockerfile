@@ -23,12 +23,12 @@ ENV DEGOV_CONFIG_PATH=/app/degov.yml
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /code/packages/web/.next/standalone ./packages/web/
+COPY --from=builder --chown=nextjs:nodejs /code/packages/web/.next/static ./packages/web/.next/static
 
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/public ./public
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/scripts ./scripts
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /code/packages/web/public ./packages/web/public
+COPY --from=builder --chown=nextjs:nodejs /code/packages/web/scripts ./packages/web/scripts
+COPY --from=builder --chown=nextjs:nodejs /code/packages/web/prisma ./packages/web/prisma
 COPY --from=builder --chown=nextjs:nodejs /code/degov.yml ./degov.yml
 
 RUN npm i -g prisma \
@@ -41,4 +41,6 @@ ENV HOSTNAME="0.0.0.0"
 
 EXPOSE 3000
 
-ENTRYPOINT [ "/app/scripts/entrypoint.sh" ]
+WORKDIR /app/packages/web
+
+ENTRYPOINT [ "./scripts/entrypoint.sh" ]
