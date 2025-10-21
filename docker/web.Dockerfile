@@ -6,12 +6,12 @@ FROM base AS builder
 
 COPY . /code
 
-ENV DEGOV_CONFIG_PATH=/code/degov.yml
-
 RUN corepack enable pnpm \
-  && cd /code \
+  && mv /code/packages/web /app \
+  && mv /code/degov.yml /app \
+  && rm -rf /code \
+  && cd /app \
   && pnpm install --frozen-lockfile \
-  && cd /code/packages/web \
   && pnpm build
 
 FROM base AS runner
@@ -23,13 +23,12 @@ ENV DEGOV_CONFIG_PATH=/app/degov.yml
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/.next/standalone ./packages/web/
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/.next/static ./packages/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone .
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static .next/static
 
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/public ./packages/web/public
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/scripts ./packages/web/scripts
-COPY --from=builder --chown=nextjs:nodejs /code/packages/web/prisma ./packages/web/prisma
-COPY --from=builder --chown=nextjs:nodejs /code/degov.yml ./degov.yml
+COPY --from=builder --chown=nextjs:nodejs /app/public public
+COPY --from=builder --chown=nextjs:nodejs /app/scripts scripts
+COPY --from=builder --chown=nextjs:nodejs /app/prisma prisma
 
 RUN npm i -g prisma \
   && npm cache clean --force
@@ -41,6 +40,4 @@ ENV HOSTNAME="0.0.0.0"
 
 EXPOSE 3000
 
-WORKDIR /app/packages/web
-
-ENTRYPOINT [ "./scripts/entrypoint.sh" ]
+ENTRYPOINT [ "/app/scripts/entrypoint.sh" ]
