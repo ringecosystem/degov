@@ -6,8 +6,6 @@ FROM base AS builder
 
 COPY . /code
 
-ENV DEGOV_CONFIG_PATH=/code/degov.yml
-
 RUN corepack enable pnpm \
   && cd /code \
   && pnpm install --frozen-lockfile \
