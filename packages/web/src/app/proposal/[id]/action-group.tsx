@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount, useReadContract } from "wagmi";
 
@@ -51,6 +51,7 @@ export default function ActionGroup({
   const [executeHash, setExecuteHash] = useState<`0x${string}` | null>(null);
   const [cancelHash, setCancelHash] = useState<`0x${string}` | null>(null);
   const [cancelProposalOpen, setCancelProposalOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState<bigint>(() => BigInt(Date.now()));
   const { validateBeforeExecution } = useContractGuard();
   const { data: hasVotedOnChain } = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
@@ -234,6 +235,20 @@ export default function ActionGroup({
     );
   }, [govParams?.timeLockDelayInSeconds]);
 
+  useEffect(() => {
+    if (status !== ProposalState.Queued || !hasTimelock) {
+      return;
+    }
+    // 定时刷新当前时间，确保到达 Timelock 时无需刷新页面即可执行
+    setCurrentTime(BigInt(Date.now()));
+    const timer = setInterval(() => {
+      setCurrentTime(BigInt(Date.now()));
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [status, hasTimelock]);
+
   const canExecute = useMemo(() => {
     if (!hasTimelock && status === ProposalState.Succeeded) {
       return true;
@@ -253,7 +268,6 @@ export default function ActionGroup({
       if (!queuedBlockTimestamp) return false;
       if (timeLockDelay === undefined) return true;
 
-      const currentTime = BigInt(new Date().getTime());
       const timeLockDelayBigInt = timeLockDelay ?? 0n;
       return currentTime > queuedBlockTimestamp + timeLockDelayBigInt;
     }
@@ -263,6 +277,7 @@ export default function ActionGroup({
     proposalQueuedById,
     govParams?.timeLockDelayInSeconds,
     hasTimelock,
+    currentTime,
   ]);
 
   const handleAction = useCallback(
