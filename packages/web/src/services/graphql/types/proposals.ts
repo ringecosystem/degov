@@ -48,6 +48,12 @@ export type ProposalResponse = {
   proposals: ProposalItem[];
 };
 
+export type ProposalVoteRateResponse = {
+  proposals: Array<
+    Pick<ProposalItem, "id" | "title" | "proposalId" | "blockTimestamp">
+  >;
+};
+
 export type ProposalTotalResponse = {
   proposals: string[];
 };
@@ -59,7 +65,7 @@ export interface EvmAbiResponse {
 export interface EvmAbiOutput {
   abi: string;
   address: string;
-  type: 'PROXY' | 'IMPLEMENTATION';
+  type: "PROXY" | "IMPLEMENTATION";
   implementation?: string;
 }
 

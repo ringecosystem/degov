@@ -6,9 +6,8 @@ import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
 
-
 import type { ProfileData } from "./types/profile";
-import type { EvmAbiResponse, EvmAbiInput, } from "./types/proposals";
+import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
 
 export const proposalService = {
   getAllProposals: async (
@@ -58,6 +57,21 @@ export const proposalService = {
       Queries.GET_PROPOSAL_METRICS
     );
     return response?.dataMetrics?.[0];
+  },
+
+  getProposalVoteRate: async (endpoint: string, voter: string, limit = 10) => {
+    if (!voter) {
+      return [] as { id: string }[];
+    }
+    const response = await request<Types.ProposalVoteRateResponse>(
+      endpoint,
+      Queries.GET_PROPOSAL_VOTE_RATE,
+      {
+        limit,
+        voter: voter.toLowerCase(),
+      }
+    );
+    return response?.proposals ?? [];
   },
 
   getProposalCanceledById: async (endpoint: string, id: string) => {
@@ -193,8 +207,6 @@ export const treasuryService = {
   },
 };
 
-
-
 export const contributorService = {
   getAllContributors: async (
     endpoint: string,
@@ -246,10 +258,7 @@ export const profileService = {
     return data;
   },
 
-  updateProfile: async (
-    address: string,
-    profile: Partial<ProfileData>
-  ) => {
+  updateProfile: async (address: string, profile: Partial<ProfileData>) => {
     const token = getToken(address);
     const response = await fetch(`/api/profile/${address}`, {
       method: "POST",

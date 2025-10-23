@@ -136,6 +136,22 @@ export const GET_PROPOSAL_METRICS = gql`
   }
 `;
 
+export const GET_PROPOSAL_VOTE_RATE = gql`
+  query QueryProposalVoteRate($voter: String!, $limit: Int!) {
+    proposals(
+      where: { voters_some: { voter_eq: $voter } }
+      offset: 0
+      limit: $limit
+      orderBy: blockTimestamp_DESC_NULLS_LAST
+    ) {
+      id
+      title
+      proposalId
+      blockTimestamp
+    }
+  }
+`;
+
 export const GET_EVM_ABI = gql`
   query QueryEvmAbi($chain: Int!, $contract: String!) {
     evmAbi(input: { chain: $chain, contract: $contract }) {
