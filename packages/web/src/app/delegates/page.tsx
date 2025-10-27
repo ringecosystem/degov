@@ -30,7 +30,7 @@ export default function Members() {
   // Debounce search term
   useDebounce(
     () => {
-      setDebouncedSearchTerm(searchTerm);
+      setDebouncedSearchTerm(searchTerm?.trim());
     },
     300,
     [searchTerm]
