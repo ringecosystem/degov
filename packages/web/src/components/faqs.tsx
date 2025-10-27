@@ -1,6 +1,7 @@
 import { ArrowUpRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { ChevronUpIcon } from "@/components/icons";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 
@@ -121,22 +122,13 @@ export const Faqs = ({
             className="cursor-pointer ml-auto flex size-[24px] items-center justify-center rounded-full transition-colors hover:bg-foreground/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-foreground focus-visible:ring-offset-background"
             onClick={() => setIsCollapsed((prev) => !prev)}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="7"
-              viewBox="0 0 12 7"
-              fill="none"
+            <ChevronUpIcon
+              aria-hidden
               className={cn(
                 "transition-transform duration-200 ease-out",
                 isCollapsed ? "rotate-180" : "rotate-0"
               )}
-            >
-              <path
-                d="M11.2826 5.22073L6.28255 0.22073C6.21287 0.15081 6.13008 0.0953329 6.03892 0.0574789C5.94775 0.0196249 5.85001 0.000138283 5.7513 0.000138283C5.65259 0.000138283 5.55485 0.0196249 5.46369 0.0574789C5.37252 0.0953329 5.28973 0.15081 5.22005 0.22073L0.220051 5.22073C0.0791548 5.36163 -2.09952e-09 5.55272 0 5.75198C2.09952e-09 5.95124 0.0791548 6.14233 0.220051 6.28323C0.360947 6.42413 0.552044 6.50328 0.751301 6.50328C0.950558 6.50328 1.14165 6.42413 1.28255 6.28323L5.75193 1.81386L10.2213 6.28385C10.3622 6.42475 10.5533 6.50391 10.7526 6.50391C10.9518 6.50391 11.1429 6.42475 11.2838 6.28385C11.4247 6.14296 11.5039 5.95186 11.5039 5.7526C11.5039 5.55335 11.4247 5.36225 11.2838 5.22135L11.2826 5.22073Z"
-                fill="currentColor"
-              />
-            </svg>
+            />
           </button>
         )}
       </div>

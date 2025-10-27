@@ -2,6 +2,7 @@ export { LogoIcon } from './logo-icon';
 export { BottomLogoIcon } from './bottom-logo-icon';
 export { ExternalLinkIcon } from './external-link-icon';
 export { CloseIcon } from './close-icon';
+export { ChevronUpIcon } from './chevron-up-icon';
 export { CopyIcon } from './copy-icon';
 export { PlusIcon } from './plus-icon';
 export { AppIcon } from './app-icon';
