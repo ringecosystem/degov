@@ -51,7 +51,9 @@ export default function ActionGroup({
   const [executeHash, setExecuteHash] = useState<`0x${string}` | null>(null);
   const [cancelHash, setCancelHash] = useState<`0x${string}` | null>(null);
   const [cancelProposalOpen, setCancelProposalOpen] = useState(false);
-  const [currentTime, setCurrentTime] = useState<bigint>(() => BigInt(Date.now()));
+  const [currentTime, setCurrentTime] = useState<bigint>(() =>
+    BigInt(Date.now())
+  );
   const { validateBeforeExecution } = useContractGuard();
   const { data: hasVotedOnChain } = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
@@ -239,7 +241,7 @@ export default function ActionGroup({
     if (status !== ProposalState.Queued || !hasTimelock) {
       return;
     }
-    // 定时刷新当前时间，确保到达 Timelock 时无需刷新页面即可执行
+    // refresh current time every second to ensure that the proposal can be executed without refreshing the page
     setCurrentTime(BigInt(Date.now()));
     const timer = setInterval(() => {
       setCurrentTime(BigInt(Date.now()));
