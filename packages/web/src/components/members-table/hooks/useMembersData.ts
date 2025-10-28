@@ -1,5 +1,8 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
+import { isAddress, type Address } from "viem";
+import { usePublicClient } from "wagmi";
+import { mainnet } from "wagmi/chains";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
@@ -21,6 +24,34 @@ export function useMembersData(
   const { botAddress } = useAiBotAddress();
   const isSearching = searchTerm.trim().length > 0;
   const normalizedInitialPageSize = Math.max(pageSize, initialPageSize);
+  const publicClient = usePublicClient({ chainId: mainnet.id });
+
+  const resolveSearchAddress = useCallback(
+    async (rawTerm: string): Promise<Address | undefined> => {
+      const trimmedTerm = rawTerm.trim();
+      if (!trimmedTerm) return undefined;
+
+      const normalizedTerm = trimmedTerm.toLowerCase();
+      if (isAddress(normalizedTerm)) {
+        return normalizedTerm as Address;
+      }
+
+      if (!publicClient || !trimmedTerm.includes(".")) return undefined;
+
+      try {
+        const ensAddress = await publicClient.getEnsAddress({
+          name: trimmedTerm,
+        });
+
+        return ensAddress
+          ? (ensAddress.toLowerCase() as Address)
+          : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    [publicClient]
+  );
 
   const membersQuery = useInfiniteQuery({
     queryKey: [
@@ -39,6 +70,11 @@ export function useMembersData(
       };
       // If searching, use exact match or return empty result for non-matches
       if (isSearching) {
+        const resolvedAddress = await resolveSearchAddress(searchTerm);
+        if (!resolvedAddress) {
+          return [];
+        }
+
         // For exact address match, search with id_eq
         const result = await contributorService.getAllContributors(
           daoConfig?.indexer?.endpoint ?? "",
@@ -46,7 +82,7 @@ export function useMembersData(
             limit: 1,
             offset: 0,
             where: {
-              id_eq: searchTerm ? searchTerm?.toLowerCase()?.trim() : undefined,
+              id_eq: resolvedAddress,
             },
           }
         );
