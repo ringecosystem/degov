@@ -132,7 +132,7 @@ export const OverviewProposalsSummaryDropdown = ({
         </div>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        align="end"
+        align="center"
         side="top"
         sideOffset={12}
         className="w-56 border border-border/20 bg-card p-[20px] text-foreground shadow-card rounded-[26px]"
