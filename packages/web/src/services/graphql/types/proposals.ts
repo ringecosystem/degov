@@ -124,3 +124,12 @@ export type ProposalMetricsItem = {
 export type ProposalMetricsResponse = {
   dataMetrics: ProposalMetricsItem[];
 };
+
+export type SummaryProposalStateItem = {
+  count: number;
+  state: string;
+};
+
+export type SummaryProposalStatesResponse = {
+  summaryProposalStates: SummaryProposalStateItem[];
+};

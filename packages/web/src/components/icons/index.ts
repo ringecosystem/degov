@@ -31,6 +31,7 @@ export { DiscussionIcon } from './discussion-icon';
 export { OffchainDiscussionIcon } from './offchain-discussion-icon';
 export { WarningIcon } from './warning-icon';
 export { AlertIcon } from './alert-icon';
+export { AlertCircleIcon } from './alert-circle-icon';
 export { AvatarIcon } from './avatar-icon';
 export { StarIcon } from './star-icon';
 export { StarActiveIcon } from './star-active-icon';

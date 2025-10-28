@@ -1,10 +1,4 @@
-import { QuestionIcon } from "@/components/icons";
 import { getProposalActionIcon } from "@/components/icons/proposal-actions-map";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { type ProposalActionType } from "@/config/proposals";
 import { cn } from "@/lib/utils";
 interface NewProposalActionProps {
