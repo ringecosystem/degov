@@ -300,7 +300,7 @@ export default function ProposalDetailPage() {
             {showNotification && (
               <ProposalNotification proposalId={id as string} />
             )}
-            <Faqs type="proposal" />
+            <Faqs type="proposal" collapsible defaultCollapsed />
           </div>
         </div>
       </div>
