@@ -48,10 +48,15 @@ export type ProposalResponse = {
   proposals: ProposalItem[];
 };
 
+export type ProposalVoteRateItem = Pick<
+  ProposalItem,
+  "id" | "title" | "proposalId" | "blockTimestamp"
+> & {
+  voters: Array<Pick<ProposalVoterItem, "voter">>;
+};
+
 export type ProposalVoteRateResponse = {
-  proposals: Array<
-    Pick<ProposalItem, "id" | "title" | "proposalId" | "blockTimestamp">
-  >;
+  proposals: ProposalVoteRateItem[];
 };
 
 export type ProposalTotalResponse = {

@@ -86,9 +86,13 @@ export const Overview = ({
       return "-";
     }
 
-    const participatedCount = votedProposals.length;
-    const total = PARTICIPATION_WINDOW;
-    const participationRate = (participatedCount / total) * 100;
+    const total = votedProposals.length;
+    const participatedCount = votedProposals.filter(
+      (proposal) => proposal.voters.length > 0
+    ).length;
+    const participationRate = total
+      ? (participatedCount / total) * 100
+      : 0;
 
     return (
       <Tooltip>

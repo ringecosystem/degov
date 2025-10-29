@@ -61,7 +61,7 @@ export const proposalService = {
 
   getProposalVoteRate: async (endpoint: string, voter: string, limit = 10) => {
     if (!voter) {
-      return [] as { id: string }[];
+      return [] as Types.ProposalVoteRateResponse["proposals"];
     }
     const response = await request<Types.ProposalVoteRateResponse>(
       endpoint,

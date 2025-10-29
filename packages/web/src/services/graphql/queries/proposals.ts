@@ -139,7 +139,6 @@ export const GET_PROPOSAL_METRICS = gql`
 export const GET_PROPOSAL_VOTE_RATE = gql`
   query QueryProposalVoteRate($voter: String!, $limit: Int!) {
     proposals(
-      where: { voters_some: { voter_eq: $voter } }
       offset: 0
       limit: $limit
       orderBy: blockTimestamp_DESC_NULLS_LAST
@@ -148,6 +147,9 @@ export const GET_PROPOSAL_VOTE_RATE = gql`
       title
       proposalId
       blockTimestamp
+      voters(where: { voter_eq: $voter }) {
+        voter
+      }
     }
   }
 `;
