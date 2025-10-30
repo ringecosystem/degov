@@ -1,7 +1,9 @@
 import { ArrowUpRight } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
+import { ChevronUpIcon } from "@/components/icons";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { cn } from "@/lib/utils";
 
 const defaultFaqList = {
   general: [
@@ -83,10 +85,19 @@ const defaultFaqList = {
 
 interface FaqsProps {
   type: "general" | "delegate" | "proposal";
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 }
 
-export const Faqs = ({ type }: FaqsProps) => {
+export const Faqs = ({
+  type,
+  collapsible = false,
+  defaultCollapsed = false,
+}: FaqsProps) => {
   const config = useDaoConfig();
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() =>
+    collapsible ? defaultCollapsed : false
+  );
 
   const faqList = useMemo(() => {
     if (type === "general") {
@@ -97,24 +108,47 @@ export const Faqs = ({ type }: FaqsProps) => {
     return defaultFaqList[type];
   }, [config, type]);
 
+  const shouldRenderContent = !collapsible || !isCollapsed;
+
   return (
     <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] lg:w-[360px] shadow-card">
-      <h2 className="text-[18px] font-semibold">
-        {type.charAt(0).toUpperCase() + type.slice(1)} FAQs
-      </h2>
-      <div className="h-px w-full bg-card-background"></div>
-      {(Array.isArray(faqList) ? faqList : []).map((faq, index) => (
-        <div key={index}>
-          <a
-            href={faq.answer}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[14px] font-normal hover:underline "
+      <div className="flex items-center gap-[12px]">
+        <h2 className="text-[18px] font-semibold">
+          {type.charAt(0).toUpperCase() + type.slice(1)} FAQs
+        </h2>
+        {collapsible && (
+          <button
+            type="button"
+            className="cursor-pointer ml-auto flex size-[24px] items-center justify-center rounded-full transition-colors hover:bg-foreground/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-foreground focus-visible:ring-offset-background"
+            onClick={() => setIsCollapsed((prev) => !prev)}
           >
-            {faq.question} <ArrowUpRight className="w-4 h-4 inline-block" />
-          </a>
-        </div>
-      ))}
+            <ChevronUpIcon
+              aria-hidden
+              className={cn(
+                "transition-transform duration-200 ease-out",
+                isCollapsed ? "rotate-180" : "rotate-0"
+              )}
+            />
+          </button>
+        )}
+      </div>
+      {shouldRenderContent && (
+        <>
+          <div className="h-px w-full bg-card-background"></div>
+          {(Array.isArray(faqList) ? faqList : []).map((faq, index) => (
+            <div key={index}>
+              <a
+                href={faq.answer}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[14px] font-normal hover:underline "
+              >
+                {faq.question} <ArrowUpRight className="w-4 h-4 inline-block" />
+              </a>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 };

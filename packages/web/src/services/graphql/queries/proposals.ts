@@ -164,3 +164,12 @@ export const GET_EVM_ABI = gql`
     }
   }
 `;
+
+export const GET_SUMMARY_PROPOSAL_STATES = gql`
+  query QuerySummaryProposalStates($daoCode: String!) {
+    summaryProposalStates(input: { daoCode: $daoCode }) {
+      count
+      state
+    }
+  }
+`;

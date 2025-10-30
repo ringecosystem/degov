@@ -11,6 +11,7 @@ import { proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
+import { OverviewProposalsSummaryDropdown } from "./overview-proposals-summary";
 
 export const Overview = () => {
   const daoConfig = useDaoConfig();
@@ -49,16 +50,19 @@ export const Overview = () => {
           icon="/assets/image/proposals-colorful.svg"
           isLoading={isProposalMetricsLoading}
         >
-          <div className="flex items-center gap-[8px] lg:gap-[10px]">
-            {
-              formatNumberForDisplay(
-                isNumber(dataMetrics?.proposalsCount)
-                  ? dataMetrics?.proposalsCount
-                  : 0,
-                0
-              )[0]
-            }
-          </div>
+          <>
+            <div className="flex items-center gap-[8px] lg:gap-[10px]">
+              {
+                formatNumberForDisplay(
+                  isNumber(dataMetrics?.proposalsCount)
+                    ? dataMetrics?.proposalsCount
+                    : 0,
+                  0
+                )[0]
+              }
+              <OverviewProposalsSummaryDropdown daoCode={daoConfig?.code} />
+            </div>
+          </>
         </OverviewItem>
         <OverviewItem
           title="Delegates"

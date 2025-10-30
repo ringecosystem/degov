@@ -1,5 +1,6 @@
 import { clearToken } from "@/lib/auth/token-manager";
 import { getToken } from "@/lib/auth/token-manager";
+import { degovGraphqlApi } from "@/utils/remote-api";
 
 import { request } from "./client";
 import * as Mutations from "./mutations";
@@ -72,6 +73,30 @@ export const proposalService = {
       }
     );
     return response?.proposals ?? [];
+  },
+  getSummaryProposalStates: async (daoCode: string) => {
+    if (!daoCode) {
+      return [] as Types.SummaryProposalStateItem[];
+    }
+
+    const endpoint = degovGraphqlApi();
+    if (!endpoint) {
+      return [] as Types.SummaryProposalStateItem[];
+    }
+
+    try {
+      const response = await request<Types.SummaryProposalStatesResponse>(
+        endpoint,
+        Queries.GET_SUMMARY_PROPOSAL_STATES,
+        {
+          daoCode,
+        }
+      );
+      return response?.summaryProposalStates ?? [];
+    } catch (error) {
+      console.error("Failed to load summary proposal states:", error);
+      return [];
+    }
   },
 
   getProposalCanceledById: async (endpoint: string, id: string) => {
