@@ -73,7 +73,7 @@ const PaginationPrevious = React.forwardRef<
       "w-7 px-0",
       disabled
         ? "bg-dark text-light hover:bg-dark"
-        : "bg-always-dark text-always-light hover:bg-always-dark/90",
+        : "text-always-light hover:opacity-60",
       className
     )}
     {...props}
@@ -106,7 +106,7 @@ const PaginationNext = React.forwardRef<
       "w-7 px-0",
       disabled
         ? "bg-dark text-light hover:bg-dark"
-        : "text-always-light hover:bg-always-dark/90",
+        : "text-always-light hover:opacity-60",
       className
     )}
     {...props}
