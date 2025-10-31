@@ -47,17 +47,13 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
 
   // Get received delegations count
   const { data: delegationConnection } = useQuery({
-    queryKey: [
-      "delegateMappingsConnection",
-      address,
-      daoConfig?.indexer?.endpoint,
-    ],
+    queryKey: ["delegatesConnection", address, daoConfig?.indexer?.endpoint],
     queryFn: () =>
       delegateService.getDelegateMappingsConnection(
         daoConfig?.indexer?.endpoint as string,
         {
           where: {
-            to_eq: address.toLowerCase(),
+            toDelegate_eq: address.toLowerCase(),
           },
           orderBy: ["id_ASC"],
         }

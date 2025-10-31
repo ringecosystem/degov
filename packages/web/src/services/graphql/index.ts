@@ -191,17 +191,17 @@ export const delegateService = {
     endpoint: string,
     options: {
       where: {
-        to_eq: string;
+        toDelegate_eq: string;
       };
       orderBy: string[];
     }
   ) => {
-    const response = await request<Types.DelegateMappingConnectionResponse>(
+    const response = await request<Types.DelegateConnectionResponse>(
       endpoint,
       Queries.GET_DELEGATE_MAPPINGS_CONNECTION,
       options
     );
-    return response?.delegateMappingsConnection;
+    return response?.delegatesConnection;
   },
 };
 
