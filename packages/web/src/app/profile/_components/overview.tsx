@@ -100,7 +100,7 @@ export const Overview = ({
           <div>{`${participationRate.toFixed(0)}%`}</div>
         </TooltipTrigger>
         <TooltipContent className="bg-card border border-card-background shadow-xs max-w-[350px] rounded-[26px] p-[20px] text-[14px]">
-          <span>{`Participated in ${participatedCount}/${total} proposals`}</span>
+          <span>{`Participated in ${participatedCount}/${total} of recent proposals`}</span>
         </TooltipContent>
       </Tooltip>
     );
