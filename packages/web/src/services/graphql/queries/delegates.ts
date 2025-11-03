@@ -39,10 +39,10 @@ export const GET_DELEGATE_MAPPINGS = gql`
 
 export const GET_DELEGATE_MAPPINGS_CONNECTION = gql`
   query GetDelegateMappingsConnection(
-    $where: DelegateMappingWhereInput!
-    $orderBy: [DelegateMappingOrderByInput!]!
+    $where: DelegateWhereInput
+    $orderBy: [DelegateOrderByInput!]!
   ) {
-    delegateMappingsConnection(where: $where, orderBy: $orderBy) {
+    delegatesConnection(where: $where, orderBy: $orderBy) {
       totalCount
     }
   }

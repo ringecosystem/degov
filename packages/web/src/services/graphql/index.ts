@@ -7,9 +7,8 @@ import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
 
-
 import type { ProfileData } from "./types/profile";
-import type { EvmAbiResponse, EvmAbiInput, } from "./types/proposals";
+import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
 
 export const proposalService = {
   getAllProposals: async (
@@ -61,6 +60,20 @@ export const proposalService = {
     return response?.dataMetrics?.[0];
   },
 
+  getProposalVoteRate: async (endpoint: string, voter: string, limit = 10) => {
+    if (!voter) {
+      return [] as Types.ProposalVoteRateResponse["proposals"];
+    }
+    const response = await request<Types.ProposalVoteRateResponse>(
+      endpoint,
+      Queries.GET_PROPOSAL_VOTE_RATE,
+      {
+        limit,
+        voter: voter.toLowerCase(),
+      }
+    );
+    return response?.proposals ?? [];
+  },
   getSummaryProposalStates: async (daoCode: string) => {
     if (!daoCode) {
       return [] as Types.SummaryProposalStateItem[];
@@ -178,17 +191,17 @@ export const delegateService = {
     endpoint: string,
     options: {
       where: {
-        to_eq: string;
+        toDelegate_eq: string;
       };
       orderBy: string[];
     }
   ) => {
-    const response = await request<Types.DelegateMappingConnectionResponse>(
+    const response = await request<Types.DelegateConnectionResponse>(
       endpoint,
       Queries.GET_DELEGATE_MAPPINGS_CONNECTION,
       options
     );
-    return response?.delegateMappingsConnection;
+    return response?.delegatesConnection;
   },
 };
 
@@ -218,8 +231,6 @@ export const treasuryService = {
     return response?.treasuryAssets ?? [];
   },
 };
-
-
 
 export const contributorService = {
   getAllContributors: async (
@@ -272,10 +283,7 @@ export const profileService = {
     return data;
   },
 
-  updateProfile: async (
-    address: string,
-    profile: Partial<ProfileData>
-  ) => {
+  updateProfile: async (address: string, profile: Partial<ProfileData>) => {
     const token = getToken(address);
     const response = await fetch(`/api/profile/${address}`, {
       method: "POST",

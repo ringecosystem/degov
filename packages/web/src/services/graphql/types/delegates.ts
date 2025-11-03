@@ -32,3 +32,11 @@ export type DelegateMappingConnectionItem = {
 export type DelegateMappingConnectionResponse = {
   delegateMappingsConnection: DelegateMappingConnectionItem;
 };
+
+export type DelegateConnectionItem = {
+  totalCount: number;
+};
+
+export type DelegateConnectionResponse = {
+  delegatesConnection: DelegateConnectionItem;
+};

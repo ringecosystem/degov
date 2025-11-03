@@ -1,11 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAddressVotes } from "@/hooks/useAddressVotes";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 
 import { OverviewItem } from "./overview-item";
+
+const PARTICIPATION_WINDOW = 10;
 
 import type { Address } from "viem";
 
@@ -16,6 +23,13 @@ interface OverviewProps {
   delegationStatusText?: React.ReactNode;
   isDelegateMappingsLoading?: boolean;
   isOwnProfile?: boolean;
+}
+
+interface OverviewCardData {
+  title: string;
+  value?: React.ReactNode;
+  isLoading?: boolean;
+  link?: string;
 }
 export const Overview = ({
   address,
@@ -32,6 +46,22 @@ export const Overview = ({
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,
+  });
+
+  const { data: votedProposals, isLoading: isParticipationLoading } = useQuery({
+    queryKey: [
+      "proposalVoteRate",
+      address,
+      daoConfig?.indexer?.endpoint,
+      PARTICIPATION_WINDOW,
+    ],
+    queryFn: () =>
+      proposalService.getProposalVoteRate(
+        daoConfig?.indexer?.endpoint ?? "",
+        address,
+        PARTICIPATION_WINDOW
+      ),
+    enabled: !!daoConfig?.indexer?.endpoint && !!address,
   });
 
   const votingPowerWithPercentage = useMemo(() => {
@@ -51,7 +81,32 @@ export const Overview = ({
     );
   }, [formattedVotes, votes, dataMetrics?.powerSum]);
 
-  const data = useMemo(() => {
+  const participationValue = useMemo(() => {
+    if (!votedProposals) {
+      return "-";
+    }
+
+    const total = votedProposals.length;
+    const participatedCount = votedProposals.filter(
+      (proposal) => proposal.voters.length > 0
+    ).length;
+    const participationRate = total
+      ? (participatedCount / total) * 100
+      : 0;
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div>{`${participationRate.toFixed(0)}%`}</div>
+        </TooltipTrigger>
+        <TooltipContent className="bg-card border border-card-background shadow-xs max-w-[350px] rounded-[26px] p-[20px] text-[14px]">
+          <span>{`Participated in ${participatedCount}/${total} of recent proposals`}</span>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }, [votedProposals]);
+
+  const data: OverviewCardData[] = useMemo(() => {
     return [
       {
         title: "Total Voting Power",
@@ -64,15 +119,14 @@ export const Overview = ({
         isLoading: isLoadingTokenBalance,
       },
       {
-        title: "Delegating",
+        title: "Delegating To",
         value: delegationStatusText,
         isLoading: isDelegateMappingsLoading,
       },
       {
-        title: "My Proposals",
-        value: "View All",
-        isLoading,
-        link: `/proposals?address=${address}`,
+        title: "Participation Rate",
+        value: participationValue,
+        isLoading: isParticipationLoading,
       },
     ];
   }, [
@@ -83,7 +137,8 @@ export const Overview = ({
     isLoadingTokenBalance,
     delegationStatusText,
     isDelegateMappingsLoading,
-    address,
+    participationValue,
+    isParticipationLoading,
   ]);
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-[20px] w-full">

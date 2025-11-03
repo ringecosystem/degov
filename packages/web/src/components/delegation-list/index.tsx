@@ -1,43 +1,91 @@
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import {
+  PAGINATION_DOTS,
+  usePaginationRange,
+} from "@/hooks/usePaginationRange";
+import { delegateService } from "@/services/graphql";
 import type { DelegateItem } from "@/services/graphql/types";
 
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
-import { useDelegationData } from "../delegation-table/hooks/usedelegationData";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "../ui/pagination";
 import { Skeleton } from "../ui/skeleton";
 
 import type { Address } from "viem";
 
 interface DelegationListProps {
   address: Address;
+  orderBy: string;
+  totalCount: number;
 }
 
-const Caption = ({
-  loadMoreData,
-  isLoading,
-}: {
-  loadMoreData: () => void;
-  isLoading: boolean;
-}) => {
-  return (
-    <div className="flex justify-center items-center w-full border border-border/20 bg-card rounded-[14px] px-4 py-2">
-      <button
-        onClick={loadMoreData}
-        className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={isLoading}
-      >
-        {isLoading ? "Loading..." : "View More"}
-      </button>
-    </div>
-  );
-};
-
-export function DelegationList({ address }: DelegationListProps) {
+export function DelegationList({
+  address,
+  orderBy,
+  totalCount,
+}: DelegationListProps) {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
-  const { state, loadMoreData } = useDelegationData(address);
+  const daoConfig = useDaoConfig();
+  const [currentPage, setCurrentPage] = useState(1);
 
-  if (state.isPending) {
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [orderBy, address]);
+
+  const pageSize = DEFAULT_PAGE_SIZE;
+  const totalPageCount = useMemo(() => {
+    return Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  }, [totalCount, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPageCount) {
+      setCurrentPage(totalPageCount);
+    }
+  }, [currentPage, totalPageCount]);
+
+  const {
+    data: pageData = [],
+    isLoading,
+    isFetching,
+  } = useQuery<DelegateItem[]>({
+    queryKey: [
+      "delegation-list",
+      daoConfig?.indexer?.endpoint,
+      address,
+      orderBy,
+      currentPage,
+      pageSize,
+    ],
+    queryFn: () =>
+      delegateService.getAllDelegates(
+        daoConfig?.indexer?.endpoint as string,
+        {
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+          orderBy,
+          where: { toDelegate_eq: address.toLowerCase() },
+        }
+      ),
+    enabled: !!daoConfig?.indexer?.endpoint && !!address,
+    placeholderData: (previous) => previous ?? [],
+  });
+
+  const paginationRange = usePaginationRange(currentPage, totalPageCount);
+
+  if (isLoading && pageData.length === 0) {
     return (
       <div className="space-y-3">
         {Array.from({ length: 5 }).map((_, index) => (
@@ -62,7 +110,7 @@ export function DelegationList({ address }: DelegationListProps) {
     );
   }
 
-  if (!state.data || state.data.length === 0) {
+  if (!pageData || pageData.length === 0) {
     return (
       <div className="rounded-[14px] bg-card p-[20px] text-center text-muted-foreground">
         No delegations yet
@@ -72,7 +120,7 @@ export function DelegationList({ address }: DelegationListProps) {
 
   return (
     <div className="space-y-3">
-      {state.data.map((record: DelegateItem) => {
+      {pageData.map((record: DelegateItem) => {
         const userPower = record?.power ? BigInt(record.power) : 0n;
         const formattedAmount = formatTokenAmount(userPower);
 
@@ -110,13 +158,45 @@ export function DelegationList({ address }: DelegationListProps) {
           </div>
         );
       })}
-
-      {state.hasNextPage && (
-        <Caption
-          loadMoreData={loadMoreData}
-          isLoading={state.isFetchingNextPage}
-        />
-      )}
+      {totalPageCount > 1 ? (
+        <Pagination className="justify-center">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                onClick={() =>
+                  setCurrentPage((prev) => Math.max(1, prev - 1))
+                }
+                disabled={currentPage === 1 || isFetching}
+              />
+            </PaginationItem>
+            {paginationRange.map((item, index) => (
+              <PaginationItem key={`${item}-${index}`}>
+                {item === PAGINATION_DOTS ? (
+                  <PaginationEllipsis />
+                ) : (
+                  <PaginationLink
+                    isActive={item === currentPage}
+                    onClick={() => setCurrentPage(item as number)}
+                    disabled={isFetching && item === currentPage}
+                  >
+                    {item}
+                  </PaginationLink>
+                )}
+              </PaginationItem>
+            ))}
+            <PaginationItem>
+              <PaginationNext
+                onClick={() =>
+                  setCurrentPage((prev) =>
+                    Math.min(totalPageCount, prev + 1)
+                  )
+                }
+                disabled={currentPage === totalPageCount || isFetching}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      ) : null}
     </div>
   );
 }
