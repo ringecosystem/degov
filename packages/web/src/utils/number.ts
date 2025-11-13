@@ -184,3 +184,22 @@ export function formatCurrencyFixed(
 
   return formatAmount(amount);
 }
+
+/**
+ * Format integer-like values with locale separators, returning fallback when value is missing.
+ */
+export function formatInteger(
+  value?: number | string | null,
+  fallback: string = "-"
+): string {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+
+  const numericValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return new Intl.NumberFormat().format(numericValue);
+}

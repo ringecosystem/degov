@@ -7,27 +7,45 @@ import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceToken
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
+import { formatInteger } from "@/utils/number";
 
 import { AddressWithAvatar } from "../address-with-avatar";
 import { CustomTable } from "../custom-table";
+import { SortableCell } from "../sortable-cell";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 
 import { useBotMemberData } from "./hooks/useBotMemberData";
 import { useMembersData } from "./hooks/useMembersData";
+import { DEFAULT_SORT_STATE } from "./types";
+import { mergeWithBotMember } from "./utils/member-sorting";
 
 import type { ColumnType } from "../custom-table";
+import type {
+  MemberSortDirection,
+  MemberSortState,
+} from "./types";
 
 interface MembersTableProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
   searchTerm?: string;
+  orderBy: string;
+  sortState: MemberSortState;
+  onPowerSortChange: (direction?: MemberSortDirection) => void;
+  onLastVotedSortChange: (direction?: MemberSortDirection) => void;
+  onDelegatorsSortChange: (direction?: MemberSortDirection) => void;
 }
 
 export function MembersTable({
   onDelegate,
   pageSize = DEFAULT_PAGE_SIZE,
   searchTerm = "",
+  orderBy,
+  sortState,
+  onPowerSortChange,
+  onLastVotedSortChange,
+  onDelegatorsSortChange,
 }: MembersTableProps) {
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
@@ -45,25 +63,27 @@ export function MembersTable({
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
     profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
-  } = useMembersData(pageSize, searchTerm, initialPageSize);
+  } = useMembersData(pageSize, searchTerm, initialPageSize, orderBy);
 
   // Fetch AI bot contributor data separately and prepend when available (only on the first page)
   const { data: botMember } = useBotMemberData();
 
   const dataSource = useMemo<ContributorItem[]>(() => {
-    // When searching, return members as-is (already filtered by API)
-    if (searchTerm) {
+    if (searchTerm || !botMember) {
       return members;
     }
 
-    // When not searching, prepend bot member if available
-    if (botMember) {
-      const withoutBot = members.filter((m) => m.id !== botMember.id);
+    const withoutBot = members.filter((member) => member.id !== botMember.id);
+    const isDefaultSortState =
+      sortState.field === DEFAULT_SORT_STATE.field &&
+      sortState.direction === DEFAULT_SORT_STATE.direction;
+
+    if (isDefaultSortState) {
       return [botMember, ...withoutBot];
     }
 
-    return members;
-  }, [botMember, members, searchTerm]);
+    return mergeWithBotMember(withoutBot, botMember, sortState);
+  }, [botMember, members, searchTerm, sortState]);
 
   const columns = useMemo<ColumnType<ContributorItem>[]>(
     () => [
@@ -77,7 +97,17 @@ export function MembersTable({
         ),
       },
       {
-        title: "Voting Power",
+        title: (
+          <SortableCell
+            label="Voting Power"
+            sortState={
+              sortState.field === "power" ? sortState.direction : undefined
+            }
+            onClick={onPowerSortChange}
+            className="justify-start"
+            textClassName="text-[14px]"
+          />
+        ),
         key: "votingPower",
         width: "180px",
         className: "text-left",
@@ -108,7 +138,19 @@ export function MembersTable({
         },
       },
       {
-        title: "Last Voted",
+        title: (
+          <SortableCell
+            label="Last Voted"
+            sortState={
+              sortState.field === "lastVoted"
+                ? sortState.direction
+                : undefined
+            }
+            onClick={onLastVotedSortChange}
+            className="justify-start"
+            textClassName="text-[14px]"
+          />
+        ),
         key: "lastVoted",
         width: "150px",
         className: "text-left",
@@ -127,6 +169,29 @@ export function MembersTable({
             </span>
           );
         },
+      },
+      {
+        title: (
+          <SortableCell
+            label="Delegators"
+            sortState={
+              sortState.field === "delegators"
+                ? sortState.direction
+                : undefined
+            }
+            onClick={onDelegatorsSortChange}
+            className="justify-end"
+            textClassName="text-[14px]"
+          />
+        ),
+        key: "delegators",
+        width: "140px",
+        className: "text-right",
+        render: (record) => (
+          <span className="text-[14px]">
+            {formatInteger(record?.delegateCount)}
+          </span>
+        ),
       },
       {
         title: "Action",
@@ -152,6 +217,10 @@ export function MembersTable({
       formatTokenAmount,
       dataMetrics,
       isProposalMetricsLoading,
+      sortState,
+      onPowerSortChange,
+      onLastVotedSortChange,
+      onDelegatorsSortChange,
     ]
   );
 
@@ -178,3 +247,10 @@ export function MembersTable({
     </div>
   );
 }
+
+export { DEFAULT_SORT_STATE } from "./types";
+export type {
+  MemberSortField,
+  MemberSortDirection,
+  MemberSortState,
+} from "./types";
