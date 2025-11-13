@@ -201,6 +201,8 @@ type Contributor @entity {
   transactionHash: String!
 
   power: BigInt!
+
+  delegateCount: Int!
 }
 
 type DelegateMapping @entity {

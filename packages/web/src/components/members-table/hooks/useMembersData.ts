@@ -18,7 +18,8 @@ type PageParam = {
 export function useMembersData(
   pageSize = DEFAULT_PAGE_SIZE,
   searchTerm = "",
-  initialPageSize = pageSize
+  initialPageSize = pageSize,
+  orderBy = "blockTimestamp_DESC_NULLS_LAST"
 ) {
   const daoConfig = useDaoConfig();
   const { botAddress } = useAiBotAddress();
@@ -62,6 +63,7 @@ export function useMembersData(
       searchTerm,
       isSearching,
       normalizedInitialPageSize,
+      orderBy,
     ],
     queryFn: async ({ pageParam }) => {
       const { offset, limit } = (pageParam as PageParam) ?? {
@@ -81,6 +83,7 @@ export function useMembersData(
           {
             limit: 1,
             offset: 0,
+            orderBy,
             where: {
               id_eq: resolvedAddress,
             },
@@ -95,6 +98,7 @@ export function useMembersData(
         {
           limit,
           offset,
+          orderBy,
           where: {
             id_not_eq: botAddress,
           },

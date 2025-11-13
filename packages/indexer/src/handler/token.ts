@@ -19,6 +19,10 @@ import {
   IndexerWork,
 } from "../types";
 import { DegovIndexerHelpers } from "../internal/helpers";
+import {
+  buildDelegateCountAdjustments,
+  prepareContributorCountUpdate,
+} from "../services/token/delegateCounts";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
@@ -116,6 +120,14 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(delegateRolling);
+
+    await this.updateDelegateCounts(
+      entity.fromDelegate,
+      entity.toDelegate,
+      entity.blockNumber,
+      entity.blockTimestamp,
+      entity.transactionHash
+    );
 
     // store self delegate
     if (
@@ -288,7 +300,11 @@ export class TokenHandler {
         blockNumber: entity.blockNumber,
         blockTimestamp: entity.blockTimestamp,
         transactionHash: entity.transactionHash,
-        power: -(isErc721 ? 1n : "value" in event ? event.value : 0n),
+        power: isErc721
+          ? -1n
+          : "value" in event
+            ? -event.value
+            : 0n,
       });
       await this.storeDelegate(fromDelegate);
     }
@@ -299,9 +315,67 @@ export class TokenHandler {
         blockNumber: entity.blockNumber,
         blockTimestamp: entity.blockTimestamp,
         transactionHash: entity.transactionHash,
-        power: isErc721 ? 1n : "value" in event ? event.value : 0n,
+        power: isErc721
+          ? 1n
+          : "value" in event
+            ? event.value
+            : 0n,
       });
       await this.storeDelegate(toDelegate);
+    }
+  }
+
+  private async updateDelegateCounts(
+    fromDelegate: string,
+    toDelegate: string,
+    blockNumber: bigint,
+    blockTimestamp: bigint,
+    transactionHash: string
+  ) {
+    const adjustments = buildDelegateCountAdjustments(fromDelegate, toDelegate);
+    for (const adjustment of adjustments) {
+      await this.applyDelegateCountDelta({
+        delegate: adjustment.address,
+        delta: adjustment.delta,
+        blockNumber,
+        blockTimestamp,
+        transactionHash,
+      });
+    }
+  }
+
+  private async applyDelegateCountDelta(options: {
+    delegate: string;
+    delta: number;
+    blockNumber: bigint;
+    blockTimestamp: bigint;
+    transactionHash: string;
+  }) {
+    if (!options.delegate || options.delta === 0) {
+      return;
+    }
+
+    const normalizedDelegate = options.delegate.toLowerCase();
+    const existingContributor = await this.ctx.store.findOne(Contributor, {
+      where: {
+        id: normalizedDelegate,
+      },
+    });
+
+    const { contributor, isNew } = prepareContributorCountUpdate({
+      delegate: normalizedDelegate,
+      delta: options.delta,
+      blockNumber: options.blockNumber,
+      blockTimestamp: options.blockTimestamp,
+      transactionHash: options.transactionHash,
+      existingContributor,
+    });
+
+    if (isNew) {
+      await this.ctx.store.insert(contributor);
+      await this.incrementMemberMetric();
+    } else {
+      await this.ctx.store.save(contributor);
     }
   }
 
@@ -348,6 +422,7 @@ export class TokenHandler {
       blockTimestamp: currentDelegate.blockTimestamp,
       transactionHash: currentDelegate.transactionHash,
       power: currentDelegate.power,
+      delegateCount: 0,
     });
     await this.storeContributor(contributor);
 
@@ -431,7 +506,10 @@ export class TokenHandler {
     if (!storeMemberMetrics) {
       return;
     }
-    // increase metrics for memberCount
+    await this.incrementMemberMetric();
+  }
+
+  private async incrementMemberMetric() {
     const storedDataMetric: DataMetric | undefined =
       await this.ctx.store.findOne(DataMetric, {
         where: {
