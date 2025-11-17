@@ -93,6 +93,41 @@ export class TokenHandler {
     });
     await this.ctx.store.insert(entity);
 
+    // update delegators count all
+    let storedContributor: Contributor | undefined =
+      await this.ctx.store.findOne(Contributor, {
+        where: {
+          id: entity.toDelegate,
+        },
+      });
+
+    if (storedContributor) {
+      let storedDelegateMapping: DelegateMapping | undefined =
+        await this.ctx.store.findOne(DelegateMapping, {
+          where: {
+            from: entity.delegator,
+          },
+        });
+      if (storedDelegateMapping) {
+        storedContributor.delegatesCountAll -= 1;
+        await this.ctx.store.save(storedContributor);
+      } else {
+        storedContributor.delegatesCountAll += 1;
+        await this.ctx.store.save(storedContributor);
+      }
+    } else {
+      const contributor = new Contributor({
+        id: entity.toDelegate,
+        blockNumber: entity.blockNumber,
+        blockTimestamp: entity.blockTimestamp,
+        transactionHash: entity.transactionHash,
+        power: 0n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 0,
+      });
+      await this.ctx.store.insert(contributor);
+    }
+
     // store delegate mapping
     await this.ctx.store.remove(DelegateMapping, entity.delegator);
     const currentDelegateMapping = new DelegateMapping({
@@ -324,8 +359,10 @@ export class TokenHandler {
         },
       });
 
+    let delegatesCountEffective = 0;
     if (!storedDelegateFromWithTo) {
       await this.ctx.store.insert(currentDelegate);
+      delegatesCountEffective += 1;
     } else {
       // update delegate
       storedDelegateFromWithTo.power += currentDelegate.power;
@@ -336,6 +373,7 @@ export class TokenHandler {
       // Remove delegate record if power is zero
       if (storedDelegateFromWithTo.power === 0n) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
+        delegatesCountEffective -= 1;
       } else {
         await this.ctx.store.save(storedDelegateFromWithTo);
       }
@@ -348,6 +386,7 @@ export class TokenHandler {
       blockTimestamp: currentDelegate.blockTimestamp,
       transactionHash: currentDelegate.transactionHash,
       power: currentDelegate.power,
+      delegatesCountEffective,
     });
     await this.storeContributor(contributor);
 
@@ -386,6 +425,9 @@ export class TokenHandler {
       storedContributor.transactionHash = contributor.transactionHash;
 
       storedContributor.power = storedContributor.power + contributor.power;
+      storedContributor.delegatesCountEffective =
+        storedContributor.delegatesCountEffective +
+        contributor.delegatesCountEffective;
 
       await this.ctx.store.save(storedContributor);
     } else {
