@@ -134,6 +134,7 @@ export class TokenHandler {
       id: entity.delegator,
       from: entity.delegator,
       to: entity.toDelegate,
+      power: 0n,
       blockNumber: entity.blockNumber,
       blockTimestamp: entity.blockTimestamp,
       transactionHash: entity.transactionHash,
@@ -359,10 +360,12 @@ export class TokenHandler {
         },
       });
 
+    let newDelegatePowerOfFromTo = 0n;
     let delegatesCountEffective = 0;
     if (!storedDelegateFromWithTo) {
       await this.ctx.store.insert(currentDelegate);
       delegatesCountEffective += 1;
+      newDelegatePowerOfFromTo = currentDelegate.power;
     } else {
       // update delegate
       storedDelegateFromWithTo.power += currentDelegate.power;
@@ -377,6 +380,19 @@ export class TokenHandler {
       } else {
         await this.ctx.store.save(storedDelegateFromWithTo);
       }
+      newDelegatePowerOfFromTo = storedDelegateFromWithTo.power;
+    }
+
+    const storedFromDelegate: DelegateMapping | undefined =
+      await this.ctx.store.findOne(DelegateMapping, {
+        where: {
+          from: currentDelegate.fromDelegate,
+          to: currentDelegate.toDelegate,
+        },
+      });
+    if (storedFromDelegate) {
+      storedFromDelegate.power = newDelegatePowerOfFromTo;
+      await this.ctx.store.save(storedFromDelegate);
     }
 
     // store contributor
