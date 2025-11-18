@@ -106,12 +106,14 @@ export class TokenHandler {
         await this.ctx.store.findOne(DelegateMapping, {
           where: {
             from: entity.delegator,
+            to: entity.toDelegate,
           },
         });
       if (storedDelegateMapping) {
-        storedContributor.delegatesCountAll -= 1;
-        await this.ctx.store.save(storedContributor);
+        // delegator already delegated to this toDelegate, no change needed
+        // (this shouldn't happen in normal delegate change scenarios)
       } else {
+        // new delegation to this toDelegate
         storedContributor.delegatesCountAll += 1;
         await this.ctx.store.save(storedContributor);
       }
