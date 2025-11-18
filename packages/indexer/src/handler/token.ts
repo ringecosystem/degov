@@ -94,29 +94,40 @@ export class TokenHandler {
     await this.ctx.store.insert(entity);
 
     // update delegators count all
-    let storedContributor: Contributor | undefined =
+    // First, check if delegator had previous delegation
+    let previousDelegateMapping: DelegateMapping | undefined =
+      await this.ctx.store.findOne(DelegateMapping, {
+        where: {
+          from: entity.delegator,
+        },
+      });
+
+    // If there was a previous delegation, decrease the old delegate's count
+    if (previousDelegateMapping) {
+      let oldDelegateContributor: Contributor | undefined =
+        await this.ctx.store.findOne(Contributor, {
+          where: {
+            id: previousDelegateMapping.to,
+          },
+        });
+
+      if (oldDelegateContributor && oldDelegateContributor.delegatesCountAll > 0) {
+        oldDelegateContributor.delegatesCountAll -= 1;
+        await this.ctx.store.save(oldDelegateContributor);
+      }
+    }
+
+    // Increase the new delegate's count
+    let newDelegateContributor: Contributor | undefined =
       await this.ctx.store.findOne(Contributor, {
         where: {
           id: entity.toDelegate,
         },
       });
 
-    if (storedContributor) {
-      let storedDelegateMapping: DelegateMapping | undefined =
-        await this.ctx.store.findOne(DelegateMapping, {
-          where: {
-            from: entity.delegator,
-            to: entity.toDelegate,
-          },
-        });
-      if (storedDelegateMapping) {
-        // delegator already delegated to this toDelegate, no change needed
-        // (this shouldn't happen in normal delegate change scenarios)
-      } else {
-        // new delegation to this toDelegate
-        storedContributor.delegatesCountAll += 1;
-        await this.ctx.store.save(storedContributor);
-      }
+    if (newDelegateContributor) {
+      newDelegateContributor.delegatesCountAll += 1;
+      await this.ctx.store.save(newDelegateContributor);
     } else {
       const contributor = new Contributor({
         id: entity.toDelegate,
