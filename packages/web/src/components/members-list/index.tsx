@@ -7,18 +7,25 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
+import { formatInteger } from "@/utils/number";
 
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
 import { useBotMemberData } from "../members-table/hooks/useBotMemberData";
 import { useMembersData } from "../members-table/hooks/useMembersData";
+import { DEFAULT_SORT_STATE } from "../members-table/types";
+import { mergeWithBotMember } from "../members-table/utils/member-sorting";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
+
+import type { MemberSortState } from "../members-table/types";
 
 interface MembersListProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
   searchTerm?: string;
+  orderBy: string;
+  sortState: MemberSortState;
 }
 
 const Caption = ({
@@ -45,6 +52,8 @@ export function MembersList({
   onDelegate,
   pageSize = DEFAULT_PAGE_SIZE,
   searchTerm = "",
+  orderBy,
+  sortState,
 }: MembersListProps) {
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
@@ -63,25 +72,27 @@ export function MembersList({
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
     profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
-  } = useMembersData(pageSize, searchTerm, initialPageSize);
+  } = useMembersData(pageSize, searchTerm, initialPageSize, orderBy);
 
   // Fetch AI bot contributor data separately and prepend when available (only on the first page)
   const { data: botMember } = useBotMemberData();
 
   const dataSource = useMemo<ContributorItem[]>(() => {
-    // When searching, return members as-is (already filtered by API)
-    if (searchTerm) {
+    if (searchTerm || !botMember) {
       return members;
     }
 
-    // When not searching, prepend bot member if available
-    if (botMember) {
-      const withoutBot = members.filter((m) => m.id !== botMember.id);
+    const withoutBot = members.filter((member) => member.id !== botMember.id);
+    const isDefaultSortState =
+      sortState.field === DEFAULT_SORT_STATE.field &&
+      sortState.direction === DEFAULT_SORT_STATE.direction;
+
+    if (isDefaultSortState) {
       return [botMember, ...withoutBot];
     }
 
-    return members;
-  }, [botMember, members, searchTerm]);
+    return mergeWithBotMember(withoutBot, botMember, sortState);
+  }, [botMember, members, searchTerm, sortState]);
 
   if (isPending) {
     return (
@@ -166,6 +177,12 @@ export function MembersList({
                       </span>
                     </div>
                   )}
+                </div>
+                <div className="text-left text-muted-foreground text-xs mt-1">
+                  <span>Delegators: </span>
+                  <span className="font-semibold text-foreground text-sm">
+                    {formatInteger(record?.delegateCount)}
+                  </span>
                 </div>
               </div>
               <Button

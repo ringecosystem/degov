@@ -238,6 +238,7 @@ export const contributorService = {
     options: {
       limit: number;
       offset: number;
+      orderBy?: string | string[];
       where?: {
         id_in?: string[];
         id_not_eq?: string;
@@ -246,19 +247,26 @@ export const contributorService = {
     } = {
       limit: 10,
       offset: 0,
+      orderBy: "blockTimestamp_DESC_NULLS_LAST",
       where: {
         id_in: [],
         id_not_eq: undefined,
       },
     }
   ) => {
+    const orderByInput = Array.isArray(options?.orderBy)
+      ? options?.orderBy
+      : options?.orderBy
+        ? [options.orderBy]
+        : ["blockTimestamp_DESC_NULLS_LAST"];
+
     const response = await request<Types.ContributorResponse>(
       endpoint,
       Queries.GET_CONTRIBUTORS,
       {
         limit: options?.limit,
         offset: options?.offset,
-        orderBy: "power_DESC",
+        orderBy: orderByInput,
         where: options?.where,
       }
     );
