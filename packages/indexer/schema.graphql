@@ -202,13 +202,16 @@ type Contributor @entity {
 
   power: BigInt!
 
-  delegateCount: Int!
+  delegatesCountAll: Int!
+  delegatesCountEffective: Int!
 }
 
 type DelegateMapping @entity {
   id: ID! # from
   from: String! # address
   to: String! # address
+
+  power: BigInt!
 
   blockNumber: BigInt!
   blockTimestamp: BigInt!

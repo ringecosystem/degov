@@ -99,7 +99,7 @@ export class GovernorHandler {
       proposalId,
       proposer: event.proposer,
       targets: event.targets,
-      values: event.values.map((item: bigint) => item.toString()),
+      values: event.values.map((item) => item.toString()),
       signatures: event.signatures,
       calldatas: event.calldatas,
       voteStart: event.voteStart,
@@ -114,7 +114,7 @@ export class GovernorHandler {
 
     const { chainTool, textPlus, indexContract, work } = this.options;
     const governorTokenContract = work.contracts.find(
-      (item: IndexerContract) => item.name === "governorToken"
+      (item) => item.name === "governorToken"
     );
     if (!governorTokenContract) {
       throw new Error(
@@ -165,7 +165,7 @@ export class GovernorHandler {
       proposalId,
       proposer: event.proposer,
       targets: event.targets,
-      values: event.values.map((item: bigint) => item.toString()),
+      values: event.values.map((item) => item.toString()),
       signatures: event.signatures,
       calldatas: event.calldatas,
       voteStart: event.voteStart,
