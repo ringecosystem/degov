@@ -66,8 +66,8 @@ export function createMemberComparator(
       };
     case "delegators":
       return (a, b) => {
-        const valueA = parseDelegators(a.delegateCount ?? null);
-        const valueB = parseDelegators(b.delegateCount ?? null);
+        const valueA = parseDelegators(a.delegatesCountAll ?? null);
+        const valueB = parseDelegators(b.delegatesCountAll ?? null);
         return compareNullableNumber(valueA, valueB) * directionMultiplier;
       };
     case "lastVoted":
@@ -87,7 +87,9 @@ export function mergeWithBotMember(
   sortState: MemberSortState
 ): ContributorItem[] {
   const comparator = createMemberComparator(sortState);
-  const filteredMembers = members.filter((member) => member.id !== botMember.id);
+  const filteredMembers = members.filter(
+    (member) => member.id !== botMember.id
+  );
 
   if (!filteredMembers.length) {
     return [botMember];

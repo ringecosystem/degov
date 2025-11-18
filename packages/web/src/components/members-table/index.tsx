@@ -21,10 +21,7 @@ import { DEFAULT_SORT_STATE } from "./types";
 import { mergeWithBotMember } from "./utils/member-sorting";
 
 import type { ColumnType } from "../custom-table";
-import type {
-  MemberSortDirection,
-  MemberSortState,
-} from "./types";
+import type { MemberSortDirection, MemberSortState } from "./types";
 
 interface MembersTableProps {
   onDelegate?: (value: ContributorItem) => void;
@@ -142,9 +139,7 @@ export function MembersTable({
           <SortableCell
             label="Last Voted"
             sortState={
-              sortState.field === "lastVoted"
-                ? sortState.direction
-                : undefined
+              sortState.field === "lastVoted" ? sortState.direction : undefined
             }
             onClick={onLastVotedSortChange}
             className="justify-start"
@@ -175,9 +170,7 @@ export function MembersTable({
           <SortableCell
             label="Delegators"
             sortState={
-              sortState.field === "delegators"
-                ? sortState.direction
-                : undefined
+              sortState.field === "delegators" ? sortState.direction : undefined
             }
             onClick={onDelegatorsSortChange}
             className="justify-end"
@@ -186,10 +179,10 @@ export function MembersTable({
         ),
         key: "delegators",
         width: "140px",
-        className: "text-right",
+        className: "text-left",
         render: (record) => (
-          <span className="text-[14px]">
-            {formatInteger(record?.delegateCount)}
+          <span className="text-[14px] block px-[20px] py-[10px]">
+            {formatInteger(record?.delegatesCountAll)}
           </span>
         ),
       },

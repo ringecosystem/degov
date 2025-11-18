@@ -37,8 +37,8 @@ const ORDER_BY_MAP: Record<
     desc: "power_DESC",
   },
   delegators: {
-    asc: "delegateCount_ASC",
-    desc: "delegateCount_DESC",
+    asc: "delegatesCountAll_ASC",
+    desc: "delegatesCountAll_DESC",
   },
 };
 
@@ -115,8 +115,7 @@ export default function Members() {
   );
 
   const handleLastVotedSortChange = useCallback(
-    (direction?: MemberSortDirection) =>
-      applySortState("lastVoted", direction),
+    (direction?: MemberSortDirection) => applySortState("lastVoted", direction),
     [applySortState]
   );
 

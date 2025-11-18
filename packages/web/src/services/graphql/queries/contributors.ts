@@ -27,7 +27,7 @@ export const GET_CONTRIBUTORS = gql`
       blockTimestamp
       id
       power
-      delegateCount
+      delegatesCountAll
       transactionHash
     }
   }

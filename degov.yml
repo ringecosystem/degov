@@ -58,7 +58,7 @@ chain:
 
 # Indexer related configuration
 indexer:
-  endpoint: https://indexer.degov.ai/degov-demo-dao/graphql
+  endpoint: http://degovuniverse-degovindexerproxy-tm2x52-290629-168-119-79-153.traefik.me/degov-demo-dao/graphql
   startBlock: 5873342
   # if set this, indexer rpc will be use this first
   rpc: wss://rpc.darwinia.network

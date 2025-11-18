@@ -1,7 +1,7 @@
 export type ContributorItem = {
   blockNumber: string;
   blockTimestamp: string;
-  delegateCount?: number | null;
+  delegatesCountAll?: number | null;
   id: string;
   power: string;
   transactionHash: string;
