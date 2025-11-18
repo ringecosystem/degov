@@ -373,7 +373,7 @@ export class TokenHandler {
         },
       });
 
-    let newDelegatePowerOfFromTo = 0n;
+    let newDelegatePowerOfFromTo;
     let delegatesCountEffective = 0;
     if (!storedDelegateFromWithTo) {
       await this.ctx.store.insert(currentDelegate);
