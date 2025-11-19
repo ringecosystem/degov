@@ -400,7 +400,6 @@ export class TokenHandler {
       await this.ctx.store.findOne(DelegateMapping, {
         where: {
           from: currentDelegate.fromDelegate,
-          to: currentDelegate.toDelegate,
         },
       });
     if (storedFromDelegate) {
