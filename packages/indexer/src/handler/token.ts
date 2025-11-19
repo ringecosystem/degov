@@ -381,6 +381,7 @@ export class TokenHandler {
       newDelegatePowerOfFromTo = currentDelegate.power;
     } else {
       // update delegate
+      const oldPower = storedDelegateFromWithTo.power;
       storedDelegateFromWithTo.power += currentDelegate.power;
       storedDelegateFromWithTo.blockNumber = currentDelegate.blockNumber;
       storedDelegateFromWithTo.blockTimestamp = currentDelegate.blockTimestamp;
@@ -389,7 +390,10 @@ export class TokenHandler {
       // Remove delegate record if power is zero
       if (storedDelegateFromWithTo.power === 0n) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
-        delegatesCountEffective -= 1;
+        // Only decrement count if transitioning from non-zero to zero
+        if (oldPower !== 0n) {
+          delegatesCountEffective -= 1;
+        }
       } else {
         await this.ctx.store.save(storedDelegateFromWithTo);
       }
