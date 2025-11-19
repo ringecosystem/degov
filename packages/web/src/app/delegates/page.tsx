@@ -52,6 +52,7 @@ export default function Members() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [sortState, setSortState] =
     useState<MemberSortState>(DEFAULT_SORT_STATE);
+  const [hasUserSorted, setHasUserSorted] = useState(false);
 
   // Debounce search term
   useDebounce(
@@ -102,13 +103,21 @@ export default function Members() {
   const orderBy = useMemo(() => {
     return ORDER_BY_MAP[sortState.field][sortState.direction];
   }, [sortState]);
+  const queryOrderBy =
+    !hasUserSorted &&
+    sortState.field === DEFAULT_SORT_STATE.field &&
+    sortState.direction === DEFAULT_SORT_STATE.direction
+      ? undefined
+      : orderBy;
 
   const applySortState = useCallback(
     (field: MemberSortField, direction?: MemberSortDirection) => {
       if (!direction) {
+        setHasUserSorted(false);
         setSortState(DEFAULT_SORT_STATE);
         return;
       }
+      setHasUserSorted(true);
       setSortState({ field, direction });
     },
     []
@@ -162,21 +171,22 @@ export default function Members() {
                 <MembersList
                   onDelegate={handleDelegate}
                   searchTerm={debouncedSearchTerm}
-                  orderBy={orderBy}
-                  sortState={sortState}
+                  orderBy={queryOrderBy}
+                  hasUserSorted={hasUserSorted}
                 />
               </div>
 
               <div className="hidden lg:block">
-                <MembersTable
-                  onDelegate={handleDelegate}
-                  searchTerm={debouncedSearchTerm}
-                  orderBy={orderBy}
-                  sortState={sortState}
-                  onPowerSortChange={handlePowerSortChange}
-                  onLastVotedSortChange={handleLastVotedSortChange}
-                  onDelegatorsSortChange={handleDelegatorsSortChange}
-                />
+              <MembersTable
+                onDelegate={handleDelegate}
+                searchTerm={debouncedSearchTerm}
+                orderBy={queryOrderBy}
+                hasUserSorted={hasUserSorted}
+                sortState={sortState}
+                onPowerSortChange={handlePowerSortChange}
+                onLastVotedSortChange={handleLastVotedSortChange}
+                onDelegatorsSortChange={handleDelegatorsSortChange}
+              />
               </div>
             </div>
             <div className="w-[360px] flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
@@ -211,15 +221,16 @@ export default function Members() {
             <MembersList
               onDelegate={handleDelegate}
               searchTerm={debouncedSearchTerm}
-              orderBy={orderBy}
-              sortState={sortState}
+              orderBy={queryOrderBy}
+              hasUserSorted={hasUserSorted}
             />
           </div>
           <div className="hidden lg:block">
             <MembersTable
               onDelegate={handleDelegate}
               searchTerm={debouncedSearchTerm}
-              orderBy={orderBy}
+              orderBy={queryOrderBy}
+              hasUserSorted={hasUserSorted}
               sortState={sortState}
               onPowerSortChange={handlePowerSortChange}
               onLastVotedSortChange={handleLastVotedSortChange}

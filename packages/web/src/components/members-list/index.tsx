@@ -13,19 +13,15 @@ import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
 import { useBotMemberData } from "../members-table/hooks/useBotMemberData";
 import { useMembersData } from "../members-table/hooks/useMembersData";
-import { DEFAULT_SORT_STATE } from "../members-table/types";
-import { mergeWithBotMember } from "../members-table/utils/member-sorting";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
-
-import type { MemberSortState } from "../members-table/types";
 
 interface MembersListProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
   searchTerm?: string;
-  orderBy: string;
-  sortState: MemberSortState;
+  orderBy?: string;
+  hasUserSorted: boolean;
 }
 
 const Caption = ({
@@ -53,7 +49,7 @@ export function MembersList({
   pageSize = DEFAULT_PAGE_SIZE,
   searchTerm = "",
   orderBy,
-  sortState,
+  hasUserSorted,
 }: MembersListProps) {
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
@@ -72,27 +68,27 @@ export function MembersList({
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
     profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
-  } = useMembersData(pageSize, searchTerm, initialPageSize, orderBy);
+  } = useMembersData(
+    pageSize,
+    searchTerm,
+    initialPageSize,
+    orderBy,
+    hasUserSorted
+  );
 
   // Fetch AI bot contributor data separately and prepend when available (only on the first page)
   const { data: botMember } = useBotMemberData();
 
   const dataSource = useMemo<ContributorItem[]>(() => {
-    if (searchTerm || !botMember) {
+    const shouldPrependBot = !hasUserSorted && !searchTerm && !!botMember;
+
+    if (!shouldPrependBot) {
       return members;
     }
 
     const withoutBot = members.filter((member) => member.id !== botMember.id);
-    const isDefaultSortState =
-      sortState.field === DEFAULT_SORT_STATE.field &&
-      sortState.direction === DEFAULT_SORT_STATE.direction;
-
-    if (isDefaultSortState) {
-      return [botMember, ...withoutBot];
-    }
-
-    return mergeWithBotMember(withoutBot, botMember, sortState);
-  }, [botMember, members, searchTerm, sortState]);
+    return [botMember, ...withoutBot];
+  }, [botMember, hasUserSorted, members, searchTerm]);
 
   if (isPending) {
     return (

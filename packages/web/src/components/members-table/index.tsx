@@ -17,8 +17,6 @@ import { Skeleton } from "../ui/skeleton";
 
 import { useBotMemberData } from "./hooks/useBotMemberData";
 import { useMembersData } from "./hooks/useMembersData";
-import { DEFAULT_SORT_STATE } from "./types";
-import { mergeWithBotMember } from "./utils/member-sorting";
 
 import type { ColumnType } from "../custom-table";
 import type { MemberSortDirection, MemberSortState } from "./types";
@@ -27,8 +25,9 @@ interface MembersTableProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
   searchTerm?: string;
-  orderBy: string;
+  orderBy?: string;
   sortState: MemberSortState;
+  hasUserSorted: boolean;
   onPowerSortChange: (direction?: MemberSortDirection) => void;
   onLastVotedSortChange: (direction?: MemberSortDirection) => void;
   onDelegatorsSortChange: (direction?: MemberSortDirection) => void;
@@ -40,6 +39,7 @@ export function MembersTable({
   searchTerm = "",
   orderBy,
   sortState,
+  hasUserSorted,
   onPowerSortChange,
   onLastVotedSortChange,
   onDelegatorsSortChange,
@@ -60,27 +60,27 @@ export function MembersTable({
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
     profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
-  } = useMembersData(pageSize, searchTerm, initialPageSize, orderBy);
+  } = useMembersData(
+    pageSize,
+    searchTerm,
+    initialPageSize,
+    orderBy,
+    hasUserSorted
+  );
 
   // Fetch AI bot contributor data separately and prepend when available (only on the first page)
   const { data: botMember } = useBotMemberData();
 
   const dataSource = useMemo<ContributorItem[]>(() => {
-    if (searchTerm || !botMember) {
+    const shouldPrependBot = !hasUserSorted && !searchTerm && !!botMember;
+
+    if (!shouldPrependBot) {
       return members;
     }
 
     const withoutBot = members.filter((member) => member.id !== botMember.id);
-    const isDefaultSortState =
-      sortState.field === DEFAULT_SORT_STATE.field &&
-      sortState.direction === DEFAULT_SORT_STATE.direction;
-
-    if (isDefaultSortState) {
-      return [botMember, ...withoutBot];
-    }
-
-    return mergeWithBotMember(withoutBot, botMember, sortState);
-  }, [botMember, members, searchTerm, sortState]);
+    return [botMember, ...withoutBot];
+  }, [botMember, hasUserSorted, members, searchTerm]);
 
   const columns = useMemo<ColumnType<ContributorItem>[]>(
     () => [

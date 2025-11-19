@@ -19,8 +19,10 @@ export function useMembersData(
   pageSize = DEFAULT_PAGE_SIZE,
   searchTerm = "",
   initialPageSize = pageSize,
-  orderBy = "blockTimestamp_DESC_NULLS_LAST"
+  orderBy?: string,
+  includeBotInQuery = false
 ) {
+  const DEFAULT_ORDER_BY = "blockTimestamp_DESC_NULLS_LAST";
   const daoConfig = useDaoConfig();
   const { botAddress } = useAiBotAddress();
   const isSearching = searchTerm.trim().length > 0;
@@ -44,9 +46,7 @@ export function useMembersData(
           name: trimmedTerm,
         });
 
-        return ensAddress
-          ? (ensAddress.toLowerCase() as Address)
-          : undefined;
+        return ensAddress ? (ensAddress.toLowerCase() as Address) : undefined;
       } catch {
         return undefined;
       }
@@ -63,7 +63,9 @@ export function useMembersData(
       searchTerm,
       isSearching,
       normalizedInitialPageSize,
-      orderBy,
+      orderBy ?? DEFAULT_ORDER_BY,
+      DEFAULT_ORDER_BY,
+      includeBotInQuery,
     ],
     queryFn: async ({ pageParam }) => {
       const { offset, limit } = (pageParam as PageParam) ?? {
@@ -93,15 +95,19 @@ export function useMembersData(
       }
 
       // Normal pagination when not searching
+      const effectiveOrderBy = orderBy ?? DEFAULT_ORDER_BY;
+      const shouldIncludeBot = includeBotInQuery;
       const result = await contributorService.getAllContributors(
         daoConfig?.indexer?.endpoint ?? "",
         {
           limit,
           offset,
-          orderBy,
-          where: {
-            id_not_eq: botAddress,
-          },
+          orderBy: effectiveOrderBy,
+          where: shouldIncludeBot
+            ? {}
+            : {
+                id_not_eq: botAddress,
+              },
         }
       );
 
