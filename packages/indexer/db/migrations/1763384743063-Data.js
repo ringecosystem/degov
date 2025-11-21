@@ -1,5 +1,5 @@
-module.exports = class Data1756613663322 {
-    name = 'Data1756613663322'
+module.exports = class Data1763384743063 {
+    name = 'Data1763384743063'
 
     async up(db) {
         await db.query(`CREATE TABLE "delegate_changed" ("id" character varying NOT NULL, "delegator" text NOT NULL, "from_delegate" text NOT NULL, "to_delegate" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_82fcd22b1159cec837a6062982f" PRIMARY KEY ("id"))`)
@@ -17,8 +17,8 @@ module.exports = class Data1756613663322 {
         await db.query(`CREATE TABLE "data_metric" ("id" character varying NOT NULL, "proposals_count" integer, "votes_count" integer, "votes_with_params_count" integer, "votes_without_params_count" integer, "votes_weight_for_sum" numeric, "votes_weight_against_sum" numeric, "votes_weight_abstain_sum" numeric, "power_sum" numeric, "member_count" integer, CONSTRAINT "PK_25f5e39e9c7755e2233bcbdc255" PRIMARY KEY ("id"))`)
         await db.query(`CREATE TABLE "delegate_rolling" ("id" character varying NOT NULL, "delegator" text NOT NULL, "from_delegate" text NOT NULL, "to_delegate" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, "from_previous_votes" numeric, "from_new_votes" numeric, "to_previous_votes" numeric, "to_new_votes" numeric, CONSTRAINT "PK_976ac6dd5a215cf1276bbf56adf" PRIMARY KEY ("id"))`)
         await db.query(`CREATE TABLE "delegate" ("id" character varying NOT NULL, "from_delegate" text NOT NULL, "to_delegate" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, "power" numeric NOT NULL, CONSTRAINT "PK_810516365b3daa9f6d6d2d4f2b7" PRIMARY KEY ("id"))`)
-        await db.query(`CREATE TABLE "contributor" ("id" character varying NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, "power" numeric NOT NULL, CONSTRAINT "PK_816afef005b8100becacdeb6e58" PRIMARY KEY ("id"))`)
-        await db.query(`CREATE TABLE "delegate_mapping" ("id" character varying NOT NULL, "from" text NOT NULL, "to" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_5b8f4a7ecb81f46845fa636443c" PRIMARY KEY ("id"))`)
+        await db.query(`CREATE TABLE "contributor" ("id" character varying NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, "power" numeric NOT NULL, "delegates_count_all" integer NOT NULL, "delegates_count_effective" integer NOT NULL, CONSTRAINT "PK_816afef005b8100becacdeb6e58" PRIMARY KEY ("id"))`)
+        await db.query(`CREATE TABLE "delegate_mapping" ("id" character varying NOT NULL, "from" text NOT NULL, "to" text NOT NULL, "power" numeric NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_5b8f4a7ecb81f46845fa636443c" PRIMARY KEY ("id"))`)
         await db.query(`ALTER TABLE "vote_cast_group" ADD CONSTRAINT "FK_46ec520941027c99068c7ed24b8" FOREIGN KEY ("proposal_id") REFERENCES "proposal"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`)
     }
 
