@@ -87,7 +87,7 @@ export function MembersTable({
       {
         title: "Name",
         key: "name",
-        width: "200px",
+        width: "236.6px",
         className: "text-left",
         render: (record) => (
           <AddressWithAvatar address={record?.id as `0x${string}`} />
@@ -106,7 +106,7 @@ export function MembersTable({
           />
         ),
         key: "votingPower",
-        width: "180px",
+        width: "215.26px",
         className: "text-left",
         render: (record) => {
           if (isProfilePullLoading || isProposalMetricsLoading) {
@@ -147,7 +147,7 @@ export function MembersTable({
           />
         ),
         key: "lastVoted",
-        width: "150px",
+        width: "215.26px",
         className: "text-left",
         render: (record) => {
           if (!record?.blockTimestamp) {
@@ -173,15 +173,15 @@ export function MembersTable({
               sortState.field === "delegators" ? sortState.direction : undefined
             }
             onClick={onDelegatorsSortChange}
-            className="justify-end"
+            className="justify-start"
             textClassName="text-[14px]"
           />
         ),
         key: "delegators",
-        width: "140px",
+        width: "108.6px",
         className: "text-left",
         render: (record) => (
-          <span className="text-[14px] block px-[20px] py-[10px]">
+          <span className="text-[14px] block py-[10px]">
             {formatInteger(record?.delegatesCountAll)}
           </span>
         ),
@@ -189,7 +189,7 @@ export function MembersTable({
       {
         title: "Action",
         key: "action",
-        width: "140px",
+        width: "215.26px",
         className: "text-right",
         render: (record) => (
           <Button
