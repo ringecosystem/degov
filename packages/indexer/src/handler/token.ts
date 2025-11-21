@@ -111,7 +111,10 @@ export class TokenHandler {
           },
         });
 
-      if (oldDelegateContributor && oldDelegateContributor.delegatesCountAll > 0) {
+      if (
+        oldDelegateContributor &&
+        oldDelegateContributor.delegatesCountAll > 0
+      ) {
         oldDelegateContributor.delegatesCountAll -= 1;
         await this.ctx.store.save(oldDelegateContributor);
       }
@@ -139,6 +142,7 @@ export class TokenHandler {
         delegatesCountEffective: 0,
       });
       await this.ctx.store.insert(contributor);
+      await this.increaseMetricsContributorCount();
     }
 
     // store delegate mapping
@@ -505,6 +509,10 @@ export class TokenHandler {
     if (!storeMemberMetrics) {
       return;
     }
+    await this.increaseMetricsContributorCount();
+  }
+
+  private async increaseMetricsContributorCount() {
     // increase metrics for memberCount
     const storedDataMetric: DataMetric | undefined =
       await this.ctx.store.findOne(DataMetric, {
