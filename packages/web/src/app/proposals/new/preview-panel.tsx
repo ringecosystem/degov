@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -25,6 +25,7 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showToggle, setShowToggle] = useState(false);
   const markdownRef = useRef<HTMLDivElement>(null);
+  const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const proposalContent = useMemo(() => {
     if (actions[0]?.type === "proposal") {
@@ -49,20 +50,40 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
     return DOMPurify.sanitize(html);
   }, [proposalContent.markdown]);
 
-  useEffect(() => {
+  // Use layout effect to measure DOM synchronously after render
+  // This avoids the cascading setState issue by measuring in the layout phase
+  useLayoutEffect(() => {
     if (!sanitizedHtml || !markdownRef.current) {
-      setShowToggle(false);
-      return;
+      if (showToggle) {
+        // Schedule the state update to avoid synchronous setState
+        updateTimeoutRef.current = setTimeout(() => {
+          setShowToggle(false);
+        }, 0);
+      }
+      return () => {
+        if (updateTimeoutRef.current) {
+          clearTimeout(updateTimeoutRef.current);
+        }
+      };
     }
 
     const updateHeight = () => {
       if (!markdownRef.current) return;
       const height = markdownRef.current.scrollHeight;
-      setShowToggle(height > MAX_COLLAPSED_HEIGHT);
+      const needsToggle = height > MAX_COLLAPSED_HEIGHT;
+      if (needsToggle !== showToggle) {
+        setShowToggle(needsToggle);
+      }
     };
 
-    requestAnimationFrame(updateHeight);
-  }, [sanitizedHtml]);
+    updateHeight();
+
+    return () => {
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+    };
+  }, [sanitizedHtml, showToggle]);
 
   const toggleExpanded = () => {
     setIsExpanded((prev) => !prev);

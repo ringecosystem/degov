@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useDebounce } from "react-use";
-import { useAccount } from "wagmi";
+import { useAccount, useAccountEffect } from "wagmi";
 
 import { DelegateAction } from "@/components/delegate-action";
 import { Faqs } from "@/components/faqs";
@@ -23,7 +23,7 @@ export default function Members() {
   const daoConfig = useDaoConfig();
   const [address, setAddress] = useState<Address | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const [showConnectPrompt, setShowConnectPrompt] = useState(false);
+  const [isLoadAttempted, setIsLoadAttempted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
@@ -49,7 +49,7 @@ export default function Members() {
   const handleDelegate = useCallback(
     (value: ContributorItem) => {
       if (!isConnected) {
-        setShowConnectPrompt(true);
+        setIsLoadAttempted(true);
         return;
       }
 
@@ -60,18 +60,20 @@ export default function Members() {
   );
 
   useEffect(() => {
-    if (isConnected) {
-      setShowConnectPrompt(false);
-    }
-  }, [isConnected]);
-
-  useEffect(() => {
     return () => {
       setAddress(undefined);
       setOpen(false);
-      setShowConnectPrompt(false);
+      setIsLoadAttempted(false);
     };
   }, []);
+
+  useAccountEffect({
+    onConnect() {
+      if (isLoadAttempted) {
+        setIsLoadAttempted(false);
+      }
+    },
+  });
 
   const getDisplayTitle = () => {
     const totalCount = proposalMetrics?.memberCount;
@@ -80,6 +82,8 @@ export default function Members() {
     }
     return "Delegates";
   };
+
+  const showConnectPrompt = !isConnected && isLoadAttempted;
 
   if (showConnectPrompt) {
     return (

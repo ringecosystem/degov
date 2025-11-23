@@ -1,6 +1,8 @@
-import { unstable_noStore } from "next/cache";
+// MIGRATED: Removed 'import { unstable_noStore } from "next/cache"' (incompatible with Cache Components)
+// Layout with async data fetching is automatically dynamic in Next.js 16
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
+import { Suspense } from "react";
 
 import "./globals.css";
 import "./markdown-body.css";
@@ -20,15 +22,19 @@ import type { Metadata } from "next";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-  display: "swap",
+  display: "swap", // Optimized: swap for better performance
   preload: true,
+  fallback: ["system-ui", "arial"], // Better fallback chain
+  adjustFontFallback: true, // Reduce layout shift
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-  display: "swap",
+  display: "swap", // Optimized: swap for better performance
   preload: true,
+  fallback: ["ui-monospace", "monospace"], // Better fallback chain
+  adjustFontFallback: true, // Reduce layout shift
 });
 
 function buildMetadata(config: Config | null | undefined): Metadata {
@@ -94,10 +100,10 @@ async function getRemoteConfig(): Promise<Config> {
 }
 
 export async function generateMetadata(): Promise<Metadata> {
+  // With Cache Components, accessing async data automatically makes this dynamic
   const apiMode = isDegovApiConfiguredServer();
 
   if (!apiMode) {
-    unstable_noStore();
     const config = await getDaoConfigServer();
     return buildMetadata(config);
   }
@@ -106,15 +112,36 @@ export async function generateMetadata(): Promise<Metadata> {
   return buildMetadata(config);
 }
 
-export default async function RootLayout({
+// Analytics Scripts component that accesses dynamic data
+async function AnalyticsScripts() {
+  const config = await getRemoteConfig();
+  const gaTag = config.analysis?.ga?.tag;
+
+  if (!gaTag) return null;
+
+  return (
+    <>
+      <Script
+        src={`https://www.googletagmanager.com/gtag/js?id=${gaTag}`}
+        strategy="afterInteractive"
+      />
+      <Script id="google-analytics" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', '${gaTag}');
+        `}
+      </Script>
+    </>
+  );
+}
+
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Get config to check for analytics configuration
-  const config = await getRemoteConfig();
-  const gaTag = config.analysis?.ga?.tag;
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -130,22 +157,9 @@ export default async function RootLayout({
             })}`,
           }}
         />
-        {gaTag && (
-          <Script
-            src={`https://www.googletagmanager.com/gtag/js?id=${gaTag}`}
-            strategy="afterInteractive"
-          />
-        )}
-        {gaTag && (
-          <Script id="google-analytics" strategy="afterInteractive">
-            {`
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', '${gaTag}');
-            `}
-          </Script>
-        )}
+        <Suspense fallback={null}>
+          <AnalyticsScripts />
+        </Suspense>
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

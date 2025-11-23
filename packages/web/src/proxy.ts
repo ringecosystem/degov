@@ -10,7 +10,7 @@ const NEED_AUTH_APIS = [
   { method: "post", path: "/api/profile/0x", mode: "prefix" },
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const apipath = pathname.toLowerCase();
 

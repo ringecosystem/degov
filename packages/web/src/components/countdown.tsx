@@ -42,36 +42,39 @@ export const Countdown = ({
   // Use refs to store callbacks, avoiding unnecessary effect re-runs
   const onEndRef = useRef(onEnd);
   const onTickRef = useRef(onTick);
-  const onStartRef = useRef(onStart);
+
+  const resetCountdown = useCallback(
+    (initial: number) => {
+      setRemaining(initial);
+      const shouldRun = autoStart && initial > 0;
+      setIsRunning(shouldRun);
+
+      if (onTickRef.current) {
+        onTickRef.current(initial);
+      }
+      if (shouldRun) {
+        onStart?.();
+      }
+    },
+    [autoStart, onStart]
+  );
 
   // Update refs when callbacks change
   useEffect(() => {
     onEndRef.current = onEnd;
     onTickRef.current = onTick;
-    onStartRef.current = onStart;
-  }, [onEnd, onTick, onStart]);
+  }, [onEnd, onTick]);
 
   const startCountdown = useCallback(() => {
     if (remaining <= 0 || isRunning) return;
     setIsRunning(true);
-    onStartRef.current?.();
-  }, [remaining, isRunning]);
+    onStart?.();
+  }, [remaining, isRunning, onStart]);
 
   useEffect(() => {
     const initial = sanitizeStart(start);
-    setRemaining(initial);
-    setIsRunning(false);
-
-    // Use callback from ref
-    if (onTickRef.current) {
-      onTickRef.current(initial);
-    }
-    // Auto start when requested and there is time to count
-    if (autoStart && initial > 0) {
-      setIsRunning(true);
-      onStartRef.current?.();
-    }
-  }, [start, sanitizeStart, autoStart]);
+    queueMicrotask(() => resetCountdown(initial));
+  }, [start, sanitizeStart, resetCountdown]);
 
   useEffect(() => {
     // Clear previous timer
@@ -123,7 +126,7 @@ export const Countdown = ({
 
   if (children)
     return (
-      // eslint-disable-next-line react-compiler/react-compiler
+       
       <span className={className}>{children(remaining, startCountdown)}</span>
     );
   return <span className={className}>{remaining}s</span>;

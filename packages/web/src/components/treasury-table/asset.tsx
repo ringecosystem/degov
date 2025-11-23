@@ -1,10 +1,37 @@
 import { blo } from "blo";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ExternalLinkIcon } from "@/components/icons";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type { TreasuryAssetWithPortfolio } from "@/hooks/useTreasuryAssets";
+
+const AssetImage = ({
+  src,
+  fallback,
+  alt,
+  imageKey,
+}: {
+  src?: string | null;
+  fallback: string;
+  alt: string;
+  imageKey: string;
+}) => {
+  const [hasError, setHasError] = useState(false);
+  const displaySrc = src && !hasError ? src : fallback;
+
+  return (
+    <Image
+      key={imageKey}
+      src={displaySrc}
+      alt={alt}
+      className="h-[30px] w-[30px] rounded-full"
+      width={30}
+      height={30}
+      onError={() => setHasError(true)}
+    />
+  );
+};
 
 type AssetSummary = Pick<
   TreasuryAssetWithPortfolio,
@@ -46,32 +73,16 @@ export const Asset = ({ asset, explorer }: AssetProps) => {
     return daoLogo || defaultPlaceholder;
   }, [asset.address, asset.native, daoLogo]);
 
-  const [hasError, setHasError] = useState(false);
-
-  useEffect(() => {
-    setHasError(false);
-  }, [asset.address, asset.logo, asset.native]);
-
-  const imageSrc =
-    asset.logo && !hasError
-      ? asset.logo
-      : fallbackSrc || daoLogo || defaultPlaceholder;
-
-  const handleImageError = () => {
-    if (!hasError) {
-      setHasError(true);
-    }
-  };
+  const imageKey = `${asset.address}-${asset.logo}-${asset.native}`;
 
   const content = (
     <>
-      <Image
-        src={imageSrc}
+      <AssetImage
+        key={imageKey}
+        src={asset.logo}
+        fallback={fallbackSrc || daoLogo || defaultPlaceholder}
         alt={asset.symbol || asset.name || "Token"}
-        className="h-[30px] w-[30px] rounded-full"
-        width={30}
-        height={30}
-        onError={handleImageError}
+        imageKey={imageKey}
       />
       <div className="flex flex-col min-w-0">
         <span className="text-[14px] font-medium text-foreground truncate">

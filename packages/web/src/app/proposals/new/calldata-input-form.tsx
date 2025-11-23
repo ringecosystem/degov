@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 
 import { ErrorMessage } from "@/components/error-message";
 import { Input } from "@/components/ui/input";
@@ -33,10 +33,10 @@ export function CallDataInputForm({
   const {
     control,
     formState: { errors },
-    watch,
     setValue,
     trigger,
     reset,
+    getValues,
   } = useForm<Calldata>({
     resolver: zodResolver(calldataSchema),
     defaultValues: {
@@ -44,6 +44,11 @@ export function CallDataInputForm({
     },
     mode: "onChange",
     reValidateMode: "onChange",
+  });
+
+  const watchedCalldataItems = useWatch({
+    control,
+    name: "calldataItems",
   });
 
   const isArrayType = useCallback((type: string) => {
@@ -65,11 +70,10 @@ export function CallDataInputForm({
   }, [calldata, reset]);
 
   useEffect(() => {
-    const subscription = watch((data) => {
-      onChange(data.calldataItems as CalldataItem[]);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, onChange]);
+    if (watchedCalldataItems) {
+      onChange(watchedCalldataItems as CalldataItem[]);
+    }
+  }, [watchedCalldataItems, onChange]);
 
   const { fields, update } = useFieldArray({
     control,
@@ -105,7 +109,7 @@ export function CallDataInputForm({
     (index: number, e: React.MouseEvent) => {
       e.preventDefault();
 
-      const values = watch("calldataItems");
+      const values = getValues("calldataItems");
       if (!values?.[index]) return;
 
       const currentValue = values[index].value;
@@ -118,12 +122,12 @@ export function CallDataInputForm({
 
       setValue("calldataItems", newValues);
     },
-    [watch, setValue]
+    [getValues, setValue]
   );
 
   const removeArrayItem = useCallback(
     (index: number, arrayIndex: number) => {
-      const values = watch("calldataItems");
+      const values = getValues("calldataItems");
       if (!values?.[index]) return;
 
       // Remove array item and update values
@@ -137,7 +141,7 @@ export function CallDataInputForm({
 
       setValue("calldataItems", newValues);
     },
-    [watch, setValue]
+    [getValues, setValue]
   );
 
   return (

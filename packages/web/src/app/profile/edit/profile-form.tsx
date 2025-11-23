@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -203,12 +203,11 @@ export function ProfileForm({
     mode: "onChange",
   });
 
+  const watchedValues = useWatch({ control: form.control });
+
   useEffect(() => {
-    const subscription = form.watch(() => {
-      if (onChange) onChange();
-    });
-    return () => subscription.unsubscribe();
-  }, [form, onChange]);
+    if (onChange) onChange();
+  }, [watchedValues, onChange]);
 
   async function onSubmit({
     data,

@@ -8,6 +8,7 @@ import { degovApiDaoConfigServer } from "@/utils/remote-api";
 export async function getConfigCachedByHost(): Promise<Config> {
   const hdr = await headers();
   const host = hdr.get("host");
+  const hostKey = (host ?? "default").toLowerCase();
 
   const get = unstable_cache(
     async () => {
@@ -34,10 +35,10 @@ export async function getConfigCachedByHost(): Promise<Config> {
         return getDaoConfigServer();
       }
     },
-    ["metadata-config", host ?? "default"],
+    ["metadata-config", hostKey],
     {
       revalidate: 86400,
-      tags: ["config", `host-${host}`],
+      tags: ["config", `host-${hostKey}`],
     }
   );
 

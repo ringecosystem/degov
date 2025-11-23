@@ -2,7 +2,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Nav } from "@/app/nav";
 import { AppIcon, LogoIcon } from "@/components/icons";
@@ -35,16 +35,17 @@ export const Aside = () => {
   const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
   const { isDarkTheme } = useCustomTheme();
 
-  const isCustomLogo = useMemo(() => {
-    return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
-  }, [config]);
-
   useEffect(() => {
     const savedState = localStorage.getItem("sidebar-collapsed");
-    if (savedState) {
+    if (savedState !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCollapsed(savedState === "true");
     }
   }, []);
+
+  const isCustomLogo = useMemo(() => {
+    return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
+  }, [config]);
 
   const currentWidth = collapsed
     ? SIDEBAR_WIDTH.COLLAPSED

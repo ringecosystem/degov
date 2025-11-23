@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo } from "react";
 
 import { getNavIcon } from "@/components/icons/nav-icon-map";
@@ -21,6 +21,7 @@ interface NavProps {
 
 export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
   const pathname = usePathname();
+  const router = useRouter();
   const daoConfig = useDaoConfig();
 
   // Filter routes based on configuration
@@ -32,7 +33,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
       }
       return true;
     });
-  }, [daoConfig?.apps]);
+  }, [daoConfig]);
 
   return (
     <nav className="space-y-2">
@@ -54,6 +55,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                   onClick={onMenuToggle}
                   href={route.pathname}
                   prefetch={false}
+                  onMouseEnter={() => router.prefetch(route.pathname)}
                   className={cn(
                     "group flex w-full items-center gap-[10px] rounded-[10px] px-[30px] capitalize",
                     "transition-all duration-100 hover:bg-foreground hover:font-semibold hover:text-card",
