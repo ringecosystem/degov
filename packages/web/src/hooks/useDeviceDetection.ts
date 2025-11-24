@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { useMounted } from "./useMounted";
-
 export type DeviceType = "mobile" | "tablet" | "desktop";
 
 interface DeviceConfig {
@@ -20,12 +18,14 @@ const DEVICE_BREAKPOINTS: DeviceConfig = {
 
 export const useDeviceDetection = () => {
   const [deviceType, setDeviceType] = useState<DeviceType>("desktop");
-  const isClient = useMounted();
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    setIsClient(true);
+    
     const checkDeviceType = () => {
       const width = window.innerWidth;
-
+      
       if (width < DEVICE_BREAKPOINTS.mobile) {
         setDeviceType("mobile");
       } else if (width < DEVICE_BREAKPOINTS.tablet) {
@@ -35,12 +35,11 @@ export const useDeviceDetection = () => {
       }
     };
 
-    const rafId = requestAnimationFrame(checkDeviceType);
+    checkDeviceType();
 
     window.addEventListener("resize", checkDeviceType);
 
     return () => {
-      cancelAnimationFrame(rafId);
       window.removeEventListener("resize", checkDeviceType);
     };
   }, []);

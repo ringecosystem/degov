@@ -82,30 +82,6 @@ export function useDecodeCallData(actions: Action[]): DecodedAction[] {
 
   // Decode actions using calldata decoder
   useEffect(() => {
-    let cancelled = false;
-    const cancelIds: number[] = [];
-
-    if (actions.length === 0) {
-      const id = requestAnimationFrame(() => {
-        if (!cancelled) setDecodedActions([]);
-      });
-      cancelIds.push(id);
-      return () => {
-        cancelled = true;
-        cancelIds.forEach((rafId) => cancelAnimationFrame(rafId));
-      };
-    }
-
-    const id = requestAnimationFrame(() => {
-      if (!cancelled) {
-        // Set initial loading state
-        setDecodedActions(
-          actions.map((action) => ({ ...action, isDecoding: true }))
-        );
-      }
-    });
-    cancelIds.push(id);
-
     const decodeActions = async () => {
       const decoded = await Promise.all(
         actions.map(async (action) => {
@@ -205,16 +181,16 @@ export function useDecodeCallData(actions: Action[]): DecodedAction[] {
         };
       });
 
-      if (!cancelled) {
-        setDecodedActions(processedDecoded);
-      }
+      setDecodedActions(processedDecoded);
     };
 
-    decodeActions();
-    return () => {
-      cancelled = true;
-      cancelIds.forEach((rafId) => cancelAnimationFrame(rafId));
-    };
+    if (actions.length > 0) {
+      // Set initial loading state
+      setDecodedActions(
+        actions.map((action) => ({ ...action, isDecoding: true }))
+      );
+      decodeActions();
+    }
   }, [actions, daoConfig?.chain?.id]);
 
   return decodedActions;

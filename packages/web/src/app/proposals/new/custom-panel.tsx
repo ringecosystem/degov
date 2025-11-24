@@ -1,8 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useForm, Controller, useWatch } from "react-hook-form";
-import { isAddress, type Abi, type AbiFunction, type AbiItem } from "viem";
+import { useForm, Controller } from "react-hook-form";
+import { isAddress, type Abi, type AbiItem } from "viem";
 import { useBytecode } from "wagmi";
 
 import { AddressInputWithResolver } from "@/components/address-input-with-resolver";
@@ -44,29 +44,16 @@ export const CustomPanel = ({
   onChange,
   onRemove,
 }: CustomPanelProps) => {
-  const isAbiFunction = useCallback(
-    (item: Abi[number]): item is AbiFunction =>
-      item?.type === "function" && Boolean(item?.name),
-    []
-  );
-
-  const matchFunctionBySignature = useCallback(
-    (item: Abi[number], name: string, paramCount: number): item is AbiFunction =>
-      isAbiFunction(item) &&
-      item.name === name &&
-      (item.inputs?.length || 0) === paramCount,
-    [isAbiFunction]
-  );
-
   const daoConfig = useDaoConfig();
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
 
   const {
     control,
+    watch,
     setValue,
     register,
     formState: { errors },
-  } = useForm<CustomContent>({
+  } = useForm({
     resolver: zodResolver(customActionSchema),
     mode: "onChange",
     reValidateMode: "onChange",
@@ -80,17 +67,10 @@ export const CustomPanel = ({
     },
   });
 
-  const watchedForm = useWatch({ control });
-  const target = watchedForm?.target;
-  const contractType = watchedForm?.contractType;
-  const contractMethod = watchedForm?.contractMethod;
-  const customAbiContent = watchedForm?.customAbiContent as Abi | undefined;
-  const calldata = watchedForm?.calldata;
-
   const { data: bytecode, isFetching: isLoadingBytecode } = useBytecode({
-    address: target,
+    address: watch("target"),
     query: {
-      enabled: !!target && isAddress(target || ""),
+      enabled: !!watch("target") && isAddress(watch("target") || ""),
     },
   });
 
@@ -147,9 +127,12 @@ export const CustomPanel = ({
 
       if (!name || !paramCountNum) return;
 
-      const abiJson = customAbiContent;
-      const method = abiJson?.find((item) =>
-        matchFunctionBySignature(item, name, parseInt(paramCountNum))
+      const abiJson = watch("customAbiContent") as Abi;
+      const method = abiJson?.find(
+        (item) =>
+          item.type === "function" &&
+          item.name === name &&
+          (item.inputs?.length || 0) === parseInt(paramCountNum)
       );
 
       if (method && method.type === "function") {
@@ -176,7 +159,7 @@ export const CustomPanel = ({
         }
       }
     },
-    [customAbiContent, matchFunctionBySignature, setValue]
+    [setValue, watch]
   );
 
   const handleFieldTouch = useCallback((index: number, arrayIndex?: number) => {
@@ -222,25 +205,30 @@ export const CustomPanel = ({
 
   // Check if method is payable
   const isPayable = useMemo(() => {
-    const methodValue = contractMethod;
+    const abiJson = watch("customAbiContent") as Abi;
+    const methodValue = watch("contractMethod");
 
     const [name, paramCountNum] = methodValue?.split("-") || [];
 
     if (!name || !paramCountNum) return false;
 
-    const method = customAbiContent?.find((item) =>
-      matchFunctionBySignature(item, name, parseInt(paramCountNum))
+    const method = abiJson?.find(
+      (item) =>
+        item.type === "function" &&
+        item.name === name &&
+        (item.inputs?.length || 0) === parseInt(paramCountNum)
     );
 
     return method?.type === "function" && method.stateMutability === "payable";
-  }, [contractMethod, customAbiContent, matchFunctionBySignature]);
+  }, [watch]);
 
   // Sync form state with parent
   useEffect(() => {
-    if (watchedForm) {
-      onChange(watchedForm as CustomContent);
-    }
-  }, [watchedForm, onChange]);
+    const subscription = watch((value) => {
+      onChange(value as CustomContent);
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, onChange]);
 
   return (
     <div
@@ -257,11 +245,7 @@ export const CustomPanel = ({
           variant="outline"
           onClick={() => onRemove(index)}
         >
-          <ProposalCloseIcon
-            width={16}
-            height={16}
-            className="text-current"
-          />
+          <ProposalCloseIcon width={16} height={16} className="text-current" />
           <span>Remove action</span>
         </Button>
       </div>
@@ -284,7 +268,7 @@ export const CustomPanel = ({
           /> */}
           <AddressInputWithResolver
             id="target"
-            value={target ?? ""}
+            value={watch("target")}
             onChange={(value) => setValue("target", value as Address)}
             placeholder="Enter the target address..."
             className={cn(
@@ -299,8 +283,8 @@ export const CustomPanel = ({
             </span>
           ) : errors.target ? (
             <ErrorMessage message={errors.target.message} />
-          ) : target &&
-            isAddress(target || "") &&
+          ) : watch("target") &&
+            isAddress(watch("target") || "") &&
             !bytecode ? (
             <ErrorMessage message="The address must be a contract address, not an EOA address" />
           ) : null}
@@ -348,22 +332,22 @@ export const CustomPanel = ({
             </div>
 
             {/* Custom ABI Upload */}
-            {contractType === "custom" && (
+            {watch("contractType") === "custom" && (
               <div className="flex flex-col gap-[10px]">
                 <FileUploader
                   onUpload={handleUploadAbi}
                   className={`${errors?.customAbiContent && "border-danger"}`}
                   isError={!!errors.customAbiContent}
-                  isUploaded={isValidAbi(customAbiContent || [])}
+                  isUploaded={isValidAbi(watch("customAbiContent") || [])}
                 />
               </div>
             )}
 
             {/* Method Selection */}
-            {customAbiContent &&
-              !!customAbiContent?.filter(
-                (item): item is AbiFunction =>
-                  isAbiFunction(item) &&
+            {watch("customAbiContent") &&
+              !!watch("customAbiContent")?.filter(
+                (item) =>
+                  item?.type === "function" &&
                   (item.stateMutability === "nonpayable" ||
                     item.stateMutability === "payable")
               )?.length && (
@@ -388,10 +372,10 @@ export const CustomPanel = ({
                           <SelectValue placeholder="Select the contract method..." />
                         </SelectTrigger>
                         <SelectContent className="border-border/20 bg-card">
-                          {customAbiContent
+                          {watch("customAbiContent")
                             ?.filter(
-                              (item): item is AbiFunction =>
-                                isAbiFunction(item) &&
+                              (item) =>
+                                item?.type === "function" &&
                                 (item.stateMutability === "payable" ||
                                   item.stateMutability === "nonpayable")
                             )
@@ -418,7 +402,7 @@ export const CustomPanel = ({
               )}
 
             {/* Calldata Input */}
-            {calldata && !!calldata?.length && (
+            {watch("calldata") && !!watch("calldata")?.length && (
               <div className="flex flex-col gap-[10px]">
                 <h4 className="text-[14px] text-foreground">Parameters</h4>
                 <Controller
