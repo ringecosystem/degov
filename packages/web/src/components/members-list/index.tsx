@@ -174,12 +174,6 @@ export function MembersList({
                     </div>
                   )}
                 </div>
-                <div className="text-left text-muted-foreground text-xs mt-1">
-                  <span>Delegators: </span>
-                  <span className="font-semibold text-foreground text-sm">
-                    {formatInteger(record?.delegatesCountAll)}
-                  </span>
-                </div>
               </div>
               <Button
                 variant="outline"
