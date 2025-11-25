@@ -65,6 +65,7 @@ export function CallDataInputForm({
   }, [calldata, reset]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((data) => {
       onChange(data.calldataItems as CalldataItem[]);
     });
