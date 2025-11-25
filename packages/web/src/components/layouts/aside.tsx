@@ -100,12 +100,16 @@ export const Aside = () => {
                 <Link href="/">
                   {isCustomLogo ? (
                     <Image
-                      src={isDarkTheme ? (config?.theme?.logoDark ?? "") : (config?.theme?.logoLight ?? "")}
+                      src={
+                        isDarkTheme
+                          ? config?.theme?.logoDark ?? ""
+                          : config?.theme?.logoLight ?? ""
+                      }
                       alt="logo"
                       width={128}
                       height={26}
                       priority
-                      className="h-[26px] w-[128px] rounded-full border border-(--card-background)"
+                      className="h-[26px] w-[128px]"
                     />
                   ) : (
                     <LogoIcon
