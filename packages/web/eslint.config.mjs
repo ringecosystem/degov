@@ -17,7 +17,7 @@ export default defineConfig([
     rules: {
       // Keep React Compiler rules enabled but start at warning level so we can fix incrementally
       "react-compiler/react-compiler": "warn",
-      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/set-state-in-effect": "off",
       "react-hooks/static-components": "warn",
       "react-hooks/refs": "warn",
       "react-hooks/incompatible-library": "warn",

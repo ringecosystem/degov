@@ -54,8 +54,8 @@ export const Countdown = ({
   const startCountdown = useCallback(() => {
     if (remaining <= 0 || isRunning) return;
     setIsRunning(true);
-    onStartRef.current?.();
-  }, [remaining, isRunning]);
+    onStart?.();
+  }, [remaining, isRunning, onStart]);
 
   useEffect(() => {
     const initial = sanitizeStart(start);
@@ -122,9 +122,6 @@ export const Countdown = ({
   }, [isRunning, remaining]);
 
   if (children)
-    return (
-      // eslint-disable-next-line react-compiler/react-compiler
-      <span className={className}>{children(remaining, startCountdown)}</span>
-    );
+    return <span className={className}>{children(remaining, startCountdown)}</span>;
   return <span className={className}>{remaining}s</span>;
 };

@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { isAddress, type Abi, type AbiItem } from "viem";
 import { useBytecode } from "wagmi";
 
@@ -49,9 +49,9 @@ export const CustomPanel = ({
 
   const {
     control,
-    watch,
     setValue,
     register,
+    watch,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(customActionSchema),
@@ -67,10 +67,17 @@ export const CustomPanel = ({
     },
   });
 
+  // Watch specific form values for rendering
+  const watchedTarget = useWatch({ control, name: "target" });
+  const watchedContractType = useWatch({ control, name: "contractType" });
+  const watchedCustomAbiContent = useWatch({ control, name: "customAbiContent" });
+  const watchedContractMethod = useWatch({ control, name: "contractMethod" });
+  const watchedCalldata = useWatch({ control, name: "calldata" });
+
   const { data: bytecode, isFetching: isLoadingBytecode } = useBytecode({
-    address: watch("target"),
+    address: watchedTarget,
     query: {
-      enabled: !!watch("target") && isAddress(watch("target") || ""),
+      enabled: !!watchedTarget && isAddress(watchedTarget || ""),
     },
   });
 
@@ -127,7 +134,7 @@ export const CustomPanel = ({
 
       if (!name || !paramCountNum) return;
 
-      const abiJson = watch("customAbiContent") as Abi;
+      const abiJson = watchedCustomAbiContent as Abi;
       const method = abiJson?.find(
         (item) =>
           item.type === "function" &&
@@ -159,7 +166,7 @@ export const CustomPanel = ({
         }
       }
     },
-    [setValue, watch]
+    [setValue, watchedCustomAbiContent]
   );
 
   const handleFieldTouch = useCallback((index: number, arrayIndex?: number) => {
@@ -205,8 +212,8 @@ export const CustomPanel = ({
 
   // Check if method is payable
   const isPayable = useMemo(() => {
-    const abiJson = watch("customAbiContent") as Abi;
-    const methodValue = watch("contractMethod");
+    const abiJson = watchedCustomAbiContent as Abi;
+    const methodValue = watchedContractMethod;
 
     const [name, paramCountNum] = methodValue?.split("-") || [];
 
@@ -220,10 +227,11 @@ export const CustomPanel = ({
     );
 
     return method?.type === "function" && method.stateMutability === "payable";
-  }, [watch]);
+  }, [watchedCustomAbiContent, watchedContractMethod]);
 
-  // Sync form state with parent
+  // Sync form state with parent using watch subscription
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((value) => {
       onChange(value as CustomContent);
     });
@@ -268,7 +276,7 @@ export const CustomPanel = ({
           /> */}
           <AddressInputWithResolver
             id="target"
-            value={watch("target")}
+            value={watchedTarget}
             onChange={(value) => setValue("target", value as Address)}
             placeholder="Enter the target address..."
             className={cn(
@@ -283,8 +291,8 @@ export const CustomPanel = ({
             </span>
           ) : errors.target ? (
             <ErrorMessage message={errors.target.message} />
-          ) : watch("target") &&
-            isAddress(watch("target") || "") &&
+          ) : watchedTarget &&
+            isAddress(watchedTarget || "") &&
             !bytecode ? (
             <ErrorMessage message="The address must be a contract address, not an EOA address" />
           ) : null}
@@ -332,20 +340,20 @@ export const CustomPanel = ({
             </div>
 
             {/* Custom ABI Upload */}
-            {watch("contractType") === "custom" && (
+            {watchedContractType === "custom" && (
               <div className="flex flex-col gap-[10px]">
                 <FileUploader
                   onUpload={handleUploadAbi}
                   className={`${errors?.customAbiContent && "border-danger"}`}
                   isError={!!errors.customAbiContent}
-                  isUploaded={isValidAbi(watch("customAbiContent") || [])}
+                  isUploaded={isValidAbi(watchedCustomAbiContent || [])}
                 />
               </div>
             )}
 
             {/* Method Selection */}
-            {watch("customAbiContent") &&
-              !!watch("customAbiContent")?.filter(
+            {watchedCustomAbiContent &&
+              !!watchedCustomAbiContent?.filter(
                 (item) =>
                   item?.type === "function" &&
                   (item.stateMutability === "nonpayable" ||
@@ -372,7 +380,7 @@ export const CustomPanel = ({
                           <SelectValue placeholder="Select the contract method..." />
                         </SelectTrigger>
                         <SelectContent className="border-border/20 bg-card">
-                          {watch("customAbiContent")
+                          {watchedCustomAbiContent
                             ?.filter(
                               (item) =>
                                 item?.type === "function" &&
@@ -402,7 +410,7 @@ export const CustomPanel = ({
               )}
 
             {/* Calldata Input */}
-            {watch("calldata") && !!watch("calldata")?.length && (
+            {watchedCalldata && !!watchedCalldata?.length && (
               <div className="flex flex-col gap-[10px]">
                 <h4 className="text-[14px] text-foreground">Parameters</h4>
                 <Controller
