@@ -54,8 +54,8 @@ export const Countdown = ({
   const startCountdown = useCallback(() => {
     if (remaining <= 0 || isRunning) return;
     setIsRunning(true);
-    onStart?.();
-  }, [remaining, isRunning, onStart]);
+    onStartRef.current?.();
+  }, [remaining, isRunning]);
 
   useEffect(() => {
     const initial = sanitizeStart(start);

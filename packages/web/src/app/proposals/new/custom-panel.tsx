@@ -51,7 +51,6 @@ export const CustomPanel = ({
     control,
     setValue,
     register,
-    watch,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(customActionSchema),
@@ -70,9 +69,14 @@ export const CustomPanel = ({
   // Watch specific form values for rendering
   const watchedTarget = useWatch({ control, name: "target" });
   const watchedContractType = useWatch({ control, name: "contractType" });
-  const watchedCustomAbiContent = useWatch({ control, name: "customAbiContent" });
+  const watchedCustomAbiContent = useWatch({
+    control,
+    name: "customAbiContent",
+  });
   const watchedContractMethod = useWatch({ control, name: "contractMethod" });
   const watchedCalldata = useWatch({ control, name: "calldata" });
+
+  const allFormValues = useWatch({ control });
 
   const { data: bytecode, isFetching: isLoadingBytecode } = useBytecode({
     address: watchedTarget,
@@ -229,14 +233,11 @@ export const CustomPanel = ({
     return method?.type === "function" && method.stateMutability === "payable";
   }, [watchedCustomAbiContent, watchedContractMethod]);
 
-  // Sync form state with parent using watch subscription
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/incompatible-library
-    const subscription = watch((value) => {
-      onChange(value as CustomContent);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, onChange]);
+    if (allFormValues) {
+      onChange(allFormValues as CustomContent);
+    }
+  }, [allFormValues, onChange]);
 
   return (
     <div
@@ -291,9 +292,7 @@ export const CustomPanel = ({
             </span>
           ) : errors.target ? (
             <ErrorMessage message={errors.target.message} />
-          ) : watchedTarget &&
-            isAddress(watchedTarget || "") &&
-            !bytecode ? (
+          ) : watchedTarget && isAddress(watchedTarget || "") && !bytecode ? (
             <ErrorMessage message="The address must be a contract address, not an EOA address" />
           ) : null}
         </div>
