@@ -7,6 +7,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
+import { formatInteger } from "@/utils/number";
 
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
@@ -19,6 +20,8 @@ interface MembersListProps {
   onDelegate?: (value: ContributorItem) => void;
   pageSize?: number;
   searchTerm?: string;
+  orderBy?: string;
+  hasUserSorted: boolean;
 }
 
 const Caption = ({
@@ -45,6 +48,8 @@ export function MembersList({
   onDelegate,
   pageSize = DEFAULT_PAGE_SIZE,
   searchTerm = "",
+  orderBy,
+  hasUserSorted,
 }: MembersListProps) {
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
@@ -63,25 +68,27 @@ export function MembersList({
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
     profilePullState: { isLoading: isProfilePullLoading },
     loadMoreData,
-  } = useMembersData(pageSize, searchTerm, initialPageSize);
+  } = useMembersData(
+    pageSize,
+    searchTerm,
+    initialPageSize,
+    orderBy,
+    hasUserSorted
+  );
 
   // Fetch AI bot contributor data separately and prepend when available (only on the first page)
   const { data: botMember } = useBotMemberData();
 
   const dataSource = useMemo<ContributorItem[]>(() => {
-    // When searching, return members as-is (already filtered by API)
-    if (searchTerm) {
+    const shouldPrependBot = !hasUserSorted && !searchTerm && !!botMember;
+
+    if (!shouldPrependBot) {
       return members;
     }
 
-    // When not searching, prepend bot member if available
-    if (botMember) {
-      const withoutBot = members.filter((m) => m.id !== botMember.id);
-      return [botMember, ...withoutBot];
-    }
-
-    return members;
-  }, [botMember, members, searchTerm]);
+    const withoutBot = members.filter((member) => member.id !== botMember.id);
+    return [botMember, ...withoutBot];
+  }, [botMember, hasUserSorted, members, searchTerm]);
 
   if (isPending) {
     return (

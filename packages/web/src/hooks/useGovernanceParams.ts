@@ -77,10 +77,10 @@ export function useStaticGovernanceParams() {
     query: {
       retry: 3,
       staleTime: 5 * 60 * 1000,
-      gcTime: 10 * 60 * 1000, 
+      gcTime: 10 * 60 * 1000,
       refetchOnMount: false,
       refetchOnWindowFocus: false,
-      refetchOnReconnect: true, 
+      refetchOnReconnect: true,
       enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
@@ -169,7 +169,9 @@ export function useQuorum() {
 
   // Determine the correct parameter for quorum function based on clock mode
   // Use a slightly older block for stability (current block - 10)
-  const stableBlockNumber = blockNumber ? blockNumber - BigInt(10) : BigInt(0);
+  const stableBlockNumber = blockNumber
+    ? BigInt(blockNumber) - BigInt(10)
+    : BigInt(0);
   const quorumParameter: bigint = isBlockNumberMode
     ? stableBlockNumber
     : BigInt(clockData ?? 0);

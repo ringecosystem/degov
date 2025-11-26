@@ -30,7 +30,8 @@ export function NewPublishWarning({
     const threshold = proposalThreshold ?? 0n;
     const userVotes = votes ?? 0n;
 
-    const needed = threshold > userVotes ? threshold - userVotes : 0n;
+    const needed =
+      threshold > userVotes ? BigInt(threshold) - BigInt(userVotes) : 0n;
 
     return {
       formattedProposalThreshold:

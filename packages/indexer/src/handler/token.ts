@@ -93,12 +93,65 @@ export class TokenHandler {
     });
     await this.ctx.store.insert(entity);
 
+    // update delegators count all
+    // First, check if delegator had previous delegation
+    let previousDelegateMapping: DelegateMapping | undefined =
+      await this.ctx.store.findOne(DelegateMapping, {
+        where: {
+          from: entity.delegator,
+        },
+      });
+
+    // If there was a previous delegation, decrease the old delegate's count
+    if (previousDelegateMapping) {
+      let oldDelegateContributor: Contributor | undefined =
+        await this.ctx.store.findOne(Contributor, {
+          where: {
+            id: previousDelegateMapping.to,
+          },
+        });
+
+      if (
+        oldDelegateContributor &&
+        oldDelegateContributor.delegatesCountAll > 0
+      ) {
+        oldDelegateContributor.delegatesCountAll -= 1;
+        await this.ctx.store.save(oldDelegateContributor);
+      }
+    }
+
+    // Increase the new delegate's count
+    let newDelegateContributor: Contributor | undefined =
+      await this.ctx.store.findOne(Contributor, {
+        where: {
+          id: entity.toDelegate,
+        },
+      });
+
+    if (newDelegateContributor) {
+      newDelegateContributor.delegatesCountAll += 1;
+      await this.ctx.store.save(newDelegateContributor);
+    } else {
+      const contributor = new Contributor({
+        id: entity.toDelegate,
+        blockNumber: entity.blockNumber,
+        blockTimestamp: entity.blockTimestamp,
+        transactionHash: entity.transactionHash,
+        power: 0n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 0,
+      });
+      await this.ctx.store.insert(contributor);
+      await this.increaseMetricsContributorCount();
+    }
+
     // store delegate mapping
     await this.ctx.store.remove(DelegateMapping, entity.delegator);
     const currentDelegateMapping = new DelegateMapping({
       id: entity.delegator,
       from: entity.delegator,
       to: entity.toDelegate,
+      power: 0n,
       blockNumber: entity.blockNumber,
       blockTimestamp: entity.blockTimestamp,
       transactionHash: entity.transactionHash,
@@ -324,10 +377,15 @@ export class TokenHandler {
         },
       });
 
+    let newDelegatePowerOfFromTo;
+    let delegatesCountEffective = 0;
     if (!storedDelegateFromWithTo) {
       await this.ctx.store.insert(currentDelegate);
+      delegatesCountEffective += 1;
+      newDelegatePowerOfFromTo = currentDelegate.power;
     } else {
       // update delegate
+      const oldPower = storedDelegateFromWithTo.power;
       storedDelegateFromWithTo.power += currentDelegate.power;
       storedDelegateFromWithTo.blockNumber = currentDelegate.blockNumber;
       storedDelegateFromWithTo.blockTimestamp = currentDelegate.blockTimestamp;
@@ -336,9 +394,25 @@ export class TokenHandler {
       // Remove delegate record if power is zero
       if (storedDelegateFromWithTo.power === 0n) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
+        // Only decrement count if transitioning from non-zero to zero
+        if (oldPower !== 0n) {
+          delegatesCountEffective -= 1;
+        }
       } else {
         await this.ctx.store.save(storedDelegateFromWithTo);
       }
+      newDelegatePowerOfFromTo = storedDelegateFromWithTo.power;
+    }
+
+    const storedFromDelegate: DelegateMapping | undefined =
+      await this.ctx.store.findOne(DelegateMapping, {
+        where: {
+          from: currentDelegate.fromDelegate,
+        },
+      });
+    if (storedFromDelegate) {
+      storedFromDelegate.power = newDelegatePowerOfFromTo;
+      await this.ctx.store.save(storedFromDelegate);
     }
 
     // store contributor
@@ -348,6 +422,7 @@ export class TokenHandler {
       blockTimestamp: currentDelegate.blockTimestamp,
       transactionHash: currentDelegate.transactionHash,
       power: currentDelegate.power,
+      delegatesCountEffective,
     });
     await this.storeContributor(contributor);
 
@@ -386,6 +461,9 @@ export class TokenHandler {
       storedContributor.transactionHash = contributor.transactionHash;
 
       storedContributor.power = storedContributor.power + contributor.power;
+      storedContributor.delegatesCountEffective =
+        storedContributor.delegatesCountEffective +
+        contributor.delegatesCountEffective;
 
       await this.ctx.store.save(storedContributor);
     } else {
@@ -431,6 +509,10 @@ export class TokenHandler {
     if (!storeMemberMetrics) {
       return;
     }
+    await this.increaseMetricsContributorCount();
+  }
+
+  private async increaseMetricsContributorCount() {
     // increase metrics for memberCount
     const storedDataMetric: DataMetric | undefined =
       await this.ctx.store.findOne(DataMetric, {
