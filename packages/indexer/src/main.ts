@@ -32,16 +32,24 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
       .filter((url) => url);
   }
 
-  const allRpcs = [...new Set([...configRpcs, ...envRpcs])];
+  // Prioritize envRpcs if available, otherwise use configRpcs
+  let selectedRpcs: string[];
+  let rpcSource: string;
 
-  if (allRpcs.length === 0) {
+  if (envRpcs.length > 0) {
+    selectedRpcs = envRpcs;
+    rpcSource = "environment variable";
+  } else if (configRpcs.length > 0) {
+    selectedRpcs = configRpcs;
+    rpcSource = "config file";
+  } else {
     throw new Error(
       `No RPC endpoints configured. Checked config file and environment variable "${envVarName}".`
     );
   }
 
-  const pickedIndex = Math.floor(Math.random() * allRpcs.length);
-  const randomRpcUrl = allRpcs[pickedIndex];
+  const pickedIndex = Math.floor(Math.random() * selectedRpcs.length);
+  const randomRpcUrl = selectedRpcs[pickedIndex];
   console.log("Loaded ENV RPC endpoints:");
   envRpcs.forEach((url, index) => {
     console.log(` - [${index}] ${url}`);
@@ -51,7 +59,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
     console.log(` - [${index}] ${url}`);
   });
   console.log(
-    `Using RPC endpoint: ${randomRpcUrl} picked index ${pickedIndex} from ${allRpcs.length}`
+    `Using RPC endpoint: ${randomRpcUrl} picked index ${pickedIndex} from ${selectedRpcs.length} (source: ${rpcSource})`
   );
 
   const processor = new EvmBatchProcessor()
@@ -105,7 +113,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
                 case "governor":
                   await new GovernorHandler(ctx, {
                     chainId: config.chainId,
-                    rpcs: allRpcs,
+                    rpcs: [...new Set([...configRpcs, ...envRpcs])],
                     work,
                     indexContract,
                     chainTool,

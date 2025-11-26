@@ -1,14 +1,20 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "react-use";
-import { useAccount, useAccountEffect } from "wagmi";
+import { useAccount } from "wagmi";
 
 import { DelegateAction } from "@/components/delegate-action";
 import { Faqs } from "@/components/faqs";
 import { MembersList } from "@/components/members-list";
-import { MembersTable } from "@/components/members-table";
+import {
+  MembersTable,
+  DEFAULT_SORT_STATE,
+  type MemberSortDirection,
+  type MemberSortField,
+  type MemberSortState,
+} from "@/components/members-table";
 import { SystemInfo } from "@/components/system-info";
 import { Input } from "@/components/ui/input";
 import { WithConnect } from "@/components/with-connect";
@@ -18,6 +24,24 @@ import type { ContributorItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
 
+const ORDER_BY_MAP: Record<
+  MemberSortField,
+  Record<MemberSortDirection, string>
+> = {
+  lastVoted: {
+    asc: "blockTimestamp_ASC_NULLS_LAST",
+    desc: "blockTimestamp_DESC_NULLS_LAST",
+  },
+  power: {
+    asc: "power_ASC",
+    desc: "power_DESC",
+  },
+  delegators: {
+    asc: "delegatesCountAll_ASC",
+    desc: "delegatesCountAll_DESC",
+  },
+};
+
 export default function Members() {
   const { isConnected } = useAccount();
   const daoConfig = useDaoConfig();
@@ -26,6 +50,9 @@ export default function Members() {
   const [isLoadAttempted, setIsLoadAttempted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [sortState, setSortState] =
+    useState<MemberSortState>(DEFAULT_SORT_STATE);
+  const [hasUserSorted, setHasUserSorted] = useState(false);
 
   // Debounce search term
   useDebounce(
@@ -67,13 +94,44 @@ export default function Members() {
     };
   }, []);
 
-  useAccountEffect({
-    onConnect() {
-      if (isLoadAttempted) {
-        setIsLoadAttempted(false);
+  const orderBy = useMemo(() => {
+    return ORDER_BY_MAP[sortState.field][sortState.direction];
+  }, [sortState]);
+  const queryOrderBy =
+    !hasUserSorted &&
+    sortState.field === DEFAULT_SORT_STATE.field &&
+    sortState.direction === DEFAULT_SORT_STATE.direction
+      ? undefined
+      : orderBy;
+
+  const applySortState = useCallback(
+    (field: MemberSortField, direction?: MemberSortDirection) => {
+      if (!direction) {
+        setHasUserSorted(false);
+        setSortState(DEFAULT_SORT_STATE);
+        return;
       }
+      setHasUserSorted(true);
+      setSortState({ field, direction });
     },
-  });
+    []
+  );
+
+  const handleLastVotedSortChange = useCallback(
+    (direction?: MemberSortDirection) => applySortState("lastVoted", direction),
+    [applySortState]
+  );
+
+  const handlePowerSortChange = useCallback(
+    (direction?: MemberSortDirection) => applySortState("power", direction),
+    [applySortState]
+  );
+
+  const handleDelegatorsSortChange = useCallback(
+    (direction?: MemberSortDirection) =>
+      applySortState("delegators", direction),
+    [applySortState]
+  );
 
   const getDisplayTitle = () => {
     const totalCount = proposalMetrics?.memberCount;
@@ -109,6 +167,8 @@ export default function Members() {
                 <MembersList
                   onDelegate={handleDelegate}
                   searchTerm={debouncedSearchTerm}
+                  orderBy={queryOrderBy}
+                  hasUserSorted={hasUserSorted}
                 />
               </div>
 
@@ -116,6 +176,12 @@ export default function Members() {
                 <MembersTable
                   onDelegate={handleDelegate}
                   searchTerm={debouncedSearchTerm}
+                  orderBy={queryOrderBy}
+                  hasUserSorted={hasUserSorted}
+                  sortState={sortState}
+                  onPowerSortChange={handlePowerSortChange}
+                  onLastVotedSortChange={handleLastVotedSortChange}
+                  onDelegatorsSortChange={handleDelegatorsSortChange}
                 />
               </div>
             </div>
@@ -151,12 +217,20 @@ export default function Members() {
             <MembersList
               onDelegate={handleDelegate}
               searchTerm={debouncedSearchTerm}
+              orderBy={queryOrderBy}
+              hasUserSorted={hasUserSorted}
             />
           </div>
           <div className="hidden lg:block">
             <MembersTable
               onDelegate={handleDelegate}
               searchTerm={debouncedSearchTerm}
+              orderBy={queryOrderBy}
+              hasUserSorted={hasUserSorted}
+              sortState={sortState}
+              onPowerSortChange={handlePowerSortChange}
+              onLastVotedSortChange={handleLastVotedSortChange}
+              onDelegatorsSortChange={handleDelegatorsSortChange}
             />
           </div>
         </div>
