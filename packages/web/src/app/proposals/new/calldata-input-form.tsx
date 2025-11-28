@@ -65,6 +65,7 @@ export function CallDataInputForm({
   }, [calldata, reset]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((data) => {
       onChange(data.calldataItems as CalldataItem[]);
     });
@@ -76,19 +77,19 @@ export function CallDataInputForm({
     name: "calldataItems",
   });
 
-  const getFieldError = useCallback((
-    index: number,
-    arrayIndex?: number
-  ): FieldError | undefined => {
-    const errorSource = parentErrors || errors;
+  const getFieldError = useCallback(
+    (index: number, arrayIndex?: number): FieldError | undefined => {
+      const errorSource = parentErrors || errors;
 
-    if (arrayIndex !== undefined) {
-      return (
-        errorSource.calldataItems?.[index]?.value as unknown as FieldErrors
-      )?.[arrayIndex] as FieldError;
-    }
-    return errorSource.calldataItems?.[index]?.value as FieldError;
-  }, [parentErrors, errors]);
+      if (arrayIndex !== undefined) {
+        return (
+          errorSource.calldataItems?.[index]?.value as unknown as FieldErrors
+        )?.[arrayIndex] as FieldError;
+      }
+      return errorSource.calldataItems?.[index]?.value as FieldError;
+    },
+    [parentErrors, errors]
+  );
 
   const shouldShowError = useCallback(
     (index: number, arrayIndex?: number): boolean => {

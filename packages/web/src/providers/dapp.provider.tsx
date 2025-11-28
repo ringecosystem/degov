@@ -1,4 +1,7 @@
 "use client";
+
+import "@/lib/bigint-polyfill";
+
 import {
   RainbowKitProvider,
   RainbowKitAuthenticationProvider,

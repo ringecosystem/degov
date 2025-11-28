@@ -1,12 +1,34 @@
-import { getProposalActionIcon } from "@/components/icons/proposal-actions-map";
+import {
+  ProposalActionIconMap,
+  getProposalActionIcon,
+} from "@/components/icons/proposal-actions-map";
 import { type ProposalActionType } from "@/config/proposals";
 import { cn } from "@/lib/utils";
+
+const {
+  proposal: ProposalIcon,
+  transfer: TransferIcon,
+  custom: CustomIcon,
+  preview: PreviewIcon,
+  xaccount: XAccountIcon,
+} = ProposalActionIconMap;
+
+const ACTION_ICON_NODE: Partial<
+  Record<Exclude<ProposalActionType, "add">, React.ReactNode>
+> = {
+  proposal: <ProposalIcon width={24} height={24} className="text-current" />,
+  transfer: <TransferIcon width={24} height={24} className="text-current" />,
+  custom: <CustomIcon width={24} height={24} className="text-current" />,
+  preview: <PreviewIcon width={24} height={24} className="text-current" />,
+  xaccount: <XAccountIcon width={24} height={24} className="text-current" />,
+};
+
 interface NewProposalActionProps {
   type: Exclude<ProposalActionType, "add">;
-  tip?: string;
   onSwitch?: (type: Exclude<ProposalActionType, "add">) => void;
   active?: boolean;
   error?: boolean;
+  tip?: string;
 }
 
 export const NewProposalAction = ({
@@ -14,9 +36,13 @@ export const NewProposalAction = ({
   onSwitch,
   active,
   error,
-  tip,
 }: NewProposalActionProps) => {
-  const IconComponent = getProposalActionIcon(type);
+  const iconNode =
+    ACTION_ICON_NODE[type] ??
+    (() => {
+      const DynamicIcon = getProposalActionIcon(type);
+      return <DynamicIcon width={24} height={24} className="text-current" />;
+    })();
 
   if (type === "proposal") {
     return (
@@ -27,7 +53,7 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("proposal")}
       >
-        <IconComponent width={24} height={24} className="text-current" />
+        {iconNode}
         <span className="text-[14px] font-normal text-foreground">
           Proposal
         </span>
@@ -46,7 +72,7 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("transfer")}
       >
-        <IconComponent width={24} height={24} className="text-current" />
+        {iconNode}
         <span className="text-[14px] font-normal text-foreground">
           Transfer
         </span>
@@ -65,7 +91,7 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("custom")}
       >
-        <IconComponent width={24} height={24} className="text-current" />
+        {iconNode}
         <span className="text-[14px] font-normal text-foreground">Custom</span>
         {error && (
           <span className="absolute right-[20px] top-1/2 h-[10px] w-[10px] -translate-y-1/2 rounded-full bg-danger"></span>
@@ -114,7 +140,7 @@ export const NewProposalAction = ({
         )}
         onClick={() => onSwitch?.("preview")}
       >
-        <IconComponent width={24} height={24} className="text-current" />
+        {iconNode}
         <span className="text-[14px] font-normal text-foreground">Preview</span>
       </div>
     );

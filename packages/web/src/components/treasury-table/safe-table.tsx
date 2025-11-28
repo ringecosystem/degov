@@ -49,7 +49,7 @@ export function SafeTable({ caption }: SafeTableProps) {
         chainName: flatChainInfo?.[v.chainId ?? ""]?.name,
       };
     });
-  }, [daoConfig?.safes, flatChainInfo]);
+  }, [daoConfig, flatChainInfo]);
 
   const displayData = useMemo(() => {
     return data.slice(0, visibleItems);

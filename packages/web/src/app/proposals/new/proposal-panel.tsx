@@ -1,7 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useEffect } from "react";
-import { Controller } from "react-hook-form";
-import { useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
 import { Editor } from "@/components/editor";
 import { ErrorMessage } from "@/components/error-message";
@@ -30,7 +29,6 @@ export const ProposalPanel = ({
     control,
     handleSubmit,
     formState: { errors },
-    watch,
   } = useForm<ProposalContent>({
     resolver: zodResolver(proposalSchema),
     defaultValues: {
@@ -41,12 +39,13 @@ export const ProposalPanel = ({
     mode: "onChange",
   });
 
+  const watchedValues = useWatch({ control });
+
   useEffect(() => {
-    const subscription = watch((value) => {
-      onChange(value as ProposalContent);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, onChange]);
+    if (watchedValues) {
+      onChange(watchedValues as ProposalContent);
+    }
+  }, [watchedValues, onChange]);
 
   const onSubmit = useCallback(
     (data: ProposalContent) => {

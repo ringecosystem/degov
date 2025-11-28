@@ -47,7 +47,7 @@ export default function Members() {
   const daoConfig = useDaoConfig();
   const [address, setAddress] = useState<Address | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const [showConnectPrompt, setShowConnectPrompt] = useState(false);
+  const [isLoadAttempted, setIsLoadAttempted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [sortState, setSortState] =
@@ -76,7 +76,7 @@ export default function Members() {
   const handleDelegate = useCallback(
     (value: ContributorItem) => {
       if (!isConnected) {
-        setShowConnectPrompt(true);
+        setIsLoadAttempted(true);
         return;
       }
 
@@ -87,16 +87,10 @@ export default function Members() {
   );
 
   useEffect(() => {
-    if (isConnected) {
-      setShowConnectPrompt(false);
-    }
-  }, [isConnected]);
-
-  useEffect(() => {
     return () => {
       setAddress(undefined);
       setOpen(false);
-      setShowConnectPrompt(false);
+      setIsLoadAttempted(false);
     };
   }, []);
 
@@ -147,6 +141,8 @@ export default function Members() {
     return "Delegates";
   };
 
+  const showConnectPrompt = !isConnected && isLoadAttempted;
+
   if (showConnectPrompt) {
     return (
       <WithConnect>
@@ -177,16 +173,16 @@ export default function Members() {
               </div>
 
               <div className="hidden lg:block">
-              <MembersTable
-                onDelegate={handleDelegate}
-                searchTerm={debouncedSearchTerm}
-                orderBy={queryOrderBy}
-                hasUserSorted={hasUserSorted}
-                sortState={sortState}
-                onPowerSortChange={handlePowerSortChange}
-                onLastVotedSortChange={handleLastVotedSortChange}
-                onDelegatorsSortChange={handleDelegatorsSortChange}
-              />
+                <MembersTable
+                  onDelegate={handleDelegate}
+                  searchTerm={debouncedSearchTerm}
+                  orderBy={queryOrderBy}
+                  hasUserSorted={hasUserSorted}
+                  sortState={sortState}
+                  onPowerSortChange={handlePowerSortChange}
+                  onLastVotedSortChange={handleLastVotedSortChange}
+                  onDelegatorsSortChange={handleDelegatorsSortChange}
+                />
               </div>
             </div>
             <div className="w-[360px] flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
