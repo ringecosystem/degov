@@ -150,7 +150,7 @@ export function MembersTable({
         width: "215.26px",
         className: "text-left",
         render: (record) => {
-          if (!record?.blockTimestamp) {
+          if (!record?.lastVoteTimestamp) {
             return (
               <span className="text-muted-foreground text-sm">
                 No Vote History
@@ -160,7 +160,7 @@ export function MembersTable({
 
           return (
             <span className="text-sm">
-              {formatTimeAgo(record.blockTimestamp)}
+              {formatTimeAgo(record.lastVoteTimestamp)}
             </span>
           );
         },

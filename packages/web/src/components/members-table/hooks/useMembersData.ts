@@ -22,7 +22,7 @@ export function useMembersData(
   orderBy?: string,
   includeBotInQuery = false
 ) {
-  const DEFAULT_ORDER_BY = "blockTimestamp_DESC_NULLS_LAST";
+  const DEFAULT_ORDER_BY = "lastVoteTimestamp_DESC_NULLS_LAST";
   const daoConfig = useDaoConfig();
   const { botAddress } = useAiBotAddress();
   const isSearching = searchTerm.trim().length > 0;
