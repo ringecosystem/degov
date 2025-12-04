@@ -43,16 +43,24 @@ const nextConfig: NextConfig = {
       static: 86400, // 24 hours for static content
     },
 
-    // Optimize package imports to reduce bundle size
+    // Optimize package imports for large barrel-file libraries
+    // Next.js auto-optimizes: lucide-react, date-fns, lodash-es, recharts, @mui/*, @headlessui/*, @heroicons/*, @visx/visx, @tremor/react, rxjs, @material-ui/*, @tabler/icons-react, react-use, mui-core
+    // Only add packages that: 1) export many modules, 2) NOT in default list
     optimizePackageImports: [
       "@rainbow-me/rainbowkit",
       "@tanstack/react-query",
       "wagmi",
       "viem",
       "framer-motion",
-      "lucide-react",
+      "@radix-ui/react-checkbox",
+      "@radix-ui/react-collapsible",
       "@radix-ui/react-dialog",
       "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-label",
+      "@radix-ui/react-progress",
+      "@radix-ui/react-select",
+      "@radix-ui/react-separator",
+      "@radix-ui/react-slot",
       "@radix-ui/react-tabs",
       "@radix-ui/react-tooltip",
     ],
