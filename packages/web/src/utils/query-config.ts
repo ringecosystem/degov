@@ -3,7 +3,7 @@
  */
 
 // Cache time constants (in milliseconds)
-export const CACHE_TIMES = {
+const CACHE_TIMES = {
   THIRTY_SECONDS: 30 * 1000,
   ONE_MINUTE: 60 * 1000,
   FIVE_MINUTES: 5 * 60 * 1000,

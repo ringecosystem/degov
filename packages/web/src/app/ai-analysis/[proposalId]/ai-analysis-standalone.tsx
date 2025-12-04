@@ -484,6 +484,3 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
     </div>
   );
 };
-
-// Also export the dialog version for backward compatibility
-export const AgentVotingAnalysisDialog = AiAnalysisStandalone;
