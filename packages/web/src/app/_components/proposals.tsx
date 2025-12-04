@@ -10,6 +10,7 @@ import { DiscussionIcon, PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
+import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
@@ -75,12 +76,10 @@ export const Proposals = () => {
               </Button>
             </div>
           </div>
-          <div className="lg:hidden">
-            <ProposalsList type="active" />
-          </div>
-          <div className="hidden lg:block">
-            <ProposalsTable type="active" />
-          </div>
+          <ResponsiveRenderer
+            desktop={<ProposalsTable type="active" />}
+            mobile={<ProposalsList type="active" />}
+          />
         </div>
         <Faqs type="general" />
       </div>
