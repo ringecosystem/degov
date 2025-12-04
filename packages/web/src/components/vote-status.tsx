@@ -34,28 +34,6 @@ const text = {
   },
 };
 
-interface VoteStatusProps {
-  variant: VoteType;
-  className?: string;
-}
-
-export const VoteStatus: FC<VoteStatusProps> = ({ variant, className }) => {
-  const IconComponent = text[variant].icon;
-
-  return (
-    <div
-      className={cn(
-        "t flex items-center gap-x-2 rounded-full px-4 py-2 text-base font-medium text-foreground transition-opacity hover:opacity-80",
-        text[variant].color,
-        className
-      )}
-    >
-      <IconComponent width={20} height={20} className="text-always-light" />
-      <span className="text-always-light">{text[variant].label}</span>
-    </div>
-  );
-};
-
 interface VoteStatusActionProps {
   variant: VoteType;
   className?: string;
