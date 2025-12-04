@@ -20,10 +20,10 @@ export const Parameters = () => {
     data: governanceParams,
     isStaticLoading,
     refetchClock,
-  } = useGovernanceParams();
+  } = useGovernanceParams({ enabled: open });
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
-  const { data: governanceToken } = useGovernanceToken();
+  const { data: governanceToken } = useGovernanceToken({ enabled: open });
 
   const formattedData = useMemo(() => {
     const proposalThresholdFormatted =

@@ -6,10 +6,15 @@ import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as timeLockAbi } from "@/config/abi/timeLock";
 import { useBlockInterval } from "@/contexts/BlockContext";
 import { useClockModeContext } from "@/contexts/ClockModeContext";
+import { QUERY_CONFIGS } from "@/utils/query-config";
 
 import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
+
+interface GovernanceParamsOptions {
+  enabled?: boolean;
+}
 
 interface StaticGovernanceParams {
   proposalThreshold: bigint;
@@ -26,7 +31,10 @@ interface GovernanceParams extends StaticGovernanceParams {
   quorum: bigint;
 }
 
-export function useStaticGovernanceParams() {
+export function useStaticGovernanceParams(
+  options: GovernanceParamsOptions = {}
+) {
+  const { enabled = true } = options;
   const daoConfig = useDaoConfig();
   const governorAddress = daoConfig?.contracts?.governor as Address;
   const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
@@ -75,13 +83,9 @@ export function useStaticGovernanceParams() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     contracts: contracts as any,
     query: {
-      retry: 3,
-      staleTime: 5 * 60 * 1000,
-      gcTime: 10 * 60 * 1000,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: true,
-      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
+      ...QUERY_CONFIGS.STATIC,
+      enabled:
+        enabled && Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
 
@@ -134,7 +138,8 @@ export function useStaticGovernanceParams() {
   };
 }
 
-export function useQuorum() {
+export function useQuorum(options: GovernanceParamsOptions = {}) {
+  const { enabled = true } = options;
   const daoConfig = useDaoConfig();
   const governorAddress = daoConfig?.contracts?.governor as Address;
 
@@ -149,6 +154,11 @@ export function useQuorum() {
   // Get current block number from BlockContext
   const { data: blockNumber } = useBlockNumber({
     chainId: daoConfig?.chain?.id,
+    query: {
+      ...QUERY_CONFIGS.FREQUENT,
+      refetchInterval: 30 * 1000,
+      enabled: enabled && Boolean(daoConfig?.chain?.id),
+    },
   });
 
   const {
@@ -162,8 +172,10 @@ export function useQuorum() {
     functionName: "clock" as const,
     chainId: daoConfig?.chain?.id,
     query: {
-      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
-      staleTime: 0,
+      ...QUERY_CONFIGS.FREQUENT,
+      refetchInterval: 30 * 1000,
+      enabled:
+        enabled && Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
 
@@ -186,7 +198,10 @@ export function useQuorum() {
     args: [quorumParameter],
     chainId: daoConfig?.chain?.id,
     query: {
+      ...QUERY_CONFIGS.FREQUENT,
+      refetchInterval: 30 * 1000,
       enabled:
+        enabled &&
         Boolean(governorAddress) &&
         Boolean(daoConfig?.chain?.id) &&
         !isClockModeLoading &&
@@ -208,8 +223,8 @@ export function useQuorum() {
   };
 }
 
-export function useGovernanceParams() {
-  const staticParams = useStaticGovernanceParams();
+export function useGovernanceParams(options: GovernanceParamsOptions = {}) {
+  const staticParams = useStaticGovernanceParams(options);
   const {
     quorum,
     clockMode,
@@ -218,7 +233,7 @@ export function useGovernanceParams() {
     isFetching: isQuorumFetching,
     error: quorumError,
     refetchClock,
-  } = useQuorum();
+  } = useQuorum(options);
 
   const formattedData: GovernanceParams | null = useMemo(() => {
     if (!staticParams.data) return null;

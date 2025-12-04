@@ -11,21 +11,13 @@ import { QueryClient } from "@tanstack/react-query";
 import { cookieStorage, createStorage } from "wagmi";
 import { mainnet } from "wagmi/chains";
 
+import { createWagmiQueryConfig } from "@/utils/query-config";
+
 import type { Chain } from "@rainbow-me/rainbowkit";
 
 const { wallets } = getDefaultWallets();
 
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      // Keep data fresh longer to reduce refetch on route changes
-      staleTime: 10_000,
-      // Prevent unexpected garbage collection for a long time
-      gcTime: 30 * 60 * 1000,
-    },
-  },
-});
+export const queryClient = new QueryClient(createWagmiQueryConfig());
 
 export function createConfig({
   appName,
