@@ -18,23 +18,13 @@ const nextConfig: NextConfig = {
     ],
     formats: ["image/webp", "image/avif"],
     minimumCacheTTL: 60,
-    // Optimized device sizes for responsive images
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
-    // Optimized image sizes for different use cases
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
   reactStrictMode: false,
 
   serverExternalPackages: ["js-yaml"],
 
-  // Cache Components - Disabled temporarily to ensure stable builds
-  // The app is primarily client-heavy with Web3 interactions
-  // Can be gradually enabled with "use cache" directives for specific components
-  // See: NEXTJS16_OPTIMIZATION_SUMMARY.md for gradual adoption strategy
-  // cacheComponents: true,
-
-  // Enable React Compiler for automatic optimization
-  // Reduces unnecessary re-renders without manual useMemo/useCallback
   reactCompiler: true,
 
   experimental: {
@@ -43,9 +33,6 @@ const nextConfig: NextConfig = {
       static: 86400, // 24 hours for static content
     },
 
-    // Optimize package imports for large barrel-file libraries
-    // Next.js auto-optimizes: lucide-react, date-fns, lodash-es, recharts, @mui/*, @headlessui/*, @heroicons/*, @visx/visx, @tremor/react, rxjs, @material-ui/*, @tabler/icons-react, react-use, mui-core
-    // Only add packages that: 1) export many modules, 2) NOT in default list
     optimizePackageImports: [
       "@rainbow-me/rainbowkit",
       "@tanstack/react-query",
