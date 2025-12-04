@@ -200,6 +200,9 @@ type Contributor @entity {
   blockTimestamp: BigInt!
   transactionHash: String!
 
+  lastVoteBlockNumber: BigInt
+  lastVoteTimestamp: BigInt
+
   power: BigInt!
 
   delegatesCountAll: Int!
