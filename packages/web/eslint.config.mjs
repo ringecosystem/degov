@@ -1,42 +1,38 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-
-import { FlatCompat } from "@eslint/eslintrc";
-import pluginQuery from '@tanstack/eslint-plugin-query'
-import typescriptEslintPlugin from "@typescript-eslint/eslint-plugin";
+import pluginQuery from "@tanstack/eslint-plugin-query";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
 import importPlugin from "eslint-plugin-import";
-import reactCompiler from 'eslint-plugin-react-compiler'
+import reactCompiler from "eslint-plugin-react-compiler";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
-  ...pluginQuery.configs['flat/recommended'],
+export default defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  ...pluginQuery.configs["flat/recommended"],
   {
     plugins: {
       import: importPlugin,
-      "@typescript-eslint": typescriptEslintPlugin,
-      'react-compiler': reactCompiler,
+      "react-compiler": reactCompiler,
     },
     rules: {
-      'react-compiler/react-compiler': 'error',
+      // Keep React Compiler rules enabled but start at warning level so we can fix incrementally
+      "react-compiler/react-compiler": "warn",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/static-components": "warn",
+      "react-hooks/refs": "warn",
+      "react-hooks/incompatible-library": "warn",
       "import/order": [
-        "error",
+        "warn",
         {
           groups: [
-            "builtin", 
-            "external", 
-            "internal", 
-            "parent", 
-            "sibling", 
-            "index", 
-            "object", 
-            "type", 
+            "builtin",
+            "external",
+            "internal",
+            "parent",
+            "sibling",
+            "index",
+            "object",
+            "type",
           ],
           pathGroups: [
             {
@@ -45,24 +41,31 @@ const eslintConfig = [
               position: "after",
             },
           ],
-          "newlines-between": "always", 
+          "newlines-between": "always",
           alphabetize: {
-            order: "asc", 
-            caseInsensitive: true, 
+            order: "asc",
+            caseInsensitive: true,
           },
         },
       ],
-      
       "@typescript-eslint/consistent-type-imports": [
         "error",
         {
-          prefer: "type-imports", 
-          disallowTypeAnnotations: true, 
-          fixStyle: "separate-type-imports", 
+          prefer: "type-imports",
+          disallowTypeAnnotations: true,
+          fixStyle: "separate-type-imports",
         },
       ],
     },
   },
-];
-
-export default eslintConfig;
+  // Override default ignores to match Next.js recommendations
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    // Third-party UI primitives; keep lint noise out
+    "src/components/editor/**",
+    "src/components/ui/**",
+  ]),
+]);

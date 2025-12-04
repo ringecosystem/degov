@@ -16,7 +16,7 @@ class TokenManager {
 
   getToken(address?: string): string | null {
     if (typeof window === "undefined") return null;
-    return sessionStorage.getItem(this.getTokenKey(address));
+    return localStorage.getItem(this.getTokenKey(address));
   }
 
   setToken(token: string | null, address?: string): void {
@@ -24,9 +24,9 @@ class TokenManager {
 
     const key = this.getTokenKey(address);
     if (token) {
-      sessionStorage.setItem(key, token);
+      localStorage.setItem(key, token);
     } else {
-      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
     }
   }
 
@@ -36,7 +36,7 @@ class TokenManager {
 
   getRemoteToken(address?: string): string | null {
     if (typeof window === "undefined") return null;
-    return sessionStorage.getItem(this.getRemoteTokenKey(address));
+    return localStorage.getItem(this.getRemoteTokenKey(address));
   }
 
   setRemoteToken(token: string | null, address?: string): void {
@@ -44,9 +44,9 @@ class TokenManager {
 
     const key = this.getRemoteTokenKey(address);
     if (token) {
-      sessionStorage.setItem(key, token);
+      localStorage.setItem(key, token);
     } else {
-      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
     }
   }
 
@@ -62,14 +62,14 @@ class TokenManager {
   clearAllAddressTokens(): void {
     if (typeof window === "undefined") return;
 
-    const keys = Object.keys(sessionStorage);
+    const keys = Object.keys(localStorage);
     const tokenKeys = keys.filter(
       (key) =>
         key.startsWith(TOKEN_KEY_PREFIX) ||
         key.startsWith(REMOTE_TOKEN_KEY_PREFIX)
     );
 
-    tokenKeys.forEach((key) => sessionStorage.removeItem(key));
+    tokenKeys.forEach((key) => localStorage.removeItem(key));
   }
 }
 

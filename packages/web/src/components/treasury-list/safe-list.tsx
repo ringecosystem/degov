@@ -56,7 +56,7 @@ export function SafeList({ caption }: SafeListProps) {
         chainName: flatChainInfo?.[v.chainId ?? ""]?.name,
       };
     });
-  }, [daoConfig?.safes, flatChainInfo]);
+  }, [daoConfig, flatChainInfo]);
 
   const displayData = useMemo(() => {
     return data.slice(0, visibleItems);

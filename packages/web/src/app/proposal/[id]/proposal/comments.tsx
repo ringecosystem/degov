@@ -312,6 +312,7 @@ export const Comments = ({ comments, id }: CommentsProps) => {
     sortState,
     handleDateSortChange,
     handlePowerSortChange,
+    daoConfig?.chain?.explorers,
   ]);
 
   const hasMoreItems = visibleCount < sortedComments.length;

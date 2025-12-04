@@ -213,13 +213,13 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
     if (!analysisOutput?.reasoningLite) return "";
     const html = marked.parse(analysisOutput.reasoningLite) as string;
     return DOMPurify.sanitize(html);
-  }, [analysisOutput?.reasoningLite]);
+  }, [analysisOutput]);
 
   const sanitizedHtml = useMemo(() => {
     if (!analysisOutput?.reasoning) return "";
     const html = marked.parse(analysisOutput.reasoning) as string;
     return DOMPurify.sanitize(html);
-  }, [analysisOutput?.reasoning]);
+  }, [analysisOutput]);
 
   const renderContent = () => {
     if (loading) {

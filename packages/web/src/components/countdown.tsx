@@ -122,9 +122,6 @@ export const Countdown = ({
   }, [isRunning, remaining]);
 
   if (children)
-    return (
-      // eslint-disable-next-line react-compiler/react-compiler
-      <span className={className}>{children(remaining, startCountdown)}</span>
-    );
+    return <span className={className}>{children(remaining, startCountdown)}</span>;
   return <span className={className}>{remaining}s</span>;
 };

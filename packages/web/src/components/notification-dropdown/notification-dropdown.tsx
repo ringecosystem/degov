@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
 import { NotificationIcon } from "@/components/icons";
@@ -66,10 +66,19 @@ export const NotificationDropdown = () => {
 
   const subscribeDao = useSubscribeDao();
 
-  const [settings, setSettings] = useState<NotificationSettings>({
-    [FeatureName.PROPOSAL_NEW]: false,
-    [FeatureName.VOTE_END]: false,
-  });
+  const baseSettings = useMemo(
+    () => ({
+      [FeatureName.PROPOSAL_NEW]: !!newProposals,
+      [FeatureName.VOTE_END]: !!votingEndReminder,
+    }),
+    [newProposals, votingEndReminder]
+  );
+
+  // Optimistic settings; null means fall back to latest server values
+  const [optimisticSettings, setOptimisticSettings] =
+    useState<NotificationSettings | null>(null);
+
+  const settings = optimisticSettings ?? baseSettings;
 
   const [countdown, setCountdown] = useState<CountdownState>({
     active: false,
@@ -77,14 +86,6 @@ export const NotificationDropdown = () => {
     key: 0,
   });
 
-  // Update settings when notification features change
-  useEffect(() => {
-    setSettings((prev) => ({
-      ...prev,
-      [FeatureName.PROPOSAL_NEW]: newProposals,
-      [FeatureName.VOTE_END]: votingEndReminder,
-    }));
-  }, [newProposals, votingEndReminder]);
 
   // Handle dropdown open change with authentication check
   const handleOpenChange = useCallback(
@@ -95,6 +96,10 @@ export const NotificationDropdown = () => {
         if (!authResult.success) {
           return;
         }
+      }
+      if (!open) {
+        // Drop any optimistic state when closing so we resync with server next open
+        setOptimisticSettings(null);
       }
       setIsOpen(open);
     },
@@ -110,14 +115,13 @@ export const NotificationDropdown = () => {
   const handleSubscriptionError = useCallback(
     (
       error: unknown,
-      setting: FeatureName,
-      currentValue: boolean,
+      rollbackSettings: NotificationSettings,
       operation: string
     ) => {
-      // Revert local state on error
-      setSettings((prev) => ({ ...prev, [setting]: currentValue }));
+      // Roll back optimistic state on failure
+      setOptimisticSettings(rollbackSettings);
       const errorMessage = extractErrorMessage(error);
-      toast.error(errorMessage || `Failed to ${operation} ${setting}`);
+      toast.error(errorMessage || `Failed to ${operation}`);
     },
     []
   );
@@ -126,15 +130,14 @@ export const NotificationDropdown = () => {
   const subscribeToFeatures = useCallback(
     (
       features: { name: FeatureName; strategy: "true" | "false" }[],
-      setting: FeatureName,
-      currentValue: boolean,
+      rollbackSettings: NotificationSettings,
       operation: string
     ) => {
       subscribeDao.mutate(
         { daoCode: config?.code, features },
         {
           onError: (error) =>
-            handleSubscriptionError(error, setting, currentValue, operation),
+            handleSubscriptionError(error, rollbackSettings, operation),
         }
       );
     },
@@ -146,53 +149,41 @@ export const NotificationDropdown = () => {
       setting: FeatureName.PROPOSAL_NEW | FeatureName.VOTE_END,
       enabled: boolean
     ) => {
-      const currentValue = settings[setting];
+      const nextSettings: NotificationSettings = {
+        ...settings,
+        [setting]: enabled,
+      };
 
-      // Update local state
-      setSettings((prev) => ({ ...prev, [setting]: enabled }));
+      // Optimistically update UI
+      setOptimisticSettings(nextSettings);
 
       if (enabled) {
         // Subscribe: include this setting + all other active settings
-        const activeFeatures = FEATURE_KEYS.filter(
-          (key) =>
-            key === setting || settings[key as keyof NotificationSettings]
-        ).map((key) => createFeature(key, "true"));
+        const activeFeatures = FEATURE_KEYS.filter((key) => {
+          const value = settings[key];
+          return key === setting || value;
+        }).map((key) => createFeature(key, "true"));
 
-        subscribeToFeatures(
-          activeFeatures,
-          setting,
-          currentValue,
-          "subscribe to"
-        );
+        subscribeToFeatures(activeFeatures, settings, "subscribe to");
       } else {
         // Unsubscribe: check if other features are still active
-        const otherActiveFeatures = FEATURE_KEYS.filter(
-          (key) =>
-            key !== setting && settings[key as keyof NotificationSettings]
-        );
+        const otherActiveFeatures = FEATURE_KEYS.filter((key) => {
+          const value = settings[key];
+          return key !== setting && value;
+        });
 
         if (otherActiveFeatures.length === 0) {
           // No other features active, disable all
           const allFeaturesDisabled = FEATURE_KEYS.map((key) =>
             createFeature(key, "false")
           );
-          subscribeToFeatures(
-            allFeaturesDisabled,
-            setting,
-            currentValue,
-            "update subscription for"
-          );
+          subscribeToFeatures(allFeaturesDisabled, settings, "update subscription for");
         } else {
           // Keep other active features
           const remainingFeatures = otherActiveFeatures.map((key) =>
             createFeature(key, "true")
           );
-          subscribeToFeatures(
-            remainingFeatures,
-            setting,
-            currentValue,
-            "update subscription for"
-          );
+          subscribeToFeatures(remainingFeatures, settings, "update subscription for");
         }
       }
     },

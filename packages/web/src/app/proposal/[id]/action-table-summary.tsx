@@ -46,7 +46,6 @@ export function ActionTableSummary({
   const [openParams, setOpenParams] = useState<number[]>([]);
   const [jsonViewIndexes, setJsonViewIndexes] = useState<number[]>([]);
   const decodedActions = useDecodeCallData(actions);
-
   const toggleParams = (index: number) => {
     setOpenParams((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
@@ -82,7 +81,11 @@ export function ActionTableSummary({
         )} ${daoConfig?.chain?.nativeToken?.symbol}`;
       } else {
         // Use full function signature for better readability
-        details = action.fullFunctionSignature || action.signature || action.functionName || "";
+        details =
+          action.fullFunctionSignature ||
+          action.signature ||
+          action.functionName ||
+          "";
       }
 
       // Use parameters from hook
@@ -104,16 +107,16 @@ export function ActionTableSummary({
   const LoadingRows = useMemo(() => {
     return Array.from({ length: 3 }).map((_, index) => (
       <TableRow key={`loading-${index}`}>
-        <TableCell
-          className="text-left"
-          style={{ width: COLUMN_WIDTHS.type }}
-        >
+        <TableCell className="text-left" style={{ width: COLUMN_WIDTHS.type }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
         <TableCell className="text-left" style={{ width: COLUMN_WIDTHS.to }}>
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
-        <TableCell className="text-left" style={{ width: COLUMN_WIDTHS.action }}>
+        <TableCell
+          className="text-left"
+          style={{ width: COLUMN_WIDTHS.action }}
+        >
           <Skeleton className="w-full h-[30px]" />
         </TableCell>
       </TableRow>
@@ -285,7 +288,10 @@ export function ActionTableSummary({
                                       >
                                         <div className="border border-gray-1 bg-background">
                                           {record.params.map(
-                                            (param: ParsedParam, pIndex: number) => (
+                                            (
+                                              param: ParsedParam,
+                                              pIndex: number
+                                            ) => (
                                               <div
                                                 key={pIndex}
                                                 className={cn(
@@ -304,7 +310,9 @@ export function ActionTableSummary({
                                                   }}
                                                 >
                                                   {Array.isArray(param.value)
-                                                    ? `[${param.value.join(", ")}]`
+                                                    ? `[${param.value.join(
+                                                        ", "
+                                                      )}]`
                                                     : param.value}
                                                 </div>
                                               </div>
@@ -313,10 +321,14 @@ export function ActionTableSummary({
                                         </div>
                                         <div className="flex justify-end">
                                           <button
-                                            onClick={() => toggleJsonView(record.index)}
+                                            onClick={() =>
+                                              toggleJsonView(record.index)
+                                            }
                                             className="h-7 px-2.5 py-1 rounded-[100px] outline-1 outline-offset-[-0.50px] outline-foreground inline-flex justify-center items-center gap-[5px] hover:bg-accent cursor-pointer transition-colors"
                                           >
-                                            <span className="text-foreground text-sm font-normal">View Json</span>
+                                            <span className="text-foreground text-sm font-normal">
+                                              View Json
+                                            </span>
                                           </button>
                                         </div>
                                       </motion.div>
@@ -335,11 +347,27 @@ export function ActionTableSummary({
                                           <pre className="text-left text-foreground text-sm font-normal overflow-x-auto whitespace-pre-wrap break-words">
                                             {JSON.stringify(
                                               {
-                                                signature: record.fullFunctionSignature || record.signature || record.functionName,
-                                                calldata: record.params.reduce((acc: Record<string, string | string[]>, param: ParsedParam) => {
-                                                  acc[param.name] = param.value;
-                                                  return acc;
-                                                }, {} as Record<string, string | string[]>),
+                                                signature:
+                                                  record.fullFunctionSignature ||
+                                                  record.signature ||
+                                                  record.functionName,
+                                                calldata: record.params.reduce(
+                                                  (
+                                                    acc: Record<
+                                                      string,
+                                                      string | string[]
+                                                    >,
+                                                    param: ParsedParam
+                                                  ) => {
+                                                    acc[param.name] =
+                                                      param.value;
+                                                    return acc;
+                                                  },
+                                                  {} as Record<
+                                                    string,
+                                                    string | string[]
+                                                  >
+                                                ),
                                                 target: record.target,
                                                 value: record.value || "0",
                                               },
@@ -350,10 +378,14 @@ export function ActionTableSummary({
                                         </div>
                                         <div className="flex justify-end">
                                           <button
-                                            onClick={() => toggleJsonView(record.index)}
+                                            onClick={() =>
+                                              toggleJsonView(record.index)
+                                            }
                                             className="h-7 px-2.5 py-1 rounded-[100px] outline-1 outline-offset-[-0.50px] outline-foreground inline-flex justify-center items-center gap-[5px] hover:bg-accent cursor-pointer transition-colors"
                                           >
-                                            <span className="text-foreground text-sm font-normal">Back</span>
+                                            <span className="text-foreground text-sm font-normal">
+                                              Back
+                                            </span>
                                           </button>
                                         </div>
                                       </motion.div>

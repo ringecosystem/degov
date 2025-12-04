@@ -2,6 +2,7 @@ import * as igovernorAbi from "../abi/igovernor";
 import { Store } from "@subsquid/typeorm-store";
 import { DataHandlerContext, Log as EvmLog } from "@subsquid/evm-processor";
 import {
+  Contributor,
   DataMetric,
   Proposal,
   ProposalCanceled,
@@ -340,6 +341,20 @@ export class GovernorHandler {
 
     // store votes group
     await this.ctx.store.insert(vcg);
+
+    // update contributor last vote info
+    let storedContributor: Contributor | undefined =
+      await this.ctx.store.findOne(Contributor, {
+        where: {
+          id: vcg.voter,
+        },
+      });
+    if (storedContributor) {
+      storedContributor.lastVoteBlockNumber = BigInt(vcg.blockNumber);
+      storedContributor.lastVoteTimestamp = BigInt(vcg.blockTimestamp);
+      await this.ctx.store.save(storedContributor);
+    }
+
     // store metric
     await this.storeGlobalDataMetric({
       votesCount: 1,

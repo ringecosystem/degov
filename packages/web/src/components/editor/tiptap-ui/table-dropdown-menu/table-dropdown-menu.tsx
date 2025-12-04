@@ -36,13 +36,16 @@ export const TableDropdownMenu = React.forwardRef<
   HTMLButtonElement,
   TableDropdownMenuProps
 >(
-  ({
-    editor: providedEditor,
-    onOpenChange,
-    className = "",
-    children,
-    ...props
-  }) => {
+  (
+    {
+      editor: providedEditor,
+      onOpenChange,
+      className = "",
+      children,
+      ...props
+    },
+    ref
+  ) => {
     const editor = useTiptapEditor(providedEditor);
     const [isOpen, setIsOpen] = React.useState(false);
 
@@ -114,7 +117,7 @@ export const TableDropdownMenu = React.forwardRef<
       <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger asChild>
           <Button
-            // ref={ref}
+            ref={ref}
             type="button"
             data-style="ghost"
             data-active-state={isTableActive ? "on" : "off"}

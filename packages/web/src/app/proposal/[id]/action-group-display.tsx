@@ -7,6 +7,25 @@ import {
 import { Button } from "@/components/ui/button";
 import { VoteType } from "@/config/vote";
 import { ProposalState } from "@/types/proposal";
+
+import type { JSX } from "react";
+
+const VOTE_ICON_MAP: Partial<
+  Record<
+    VoteType,
+    (props: { width?: number; height?: number; className?: string }) => JSX.Element
+  >
+> = {
+  [VoteType.For]: ProposalActionCheckIcon,
+  [VoteType.Against]: ErrorIcon,
+  [VoteType.Abstain]: CancelIcon,
+};
+
+const VOTE_LABEL_MAP: Partial<Record<VoteType, string>> = {
+  [VoteType.For]: "For",
+  [VoteType.Against]: "Against",
+  [VoteType.Abstain]: "Abstain",
+};
 interface ActionGroupDisplayProps {
   status?: ProposalState;
   isLoading: boolean;
@@ -23,32 +42,6 @@ export const ActionGroupDisplay = ({
   canExecute,
   hasTimelock,
 }: ActionGroupDisplayProps) => {
-  const getVoteIcon = (voteType?: VoteType) => {
-    switch (voteType) {
-      case VoteType.For:
-        return ProposalActionCheckIcon;
-      case VoteType.Against:
-        return ErrorIcon;
-      case VoteType.Abstain:
-        return CancelIcon;
-      default:
-        return null;
-    }
-  };
-
-  const getVoteLabel = (voteType?: VoteType) => {
-    switch (voteType) {
-      case VoteType.For:
-        return "For";
-      case VoteType.Against:
-        return "Against";
-      case VoteType.Abstain:
-        return "Abstain";
-      default:
-        return null;
-    }
-  };
-
   if (status === ProposalState.Pending) {
     return (
       <div className="flex items-center gap-[10px]">
@@ -58,8 +51,10 @@ export const ActionGroupDisplay = ({
     );
   }
   if (status === ProposalState.Active) {
-    const VoteIcon = getVoteIcon(votedSupport);
-    const voteLabel = getVoteLabel(votedSupport);
+    const VoteIcon =
+      votedSupport !== undefined ? VOTE_ICON_MAP[votedSupport] : null;
+    const voteLabel =
+      votedSupport !== undefined ? VOTE_LABEL_MAP[votedSupport] : null;
 
     if (VoteIcon && voteLabel) {
       return (

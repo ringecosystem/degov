@@ -124,8 +124,14 @@ export const useSubscribedDaos = (
   }, [daoCode, queryResult.data]);
 
   return {
-    ...queryResult,
     data: filteredData,
+    error: queryResult.error,
+    isLoading: queryResult.isLoading,
+    isError: queryResult.isError,
+    isFetching: queryResult.isFetching,
+    status: queryResult.status,
+    fetchStatus: queryResult.fetchStatus,
+    refetch: queryResult.refetch,
   };
 };
 

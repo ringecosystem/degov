@@ -2,7 +2,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Nav } from "@/app/nav";
 import { AppIcon, LogoIcon } from "@/components/icons";
@@ -35,16 +35,16 @@ export const Aside = () => {
   const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
   const { isDarkTheme } = useCustomTheme();
 
-  const isCustomLogo = useMemo(() => {
-    return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
-  }, [config]);
-
   useEffect(() => {
     const savedState = localStorage.getItem("sidebar-collapsed");
-    if (savedState) {
+    if (savedState !== null) {
       setCollapsed(savedState === "true");
     }
   }, []);
+
+  const isCustomLogo = useMemo(() => {
+    return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
+  }, [config]);
 
   const currentWidth = collapsed
     ? SIDEBAR_WIDTH.COLLAPSED
@@ -100,12 +100,16 @@ export const Aside = () => {
                 <Link href="/">
                   {isCustomLogo ? (
                     <Image
-                      src={isDarkTheme ? (config?.theme?.logoDark ?? "") : (config?.theme?.logoLight ?? "")}
+                      src={
+                        isDarkTheme
+                          ? config?.theme?.logoDark ?? ""
+                          : config?.theme?.logoLight ?? ""
+                      }
                       alt="logo"
                       width={128}
                       height={26}
                       priority
-                      className="h-[26px] w-[128px] rounded-full border border-(--card-background)"
+                      className="h-[26px] w-[128px]"
                     />
                   ) : (
                     <LogoIcon

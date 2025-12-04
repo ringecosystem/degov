@@ -2,9 +2,9 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { isAddress, type Address } from "viem";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useAccountEffect, useReadContract } from "wagmi";
 
 import { ChangeDelegate } from "@/app/profile/_components/change-delegate";
 import { AddressResolver } from "@/components/address-resolver";
@@ -33,7 +33,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   const [open, setOpen] = useState(false);
   const { isConnected } = useAccount();
   const [delegateOpen, setDelegateOpen] = useState(false);
-  const [showConnectPrompt, setShowConnectPrompt] = useState(false);
+  const [userRequestedConnect, setUserRequestedConnect] = useState(false);
   const [changeDelegateOpen, setChangeDelegateOpen] = useState(false);
   const daoConfig = useDaoConfig();
   const router = useRouter();
@@ -41,6 +41,19 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   const { data: governanceToken } = useGovernanceToken();
   const [joinDelegateOpen, setJoinDelegateOpen] = useState(false);
   const { address: account } = useAccount();
+
+  // Derive showConnectPrompt from isConnected state
+  // Only show prompt if user requested connection but is not yet connected
+  const showConnectPrompt = userRequestedConnect && !isConnected;
+
+  // Reset flag on actual wallet connect event (avoids setState inside generic effects)
+  useAccountEffect({
+    onConnect() {
+      if (userRequestedConnect) {
+        setUserRequestedConnect(false);
+      }
+    },
+  });
 
   const { data: profileData, isLoading: isProfileLoading } = useQuery({
     queryKey: ["profile", address],
@@ -124,7 +137,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   const handleDelegate = useCallback(() => {
     if (isDelegate) {
       if (!isConnected) {
-        setShowConnectPrompt(true);
+        setUserRequestedConnect(true);
         return;
       }
       if (!isOwnProfile) {
@@ -187,17 +200,6 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     );
   }, [delegationStatus]);
 
-  useEffect(() => {
-    if (isConnected) {
-      setShowConnectPrompt(false);
-    }
-  }, [isConnected]);
-
-  useEffect(() => {
-    return () => {
-      setShowConnectPrompt(false);
-    };
-  }, []);
 
   if (!isAddress(address)) {
     return <NotFound />;

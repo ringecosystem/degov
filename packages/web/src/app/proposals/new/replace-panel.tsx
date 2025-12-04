@@ -43,7 +43,6 @@ export const ReplacePanel = ({
         <NewProposalAction
           type="xaccount"
           onSwitch={() => onReplace("xaccount")}
-          tip="XAccount is the mechanism that enables cross-chain governance in degov. It allows users to construct and send governance calls in the source chain and then execute them in the target chain."
         />
       </div>
     </div>

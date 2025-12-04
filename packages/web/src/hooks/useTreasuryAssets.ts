@@ -467,8 +467,7 @@ export const useTreasuryAssets = (
   const targetChainId = chainId ?? daoConfig?.chain?.id;
   const chain = targetChainId !== undefined ? String(targetChainId) : undefined;
   const resolvedChainId = toOptionalNumber(targetChainId);
-
-  const hasTreasuryAssetConfig = Boolean(daoConfig?.treasuryAssets?.length);
+  const hasTreasuryAssetConfig = daoConfig?.treasuryAssets !== undefined;
   const apiEndpoint = (() => {
     const base = env("NEXT_PUBLIC_DEGOV_API");
     return base ? `${base}/graphql` : undefined;
