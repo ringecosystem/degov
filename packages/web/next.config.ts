@@ -35,10 +35,21 @@ const nextConfig: NextConfig = {
       "viem",
       "framer-motion",
       "lucide-react",
+      "ethers",
+      "@walletconnect/ethereum-provider",
+      "@walletconnect/sign-client",
+      "@walletconnect/core",
+      "@radix-ui/react-select",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-tooltip",
+      "lodash-es",
+      "date-fns",
+      "bignumber.js",
+      "graphql",
     ],
   },
 
-  // Compression and caching
   compress: true,
 };
 
