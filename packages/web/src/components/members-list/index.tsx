@@ -7,7 +7,6 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
-import { formatInteger } from "@/utils/number";
 
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
