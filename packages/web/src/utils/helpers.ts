@@ -1,15 +1,6 @@
 import { keccak256, toUtf8Bytes } from "ethers";
 
 /**
- * Pauses the execution for a specified number of milliseconds.
- * @param ms The number of milliseconds to pause.
- * @returns A promise that resolves after the specified number of milliseconds.
- */
-export const sleep = (ms: number): Promise<void> => {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-};
-
-/**
  * from Markdown description to extract title and rich text content
  * description format is usually `# {title} \n\n{content}`
  * @param description Markdown description text
@@ -105,53 +96,11 @@ export const parseDescription = (
   };
 };
 
-export const formatFunctionSignature = (signature: string): string => {
-  if (!signature) return "";
-
-  const match = signature.match(/([^(]+)\(/);
-  if (match) {
-    return `${match[1]}(..)`;
-  }
-  return signature;
-};
-
 export function extractMethodNameFromSignature(
   signature: string
 ): string | undefined {
   const match = signature.match(/^([a-zA-Z0-9_]+)\(/);
   return match ? match[1] : undefined;
-}
-
-interface ParamEntry {
-  name: string;
-  value: string;
-}
-
-/**
- * parse solidity function signature and match params, return {name: type, value: paramValue}[]
- */
-export function parseSolidityFunctionParams(
-  funcSignature: string,
-  params: Record<string, string>
-): ParamEntry[] {
-  const paramTypesMatch = funcSignature.match(/\(([^)]*)\)/);
-  if (!paramTypesMatch) {
-    throw new Error("Invalid function signature");
-  }
-
-  const paramParts = paramTypesMatch[1].split(",").map((s) => s.trim());
-
-  const paramTypes = paramParts.map((part) => {
-    const typeMatch = part.match(/^(bytes|bytes|address|u?int\d+)/);
-    return typeMatch ? typeMatch[1] : "unknown";
-  });
-
-  const paramValues = Object.values(params);
-
-  return paramTypes.map((type, index) => ({
-    name: type,
-    value: paramValues[index],
-  }));
 }
 
 export function simplifyFunctionSignature(fullSignature: string): string {
