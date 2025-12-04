@@ -25,6 +25,7 @@ export const GET_CONTRIBUTORS = gql`
     ) {
       blockNumber
       blockTimestamp
+      lastVoteTimestamp
       id
       power
       delegatesCountAll

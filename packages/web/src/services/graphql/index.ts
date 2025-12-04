@@ -247,7 +247,7 @@ export const contributorService = {
     } = {
       limit: 10,
       offset: 0,
-      orderBy: "blockTimestamp_DESC_NULLS_LAST",
+      orderBy: "lastVoteTimestamp_DESC_NULLS_LAST",
       where: {
         id_in: [],
         id_not_eq: undefined,
@@ -257,8 +257,8 @@ export const contributorService = {
     const orderByInput = Array.isArray(options?.orderBy)
       ? options?.orderBy
       : options?.orderBy
-        ? [options.orderBy]
-        : ["blockTimestamp_DESC_NULLS_LAST"];
+      ? [options.orderBy]
+      : ["lastVoteTimestamp_DESC_NULLS_LAST"];
 
     const response = await request<Types.ContributorResponse>(
       endpoint,

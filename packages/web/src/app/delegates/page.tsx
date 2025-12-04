@@ -29,8 +29,8 @@ const ORDER_BY_MAP: Record<
   Record<MemberSortDirection, string>
 > = {
   lastVoted: {
-    asc: "blockTimestamp_ASC_NULLS_LAST",
-    desc: "blockTimestamp_DESC_NULLS_LAST",
+    asc: "lastVoteTimestamp_ASC_NULLS_LAST",
+    desc: "lastVoteTimestamp_DESC_NULLS_LAST",
   },
   power: {
     asc: "power_ASC",
