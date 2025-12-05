@@ -1,12 +1,12 @@
 "use client";
 import yaml from "js-yaml";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import ErrorComponent from "@/components/error";
 import { BlockProvider } from "@/contexts/BlockContext";
-import { ClockModeProvider } from "@/contexts/ClockModeContext";
 import { GlobalLoadingProvider } from "@/contexts/GlobalLoadingContext";
 import { useGlobalLoading } from "@/contexts/GlobalLoadingContext";
+import { useClockMode } from "@/hooks/useClockMode";
 import { ConfigContext } from "@/hooks/useDaoConfig";
 import { DAppProvider } from "@/providers/dapp.provider";
 import { processStandardProperties } from "@/utils";
@@ -74,11 +74,24 @@ function ConfigProviderContent({ children }: { children: React.ReactNode }) {
     <ConfigContext.Provider value={config}>
       <DAppProvider>
         <BlockProvider>
-          <ClockModeProvider>{children}</ClockModeProvider>
+          <ClockLoadingManager>{children}</ClockLoadingManager>
         </BlockProvider>
       </DAppProvider>
     </ConfigContext.Provider>
   );
+}
+
+// Lightweight component to manage clock loading state
+function ClockLoadingManager({ children }: { children: ReactNode }) {
+  const { isLoading: isClockLoading } = useClockMode();
+  const { setLoading } = useGlobalLoading();
+
+  useEffect(() => {
+    setLoading("clock", isClockLoading);
+    return () => setLoading("clock", false);
+  }, [isClockLoading, setLoading]);
+
+  return <>{children}</>;
 }
 
 export function ConfigProvider({ children }: { children: React.ReactNode }) {

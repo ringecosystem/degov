@@ -8,7 +8,7 @@ import { useBlockNumber, useConfig } from "wagmi";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { QUERY_CONFIGS } from "@/utils/query-config";
 
-const BLOCK_SAMPLE_SIZE = 9; // Sample 10 blocks total (current + 9 previous)
+const BLOCK_SAMPLE_SIZE = 2;
 
 interface BlockContextValue {
   /** Block production time based on last 10 blocks */
@@ -48,7 +48,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
     isFetching,
   } = useQuery({
     // eslint-disable-next-line @tanstack/query/exhaustive-deps
-    queryKey: ["blockTime", blockNumber?.toString(), daoConfig?.chain?.id],
+    queryKey: ["blockTime", String(blockNumber ?? ''), Number(daoConfig?.chain?.id ?? 0)],
     queryFn: async () => {
       if (!blockNumber) {
         throw new Error("Block number not available");

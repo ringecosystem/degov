@@ -82,6 +82,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     data: governanceParams,
     isQuorumFetching,
     isStaticLoading,
+    isBlockTimeLoading,
   } = useGovernanceParams();
 
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
@@ -117,11 +118,15 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         ? formatTokenAmount(governanceParams.quorum)?.formatted ?? "0"
         : "0";
 
-      const votingDelayFormatted = governanceParams?.votingDelayInSeconds
+      const votingDelayFormatted = isBlockTimeLoading
+        ? null
+        : governanceParams?.votingDelayInSeconds
         ? dayjsHumanize(governanceParams.votingDelayInSeconds) ?? "None"
         : "None";
 
-      const votingPeriodFormatted = governanceParams?.votingPeriodInSeconds
+      const votingPeriodFormatted = isBlockTimeLoading
+        ? null
+        : governanceParams?.votingPeriodInSeconds
         ? dayjsHumanize(governanceParams.votingPeriodInSeconds) ?? "None"
         : "None";
 
@@ -162,7 +167,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         votingPowerPercentage,
       };
     }
-  }, [type, dataMetrics, totalSupply, formatTokenAmount, governanceParams]);
+  }, [type, dataMetrics, totalSupply, formatTokenAmount, governanceParams, isBlockTimeLoading]);
 
   const explorerUrl = daoConfig?.chain?.explorers?.[0];
 
@@ -209,13 +214,13 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         <SystemInfoItem
           label="Voting Delay"
           value={systemData.votingDelayFormatted ?? "None"}
-          isLoading={isStaticLoading}
+          isLoading={isStaticLoading || (type === "proposal" && systemData.votingDelayFormatted === null)}
         />
 
         <SystemInfoItem
           label="Voting Period"
           value={systemData.votingPeriodFormatted ?? "None"}
-          isLoading={isStaticLoading}
+          isLoading={isStaticLoading || (type === "proposal" && systemData.votingPeriodFormatted === null)}
         />
 
         <SystemInfoItem

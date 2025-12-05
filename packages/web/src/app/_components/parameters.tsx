@@ -19,6 +19,7 @@ export const Parameters = () => {
   const {
     data: governanceParams,
     isStaticLoading,
+    isBlockTimeLoading,
     refetchClock,
   } = useGovernanceParams({ enabled: open });
   const formatTokenAmount = useFormatGovernanceTokenAmount();
@@ -35,16 +36,20 @@ export const Parameters = () => {
         : "None";
 
     const votingDelayFormatted =
-      governanceParams?.votingDelayInSeconds !== undefined &&
-      governanceParams?.votingDelayInSeconds !== null &&
-      !isNaN(governanceParams.votingDelayInSeconds)
+      isBlockTimeLoading
+        ? null
+        : governanceParams?.votingDelayInSeconds !== undefined &&
+          governanceParams?.votingDelayInSeconds !== null &&
+          !isNaN(governanceParams.votingDelayInSeconds)
         ? dayjsHumanize(governanceParams.votingDelayInSeconds)
         : "None";
 
     const votingPeriodFormatted =
-      governanceParams?.votingPeriodInSeconds !== undefined &&
-      governanceParams?.votingPeriodInSeconds !== null &&
-      !isNaN(governanceParams.votingPeriodInSeconds)
+      isBlockTimeLoading
+        ? null
+        : governanceParams?.votingPeriodInSeconds !== undefined &&
+          governanceParams?.votingPeriodInSeconds !== null &&
+          !isNaN(governanceParams.votingPeriodInSeconds)
         ? dayjsHumanize(governanceParams.votingPeriodInSeconds)
         : "None";
 
@@ -59,7 +64,7 @@ export const Parameters = () => {
       votingPeriodFormatted,
       timeLockDelayFormatted,
     };
-  }, [governanceParams, formatTokenAmount, governanceToken?.symbol]);
+  }, [governanceParams, isBlockTimeLoading, formatTokenAmount, governanceToken?.symbol]);
 
   useEffect(() => {
     if (open) {
@@ -104,7 +109,7 @@ export const Parameters = () => {
               Proposal delay
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isStaticLoading ? (
+              {isStaticLoading || formattedData.votingDelayFormatted === null ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : (
                 formattedData.votingDelayFormatted
@@ -117,7 +122,7 @@ export const Parameters = () => {
               Voting period
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isStaticLoading ? (
+              {isStaticLoading || formattedData.votingPeriodFormatted === null ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : (
                 formattedData.votingPeriodFormatted

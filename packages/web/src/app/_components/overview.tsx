@@ -49,6 +49,7 @@ export const Overview = () => {
           link={`/proposals`}
           icon="/assets/image/proposals-colorful.svg"
           isLoading={isProposalMetricsLoading}
+          priority
         >
           <>
             <div className="flex items-center gap-[8px] lg:gap-[10px]">
