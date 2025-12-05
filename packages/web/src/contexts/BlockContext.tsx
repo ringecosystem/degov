@@ -59,7 +59,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
       }
 
       // Ensure we have enough blocks to sample
-      if (blockNumber < BigInt(BLOCK_SAMPLE_SIZE)) {
+      if (blockNumber <= BigInt(BLOCK_SAMPLE_SIZE)) {
         throw new Error(
           `Not enough blocks to sample. Current: ${blockNumber}, Required: ${
             BLOCK_SAMPLE_SIZE + 1
