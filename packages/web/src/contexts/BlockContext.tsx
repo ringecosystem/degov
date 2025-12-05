@@ -48,7 +48,11 @@ export function BlockProvider({ children }: BlockProviderProps) {
     isFetching,
   } = useQuery({
     // eslint-disable-next-line @tanstack/query/exhaustive-deps
-    queryKey: ["blockTime", String(blockNumber ?? ''), Number(daoConfig?.chain?.id ?? 0)],
+    queryKey: [
+      "blockTime",
+      String(blockNumber ?? ""),
+      Number(daoConfig?.chain?.id ?? 0),
+    ],
     queryFn: async () => {
       if (!blockNumber) {
         throw new Error("Block number not available");
@@ -72,8 +76,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
           hash: string;
         }>[] = [];
 
-        for (let i = fromBlock; i <= blockNumber; i++) {
-          // Use direct JSON-RPC call to get block by number
+        for (let i = fromBlock; i <= blockNumber; i = i + 1n) {
           blockPromises.push(
             getBlock(config, {
               blockNumber: i,
