@@ -57,11 +57,7 @@ function RainbowKitProviders({ children }: React.PropsWithChildren<unknown>) {
           url: dappConfig?.chain?.explorers?.[0] ?? "",
         },
       },
-      contracts: dappConfig?.chain?.contracts ?? {
-        multicall3: {
-          address: "0xcA11bde05977b3631167028862bE2a173976CA11",
-        },
-      },
+      contracts: dappConfig?.chain?.contracts ?? undefined,
     };
   }, [dappConfig]);
 
@@ -94,7 +90,6 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
     typeof createConfig
   > | null>(null);
 
-  // Initialize persister only on client side after mount
   React.useEffect(() => {
     if (mounted) {
       setPersister(createPersister());
@@ -138,7 +133,7 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
 
   if (!dappConfig || !wagmiConfig) {
     return (
-      <div className="flex w-full justify-center py-8 text-muted-foreground">
+      <div className="flex w-full h-screen justify-center items-center text-muted-foreground animate-pulse">
         Loading dApp configuration...
       </div>
     );
