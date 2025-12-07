@@ -17,7 +17,26 @@ import type { Chain } from "@rainbow-me/rainbowkit";
 
 const { wallets } = getDefaultWallets();
 
-export const queryClient = new QueryClient(createWagmiQueryConfig());
+export function createQueryClient() {
+  return new QueryClient(createWagmiQueryConfig());
+}
+
+type WagmiConfig = ReturnType<typeof getDefaultConfig>;
+
+const configCache = new Map<string, WagmiConfig>();
+
+function chainFingerprint(chain: Chain) {
+  // Stable, order-defined subset of chain metadata that affects wagmi config
+  return JSON.stringify({
+    id: chain.id,
+    name: chain.name,
+    nativeCurrency: chain.nativeCurrency,
+    rpcUrls: chain.rpcUrls,
+    blockExplorers: chain.blockExplorers,
+    contracts: chain.contracts,
+    testnet: chain.testnet,
+  });
+}
 
 export function createConfig({
   appName,
@@ -28,7 +47,13 @@ export function createConfig({
   appName: string;
   projectId: string;
 }) {
-  return getDefaultConfig({
+  const cacheKey = `${projectId}-${chainFingerprint(chain)}`;
+  const cachedConfig = configCache.get(cacheKey);
+  if (cachedConfig) {
+    return cachedConfig;
+  }
+
+  const config = getDefaultConfig({
     appName,
     projectId,
     chains: [mainnet, chain],
@@ -51,4 +76,7 @@ export function createConfig({
       storage: cookieStorage,
     }),
   });
+
+  configCache.set(cacheKey, config);
+  return config;
 }
