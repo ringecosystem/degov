@@ -42,7 +42,6 @@ export function TransactionToast({
     hash,
     query: {
       enabled: !!hash,
-      refetchInterval: 0,
       staleTime: Infinity,
     },
   });

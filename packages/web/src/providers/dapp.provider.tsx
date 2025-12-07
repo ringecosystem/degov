@@ -6,7 +6,7 @@ import {
   RainbowKitProvider,
   RainbowKitAuthenticationProvider,
 } from "@rainbow-me/rainbowkit";
-import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as React from "react";
 import { WagmiProvider, deserialize, serialize } from "wagmi";
@@ -16,11 +16,10 @@ import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useRainbowKitTheme } from "@/hooks/useRainbowKitTheme";
 import { authenticationAdapter } from "@/lib/rainbowkit-auth";
-import "@rainbow-me/rainbowkit/styles.css";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
 
-const persister = createSyncStoragePersister({
+const persister = createAsyncStoragePersister({
   serialize,
   storage: typeof window !== "undefined" ? window.localStorage : undefined,
   deserialize,
@@ -117,7 +116,11 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   }, [dappConfig, currentChain]);
 
   if (!dappConfig) {
-    return null;
+    return (
+      <div className="flex w-full justify-center py-8 text-muted-foreground">
+        Loading dApp configuration...
+      </div>
+    );
   }
 
   return (

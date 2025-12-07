@@ -4,11 +4,11 @@ import { isNumber } from "lodash-es";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
-import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import { OverviewItem } from "./overview-item";
 import { OverviewProposalsSummaryDropdown } from "./overview-proposals-summary";
@@ -26,7 +26,7 @@ export const Overview = () => {
         enabled:
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
-        refetchInterval: DEFAULT_REFETCH_INTERVAL,
+        staleTime: CACHE_TIMES.ONE_MINUTE,
       },
     });
 
@@ -35,7 +35,7 @@ export const Overview = () => {
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,
-    refetchInterval: DEFAULT_REFETCH_INTERVAL,
+    staleTime: CACHE_TIMES.ONE_MINUTE,
   });
 
   return (

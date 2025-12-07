@@ -6,7 +6,7 @@ import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as timeLockAbi } from "@/config/abi/timeLock";
 import { useBlockData } from "@/contexts/BlockContext";
 import { useClockMode } from "@/hooks/useClockMode";
-import { QUERY_CONFIGS } from "@/utils/query-config";
+import { CACHE_TIMES, QUERY_CONFIGS } from "@/utils/query-config";
 
 import { useDaoConfig } from "./useDaoConfig";
 
@@ -174,7 +174,7 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
     chainId: daoConfig?.chain?.id,
     query: {
       ...QUERY_CONFIGS.FREQUENT,
-      refetchInterval: 30 * 1000,
+      refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
       enabled:
         enabled &&
         Boolean(daoConfig?.chain?.id) &&
@@ -195,7 +195,7 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
     chainId: daoConfig?.chain?.id,
     query: {
       ...QUERY_CONFIGS.FREQUENT,
-      refetchInterval: 30 * 1000,
+      refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
       enabled:
         enabled &&
         Boolean(governorAddress) &&
@@ -225,7 +225,7 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
     chainId: daoConfig?.chain?.id,
     query: {
       ...QUERY_CONFIGS.FREQUENT,
-      refetchInterval: 30 * 1000,
+      refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
       enabled:
         enabled &&
         Boolean(governorAddress) &&

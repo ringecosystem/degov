@@ -9,6 +9,7 @@ import { PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
+import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { SystemInfo } from "@/components/system-info";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { proposalService } from "@/services/graphql";
@@ -170,28 +172,40 @@ function ProposalsContent() {
               </div>
             </div>
           </div>
-          <div className="lg:hidden">
-            <ProposalsList
-              type="all"
-              address={
-                isMyProposals
-                  ? address
-                  : (addressParam as `0x${string}` | undefined)
-              }
-              support={support === "all" ? undefined : support}
-            />
-          </div>
-          <div className="hidden lg:block">
-            <ProposalsTable
-              type="all"
-              address={
-                isMyProposals
-                  ? address
-                  : (addressParam as `0x${string}` | undefined)
-              }
-              support={support === "all" ? undefined : support}
-            />
-          </div>
+          <ResponsiveRenderer
+            desktop={
+              <ProposalsTable
+                type="all"
+                address={
+                  isMyProposals
+                    ? address
+                    : (addressParam as `0x${string}` | undefined)
+                }
+                support={support === "all" ? undefined : support}
+              />
+            }
+            mobile={
+              <ProposalsList
+                type="all"
+                address={
+                  isMyProposals
+                    ? address
+                    : (addressParam as `0x${string}` | undefined)
+                }
+                support={support === "all" ? undefined : support}
+              />
+            }
+            loadingFallback={
+              <div className="space-y-4">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div key={index} className="rounded-[14px] bg-card p-4">
+                    <Skeleton className="h-6 w-3/4 mb-2" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
+                ))}
+              </div>
+            }
+          />
         </div>
         <div className="w-[360px] hidden lg:flex flex-col gap-[20px]">
           <SystemInfo type="proposal" />

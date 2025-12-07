@@ -14,13 +14,23 @@ import { degovApiDaoConfigClient } from "@/utils/remote-api";
 
 import type { Config } from "../types/config";
 
-function ConfigProviderContent({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<Config | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+function ConfigProviderContent({
+  children,
+  initialConfig,
+}: {
+  children: React.ReactNode;
+  initialConfig?: Config | null;
+}) {
+  const [config, setConfig] = useState<Config | null>(
+    initialConfig ? processStandardProperties(initialConfig) : null
+  );
+  const [isLoading, setIsLoading] = useState(!initialConfig);
   const [error, setError] = useState<Error | null>(null);
 
   // Manage config loading
   useEffect(() => {
+    if (initialConfig) return;
+
     const configSource = degovApiDaoConfigClient() ?? "/degov.yml";
 
     fetch(configSource)
@@ -48,7 +58,7 @@ function ConfigProviderContent({ children }: { children: React.ReactNode }) {
         }
         setIsLoading(false);
       });
-  }, []);
+  }, [initialConfig]);
 
   // Hook into global loading overlay (inside provider tree)
   const { setLoading } = useGlobalLoading();
@@ -94,10 +104,18 @@ function ClockLoadingManager({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export function ConfigProvider({ children }: { children: React.ReactNode }) {
+export function ConfigProvider({
+  children,
+  initialConfig,
+}: {
+  children: React.ReactNode;
+  initialConfig?: Config | null;
+}) {
   return (
     <GlobalLoadingProvider>
-      <ConfigProviderContent>{children}</ConfigProviderContent>
+      <ConfigProviderContent initialConfig={initialConfig}>
+        {children}
+      </ConfigProviderContent>
     </GlobalLoadingProvider>
   );
 }

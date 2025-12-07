@@ -5,7 +5,6 @@ import { useMemo } from "react";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
-import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
@@ -14,6 +13,7 @@ import { proposalService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 import { dayjsHumanize } from "@/utils/date";
 import { formatNumberForDisplay } from "@/utils/number";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import { Skeleton } from "./ui/skeleton";
 
@@ -93,9 +93,9 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       chainId: daoConfig?.chain?.id,
       query: {
         enabled:
+          type === "default" &&
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
-        refetchInterval: DEFAULT_REFETCH_INTERVAL,
       },
     });
 
@@ -104,7 +104,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint && type === "default",
-    refetchInterval: DEFAULT_REFETCH_INTERVAL,
+    staleTime: CACHE_TIMES.ONE_MINUTE,
   });
 
   const systemData = useMemo(() => {

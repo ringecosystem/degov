@@ -1,3 +1,5 @@
+"use client";
+
 import { useQuery } from "@tanstack/react-query";
 import { marked } from "marked";
 import { useMemo } from "react";
@@ -26,20 +28,29 @@ const AiSummaryLoading = () => {
 
 export const AiSummary = ({ id }: { id: string }) => {
   const daoConfig = useDaoConfig();
+  const chainId = daoConfig?.chain?.id;
   const { data, isLoading, error } = useQuery({
     queryKey: [
       "proposal-ai-summary",
       id,
       daoConfig?.indexer?.endpoint,
       daoConfig?.aiAgent?.endpoint,
+      chainId,
     ],
     queryFn: () =>
       getProposalSummary(daoConfig?.aiAgent?.endpoint ?? "", {
-        chain: 46,
+        chain: Number(chainId),
         indexer: daoConfig?.indexer?.endpoint ?? "",
         id: id as string,
       }),
-    enabled: !!daoConfig?.aiAgent?.endpoint && !!daoConfig?.indexer?.endpoint,
+    enabled:
+      !!daoConfig?.aiAgent?.endpoint &&
+      !!daoConfig?.indexer?.endpoint &&
+      !!chainId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 2,
   });
 
   const sanitizedHtml = useMemo(() => {
