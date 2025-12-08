@@ -15,7 +15,7 @@ import { ProposalStatus } from "../proposal-status";
 import { Skeleton } from "../ui/skeleton";
 import { VoteStatistics } from "../vote-statistics";
 
-import { useProposalData } from "./hooks/useProposalData";
+import { useProposalData, type SupportFilter } from "./hooks/useProposalData";
 
 import type { ColumnType } from "../custom-table";
 import type { Address } from "viem";
@@ -61,7 +61,7 @@ export function ProposalsTable({
 }: {
   type: "active" | "all";
   address?: Address;
-  support?: "1" | "2" | "3";
+  support?: SupportFilter;
 }) {
   const { address: connectedAddress } = useAccount();
   const pageSize = type === "active" ? 8 : DEFAULT_PAGE_SIZE;

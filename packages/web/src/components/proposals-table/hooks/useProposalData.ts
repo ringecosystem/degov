@@ -16,6 +16,8 @@ export type ProposalVotes = {
   abstainVotes: bigint;
 };
 
+export type SupportFilter = "0" | "1" | "2";
+
 type PageParam = {
   offset: number;
   limit: number;
@@ -23,7 +25,7 @@ type PageParam = {
 
 export function useProposalData(
   address?: Address,
-  support?: "1" | "2" | "3",
+  support?: SupportFilter,
   pageSize: number = DEFAULT_PAGE_SIZE,
   initialPageSize: number = pageSize
 ) {

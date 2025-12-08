@@ -9,6 +9,7 @@ import { PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
+import type { SupportFilter } from "@/components/proposals-table/hooks/useProposalData";
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { SystemInfo } from "@/components/system-info";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,16 @@ import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
+type SupportSelection = "all" | SupportFilter;
+
+const normalizeSupportParam = (value: string | null): SupportSelection => {
+  if (value === "0" || value === "1" || value === "2") {
+    return value;
+  }
+
+  return "all";
+};
+
 function ProposalsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -36,8 +47,8 @@ function ProposalsContent() {
   const addressParam = searchParams?.get("address");
   const daoConfig = useDaoConfig();
 
-  const [support, setSupport] = useState<"all" | "1" | "2" | "3">(
-    (supportParam as "all" | "1" | "2" | "3") || "all"
+  const [support, setSupport] = useState<SupportSelection>(
+    normalizeSupportParam(supportParam)
   );
   const { isConnected, address } = useAccount();
   const [publishWarningOpen, setPublishWarningOpen] = useState(false);
@@ -60,7 +71,10 @@ function ProposalsContent() {
   });
 
   // Update URL when filters change
-  const updateUrlParams = (myProposals: boolean, supportValue: string) => {
+  const updateUrlParams = (
+    myProposals: boolean,
+    supportValue: SupportSelection
+  ) => {
     const params = new URLSearchParams(searchParams || undefined);
 
     if (myProposals) {
@@ -89,7 +103,7 @@ function ProposalsContent() {
     updateUrlParams(!!checked, support);
   };
 
-  const handleSupportChange = (value: "all" | "1" | "2" | "3") => {
+  const handleSupportChange = (value: SupportSelection) => {
     setSupport(value);
     updateUrlParams(!!isMyProposals, value);
   };
