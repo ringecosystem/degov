@@ -1,12 +1,12 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { useDebounce } from "react-use";
 import { useAccount } from "wagmi";
 
 import { DelegateAction } from "@/components/delegate-action";
-import { Faqs } from "@/components/faqs";
 import { MembersList } from "@/components/members-list";
 import {
   MembersTable,
@@ -16,7 +16,6 @@ import {
   type MemberSortState,
 } from "@/components/members-table";
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
-import { SystemInfo } from "@/components/system-info";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
@@ -25,6 +24,24 @@ import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
+
+const SystemInfo = dynamic(
+  () => import("@/components/system-info").then((mod) => mod.SystemInfo),
+  {
+    loading: () => (
+      <div className="h-[300px] w-[360px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
+
+const Faqs = dynamic(
+  () => import("@/components/faqs").then((mod) => mod.Faqs),
+  {
+    loading: () => (
+      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
 
 const ORDER_BY_MAP: Record<
   MemberSortField,

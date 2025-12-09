@@ -1,17 +1,15 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
-import { Faqs } from "@/components/faqs";
 import { PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
-import { ProposalsTable } from "@/components/proposals-table";
 import type { SupportFilter } from "@/components/proposals-table/hooks/useProposalData";
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
-import { SystemInfo } from "@/components/system-info";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -23,11 +21,48 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
+
+const ProposalsTableSkeleton = ({ count = 5 }: { count?: number }) => (
+  <div className="space-y-4">
+    {Array.from({ length: count }).map((_, index) => (
+      <div key={index} className="rounded-[14px] bg-card p-4 shadow-card">
+        <Skeleton className="h-6 w-3/4 mb-2" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+    ))}
+  </div>
+);
+
+const SystemInfo = dynamic(
+  () => import("@/components/system-info").then((mod) => mod.SystemInfo),
+  {
+    loading: () => (
+      <div className="h-[300px] w-[360px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
+
+const Faqs = dynamic(
+  () => import("@/components/faqs").then((mod) => mod.Faqs),
+  {
+    loading: () => (
+      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
+
+const ProposalsTable = dynamic(
+  () => import("@/components/proposals-table").then((mod) => mod.ProposalsTable),
+  {
+    loading: () => <ProposalsTableSkeleton count={DEFAULT_PAGE_SIZE} />,
+  }
+);
 
 type SupportSelection = "all" | SupportFilter;
 

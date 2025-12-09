@@ -84,7 +84,6 @@ export function useClockMode(): ClockModeResult {
 
     const detectedMode: ClockMode = isTimestamp ? "timestamp" : "blocknumber";
     const raw = isBlock ? null : rawClockMode ?? null;
-    console.log("[useClockMode]", detectedMode);
     return resolved(detectedMode, raw);
   }, [rawClockMode, isLoading, enabled]);
 

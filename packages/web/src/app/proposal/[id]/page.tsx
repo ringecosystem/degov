@@ -1,12 +1,12 @@
 "use client";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { isNil } from "lodash-es";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import { useReadContract } from "wagmi";
 
-import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
 import { ProposalNotification } from "@/components/proposal-notification";
 import { LoadingState } from "@/components/ui/loading-spinner";
@@ -22,6 +22,15 @@ import { CurrentVotes } from "./current-votes";
 import Status from "./status";
 import { Summary } from "./summary";
 import { Tabs } from "./tabs";
+
+const Faqs = dynamic(
+  () => import("@/components/faqs").then((mod) => mod.Faqs),
+  {
+    loading: () => (
+      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
 
 const ACTIVE_STATES: ProposalState[] = [
   ProposalState.Pending,

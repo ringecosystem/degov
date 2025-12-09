@@ -65,7 +65,7 @@ export function MembersList({
 
   const {
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
-    profilePullState: { isLoading: isProfilePullLoading },
+    isProfilePullLoading,
     loadMoreData,
   } = useMembersData(
     pageSize,
@@ -138,7 +138,11 @@ export function MembersList({
             className="rounded-[14px] bg-card p-[10px] border border-border/20"
           >
             <div className="flex items-center gap-3">
-              <AddressAvatar address={record?.id as `0x${string}`} size={30} />
+              <AddressAvatar
+                address={record?.id as `0x${string}`}
+                size={30}
+                skipFetch
+              />
               <div className="flex items-start justify-start flex-col flex-1 min-w-0">
                 <Link
                   href={`/delegate/${record?.id as `0x${string}`}`}
@@ -148,6 +152,7 @@ export function MembersList({
                   <AddressResolver
                     address={record?.id as `0x${string}`}
                     showShortAddress
+                    skipFetch
                   >
                     {(ensName) => (
                       <span className="line-clamp-1 font-mono hover:underline">

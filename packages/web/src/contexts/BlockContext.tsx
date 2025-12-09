@@ -11,7 +11,7 @@ import { QUERY_CONFIGS } from "@/utils/query-config";
 const BLOCK_SAMPLE_SIZE = 2;
 
 interface BlockContextValue {
-  /** Block production time based on last 10 blocks */
+  /** Average block production time (in seconds) based on recent blocks */
   blockTime: number | null;
   /** Chain ID */
   chainId: number | null;
@@ -31,11 +31,12 @@ interface BlockProviderProps {
 
 export function BlockProvider({ children }: BlockProviderProps) {
   const daoConfig = useDaoConfig();
+  const chainId = daoConfig?.chain?.id;
 
   const config = useConfig();
   const { data: blockNumber } = useBlockNumber({
-    chainId: daoConfig?.chain?.id,
-    watch: false,
+    chainId,
+    watch: true,
     query: {
       ...QUERY_CONFIGS.DEFAULT,
     },
@@ -47,93 +48,75 @@ export function BlockProvider({ children }: BlockProviderProps) {
     error,
     isFetching,
   } = useQuery({
-     
     queryKey: [
       "blockTime",
-      String(blockNumber ?? ""),
-      Number(daoConfig?.chain?.id ?? 0),
-    ],
-    queryFn: async () => {
-      if (!blockNumber) {
+      blockNumber == null ? null : blockNumber.toString(),
+      chainId,
+    ] as const,
+    queryFn: async ({ queryKey }) => {
+      const [, blockNumberStr, chainIdVal] = queryKey;
+
+      if (blockNumberStr == null) {
         throw new Error("Block number not available");
       }
 
-      // Ensure we have enough blocks to sample
-      if (blockNumber <= BigInt(BLOCK_SAMPLE_SIZE)) {
+      const safeBlockNumber = BigInt(blockNumberStr);
+
+      if (safeBlockNumber <= BigInt(BLOCK_SAMPLE_SIZE)) {
         throw new Error(
-          `Not enough blocks to sample. Current: ${blockNumber}, Required: ${
+          `Not enough blocks to sample. Current: ${safeBlockNumber}, Required: ${
             BLOCK_SAMPLE_SIZE + 1
           }`
         );
       }
 
-      try {
-        // Fetch last 10 blocks using direct JSON-RPC calls
-        const fromBlock = blockNumber - BigInt(BLOCK_SAMPLE_SIZE);
-        const blockPromises: Promise<{
-          timestamp: bigint;
-          number: bigint;
-          hash: string;
-        }>[] = [];
+      const fromBlock = safeBlockNumber - BigInt(BLOCK_SAMPLE_SIZE);
+      const blockPromises = Array.from(
+        { length: BLOCK_SAMPLE_SIZE + 1 },
+        (_, idx) =>
+          getBlock(config, {
+            blockNumber: fromBlock + BigInt(idx),
+            chainId: chainIdVal,
+          })
+      );
 
-        for (let i = fromBlock; i <= blockNumber; i = i + 1n) {
-          blockPromises.push(
-            getBlock(config, {
-              blockNumber: i,
-              chainId: daoConfig?.chain?.id,
-            })
+      const rpcBlocks = await Promise.all(blockPromises);
+
+      let totalInterval = 0;
+      let intervalCount = 0;
+
+      for (let i = 1; i < rpcBlocks.length; i++) {
+        const currentBlock = rpcBlocks[i];
+        const previousBlock = rpcBlocks[i - 1];
+
+        if (currentBlock.timestamp && previousBlock.timestamp) {
+          totalInterval += Number(
+            currentBlock.timestamp - previousBlock.timestamp
           );
+          intervalCount++;
         }
-
-        const rpcBlocks = await Promise.all(blockPromises);
-
-        if (rpcBlocks.length < 2) {
-          throw new Error("Need at least 2 blocks to calculate interval");
-        }
-
-        // Calculate average block interval from last 10 blocks
-        let totalInterval = 0;
-        let intervalCount = 0;
-
-        for (let i = 1; i < rpcBlocks.length; i++) {
-          const currentBlock = rpcBlocks[i];
-          const previousBlock = rpcBlocks[i - 1];
-
-          if (currentBlock.timestamp && previousBlock.timestamp) {
-            const interval = Number(
-              currentBlock.timestamp - previousBlock.timestamp
-            );
-            totalInterval += interval;
-            intervalCount++;
-          }
-        }
-
-        if (intervalCount === 0) {
-          throw new Error("No valid block intervals found");
-        }
-        const averageInterval = Math.floor(totalInterval / intervalCount);
-
-        return averageInterval;
-      } catch (err) {
-        throw new Error(
-          `Failed to fetch block data: ${
-            err instanceof Error ? err.message : "Unknown error"
-          }`
-        );
       }
+
+      if (intervalCount === 0) {
+        throw new Error("No valid block intervals found");
+      }
+
+      return Math.floor(totalInterval / intervalCount);
     },
-    enabled: !!daoConfig?.chain?.id,
+    enabled: !!chainId && blockNumber != null,
+    structuralSharing: false,
     ...QUERY_CONFIGS.DEFAULT,
   });
+
   const value = useMemo(
     (): BlockContextValue => ({
       blockTime: blockTime ?? null,
-      chainId: daoConfig?.chain?.id ?? null,
+      chainId: chainId ?? null,
       isLoading,
       error,
       isFetching,
     }),
-    [blockTime, daoConfig?.chain?.id, isLoading, error, isFetching]
+    [blockTime, chainId, isLoading, error, isFetching]
   );
 
   return (
