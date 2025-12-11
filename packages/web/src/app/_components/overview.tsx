@@ -27,6 +27,8 @@ export const Overview = () => {
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
         staleTime: CACHE_TIMES.ONE_MINUTE,
+        refetchOnWindowFocus: "always",
+        placeholderData: (previousData) => previousData,
       },
     });
 
@@ -36,6 +38,8 @@ export const Overview = () => {
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,
     staleTime: CACHE_TIMES.ONE_MINUTE,
+    refetchOnWindowFocus: "always",
+    placeholderData: (previousData) => previousData,
   });
 
   return (
