@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
@@ -6,6 +7,9 @@ import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { VoteType } from "@/config/vote";
+import { useBatchProfiles } from "@/hooks/useBatchProfiles";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { profileQueryKey } from "@/hooks/useProfileQuery";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
@@ -15,7 +19,7 @@ import { ProposalStatus } from "../proposal-status";
 import { Skeleton } from "../ui/skeleton";
 import { VoteStatistics } from "../vote-statistics";
 
-import { useProposalData } from "./hooks/useProposalData";
+import { useProposalData, type SupportFilter } from "./hooks/useProposalData";
 
 import type { ColumnType } from "../custom-table";
 import type { Address } from "viem";
@@ -61,9 +65,10 @@ export function ProposalsTable({
 }: {
   type: "active" | "all";
   address?: Address;
-  support?: "1" | "2" | "3";
+  support?: SupportFilter;
 }) {
   const { address: connectedAddress } = useAccount();
+  const daoConfig = useDaoConfig();
   const pageSize = type === "active" ? 8 : DEFAULT_PAGE_SIZE;
   const initialPageSize = type === "active" ? 8 : INITIAL_LIST_PAGE_SIZE;
   const { state, proposalStatusState, loadMoreData } = useProposalData(
@@ -72,6 +77,33 @@ export function ProposalsTable({
     pageSize,
     initialPageSize
   );
+  const queryClient = useQueryClient();
+
+  const proposerAddresses = useMemo(() => {
+    const seen = new Set<string>();
+    return (state.data ?? [])
+      .map((item) => item.proposer?.toLowerCase())
+      .filter((addr): addr is string => {
+        if (!addr || seen.has(addr)) return false;
+        seen.add(addr);
+        return true;
+      })
+      .sort((a, b) => a.localeCompare(b));
+  }, [state.data]);
+
+  const proposerAddressesToFetch = useMemo(
+    () =>
+      proposerAddresses.filter((addr) => {
+        const key = profileQueryKey(daoConfig?.code, addr);
+        return !queryClient.getQueryData(key);
+      }),
+    [proposerAddresses, queryClient, daoConfig?.code]
+  );
+
+  useBatchProfiles(proposerAddressesToFetch, {
+    queryKeyPrefix: ["profilePull", "proposals"],
+    enabled: !!proposerAddressesToFetch.length,
+  });
 
   const getUserVoteStatus = useCallback(
     (record: ProposalItem) => {
@@ -142,10 +174,12 @@ export function ProposalsTable({
                     address={record.proposer as Address}
                     size={14}
                     className="rounded-full"
+                    skipFetch
                   />
                   <AddressResolver
                     address={record.proposer as Address}
                     showShortAddress
+                    skipFetch
                   >
                     {(resolved) => (
                       <span

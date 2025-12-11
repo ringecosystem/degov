@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { DelegationList } from "@/components/delegation-list";
 import { DelegationTable } from "@/components/delegation-table";
@@ -8,8 +8,9 @@ import type {
   DelegationSortField,
   DelegationSortState,
 } from "@/components/delegation-table";
+import { ResponsiveRenderer } from "@/components/responsive-renderer";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useDeviceDetection } from "@/hooks/useDeviceDetection";
 import { delegateService } from "@/services/graphql";
 
 import type { Address } from "viem";
@@ -41,9 +42,6 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
   const daoConfig = useDaoConfig();
   const [sortState, setSortState] =
     useState<DelegationSortState>(DEFAULT_SORT_STATE);
-  const { isDesktop, isClient } = useDeviceDetection();
-  const shouldRenderList = !isClient || !isDesktop;
-  const shouldRenderTable = !isClient || isDesktop;
 
   // Get received delegations count
   const { data: delegationConnection } = useQuery({
@@ -69,31 +67,25 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
     return "Received Delegations";
   };
 
-  const orderBy = useMemo(() => {
-    return ORDER_BY_MAP[sortState.field][sortState.direction];
-  }, [sortState]);
+  const orderBy = ORDER_BY_MAP[sortState.field][sortState.direction];
 
-  const applySortState = useCallback(
-    (field: DelegationSortField, direction?: DelegationSortDirection) => {
-      if (!direction) {
-        setSortState(DEFAULT_SORT_STATE);
-        return;
-      }
+  const applySortState = (
+    field: DelegationSortField,
+    direction?: DelegationSortDirection
+  ) => {
+    if (!direction) {
+      setSortState(DEFAULT_SORT_STATE);
+      return;
+    }
 
-      setSortState({ field, direction });
-    },
-    []
-  );
+    setSortState({ field, direction });
+  };
 
-  const handleDateSortChange = useCallback(
-    (direction?: DelegationSortDirection) => applySortState("date", direction),
-    [applySortState]
-  );
+  const handleDateSortChange = (direction?: DelegationSortDirection) =>
+    applySortState("date", direction);
 
-  const handlePowerSortChange = useCallback(
-    (direction?: DelegationSortDirection) => applySortState("power", direction),
-    [applySortState]
-  );
+  const handlePowerSortChange = (direction?: DelegationSortDirection) =>
+    applySortState("power", direction);
 
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px]">
@@ -102,17 +94,8 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
           {getDisplayTitle()}
         </h3>
       </div>
-      {shouldRenderList ? (
-        <div className="lg:hidden">
-          <DelegationList
-            address={address}
-            orderBy={orderBy}
-            totalCount={delegationConnection?.totalCount ?? 0}
-          />
-        </div>
-      ) : null}
-      {shouldRenderTable ? (
-        <div className="hidden lg:block">
+      <ResponsiveRenderer
+        desktop={
           <DelegationTable
             address={address}
             orderBy={orderBy}
@@ -121,8 +104,25 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
             onDateSortChange={handleDateSortChange}
             onPowerSortChange={handlePowerSortChange}
           />
-        </div>
-      ) : null}
+        }
+        mobile={
+          <DelegationList
+            address={address}
+            orderBy={orderBy}
+            totalCount={delegationConnection?.totalCount ?? 0}
+          />
+        }
+        loadingFallback={
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="rounded-[14px] bg-card p-4">
+                <Skeleton className="h-6 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ))}
+          </div>
+        }
+      />
     </div>
   );
 }

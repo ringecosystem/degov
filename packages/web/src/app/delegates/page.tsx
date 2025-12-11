@@ -1,12 +1,12 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useState } from "react";
 import { useDebounce } from "react-use";
 import { useAccount } from "wagmi";
 
 import { DelegateAction } from "@/components/delegate-action";
-import { Faqs } from "@/components/faqs";
 import { MembersList } from "@/components/members-list";
 import {
   MembersTable,
@@ -15,14 +15,33 @@ import {
   type MemberSortField,
   type MemberSortState,
 } from "@/components/members-table";
-import { SystemInfo } from "@/components/system-info";
+import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
+
+const SystemInfo = dynamic(
+  () => import("@/components/system-info").then((mod) => mod.SystemInfo),
+  {
+    loading: () => (
+      <div className="h-[300px] w-[360px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
+
+const Faqs = dynamic(
+  () => import("@/components/faqs").then((mod) => mod.Faqs),
+  {
+    loading: () => (
+      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
 
 const ORDER_BY_MAP: Record<
   MemberSortField,
@@ -63,7 +82,6 @@ export default function Members() {
     [searchTerm]
   );
 
-  // Get proposal metrics (including member count)
   const { data: proposalMetrics } = useQuery({
     queryKey: ["proposalMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
@@ -94,9 +112,7 @@ export default function Members() {
     };
   }, []);
 
-  const orderBy = useMemo(() => {
-    return ORDER_BY_MAP[sortState.field][sortState.direction];
-  }, [sortState]);
+  const orderBy = ORDER_BY_MAP[sortState.field][sortState.direction];
   const queryOrderBy =
     !hasUserSorted &&
     sortState.field === DEFAULT_SORT_STATE.field &&
@@ -104,34 +120,27 @@ export default function Members() {
       ? undefined
       : orderBy;
 
-  const applySortState = useCallback(
-    (field: MemberSortField, direction?: MemberSortDirection) => {
-      if (!direction) {
-        setHasUserSorted(false);
-        setSortState(DEFAULT_SORT_STATE);
-        return;
-      }
-      setHasUserSorted(true);
-      setSortState({ field, direction });
-    },
-    []
-  );
+  const applySortState = (
+    field: MemberSortField,
+    direction?: MemberSortDirection
+  ) => {
+    if (!direction) {
+      setHasUserSorted(false);
+      setSortState(DEFAULT_SORT_STATE);
+      return;
+    }
+    setHasUserSorted(true);
+    setSortState({ field, direction });
+  };
 
-  const handleLastVotedSortChange = useCallback(
-    (direction?: MemberSortDirection) => applySortState("lastVoted", direction),
-    [applySortState]
-  );
+  const handleLastVotedSortChange = (direction?: MemberSortDirection) =>
+    applySortState("lastVoted", direction);
 
-  const handlePowerSortChange = useCallback(
-    (direction?: MemberSortDirection) => applySortState("power", direction),
-    [applySortState]
-  );
+  const handlePowerSortChange = (direction?: MemberSortDirection) =>
+    applySortState("power", direction);
 
-  const handleDelegatorsSortChange = useCallback(
-    (direction?: MemberSortDirection) =>
-      applySortState("delegators", direction),
-    [applySortState]
-  );
+  const handleDelegatorsSortChange = (direction?: MemberSortDirection) =>
+    applySortState("delegators", direction);
 
   const getDisplayTitle = () => {
     const totalCount = proposalMetrics?.memberCount;
@@ -154,6 +163,8 @@ export default function Members() {
             <div className="flex h-[36px] w-full sm:w-[388px] items-center gap-[13px] rounded-[20px] border px-[17px] transition-all border-border bg-card">
               <Search className="h-[15px] w-[15px] text-foreground/50" />
               <Input
+                id="search-delegates-global"
+                name="search-delegates"
                 placeholder="Search by ENS or address"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -163,27 +174,38 @@ export default function Members() {
           </div>
           <div className="flex flex-col lg:flex-row lg:items-start gap-[15px] lg:gap-[10px]">
             <div className="flex-1">
-              <div className="lg:hidden">
-                <MembersList
-                  onDelegate={handleDelegate}
-                  searchTerm={debouncedSearchTerm}
-                  orderBy={queryOrderBy}
-                  hasUserSorted={hasUserSorted}
-                />
-              </div>
-
-              <div className="hidden lg:block">
-                <MembersTable
-                  onDelegate={handleDelegate}
-                  searchTerm={debouncedSearchTerm}
-                  orderBy={queryOrderBy}
-                  hasUserSorted={hasUserSorted}
-                  sortState={sortState}
-                  onPowerSortChange={handlePowerSortChange}
-                  onLastVotedSortChange={handleLastVotedSortChange}
-                  onDelegatorsSortChange={handleDelegatorsSortChange}
-                />
-              </div>
+              <ResponsiveRenderer
+                desktop={
+                  <MembersTable
+                    onDelegate={handleDelegate}
+                    searchTerm={debouncedSearchTerm}
+                    orderBy={queryOrderBy}
+                    hasUserSorted={hasUserSorted}
+                    sortState={sortState}
+                    onPowerSortChange={handlePowerSortChange}
+                    onLastVotedSortChange={handleLastVotedSortChange}
+                    onDelegatorsSortChange={handleDelegatorsSortChange}
+                  />
+                }
+                mobile={
+                  <MembersList
+                    onDelegate={handleDelegate}
+                    searchTerm={debouncedSearchTerm}
+                    orderBy={queryOrderBy}
+                    hasUserSorted={hasUserSorted}
+                  />
+                }
+                loadingFallback={
+                  <div className="space-y-4">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <div key={index} className="rounded-[14px] bg-card p-4">
+                        <Skeleton className="h-6 w-3/4 mb-2" />
+                        <Skeleton className="h-4 w-1/2" />
+                      </div>
+                    ))}
+                  </div>
+                }
+              />
             </div>
             <div className="w-[360px] flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
               <SystemInfo />
@@ -206,6 +228,8 @@ export default function Members() {
             <div className="flex h-[36px] w-full sm:w-[388px] items-center gap-[13px] rounded-[20px] border px-[17px] transition-all border-gray-1 bg-card">
               <Search className="h-[15px] w-[15px] text-foreground/50" />
               <Input
+                id="search-delegates-main"
+                name="search-delegates"
                 placeholder="Search by ENS or address"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -213,26 +237,38 @@ export default function Members() {
               />
             </div>
           </div>
-          <div className="lg:hidden">
-            <MembersList
-              onDelegate={handleDelegate}
-              searchTerm={debouncedSearchTerm}
-              orderBy={queryOrderBy}
-              hasUserSorted={hasUserSorted}
-            />
-          </div>
-          <div className="hidden lg:block">
-            <MembersTable
-              onDelegate={handleDelegate}
-              searchTerm={debouncedSearchTerm}
-              orderBy={queryOrderBy}
-              hasUserSorted={hasUserSorted}
-              sortState={sortState}
-              onPowerSortChange={handlePowerSortChange}
-              onLastVotedSortChange={handleLastVotedSortChange}
-              onDelegatorsSortChange={handleDelegatorsSortChange}
-            />
-          </div>
+          <ResponsiveRenderer
+            desktop={
+              <MembersTable
+                onDelegate={handleDelegate}
+                searchTerm={debouncedSearchTerm}
+                orderBy={queryOrderBy}
+                hasUserSorted={hasUserSorted}
+                sortState={sortState}
+                onPowerSortChange={handlePowerSortChange}
+                onLastVotedSortChange={handleLastVotedSortChange}
+                onDelegatorsSortChange={handleDelegatorsSortChange}
+              />
+            }
+            mobile={
+              <MembersList
+                onDelegate={handleDelegate}
+                searchTerm={debouncedSearchTerm}
+                orderBy={queryOrderBy}
+                hasUserSorted={hasUserSorted}
+              />
+            }
+            loadingFallback={
+              <div className="space-y-4">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div key={index} className="rounded-[14px] bg-card p-4">
+                    <Skeleton className="h-6 w-3/4 mb-2" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
+                ))}
+              </div>
+            }
+          />
         </div>
         <div className="w-[360px] flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
           <SystemInfo />

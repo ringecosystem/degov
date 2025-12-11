@@ -7,6 +7,7 @@ import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import type { Address } from "viem";
 export type ProposalVotes = {
@@ -15,6 +16,8 @@ export type ProposalVotes = {
   abstainVotes: bigint;
 };
 
+export type SupportFilter = "0" | "1" | "2";
+
 type PageParam = {
   offset: number;
   limit: number;
@@ -22,7 +25,7 @@ type PageParam = {
 
 export function useProposalData(
   address?: Address,
-  support?: "1" | "2" | "3",
+  support?: SupportFilter,
   pageSize: number = DEFAULT_PAGE_SIZE,
   initialPageSize: number = pageSize
 ) {
@@ -133,7 +136,7 @@ export function useProposalData(
     contracts: statusContracts,
     query: {
       enabled: flattenedData.length > 0 && !!daoConfig?.chain?.id,
-      staleTime: 60 * 1000,
+      staleTime: CACHE_TIMES.ONE_MINUTE,
       refetchOnWindowFocus: false,
     },
   });
