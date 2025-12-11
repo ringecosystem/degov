@@ -8,7 +8,8 @@ import { useBlockNumber, useConfig } from "wagmi";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { QUERY_CONFIGS } from "@/utils/query-config";
 
-const BLOCK_SAMPLE_SIZE = 2;
+// Sample 10 blocks total (current + previous 9) to smooth jitter while keeping RPC load reasonable.
+const BLOCK_SAMPLE_SIZE = 9;
 
 interface BlockContextValue {
   /** Average block production time (in seconds) based on recent blocks */
@@ -62,7 +63,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
 
       const safeBlockNumber = BigInt(blockNumberStr);
 
-      if (safeBlockNumber <= BigInt(BLOCK_SAMPLE_SIZE)) {
+      if (safeBlockNumber < BigInt(BLOCK_SAMPLE_SIZE)) {
         throw new Error(
           `Not enough blocks to sample. Current: ${safeBlockNumber}, Required: ${
             BLOCK_SAMPLE_SIZE + 1
