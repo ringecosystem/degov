@@ -6,7 +6,7 @@ import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
 
 import { ProposalStatus } from "../proposal-status";
-import { useProposalData, type SupportFilter } from "../proposals-table/hooks/useProposalData";
+import { useProposalData } from "../proposals-table/hooks/useProposalData";
 import { Skeleton } from "../ui/skeleton";
 
 import type { Address } from "viem";
@@ -52,7 +52,7 @@ export function ProposalsList({
 }: {
   type: "active" | "all";
   address?: Address;
-  support?: SupportFilter;
+  support?: "1" | "2" | "3";
 }) {
   const pageSize = type === "active" ? 8 : DEFAULT_PAGE_SIZE;
   const initialPageSize = type === "active" ? 8 : INITIAL_LIST_PAGE_SIZE;

@@ -4,17 +4,12 @@ import { useBlockNumber, useReadContract, useReadContracts } from "wagmi";
 
 import { abi as governorAbi } from "@/config/abi/governor";
 import { abi as timeLockAbi } from "@/config/abi/timeLock";
-import { useBlockData } from "@/contexts/BlockContext";
-import { useClockMode } from "@/hooks/useClockMode";
-import { CACHE_TIMES, QUERY_CONFIGS } from "@/utils/query-config";
+import { useBlockInterval } from "@/contexts/BlockContext";
+import { useClockModeContext } from "@/contexts/ClockModeContext";
 
 import { useDaoConfig } from "./useDaoConfig";
 
 import type { Address } from "viem";
-
-interface GovernanceParamsOptions {
-  enabled?: boolean;
-}
 
 interface StaticGovernanceParams {
   proposalThreshold: bigint;
@@ -31,24 +26,14 @@ interface GovernanceParams extends StaticGovernanceParams {
   quorum: bigint;
 }
 
-export function useStaticGovernanceParams(
-  options: GovernanceParamsOptions = {}
-) {
-  const { enabled = true } = options;
+export function useStaticGovernanceParams() {
   const daoConfig = useDaoConfig();
   const governorAddress = daoConfig?.contracts?.governor as Address;
   const timeLockAddress = daoConfig?.contracts?.timeLock as Address;
 
   // Get clock mode and block time for conversion
-  const {
-    isBlockNumberMode,
-    isLoading: isClockModeLoading,
-    isResolved: isClockResolved,
-  } = useClockMode();
-
-  // Get block time and loading state
-  const { blockTime: averageBlockTime, isLoading: isBlockTimeLoading } = useBlockData();
-  const isBlockTimeReady = !isBlockTimeLoading && averageBlockTime !== null;
+  const { isBlockNumberMode, isClockModeLoading } = useClockModeContext();
+  const averageBlockTime = useBlockInterval(); // Get from BlockContext
 
   const contracts = useMemo(() => {
     const baseContracts = [
@@ -90,9 +75,13 @@ export function useStaticGovernanceParams(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     contracts: contracts as any,
     query: {
-      ...QUERY_CONFIGS.STATIC,
-      enabled:
-        enabled && Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
+      retry: 3,
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
 
@@ -108,28 +97,19 @@ export function useStaticGovernanceParams(
       return null;
     }
 
-    // 将治理参数统一转换为秒：
-    // - 区块号模式需要乘以平均出块时间
-    // - 时间戳模式本身已经是秒，直接返回
-    const shouldConvert = isClockResolved && isBlockNumberMode;
+    // Convert blocknumber values to seconds if needed (only if clock mode is determined)
+    const fallbackBlockTime = 12; // Default Ethereum block time
+    const blockTime = averageBlockTime || fallbackBlockTime;
+    const shouldConvert = !isClockModeLoading && isBlockNumberMode;
 
-    const votingDelayInSeconds = (() => {
-      if (!isClockResolved) return null;
-      if (shouldConvert) {
-        return isBlockTimeReady ? Number(votingDelay) * averageBlockTime : null;
-      }
-      // 时间戳模式
-      return Number(votingDelay);
-    })();
+    const votingDelayInSeconds = shouldConvert
+      ? Number(votingDelay) * blockTime
+      : Number(votingDelay);
 
-    const votingPeriodInSeconds = (() => {
-      if (!isClockResolved) return null;
-      if (shouldConvert) {
-        return isBlockTimeReady ? Number(votingPeriod) * averageBlockTime : null;
-      }
-      // 时间戳模式
-      return Number(votingPeriod);
-    })();
+    const votingPeriodInSeconds = shouldConvert
+      ? Number(votingPeriod) * blockTime
+      : Number(votingPeriod);
+    // TimeLock delay is always in seconds (not affected by clock mode)
 
     const timeLockDelayInSeconds = !isNil(timeLockDelay)
       ? Number(timeLockDelay)
@@ -144,19 +124,17 @@ export function useStaticGovernanceParams(
       votingPeriodInSeconds,
       timeLockDelayInSeconds,
     };
-  }, [data, isBlockNumberMode, isClockResolved, averageBlockTime, isBlockTimeReady]);
+  }, [data, isBlockNumberMode, isClockModeLoading, averageBlockTime]);
 
   return {
     data: formattedData,
-    isLoading: isLoading || isClockModeLoading || !isClockResolved,
-    isFetching: isFetching || isClockModeLoading || !isClockResolved,
+    isLoading: isLoading || isClockModeLoading,
+    isFetching: isFetching || isClockModeLoading,
     error: error as Error | null,
-    isBlockTimeLoading,
   };
 }
 
-export function useQuorum(options: GovernanceParamsOptions = {}) {
-  const { enabled = true } = options;
+export function useQuorum() {
   const daoConfig = useDaoConfig();
   const governorAddress = daoConfig?.contracts?.governor as Address;
 
@@ -164,23 +142,13 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
   const {
     isBlockNumberMode,
     rawClockMode,
-    isLoading: isClockModeLoading,
-    status: clockModeStatus,
-    isResolved: isClockResolved,
-  } = useClockMode();
+    isClockModeLoading,
+    clockModeError,
+  } = useClockModeContext();
 
   // Get current block number from BlockContext
   const { data: blockNumber } = useBlockNumber({
     chainId: daoConfig?.chain?.id,
-    query: {
-      ...QUERY_CONFIGS.FREQUENT,
-      refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
-      enabled:
-        enabled &&
-        Boolean(daoConfig?.chain?.id) &&
-        isClockResolved &&
-        isBlockNumberMode,
-    },
   });
 
   const {
@@ -194,14 +162,8 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
     functionName: "clock" as const,
     chainId: daoConfig?.chain?.id,
     query: {
-      ...QUERY_CONFIGS.FREQUENT,
-      refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
-      enabled:
-        enabled &&
-        Boolean(governorAddress) &&
-        Boolean(daoConfig?.chain?.id) &&
-        isClockResolved &&
-        !isBlockNumberMode,
+      enabled: Boolean(governorAddress) && Boolean(daoConfig?.chain?.id),
+      staleTime: 0,
     },
   });
 
@@ -224,13 +186,10 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
     args: [quorumParameter],
     chainId: daoConfig?.chain?.id,
     query: {
-      ...QUERY_CONFIGS.FREQUENT,
-      refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
       enabled:
-        enabled &&
         Boolean(governorAddress) &&
         Boolean(daoConfig?.chain?.id) &&
-        isClockResolved &&
+        !isClockModeLoading &&
         (isBlockNumberMode
           ? Boolean(blockNumber && blockNumber > BigInt(10))
           : Boolean(clockData)),
@@ -242,20 +201,15 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
     clockData: clockData as bigint | undefined,
     clockMode: rawClockMode,
     isBlocknumberMode: isBlockNumberMode,
-    isLoading:
-      isClockLoading ||
-      isQuorumLoading ||
-      isClockModeLoading ||
-      !isClockResolved,
+    isLoading: isClockLoading || isQuorumLoading || isClockModeLoading,
     isFetching: isClockFetching || isQuorumFetching,
-    error: quorumError,
+    error: quorumError || clockModeError,
     refetchClock,
-    clockModeStatus,
   };
 }
 
-export function useGovernanceParams(options: GovernanceParamsOptions = {}) {
-  const staticParams = useStaticGovernanceParams(options);
+export function useGovernanceParams() {
+  const staticParams = useStaticGovernanceParams();
   const {
     quorum,
     clockMode,
@@ -264,7 +218,7 @@ export function useGovernanceParams(options: GovernanceParamsOptions = {}) {
     isFetching: isQuorumFetching,
     error: quorumError,
     refetchClock,
-  } = useQuorum(options);
+  } = useQuorum();
 
   const formattedData: GovernanceParams | null = useMemo(() => {
     if (!staticParams.data) return null;
@@ -293,6 +247,5 @@ export function useGovernanceParams(options: GovernanceParamsOptions = {}) {
     isFetching: staticParams.isFetching || isQuorumFetching,
     error: staticParams.error || quorumError,
     refetchClock,
-    isBlockTimeLoading: staticParams.isBlockTimeLoading,
   };
 }

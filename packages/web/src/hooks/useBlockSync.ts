@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useBlockNumber } from "wagmi";
 
+import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { INDEXER_CONFIG } from "@/config/indexer";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { squidStatusService } from "@/services/graphql";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 export type BlockSyncStatus = "operational" | "syncing" | "offline";
 export function useBlockSync() {
@@ -14,6 +14,9 @@ export function useBlockSync() {
   const { data: currentBlockData } = useBlockNumber({
     watch: true,
     chainId: daoConfig?.chain?.id,
+    query: {
+      refetchInterval: DEFAULT_REFETCH_INTERVAL,
+    },
   });
 
   const { data: squidStatus, isLoading } = useQuery({
@@ -23,7 +26,7 @@ export function useBlockSync() {
       return squidStatusService.getSquidStatus(daoConfig.indexer.endpoint);
     },
     enabled: !!daoConfig?.indexer?.endpoint,
-    refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
+    refetchInterval: DEFAULT_REFETCH_INTERVAL,
   });
 
   const currentBlock = currentBlockData ? Number(currentBlockData) : 0;

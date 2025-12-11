@@ -23,7 +23,7 @@ export function useBotMemberData() {
     data: contributor,
     isPending: isContributorLoading,
     error: contributorError,
-  } = useQuery<ContributorItem | null>({
+  } = useQuery<ContributorItem | undefined>({
     queryKey: [
       "bot-contributor",
       botAddressData?.data?.address,
@@ -31,7 +31,7 @@ export function useBotMemberData() {
     ],
     queryFn: async () => {
       const address = botAddressData?.data?.address?.toLowerCase();
-      if (!address) return null;
+      if (!address) return undefined;
 
       const [result] = await contributorService.getAllContributors(
         daoConfig?.indexer?.endpoint ?? "",
@@ -44,7 +44,7 @@ export function useBotMemberData() {
         }
       );
 
-      return result ?? null;
+      return result;
     },
     enabled: !!botAddressData?.data?.address && !!daoConfig?.indexer?.endpoint,
     staleTime: 60 * 1000,

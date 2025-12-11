@@ -19,12 +19,11 @@ export const Parameters = () => {
   const {
     data: governanceParams,
     isStaticLoading,
-    isBlockTimeLoading,
     refetchClock,
-  } = useGovernanceParams({ enabled: open });
+  } = useGovernanceParams();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
-  const { data: governanceToken } = useGovernanceToken({ enabled: open });
+  const { data: governanceToken } = useGovernanceToken();
 
   const formattedData = useMemo(() => {
     const proposalThresholdFormatted =
@@ -36,20 +35,16 @@ export const Parameters = () => {
         : "None";
 
     const votingDelayFormatted =
-      isBlockTimeLoading
-        ? null
-        : governanceParams?.votingDelayInSeconds !== undefined &&
-          governanceParams?.votingDelayInSeconds !== null &&
-          !isNaN(governanceParams.votingDelayInSeconds)
+      governanceParams?.votingDelayInSeconds !== undefined &&
+      governanceParams?.votingDelayInSeconds !== null &&
+      !isNaN(governanceParams.votingDelayInSeconds)
         ? dayjsHumanize(governanceParams.votingDelayInSeconds)
         : "None";
 
     const votingPeriodFormatted =
-      isBlockTimeLoading
-        ? null
-        : governanceParams?.votingPeriodInSeconds !== undefined &&
-          governanceParams?.votingPeriodInSeconds !== null &&
-          !isNaN(governanceParams.votingPeriodInSeconds)
+      governanceParams?.votingPeriodInSeconds !== undefined &&
+      governanceParams?.votingPeriodInSeconds !== null &&
+      !isNaN(governanceParams.votingPeriodInSeconds)
         ? dayjsHumanize(governanceParams.votingPeriodInSeconds)
         : "None";
 
@@ -64,7 +59,7 @@ export const Parameters = () => {
       votingPeriodFormatted,
       timeLockDelayFormatted,
     };
-  }, [governanceParams, isBlockTimeLoading, formatTokenAmount, governanceToken?.symbol]);
+  }, [governanceParams, formatTokenAmount, governanceToken?.symbol]);
 
   useEffect(() => {
     if (open) {
@@ -109,7 +104,7 @@ export const Parameters = () => {
               Proposal delay
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isStaticLoading || formattedData.votingDelayFormatted === null ? (
+              {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : (
                 formattedData.votingDelayFormatted
@@ -122,7 +117,7 @@ export const Parameters = () => {
               Voting period
             </span>
             <span className="text-[14px] font-normal text-foreground">
-              {isStaticLoading || formattedData.votingPeriodFormatted === null ? (
+              {isStaticLoading ? (
                 <Skeleton className="h-[14px] w-[30px]" />
               ) : (
                 formattedData.votingPeriodFormatted

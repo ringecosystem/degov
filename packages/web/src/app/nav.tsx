@@ -54,7 +54,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                 <Link
                   onClick={onMenuToggle}
                   href={route.pathname}
-                  prefetch={true}
+                  prefetch={false}
                   onMouseEnter={() => router.prefetch(route.pathname)}
                   className={cn(
                     "group flex w-full items-center gap-[10px] rounded-[10px] px-[30px] capitalize",
@@ -77,9 +77,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                           height={32}
                           className={cn(
                             "size-[32px] transition-opacity duration-200",
-                            isActive
-                              ? "opacity-100"
-                              : "opacity-60 group-hover:opacity-80"
+                            isActive || "group-hover:opacity-80" ? "opacity-100" : "opacity-60"
                           )}
                         />
                       );

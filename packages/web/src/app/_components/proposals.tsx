@@ -1,28 +1,18 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
+import { Faqs } from "@/components/faqs";
 import { DiscussionIcon, PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
-import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
-
-const Faqs = dynamic(
-  () => import("@/components/faqs").then((mod) => mod.Faqs),
-  {
-    loading: () => (
-      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
-    )
-  }
-);
 
 export const Proposals = () => {
   const daoConfig = useDaoConfig();
@@ -85,10 +75,12 @@ export const Proposals = () => {
               </Button>
             </div>
           </div>
-          <ResponsiveRenderer
-            desktop={<ProposalsTable type="active" />}
-            mobile={<ProposalsList type="active" />}
-          />
+          <div className="lg:hidden">
+            <ProposalsList type="active" />
+          </div>
+          <div className="hidden lg:block">
+            <ProposalsTable type="active" />
+          </div>
         </div>
         <Faqs type="general" />
       </div>

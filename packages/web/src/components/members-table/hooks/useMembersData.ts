@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { isAddress, type Address } from "viem";
 import { usePublicClient } from "wagmi";
@@ -6,11 +6,9 @@ import { mainnet } from "wagmi/chains";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
-import { useBatchProfiles } from "@/hooks/useBatchProfiles";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { normalizeAddress } from "@/hooks/useProfileQuery";
-import { contributorService } from "@/services/graphql";
-import type { ContributorItem } from "@/services/graphql/types";
+import { contributorService, memberService } from "@/services/graphql";
+import type { ContributorItem, Member } from "@/services/graphql/types";
 
 type PageParam = {
   offset: number;
@@ -140,7 +138,7 @@ export function useMembersData(
         limit: pageSize,
       } satisfies PageParam;
     },
-    retryDelay: 2000,
+    retryDelay: 10_000,
     retry: 3,
   });
 
@@ -151,34 +149,43 @@ export function useMembersData(
       return [];
     }
     membersQuery?.data?.pages?.forEach((page) => {
-      if (!Array.isArray(page)) {
-        return;
+      if (page) {
+        page?.forEach((member) => {
+          if (!allMembers.has(member.id)) {
+            allMembers.set(member.id, member);
+          }
+        });
       }
-      page.forEach((member) => {
-                  const normalizedId = member.id.toLowerCase();
-                  if (!allMembers.has(normalizedId)) {
-                    allMembers.set(normalizedId, member);        }
-      });
     });
 
     return Array.from(allMembers.values());
   }, [membersQuery.data]);
 
-  const normalizedMemberAddresses = useMemo(
-    () =>
-      flattenedData
-        ?.map((member) => normalizeAddress(member.id))
-        .sort((a, b) => a.localeCompare(b)) ?? [],
-    [flattenedData]
-  );
+  const { data: profilePullData, isLoading: isProfilePullLoading } = useQuery({
+    queryKey: [
+      "profilePull",
+      flattenedData?.map((member) => member.id?.toLowerCase()),
+      daoConfig?.indexer?.endpoint,
+    ],
+    queryFn: () =>
+      memberService.getProfilePull(
+        flattenedData?.map((member) => member.id?.toLowerCase())
+      ),
+    enabled: !!flattenedData?.length,
+  });
 
-  const { data: profilePullData, isLoading: isProfilePullLoading } = useBatchProfiles(
-    normalizedMemberAddresses,
-    {
-      queryKeyPrefix: ["profilePull", "members"],
-      enabled: !!normalizedMemberAddresses.length,
-    }
-  );
+  const filterData = useMemo(() => {
+    if (!flattenedData?.length || !profilePullData?.data?.length) return {};
+
+    const obj: Record<string, Member | undefined> = {};
+    flattenedData?.forEach((member) => {
+      const profilePull = Array.isArray(profilePullData?.data)
+        ? profilePullData?.data?.find((item) => item.address === member.id)
+        : undefined;
+      obj[member.id] = profilePull;
+    });
+    return obj;
+  }, [flattenedData, profilePullData]);
 
   const { isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     membersQuery;
@@ -201,8 +208,10 @@ export function useMembersData(
       isFetchingNextPage,
       error: membersQuery.error,
     },
-    isProfilePullLoading,
-    profilePullData,
+    profilePullState: {
+      data: filterData,
+      isLoading: isProfilePullLoading,
+    },
     loadMoreData,
     refreshData,
   };

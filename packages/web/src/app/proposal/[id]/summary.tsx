@@ -1,17 +1,18 @@
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
 import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { OffchainDiscussionIcon, XIcon } from "@/components/icons";
 import { ProposalStatus } from "@/components/proposal-status";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAiAnalysis } from "@/hooks/useAiAnalysis";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { getAiAnalysis } from "@/services/ai-agent";
 import type {
   ProposalItem,
   ProposalQueuedByIdItem,
 } from "@/services/graphql/types";
+import type { AiAnalysisData } from "@/types/ai-analysis";
 import type { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
@@ -38,22 +39,10 @@ export const Summary = ({
   id,
 }: SummaryProps) => {
   const daoConfig = useDaoConfig();
-  const {
-    data: aiAnalysisData,
-    loading: aiAnalysisLoading,
-  } = useAiAnalysis(data?.proposalId ?? null, {
-    enabled: !!data?.proposalId,
-    chainId: daoConfig?.chain?.id,
-  });
-
-  const proposalLink = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    return `${window.location.origin}/proposal/${id}`;
-  }, [id]);
-
-  const explorerUrl = daoConfig?.chain?.explorers?.[0];
-  const txHash = data?.transactionHash;
-  const hasExplorerLink = !!explorerUrl && !!txHash;
+  const [aiAnalysisData, setAiAnalysisData] = useState<AiAnalysisData | null>(
+    null
+  );
+  const [loading, setLoading] = useState(false);
 
   const proposalTitle = useMemo(() => {
     if (!data) return "";
@@ -67,9 +56,40 @@ export const Summary = ({
     return fallback.title;
   }, [data]);
 
+  useEffect(() => {
+    const fetchAiAnalysis = async () => {
+      if (
+        !data?.proposalId ||
+        !daoConfig?.aiAgent?.endpoint ||
+        !daoConfig?.chain?.id
+      ) {
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const result = await getAiAnalysis(
+          daoConfig.aiAgent.endpoint,
+          data.proposalId,
+          daoConfig.chain.id
+        );
+
+        if (result.code === 0 && result.data) {
+          setAiAnalysisData(result.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch AI analysis:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAiAnalysis();
+  }, [data?.proposalId, daoConfig?.aiAgent?.endpoint, daoConfig?.chain?.id]);
+
   const hasDiscussionLinks =
     data?.discussion ||
-    (daoConfig?.aiAgent?.endpoint && !aiAnalysisLoading && aiAnalysisData?.id);
+    (daoConfig?.aiAgent?.endpoint && !loading && aiAnalysisData?.id);
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
@@ -95,13 +115,11 @@ export const Summary = ({
         ) : (
           proposalTitle
         )}
-        {proposalLink && (
-          <ClipboardIconButton
-            text={proposalLink}
-            size={20}
-            copyText="Copy link"
-          />
-        )}
+        <ClipboardIconButton
+          text={`${window.location.origin}/proposal/${id}`}
+          size={20}
+          copyText="Copy link"
+        />
       </h2>
 
       {isPending ? (
@@ -120,32 +138,21 @@ export const Summary = ({
           </div>
           <span className="text-foreground flex items-center gap-[5px]">
             <div className="hidden lg:block">on</div>
-            {hasExplorerLink ? (
-              <Link
-                href={`${explorerUrl}/tx/${txHash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline font-semibold"
-              >
-                {data?.blockTimestamp
-                  ? formatTimeAgo(data?.blockTimestamp)
-                  : ""}
-              </Link>
-            ) : (
-              <span className="text-muted-foreground">
-                {data?.blockTimestamp ? formatTimeAgo(data?.blockTimestamp) : ""}
-              </span>
-            )}
+            <Link
+              href={`${daoConfig?.chain?.explorers?.[0]}/tx/${data?.transactionHash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="hover:underline font-semibold"
+            >
+              {data?.blockTimestamp ? formatTimeAgo(data?.blockTimestamp) : ""}
+            </Link>
           </span>
           {hasDiscussionLinks && (
             <>
               <div className="w-px h-[10px] bg-muted-foreground" />
-              {daoConfig?.aiAgent?.endpoint &&
-                !aiAnalysisLoading &&
-                aiAnalysisData?.id &&
-                aiAnalysisData?.twitter_user?.username && (
+              {daoConfig?.aiAgent?.endpoint && !loading && aiAnalysisData?.id && (
                 <a
-                  href={`https://x.com/${aiAnalysisData.twitter_user?.username}/status/${aiAnalysisData.id}`}
+                  href={`https://x.com/${aiAnalysisData.twitter_user.username}/status/${aiAnalysisData.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-5 h-5 bg-light rounded-full flex justify-center items-center hover:opacity-80 transition-opacity"
@@ -165,7 +172,7 @@ export const Summary = ({
                   <OffchainDiscussionIcon width={12} height={12} className="text-dark"/>
                 </a>
               )}
-
+          
             </>
           )}
         </div>

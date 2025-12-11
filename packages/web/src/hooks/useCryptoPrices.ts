@@ -1,8 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { CACHE_TIMES } from "@/utils/query-config";
-
 const COINGECKO_API_URL = "https://api.coingecko.com/api/v3/simple/price";
 
 type CoinGeckoResponse = Record<
@@ -62,9 +60,8 @@ export function useCryptoPrices(
       return data;
     },
     enabled: isEnabled && priceIds.length > 0,
-    // 保持价格每分钟自动刷新，同时利用 staleTime 控制缓存时间
-    staleTime: CACHE_TIMES.ONE_MINUTE,
-    refetchInterval: CACHE_TIMES.ONE_MINUTE,
+    refetchInterval: isEnabled ? 60_000 : false,
+    staleTime: 30_000,
   });
 
   const marketData = useMemo(() => {

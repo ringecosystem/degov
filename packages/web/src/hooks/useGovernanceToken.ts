@@ -1,7 +1,6 @@
 import { useReadContracts } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
-import { QUERY_CONFIGS } from "@/utils/query-config";
 
 import { useDaoConfig } from "./useDaoConfig";
 
@@ -19,18 +18,11 @@ interface UseGovernanceTokenReturn {
   error: Error | null;
 }
 
-interface UseGovernanceTokenOptions {
-  enabled?: boolean;
-}
-
 /**
  * Hook to fetch governance token metadata
  * @param tokenAddress - The address of the governance token contract
  */
-export function useGovernanceToken(
-  options: UseGovernanceTokenOptions = {}
-): UseGovernanceTokenReturn {
-  const { enabled = true } = options;
+export function useGovernanceToken(): UseGovernanceTokenReturn {
   const daoConfig = useDaoConfig();
   const standard = daoConfig?.contracts?.governorToken?.standard;
   const tokenAddress = daoConfig?.contracts?.governorToken?.address as Address;
@@ -72,9 +64,7 @@ export function useGovernanceToken(
             },
           ],
     query: {
-      ...QUERY_CONFIGS.STATIC,
-      enabled:
-        enabled && Boolean(tokenAddress) && Boolean(daoConfig?.chain?.id),
+      enabled: Boolean(tokenAddress) && Boolean(daoConfig?.chain?.id),
     },
   });
 

@@ -20,7 +20,6 @@ interface AddressWithAvatarProps {
   customLink?: (address: `0x${string}`) => string;
   side?: "top" | "right" | "bottom" | "left";
   align?: "start" | "center" | "end";
-  skipFetch?: boolean;
 }
 
 const defaultDelayDuration = 200;
@@ -33,7 +32,6 @@ export function AddressWithAvatar({
   className,
   textClassName,
   customLink,
-  skipFetch = false,
 }: AddressWithAvatarProps) {
   const { isAiBot } = useAiBotAddress(address);
   return (
@@ -43,17 +41,9 @@ export function AddressWithAvatar({
       rel={!!customLink ? "noopener noreferrer" : undefined}
       className={cn("inline-flex items-center gap-[10px]", className)}
     >
-      <AddressAvatar
-        address={address}
-        size={avatarSize}
-        skipFetch={skipFetch}
-      />
+      <AddressAvatar address={address} size={avatarSize} />
       <Tooltip delayDuration={defaultDelayDuration}>
-        <AddressResolver
-          address={address}
-          showShortAddress
-          skipFetch={skipFetch}
-        >
+        <AddressResolver address={address} showShortAddress>
           {(ensName) => (
             <TooltipTrigger asChild>
               <span

@@ -5,7 +5,7 @@ import { abi as GovernorAbi } from "@/config/abi/governor";
 
 import { useContractGuard } from "./useContractGuard";
 import { useDaoConfig } from "./useDaoConfig";
-const useCastVote = () => {
+export const useCastVote = () => {
   const daoConfig = useDaoConfig();
   const { writeContractAsync, isPending } = useWriteContract();
   const { validateBeforeExecution } = useContractGuard();

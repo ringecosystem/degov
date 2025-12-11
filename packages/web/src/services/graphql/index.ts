@@ -10,18 +10,6 @@ import * as Types from "./types";
 import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
 
-const emptyProposalMetrics: Types.ProposalMetricsItem = {
-  memberCount: 0,
-  powerSum: "0",
-  proposalsCount: "0",
-  votesCount: "0",
-  votesWeightAbstainSum: "0",
-  votesWeightAgainstSum: "0",
-  votesWeightForSum: "0",
-  votesWithParamsCount: "0",
-  votesWithoutParamsCount: "0",
-};
-
 export const proposalService = {
   getAllProposals: async (
     endpoint: string,
@@ -69,8 +57,7 @@ export const proposalService = {
       endpoint,
       Queries.GET_PROPOSAL_METRICS
     );
-    // TanStack Query v5 不允许返回 undefined，这里提供安全的默认值以保证数据结构稳定
-    return response?.dataMetrics?.[0] ?? emptyProposalMetrics;
+    return response?.dataMetrics?.[0];
   },
 
   getProposalVoteRate: async (endpoint: string, voter: string, limit = 10) => {

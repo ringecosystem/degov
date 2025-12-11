@@ -1,11 +1,12 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { blo } from "blo";
 import Image from "next/image";
 
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
-import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { cn } from "@/lib/utils";
+import { profileService } from "@/services/graphql";
 
 import type { Address } from "viem";
 
@@ -13,16 +14,18 @@ interface AddressAvatarProps {
   address: Address;
   size?: number;
   className?: string;
-  skipFetch?: boolean;
 }
 
 export const AddressAvatar = ({
   address,
   size = 40,
   className,
-  skipFetch = false,
 }: AddressAvatarProps) => {
-  const { data: profileData } = useProfileQuery(address, { skip: skipFetch });
+  const { data: profileData } = useQuery({
+    queryKey: ["profile", address],
+    queryFn: () => profileService.getProfile(address),
+    enabled: !!address,
+  });
   const { isAiBot } = useAiBotAddress(address);
 
   const avatarUrl = isAiBot

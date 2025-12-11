@@ -41,8 +41,8 @@ export function GlobalLoadingProvider({
       const next = { ...prev, [key]: value };
       if (!value) {
         // remove the key when false to keep map small
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { [key]: _, ...rest } = next;
+        console.log("_", _);
         return rest;
       }
       return next;

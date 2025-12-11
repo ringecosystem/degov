@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
-import { useBatchProfiles } from "@/hooks/useBatchProfiles";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import {
@@ -71,31 +70,17 @@ export function DelegationList({
       pageSize,
     ],
     queryFn: () =>
-      delegateService.getAllDelegates(daoConfig?.indexer?.endpoint as string, {
-        limit: pageSize,
-        offset: (currentPage - 1) * pageSize,
-        orderBy,
-        where: { toDelegate_eq: address.toLowerCase() },
-      }),
+      delegateService.getAllDelegates(
+        daoConfig?.indexer?.endpoint as string,
+        {
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+          orderBy,
+          where: { toDelegate_eq: address.toLowerCase() },
+        }
+      ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
     placeholderData: (previous) => previous ?? [],
-  });
-
-  const delegateAddresses = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          (pageData ?? [])
-            .map((item) => item.fromDelegate?.toLowerCase())
-            .filter(Boolean) as string[]
-        )
-      ).sort((a, b) => a.localeCompare(b)),
-    [pageData]
-  );
-
-  useBatchProfiles(delegateAddresses, {
-    queryKeyPrefix: ["profilePull", "delegation-list"],
-    enabled: !!delegateAddresses.length,
   });
 
   const paginationRange = usePaginationRange(currentPage, totalPageCount);
@@ -149,13 +134,11 @@ export function DelegationList({
                 <AddressAvatar
                   address={record?.fromDelegate as `0x${string}`}
                   size={40}
-                  skipFetch
                 />
                 <div className="flex flex-col gap-1 flex-1 min-w-0">
                   <AddressResolver
                     address={record?.fromDelegate as `0x${string}`}
                     showShortAddress
-                    skipFetch
                   >
                     {(value) => (
                       <span className="text-sm font-medium text-foreground truncate">
@@ -180,7 +163,9 @@ export function DelegationList({
           <PaginationContent>
             <PaginationItem>
               <PaginationPrevious
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.max(1, prev - 1))
+                }
                 disabled={currentPage === 1 || isFetching}
               />
             </PaginationItem>
@@ -202,7 +187,9 @@ export function DelegationList({
             <PaginationItem>
               <PaginationNext
                 onClick={() =>
-                  setCurrentPage((prev) => Math.min(totalPageCount, prev + 1))
+                  setCurrentPage((prev) =>
+                    Math.min(totalPageCount, prev + 1)
+                  )
                 }
                 disabled={currentPage === totalPageCount || isFetching}
               />

@@ -7,7 +7,7 @@ import { useContractGuard } from "./useContractGuard";
 import { useDaoConfig } from "./useDaoConfig";
 import { calculateDescriptionHash } from "./useProposal";
 
-const useQueueProposal = () => {
+export const useQueueProposal = () => {
   const daoConfig = useDaoConfig();
   const { writeContractAsync, isPending } = useWriteContract();
   const { validateBeforeExecution } = useContractGuard();

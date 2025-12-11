@@ -16,7 +16,6 @@ interface AddressWithAvatarFullProps {
   link?: string;
   className?: string;
   textClassName?: string;
-  skipFetch?: boolean;
 }
 
 export function AddressWithAvatarFull({
@@ -25,7 +24,6 @@ export function AddressWithAvatarFull({
   link,
   className,
   textClassName,
-  skipFetch = false,
 }: AddressWithAvatarFullProps) {
   return (
     <Tooltip>
@@ -38,16 +36,8 @@ export function AddressWithAvatarFull({
               className
             )}
           >
-            <AddressAvatar
-              address={address}
-              size={avatarSize}
-              skipFetch={skipFetch}
-            />
-            <AddressResolver
-              address={address}
-              showShortAddress
-              skipFetch={skipFetch}
-            >
+            <AddressAvatar address={address} size={avatarSize} />
+            <AddressResolver address={address} showShortAddress>
               {(ensName) => (
                 <span
                   className={cn(
