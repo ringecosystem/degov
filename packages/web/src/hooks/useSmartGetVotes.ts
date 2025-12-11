@@ -34,20 +34,13 @@ export function useSmartGetVotes({
     isBlockNumberMode,
     isTimestampMode,
     isLoading: isClockModeLoading,
-    isResolved: isClockResolved,
-    status: clockModeStatus,
   } = useClockMode();
-  const isClockReady = isClockResolved && clockModeStatus === "resolved";
 
   const { data: currentBlockNumber, isLoading: isBlockNumberLoading } =
     useBlockNumber({
       chainId: daoConfig?.chain?.id,
       query: {
-        enabled:
-          isClockReady &&
-          isBlockNumberMode &&
-          !isClockModeLoading &&
-          shouldQuery,
+        enabled: isBlockNumberMode && !isClockModeLoading && shouldQuery,
       },
     });
 
@@ -59,14 +52,13 @@ export function useSmartGetVotes({
     query: {
       enabled:
         shouldQuery &&
-        isClockReady &&
         isTimestampMode &&
         Boolean(daoConfig?.contracts?.governor),
       staleTime: QUERY_STALE_TIME,
     },
   });
   const timepoint = useMemo(() => {
-    if (!isClockReady || isClockModeLoading) return null;
+    if (isClockModeLoading) return null;
 
     if (isTimestampMode) {
       return clockValue ? BigInt(clockValue) : null;
@@ -83,7 +75,6 @@ export function useSmartGetVotes({
     isClockModeLoading,
     currentBlockNumber,
     clockValue,
-    isClockReady,
   ]);
 
   const {
@@ -117,7 +108,6 @@ export function useSmartGetVotes({
     isVotingPowerLoading ||
     isClockLoading ||
     isClockModeLoading ||
-    !isClockReady ||
     (isBlockNumberMode && isBlockNumberLoading);
 
   if (isLoading) {

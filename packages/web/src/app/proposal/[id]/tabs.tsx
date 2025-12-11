@@ -1,5 +1,4 @@
 import { motion, AnimatePresence } from "framer-motion";
-import dynamic from "next/dynamic";
 import { useState, useMemo } from "react";
 
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
@@ -7,39 +6,9 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import type { ProposalItem } from "@/services/graphql/types";
 
+import { AiReview } from "./ai-review";
+import { Comments } from "./proposal/comments";
 import { TabContent } from "./tab-content";
-
-const CommentsSkeleton = () => (
-  <div className="rounded-[14px] bg-card p-[20px] shadow-card space-y-3">
-    <div className="h-5 w-24 rounded bg-muted animate-pulse" />
-    {Array.from({ length: 4 }).map((_, idx) => (
-      <div key={idx} className="h-4 w-full rounded bg-muted/60 animate-pulse" />
-    ))}
-  </div>
-);
-
-const AiReviewSkeleton = () => (
-  <div className="rounded-[14px] bg-card p-[20px] shadow-card space-y-3">
-    <div className="h-5 w-28 rounded bg-muted animate-pulse" />
-    <div className="h-4 w-full rounded bg-muted/60 animate-pulse" />
-    <div className="h-4 w-5/6 rounded bg-muted/60 animate-pulse" />
-    <div className="h-4 w-2/3 rounded bg-muted/60 animate-pulse" />
-  </div>
-);
-
-const Comments = dynamic(
-  () => import("./proposal/comments").then((mod) => mod.Comments),
-  {
-    loading: () => <CommentsSkeleton />,
-  }
-);
-
-const AiReview = dynamic(
-  () => import("./ai-review").then((mod) => mod.AiReview),
-  {
-    loading: () => <AiReviewSkeleton />,
-  }
-);
 
 type TabType = "content" | "votes" | "ai-review";
 

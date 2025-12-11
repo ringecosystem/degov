@@ -355,3 +355,32 @@ export const useSubscribeDao = () => {
     },
   });
 };
+
+export const useUnsubscribeDao = () => {
+  const queryClient = useQueryClient();
+  const { authenticate, address } = useSiweAuth();
+
+  return useMutation({
+    mutationFn: async (daoCode?: string) => {
+      if (!daoCode) {
+        throw new Error("DAO code is required");
+      }
+      try {
+        return await NotificationService.unsubscribeDao(daoCode, address!);
+      } catch (error: unknown) {
+        if (isAuthenticationRequired(error)) {
+          const res = await authenticate();
+          if (res?.success) {
+            return await NotificationService.unsubscribeDao(daoCode, address!);
+          }
+        }
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: NOTIFICATION_KEYS.subscribedDaos(address),
+      });
+    },
+  });
+};

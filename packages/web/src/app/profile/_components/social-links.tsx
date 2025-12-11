@@ -2,12 +2,7 @@ import { capitalize } from "lodash-es";
 import Link from "next/link";
 import { useMemo } from "react";
 
-import {
-  XIcon,
-  GithubIcon,
-  TelegramIcon,
-  DiscordIcon,
-} from "@/components/icons";
+import { getSocialIcon } from "@/components/icons/social-icon-map";
 import type { ProfileData } from "@/services/graphql/types/profile";
 import {
   getDiscordLink,
@@ -86,19 +81,3 @@ export const SocialLinks = ({ profile, isAiBot }: SocialLinksProps) => {
     </div>
   );
 };
-
-function getSocialIcon(key: string) {
-  switch (key) {
-    case "github":
-      return GithubIcon;
-    case "telegram":
-      return TelegramIcon;
-    case "discord":
-      return DiscordIcon;
-    case "twitter":
-    case "x":
-      return XIcon;
-    default:
-      return XIcon;
-  }
-}

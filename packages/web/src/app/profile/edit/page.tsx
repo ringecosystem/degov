@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "react-toastify";
@@ -9,7 +9,6 @@ import { useAccount } from "wagmi";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
-import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { useSiweAuth } from "@/hooks/useSiweAuth";
 import { profileService } from "@/services/graphql";
 import type { ProfileData } from "@/services/graphql/types/profile";
@@ -69,9 +68,11 @@ export default function Edit() {
   const { authenticate, isAuthenticating } = useSiweAuth();
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
-  const { data: profileData, isLoading: isProfileLoading } = useProfileQuery(
-    address as `0x${string}`
-  );
+  const { data: profileData, isLoading: isProfileLoading } = useQuery({
+    queryKey: ["profile", address],
+    queryFn: () => profileService.getProfile(address as `0x${string}`),
+    enabled: !!address,
+  });
 
   const { mutateAsync: updateProfile } = useMutation({
     mutationFn: (profile: Partial<ProfileData>) =>

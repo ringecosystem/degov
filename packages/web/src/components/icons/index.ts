@@ -9,6 +9,7 @@ export { AppIcon } from './app-icon';
 export { ProposalCloseIcon } from './proposal-close-icon';
 export { ProposalPlusIcon } from './proposal-plus-icon';
 export { ProposalActionCheckIcon } from './proposal-action-check-icon';
+export { ProposalActionCancelIcon } from './proposal-action-cancel-icon';
 export { ProposalActionErrorIcon } from './proposal-action-error-icon';
 export { VoteForIcon } from './vote-for-icon';
 export { VoteAgainstIcon } from './vote-against-icon';
@@ -50,7 +51,7 @@ export { StatusExecutedIcon } from './status-executed-icon';
 export { DashboardIcon, ProposalsIcon, TreasuryIcon } from './nav';
 
 // Social Icons
-export { XIcon, TelegramIcon, GithubIcon, DocsIcon, EmailIcon } from './social';
+export { XIcon, TelegramIcon, EmailIcon, DocsIcon, GithubIcon } from './social';
 
 // User Social Icons
 export { GithubIcon as UserGithubIcon, WebsiteIcon, TelegramIcon as UserTelegramIcon, TwitterIcon, EmailIcon as UserEmailIcon, DiscordIcon, CoingeckoIcon } from './user-social';

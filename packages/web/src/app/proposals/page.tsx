@@ -1,15 +1,15 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
-import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
+import { Faqs } from "@/components/faqs";
 import { PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
-import type { SupportFilter } from "@/components/proposals-table/hooks/useProposalData";
-import { ResponsiveRenderer } from "@/components/responsive-renderer";
+import { ProposalsTable } from "@/components/proposals-table";
+import { SystemInfo } from "@/components/system-info";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -20,59 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
-
-const ProposalsTableSkeleton = ({ count = 5 }: { count?: number }) => (
-  <div className="space-y-4">
-    {Array.from({ length: count }).map((_, index) => (
-      <div key={index} className="rounded-[14px] bg-card p-4 shadow-card">
-        <Skeleton className="h-6 w-3/4 mb-2" />
-        <Skeleton className="h-4 w-1/2" />
-      </div>
-    ))}
-  </div>
-);
-
-const SystemInfo = dynamic(
-  () => import("@/components/system-info").then((mod) => mod.SystemInfo),
-  {
-    loading: () => (
-      <div className="h-[300px] w-[360px] bg-card rounded-[14px] animate-pulse" />
-    )
-  }
-);
-
-const Faqs = dynamic(
-  () => import("@/components/faqs").then((mod) => mod.Faqs),
-  {
-    loading: () => (
-      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
-    )
-  }
-);
-
-const ProposalsTable = dynamic(
-  () => import("@/components/proposals-table").then((mod) => mod.ProposalsTable),
-  {
-    loading: () => <ProposalsTableSkeleton count={DEFAULT_PAGE_SIZE} />,
-  }
-);
-
-type SupportSelection = "all" | SupportFilter;
-
-const normalizeSupportParam = (value: string | null): SupportSelection => {
-  if (value === "0" || value === "1" || value === "2") {
-    return value;
-  }
-
-  return "all";
-};
 
 function ProposalsContent() {
   const router = useRouter();
@@ -82,8 +34,8 @@ function ProposalsContent() {
   const addressParam = searchParams?.get("address");
   const daoConfig = useDaoConfig();
 
-  const [support, setSupport] = useState<SupportSelection>(
-    normalizeSupportParam(supportParam)
+  const [support, setSupport] = useState<"all" | "1" | "2" | "3">(
+    (supportParam as "all" | "1" | "2" | "3") || "all"
   );
   const { isConnected, address } = useAccount();
   const [publishWarningOpen, setPublishWarningOpen] = useState(false);
@@ -106,10 +58,7 @@ function ProposalsContent() {
   });
 
   // Update URL when filters change
-  const updateUrlParams = (
-    myProposals: boolean,
-    supportValue: SupportSelection
-  ) => {
+  const updateUrlParams = (myProposals: boolean, supportValue: string) => {
     const params = new URLSearchParams(searchParams || undefined);
 
     if (myProposals) {
@@ -138,7 +87,7 @@ function ProposalsContent() {
     updateUrlParams(!!checked, support);
   };
 
-  const handleSupportChange = (value: SupportSelection) => {
+  const handleSupportChange = (value: "all" | "1" | "2" | "3") => {
     setSupport(value);
     updateUrlParams(!!isMyProposals, value);
   };
@@ -221,40 +170,28 @@ function ProposalsContent() {
               </div>
             </div>
           </div>
-          <ResponsiveRenderer
-            desktop={
-              <ProposalsTable
-                type="all"
-                address={
-                  isMyProposals
-                    ? address
-                    : (addressParam as `0x${string}` | undefined)
-                }
-                support={support === "all" ? undefined : support}
-              />
-            }
-            mobile={
-              <ProposalsList
-                type="all"
-                address={
-                  isMyProposals
-                    ? address
-                    : (addressParam as `0x${string}` | undefined)
-                }
-                support={support === "all" ? undefined : support}
-              />
-            }
-            loadingFallback={
-              <div className="space-y-4">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="rounded-[14px] bg-card p-4">
-                    <Skeleton className="h-6 w-3/4 mb-2" />
-                    <Skeleton className="h-4 w-1/2" />
-                  </div>
-                ))}
-              </div>
-            }
-          />
+          <div className="lg:hidden">
+            <ProposalsList
+              type="all"
+              address={
+                isMyProposals
+                  ? address
+                  : (addressParam as `0x${string}` | undefined)
+              }
+              support={support === "all" ? undefined : support}
+            />
+          </div>
+          <div className="hidden lg:block">
+            <ProposalsTable
+              type="all"
+              address={
+                isMyProposals
+                  ? address
+                  : (addressParam as `0x${string}` | undefined)
+              }
+              support={support === "all" ? undefined : support}
+            />
+          </div>
         </div>
         <div className="w-[360px] hidden lg:flex flex-col gap-[20px]">
           <SystemInfo type="proposal" />

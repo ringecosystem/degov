@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
+import { useMemo } from "react";
 
 import { BottomLogoIcon } from "@/components/icons";
 import type { BlockSyncStatus } from "@/hooks/useBlockSync";
@@ -28,9 +29,10 @@ export function IndexerStatus({
   const { chainInfo } = useChainInfo();
   const daoConfig = useDaoConfig();
 
-  const networkIcon = processChainIconUrl(
-    chainInfo?.[daoConfig?.chain?.id ?? ""]?.icon
-  );
+  const networkIcon = useMemo(() => {
+    const icon = chainInfo?.[daoConfig?.chain?.id ?? ""]?.icon;
+    return processChainIconUrl(icon);
+  }, [chainInfo, daoConfig]);
 
   const clampedPercentage = Math.max(0, Math.min(syncPercentage, 100));
   const formattedPercentage = clampedPercentage.toFixed(1);
