@@ -4,7 +4,7 @@ import { isNil } from "lodash-es";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useReadContract } from "wagmi";
 
 import NotFound from "@/components/not-found";
@@ -191,6 +191,23 @@ export default function ProposalDetailPage() {
       },
     ],
   });
+
+  const wasActiveRef = useRef(false);
+  useEffect(() => {
+    if (wasActiveRef.current && !isActive) {
+      void refetchProposal();
+      void refetchProposalCanceledById();
+      void refetchProposalExecutedById();
+      void refetchProposalQueuedById();
+    }
+    wasActiveRef.current = isActive;
+  }, [
+    isActive,
+    refetchProposal,
+    refetchProposalCanceledById,
+    refetchProposalExecutedById,
+    refetchProposalQueuedById,
+  ]);
 
   const isAllQueriesFetching = [
     isProposalCanceledByIdPending,

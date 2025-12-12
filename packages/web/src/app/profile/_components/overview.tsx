@@ -9,6 +9,7 @@ import {
 import { useAddressVotes } from "@/hooks/useAddressVotes";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import { OverviewItem } from "./overview-item";
 
@@ -46,6 +47,9 @@ export const Overview = ({
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,
+    staleTime: CACHE_TIMES.ONE_MINUTE,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
 
   const { data: votedProposals, isLoading: isParticipationLoading } = useQuery({
@@ -62,6 +66,9 @@ export const Overview = ({
         PARTICIPATION_WINDOW
       ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
+    staleTime: CACHE_TIMES.ONE_MINUTE,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
 
   const votingPowerWithPercentage = useMemo(() => {

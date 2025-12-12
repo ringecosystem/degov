@@ -22,6 +22,7 @@ import { WithConnect } from "@/components/with-connect";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import type { Address } from "viem";
 
@@ -82,13 +83,15 @@ export default function Members() {
     [searchTerm]
   );
 
-  const { data: proposalMetrics } = useQuery({
-    queryKey: ["proposalMetrics", daoConfig?.indexer?.endpoint],
+  const { data: dataMetrics } = useQuery({
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
       proposalService.getProposalMetrics(
         daoConfig?.indexer?.endpoint as string
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
+    staleTime: CACHE_TIMES.ONE_MINUTE,
+    refetchOnMount: "always",
   });
 
   const handleDelegate = useCallback(
@@ -143,7 +146,7 @@ export default function Members() {
     applySortState("delegators", direction);
 
   const getDisplayTitle = () => {
-    const totalCount = proposalMetrics?.memberCount;
+    const totalCount = dataMetrics?.memberCount;
     if (totalCount !== undefined) {
       return `Delegates (${totalCount})`;
     }

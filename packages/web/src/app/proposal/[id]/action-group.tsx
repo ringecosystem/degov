@@ -1,4 +1,5 @@
 "use client";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount, useReadContract } from "wagmi";
@@ -18,6 +19,7 @@ import type {
   ProposalQueuedByIdItem,
 } from "@/services/graphql/types";
 import { ProposalState } from "@/types/proposal";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import { ActionGroupDisplay } from "./action-group-display";
 import { CancelProposal } from "./cancel-proposal";
@@ -32,6 +34,13 @@ interface ActionGroupProps {
   onRefetch: () => void;
 }
 
+const ACTIVE_STATES: ProposalState[] = [
+  ProposalState.Pending,
+  ProposalState.Active,
+  ProposalState.Succeeded,
+  ProposalState.Queued,
+];
+
 export default function ActionGroup({
   data,
   status,
@@ -40,6 +49,7 @@ export default function ActionGroup({
   onRefetch,
 }: ActionGroupProps) {
   const { isConnected, address } = useAccount();
+  const queryClient = useQueryClient();
   const daoConfig = useDaoConfig();
   const [voting, setVoting] = useState(false);
   const { data: govParams } = useGovernanceParams();
@@ -55,6 +65,7 @@ export default function ActionGroup({
     BigInt(Date.now())
   );
   const { validateBeforeExecution } = useContractGuard();
+  const shouldPollHasVoted = status ? ACTIVE_STATES.includes(status) : false;
   const { data: hasVotedOnChain } = useReadContract({
     address: daoConfig?.contracts?.governor as `0x${string}`,
     abi: GovernorAbi,
@@ -70,6 +81,9 @@ export default function ActionGroup({
         Boolean(daoConfig?.contracts?.governor) &&
         Boolean(address) &&
         Boolean(daoConfig?.chain?.id),
+      staleTime: 0,
+      refetchOnMount: "always",
+      refetchInterval: shouldPollHasVoted ? CACHE_TIMES.TEN_SECONDS : false,
     },
   });
 
@@ -90,6 +104,29 @@ export default function ActionGroup({
   }, [hasVotedFromIndexer, hasVotedOnChain]);
 
   const { cancelProposal, isPending: isCancelling } = useCancelProposal();
+
+  const invalidateAggregates = useCallback(() => {
+    const endpoint = daoConfig?.indexer?.endpoint;
+    const daoCode = daoConfig?.code;
+
+    // Proposal state transitions affect counts/aggregates across the app.
+    if (endpoint) {
+      void queryClient.invalidateQueries({
+        queryKey: ["dataMetrics", endpoint],
+        refetchType: "all",
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["proposals", endpoint],
+        refetchType: "all",
+      });
+    }
+    if (daoCode) {
+      void queryClient.invalidateQueries({
+        queryKey: ["summaryProposalStates", daoCode],
+        refetchType: "all",
+      });
+    }
+  }, [daoConfig?.code, daoConfig?.indexer?.endpoint, queryClient]);
 
   const handleShowCancelDialog = useCallback(() => {
     setCancelProposalOpen(true);
@@ -128,8 +165,9 @@ export default function ActionGroup({
 
   const handleCancelProposalSuccess = useCallback(() => {
     setCancelHash(null);
+    invalidateAggregates();
     onRefetch();
-  }, [onRefetch]);
+  }, [invalidateAggregates, onRefetch]);
 
   const handleCastVote = useCallback(
     async ({
@@ -165,8 +203,16 @@ export default function ActionGroup({
 
   const handleCastVoteSuccess = useCallback(() => {
     setCastVoteHash(null);
+    invalidateAggregates();
     onRefetch();
-  }, [onRefetch]);
+    const endpoint = daoConfig?.indexer?.endpoint;
+    if (endpoint && address) {
+      void queryClient.invalidateQueries({
+        queryKey: ["proposalVoteRate", address, endpoint],
+        refetchType: "all",
+      });
+    }
+  }, [address, daoConfig?.indexer?.endpoint, invalidateAggregates, onRefetch, queryClient]);
 
   const handleQueueProposal = useCallback(async () => {
     try {
@@ -196,8 +242,9 @@ export default function ActionGroup({
 
   const handleQueueProposalSuccess = useCallback(() => {
     setQueueHash(null);
+    invalidateAggregates();
     onRefetch();
-  }, [onRefetch]);
+  }, [invalidateAggregates, onRefetch]);
 
   const handleExecuteProposal = useCallback(async () => {
     try {
@@ -227,8 +274,9 @@ export default function ActionGroup({
 
   const handleExecuteProposalSuccess = useCallback(() => {
     setExecuteHash(null);
+    invalidateAggregates();
     onRefetch();
-  }, [onRefetch]);
+  }, [invalidateAggregates, onRefetch]);
 
   const hasTimelock = useMemo(() => {
     return (

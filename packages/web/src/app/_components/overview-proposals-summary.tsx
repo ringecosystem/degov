@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { AlertCircleIcon } from "@/components/icons";
@@ -68,6 +68,8 @@ export const OverviewProposalsSummaryDropdown = ({
       queryFn: () => proposalService.getSummaryProposalStates(daoCode ?? ""),
       enabled: !!daoCode,
       staleTime: CACHE_TIMES.ONE_MINUTE,
+      refetchOnMount: "always",
+      placeholderData: keepPreviousData,
     });
 
   const summaryStateCounts = useMemo(() => {

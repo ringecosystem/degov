@@ -23,7 +23,7 @@ export const QUERY_CONFIGS = {
   },
 
   DEFAULT: {
-    staleTime: CACHE_TIMES.TEN_MINUTES,
+    staleTime: CACHE_TIMES.FIVE_MINUTES,
     gcTime: CACHE_TIMES.THIRTY_MINUTES,
     refetchOnMount: false,
     refetchOnWindowFocus: true,

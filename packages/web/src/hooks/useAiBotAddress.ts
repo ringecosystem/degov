@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { getBotAddress } from "@/services/ai-agent";
+import { QUERY_CONFIGS } from "@/utils/query-config";
 
 import { useDaoConfig } from "./useDaoConfig";
 
@@ -11,6 +12,7 @@ export const useAiBotAddress = (address?: `0x${string}`) => {
     queryKey: ["bot-address", daoConfig?.aiAgent?.endpoint],
     queryFn: () => getBotAddress(daoConfig?.aiAgent?.endpoint ?? ""),
     enabled: !!daoConfig?.aiAgent?.endpoint && !!address,
+    ...QUERY_CONFIGS.STATIC,
   });
 
   const isAiBot = useMemo(() => {

@@ -1,5 +1,5 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
@@ -25,6 +25,7 @@ import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { proposalService } from "@/services/graphql";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
@@ -44,7 +45,7 @@ const SystemInfo = dynamic(
   {
     loading: () => (
       <div className="h-[300px] w-[360px] bg-card rounded-[14px] animate-pulse" />
-    )
+    ),
   }
 );
 
@@ -53,12 +54,13 @@ const Faqs = dynamic(
   {
     loading: () => (
       <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
-    )
+    ),
   }
 );
 
 const ProposalsTable = dynamic(
-  () => import("@/components/proposals-table").then((mod) => mod.ProposalsTable),
+  () =>
+    import("@/components/proposals-table").then((mod) => mod.ProposalsTable),
   {
     loading: () => <ProposalsTableSkeleton count={DEFAULT_PAGE_SIZE} />,
   }
@@ -96,13 +98,16 @@ function ProposalsContent() {
   const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
 
   // Get proposal metrics (including total count)
-  const { data: proposalMetrics } = useQuery({
-    queryKey: ["proposalMetrics", daoConfig?.indexer?.endpoint],
+  const { data: dataMetrics } = useQuery({
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
       proposalService.getProposalMetrics(
         daoConfig?.indexer?.endpoint as string
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
+    staleTime: CACHE_TIMES.ONE_MINUTE,
+    refetchOnMount: "always",
+    placeholderData: keepPreviousData,
   });
 
   // Update URL when filters change
@@ -144,8 +149,8 @@ function ProposalsContent() {
   };
 
   const getDisplayTitle = () => {
-    const totalCount = proposalMetrics?.proposalsCount
-      ? parseInt(proposalMetrics.proposalsCount)
+    const totalCount = dataMetrics?.proposalsCount
+      ? parseInt(dataMetrics.proposalsCount)
       : null;
     if (totalCount !== null) {
       return `All Proposals (${totalCount})`;

@@ -12,6 +12,7 @@ import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { delegateService } from "@/services/graphql";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import type { Address } from "viem";
 
@@ -57,6 +58,9 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
         }
       ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
+    staleTime: CACHE_TIMES.ONE_MINUTE,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
 
   const getDisplayTitle = () => {

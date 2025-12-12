@@ -58,6 +58,8 @@ export function MembersList({
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   const initialPageSize =

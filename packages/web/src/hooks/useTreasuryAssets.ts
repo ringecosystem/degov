@@ -251,6 +251,7 @@ const useTreasuryAssetsFromApi = ({
     },
     enabled: Boolean(enabled && endpoint && chain && address),
     staleTime: CACHE_TIMES.ONE_MINUTE,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     select: transformTreasuryAssets,

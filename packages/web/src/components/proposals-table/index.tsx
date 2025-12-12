@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
@@ -8,8 +7,6 @@ import { AddressResolver } from "@/components/address-resolver";
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { VoteType } from "@/config/vote";
 import { useBatchProfiles } from "@/hooks/useBatchProfiles";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { profileQueryKey } from "@/hooks/useProfileQuery";
 import type { ProposalItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
@@ -68,7 +65,6 @@ export function ProposalsTable({
   support?: SupportFilter;
 }) {
   const { address: connectedAddress } = useAccount();
-  const daoConfig = useDaoConfig();
   const pageSize = type === "active" ? 8 : DEFAULT_PAGE_SIZE;
   const initialPageSize = type === "active" ? 8 : INITIAL_LIST_PAGE_SIZE;
   const { state, proposalStatusState, loadMoreData } = useProposalData(
@@ -77,7 +73,6 @@ export function ProposalsTable({
     pageSize,
     initialPageSize
   );
-  const queryClient = useQueryClient();
 
   const proposerAddresses = useMemo(() => {
     const seen = new Set<string>();
@@ -91,18 +86,9 @@ export function ProposalsTable({
       .sort((a, b) => a.localeCompare(b));
   }, [state.data]);
 
-  const proposerAddressesToFetch = useMemo(
-    () =>
-      proposerAddresses.filter((addr) => {
-        const key = profileQueryKey(daoConfig?.code, addr);
-        return !queryClient.getQueryData(key);
-      }),
-    [proposerAddresses, queryClient, daoConfig?.code]
-  );
-
-  useBatchProfiles(proposerAddressesToFetch, {
+  useBatchProfiles(proposerAddresses, {
     queryKeyPrefix: ["profilePull", "proposals"],
-    enabled: !!proposerAddressesToFetch.length,
+    enabled: !!proposerAddresses.length,
   });
 
   const getUserVoteStatus = useCallback(

@@ -1,5 +1,5 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { isNumber } from "lodash-es";
 import { useReadContract } from "wagmi";
 
@@ -27,8 +27,9 @@ export const Overview = () => {
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
         staleTime: CACHE_TIMES.ONE_MINUTE,
+        refetchOnMount: "always",
         refetchOnWindowFocus: "always",
-        placeholderData: (previousData) => previousData,
+        placeholderData: keepPreviousData,
       },
     });
 
@@ -38,8 +39,9 @@ export const Overview = () => {
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,
     staleTime: CACHE_TIMES.ONE_MINUTE,
+    refetchOnMount: "always",
     refetchOnWindowFocus: "always",
-    placeholderData: (previousData) => previousData,
+    placeholderData: keepPreviousData,
   });
 
   return (

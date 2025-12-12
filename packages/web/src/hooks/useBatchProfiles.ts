@@ -49,6 +49,7 @@ export function useBatchProfiles(
       daoConfig?.code,
       normalizedAddresses,
       chunkSize,
+      options.staleTime,
     ],
     enabled: options.enabled ?? !!normalizedAddresses.length,
     staleTime: options.staleTime ?? DEFAULT_STALE_TIME,
@@ -57,9 +58,18 @@ export function useBatchProfiles(
         return { code: 0, data: [], message: "empty" };
       }
 
+      const profileStaleTime = options.staleTime ?? DEFAULT_STALE_TIME;
+      const now = Date.now();
+
       const addressesToFetch = normalizedAddresses.filter((address) => {
         const key = profileQueryKey(daoConfig?.code, address);
-        return !queryClient.getQueryData(key);
+        const state = queryClient.getQueryState(key);
+
+        if (!state) return true;
+        if (state.fetchStatus === "fetching") return false;
+        if (state.isInvalidated) return true;
+
+        return now - state.dataUpdatedAt > profileStaleTime;
       });
 
       if (!addressesToFetch.length) {

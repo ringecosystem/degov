@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount, useReadContract } from "wagmi";
@@ -34,25 +35,29 @@ export function DelegateAction({
   address,
 }: DelegateActionProps) {
   const daoConfig = useDaoConfig();
+  const queryClient = useQueryClient();
   const [hash, setHash] = useState<string | null>(null);
   const { address: account } = useAccount();
   const { data: governanceToken, isLoading: isLoadingGovernanceToken } =
     useGovernanceToken();
 
-  const { data: tokenBalance, isLoading: isLoadingTokenBalance } =
-    useReadContract({
-      address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
-      abi: tokenAbi,
-      functionName: "balanceOf",
-      args: [account as `0x${string}`],
-      chainId: daoConfig?.chain?.id,
-      query: {
-        enabled:
-          !!account &&
-          !!daoConfig?.contracts?.governorToken?.address &&
-          !!daoConfig?.chain?.id,
-      },
-    });
+  const {
+    data: tokenBalance,
+    isLoading: isLoadingTokenBalance,
+    refetch: refetchTokenBalance,
+  } = useReadContract({
+    address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
+    abi: tokenAbi,
+    functionName: "balanceOf",
+    args: [account as `0x${string}`],
+    chainId: daoConfig?.chain?.id,
+    query: {
+      enabled:
+        !!account &&
+        !!daoConfig?.contracts?.governorToken?.address &&
+        !!daoConfig?.chain?.id,
+    },
+  });
 
   const { delegate, isPending: isPendingDelegate } = useDelegate();
 
@@ -117,7 +122,37 @@ export function DelegateAction({
           </div>
         </DialogContent>
       </Dialog>
-      {hash && <TransactionToast hash={hash as `0x${string}`} />}
+      {hash && (
+        <TransactionToast
+          hash={hash as `0x${string}`}
+          onSuccess={() => {
+            setHash(null);
+            void refetchTokenBalance();
+
+            const endpoint = daoConfig?.indexer?.endpoint;
+            const daoCode = daoConfig?.code;
+            if (endpoint) {
+              void queryClient.invalidateQueries({
+                queryKey: ["dataMetrics", endpoint],
+                refetchType: "all",
+              });
+              if (account) {
+                void queryClient.invalidateQueries({
+                  queryKey: ["delegateMappings", account, endpoint],
+                  refetchType: "all",
+                });
+              }
+            }
+            if (daoCode) {
+              void queryClient.invalidateQueries({
+                queryKey: ["summaryProposalStates", daoCode],
+                refetchType: "all",
+              });
+            }
+          }}
+          onError={() => setHash(null)}
+        />
+      )}
     </>
   );
 }
