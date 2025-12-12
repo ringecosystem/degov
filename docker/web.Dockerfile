@@ -7,6 +7,7 @@ FROM base AS builder
 COPY . /code
 
 ENV DEGOV_CONFIG_PATH=/app/degov.yml
+ENV CI=true
 
 RUN corepack enable pnpm \
   && mv /code/packages/web /app \
@@ -31,9 +32,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static .next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public public
 COPY --from=builder --chown=nextjs:nodejs /app/scripts scripts
 COPY --from=builder --chown=nextjs:nodejs /app/prisma prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts prisma.config.ts
 
-RUN npm i -g prisma \
-  && npm cache clean --force
+RUN corepack enable pnpm \
+  && pnpm install prisma \
+  && chown -R nextjs:nodejs /app/node_modules
 
 USER nextjs
 
