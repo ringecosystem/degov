@@ -34,7 +34,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts scripts
 COPY --from=builder --chown=nextjs:nodejs /app/prisma prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts prisma.config.ts
 
-RUN npm i -g prisma \
+RUN corepack enable pnpm \
+  && pnpm install prisma \
   && npm cache clean --force
 
 USER nextjs
