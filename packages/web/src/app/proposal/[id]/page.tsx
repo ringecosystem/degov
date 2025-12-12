@@ -1,27 +1,36 @@
 "use client";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { isNil } from "lodash-es";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useReadContract } from "wagmi";
 
-import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
 import { ProposalNotification } from "@/components/proposal-notification";
 import { LoadingState } from "@/components/ui/loading-spinner";
 import { abi as GovernorAbi } from "@/config/abi/governor";
-import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useNotificationVisibility } from "@/hooks/useNotificationVisibility";
 import { proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { parseDescription } from "@/utils";
+import { CACHE_TIMES } from "@/utils/query-config";
 
 import { CurrentVotes } from "./current-votes";
 import Status from "./status";
 import { Summary } from "./summary";
 import { Tabs } from "./tabs";
+
+const Faqs = dynamic(
+  () => import("@/components/faqs").then((mod) => mod.Faqs),
+  {
+    loading: () => (
+      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
 
 const ACTIVE_STATES: ProposalState[] = [
   ProposalState.Pending,
@@ -66,7 +75,7 @@ export default function ProposalDetailPage() {
     args: [validId || 0n],
     chainId: daoConfig?.chain?.id,
     query: {
-      refetchInterval: DEFAULT_REFETCH_INTERVAL,
+      refetchInterval: CACHE_TIMES.TEN_SECONDS,
       enabled:
         !!validId && !!daoConfig?.contracts?.governor && !!daoConfig?.chain?.id,
     },
@@ -89,7 +98,7 @@ export default function ProposalDetailPage() {
         },
       }),
     enabled: !!validId && !!daoConfig?.indexer.endpoint,
-    refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
+    refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
   });
 
   const data = useMemo(() => {
@@ -144,7 +153,7 @@ export default function ProposalDetailPage() {
         },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
-        refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
+        refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
       {
         queryKey: [
@@ -161,7 +170,7 @@ export default function ProposalDetailPage() {
         },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
-        refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
+        refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
       {
         queryKey: [
@@ -178,10 +187,27 @@ export default function ProposalDetailPage() {
         },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
-        refetchInterval: isActive ? DEFAULT_REFETCH_INTERVAL : false,
+        refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
     ],
   });
+
+  const wasActiveRef = useRef(false);
+  useEffect(() => {
+    if (wasActiveRef.current && !isActive) {
+      void refetchProposal();
+      void refetchProposalCanceledById();
+      void refetchProposalExecutedById();
+      void refetchProposalQueuedById();
+    }
+    wasActiveRef.current = isActive;
+  }, [
+    isActive,
+    refetchProposal,
+    refetchProposalCanceledById,
+    refetchProposalExecutedById,
+    refetchProposalQueuedById,
+  ]);
 
   const isAllQueriesFetching = [
     isProposalCanceledByIdPending,

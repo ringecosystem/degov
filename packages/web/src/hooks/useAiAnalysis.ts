@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { getAiAnalysis } from "@/services/ai-agent";
 import type { AiAnalysisData } from "@/types/ai-analysis";
@@ -25,26 +25,32 @@ export function useAiAnalysis(
   proposalId: string | null,
   options: UseAiAnalysisOptions = {}
 ): UseAiAnalysisState {
-  const { enabled = true, chainId = 46 } = options;
+  const { enabled = true, chainId } = options;
   const daoConfig = useDaoConfig();
+  const resolvedChainId = chainId ?? daoConfig?.chain?.id;
 
-  const [data, setData] = useState<AiAnalysisData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: [
+      "ai-analysis",
+      proposalId,
+      daoConfig?.aiAgent?.endpoint,
+      resolvedChainId,
+    ],
+    enabled:
+      enabled && !!proposalId && !!daoConfig?.aiAgent?.endpoint && !!resolvedChainId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 2,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      if (!proposalId || !daoConfig?.aiAgent?.endpoint) {
+        throw new Error("AI analysis endpoint or proposalId is missing");
+      }
 
-  const fetchData = useCallback(async () => {
-    if (!proposalId || !enabled || !daoConfig?.aiAgent?.endpoint) {
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
       const result = await getAiAnalysis(
         daoConfig.aiAgent.endpoint,
         proposalId,
-        chainId
+        Number(resolvedChainId)
       );
 
       if (
@@ -52,34 +58,19 @@ export function useAiAnalysis(
         result.data &&
         validateAiAnalysisData(result.data)
       ) {
-        setData(result.data);
-      } else {
-        setError("No AI analysis data found for this proposal");
-        setData(null);
+        return result.data;
       }
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to fetch AI analysis";
-      setError(errorMessage);
-      setData(null);
-      console.error("AI analysis fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [proposalId, enabled, chainId, daoConfig?.aiAgent?.endpoint]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const refetch = useCallback(async () => {
-    await fetchData();
-  }, [fetchData]);
+      throw new Error("No AI analysis data found for this proposal");
+    },
+  });
 
   return {
-    data,
-    loading,
-    error,
-    refetch,
+    data: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: async () => {
+      await query.refetch();
+    },
   };
 }

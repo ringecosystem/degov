@@ -11,6 +11,7 @@ interface OverviewItemProps {
   link?: string;
   isLoading?: boolean;
   children: ReactNode;
+  priority?: boolean;
 }
 
 export const OverviewItem = ({
@@ -19,6 +20,7 @@ export const OverviewItem = ({
   link,
   children,
   isLoading,
+  priority = false,
 }: OverviewItemProps) => {
   const Component = link ? Link : "div";
   return (
@@ -51,6 +53,7 @@ export const OverviewItem = ({
         className="size-[40px] lg:size-[60px]"
         width={60}
         height={60}
+        priority={priority}
       />
     </Component>
   );

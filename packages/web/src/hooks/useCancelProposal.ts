@@ -6,7 +6,7 @@ import { abi as GovernorAbi } from "@/config/abi/governor";
 import { useContractGuard } from "./useContractGuard";
 import { useDaoConfig } from "./useDaoConfig";
 import { calculateDescriptionHash } from "./useProposal";
-export const useCancelProposal = () => {
+const useCancelProposal = () => {
   const daoConfig = useDaoConfig();
   const { validateBeforeExecution } = useContractGuard();
   const { writeContractAsync, isPending } = useWriteContract();

@@ -54,7 +54,6 @@ export const Countdown = ({
   const startCountdown = useCallback(() => {
     if (remaining <= 0 || isRunning) return;
     setIsRunning(true);
-    onStartRef.current?.();
   }, [remaining, isRunning]);
 
   useEffect(() => {
@@ -62,16 +61,20 @@ export const Countdown = ({
     setRemaining(initial);
     setIsRunning(false);
 
-    // Use callback from ref
     if (onTickRef.current) {
       onTickRef.current(initial);
     }
-    // Auto start when requested and there is time to count
+
     if (autoStart && initial > 0) {
       setIsRunning(true);
-      onStartRef.current?.();
     }
   }, [start, sanitizeStart, autoStart]);
+
+  // Fires synchronously when the countdown enters running state; keep lightweight to avoid blocking render.
+  useEffect(() => {
+    if (!isRunning) return;
+    onStartRef.current?.();
+  }, [isRunning]);
 
   useEffect(() => {
     // Clear previous timer
@@ -122,6 +125,8 @@ export const Countdown = ({
   }, [isRunning, remaining]);
 
   if (children)
-    return <span className={className}>{children(remaining, startCountdown)}</span>;
+    return (
+      <span className={className}>{children(remaining, startCountdown)}</span>
+    );
   return <span className={className}>{remaining}s</span>;
 };

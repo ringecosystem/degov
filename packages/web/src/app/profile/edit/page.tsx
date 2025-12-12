@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "react-toastify";
@@ -9,6 +9,8 @@ import { useAccount } from "wagmi";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { profileQueryKey, useProfileQuery } from "@/hooks/useProfileQuery";
 import { useSiweAuth } from "@/hooks/useSiweAuth";
 import { profileService } from "@/services/graphql";
 import type { ProfileData } from "@/services/graphql/types/profile";
@@ -65,14 +67,14 @@ export function ProfileEditSkeleton() {
 export default function Edit() {
   const router = useRouter();
   const { address } = useAccount();
+  const daoConfig = useDaoConfig();
+  const queryClient = useQueryClient();
   const { authenticate, isAuthenticating } = useSiweAuth();
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
-  const { data: profileData, isLoading: isProfileLoading } = useQuery({
-    queryKey: ["profile", address],
-    queryFn: () => profileService.getProfile(address as `0x${string}`),
-    enabled: !!address,
-  });
+  const { data: profileData, isLoading: isProfileLoading } = useProfileQuery(
+    address as `0x${string}`
+  );
 
   const { mutateAsync: updateProfile } = useMutation({
     mutationFn: (profile: Partial<ProfileData>) =>
@@ -80,6 +82,14 @@ export default function Edit() {
     onSuccess: (data) => {
       switch (data.code) {
         case 0:
+          if (address) {
+            const key = profileQueryKey(daoConfig?.code, address);
+            queryClient.setQueryData(key, data);
+            void queryClient.invalidateQueries({
+              queryKey: key,
+              refetchType: "all",
+            });
+          }
           toast.success("Profile updated successfully", {
             onClose: () => {
               router.push(`/profile`);

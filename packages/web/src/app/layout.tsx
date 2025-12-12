@@ -137,11 +137,15 @@ async function AnalyticsScripts() {
   );
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const initialConfig = isDegovApiConfiguredServer()
+    ? await getRemoteConfig()
+    : await getDaoConfigServer();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -165,7 +169,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <NextThemeProvider>
-          <ConfigProvider>
+          <ConfigProvider initialConfig={initialConfig}>
             <TooltipProvider delayDuration={0}>
               <ConditionalLayout>{children}</ConditionalLayout>
               <ToastContainer />
