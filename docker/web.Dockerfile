@@ -34,7 +34,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts scripts
 COPY --from=builder --chown=nextjs:nodejs /app/prisma prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts prisma.config.ts
 
-RUN npm i prisma \
+RUN npm i -g prisma \
   && npm cache clean --force
 
 USER nextjs
