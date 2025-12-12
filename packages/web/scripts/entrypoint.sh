@@ -8,6 +8,6 @@ WORK_PATH=${BIN_PATH}/../
 
 cd ${WORK_PATH}
 
-npx prisma migrate deploy
+node node_modules/prisma/build/index.js migrate deploy
 
 node server.js
