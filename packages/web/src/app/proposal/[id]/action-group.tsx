@@ -113,17 +113,17 @@ export default function ActionGroup({
     if (endpoint) {
       void queryClient.invalidateQueries({
         queryKey: ["dataMetrics", endpoint],
-        refetchType: "all",
+        refetchType: "none",
       });
       void queryClient.invalidateQueries({
         queryKey: ["proposals", endpoint],
-        refetchType: "all",
+        refetchType: "none",
       });
     }
     if (daoCode) {
       void queryClient.invalidateQueries({
         queryKey: ["summaryProposalStates", daoCode],
-        refetchType: "all",
+        refetchType: "none",
       });
     }
   }, [daoConfig?.code, daoConfig?.indexer?.endpoint, queryClient]);
@@ -209,7 +209,7 @@ export default function ActionGroup({
     if (endpoint && address) {
       void queryClient.invalidateQueries({
         queryKey: ["proposalVoteRate", address, endpoint],
-        refetchType: "all",
+        refetchType: "none",
       });
     }
   }, [address, daoConfig?.indexer?.endpoint, invalidateAggregates, onRefetch, queryClient]);

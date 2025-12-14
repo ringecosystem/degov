@@ -134,19 +134,19 @@ export function DelegateAction({
             if (endpoint) {
               void queryClient.invalidateQueries({
                 queryKey: ["dataMetrics", endpoint],
-                refetchType: "all",
+                refetchType: "none",
               });
               if (account) {
                 void queryClient.invalidateQueries({
                   queryKey: ["delegateMappings", account, endpoint],
-                  refetchType: "all",
+                  refetchType: "none",
                 });
               }
             }
             if (daoCode) {
               void queryClient.invalidateQueries({
                 queryKey: ["summaryProposalStates", daoCode],
-                refetchType: "all",
+                refetchType: "none",
               });
             }
           }}

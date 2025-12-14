@@ -105,7 +105,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint && type === "default",
     staleTime: CACHE_TIMES.ONE_MINUTE,
-    refetchOnMount: true,
+    refetchOnMount: "always",
     refetchOnWindowFocus: true,
   });
 

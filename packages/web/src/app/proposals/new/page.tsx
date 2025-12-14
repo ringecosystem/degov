@@ -267,17 +267,17 @@ export default function NewProposal() {
     if (endpoint) {
       void queryClient.invalidateQueries({
         queryKey: ["dataMetrics", endpoint],
-        refetchType: "all",
+        refetchType: "none",
       });
       void queryClient.invalidateQueries({
         queryKey: ["proposals", endpoint],
-        refetchType: "all",
+        refetchType: "none",
       });
     }
     if (daoCode) {
       void queryClient.invalidateQueries({
         queryKey: ["summaryProposalStates", daoCode],
-        refetchType: "all",
+        refetchType: "none",
       });
     }
 

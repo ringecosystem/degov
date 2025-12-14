@@ -78,6 +78,7 @@ export function DelegationList({
         where: { toDelegate_eq: address.toLowerCase() },
       }),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
+    refetchOnMount: "always",
     placeholderData: (previous) => previous ?? [],
   });
 

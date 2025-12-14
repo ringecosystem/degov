@@ -98,6 +98,7 @@ export default function ProposalDetailPage() {
         },
       }),
     enabled: !!validId && !!daoConfig?.indexer.endpoint,
+    refetchOnMount: "always",
     refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
   });
 
@@ -153,6 +154,7 @@ export default function ProposalDetailPage() {
         },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
+        refetchOnMount: "always",
         refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
       {
@@ -170,6 +172,7 @@ export default function ProposalDetailPage() {
         },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
+        refetchOnMount: "always",
         refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
       {
@@ -187,6 +190,7 @@ export default function ProposalDetailPage() {
         },
         enabled:
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
+        refetchOnMount: "always",
         refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
     ],

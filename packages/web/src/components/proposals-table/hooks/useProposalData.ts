@@ -108,6 +108,7 @@ export function useProposalData(
     enabled: !!daoConfig?.indexer?.endpoint,
     retryDelay: 10_000,
     retry: 3,
+    refetchOnMount: "always",
   });
 
   const flattenedData = useMemo(() => {

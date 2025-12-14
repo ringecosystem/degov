@@ -95,19 +95,19 @@ export function ChangeDelegate({
             if (endpoint) {
               void queryClient.invalidateQueries({
                 queryKey: ["dataMetrics", endpoint],
-                refetchType: "all",
+                refetchType: "none",
               });
               if (address) {
                 void queryClient.invalidateQueries({
                   queryKey: ["delegateMappings", address, endpoint],
-                  refetchType: "all",
+                  refetchType: "none",
                 });
               }
             }
             if (daoCode) {
               void queryClient.invalidateQueries({
                 queryKey: ["summaryProposalStates", daoCode],
-                refetchType: "all",
+                refetchType: "none",
               });
             }
           }}

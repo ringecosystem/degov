@@ -13,6 +13,7 @@ import * as React from "react";
 import { WagmiProvider, deserialize, serialize } from "wagmi";
 
 import { createConfig, createQueryClient } from "@/config/wagmi";
+import { LoadingState } from "@/components/ui/loading-spinner";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMounted } from "@/hooks/useMounted";
@@ -133,8 +134,12 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
 
   if (!dappConfig || !wagmiConfig) {
     return (
-      <div className="flex w-full h-screen justify-center items-center text-muted-foreground animate-pulse">
-        Loading dApp configuration...
+      <div className="flex w-full h-screen items-center justify-center">
+        <LoadingState
+          title="Loading dApp"
+          description="Loading dApp configuration, please wait..."
+          className="-mt-[100px]"
+        />
       </div>
     );
   }
