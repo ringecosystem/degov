@@ -1,6 +1,6 @@
 {
   "name": "@degov/indexer",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "private": true,
   "scripts": {
     "codegen:abi": "npx squid-evm-typegen src/abi ./abi/*.json",
