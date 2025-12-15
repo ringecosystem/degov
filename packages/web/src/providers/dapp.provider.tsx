@@ -12,8 +12,8 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import * as React from "react";
 import { WagmiProvider, deserialize, serialize } from "wagmi";
 
-import { createConfig, createQueryClient } from "@/config/wagmi";
 import { LoadingState } from "@/components/ui/loading-spinner";
+import { createConfig, createQueryClient } from "@/config/wagmi";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMounted } from "@/hooks/useMounted";
