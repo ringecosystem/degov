@@ -422,6 +422,7 @@ export class TokenHandler {
       blockTimestamp: currentDelegate.blockTimestamp,
       transactionHash: currentDelegate.transactionHash,
       power: currentDelegate.power,
+      delegatesCountAll: 0,
       delegatesCountEffective,
     });
     await this.storeContributor(contributor);
