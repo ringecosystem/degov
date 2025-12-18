@@ -98,10 +98,7 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
 
           {activeTab === "votes" && (
             <div className="flex-1 min-h-0">
-              <Comments
-                comments={data?.voters}
-                id={data?.proposalId as string}
-              />
+              <Comments comments={data?.voters} />
             </div>
           )}
 
