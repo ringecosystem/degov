@@ -19,7 +19,6 @@ import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceToken
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { delegateService } from "@/services/graphql";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 import { JoinDelegate } from "./join-delegate";
 import { ReceivedDelegations } from "./received-delegations";
@@ -88,9 +87,6 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
           { where: { from_eq: address?.toLowerCase() } }
         ),
       enabled: !!address && !!daoConfig?.indexer?.endpoint,
-      staleTime: CACHE_TIMES.ONE_MINUTE,
-      refetchOnMount: "always",
-      refetchOnWindowFocus: "always",
     });
 
   // get governance token
@@ -106,8 +102,6 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
           !!address &&
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
-        staleTime: CACHE_TIMES.ONE_MINUTE,
-        refetchOnMount: "always",
       },
     });
 

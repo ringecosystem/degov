@@ -7,7 +7,6 @@ import { useBalance } from "wagmi";
 
 import { treasuryService } from "@/services/graphql";
 import type { TreasuryAsset } from "@/services/graphql/types/treasury";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 import { useCryptoPrices } from "./useCryptoPrices";
 import { useDaoConfig } from "./useDaoConfig";
@@ -250,10 +249,6 @@ const useTreasuryAssetsFromApi = ({
       });
     },
     enabled: Boolean(enabled && endpoint && chain && address),
-    staleTime: CACHE_TIMES.ONE_MINUTE,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
     select: transformTreasuryAssets,
   });
 

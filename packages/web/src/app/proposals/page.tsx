@@ -24,7 +24,6 @@ import {
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { proposalService } from "@/services/graphql";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
@@ -85,8 +84,6 @@ function ProposalsContent() {
         daoConfig?.indexer?.endpoint as string
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
-    staleTime: CACHE_TIMES.ONE_MINUTE,
-    refetchOnMount: "always",
     placeholderData: keepPreviousData,
   });
 

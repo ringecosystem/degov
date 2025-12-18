@@ -5,9 +5,6 @@ import { profileService } from "@/services/graphql";
 
 import type { Address } from "viem";
 
-const STALE_TIME = 5 * 60 * 1000; // 5 minutes
-const GC_TIME = 30 * 60 * 1000; // 30 minutes
-
 export const normalizeAddress = (address: string): string =>
   address.toLowerCase();
 
@@ -39,7 +36,5 @@ export const useProfileQuery = (
     queryKey: key,
     queryFn: () => profileService.getProfile(normalized as string),
     enabled: !!normalized && !skip,
-    staleTime: STALE_TIME,
-    gcTime: GC_TIME,
   });
 };

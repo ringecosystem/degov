@@ -1,6 +1,7 @@
 import { hashFn } from "@wagmi/core/query";
 
 export const CACHE_TIMES = {
+  FIVE_SECONDS: 5 * 1000,
   TEN_SECONDS: 10 * 1000,
   THIRTY_SECONDS: 30 * 1000,
   ONE_MINUTE: 60 * 1000,
@@ -23,13 +24,12 @@ export const QUERY_CONFIGS = {
   },
 
   DEFAULT: {
-    staleTime: CACHE_TIMES.FIVE_MINUTES,
-    gcTime: CACHE_TIMES.THIRTY_MINUTES,
-    refetchOnMount: false,
-    refetchOnWindowFocus: true,
+    staleTime: CACHE_TIMES.FIVE_SECONDS,
+    gcTime: CACHE_TIMES.FIVE_MINUTES,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    refetchInterval: false,
-    retry: 2,
+    retry: 3,
     retryDelay: 1000,
   },
 

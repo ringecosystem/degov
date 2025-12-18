@@ -8,7 +8,6 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 import { OverviewItem } from "./overview-item";
 import { OverviewProposalsSummaryDropdown } from "./overview-proposals-summary";
@@ -26,9 +25,6 @@ export const Overview = () => {
         enabled:
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
-        staleTime: CACHE_TIMES.ONE_MINUTE,
-        refetchOnMount: "always",
-        refetchOnWindowFocus: "always",
         placeholderData: keepPreviousData,
       },
     });
@@ -38,9 +34,6 @@ export const Overview = () => {
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint,
-    staleTime: CACHE_TIMES.ONE_MINUTE,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: "always",
     placeholderData: keepPreviousData,
   });
 

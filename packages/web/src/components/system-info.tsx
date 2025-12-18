@@ -13,7 +13,6 @@ import { proposalService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 import { dayjsHumanize } from "@/utils/date";
 import { formatNumberForDisplay } from "@/utils/number";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 import { Skeleton } from "./ui/skeleton";
 
@@ -104,9 +103,6 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint && type === "default",
-    staleTime: CACHE_TIMES.ONE_MINUTE,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: true,
   });
 
   const systemData = useMemo(() => {

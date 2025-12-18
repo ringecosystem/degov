@@ -82,7 +82,6 @@ export default function ActionGroup({
         Boolean(address) &&
         Boolean(daoConfig?.chain?.id),
       staleTime: 0,
-      refetchOnMount: "always",
       refetchInterval: shouldPollHasVoted ? CACHE_TIMES.TEN_SECONDS : false,
     },
   });
@@ -113,17 +112,17 @@ export default function ActionGroup({
     if (endpoint) {
       void queryClient.invalidateQueries({
         queryKey: ["dataMetrics", endpoint],
-        refetchType: "none",
+        refetchType: "active",
       });
       void queryClient.invalidateQueries({
         queryKey: ["proposals", endpoint],
-        refetchType: "none",
+        refetchType: "active",
       });
     }
     if (daoCode) {
       void queryClient.invalidateQueries({
         queryKey: ["summaryProposalStates", daoCode],
-        refetchType: "none",
+        refetchType: "active",
       });
     }
   }, [daoConfig?.code, daoConfig?.indexer?.endpoint, queryClient]);

@@ -22,7 +22,6 @@ import { WithConnect } from "@/components/with-connect";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 import type { Address } from "viem";
 
@@ -90,8 +89,6 @@ export default function Members() {
         daoConfig?.indexer?.endpoint as string
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
-    staleTime: CACHE_TIMES.ONE_MINUTE,
-    refetchOnMount: "always",
   });
 
   const handleDelegate = useCallback(

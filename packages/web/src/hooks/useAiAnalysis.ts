@@ -37,11 +37,11 @@ export function useAiAnalysis(
       resolvedChainId,
     ],
     enabled:
-      enabled && !!proposalId && !!daoConfig?.aiAgent?.endpoint && !!resolvedChainId,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+      enabled &&
+      !!proposalId &&
+      !!daoConfig?.aiAgent?.endpoint &&
+      !!resolvedChainId,
     retry: 2,
-    refetchOnWindowFocus: false,
     queryFn: async () => {
       if (!proposalId || !daoConfig?.aiAgent?.endpoint) {
         throw new Error("AI analysis endpoint or proposalId is missing");

@@ -85,7 +85,6 @@ export default function AiAnalysisPage({
       return null;
     },
     enabled: !!proposalId && !!daoConfig?.indexer?.endpoint,
-    refetchOnMount: "always",
   });
 
   // Query to get AI analysis data

@@ -47,10 +47,6 @@ export const AiSummary = ({ id }: { id: string }) => {
       !!daoConfig?.aiAgent?.endpoint &&
       !!daoConfig?.indexer?.endpoint &&
       !!chainId,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    retry: 2,
   });
 
   const sanitizedHtml = useMemo(() => {

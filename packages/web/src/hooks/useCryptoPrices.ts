@@ -62,8 +62,6 @@ export function useCryptoPrices(
       return data;
     },
     enabled: isEnabled && priceIds.length > 0,
-    // 保持价格每分钟自动刷新，同时利用 staleTime 控制缓存时间
-    staleTime: CACHE_TIMES.ONE_MINUTE,
     refetchInterval: CACHE_TIMES.ONE_MINUTE,
   });
 

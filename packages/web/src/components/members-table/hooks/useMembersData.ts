@@ -143,7 +143,6 @@ export function useMembersData(
     retryDelay: 2000,
     retry: 3,
     enabled: !!daoConfig?.indexer?.endpoint,
-    refetchOnMount: "always",
   });
 
   const flattenedData = useMemo<ContributorItem[]>(() => {

@@ -7,7 +7,6 @@ import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 import type { Address } from "viem";
 export type ProposalVotes = {
@@ -108,7 +107,6 @@ export function useProposalData(
     enabled: !!daoConfig?.indexer?.endpoint,
     retryDelay: 10_000,
     retry: 3,
-    refetchOnMount: "always",
   });
 
   const flattenedData = useMemo(() => {
@@ -137,8 +135,6 @@ export function useProposalData(
     contracts: statusContracts,
     query: {
       enabled: flattenedData.length > 0 && !!daoConfig?.chain?.id,
-      staleTime: CACHE_TIMES.ONE_MINUTE,
-      refetchOnWindowFocus: false,
     },
   });
 

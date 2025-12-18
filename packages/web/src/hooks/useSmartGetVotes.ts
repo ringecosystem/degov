@@ -8,8 +8,6 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import type { Address } from "viem";
 
-const QUERY_STALE_TIME = 5000;
-
 interface UseSmartGetVotesProps {
   address?: Address;
   enabled?: boolean;
@@ -62,7 +60,6 @@ export function useSmartGetVotes({
         isClockReady &&
         isTimestampMode &&
         Boolean(daoConfig?.contracts?.governor),
-      staleTime: QUERY_STALE_TIME,
     },
   });
   const timepoint = useMemo(() => {
@@ -110,7 +107,6 @@ export function useSmartGetVotes({
     allowFailure: true,
     query: {
       enabled: shouldQuery && timepoint !== null && timepoint > 0n,
-      staleTime: QUERY_STALE_TIME,
     },
   });
   const isLoading =

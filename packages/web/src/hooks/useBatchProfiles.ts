@@ -14,7 +14,7 @@ interface UseBatchProfilesOptions {
 }
 
 const DEFAULT_CHUNK_SIZE = 150;
-const DEFAULT_STALE_TIME = 5 * 60 * 1000;
+const DEFAULT_STALE_TIME = 60 * 1000;
 
 const chunkArray = <T>(items: T[], size: number): T[][] => {
   if (size <= 0) return [items];

@@ -12,7 +12,6 @@ import {
 import { getDisplayText, getStatusColor } from "@/config/proposals";
 import { proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
-import { CACHE_TIMES } from "@/utils/query-config";
 
 const SUMMARY_STATE_ORDER = [
   "PENDING",
@@ -67,8 +66,6 @@ export const OverviewProposalsSummaryDropdown = ({
       queryKey: ["summaryProposalStates", daoCode],
       queryFn: () => proposalService.getSummaryProposalStates(daoCode ?? ""),
       enabled: !!daoCode,
-      staleTime: CACHE_TIMES.ONE_MINUTE,
-      refetchOnMount: "always",
       placeholderData: keepPreviousData,
     });
 
