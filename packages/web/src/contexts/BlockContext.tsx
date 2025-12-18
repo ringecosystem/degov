@@ -50,7 +50,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
     // eslint-disable-next-line @tanstack/query/exhaustive-deps
     queryKey: ["blockTime", blockNumber?.toString(), daoConfig?.chain?.id],
     queryFn: async () => {
-      if (!blockNumber) {
+      if (!blockNumber || blockNumber === 0n) {
         throw new Error("Block number not available");
       }
 
