@@ -14,6 +14,7 @@ import {
   DiscordIcon,
   CoingeckoIcon,
 } from "@/components/icons";
+import { useBotMemberData } from "@/components/members-table/hooks/useBotMemberData";
 import { Tooltip, TooltipContent, TooltipPortal } from "@/components/ui/tooltip";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ export const DaoHeader = () => {
   const config = useDaoConfig();
   const [showFullDescription, setShowFullDescription] = useState(false);
   const { theme } = useTheme();
+  const { data: botMember } = useBotMemberData();
 
   const isCustomBanner = useMemo(() => {
     return !!config?.theme?.banner && !!config?.theme?.bannerMobile;
@@ -90,7 +92,7 @@ export const DaoHeader = () => {
                 {removeNetworkSuffix(config?.chain?.name)}
               </div>
             </div>
-            {config?.aiAgent?.endpoint && (
+            {botMember && (
               <div className="px-2.5 py-[5px] bg-always-light rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-always-light/80 transition-colors">
                 <div className="justify-start text-always-dark text-xs font-semibold font-['SF_UI_Display']">
                   Agent
