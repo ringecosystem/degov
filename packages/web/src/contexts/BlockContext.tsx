@@ -49,35 +49,28 @@ export function BlockProvider({ children }: BlockProviderProps) {
     error,
     isFetching,
   } = useQuery({
-    queryKey: [
-      "blockTime",
-      blockNumber == null ? null : blockNumber.toString(),
-      chainId,
-    ] as const,
-    queryFn: async ({ queryKey }) => {
-      const [, blockNumberStr, chainIdVal] = queryKey;
-
-      if (blockNumberStr == null) {
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps
+    queryKey: ["blockTime", blockNumber?.toString(), daoConfig?.chain?.id],
+    queryFn: async () => {
+      if (!blockNumber || blockNumber === 0n) {
         throw new Error("Block number not available");
       }
 
-      const safeBlockNumber = BigInt(blockNumberStr);
-
-      if (safeBlockNumber < BigInt(BLOCK_SAMPLE_SIZE)) {
+      if (blockNumber < BigInt(BLOCK_SAMPLE_SIZE)) {
         throw new Error(
-          `Not enough blocks to sample. Current: ${safeBlockNumber}, Required: ${
+          `Not enough blocks to sample. Current: ${blockNumber}, Required: ${
             BLOCK_SAMPLE_SIZE + 1
           }`
         );
       }
 
-      const fromBlock = safeBlockNumber - BigInt(BLOCK_SAMPLE_SIZE);
+      const fromBlock = blockNumber - BigInt(BLOCK_SAMPLE_SIZE);
       const blockPromises = Array.from(
         { length: BLOCK_SAMPLE_SIZE + 1 },
         (_, idx) =>
           getBlock(config, {
             blockNumber: fromBlock + BigInt(idx),
-            chainId: chainIdVal,
+            chainId: chainId,
           })
       );
 

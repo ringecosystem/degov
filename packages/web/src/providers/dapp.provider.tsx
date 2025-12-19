@@ -6,11 +6,9 @@ import {
   RainbowKitProvider,
   RainbowKitAuthenticationProvider,
 } from "@rainbow-me/rainbowkit";
-import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as React from "react";
-import { WagmiProvider, deserialize, serialize } from "wagmi";
+import { WagmiProvider } from "wagmi";
 
 import { LoadingState } from "@/components/ui/loading-spinner";
 import { createConfig, createQueryClient } from "@/config/wagmi";
@@ -21,17 +19,6 @@ import { useRainbowKitTheme } from "@/hooks/useRainbowKitTheme";
 import { authenticationAdapter } from "@/lib/rainbowkit-auth";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
-
-function createPersister() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return createAsyncStoragePersister({
-    serialize,
-    storage: window.localStorage,
-    deserialize,
-  });
-}
 
 function RainbowKitProviders({ children }: React.PropsWithChildren<unknown>) {
   const rainbowKitTheme = useRainbowKitTheme();
@@ -84,18 +71,10 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   const dappConfig = useDaoConfig();
   const mounted = useMounted();
   const [queryClient] = React.useState(() => createQueryClient());
-  const [persister, setPersister] = React.useState<ReturnType<
-    typeof createAsyncStoragePersister
-  > | null>(null);
+
   const [wagmiConfig, setWagmiConfig] = React.useState<ReturnType<
     typeof createConfig
   > | null>(null);
-
-  React.useEffect(() => {
-    if (mounted) {
-      setPersister(createPersister());
-    }
-  }, [mounted]);
 
   const currentChain: Chain = React.useMemo(() => {
     return {
@@ -146,18 +125,9 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
 
   return (
     <WagmiProvider config={wagmiConfig}>
-      {persister ? (
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{ persister }}
-        >
-          <RainbowKitProviders>{children}</RainbowKitProviders>
-        </PersistQueryClientProvider>
-      ) : (
-        <QueryClientProvider client={queryClient}>
-          <RainbowKitProviders>{children}</RainbowKitProviders>
-        </QueryClientProvider>
-      )}
+      <QueryClientProvider client={queryClient}>
+        <RainbowKitProviders>{children}</RainbowKitProviders>
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }
