@@ -3,7 +3,7 @@ import { useCallback, useMemo } from "react";
 import { useReadContracts } from "wagmi";
 
 import { abi as GovernorAbi } from "@/config/abi/governor";
-import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { DEFAULT_MULTICALL_BATCH_SIZE, DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
@@ -133,6 +133,7 @@ export function useProposalData(
     error: proposalStatusesError,
   } = useReadContracts({
     contracts: statusContracts,
+    batchSize: DEFAULT_MULTICALL_BATCH_SIZE,
     query: {
       enabled: flattenedData.length > 0 && !!daoConfig?.chain?.id,
     },
