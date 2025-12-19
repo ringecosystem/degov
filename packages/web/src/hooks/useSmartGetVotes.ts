@@ -57,11 +57,11 @@ export function useSmartGetVotes({
       staleTime: QUERY_STALE_TIME,
     },
   });
-  const timepoint = useMemo(() => {
+  const timepoint = useMemo((): bigint | null => {
     if (isClockModeLoading) return null;
 
     if (isTimestampMode) {
-      return clockValue ? BigInt(clockValue) : null;
+      return typeof clockValue === "bigint" ? clockValue : null;
     }
 
     if (isBlockNumberMode && currentBlockNumber && currentBlockNumber > 1n) {

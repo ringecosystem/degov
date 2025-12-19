@@ -8,6 +8,7 @@ import {
   subWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { QueryClient } from "@tanstack/react-query";
+import { hashFn } from "@wagmi/core/query";
 import { cookieStorage, createStorage } from "wagmi";
 import { mainnet } from "wagmi/chains";
 
@@ -23,6 +24,7 @@ export const queryClient = new QueryClient({
       staleTime: 10_000,
       // Prevent unexpected garbage collection for a long time
       gcTime: 30 * 60 * 1000,
+      queryKeyHashFn: hashFn,
     },
   },
 });
