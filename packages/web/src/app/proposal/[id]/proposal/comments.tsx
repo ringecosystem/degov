@@ -27,12 +27,10 @@ import { useVoteSorting } from "./hooks/useVoteSorting";
 
 interface CommentsProps {
   comments?: ProposalVoterItem[];
-  id: string;
-  totalVotingPower?: bigint;
 }
 
 const PAGE_SIZE = 20;
-export const Comments = ({ comments, id }: CommentsProps) => {
+export const Comments = ({ comments }: CommentsProps) => {
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
   const [currentCommentRow, setCurrentCommentRow] = useState<
@@ -359,7 +357,6 @@ export const Comments = ({ comments, id }: CommentsProps) => {
         open={!!currentCommentRow?.reason}
         onOpenChange={() => setCurrentCommentRow(undefined)}
         commentData={currentCommentRow}
-        id={id}
       />
     </div>
   );
