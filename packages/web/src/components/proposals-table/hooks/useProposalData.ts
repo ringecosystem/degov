@@ -138,7 +138,7 @@ export function useProposalData(
       enabled: flattenedData.length > 0 && !!daoConfig?.chain?.id,
     },
   });
-  console.log("proposalStatuses", proposalStatuses);
+
   const formattedStatuses = useMemo(
     () =>
       proposalStatuses

@@ -156,9 +156,10 @@ export function useMembersData(
         return;
       }
       page.forEach((member) => {
-                  const normalizedId = member.id.toLowerCase();
-                  if (!allMembers.has(normalizedId)) {
-                    allMembers.set(normalizedId, member);        }
+        const normalizedId = member.id.toLowerCase();
+        if (!allMembers.has(normalizedId)) {
+          allMembers.set(normalizedId, member);
+        }
       });
     });
 
@@ -173,13 +174,11 @@ export function useMembersData(
     [flattenedData]
   );
 
-  const { data: profilePullData, isLoading: isProfilePullLoading } = useBatchProfiles(
-    normalizedMemberAddresses,
-    {
+  const { data: profilePullData, isLoading: isProfilePullLoading } =
+    useBatchProfiles(normalizedMemberAddresses, {
       queryKeyPrefix: ["profilePull", "members"],
       enabled: !!normalizedMemberAddresses.length,
-    }
-  );
+    });
 
   const { isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     membersQuery;
