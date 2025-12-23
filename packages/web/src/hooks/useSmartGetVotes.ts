@@ -61,7 +61,8 @@ export function useSmartGetVotes({
     if (isClockModeLoading) return null;
 
     if (isTimestampMode) {
-      return typeof clockValue === "bigint" ? clockValue : null;
+      if (typeof clockValue === "bigint") return clockValue;
+      if (typeof clockValue === "number") return BigInt(clockValue);
     }
 
     if (isBlockNumberMode && currentBlockNumber && currentBlockNumber > 1n) {
