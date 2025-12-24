@@ -54,7 +54,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                 <Link
                   onClick={onMenuToggle}
                   href={route.pathname}
-                  prefetch={false}
+                  prefetch={true}
                   onMouseEnter={() => router.prefetch(route.pathname)}
                   className={cn(
                     "group flex w-full items-center gap-[10px] rounded-[10px] px-[30px] capitalize",
@@ -64,9 +64,6 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                       ? "h-[60px] w-[60px] justify-center p-0"
                       : "h-[60px] w-full px-[20px] gap-[15px]"
                   )}
-                  style={{
-                    transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-                  }}
                 >
                   <span className="relative shrink-0 h-[32px] w-[32px]">
                     {(() => {
@@ -76,8 +73,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                           width={32}
                           height={32}
                           className={cn(
-                            "size-[32px] transition-opacity duration-200",
-                            isActive || "group-hover:opacity-80" ? "opacity-100" : "opacity-60"
+                            "size-[32px] transition-opacity duration-200"
                           )}
                         />
                       );

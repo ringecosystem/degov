@@ -1,7 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { useEnsName } from "wagmi";
 
-import { profileService } from "@/services/graphql";
+import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { formatShortAddress } from "@/utils/address";
 
 import type { Address } from "viem";
@@ -9,27 +8,33 @@ import type { Address } from "viem";
 interface AddressResolverProps {
   address: Address;
   showShortAddress?: boolean;
+  skipFetch?: boolean;
   children: (value: string) => React.ReactNode;
 }
 
 export function AddressResolver({
   address,
   showShortAddress = false,
+  skipFetch = false,
   children,
 }: AddressResolverProps) {
+  const { data: profileData } = useProfileQuery(address, { skip: skipFetch });
+
+  const profileName = profileData?.data?.name;
+
   const { data: ensName } = useEnsName({
     address,
     chainId: 1,
-  });
-
-  const { data: profileData } = useQuery({
-    queryKey: ["profile", address],
-    queryFn: () => profileService.getProfile(address),
-    enabled: !!address,
+    query: {
+      staleTime: 1000 * 60 * 60,
+      gcTime: 1000 * 60 * 60 * 24,
+      // Even when profile fetching is skipped, still try ENS as a lightweight fallback
+      enabled: !profileName,
+    },
   });
 
   const displayValue =
-    profileData?.data?.name ||
+    profileName ||
     ensName ||
     (showShortAddress ? formatShortAddress(address) : address);
 

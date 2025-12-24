@@ -5,7 +5,6 @@ import { useMemo } from "react";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
-import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
@@ -82,6 +81,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     data: governanceParams,
     isQuorumFetching,
     isStaticLoading,
+    isBlockTimeLoading,
   } = useGovernanceParams();
 
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
@@ -92,9 +92,9 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       chainId: daoConfig?.chain?.id,
       query: {
         enabled:
+          type === "default" &&
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
-        refetchInterval: DEFAULT_REFETCH_INTERVAL,
       },
     });
 
@@ -103,7 +103,6 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     queryFn: () =>
       proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
     enabled: !!daoConfig?.indexer?.endpoint && type === "default",
-    refetchInterval: DEFAULT_REFETCH_INTERVAL,
   });
 
   const systemData = useMemo(() => {
@@ -117,11 +116,15 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         ? formatTokenAmount(governanceParams.quorum)?.formatted ?? "0"
         : "0";
 
-      const votingDelayFormatted = governanceParams?.votingDelayInSeconds
+      const votingDelayFormatted = isBlockTimeLoading
+        ? null
+        : governanceParams?.votingDelayInSeconds
         ? dayjsHumanize(governanceParams.votingDelayInSeconds) ?? "None"
         : "None";
 
-      const votingPeriodFormatted = governanceParams?.votingPeriodInSeconds
+      const votingPeriodFormatted = isBlockTimeLoading
+        ? null
+        : governanceParams?.votingPeriodInSeconds
         ? dayjsHumanize(governanceParams.votingPeriodInSeconds) ?? "None"
         : "None";
 
@@ -162,7 +165,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         votingPowerPercentage,
       };
     }
-  }, [type, dataMetrics, totalSupply, formatTokenAmount, governanceParams]);
+  }, [type, dataMetrics, totalSupply, formatTokenAmount, governanceParams, isBlockTimeLoading]);
 
   const explorerUrl = daoConfig?.chain?.explorers?.[0];
 
@@ -209,13 +212,13 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         <SystemInfoItem
           label="Voting Delay"
           value={systemData.votingDelayFormatted ?? "None"}
-          isLoading={isStaticLoading}
+          isLoading={isStaticLoading || (type === "proposal" && systemData.votingDelayFormatted === null)}
         />
 
         <SystemInfoItem
           label="Voting Period"
           value={systemData.votingPeriodFormatted ?? "None"}
-          isLoading={isStaticLoading}
+          isLoading={isStaticLoading || (type === "proposal" && systemData.votingPeriodFormatted === null)}
         />
 
         <SystemInfoItem

@@ -22,6 +22,8 @@ export const Header = () => {
             placeholder="Search proposals on this DAO"
             className="h-full flex-1 appearance-none bg-transparent outline-hidden placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
             readOnly
+            id="global-search"
+            name="global-search"
             onClick={() => setOpen(true)}
           />
         </div>

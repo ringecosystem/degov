@@ -1,12 +1,12 @@
 "use client";
 import yaml from "js-yaml";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import ErrorComponent from "@/components/error";
 import { BlockProvider } from "@/contexts/BlockContext";
-import { ClockModeProvider } from "@/contexts/ClockModeContext";
 import { GlobalLoadingProvider } from "@/contexts/GlobalLoadingContext";
 import { useGlobalLoading } from "@/contexts/GlobalLoadingContext";
+import { useClockMode } from "@/hooks/useClockMode";
 import { ConfigContext } from "@/hooks/useDaoConfig";
 import { DAppProvider } from "@/providers/dapp.provider";
 import { processStandardProperties } from "@/utils";
@@ -14,13 +14,23 @@ import { degovApiDaoConfigClient } from "@/utils/remote-api";
 
 import type { Config } from "../types/config";
 
-function ConfigProviderContent({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<Config | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+function ConfigProviderContent({
+  children,
+  initialConfig,
+}: {
+  children: React.ReactNode;
+  initialConfig?: Config | null;
+}) {
+  const [config, setConfig] = useState<Config | null>(
+    initialConfig ? processStandardProperties(initialConfig) : null
+  );
+  const [isLoading, setIsLoading] = useState(!initialConfig);
   const [error, setError] = useState<Error | null>(null);
 
   // Manage config loading
   useEffect(() => {
+    if (initialConfig) return;
+
     const configSource = degovApiDaoConfigClient() ?? "/degov.yml";
 
     fetch(configSource)
@@ -48,7 +58,7 @@ function ConfigProviderContent({ children }: { children: React.ReactNode }) {
         }
         setIsLoading(false);
       });
-  }, []);
+  }, [initialConfig]);
 
   // Hook into global loading overlay (inside provider tree)
   const { setLoading } = useGlobalLoading();
@@ -74,17 +84,38 @@ function ConfigProviderContent({ children }: { children: React.ReactNode }) {
     <ConfigContext.Provider value={config}>
       <DAppProvider>
         <BlockProvider>
-          <ClockModeProvider>{children}</ClockModeProvider>
+          <ClockLoadingManager>{children}</ClockLoadingManager>
         </BlockProvider>
       </DAppProvider>
     </ConfigContext.Provider>
   );
 }
 
-export function ConfigProvider({ children }: { children: React.ReactNode }) {
+// Lightweight component to manage clock loading state
+function ClockLoadingManager({ children }: { children: ReactNode }) {
+  const { isLoading: isClockLoading } = useClockMode();
+  const { setLoading } = useGlobalLoading();
+
+  useEffect(() => {
+    setLoading("clock", isClockLoading);
+    return () => setLoading("clock", false);
+  }, [isClockLoading, setLoading]);
+
+  return <>{children}</>;
+}
+
+export function ConfigProvider({
+  children,
+  initialConfig,
+}: {
+  children: React.ReactNode;
+  initialConfig?: Config | null;
+}) {
   return (
     <GlobalLoadingProvider>
-      <ConfigProviderContent>{children}</ConfigProviderContent>
+      <ConfigProviderContent initialConfig={initialConfig}>
+        {children}
+      </ConfigProviderContent>
     </GlobalLoadingProvider>
   );
 }

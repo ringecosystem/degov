@@ -1,4 +1,5 @@
 "use client";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
   Fragment,
@@ -22,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { WithConnect } from "@/components/with-connect";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useProposal } from "@/hooks/useProposal";
 import { useUnsavedChangesAlert } from "@/hooks/useUnsavedChangesAlert";
@@ -73,11 +75,7 @@ const PublishButton = ({
       disabled={disabled}
       isLoading={isLoading}
     >
-      <PlusIcon
-        width={16}
-        height={16}
-        className="text-current"
-      />
+      <PlusIcon width={16} height={16} className="text-current" />
       <span>Publish</span>
     </Button>
   );
@@ -86,6 +84,8 @@ const PublishButton = ({
 export default function NewProposal() {
   const panelRefs = useRef<Map<string, HTMLFormElement>>(new Map());
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const daoConfig = useDaoConfig();
   const [actions, setActions] = useImmer<Action[]>(DEFAULT_ACTIONS);
   const [publishLoading, setPublishLoading] = useState(false);
   const [actionUuid, setActionUuid] = useState<string>(DEFAULT_ACTIONS[0].id);
@@ -259,11 +259,39 @@ export default function NewProposal() {
   }, [actions, createProposal, resetChanges]);
 
   const handlePublishSuccess: SuccessType = useCallback(() => {
+    const endpoint = daoConfig?.indexer?.endpoint;
+    const daoCode = daoConfig?.code;
+
+    // Ensure any cached/persisted aggregates & lists refresh after a new proposal.
+    // We refetch inactive queries too because refetchOnMount is globally disabled.
+    if (endpoint) {
+      void queryClient.invalidateQueries({
+        queryKey: ["dataMetrics", endpoint],
+        refetchType: "none",
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["proposals", endpoint],
+        refetchType: "none",
+      });
+    }
+    if (daoCode) {
+      void queryClient.invalidateQueries({
+        queryKey: ["summaryProposalStates", daoCode],
+        refetchType: "none",
+      });
+    }
+
     if (proposalId) {
       const hexProposalId = toHex(BigInt(proposalId));
       router.push(`/proposal/${hexProposalId}`);
     }
-  }, [proposalId, router]);
+  }, [
+    daoConfig?.code,
+    daoConfig?.indexer?.endpoint,
+    proposalId,
+    queryClient,
+    router,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -297,11 +325,7 @@ export default function NewProposal() {
               onClick={handlePublish}
               isLoading={publishLoading || isPending || isLoading}
             >
-              <PlusIcon
-                width={16}
-                height={16}
-                className="text-current"
-              />
+              <PlusIcon width={16} height={16} className="text-current" />
               <span>Publish</span>
             </Button>
           )}

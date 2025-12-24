@@ -1,15 +1,16 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
-import { Faqs } from "@/components/faqs";
 import { PlusIcon } from "@/components/icons";
 import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
-import { SystemInfo } from "@/components/system-info";
+import type { SupportFilter } from "@/components/proposals-table/hooks/useProposalData";
+import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -26,6 +27,34 @@ import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
+const SystemInfo = dynamic(
+  () => import("@/components/system-info").then((mod) => mod.SystemInfo),
+  {
+    loading: () => (
+      <div className="h-[300px] w-[360px] bg-card rounded-[14px] animate-pulse" />
+    ),
+  }
+);
+
+const Faqs = dynamic(
+  () => import("@/components/faqs").then((mod) => mod.Faqs),
+  {
+    loading: () => (
+      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
+    ),
+  }
+);
+
+type SupportSelection = "all" | SupportFilter;
+
+const normalizeSupportParam = (value: string | null): SupportSelection => {
+  if (value === "0" || value === "1" || value === "2") {
+    return value;
+  }
+
+  return "all";
+};
+
 function ProposalsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -34,8 +63,8 @@ function ProposalsContent() {
   const addressParam = searchParams?.get("address");
   const daoConfig = useDaoConfig();
 
-  const [support, setSupport] = useState<"all" | "1" | "2" | "3">(
-    (supportParam as "all" | "1" | "2" | "3") || "all"
+  const [support, setSupport] = useState<SupportSelection>(
+    normalizeSupportParam(supportParam)
   );
   const { isConnected, address } = useAccount();
   const [publishWarningOpen, setPublishWarningOpen] = useState(false);
@@ -48,17 +77,21 @@ function ProposalsContent() {
   const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
 
   // Get proposal metrics (including total count)
-  const { data: proposalMetrics } = useQuery({
-    queryKey: ["proposalMetrics", daoConfig?.indexer?.endpoint],
+  const { data: dataMetrics } = useQuery({
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
       proposalService.getProposalMetrics(
         daoConfig?.indexer?.endpoint as string
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
+    placeholderData: keepPreviousData,
   });
 
   // Update URL when filters change
-  const updateUrlParams = (myProposals: boolean, supportValue: string) => {
+  const updateUrlParams = (
+    myProposals: boolean,
+    supportValue: SupportSelection
+  ) => {
     const params = new URLSearchParams(searchParams || undefined);
 
     if (myProposals) {
@@ -87,14 +120,14 @@ function ProposalsContent() {
     updateUrlParams(!!checked, support);
   };
 
-  const handleSupportChange = (value: "all" | "1" | "2" | "3") => {
+  const handleSupportChange = (value: SupportSelection) => {
     setSupport(value);
     updateUrlParams(!!isMyProposals, value);
   };
 
   const getDisplayTitle = () => {
-    const totalCount = proposalMetrics?.proposalsCount
-      ? parseInt(proposalMetrics.proposalsCount)
+    const totalCount = dataMetrics?.proposalsCount
+      ? parseInt(dataMetrics.proposalsCount)
       : null;
     if (totalCount !== null) {
       return `All Proposals (${totalCount})`;
@@ -170,28 +203,30 @@ function ProposalsContent() {
               </div>
             </div>
           </div>
-          <div className="lg:hidden">
-            <ProposalsList
-              type="all"
-              address={
-                isMyProposals
-                  ? address
-                  : (addressParam as `0x${string}` | undefined)
-              }
-              support={support === "all" ? undefined : support}
-            />
-          </div>
-          <div className="hidden lg:block">
-            <ProposalsTable
-              type="all"
-              address={
-                isMyProposals
-                  ? address
-                  : (addressParam as `0x${string}` | undefined)
-              }
-              support={support === "all" ? undefined : support}
-            />
-          </div>
+          <ResponsiveRenderer
+            desktop={
+              <ProposalsTable
+                type="all"
+                address={
+                  isMyProposals
+                    ? address
+                    : (addressParam as `0x${string}` | undefined)
+                }
+                support={support === "all" ? undefined : support}
+              />
+            }
+            mobile={
+              <ProposalsList
+                type="all"
+                address={
+                  isMyProposals
+                    ? address
+                    : (addressParam as `0x${string}` | undefined)
+                }
+                support={support === "all" ? undefined : support}
+              />
+            }
+          />
         </div>
         <div className="w-[360px] hidden lg:flex flex-col gap-[20px]">
           <SystemInfo type="proposal" />

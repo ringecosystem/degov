@@ -51,10 +51,6 @@ export const useNotificationChannels = (enabled: boolean = false) => {
     queryKey: NOTIFICATION_KEYS.channels(address),
     queryFn,
     enabled: Boolean(enabled && isConnected),
-    retry: 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
   });
 
   // Enhanced return value with email binding info
@@ -170,10 +166,11 @@ export const useNotificationFeatures = (
   enabled: boolean = false,
   daoCode?: string
 ) => {
-  const { data: subscribedDaos, isLoading, error } = useSubscribedDaos(
-    enabled,
-    daoCode
-  );
+  const {
+    data: subscribedDaos,
+    isLoading,
+    error,
+  } = useSubscribedDaos(enabled, daoCode);
 
   const notificationFeatures = useMemo(() => {
     const defaultFeatures = {
@@ -244,12 +241,18 @@ export const useVerifyNotificationChannel = () => {
   return useMutation({
     mutationFn: async (input: VerifyNotificationChannelInput) => {
       try {
-        return await NotificationService.verifyNotificationChannel(input, address!);
+        return await NotificationService.verifyNotificationChannel(
+          input,
+          address!
+        );
       } catch (error: unknown) {
         if (isAuthenticationRequired(error)) {
           const res = await authenticate();
           if (res?.success) {
-            return await NotificationService.verifyNotificationChannel(input, address!);
+            return await NotificationService.verifyNotificationChannel(
+              input,
+              address!
+            );
           }
         }
         throw error;
@@ -343,35 +346,6 @@ export const useSubscribeDao = () => {
           const res = await authenticate();
           if (res?.success) {
             return await NotificationService.subscribeDao(input, address!);
-          }
-        }
-        throw error;
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: NOTIFICATION_KEYS.subscribedDaos(address),
-      });
-    },
-  });
-};
-
-export const useUnsubscribeDao = () => {
-  const queryClient = useQueryClient();
-  const { authenticate, address } = useSiweAuth();
-
-  return useMutation({
-    mutationFn: async (daoCode?: string) => {
-      if (!daoCode) {
-        throw new Error("DAO code is required");
-      }
-      try {
-        return await NotificationService.unsubscribeDao(daoCode, address!);
-      } catch (error: unknown) {
-        if (isAuthenticationRequired(error)) {
-          const res = await authenticate();
-          if (res?.success) {
-            return await NotificationService.unsubscribeDao(daoCode, address!);
           }
         }
         throw error;

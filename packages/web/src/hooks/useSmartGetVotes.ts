@@ -8,8 +8,6 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 import type { Address } from "viem";
 
-const QUERY_STALE_TIME = 5000;
-
 interface UseSmartGetVotesProps {
   address?: Address;
   enabled?: boolean;
@@ -34,13 +32,20 @@ export function useSmartGetVotes({
     isBlockNumberMode,
     isTimestampMode,
     isLoading: isClockModeLoading,
+    isResolved: isClockResolved,
+    status: clockModeStatus,
   } = useClockMode();
+  const isClockReady = isClockResolved && clockModeStatus === "resolved";
 
   const { data: currentBlockNumber, isLoading: isBlockNumberLoading } =
     useBlockNumber({
       chainId: daoConfig?.chain?.id,
       query: {
-        enabled: isBlockNumberMode && !isClockModeLoading && shouldQuery,
+        enabled:
+          isClockReady &&
+          isBlockNumberMode &&
+          !isClockModeLoading &&
+          shouldQuery,
       },
     });
 
@@ -52,13 +57,13 @@ export function useSmartGetVotes({
     query: {
       enabled:
         shouldQuery &&
+        isClockReady &&
         isTimestampMode &&
         Boolean(daoConfig?.contracts?.governor),
-      staleTime: QUERY_STALE_TIME,
     },
   });
-  const timepoint = useMemo((): bigint | null => {
-    if (isClockModeLoading) return null;
+  const timepoint = useMemo(() => {
+    if (!isClockReady || isClockModeLoading) return null;
 
     if (isTimestampMode) {
       if (typeof clockValue === "bigint") return clockValue;
@@ -76,6 +81,7 @@ export function useSmartGetVotes({
     isClockModeLoading,
     currentBlockNumber,
     clockValue,
+    isClockReady,
   ]);
 
   const {
@@ -102,13 +108,13 @@ export function useSmartGetVotes({
     allowFailure: true,
     query: {
       enabled: shouldQuery && timepoint !== null && timepoint > 0n,
-      staleTime: QUERY_STALE_TIME,
     },
   });
   const isLoading =
     isVotingPowerLoading ||
     isClockLoading ||
     isClockModeLoading ||
+    !isClockReady ||
     (isBlockNumberMode && isBlockNumberLoading);
 
   if (isLoading) {

@@ -3,7 +3,7 @@ import { useCallback, useMemo } from "react";
 import { useReadContracts } from "wagmi";
 
 import { abi as GovernorAbi } from "@/config/abi/governor";
-import { DEFAULT_PAGE_SIZE } from "@/config/base";
+import { DEFAULT_MULTICALL_BATCH_SIZE, DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
@@ -15,6 +15,8 @@ export type ProposalVotes = {
   abstainVotes: bigint;
 };
 
+export type SupportFilter = "0" | "1" | "2";
+
 type PageParam = {
   offset: number;
   limit: number;
@@ -22,7 +24,7 @@ type PageParam = {
 
 export function useProposalData(
   address?: Address,
-  support?: "1" | "2" | "3",
+  support?: SupportFilter,
   pageSize: number = DEFAULT_PAGE_SIZE,
   initialPageSize: number = pageSize
 ) {
@@ -131,10 +133,9 @@ export function useProposalData(
     error: proposalStatusesError,
   } = useReadContracts({
     contracts: statusContracts,
+    batchSize: DEFAULT_MULTICALL_BATCH_SIZE,
     query: {
       enabled: flattenedData.length > 0 && !!daoConfig?.chain?.id,
-      staleTime: 60 * 1000,
-      refetchOnWindowFocus: false,
     },
   });
 

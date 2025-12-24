@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { AlertCircleIcon } from "@/components/icons";
@@ -9,7 +9,6 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DEFAULT_REFETCH_INTERVAL } from "@/config/base";
 import { getDisplayText, getStatusColor } from "@/config/proposals";
 import { proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
@@ -67,7 +66,7 @@ export const OverviewProposalsSummaryDropdown = ({
       queryKey: ["summaryProposalStates", daoCode],
       queryFn: () => proposalService.getSummaryProposalStates(daoCode ?? ""),
       enabled: !!daoCode,
-      refetchInterval: DEFAULT_REFETCH_INTERVAL,
+      placeholderData: keepPreviousData,
     });
 
   const summaryStateCounts = useMemo(() => {

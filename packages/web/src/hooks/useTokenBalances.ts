@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { erc20Abi, erc721Abi, formatUnits } from "viem";
 import { useReadContracts } from "wagmi";
 
+import { DEFAULT_MULTICALL_BATCH_SIZE } from "@/config/base";
 import type { TokenDetails } from "@/types/config";
 import { formatBigIntForDisplay } from "@/utils/number";
 
@@ -90,6 +91,7 @@ export function useTokenBalances(
     isError,
   } = useReadContracts({
     contracts: contractCalls,
+    batchSize: DEFAULT_MULTICALL_BATCH_SIZE,
     query: {
       enabled:
         isEnabled &&

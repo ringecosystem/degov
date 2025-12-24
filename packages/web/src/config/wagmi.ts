@@ -8,26 +8,35 @@ import {
   subWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { QueryClient } from "@tanstack/react-query";
-import { hashFn } from "@wagmi/core/query";
-import { cookieStorage, createStorage } from "wagmi";
+import { cookieStorage, createStorage, type Storage } from "wagmi";
 import { mainnet } from "wagmi/chains";
+
+import { createWagmiQueryConfig } from "@/utils/query-config";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
 
 const { wallets } = getDefaultWallets();
 
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      // Keep data fresh longer to reduce refetch on route changes
-      staleTime: 10_000,
-      // Prevent unexpected garbage collection for a long time
-      gcTime: 30 * 60 * 1000,
-      queryKeyHashFn: hashFn,
-    },
-  },
-});
+export function createQueryClient() {
+  return new QueryClient(createWagmiQueryConfig());
+}
+
+type WagmiConfig = ReturnType<typeof getDefaultConfig>;
+
+const configCache = new Map<string, WagmiConfig>();
+
+function chainFingerprint(chain: Chain) {
+  // Stable, order-defined subset of chain metadata that affects wagmi config
+  return JSON.stringify({
+    id: chain.id,
+    name: chain.name,
+    nativeCurrency: chain.nativeCurrency,
+    rpcUrls: chain.rpcUrls,
+    blockExplorers: chain.blockExplorers,
+    contracts: chain.contracts,
+    testnet: chain.testnet,
+  });
+}
 
 export function createConfig({
   appName,
@@ -38,10 +47,21 @@ export function createConfig({
   appName: string;
   projectId: string;
 }) {
-  return getDefaultConfig({
+  const cacheKey = `${projectId}-${chainFingerprint(chain)}`;
+  const cachedConfig = configCache.get(cacheKey);
+  if (cachedConfig) {
+    return cachedConfig;
+  }
+
+  const chains = [mainnet as Chain, chain];
+  const storage: Storage = createStorage({
+    storage: cookieStorage,
+  });
+
+  const config = getDefaultConfig({
     appName,
     projectId,
-    chains: [mainnet, chain],
+    chains: chains as unknown as readonly [Chain, ...Chain[]],
     wallets: [
       ...wallets,
       {
@@ -57,8 +77,9 @@ export function createConfig({
       },
     ],
     ssr: true,
-    storage: createStorage({
-      storage: cookieStorage,
-    }),
+    storage,
   });
+
+  configCache.set(cacheKey, config);
+  return config;
 }

@@ -1,5 +1,6 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -10,20 +11,38 @@ import { ChangeDelegate } from "@/app/profile/_components/change-delegate";
 import { AddressResolver } from "@/components/address-resolver";
 import { DelegateAction } from "@/components/delegate-action";
 import { DelegateSelector } from "@/components/delegate-selector";
-import { Faqs } from "@/components/faqs";
 import NotFound from "@/components/not-found";
-import { SystemInfo } from "@/components/system-info";
 import { WithConnect } from "@/components/with-connect";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
-import { delegateService, profileService } from "@/services/graphql";
+import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { delegateService } from "@/services/graphql";
 
 import { JoinDelegate } from "./join-delegate";
 import { ReceivedDelegations } from "./received-delegations";
 import { ProfileSkeleton } from "./skeleton";
 import { User } from "./user";
+
+const SystemInfo = dynamic(
+  () => import("@/components/system-info").then((mod) => mod.SystemInfo),
+  {
+    loading: () => (
+      <div className="h-[300px] w-[360px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
+
+const Faqs = dynamic(
+  () => import("@/components/faqs").then((mod) => mod.Faqs),
+  {
+    loading: () => (
+      <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
+    )
+  }
+);
+
 interface ProfileProps {
   address: Address;
   isDelegate?: boolean;
@@ -55,11 +74,9 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     },
   });
 
-  const { data: profileData, isLoading: isProfileLoading } = useQuery({
-    queryKey: ["profile", address],
-    queryFn: () => profileService.getProfile(address),
-    enabled: !!address,
-  });
+  const { data: profileData, isLoading: isProfileLoading } = useProfileQuery(
+    address
+  );
 
   const { data: delegateMappings, isLoading: isDelegateMappingsLoading } =
     useQuery({
@@ -69,7 +86,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
           daoConfig?.indexer?.endpoint as string,
           { where: { from_eq: address?.toLowerCase() } }
         ),
-      enabled: !!address,
+      enabled: !!address && !!daoConfig?.indexer?.endpoint,
     });
 
   // get governance token
@@ -199,7 +216,6 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
       <span>{delegationStatus?.displayText}</span>
     );
   }, [delegationStatus]);
-
 
   if (!isAddress(address)) {
     return <NotFound />;

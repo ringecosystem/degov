@@ -1,7 +1,5 @@
 "use client";
 
-import "@/lib/bigint-devtools-fix";
-
 import {
   RainbowKitProvider,
   RainbowKitAuthenticationProvider,
@@ -10,12 +8,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import { WagmiProvider } from "wagmi";
 
-import { createConfig, queryClient } from "@/config/wagmi";
+import { LoadingState } from "@/components/ui/loading-spinner";
+import { createConfig, createQueryClient } from "@/config/wagmi";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useMounted } from "@/hooks/useMounted";
 import { useRainbowKitTheme } from "@/hooks/useRainbowKitTheme";
 import { authenticationAdapter } from "@/lib/rainbowkit-auth";
-import "@rainbow-me/rainbowkit/styles.css";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
 
@@ -44,11 +43,7 @@ function RainbowKitProviders({ children }: React.PropsWithChildren<unknown>) {
           url: dappConfig?.chain?.explorers?.[0] ?? "",
         },
       },
-      contracts: dappConfig?.chain?.contracts ?? {
-        multicall3: {
-          address: "0xcA11bde05977b3631167028862bE2a173976CA11",
-        },
-      },
+      contracts: dappConfig?.chain?.contracts ?? undefined,
     };
   }, [dappConfig]);
 
@@ -72,6 +67,12 @@ function RainbowKitProviders({ children }: React.PropsWithChildren<unknown>) {
 
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   const dappConfig = useDaoConfig();
+  const mounted = useMounted();
+  const [queryClient] = React.useState(() => createQueryClient());
+
+  const [wagmiConfig, setWagmiConfig] = React.useState<ReturnType<
+    typeof createConfig
+  > | null>(null);
 
   const currentChain: Chain = React.useMemo(() => {
     return {
@@ -93,28 +94,35 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
           url: dappConfig?.chain?.explorers?.[0] ?? "",
         },
       },
-      contracts: dappConfig?.chain?.contracts ?? {
-        multicall3: {
-          address: "0xcA11bde05977b3631167028862bE2a173976CA11",
-        },
-      },
+      contracts: dappConfig?.chain?.contracts ?? undefined,
     };
   }, [dappConfig]);
 
-  const config = React.useMemo(() => {
-    return createConfig({
-      appName: dappConfig?.name ?? "",
-      projectId: dappConfig?.wallet?.walletConnectProjectId ?? "",
-      chain: currentChain,
-    });
-  }, [dappConfig, currentChain]);
+  React.useEffect(() => {
+    if (!mounted || !dappConfig) return;
+    setWagmiConfig(
+      createConfig({
+        appName: dappConfig?.name ?? "",
+        projectId: dappConfig?.wallet?.walletConnectProjectId ?? "",
+        chain: currentChain,
+      })
+    );
+  }, [mounted, dappConfig, currentChain]);
 
-  if (!dappConfig) {
-    return null;
+  if (!dappConfig || !wagmiConfig) {
+    return (
+      <div className="flex w-full h-screen items-center justify-center">
+        <LoadingState
+          title="Loading dApp"
+          description="Loading dApp configuration, please wait..."
+          className="-mt-[100px]"
+        />
+      </div>
+    );
   }
 
   return (
-    <WagmiProvider config={config}>
+    <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProviders>{children}</RainbowKitProviders>
       </QueryClientProvider>

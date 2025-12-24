@@ -249,9 +249,6 @@ const useTreasuryAssetsFromApi = ({
       });
     },
     enabled: Boolean(enabled && endpoint && chain && address),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
     select: transformTreasuryAssets,
   });
 

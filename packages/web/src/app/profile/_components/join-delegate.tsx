@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -11,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useDelegate } from "@/hooks/useDelegate";
 
 interface JoinDelegateProps {
@@ -26,6 +28,8 @@ export function JoinDelegate({
   amount,
   symbol,
 }: JoinDelegateProps) {
+  const daoConfig = useDaoConfig();
+  const queryClient = useQueryClient();
   const { delegate, isPending: isPendingDelegate } = useDelegate();
   const { address } = useAccount();
   const [hash, setHash] = useState<string | null>(null);
@@ -77,7 +81,35 @@ export function JoinDelegate({
           </div>
         </DialogContent>
       </Dialog>
-      {hash && <TransactionToast hash={hash as `0x${string}`} />}
+      {hash && (
+        <TransactionToast
+          hash={hash as `0x${string}`}
+          onSuccess={() => {
+            setHash(null);
+            const endpoint = daoConfig?.indexer?.endpoint;
+            const daoCode = daoConfig?.code;
+            if (endpoint) {
+              void queryClient.invalidateQueries({
+                queryKey: ["dataMetrics", endpoint],
+                refetchType: "none",
+              });
+              if (address) {
+                void queryClient.invalidateQueries({
+                  queryKey: ["delegateMappings", address, endpoint],
+                  refetchType: "none",
+                });
+              }
+            }
+            if (daoCode) {
+              void queryClient.invalidateQueries({
+                queryKey: ["summaryProposalStates", daoCode],
+                refetchType: "none",
+              });
+            }
+          }}
+          onError={() => setHash(null)}
+        />
+      )}
     </>
   );
 }

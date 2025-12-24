@@ -58,7 +58,7 @@ export function MembersTable({
 
   const {
     state: { data: members, hasNextPage, isPending, isFetchingNextPage },
-    profilePullState: { isLoading: isProfilePullLoading },
+    isProfilePullLoading,
     loadMoreData,
   } = useMembersData(
     pageSize,
@@ -71,16 +71,10 @@ export function MembersTable({
   // Fetch AI bot contributor data separately and prepend when available (only on the first page)
   const { data: botMember } = useBotMemberData();
 
-  const dataSource = useMemo<ContributorItem[]>(() => {
-    const shouldPrependBot = !hasUserSorted && !searchTerm && !!botMember;
-
-    if (!shouldPrependBot) {
-      return members;
-    }
-
-    const withoutBot = members.filter((member) => member.id !== botMember.id);
-    return [botMember, ...withoutBot];
-  }, [botMember, hasUserSorted, members, searchTerm]);
+  const shouldPrependBot = !hasUserSorted && !searchTerm && !!botMember;
+  const dataSource: ContributorItem[] = shouldPrependBot
+    ? [botMember, ...members.filter((member) => member.id !== botMember.id)]
+    : members;
 
   const columns = useMemo<ColumnType<ContributorItem>[]>(
     () => [
@@ -90,7 +84,10 @@ export function MembersTable({
         width: "236.6px",
         className: "text-left",
         render: (record) => (
-          <AddressWithAvatar address={record?.id as `0x${string}`} />
+          <AddressWithAvatar
+            address={record?.id as `0x${string}`}
+            skipFetch
+          />
         ),
       },
       {

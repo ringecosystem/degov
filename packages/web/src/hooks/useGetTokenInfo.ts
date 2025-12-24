@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { erc20Abi, erc721Abi } from "viem";
 import { useReadContracts } from "wagmi";
 
+import { DEFAULT_MULTICALL_BATCH_SIZE } from "@/config/base";
+
 import { useDaoConfig } from "./useDaoConfig";
 
 import type { Abi } from "viem";
@@ -70,6 +72,7 @@ export const useGetTokenInfo = (
 
   const symbolResults = useReadContracts({
     contracts: contractCalls,
+    batchSize: DEFAULT_MULTICALL_BATCH_SIZE,
     query: {
       enabled:
         isEnabled &&
