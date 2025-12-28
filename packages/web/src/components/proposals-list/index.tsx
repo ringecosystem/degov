@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
-import type { ProposalItem } from "@/services/graphql/types";
+import type { ProposalListItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
 
@@ -17,7 +17,7 @@ const Caption = ({
   isLoading,
 }: {
   type: "active" | "all";
-  data: ProposalItem[];
+  data: ProposalListItem[];
   loadMoreData: () => void;
   isLoading: boolean;
 }) => {
@@ -95,10 +95,10 @@ export function ProposalsList({
           <div className="space-y-3">
             <Link
               className="block text-base font-medium text-foreground hover:text-foreground/80 transition-colors line-clamp-2"
-              title={extractTitleAndDescription(record.description)?.title}
+              title={record.title}
               href={`/proposal/${record.proposalId}`}
             >
-              {extractTitleAndDescription(record.description)?.title}
+              {record.title}
             </Link>
 
             <div className="flex items-center justify-between">

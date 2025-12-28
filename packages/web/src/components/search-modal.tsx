@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useDebounce } from "react-use";
@@ -55,13 +55,21 @@ export function SearchModal({
     300,
     [search]
   );
+  const queryKey = [
+    "proposals-search",
+    debouncedSearch,
+    daoConfig?.indexer?.endpoint,
+  ] as const;
+
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useInfiniteQuery({
-      queryKey: [
-        "proposals-search",
-        debouncedSearch,
-        daoConfig?.indexer?.endpoint,
-      ],
+    useInfiniteQuery<
+      Types.ProposalDescriptionItem[],
+      Error,
+      InfiniteData<Types.ProposalDescriptionItem[]>,
+      typeof queryKey,
+      number
+    >({
+      queryKey,
       queryFn: async ({ pageParam = 0 }) =>
         proposalService.getProposalsByDescription(
           daoConfig?.indexer?.endpoint ?? "",
@@ -84,7 +92,7 @@ export function SearchModal({
       enabled: !!debouncedSearch && open && !!daoConfig?.indexer?.endpoint,
     });
 
-  const flattenedData = React.useMemo(() => {
+  const flattenedData = React.useMemo<Types.ProposalDescriptionItem[]>(() => {
     return data?.pages.flat() || [];
   }, [data]);
 
@@ -111,7 +119,7 @@ export function SearchModal({
   }, [open]);
 
   const handleSelect = React.useCallback(
-    (item: Types.ProposalItem) => {
+    (item: Types.ProposalDescriptionItem) => {
       router.push(`/proposal/${item.proposalId}`);
       onOpenChange?.(false);
     },

@@ -1,11 +1,12 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { useReadContracts } from "wagmi";
+import { useAccount, useReadContracts } from "wagmi";
 
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { DEFAULT_MULTICALL_BATCH_SIZE, DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { proposalService } from "@/services/graphql";
+import type { ProposalListItem } from "@/services/graphql/types";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
 
 import type { Address } from "viem";
@@ -29,6 +30,7 @@ export function useProposalData(
   initialPageSize: number = pageSize
 ) {
   const daoConfig = useDaoConfig();
+  const { address: connectedAddress } = useAccount();
   const normalizedInitialPageSize = Math.max(pageSize, initialPageSize);
 
   const {
@@ -39,7 +41,7 @@ export function useProposalData(
     error,
     fetchNextPage,
     refetch,
-  } = useInfiniteQuery({
+  } = useInfiniteQuery<ProposalListItem[]>({
     queryKey: [
       "proposals",
       daoConfig?.indexer?.endpoint,
@@ -47,6 +49,7 @@ export function useProposalData(
       support,
       pageSize,
       normalizedInitialPageSize,
+      connectedAddress,
     ],
     queryFn: async ({ pageParam }) => {
       const { offset, limit } = (pageParam as PageParam) ?? {
@@ -73,13 +76,14 @@ export function useProposalData(
         };
       }
 
-      const result = await proposalService.getAllProposals(
+      const result = await proposalService.getProposalsList(
         daoConfig?.indexer?.endpoint as string,
         {
           limit,
           offset,
           orderBy: "blockTimestamp_DESC_NULLS_LAST",
           where: whereCondition,
+          voter: connectedAddress?.toLowerCase(),
         }
       );
 
@@ -109,7 +113,7 @@ export function useProposalData(
     retry: 3,
   });
 
-  const flattenedData = useMemo(() => {
+  const flattenedData = useMemo<ProposalListItem[]>(() => {
     return data?.pages.flat() || [];
   }, [data]);
 

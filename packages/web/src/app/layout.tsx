@@ -5,16 +5,16 @@ import Script from "next/script";
 import { Suspense } from "react";
 
 import "./globals.css";
-import "./markdown-body.css";
-
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getDaoConfigServer } from "@/lib/config";
 import { ConfigProvider } from "@/providers/config.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
 import type { Config } from "@/types/config";
 import { isDegovApiConfiguredServer } from "@/utils/remote-api";
+import { parseOrigin } from "@/utils/url";
 
 import { ConditionalLayout } from "./conditional-layout";
+import { DemoTipsBanner } from "./demo-tips-banner";
 import { ToastContainer } from "./toastContainer";
 
 import type { Metadata } from "next";
@@ -146,9 +146,17 @@ export default async function RootLayout({
     ? await getRemoteConfig()
     : await getDaoConfigServer();
 
+  const indexerOrigin = parseOrigin(initialConfig?.indexer?.endpoint);
+  const rpcOrigin = parseOrigin(initialConfig?.chain?.rpcs?.[0]);
+  const siteOrigin = parseOrigin(initialConfig?.siteUrl);
+  const isDemoDao = initialConfig?.name === "DeGov Demo DAO";
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {indexerOrigin && <link rel="preconnect" href={indexerOrigin} />}
+        {rpcOrigin && <link rel="preconnect" href={rpcOrigin} />}
+        {siteOrigin && <link rel="preconnect" href={siteOrigin} />}
         <Script
           id="public-env"
           strategy="beforeInteractive"
@@ -171,7 +179,9 @@ export default async function RootLayout({
         <NextThemeProvider>
           <ConfigProvider initialConfig={initialConfig}>
             <TooltipProvider delayDuration={0}>
-              <ConditionalLayout>{children}</ConditionalLayout>
+              <ConditionalLayout banner={<DemoTipsBanner isDemoDao={isDemoDao} />}>
+                {children}
+              </ConditionalLayout>
               <ToastContainer />
             </TooltipProvider>
           </ConfigProvider>

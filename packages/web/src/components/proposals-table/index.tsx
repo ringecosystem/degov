@@ -7,7 +7,7 @@ import { AddressResolver } from "@/components/address-resolver";
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { VoteType } from "@/config/vote";
 import { useBatchProfiles } from "@/hooks/useBatchProfiles";
-import type { ProposalItem } from "@/services/graphql/types";
+import type { ProposalListItem } from "@/services/graphql/types";
 import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
 
@@ -27,7 +27,7 @@ const Caption = ({
   isLoading,
 }: {
   type: "active" | "all";
-  data: ProposalItem[];
+  data: ProposalListItem[];
   loadMoreData: () => void;
   isLoading: boolean;
 }) => {
@@ -92,7 +92,7 @@ export function ProposalsTable({
   });
 
   const getUserVoteStatus = useCallback(
-    (record: ProposalItem) => {
+    (record: ProposalListItem) => {
       if (!connectedAddress) return null;
 
       const userVote = record.voters?.find(
@@ -127,7 +127,7 @@ export function ProposalsTable({
     [connectedAddress]
   );
 
-  const columns = useMemo<ColumnType<ProposalItem>[]>(
+  const columns = useMemo<ColumnType<ProposalListItem>[]>(
     () => [
       {
         title: "Proposal",
@@ -138,10 +138,10 @@ export function ProposalsTable({
           <div className="space-y-2">
             <Link
               className="hover:underline text-base font-medium block"
-              title={extractTitleAndDescription(record.description)?.title}
+              title={record.title}
               href={`/proposal/${record.proposalId}`}
             >
-              {extractTitleAndDescription(record.description)?.title}
+              {record.title}
             </Link>
 
             <div className="flex items-center gap-3 text-sm">
@@ -244,7 +244,7 @@ export function ProposalsTable({
     <div className="rounded-[14px] bg-card p-[20px]  shadow-card">
       <CustomTable
         dataSource={state.data}
-        columns={columns as ColumnType<ProposalItem>[]}
+        columns={columns as ColumnType<ProposalListItem>[]}
         isLoading={state.isPending}
         emptyText="No proposals"
         rowKey="id"
