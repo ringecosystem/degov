@@ -93,7 +93,6 @@ export const proposalService = {
       endpoint,
       Queries.GET_PROPOSAL_METRICS
     );
-    // TanStack Query v5 不允许返回 undefined，这里提供安全的默认值以保证数据结构稳定
     return response?.dataMetrics?.[0] ?? emptyProposalMetrics;
   },
 

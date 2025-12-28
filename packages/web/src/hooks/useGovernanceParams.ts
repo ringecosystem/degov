@@ -47,7 +47,8 @@ export function useStaticGovernanceParams(
   } = useClockMode();
 
   // Get block time and loading state
-  const { blockTime: averageBlockTime, isLoading: isBlockTimeLoading } = useBlockData();
+  const { blockTime: averageBlockTime, isLoading: isBlockTimeLoading } =
+    useBlockData();
   const isBlockTimeReady = !isBlockTimeLoading && averageBlockTime !== null;
 
   const contracts = useMemo(() => {
@@ -108,9 +109,6 @@ export function useStaticGovernanceParams(
       return null;
     }
 
-    // 将治理参数统一转换为秒：
-    // - 区块号模式需要乘以平均出块时间
-    // - 时间戳模式本身已经是秒，直接返回
     const shouldConvert = isClockResolved && isBlockNumberMode;
 
     const votingDelayInSeconds = (() => {
@@ -118,16 +116,16 @@ export function useStaticGovernanceParams(
       if (shouldConvert) {
         return isBlockTimeReady ? Number(votingDelay) * averageBlockTime : null;
       }
-      // 时间戳模式
       return Number(votingDelay);
     })();
 
     const votingPeriodInSeconds = (() => {
       if (!isClockResolved) return null;
       if (shouldConvert) {
-        return isBlockTimeReady ? Number(votingPeriod) * averageBlockTime : null;
+        return isBlockTimeReady
+          ? Number(votingPeriod) * averageBlockTime
+          : null;
       }
-      // 时间戳模式
       return Number(votingPeriod);
     })();
 
@@ -144,7 +142,13 @@ export function useStaticGovernanceParams(
       votingPeriodInSeconds,
       timeLockDelayInSeconds,
     };
-  }, [data, isBlockNumberMode, isClockResolved, averageBlockTime, isBlockTimeReady]);
+  }, [
+    data,
+    isBlockNumberMode,
+    isClockResolved,
+    averageBlockTime,
+    isBlockTimeReady,
+  ]);
 
   return {
     data: formattedData,
@@ -210,7 +214,9 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
   const stableBlockNumber = blockNumber ? blockNumber - 10n : 0n;
   const quorumParameter: bigint = isBlockNumberMode
     ? stableBlockNumber
-    : typeof clockData === "bigint" ? clockData : 0n;
+    : typeof clockData === "bigint"
+    ? clockData
+    : 0n;
 
   const {
     data: quorumData,
