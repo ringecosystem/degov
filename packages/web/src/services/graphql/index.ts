@@ -46,6 +46,30 @@ export const proposalService = {
     );
     return response?.proposals ?? [];
   },
+  getProposalsList: async (
+    endpoint: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      orderBy?: string;
+      where?: {
+        proposalId_eq?: string;
+        proposer_eq?: string;
+        voters_every?: {
+          voter_eq?: string;
+          support_eq?: number;
+        };
+      };
+      voter?: string;
+    } = {}
+  ) => {
+    const response = await request<Types.ProposalListResponse>(
+      endpoint,
+      Queries.GET_PROPOSALS_LIST,
+      options
+    );
+    return response?.proposals ?? [];
+  },
   getProposalsByDescription: async (
     endpoint: string,
     options: {
@@ -57,7 +81,7 @@ export const proposalService = {
       };
     } = {}
   ) => {
-    const response = await request<Types.ProposalResponse>(
+    const response = await request<Types.ProposalDescriptionResponse>(
       endpoint,
       Queries.GET_PROPOSALS_BY_DESCRIPTION,
       options
@@ -69,7 +93,6 @@ export const proposalService = {
       endpoint,
       Queries.GET_PROPOSAL_METRICS
     );
-    // TanStack Query v5 不允许返回 undefined，这里提供安全的默认值以保证数据结构稳定
     return response?.dataMetrics?.[0] ?? emptyProposalMetrics;
   },
 

@@ -7,9 +7,13 @@ import { PageTransition } from "@/components/motion/page-transition";
 
 interface ConditionalLayoutProps {
   children: React.ReactNode;
+  banner?: React.ReactNode;
 }
 
-export function ConditionalLayout({ children }: ConditionalLayoutProps) {
+export function ConditionalLayout({
+  children,
+  banner,
+}: ConditionalLayoutProps) {
   const pathname = usePathname();
 
   // Check if current path is a standalone route (AI analysis)
@@ -25,5 +29,5 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   }
 
   // Use device router to render appropriate layout
-  return <DeviceRouter>{children}</DeviceRouter>;
+  return <DeviceRouter banner={banner}>{children}</DeviceRouter>;
 }

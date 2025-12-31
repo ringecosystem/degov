@@ -53,6 +53,36 @@ export const GET_ALL_PROPOSALS = gql`
   }
 `;
 
+export const GET_PROPOSALS_LIST = gql`
+  query GetProposalsList(
+    $limit: Int
+    $offset: Int
+    $orderBy: [ProposalOrderByInput!]
+    $where: ProposalWhereInput
+    $voter: String
+  ) {
+    proposals(
+      limit: $limit
+      offset: $offset
+      orderBy: $orderBy
+      where: $where
+    ) {
+      blockTimestamp
+      id
+      proposalId
+      proposer
+      title
+      metricsVotesWeightAbstainSum
+      metricsVotesWeightAgainstSum
+      metricsVotesWeightForSum
+      voters(where: { voter_eq: $voter }) {
+        voter
+        support
+      }
+    }
+  }
+`;
+
 export const GET_PROPOSALS_BY_DESCRIPTION = gql`
   query GetProposalsByDescription(
     $limit: Int

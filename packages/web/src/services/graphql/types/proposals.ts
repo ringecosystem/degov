@@ -14,6 +14,11 @@ export type ProposalVoterItem = {
   voter: Address;
   weight: string;
 };
+export type ProposalListVoterItem = Pick<
+  ProposalVoterItem,
+  "voter" | "support"
+>;
+
 export type ProposalItem = {
   blockNumber: string;
   blockTimestamp: string;
@@ -48,6 +53,31 @@ export type ProposalResponse = {
   proposals: ProposalItem[];
 };
 
+export type ProposalListItem = {
+  blockTimestamp: string;
+  id: string;
+  proposalId: string;
+  proposer: string;
+  title: string;
+  metricsVotesWeightAbstainSum: string;
+  metricsVotesWeightAgainstSum: string;
+  metricsVotesWeightForSum: string;
+  voters: ProposalListVoterItem[];
+};
+
+export type ProposalListResponse = {
+  proposals: ProposalListItem[];
+};
+
+export type ProposalDescriptionItem = {
+  proposalId: string;
+  description: string;
+};
+
+export type ProposalDescriptionResponse = {
+  proposals: ProposalDescriptionItem[];
+};
+
 export type ProposalVoteRateItem = Pick<
   ProposalItem,
   "id" | "title" | "proposalId" | "blockTimestamp"
@@ -59,8 +89,10 @@ export type ProposalVoteRateResponse = {
   proposals: ProposalVoteRateItem[];
 };
 
+export type ProposalTotalItem = Pick<ProposalItem, "proposalId">;
+
 export type ProposalTotalResponse = {
-  proposals: string[];
+  proposals: ProposalTotalItem[];
 };
 
 export interface EvmAbiResponse {

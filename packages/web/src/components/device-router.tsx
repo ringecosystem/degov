@@ -6,18 +6,19 @@ import { useDeviceDetection } from "@/hooks/useDeviceDetection";
 
 interface DeviceRouterProps {
   children: React.ReactNode;
+  banner?: React.ReactNode;
 }
 
-export const DeviceRouter = ({ children }: DeviceRouterProps) => {
+export const DeviceRouter = ({ children, banner }: DeviceRouterProps) => {
   const { isMobile, isTablet, isClient } = useDeviceDetection();
 
   if (!isClient) {
-    return <DesktopLayout>{children}</DesktopLayout>;
+    return <DesktopLayout banner={banner}>{children}</DesktopLayout>;
   }
 
   if (isMobile || isTablet) {
-    return <MobileLayout>{children}</MobileLayout>;
+    return <MobileLayout banner={banner}>{children}</MobileLayout>;
   }
 
-  return <DesktopLayout>{children}</DesktopLayout>;
+  return <DesktopLayout banner={banner}>{children}</DesktopLayout>;
 }; 

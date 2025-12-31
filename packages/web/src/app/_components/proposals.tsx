@@ -7,7 +7,6 @@ import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { DiscussionIcon, PlusIcon } from "@/components/icons";
-import { NewPublishWarning } from "@/components/new-publish-warning";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
@@ -22,6 +21,13 @@ const Faqs = dynamic(
       <div className="h-[200px] bg-card rounded-[14px] animate-pulse" />
     )
   }
+);
+const NewPublishWarning = dynamic(
+  () =>
+    import("@/components/new-publish-warning").then(
+      (mod) => mod.NewPublishWarning
+    ),
+  { ssr: false }
 );
 
 export const Proposals = () => {
