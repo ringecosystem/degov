@@ -37,7 +37,7 @@ export async function getConfigCachedByHost(): Promise<Config> {
     },
     ["metadata-config", hostKey],
     {
-      revalidate: 86400,
+      revalidate: 300,
       tags: ["config", `host-${hostKey}`],
     }
   );
