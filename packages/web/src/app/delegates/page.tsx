@@ -172,8 +172,8 @@ export default function Members() {
               />
             </div>
           </div>
-          <div className="flex flex-col lg:flex-row lg:items-start gap-[15px] lg:gap-[10px]">
-            <div className="flex-1">
+          <div className="flex flex-col @min-[900px]:flex-row @min-[900px]:items-start gap-[15px] @min-[900px]:gap-[10px]">
+            <div className="flex-1 min-w-0">
               <ResponsiveRenderer
                 desktop={
                   <MembersTable
@@ -207,7 +207,7 @@ export default function Members() {
                 }
               />
             </div>
-            <div className="w-[360px] flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
+            <div className="w-[360px] shrink-0 flex-col gap-[15px] @min-[900px]:gap-[20px] hidden @min-[900px]:flex">
               <SystemInfo />
               <Faqs type="delegate" />
             </div>
@@ -219,8 +219,8 @@ export default function Members() {
 
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px]">
-      <div className="flex flex-col lg:flex-row lg:items-start gap-[15px] lg:gap-[20px]">
-        <div className="flex-1 flex flex-col gap-[15px] lg:gap-[20px]">
+      <div className="flex flex-col @min-[900px]:flex-row @min-[900px]:items-start gap-[15px] @min-[900px]:gap-[20px]">
+        <div className="flex-1 min-w-0 flex flex-col gap-[15px] @min-[900px]:gap-[20px]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-[10px] sm:gap-[20px]">
             <h3 className="text-[16px] lg:text-[18px] font-extrabold">
               {getDisplayTitle()}
@@ -270,7 +270,7 @@ export default function Members() {
             }
           />
         </div>
-        <div className="w-[360px] flex-col gap-[15px] lg:gap-[20px] hidden lg:flex">
+        <div className="w-[360px] shrink-0 flex-col gap-[15px] @min-[900px]:gap-[20px] hidden @min-[900px]:flex">
           <SystemInfo />
           <Faqs type="delegate" />
         </div>

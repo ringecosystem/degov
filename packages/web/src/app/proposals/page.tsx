@@ -147,8 +147,8 @@ function ProposalsContent() {
 
   return (
     <div className="flex flex-col gap-[20px]">
-      <div className="flex items-start gap-[20px]">
-        <div className="flex-1 flex flex-col gap-[20px]">
+      <div className="flex flex-col @min-[900px]:flex-row @min-[900px]:items-start gap-[20px]">
+        <div className="flex-1 min-w-0 flex flex-col gap-[20px]">
           <div className="flex items-start lg:items-center flex-col lg:flex-row justify-between gap-[20px]">
             <h3 className="text-[18px] font-extrabold">{getDisplayTitle()}</h3>
 
@@ -228,7 +228,7 @@ function ProposalsContent() {
             }
           />
         </div>
-        <div className="w-[360px] hidden lg:flex flex-col gap-[20px]">
+        <div className="w-[360px] shrink-0 hidden @min-[900px]:flex flex-col gap-[20px]">
           <SystemInfo type="proposal" />
           <Faqs type="proposal" />
         </div>
