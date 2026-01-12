@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useRef, useState, useEffect } from "react";
+import React, {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
 
 import { Empty } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,11 +72,14 @@ export function CustomTable<T extends Record<string, unknown>>({
   emptyText = "No data",
   bodyClassName,
   tableClassName,
-  maxHeight = "calc(100vh - 200px)",
+  maxHeight,
   onRow,
 }: CustomTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrollState, setScrollState] = useState<ScrollState>({ left: false, right: false });
+  const [scrollState, setScrollState] = useState<ScrollState>({
+    left: false,
+    right: false,
+  });
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -112,7 +121,11 @@ export function CustomTable<T extends Record<string, unknown>>({
     [rowKey]
   );
 
-  function renderCell(record: T, column: ColumnType<T>, index: number): React.ReactNode {
+  function renderCell(
+    record: T,
+    column: ColumnType<T>,
+    index: number
+  ): React.ReactNode {
     if (column.render) {
       return column.render(record, index);
     }
