@@ -6,7 +6,6 @@ import ClipboardIconButton from "@/components/clipboard-icon-button";
 import { OffchainDiscussionIcon } from "@/components/icons";
 import { ProposalStatus } from "@/components/proposal-status";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAiAnalysis } from "@/hooks/useAiAnalysis";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import type {
   ProposalItem,
@@ -38,13 +37,6 @@ export const Summary = ({
   id,
 }: SummaryProps) => {
   const daoConfig = useDaoConfig();
-  const { data: aiAnalysisData, loading: aiAnalysisLoading } = useAiAnalysis(
-    data?.proposalId ?? null,
-    {
-      enabled: !!data?.proposalId,
-      chainId: daoConfig?.chain?.id,
-    }
-  );
 
   const proposalLink = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -67,9 +59,7 @@ export const Summary = ({
     return fallback.title;
   }, [data]);
 
-  const hasDiscussionLinks =
-    data?.discussion ||
-    (daoConfig?.aiAgent?.endpoint && !aiAnalysisLoading && aiAnalysisData?.id);
+  const hasDiscussionLinks = !!data?.discussion;
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">

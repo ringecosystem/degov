@@ -14,7 +14,7 @@ import { parseDescription } from "@/utils/helpers";
 import { AiAnalysisStandalone } from "./ai-analysis-standalone";
 
 // Force static generation for this dynamic route
-export const dynamic = 'force-static';
+export const dynamic = "force-static";
 
 export default function AiAnalysisPage({
   params,
@@ -87,14 +87,14 @@ export default function AiAnalysisPage({
     enabled: !!proposalId && !!daoConfig?.indexer?.endpoint,
   });
 
-  // Query to get AI analysis data
+  // Query to get AI analysis data (API deprecated, disabled for now)
   const {
     data: aiAnalysisData,
     loading: isAiAnalysisLoading,
     error: aiAnalysisError,
     refetch: refetchAiAnalysis,
   } = useAiAnalysis(proposalId, {
-    enabled: !!proposalId,
+    enabled: false, // TODO: Re-enable when new API is ready
     chainId: daoConfig?.chain?.id || 46,
   });
 
@@ -134,7 +134,7 @@ export default function AiAnalysisPage({
           <p className="text-red-500 mb-4">{error}</p>
           <button
             onClick={handleRefresh}
-            className="px-4 py-2 bg-foreground text-background rounded-lg hover:bg-foreground/90"
+            className="px-4 py-2 bg-foreground text-background rounded-lg hover:bg-foreground/90 cursor-pointer"
           >
             Retry
           </button>
@@ -150,7 +150,7 @@ export default function AiAnalysisPage({
           <p className="text-text-secondary">No proposal data found</p>
           <button
             onClick={handleRefresh}
-            className="mt-4 px-4 py-2 bg-foreground text-background rounded-lg hover:bg-foreground/90"
+            className="mt-4 px-4 py-2 bg-foreground text-background rounded-lg hover:bg-foreground/90 cursor-pointer"
           >
             Retry
           </button>
