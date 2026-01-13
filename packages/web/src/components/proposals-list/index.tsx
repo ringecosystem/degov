@@ -2,11 +2,13 @@ import Link from "next/link";
 
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import type { ProposalListItem } from "@/services/graphql/types";
-import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
 
 import { ProposalStatus } from "../proposal-status";
-import { useProposalData, type SupportFilter } from "../proposals-table/hooks/useProposalData";
+import {
+  useProposalData,
+  type SupportFilter,
+} from "../proposals-table/hooks/useProposalData";
 import { Skeleton } from "../ui/skeleton";
 
 import type { Address } from "viem";

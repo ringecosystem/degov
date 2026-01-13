@@ -84,10 +84,7 @@ export function MembersTable({
         width: "236.6px",
         className: "text-left",
         render: (record) => (
-          <AddressWithAvatar
-            address={record?.id as `0x${string}`}
-            skipFetch
-          />
+          <AddressWithAvatar address={record?.id as `0x${string}`} skipFetch />
         ),
       },
       {
