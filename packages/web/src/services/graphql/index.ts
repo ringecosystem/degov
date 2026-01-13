@@ -135,6 +135,46 @@ export const proposalService = {
     }
   },
 
+  getBotAddress: async () => {
+    const endpoint = degovGraphqlApi();
+    if (!endpoint) {
+      return undefined;
+    }
+
+    try {
+      const response = await request<{ botAddress: string }>(
+        endpoint,
+        Queries.GET_BOT_ADDRESS
+      );
+      return response?.botAddress;
+    } catch (error) {
+      console.error("Failed to get bot address:", error);
+      return undefined;
+    }
+  },
+
+  getProposalSummary: async (options: {
+    proposalId: string;
+    daoCode: string;
+  }) => {
+    const endpoint = degovGraphqlApi();
+    if (!endpoint) {
+      return undefined;
+    }
+
+    try {
+      const response = await request<{ proposalSummary: string }>(
+        endpoint,
+        Queries.GET_PROPOSAL_SUMMARY,
+        options
+      );
+      return response?.proposalSummary;
+    } catch (error) {
+      console.error("Failed to get proposal summary:", error);
+      return undefined;
+    }
+  },
+
   getProposalCanceledById: async (endpoint: string, id: string) => {
     const response = await request<Types.ProposalCanceledByIdResponse>(
       endpoint,
