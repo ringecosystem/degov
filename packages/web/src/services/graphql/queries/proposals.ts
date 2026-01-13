@@ -211,7 +211,7 @@ export const GET_BOT_ADDRESS = gql`
 `;
 
 export const GET_PROPOSAL_SUMMARY = gql`
-  query QueryProposalSummary($proposalId: String!, $chainId: Int!, $indexer: String!) {
-    proposalSummary(input: { proposalId: $proposalId, chainId: $chainId, indexer: $indexer })
+  query QueryProposalSummary($proposalId: String!, $daoCode: String!) {
+    proposalSummary(input: { proposalId: $proposalId, daoCode: $daoCode })
   }
 `;

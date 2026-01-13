@@ -28,21 +28,19 @@ const AiSummaryLoading = () => {
 
 export const AiSummary = ({ id }: { id: string }) => {
   const daoConfig = useDaoConfig();
-  const chainId = daoConfig?.chain?.id;
+  const daoCode = daoConfig?.code;
   const { data, isLoading, error } = useQuery({
     queryKey: [
       "proposal-ai-summary",
       id,
-      daoConfig?.indexer?.endpoint,
-      chainId,
+      daoCode,
     ],
     queryFn: () =>
       proposalService.getProposalSummary({
         proposalId: id,
-        chainId: Number(chainId),
-        indexer: daoConfig?.indexer?.endpoint ?? "",
+        daoCode: daoCode ?? "",
       }),
-    enabled: !!daoConfig?.indexer?.endpoint && !!chainId,
+    enabled: !!daoCode,
   });
 
   const sanitizedHtml = useMemo(() => {

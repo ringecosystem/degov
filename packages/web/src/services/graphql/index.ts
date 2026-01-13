@@ -155,8 +155,7 @@ export const proposalService = {
 
   getProposalSummary: async (options: {
     proposalId: string;
-    chainId: number;
-    indexer: string;
+    daoCode: string;
   }) => {
     const endpoint = degovGraphqlApi();
     if (!endpoint) {

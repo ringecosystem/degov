@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { getBotAddress } from "@/services/ai-agent";
+import { proposalService } from "@/services/graphql";
 import { contributorService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
@@ -9,13 +9,12 @@ export function useBotMemberData() {
   const daoConfig = useDaoConfig();
 
   const {
-    data: botAddressData,
+    data: botAddress,
     isPending: isBotAddressLoading,
     error: botAddressError,
   } = useQuery({
-    queryKey: ["bot-address", daoConfig?.aiAgent?.endpoint],
-    queryFn: () => getBotAddress(daoConfig?.aiAgent?.endpoint ?? ""),
-    enabled: !!daoConfig?.aiAgent?.endpoint, // only run if endpoint is ready
+    queryKey: ["bot-address"],
+    queryFn: () => proposalService.getBotAddress(),
     staleTime: 60 * 60 * 1000, // cache 1h – rarely changes
   });
 
@@ -26,11 +25,11 @@ export function useBotMemberData() {
   } = useQuery<ContributorItem | null>({
     queryKey: [
       "bot-contributor",
-      botAddressData?.data?.address,
+      botAddress,
       daoConfig?.indexer?.endpoint,
     ],
     queryFn: async () => {
-      const address = botAddressData?.data?.address?.toLowerCase();
+      const address = botAddress?.toLowerCase();
       if (!address) return null;
 
       const [result] = await contributorService.getAllContributors(
@@ -46,7 +45,7 @@ export function useBotMemberData() {
 
       return result ?? null;
     },
-    enabled: !!botAddressData?.data?.address && !!daoConfig?.indexer?.endpoint,
+    enabled: !!botAddress && !!daoConfig?.indexer?.endpoint,
     staleTime: 60 * 1000,
     retry: 2,
   });
