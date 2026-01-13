@@ -8,7 +8,6 @@ import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { VoteType } from "@/config/vote";
 import { useBatchProfiles } from "@/hooks/useBatchProfiles";
 import type { ProposalListItem } from "@/services/graphql/types";
-import { extractTitleAndDescription } from "@/utils";
 import { formatTimeAgo } from "@/utils/date";
 
 import { CustomTable } from "../custom-table";
@@ -45,7 +44,7 @@ const Caption = ({
       {
         <button
           onClick={loadMoreData}
-          className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           disabled={isLoading}
         >
           {isLoading ? "Loading..." : "View more"}

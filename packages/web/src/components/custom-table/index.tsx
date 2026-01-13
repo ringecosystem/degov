@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -210,9 +211,7 @@ export function CustomTable<T extends Record<string, unknown>>({
       </div>
 
       {caption && hasData && (
-        <div className="py-[20px] text-center text-[14px] text-foreground">
-          {caption}
-        </div>
+        <TableCaption className="pb-0">{caption}</TableCaption>
       )}
 
       {showEmpty && (
