@@ -1,4 +1,7 @@
 "use client";
+
+import "@/lib/bigint-devtools-fix";
+
 import { useEffect, type ReactNode } from "react";
 
 import ErrorComponent from "@/components/error";

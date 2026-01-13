@@ -1,3 +1,4 @@
+// BigInt serialization fix for React DevTools (development only)
 declare global {
   interface BigInt {
     toJSON(): string;
@@ -7,7 +8,7 @@ declare global {
 if (
   process.env.NODE_ENV === "development" &&
   typeof BigInt !== "undefined" &&
-  !BigInt.prototype.toJSON
+  typeof BigInt.prototype.toJSON !== "function"
 ) {
   BigInt.prototype.toJSON = function () {
     return this.toString();
