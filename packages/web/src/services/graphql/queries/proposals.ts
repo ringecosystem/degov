@@ -203,3 +203,15 @@ export const GET_SUMMARY_PROPOSAL_STATES = gql`
     }
   }
 `;
+
+export const GET_BOT_ADDRESS = gql`
+  query QueryBotAddress {
+    botAddress
+  }
+`;
+
+export const GET_PROPOSAL_SUMMARY = gql`
+  query QueryProposalSummary($proposalId: String!, $chainId: Int!, $indexer: String!) {
+    proposalSummary(input: { proposalId: $proposalId, chainId: $chainId, indexer: $indexer })
+  }
+`;

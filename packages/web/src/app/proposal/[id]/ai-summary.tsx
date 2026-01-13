@@ -5,7 +5,7 @@ import { marked } from "marked";
 import { useMemo } from "react";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { getProposalSummary } from "@/services/ai-agent";
+import { proposalService } from "@/services/graphql";
 
 marked.use();
 
@@ -34,26 +34,22 @@ export const AiSummary = ({ id }: { id: string }) => {
       "proposal-ai-summary",
       id,
       daoConfig?.indexer?.endpoint,
-      daoConfig?.aiAgent?.endpoint,
       chainId,
     ],
     queryFn: () =>
-      getProposalSummary(daoConfig?.aiAgent?.endpoint ?? "", {
-        chain: Number(chainId),
+      proposalService.getProposalSummary({
+        proposalId: id,
+        chainId: Number(chainId),
         indexer: daoConfig?.indexer?.endpoint ?? "",
-        id: id as string,
       }),
-    enabled:
-      !!daoConfig?.aiAgent?.endpoint &&
-      !!daoConfig?.indexer?.endpoint &&
-      !!chainId,
+    enabled: !!daoConfig?.indexer?.endpoint && !!chainId,
   });
 
   const sanitizedHtml = useMemo(() => {
-    const html = marked.parse(data?.data ?? "") as string;
+    const html = marked.parse(data ?? "") as string;
     if (!html) return "";
     return html;
-  }, [data?.data]);
+  }, [data]);
 
   if (isLoading) {
     return <AiSummaryLoading />;
