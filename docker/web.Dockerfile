@@ -10,12 +10,12 @@ ENV DEGOV_CONFIG_PATH=/app/degov.yml
 ENV CI=true
 
 RUN corepack enable pnpm \
-  && mv /code/packages/web /app \
-  && mv /code/degov.yml /app \
-  && rm -rf /code \
-  && cd /app \
-  && pnpm install --frozen-lockfile \
-  && pnpm build
+    && mv /code/packages/web /app \
+    && mv /code/degov.yml /app \
+    && rm -rf /code \
+    && cd /app \
+    && pnpm install --frozen-lockfile \
+    && pnpm build
 
 FROM base AS runner
 WORKDIR /app
@@ -35,8 +35,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts prisma.config.ts
 
 RUN corepack enable pnpm \
-  && pnpm install prisma \
-  && chown -R nextjs:nodejs /app/node_modules
+    && pnpm install prisma \
+    && chown -R nextjs:nodejs /app/node_modules
 
 USER nextjs
 
