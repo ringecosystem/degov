@@ -14,6 +14,7 @@ RUN corepack enable pnpm \
     && mv /code/degov.yml /app \
     && rm -rf /code \
     && cd /app \
+    && echo "node-linker=hoisted" > .npmrc \
     && pnpm install --frozen-lockfile \
     && npx prisma generate \
     && pnpm build

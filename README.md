@@ -20,6 +20,51 @@ The easiest way to deploy your own DeGov instance is by using the [DeGov Launche
 
 We also provide launch assistance. See the [Launch With Assistance](https://docs.degov.ai/integration/launch/) guide for more information.
 
+## Setup Instructions
+
+### Quick Start with Docker Compose
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/ringecosystem/degov.git
+   cd degov
+   ```
+
+2. **Configure environment**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env` and set required variables:
+
+   ```env
+   DEGOV_DB_PASSWORD=your-secure-password
+   DEGOV_WEB_JWT_SECRET=your-jwt-secret
+   DEGOV_SYNC_AUTH_TOKEN=your-sync-token
+   CHAIN_RPC_1=https://eth-mainnet-rpc-url
+   ```
+
+3. **Configure your DAO**
+
+   Edit `degov.yml` with your DAO settings (governor address, chain ID, etc.)
+
+4. **Start all services**
+
+   ```bash
+   docker-compose up -d
+   ```
+
+   This starts:
+   - PostgreSQL (port 5432)
+   - Indexer (port 4350)
+   - Web application (port 3000)
+
+5. **Access the application**
+
+   Open `http://localhost:3000` in your browser
+
 ## Contributing
 
 We welcome community contributions! Fork the repository and submit a pull request. For major changes, please open an issue to discuss your proposal first.
