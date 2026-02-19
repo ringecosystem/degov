@@ -85,37 +85,35 @@ contracts:
   timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
 
 # The treasury assets information
-treasuryAssets:
-  - name: FT
-    contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
-    standard: ERC20
-    priceId: FT
-    #logo: # Default logo if not provided
-  - name: NFT
-    contract: "0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A"
-    standard: ERC721
-    priceId: NFT
-    #logo: # Default logo if not provided
+treasuryAssets: []
+#  - name: FT
+#    contract: "0x3ff4F23F328664FfD046eb4ca62be3d8aF3e452f"
+#    standard: ERC20
+#    priceId: FT
+#  - name: NFT
+#    contract: "0xA785c85dADa2dFF129b3eba7523bD380eA8b4e2A"
+#    standard: ERC721
+#    priceId: NFT
 
 # The DAO Safe information
-safes:
-  - name: Test DAO Safe(Arbitrum)
-    chainId: 42161
-    link: https://app.safe.global/home?safe=arb1:0x80d180621B2f875269216f19A499e6fB9402776C
-  - name: Test DAO Safe(Sepolia)
-    chainId: 11155111
-    link: https://app.safe.global/home?safe=sep:0x80d180621B2f875269216f19A499e6fB9402776C
+safes: []
+#  - name: Test DAO Safe(Arbitrum)
+#    chainId: 42161
+#    link: https://app.safe.global/home?safe=arb1:0x80d180621B2f875269216f19A499e6fB9402776C
+#  - name: Test DAO Safe(Sepolia)
+#    chainId: 11155111
+#    link: https://app.safe.global/home?safe=sep:0x80d180621B2f875269216f19A499e6fB9402776C
 
 # The applications shortcuts related to the DAO
-apps:
-  - name: Token Wrap
-    description: Convert back and forth between the native token and the wrapped governance token
-    icon: https://pbs.twimg.com/profile_images/1912415584257474560/GznnScP3_400x400.jpg
-    link: https://token-wrap.degov.ai?config=https://degov-dev.vercel.app/degov.yml
-    params:
-      sourceToken:
-        address: "0x48C817eebE1fD79F946bd6b976EF579540517121"
-        icon: https://assets.coingecko.com/coins/images/9443/standard/RING.png
-      wrapToken:
-        address: "0x0ef0827A9d5D329DFbaA14c7d5Aae364453A4D32"
-        icon: https://assets.coingecko.com/coins/images/9443/standard/RING.png
+apps: []
+#  - name: Token Wrap
+#    description: Convert back and forth between the native token and the wrapped governance token
+#    icon: https://pbs.twimg.com/profile_images/1912415584257474560/GznnScP3_400x400.jpg
+#    link: https://token-wrap.degov.ai?config=https://degov-dev.vercel.app/degov.yml
+#    params:
+#      sourceToken:
+#        address: "0x48C817eebE1fD79F946bd6b976EF579540517121"
+#        icon: https://assets.coingecko.com/coins/images/9443/standard/RING.png
+#      wrapToken:
+#        address: "0x0ef0827A9d5D329DFbaA14c7d5Aae364453A4D32"
+#        icon: https://assets.coingecko.com/coins/images/9443/standard/RING.png
