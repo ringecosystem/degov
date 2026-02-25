@@ -9,7 +9,7 @@ services:
       - ./.data/postgres:/var/lib/postgresql/data
       - ./init-scripts/postgres:/docker-entrypoint-initdb.d
     ports:
-      - "${DEGOV_DB_PORT:-7453}:5432"
+      - "${DEGOV_DB_PORT:-5432}:5432"
 
   indexer:
     image: degov-indexer
@@ -20,6 +20,8 @@ services:
       dockerfile: docker/indexer.Dockerfile
     ports:
       - "${DEGOV_INDEXER_PORT:-4350}:4350"
+    volumes:
+      - ./degov.yml:/app/degov.yml
     environment:
       DB_HOST: postgres
       DB_NAME: indexer
@@ -32,6 +34,7 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       OPENROUTER_DEFAULT_MODEL: ${OPENROUTER_DEFAULT_MODEL}
       CHAIN_RPC_1: ${CHAIN_RPC_1}
+      DEGOV_CONFIG_PATH: degov.yml
       # CHAIN_RPC_10: ${CHAIN_RPC_10}
       # CHAIN_RPC_...: ${CHAIN_RPC_...}
 
@@ -43,8 +46,9 @@ services:
       context: .
       dockerfile: docker/web.Dockerfile
     ports:
-      - "${DEGOV_WEB_PORT:-3002}:3000"
+      - "${DEGOV_WEB_PORT:-3000}:3000"
     environment:
       JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET}
       DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD}@postgres/degov
       DEGOV_SYNC_AUTH_TOKEN: ${DEGOV_SYNC_AUTH_TOKEN}
+      # DEGOV_CONFIG_PATH: degov.yml

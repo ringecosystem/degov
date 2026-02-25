@@ -10,12 +10,14 @@ ENV DEGOV_CONFIG_PATH=/app/degov.yml
 ENV CI=true
 
 RUN corepack enable pnpm \
-  && mv /code/packages/web /app \
-  && mv /code/degov.yml /app \
-  && rm -rf /code \
-  && cd /app \
-  && pnpm install --frozen-lockfile \
-  && pnpm build
+    && mv /code/packages/web /app \
+    && mv /code/degov.yml /app \
+    && rm -rf /code \
+    && cd /app \
+    && echo "node-linker=hoisted" > .npmrc \
+    && pnpm install --frozen-lockfile \
+    && npx prisma generate \
+    && pnpm build
 
 FROM base AS runner
 WORKDIR /app
@@ -28,15 +30,13 @@ RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone .
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static .next/static
-
 COPY --from=builder --chown=nextjs:nodejs /app/public public
 COPY --from=builder --chown=nextjs:nodejs /app/scripts scripts
 COPY --from=builder --chown=nextjs:nodejs /app/prisma prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts prisma.config.ts
 
-RUN corepack enable pnpm \
-  && pnpm install prisma \
-  && chown -R nextjs:nodejs /app/node_modules
+# Copy the entire node_modules from builder (includes Prisma client and engines)
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules node_modules
 
 USER nextjs
 

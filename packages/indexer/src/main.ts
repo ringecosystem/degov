@@ -44,7 +44,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
     rpcSource = "config file";
   } else {
     throw new Error(
-      `No RPC endpoints configured. Checked config file and environment variable "${envVarName}".`
+      `No RPC endpoints configured. Checked config file and environment variable "${envVarName}".`,
     );
   }
 
@@ -59,7 +59,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
     console.log(` - [${index}] ${url}`);
   });
   console.log(
-    `Using RPC endpoint: ${randomRpcUrl} picked index ${pickedIndex} from ${selectedRpcs.length} (source: ${rpcSource})`
+    `Using RPC endpoint: ${randomRpcUrl} picked index ${pickedIndex} from ${selectedRpcs.length} (source: ${rpcSource})`,
   );
 
   const processor = new EvmBatchProcessor()
@@ -85,8 +85,8 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
     });
     console.log(
       `Add log watch for ${address.join(", ")} for range ${JSON.stringify(
-        range
-      )}`
+        range,
+      )}`,
     );
   });
 
@@ -94,14 +94,17 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   const textPlus = new TextPlus();
 
   processor.run(
-    new TypeormDatabase({ supportHotBlocks: true }),
+    new TypeormDatabase({
+      supportHotBlocks: true,
+      isolationLevel: "READ COMMITTED",
+    }),
     async (ctx) => {
       for (const c of ctx.blocks) {
         for (const event of c.logs) {
           for (const work of config.works) {
             const indexContract = work.contracts.find(
               (item) =>
-                item.address.toLowerCase() === event.address.toLowerCase()
+                item.address.toLowerCase() === event.address.toLowerCase(),
             );
 
             if (!indexContract) {
@@ -130,14 +133,14 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
               }
             } catch (e) {
               ctx.log.warn(
-                `(evm) unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}, reason: ${e}, stopped from ${ctx.blocks[0].header.height} block`
+                `(evm) unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}, reason: ${e}, stopped from ${ctx.blocks[0].header.height} block`,
               );
               throw e;
             }
           }
         }
       }
-    }
+    },
   );
 }
 
