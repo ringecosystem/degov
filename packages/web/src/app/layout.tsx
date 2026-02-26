@@ -39,7 +39,7 @@ const geistMono = Geist_Mono({
 
 function buildMetadata(config: Config | null | undefined): Metadata {
   const daoName = config?.name || "DeGov";
-  const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
+  const description = `${daoName} - DAO governance platform powered by Igra DAO`;
   const siteUrl = config?.siteUrl ?? "https://localhost";
   const metadataBase: URL = new URL(siteUrl);
 
@@ -65,7 +65,7 @@ function buildMetadata(config: Config | null | undefined): Metadata {
     openGraph: {
       type: "website",
       siteName: daoName,
-      title: `${daoName} - Powered by DeGov.AI`,
+      title: `${daoName} - Powered by Igra DAO`,
       description,
       url: siteUrl,
       images: ogImageUrl
@@ -81,9 +81,9 @@ function buildMetadata(config: Config | null | undefined): Metadata {
     },
     twitter: {
       card: "summary",
-      site: "@ai_degov",
-      creator: "@ai_degov",
-      title: `${daoName} - Powered by DeGov.AI`,
+      site: "@igra_labs",
+      creator: "@igra_labs",
+      title: `${daoName} - Powered by Igra DAO`,
       description,
       images: ogImageUrl ? [ogImageUrl] : undefined,
     },

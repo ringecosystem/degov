@@ -87,14 +87,14 @@ export function IndexerStatus({
       <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">
         <span>Powered By</span>
         <Link
-          href="https://degov.ai"
+          href="https://igralabs.com"
           target="_blank"
           rel="noopener noreferrer"
           className="transition-opacity hover:opacity-80"
         >
           <BottomLogoIcon width={14} height={14} />
         </Link>
-        <span>DeGov.AI</span>
+        <span>Igra Network</span>
       </div>
     </div>
   );

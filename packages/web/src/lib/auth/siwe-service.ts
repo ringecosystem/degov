@@ -18,12 +18,12 @@ export class SiweService {
 
   private constructor() {
     this.config = {
-      domain: typeof window !== "undefined" ? window.location.host : "degov.ai",
-      statement: "DeGov.AI wants you to sign in with your Ethereum account",
+      domain: typeof window !== "undefined" ? window.location.host : "governance.igralabs.com",
+      statement: "Igra Governance wants you to sign in with your Igra Network account",
       uri:
         typeof window !== "undefined"
           ? window.location.origin
-          : "https://degov.ai",
+          : "https://governance.igralabs.com",
     };
   }
 
