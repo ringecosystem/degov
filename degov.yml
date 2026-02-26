@@ -53,7 +53,7 @@ chain:
 
 # Indexer related configuration
 indexer:
-  endpoint: http://localhost:4350/graphql
+  endpoint: https://governance.igralabs.com/graphql
   startBlock: 1260
 
   ## https://docs.sqd.ai/sdk/reference/processors/evm-batch/general/#set-finality-confirmation
