@@ -1,0 +1,13 @@
+# Single-host deployment (degov + nginx on same server)
+[degov]
+governance ansible_host=your-server-ip-or-hostname ansible_user=your-ssh-user
+
+[nginx]
+governance
+
+# For separate hosts, use:
+# [degov]
+# degov_host ansible_host=your-degov-server
+#
+# [nginx]
+# nginx_host ansible_host=your-nginx-server

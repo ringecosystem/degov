@@ -1,0 +1,10 @@
+# --- Deployment paths ---
+degov_deploy_path: /opt/degov
+nginx_deploy_path: /opt/nginx-host
+
+# --- degov docker-compose ---
+degov_project_name: degov
+
+# --- nginx / Let's Encrypt ---
+letsencrypt_domain: governance.igralabs.com
+# letsencrypt_email: your@email.com  # For reference; cert acquisition is manual

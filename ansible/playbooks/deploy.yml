@@ -1,0 +1,18 @@
+---
+# Full deployment: degov + nginx proxy
+# Usage:
+#   ansible-playbook playbooks/deploy.yml -i inventory
+#
+# Ensure .env exists in project root (copied to server).
+
+- name: Deploy degov
+  hosts: degov
+  become: true
+  roles:
+    - degov
+
+- name: Deploy nginx proxy
+  hosts: nginx
+  become: true
+  roles:
+    - nginx_proxy

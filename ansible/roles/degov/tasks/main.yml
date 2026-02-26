@@ -1,0 +1,55 @@
+---
+- name: Create degov deploy directory
+  ansible.builtin.file:
+    path: "{{ degov_deploy_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Create degov data directory (preserve existing DB)
+  ansible.builtin.file:
+    path: "{{ degov_deploy_path }}/.data/postgres"
+    state: directory
+    mode: "0755"
+
+- name: Sync project for build (excludes .git, node_modules, .data)
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../../"
+    dest: "{{ degov_deploy_path }}/"
+    delete: no
+    exclude:
+      - ".git"
+      - "node_modules"
+      - ".data"
+      - ".next"
+      - "dist"
+      - ".env"
+      - "*.log"
+      - ".pnpm-store"
+      - ".agentdocs"
+
+- name: Stat .env on control node
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../.env"
+  register: env_file_stat
+  delegate_to: localhost
+  become: false
+
+- name: Copy .env from project root
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../.env"
+    dest: "{{ degov_deploy_path }}/.env"
+    mode: "0600"
+  when: env_file_stat.stat.exists
+
+- name: Create .env from template (when .env not in project root)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ degov_deploy_path }}/.env"
+    mode: "0600"
+  when: not env_file_stat.stat.exists
+
+- name: Build and start degov containers
+  community.docker.docker_compose_v2:
+    project_src: "{{ degov_deploy_path }}"
+    build: always
+    state: present

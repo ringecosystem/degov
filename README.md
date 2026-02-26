@@ -20,6 +20,14 @@ The easiest way to deploy your own DeGov instance is by using the [DeGov Launche
 
 We also provide launch assistance. See the [Launch With Assistance](https://docs.degov.ai/integration/launch/) guide for more information.
 
+## Ansible Deployment
+
+For server deployment with degov + nginx proxy (including Let's Encrypt), see [ansible/README.md](ansible/README.md). This includes:
+
+- Full deploy playbook (degov + nginx)
+- Update playbook for `degov.yml` changes (no image rebuild)
+- [Initial certificate acquisition](docs/INITIAL_CERT_ACQUISITION.md) instructions
+
 ## Contributing
 
 We welcome community contributions! Fork the repository and submit a pull request. For major changes, please open an issue to discuss your proposal first.

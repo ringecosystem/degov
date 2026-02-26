@@ -29,3 +29,6 @@ dist-ssr
 .agentdocs
 .pnpm-store
 .env
+
+# Ansible
+ansible/inventory

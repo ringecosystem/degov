@@ -1,0 +1,53 @@
+---
+- name: Create nginx deploy directory
+  ansible.builtin.file:
+    path: "{{ nginx_deploy_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Create certbot directory structure
+  ansible.builtin.file:
+    path: "{{ nginx_deploy_path }}/certbot/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - conf/live/{{ letsencrypt_domain }}
+    - www
+
+- name: Check if real certificate exists
+  ansible.builtin.stat:
+    path: "{{ nginx_deploy_path }}/certbot/conf/live/{{ letsencrypt_domain }}/fullchain.pem"
+  register: real_cert_stat
+
+- name: Create dummy certificate for initial bootstrap (nginx needs certs to start)
+  ansible.builtin.shell: |
+    openssl req -x509 -nodes -newkey rsa:4096 -days 1 \
+      -keyout {{ nginx_deploy_path }}/certbot/conf/live/{{ letsencrypt_domain }}/privkey.pem \
+      -out {{ nginx_deploy_path }}/certbot/conf/live/{{ letsencrypt_domain }}/fullchain.pem \
+      -subj '/CN=localhost'
+  when: not real_cert_stat.stat.exists
+
+- name: Copy nginx config
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../nginx-proxy/governance.igralabs.com.conf"
+    dest: "{{ nginx_deploy_path }}/governance.igralabs.com.conf"
+    mode: "0644"
+  register: nginx_config
+
+- name: Copy nginx docker-compose
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../nginx-proxy/docker-compose.yml"
+    dest: "{{ nginx_deploy_path }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Start nginx and certbot containers
+  community.docker.docker_compose_v2:
+    project_src: "{{ nginx_deploy_path }}"
+    state: present
+
+- name: Reload nginx after config change
+  ansible.builtin.command:
+    cmd: docker compose exec nginx nginx -s reload
+    chdir: "{{ nginx_deploy_path }}"
+  changed_when: false
+  when: nginx_config.changed

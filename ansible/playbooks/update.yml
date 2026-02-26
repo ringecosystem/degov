@@ -1,0 +1,46 @@
+---
+# Update degov configuration without rebuilding Docker images
+# Usage:
+#   ansible-playbook playbooks/update.yml -i inventory
+#
+# Handles changes to: degov.yml, .env, docker-compose.yml
+# For code/Dockerfile changes, use deploy.yml (full rebuild).
+
+- name: Update degov configuration
+  hosts: degov
+  become: true
+  tasks:
+    - name: Copy degov.yml
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../degov.yml"
+        dest: "{{ degov_deploy_path }}/degov.yml"
+        mode: "0644"
+      register: degov_config
+
+    - name: Copy .env
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../.env"
+        dest: "{{ degov_deploy_path }}/.env"
+        mode: "0600"
+      register: env_file
+
+    - name: Copy docker-compose.yml
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../docker-compose.yml"
+        dest: "{{ degov_deploy_path }}/docker-compose.yml"
+        mode: "0644"
+      register: compose_file
+
+    - name: Recreate containers (env or compose changed)
+      community.docker.docker_compose_v2:
+        project_src: "{{ degov_deploy_path }}"
+        state: present
+        recreate: always
+      when: env_file.changed or compose_file.changed
+
+    - name: Restart web and indexer (degov.yml changed only)
+      ansible.builtin.command:
+        cmd: docker compose restart web indexer
+        chdir: "{{ degov_deploy_path }}"
+      changed_when: false
+      when: degov_config.changed and not env_file.changed and not compose_file.changed
