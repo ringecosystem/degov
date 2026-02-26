@@ -34,7 +34,7 @@ theme:
 
 # Wallet connection related configuration
 wallet:
-  walletConnectProjectId: e72da55db7c4dca6de0847faa19b13cd
+  walletConnectProjectId: d5dae553538344c06d270be754404e5f
 
 # Chain information: these commented fields are optional if this chain can be accessed by viem.
 chain:
@@ -53,10 +53,8 @@ chain:
 
 # Indexer related configuration
 indexer:
-  endpoint: https://indexer.degov.ai/degov-demo-dao/graphql
-  startBlock: 5873342
-  # if set this, indexer rpc will be use this first
-  rpc: wss://rpc.darwinia.network
+  endpoint: http://localhost:4350/graphql
+  startBlock: 1260
 
   ## https://docs.sqd.ai/sdk/reference/processors/evm-batch/general/#set-finality-confirmation
   #finalityConfirmation: 50
@@ -69,11 +67,11 @@ indexer:
 
 # Core contracts related to the DAO Governance
 contracts:
-  governor: "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517"
+  governor: "0xB3300fcC2F3EF3DeCdF8B1f710c21666f33Cbf18"
   governorToken:
-    address: "0xbC9f58566810F7e853e1eef1b9957ac82F9971df"
+    address: "0x50BAc71D1B32Fa6030007b5E72dbBB4fF48c1B39"
     standard: ERC20
-  timeLock: "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
+  timeLock: "0xB3300fcC2F3EF3DeCdF8B1f710c21666f33Cbf18"
 
 # The treasury assets information
 treasuryAssets: []

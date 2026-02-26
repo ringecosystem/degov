@@ -31,9 +31,12 @@ services:
       DEGOV_SYNC_AUTH_TOKEN: ${DEGOV_SYNC_AUTH_TOKEN}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       OPENROUTER_DEFAULT_MODEL: ${OPENROUTER_DEFAULT_MODEL}
+      DEGOV_CONFIG_PATH: /app/degov.yml
       CHAIN_RPC_1: ${CHAIN_RPC_1}
       # CHAIN_RPC_10: ${CHAIN_RPC_10}
       # CHAIN_RPC_...: ${CHAIN_RPC_...}
+    volumes:
+      - ./degov.yml:/app/degov.yml:ro
 
   web:
     image: degov-web
@@ -48,3 +51,6 @@ services:
       JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET}
       DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD}@postgres/degov
       DEGOV_SYNC_AUTH_TOKEN: ${DEGOV_SYNC_AUTH_TOKEN}
+      DEGOV_CONFIG_PATH: /app/degov.yml
+    volumes:
+      - ./degov.yml:/app/degov.yml:ro
