@@ -87,7 +87,9 @@ export function useGovernanceToken(
             ? data?.[2]?.result
               ? Number(data[2].result)
               : 18
-            : 0,
+            : standard === "ERC721"
+              ? 0
+              : 18,
       }
     : null;
 

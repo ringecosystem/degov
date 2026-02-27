@@ -15,18 +15,13 @@ export function useFormatGovernanceTokenAmount() {
           formatted: formatBigIntForDisplay(amount, 0),
           raw: amount,
         };
-      } else if (daoConfig?.contracts?.governorToken?.standard === "ERC20") {
-        return {
-          formatted: formatBigIntForDisplay(
-            amount,
-            governanceToken?.decimals ?? 18
-          ),
-          raw: amount,
-        };
       }
       return {
-        formatted: "0",
-        raw: 0n,
+        formatted: formatBigIntForDisplay(
+          amount,
+          governanceToken?.decimals ?? 18
+        ),
+        raw: amount,
       };
     },
     [governanceToken, daoConfig?.contracts?.governorToken?.standard]
