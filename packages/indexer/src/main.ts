@@ -1,4 +1,5 @@
 import { TypeormDatabase } from "@subsquid/typeorm-store";
+import { AttestationHandler } from "./handler/attestation";
 import { GovernorHandler } from "./handler/governor";
 import { TokenHandler } from "./handler/token";
 import { EvmBatchProcessor } from "@subsquid/evm-processor";
@@ -122,6 +123,20 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
                   break;
                 case "governorToken":
                   await new TokenHandler(ctx, {
+                    chainId: config.chainId,
+                    work,
+                    indexContract,
+                  }).handle(event);
+                  break;
+                case "igraToken":
+                  await new TokenHandler(ctx, {
+                    chainId: config.chainId,
+                    work,
+                    indexContract,
+                  }).handle(event);
+                  break;
+                case "attestation":
+                  await new AttestationHandler(ctx, {
                     chainId: config.chainId,
                     work,
                     indexContract,

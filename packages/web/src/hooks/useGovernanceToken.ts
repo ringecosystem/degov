@@ -80,8 +80,8 @@ export function useGovernanceToken(
 
   const formattedData: GovernanceTokenMetadata | null = data
     ? {
-        symbol: data[0].result as string,
-        name: data[1].result as string,
+        symbol: (data[0].result as string) ?? "TOKEN",
+        name: (data[1].result as string) ?? "Governance Token",
         decimals:
           standard === "ERC20"
             ? data?.[2]?.result

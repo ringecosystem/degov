@@ -46,6 +46,8 @@ interface Contracts {
   governor: string;
   governorToken: GovernorToken;
   timeLock?: string;
+  igraToken?: string;
+  attestation?: string;
 }
 
 interface TokenDetails {

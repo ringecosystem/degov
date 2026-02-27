@@ -2,7 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { useMemo } from "react";
-import { useReadContract } from "wagmi";
+import { useBlockNumber, useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -84,15 +84,24 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     isBlockTimeLoading,
   } = useGovernanceParams();
 
+  const { data: blockNumber } = useBlockNumber({
+    chainId: daoConfig?.chain?.id,
+    query: {
+      enabled: type === "default" && !!daoConfig?.chain?.id,
+    },
+  });
+
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
     useReadContract({
       address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
       abi: tokenAbi,
-      functionName: "totalSupply",
+      functionName: "getPastTotalSupply",
+      args: blockNumber ? [blockNumber - 1n] : undefined,
       chainId: daoConfig?.chain?.id,
       query: {
         enabled:
           type === "default" &&
+          !!blockNumber &&
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
       },

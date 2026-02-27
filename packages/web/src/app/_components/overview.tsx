@@ -1,7 +1,7 @@
 "use client";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { isNumber } from "lodash-es";
-import { useReadContract } from "wagmi";
+import { useBlockNumber, useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -15,14 +15,22 @@ import { OverviewProposalsSummaryDropdown } from "./overview-proposals-summary";
 export const Overview = () => {
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
+
+  const { data: blockNumber } = useBlockNumber({
+    chainId: daoConfig?.chain?.id,
+    query: { enabled: !!daoConfig?.chain?.id },
+  });
+
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
     useReadContract({
       address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
       abi: tokenAbi,
-      functionName: "totalSupply",
+      functionName: "getPastTotalSupply",
+      args: blockNumber ? [blockNumber - 1n] : undefined,
       chainId: daoConfig?.chain?.id,
       query: {
         enabled:
+          !!blockNumber &&
           !!daoConfig?.contracts?.governorToken?.address &&
           !!daoConfig?.chain?.id,
         placeholderData: keepPreviousData,
