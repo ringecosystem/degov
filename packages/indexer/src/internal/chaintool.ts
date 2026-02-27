@@ -494,9 +494,7 @@ export class ChainTool {
       let decimals: bigint;
       const governorTokenContractStandard = (options.governorTokenStandard ?? "ERC20").toUpperCase();
       try {
-        if (governorTokenContractStandard === "ERC721") {
-          decimals = 0n;
-        } else {
+        if (governorTokenContractStandard === "ERC20") {
           const decimalsResult = await this._executeWithFallbacks(
             options,
             (client) =>
@@ -507,6 +505,10 @@ export class ChainTool {
               })
           );
           decimals = BigInt(decimalsResult as number);
+        } else if (governorTokenContractStandard === "ERC721") {
+          decimals = 0n;
+        } else {
+          decimals = 18n;
         }
       } catch (e: any) {
         throw new Error(

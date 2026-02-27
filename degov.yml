@@ -70,7 +70,7 @@ contracts:
   governor: "0xB3300fcC2F3EF3DeCdF8B1f710c21666f33Cbf18"
   governorToken:
     address: "0x50BAc71D1B32Fa6030007b5E72dbBB4fF48c1B39"
-    standard: ERC20
+    standard: IgraVotingPower
   timeLock: "0xB3300fcC2F3EF3DeCdF8B1f710c21666f33Cbf18"
   igraToken: "0x093d77d397F8acCbaee0820345E9E700B1233cD1"
   attestation: "0xc24Df70E408739aeF6bF594fd41db4632dF49188"
