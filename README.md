@@ -6,23 +6,14 @@
 
 # DeGov.AI
 
-DeGov.AI is an open-source, on-chain governance platform built for DAOs in the Ethereum related ecosystem. It leverages the [Governor Framework from OpenZeppelin](https://docs.openzeppelin.com/contracts/4.x/governance) to deliver a robust, flexible, and transparent governance solution for decentralized organizations. Check out the DAOs powered by DeGov.AI at [square.degov.ai](https://square.degov.ai).
+DeGov.AI is an open-source, on-chain governance platform built for DAOs in the Ethereum related ecosystem. It leverages the [Governor Framework from OpenZeppelin](https://docs.openzeppelin.com/contracts/5.x/governance) to deliver a robust, flexible, and transparent governance solution for decentralized organizations. Check out the DAOs powered by DeGov.AI at [square.degov.ai](https://square.degov.ai).
 
 ## Features
 
 - **Open**: Free and open-source, allowing anyone to set up their DAO's on-chain governance.
 - **Secure governance model**: Built on the OpenZeppelin Governor framework, ensuring high security and reliability. See the [Governance Model](https://docs.degov.ai/governance/intro/model) for more details.
-- **AI agent voting delegation**: Enables AI agents to participate in the voting process on behalf of users, streamlining decision-making. See the [Agent Governance](https://docs.degov.ai/governance/agent/overview/) for more details.
-
-## Integration Guide
-
-The easiest way to deploy your own DeGov instance is by using the [DeGov Launcher](https://github.com/ringecosystem/degov-launcher). This tool simplifies the setup process, allowing you to quickly configure and launch your governance platform. For a detailed integration guide, see [Deploy by yourself](https://docs.degov.ai/integration/deploy/).
-
-We also provide launch assistance. See the [Launch With Assistance](https://docs.degov.ai/integration/launch/) guide for more information.
 
 ## Setup Instructions
-
-### Quick Start with Docker Compose
 
 1. **Clone the repository**
 
@@ -64,6 +55,9 @@ We also provide launch assistance. See the [Launch With Assistance](https://docs
 5. **Access the application**
 
    Open `http://localhost:3000` in your browser
+
+
+We are also willing to provide hosting and maintenance services for your DAO's DeGov instance. Please contact us for more details.
 
 ## Contributing
 
