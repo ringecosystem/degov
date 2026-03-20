@@ -8,9 +8,11 @@ import {
   subWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { QueryClient } from "@tanstack/react-query";
+import { fallback, http } from "viem";
 import { cookieStorage, createStorage, type Storage } from "wagmi";
 import { mainnet } from "wagmi/chains";
 
+import { DEFAULT_MULTICALL_BATCH_SIZE } from "@/config/base";
 import { createWagmiQueryConfig } from "@/utils/query-config";
 
 import type { Chain } from "@rainbow-me/rainbowkit";
@@ -38,6 +40,36 @@ function chainFingerprint(chain: Chain) {
   });
 }
 
+function createChainTransport(chain: Chain) {
+  const rpcUrls = [...new Set(chain.rpcUrls.default.http.filter(Boolean))];
+
+  if (rpcUrls.length === 0) {
+    return http(undefined, {
+      batch: true,
+      retryCount: 0,
+    });
+  }
+
+  if (rpcUrls.length === 1) {
+    return http(rpcUrls[0], {
+      batch: true,
+      retryCount: 0,
+    });
+  }
+
+  return fallback(
+    rpcUrls.map((rpcUrl) =>
+      http(rpcUrl, {
+        batch: true,
+        retryCount: 0,
+      })
+    ),
+    {
+      retryCount: 0,
+    }
+  );
+}
+
 export function createConfig({
   appName,
   projectId,
@@ -58,10 +90,21 @@ export function createConfig({
     storage: cookieStorage,
   });
 
+  const transports = {
+    [mainnet.id]: createChainTransport(mainnet as Chain),
+    [chain.id]: createChainTransport(chain),
+  } as const;
+
   const config = getDefaultConfig({
     appName,
     projectId,
     chains: chains as unknown as readonly [Chain, ...Chain[]],
+    transports,
+    batch: {
+      multicall: {
+        batchSize: DEFAULT_MULTICALL_BATCH_SIZE,
+      },
+    },
     wallets: [
       ...wallets,
       {
