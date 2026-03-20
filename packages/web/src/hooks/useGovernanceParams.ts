@@ -209,14 +209,19 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
     },
   });
 
-  // Determine the correct parameter for quorum function based on clock mode
-  // Use a slightly older block for stability (current block - 10)
+  // quorum(timepoint) must use a past checkpoint.
   const stableBlockNumber = blockNumber ? blockNumber - 10n : 0n;
+  const normalizedClockData =
+    typeof clockData === "bigint"
+      ? clockData
+      : typeof clockData === "number" && Number.isFinite(clockData)
+        ? BigInt(Math.trunc(clockData))
+        : 0n;
   const quorumParameter: bigint = isBlockNumberMode
     ? stableBlockNumber
-    : typeof clockData === "bigint"
-    ? clockData
-    : 0n;
+    : normalizedClockData > 0n
+      ? normalizedClockData - 1n
+      : 0n;
 
   const {
     data: quorumData,
@@ -239,13 +244,13 @@ export function useQuorum(options: GovernanceParamsOptions = {}) {
         isClockResolved &&
         (isBlockNumberMode
           ? Boolean(blockNumber && blockNumber > 10n)
-          : Boolean(clockData)),
+          : normalizedClockData > 0n),
     },
   });
 
   return {
     quorum: quorumData as bigint | undefined,
-    clockData: clockData as bigint | undefined,
+    clockData: normalizedClockData || undefined,
     clockMode: rawClockMode,
     isBlocknumberMode: isBlockNumberMode,
     isLoading:
