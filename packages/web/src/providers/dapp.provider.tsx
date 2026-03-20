@@ -9,7 +9,7 @@ import * as React from "react";
 import { WagmiProvider } from "wagmi";
 
 import { LoadingState } from "@/components/ui/loading-spinner";
-import { createConfig, createQueryClient } from "@/config/wagmi";
+import { createConfig, createDaoChain, createQueryClient } from "@/config/wagmi";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMounted } from "@/hooks/useMounted";
@@ -23,29 +23,10 @@ function RainbowKitProviders({ children }: React.PropsWithChildren<unknown>) {
   const authStatus = useAuthStatus();
   const dappConfig = useDaoConfig();
 
-  const currentChain: Chain = React.useMemo(() => {
-    return {
-      id: Number(dappConfig?.chain?.id),
-      name: dappConfig?.chain?.name ?? "",
-      nativeCurrency: {
-        name: dappConfig?.chain?.nativeToken?.symbol ?? "",
-        symbol: dappConfig?.chain?.nativeToken?.symbol ?? "",
-        decimals: dappConfig?.chain?.nativeToken?.decimals ?? 18,
-      },
-      rpcUrls: {
-        default: {
-          http: dappConfig?.chain?.rpcs ?? [],
-        },
-      },
-      blockExplorers: {
-        default: {
-          name: "Explorer",
-          url: dappConfig?.chain?.explorers?.[0] ?? "",
-        },
-      },
-      contracts: dappConfig?.chain?.contracts ?? undefined,
-    };
-  }, [dappConfig]);
+  const currentChain: Chain = React.useMemo(
+    () => createDaoChain(dappConfig?.chain),
+    [dappConfig?.chain]
+  );
 
   return (
     <RainbowKitAuthenticationProvider
@@ -74,29 +55,10 @@ export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
     typeof createConfig
   > | null>(null);
 
-  const currentChain: Chain = React.useMemo(() => {
-    return {
-      id: Number(dappConfig?.chain?.id),
-      name: dappConfig?.chain?.name ?? "",
-      nativeCurrency: {
-        name: dappConfig?.chain?.nativeToken?.symbol ?? "",
-        symbol: dappConfig?.chain?.nativeToken?.symbol ?? "",
-        decimals: dappConfig?.chain?.nativeToken?.decimals ?? 18,
-      },
-      rpcUrls: {
-        default: {
-          http: dappConfig?.chain?.rpcs ?? [],
-        },
-      },
-      blockExplorers: {
-        default: {
-          name: "Explorer",
-          url: dappConfig?.chain?.explorers?.[0] ?? "",
-        },
-      },
-      contracts: dappConfig?.chain?.contracts ?? undefined,
-    };
-  }, [dappConfig]);
+  const currentChain: Chain = React.useMemo(
+    () => createDaoChain(dappConfig?.chain),
+    [dappConfig?.chain]
+  );
 
   React.useEffect(() => {
     if (!mounted || !dappConfig) return;
