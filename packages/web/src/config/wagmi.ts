@@ -44,10 +44,9 @@ function createChainTransport(chain: Chain) {
   const rpcUrls = [...new Set(chain.rpcUrls.default.http.filter(Boolean))];
 
   if (rpcUrls.length === 0) {
-    return http(undefined, {
-      batch: true,
-      retryCount: 0,
-    });
+    throw new Error(
+      `No RPC URLs configured for chain "${chain.name}" (id: ${chain.id}).`
+    );
   }
 
   if (rpcUrls.length === 1) {
@@ -66,8 +65,20 @@ function createChainTransport(chain: Chain) {
     ),
     {
       retryCount: 0,
+      rank: false,
     }
   );
+}
+
+function createConfiguredChains(chain: Chain) {
+  return Array.from(
+    new Map(
+      [mainnet as Chain, chain].map((configuredChain) => [
+        configuredChain.id,
+        configuredChain,
+      ])
+    ).values()
+  ) as [Chain, ...Chain[]];
 }
 
 export function createConfig({
@@ -85,15 +96,18 @@ export function createConfig({
     return cachedConfig;
   }
 
-  const chains = [mainnet as Chain, chain];
+  const chains = createConfiguredChains(chain);
   const storage: Storage = createStorage({
     storage: cookieStorage,
   });
 
-  const transports = {
-    [mainnet.id]: createChainTransport(mainnet as Chain),
-    [chain.id]: createChainTransport(chain),
-  } as const;
+  const transports = chains.reduce<
+    Record<number, ReturnType<typeof createChainTransport>>
+  >((configuredTransports, configuredChain) => {
+    configuredTransports[configuredChain.id] =
+      createChainTransport(configuredChain);
+    return configuredTransports;
+  }, {});
 
   const config = getDefaultConfig({
     appName,
