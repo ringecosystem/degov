@@ -11,7 +11,6 @@
     "build:vercel": "pnpm build && pnpm prisma:migrate",
     "start": "pnpm generate:config && pnpm prisma:migrate && next start",
     "lint": "eslint .",
-    "test:treasury-fallback": "node --test --experimental-strip-types scripts/treasury-fallback.test.ts",
     "generate:config": "zx scripts/generate-config.mjs"
   },
   "dependencies": {
