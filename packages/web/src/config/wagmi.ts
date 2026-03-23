@@ -8,14 +8,15 @@ import {
   subWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { QueryClient } from "@tanstack/react-query";
-import { fallback, http } from "viem";
+import { fallback, http, type Transport } from "viem";
 import { cookieStorage, createStorage, type Storage } from "wagmi";
 import { mainnet } from "wagmi/chains";
 
 import { DEFAULT_MULTICALL_BATCH_SIZE } from "@/config/base";
+import type { Chain as DaoChainConfig } from "@/types/config";
 import { createWagmiQueryConfig } from "@/utils/query-config";
 
-import type { Chain } from "@rainbow-me/rainbowkit";
+import type { Chain as RainbowKitChain } from "@rainbow-me/rainbowkit";
 
 const { wallets } = getDefaultWallets();
 
@@ -27,25 +28,27 @@ type WagmiConfig = ReturnType<typeof getDefaultConfig>;
 
 const configCache = new Map<string, WagmiConfig>();
 
-function chainFingerprint(chain: Chain) {
-  // Stable, order-defined subset of chain metadata that affects wagmi config
-  return JSON.stringify({
-    id: chain.id,
-    name: chain.name,
-    nativeCurrency: chain.nativeCurrency,
-    rpcUrls: chain.rpcUrls,
-    blockExplorers: chain.blockExplorers,
-    contracts: chain.contracts,
-    testnet: chain.testnet,
-  });
+function getRpcUrls(rpcUrls: readonly string[] | undefined) {
+  return Array.from(
+    new Set((rpcUrls ?? []).map((rpcUrl) => rpcUrl.trim()).filter(Boolean))
+  );
 }
 
-function createChainTransport(chain: Chain) {
-  const rpcUrls = [...new Set(chain.rpcUrls.default.http.filter(Boolean))];
+function getChainRpcUrls(chain: RainbowKitChain) {
+  return getRpcUrls([
+    ...(chain.rpcUrls?.default?.http ?? []),
+    ...(chain.rpcUrls?.public?.http ?? []),
+  ]);
+}
+
+function createChainTransport(chain: RainbowKitChain): Transport {
+  const rpcUrls = getChainRpcUrls(chain);
 
   if (rpcUrls.length === 0) {
+    const chainLabel = chain.name ? `${chain.id} (${chain.name})` : chain.id;
+
     throw new Error(
-      `No RPC URLs configured for chain "${chain.name}" (id: ${chain.id}).`
+      `No RPC URLs configured for chain ${chainLabel}. Please configure at least one RPC URL.`
     );
   }
 
@@ -70,15 +73,59 @@ function createChainTransport(chain: Chain) {
   );
 }
 
-function createConfiguredChains(chain: Chain) {
+function getConfiguredChains(chain: RainbowKitChain) {
   return Array.from(
     new Map(
-      [mainnet as Chain, chain].map((configuredChain) => [
+      [mainnet as RainbowKitChain, chain].map((configuredChain) => [
         configuredChain.id,
         configuredChain,
       ])
     ).values()
-  ) as [Chain, ...Chain[]];
+  ) as [RainbowKitChain, ...RainbowKitChain[]];
+}
+
+function chainFingerprint(chain: RainbowKitChain) {
+  // Stable, order-defined subset of chain metadata that affects wagmi config
+  return JSON.stringify({
+    id: chain.id,
+    name: chain.name,
+    nativeCurrency: chain.nativeCurrency,
+    rpcUrls: chain.rpcUrls,
+    blockExplorers: chain.blockExplorers,
+    contracts: chain.contracts,
+    testnet: chain.testnet,
+  });
+}
+
+export function createDaoChain(
+  chain: DaoChainConfig | null | undefined
+): RainbowKitChain {
+  const rpcUrls = getRpcUrls(chain?.rpcs);
+
+  return {
+    id: Number(chain?.id ?? 0),
+    name: chain?.name ?? "",
+    nativeCurrency: {
+      name: chain?.nativeToken?.symbol ?? "",
+      symbol: chain?.nativeToken?.symbol ?? "",
+      decimals: chain?.nativeToken?.decimals ?? 18,
+    },
+    rpcUrls: {
+      default: {
+        http: rpcUrls,
+      },
+      public: {
+        http: rpcUrls,
+      },
+    },
+    blockExplorers: {
+      default: {
+        name: "Explorer",
+        url: chain?.explorers?.[0] ?? "",
+      },
+    },
+    contracts: chain?.contracts ?? undefined,
+  };
 }
 
 export function createConfig({
@@ -86,7 +133,7 @@ export function createConfig({
   projectId,
   chain,
 }: {
-  chain: Chain;
+  chain: RainbowKitChain;
   appName: string;
   projectId: string;
 }) {
@@ -96,23 +143,24 @@ export function createConfig({
     return cachedConfig;
   }
 
-  const chains = createConfiguredChains(chain);
+  const chains = getConfiguredChains(chain);
+  const transports = Object.fromEntries(
+    chains.map((configuredChain) => [
+      configuredChain.id,
+      createChainTransport(configuredChain),
+    ])
+  ) as Record<(typeof chains)[number]["id"], Transport>;
   const storage: Storage = createStorage({
     storage: cookieStorage,
   });
 
-  const transports = chains.reduce<
-    Record<number, ReturnType<typeof createChainTransport>>
-  >((configuredTransports, configuredChain) => {
-    configuredTransports[configuredChain.id] =
-      createChainTransport(configuredChain);
-    return configuredTransports;
-  }, {});
-
   const config = getDefaultConfig({
     appName,
     projectId,
-    chains: chains as unknown as readonly [Chain, ...Chain[]],
+    chains: chains as unknown as readonly [
+      RainbowKitChain,
+      ...RainbowKitChain[],
+    ],
     transports,
     batch: {
       multicall: {
