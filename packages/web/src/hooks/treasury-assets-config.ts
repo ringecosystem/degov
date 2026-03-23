@@ -1,25 +1,14 @@
-export type TreasuryAssetConfigEntry = {
-  name: string;
-  contract: string;
-  standard: string;
-  priceId?: string;
-  logo?: string | null;
-};
-
-type GovernorTokenConfig = {
-  address?: string;
-  standard?: string;
-};
+import type { GovernorToken, TokenDetails } from "../types/config";
 
 export function hasConfiguredTreasuryAssets(
-  treasuryAssets?: TreasuryAssetConfigEntry[] | null
-): treasuryAssets is TreasuryAssetConfigEntry[] {
+  treasuryAssets?: TokenDetails[] | null
+): treasuryAssets is TokenDetails[] {
   return Array.isArray(treasuryAssets) && treasuryAssets.length > 0;
 }
 
 export function buildFallbackTreasuryAssets(
-  governorToken?: GovernorTokenConfig
-): TreasuryAssetConfigEntry[] {
+  governorToken?: Partial<GovernorToken>
+): TokenDetails[] {
   if (!governorToken?.address || !governorToken.standard) {
     return [];
   }
