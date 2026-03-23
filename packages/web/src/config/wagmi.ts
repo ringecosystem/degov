@@ -12,6 +12,7 @@ import { fallback, http, type Transport } from "viem";
 import { cookieStorage, createStorage, type Storage } from "wagmi";
 import { mainnet } from "wagmi/chains";
 
+import { DEFAULT_MULTICALL_BATCH_SIZE } from "@/config/base";
 import type { Chain as DaoChainConfig } from "@/types/config";
 import { createWagmiQueryConfig } from "@/utils/query-config";
 
@@ -52,23 +53,35 @@ function createChainTransport(chain: RainbowKitChain): Transport {
   }
 
   if (rpcUrls.length === 1) {
-    return http(rpcUrls[0]);
+    return http(rpcUrls[0], {
+      batch: true,
+      retryCount: 0,
+    });
   }
 
   return fallback(
-    rpcUrls.map((rpcUrl) => http(rpcUrl)),
+    rpcUrls.map((rpcUrl) =>
+      http(rpcUrl, {
+        batch: true,
+        retryCount: 0,
+      })
+    ),
     {
+      retryCount: 0,
       rank: false,
     }
   );
 }
 
 function getConfiguredChains(chain: RainbowKitChain) {
-  if (chain.id === mainnet.id) {
-    return [chain] as const;
-  }
-
-  return [mainnet as RainbowKitChain, chain] as const;
+  return Array.from(
+    new Map(
+      [mainnet as RainbowKitChain, chain].map((configuredChain) => [
+        configuredChain.id,
+        configuredChain,
+      ])
+    ).values()
+  ) as [RainbowKitChain, ...RainbowKitChain[]];
 }
 
 function chainFingerprint(chain: RainbowKitChain) {
@@ -149,6 +162,11 @@ export function createConfig({
       ...RainbowKitChain[],
     ],
     transports,
+    batch: {
+      multicall: {
+        batchSize: DEFAULT_MULTICALL_BATCH_SIZE,
+      },
+    },
     wallets: [
       ...wallets,
       {
