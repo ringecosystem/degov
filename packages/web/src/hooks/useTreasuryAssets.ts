@@ -7,7 +7,12 @@ import { useBalance } from "wagmi";
 
 import { treasuryService } from "@/services/graphql";
 import type { TreasuryAsset } from "@/services/graphql/types/treasury";
+import type { TokenDetails } from "@/types/config";
 
+import {
+  buildFallbackTreasuryAssets,
+  hasConfiguredTreasuryAssets,
+} from "./treasury-assets-config";
 import { useCryptoPrices } from "./useCryptoPrices";
 import { useDaoConfig } from "./useDaoConfig";
 import { useGetTokenInfo } from "./useGetTokenInfo";
@@ -259,10 +264,12 @@ const useTreasuryAssetsFromConfig = ({
   enabled,
   address,
   chainId,
+  tokenAssets,
 }: {
   enabled: boolean;
   address?: string;
   chainId?: number | string;
+  tokenAssets: TokenDetails[];
 }): {
   data: TreasuryAssetsData;
   isLoading: boolean;
@@ -277,16 +284,17 @@ const useTreasuryAssetsFromConfig = ({
   const targetChainId = chainId ?? daoConfig?.chain?.id;
   const resolvedChainId = toOptionalNumber(targetChainId);
   const chain = targetChainId !== undefined ? String(targetChainId) : undefined;
-
-  const erc20Assets = useMemo(() => {
-    if (!daoConfig?.treasuryAssets) return [];
-    return daoConfig.treasuryAssets.filter(
-      (asset) => asset.standard === "ERC20"
-    );
-  }, [daoConfig?.treasuryAssets]);
+  const trackedTokenAssets = useMemo(
+    () =>
+      tokenAssets.filter(
+        (asset) =>
+          asset.standard === "ERC20" || asset.standard === "ERC721"
+      ),
+    [tokenAssets]
+  );
 
   const { tokenInfo } = useGetTokenInfo(
-    erc20Assets.map((asset) => ({
+    trackedTokenAssets.map((asset) => ({
       contract: asset.contract,
       standard: asset.standard,
     })),
@@ -297,10 +305,10 @@ const useTreasuryAssetsFromConfig = ({
   );
 
   const {
-    assets: erc20WithBalances,
-    isLoading: isLoadingErc20,
-    isError: isErc20Error,
-  } = useTokenBalances(erc20Assets, {
+    assets: tokenAssetsWithBalances,
+    isLoading: isLoadingTrackedTokens,
+    isError: isTrackedTokensError,
+  } = useTokenBalances(trackedTokenAssets, {
     address: timeLockAddress,
     chainId: resolvedChainId,
     enabled: Boolean(enabled && resolvedChainId !== undefined),
@@ -330,14 +338,14 @@ const useTreasuryAssetsFromConfig = ({
       ids.add(daoConfig.chain.nativeToken.priceId.toLowerCase());
     }
 
-    erc20Assets.forEach((asset) => {
+    trackedTokenAssets.forEach((asset) => {
       if (asset.priceId) {
         ids.add(asset.priceId.toLowerCase());
       }
     });
 
     return Array.from(ids);
-  }, [daoConfig?.chain?.nativeToken?.priceId, erc20Assets]);
+  }, [daoConfig?.chain?.nativeToken?.priceId, trackedTokenAssets]);
 
   const {
     marketData,
@@ -387,11 +395,15 @@ const useTreasuryAssetsFromConfig = ({
       });
     }
 
-    erc20WithBalances.forEach((asset) => {
+    tokenAssetsWithBalances.forEach((asset) => {
       const tokenMeta = tokenInfo[asset.contract as `0x${string}`];
-      const decimals = tokenMeta?.decimals ?? 18;
+      const decimals =
+        asset.standard === "ERC721" ? 0 : tokenMeta?.decimals ?? 18;
       const symbol = tokenMeta?.symbol ?? asset.name;
-      const balance = asset.formattedRawBalance ?? "0";
+      const balance =
+        asset.standard === "ERC721"
+          ? asset.balance ?? "0"
+          : asset.formattedRawBalance ?? "0";
       const priceId = asset.priceId?.toLowerCase();
       const priceInfo = priceId ? marketData[priceId] : undefined;
       const price = priceInfo?.price ?? null;
@@ -429,21 +441,24 @@ const useTreasuryAssetsFromConfig = ({
     daoConfig?.chain?.logo,
     daoConfig?.chain?.nativeToken,
     enabled,
-    erc20WithBalances,
     marketData,
     nativeBalance?.value,
     tokenInfo,
+    tokenAssetsWithBalances,
   ]);
 
   const data = useMemo(() => transformTreasuryAssets(assets), [assets]);
 
   const loading =
-    enabled && (isLoadingErc20 || isLoadingNative || isLoadingPrices);
+    enabled &&
+    (isLoadingTrackedTokens || isLoadingNative || isLoadingPrices);
 
   const error =
     nativeError ??
     (priceFetchError as Error | undefined) ??
-    (isErc20Error ? new Error("Failed to fetch ERC-20 balances") : undefined);
+    (isTrackedTokensError
+      ? new Error("Failed to fetch configured treasury balances")
+      : undefined);
 
   return {
     data,
@@ -464,16 +479,22 @@ export const useTreasuryAssets = (
   const targetChainId = chainId ?? daoConfig?.chain?.id;
   const chain = targetChainId !== undefined ? String(targetChainId) : undefined;
   const resolvedChainId = toOptionalNumber(targetChainId);
-  const hasTreasuryAssetConfig = daoConfig?.treasuryAssets !== undefined;
+  const hasTreasuryAssetConfig = hasConfiguredTreasuryAssets(
+    daoConfig?.treasuryAssets
+  );
+  const fallbackTokenAssets = hasTreasuryAssetConfig
+    ? daoConfig.treasuryAssets
+    : buildFallbackTreasuryAssets(daoConfig?.contracts?.governorToken);
   const apiEndpoint = (() => {
     const base = env("NEXT_PUBLIC_DEGOV_API");
     return base ? `${base}/graphql` : undefined;
   })();
 
   const configResult = useTreasuryAssetsFromConfig({
-    enabled: enabled && (hasTreasuryAssetConfig || !apiEndpoint),
+    enabled,
     address: treasuryAddress,
     chainId: resolvedChainId,
+    tokenAssets: fallbackTokenAssets,
   });
 
   const apiQuery = useTreasuryAssetsFromApi({
@@ -493,16 +514,42 @@ export const useTreasuryAssets = (
     };
   }
 
+  if (apiQuery.data?.assets?.length) {
+    return {
+      assets: apiQuery.data.assets,
+      totalBalance: apiQuery.data.totalBalance,
+      totalValueUSD: apiQuery.data.totalValueUSD,
+      totalChangeUSD: apiQuery.data.totalChangeUSD,
+      totalChangePercent: apiQuery.data.totalChangePercent,
+      source: "api",
+      isLoading: apiQuery.isLoading,
+      isError: apiQuery.isError,
+      error: apiQuery.error ?? undefined,
+      refetch: apiQuery.refetch,
+    };
+  }
+
+  if (configResult.data.assets.length) {
+    return {
+      ...configResult.data,
+      source: "config",
+      isLoading: configResult.isLoading,
+      isError: false,
+      error: undefined,
+      refetch: apiQuery.refetch,
+    };
+  }
+
   return {
-    assets: apiQuery.data?.assets ?? [],
-    totalBalance: apiQuery.data?.totalBalance ?? 0,
-    totalValueUSD: apiQuery.data?.totalValueUSD ?? 0,
-    totalChangeUSD: apiQuery.data?.totalChangeUSD ?? 0,
-    totalChangePercent: apiQuery.data?.totalChangePercent ?? 0,
-    source: apiQuery.data?.assets?.length ? "api" : "none",
-    isLoading: apiQuery.isLoading,
-    isError: apiQuery.isError,
-    error: apiQuery.error ?? undefined,
+    assets: [],
+    totalBalance: 0,
+    totalValueUSD: 0,
+    totalChangeUSD: 0,
+    totalChangePercent: 0,
+    source: "none",
+    isLoading: apiQuery.isLoading || configResult.isLoading,
+    isError: apiQuery.isError || configResult.isError,
+    error: apiQuery.error ?? configResult.error ?? undefined,
     refetch: apiQuery.refetch,
   };
 };
