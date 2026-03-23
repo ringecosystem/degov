@@ -489,19 +489,26 @@ export const useTreasuryAssets = (
     const base = env("NEXT_PUBLIC_DEGOV_API");
     return base ? `${base}/graphql` : undefined;
   })();
-
-  const configResult = useTreasuryAssetsFromConfig({
-    enabled,
-    address: treasuryAddress,
-    chainId: resolvedChainId,
-    tokenAssets: fallbackTokenAssets,
-  });
+  const apiEnabled = enabled && !hasTreasuryAssetConfig && Boolean(apiEndpoint);
 
   const apiQuery = useTreasuryAssetsFromApi({
     endpoint: apiEndpoint,
     address: treasuryAddress,
     chain,
-    enabled: enabled && !hasTreasuryAssetConfig && Boolean(apiEndpoint),
+    enabled: apiEnabled,
+  });
+
+  const shouldUseConfigSource =
+    enabled &&
+    (!apiEnabled ||
+      apiQuery.isError ||
+      (apiQuery.data !== undefined && !apiQuery.data.assets?.length));
+
+  const configResult = useTreasuryAssetsFromConfig({
+    enabled: shouldUseConfigSource,
+    address: treasuryAddress,
+    chainId: resolvedChainId,
+    tokenAssets: fallbackTokenAssets,
   });
 
   if (hasTreasuryAssetConfig || !apiEndpoint || !enabled) {
@@ -534,8 +541,8 @@ export const useTreasuryAssets = (
       ...configResult.data,
       source: "config",
       isLoading: configResult.isLoading,
-      isError: false,
-      error: undefined,
+      isError: configResult.isError,
+      error: configResult.error,
       refetch: apiQuery.refetch,
     };
   }
