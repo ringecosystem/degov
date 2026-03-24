@@ -6,7 +6,9 @@ export interface MemberSortState {
   direction: MemberSortDirection;
 }
 
+export const DEFAULT_ORDER_BY = "power_DESC";
+
 export const DEFAULT_SORT_STATE: MemberSortState = {
-  field: "lastVoted",
+  field: "power",
   direction: "desc",
 };

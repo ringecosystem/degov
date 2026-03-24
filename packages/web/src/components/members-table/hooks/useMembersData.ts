@@ -12,6 +12,8 @@ import { normalizeAddress } from "@/hooks/useProfileQuery";
 import { contributorService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
+import { DEFAULT_ORDER_BY } from "../types";
+
 type PageParam = {
   offset: number;
   limit: number;
@@ -24,7 +26,6 @@ export function useMembersData(
   orderBy?: string,
   includeBotInQuery = false
 ) {
-  const DEFAULT_ORDER_BY = "lastVoteTimestamp_DESC_NULLS_LAST";
   const daoConfig = useDaoConfig();
   const { botAddress } = useAiBotAddress();
   const isSearching = searchTerm.trim().length > 0;
