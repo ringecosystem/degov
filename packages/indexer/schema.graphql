@@ -2,8 +2,15 @@
 
 ### === ivotes
 
-type DelegateChanged @entity {
+type DelegateChanged @entity @index(fields: ["chainId", "governorAddress", "delegator"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   delegator: String! # address
   fromDelegate: String! # address
   toDelegate: String! # address
@@ -12,8 +19,15 @@ type DelegateChanged @entity {
   transactionHash: String!
 }
 
-type DelegateVotesChanged @entity {
+type DelegateVotesChanged @entity @index(fields: ["chainId", "governorAddress", "delegate"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   delegate: String! # address
   previousVotes: BigInt! # uint256
   newVotes: BigInt! # uint256
@@ -22,8 +36,15 @@ type DelegateVotesChanged @entity {
   transactionHash: String!
 }
 
-type TokenTransfer @entity {
+type TokenTransfer @entity @index(fields: ["chainId", "governorAddress", "tokenAddress"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   from: String!
   to: String!
   value: BigInt!
@@ -35,16 +56,28 @@ type TokenTransfer @entity {
 
 ### === igovernor
 
-type ProposalCanceled @entity {
+type ProposalCanceled @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   proposalId: String! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
 }
 
-type ProposalCreated @entity {
+type ProposalCreated @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   proposalId: String! # uint256
   proposer: String! # address
   targets: [String!]! # address[]
@@ -59,16 +92,28 @@ type ProposalCreated @entity {
   transactionHash: String!
 }
 
-type ProposalExecuted @entity {
+type ProposalExecuted @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   proposalId: String! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
 }
 
-type ProposalQueued @entity {
+type ProposalQueued @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   proposalId: String! # uint256
   etaSeconds: BigInt! # uint256
   blockNumber: BigInt!
@@ -76,8 +121,14 @@ type ProposalQueued @entity {
   transactionHash: String!
 }
 
-type VoteCast @entity {
+type VoteCast @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   voter: String! # address
   proposalId: String! # uint256
   support: Int! # uint8
@@ -88,8 +139,14 @@ type VoteCast @entity {
   transactionHash: String!
 }
 
-type VoteCastWithParams @entity {
+type VoteCastWithParams @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   voter: String! # address
   proposalId: String! # uint256
   support: Int! # uint8
@@ -104,8 +161,14 @@ type VoteCastWithParams @entity {
 
 ### ====== custom
 
-type VoteCastGroup @entity {
+type VoteCastGroup @entity @index(fields: ["chainId", "governorAddress", "refProposalId"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   proposal: Proposal!
   type: String!
   voter: String! # address
@@ -119,8 +182,14 @@ type VoteCastGroup @entity {
   transactionHash: String!
 }
 
-type Proposal @entity {
+type Proposal @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {
   id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   proposalId: String! # uint256
   proposer: String! # address
   targets: [String!]! # address[]
@@ -152,8 +221,15 @@ type Proposal @entity {
 }
 
 
-type DataMetric @entity {
+type DataMetric @entity @index(fields: ["chainId", "governorAddress", "daoCode"]) {
   id: ID! # global (or chain id?)
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   proposalsCount: Int
   votesCount: Int
   votesWithParamsCount: Int
@@ -166,8 +242,15 @@ type DataMetric @entity {
 }
 
 
-type DelegateRolling @entity {
+type DelegateRolling @entity @index(fields: ["chainId", "governorAddress", "delegator"]) {
   id: ID! # tx hash
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   delegator: String! # address
   fromDelegate: String! # address
   toDelegate: String! # address
@@ -182,8 +265,15 @@ type DelegateRolling @entity {
   toNewVotes: BigInt # uint256
 }
 
-type Delegate @entity {
+type Delegate @entity @index(fields: ["chainId", "governorAddress", "fromDelegate", "toDelegate"]) {
   id: ID! # tx hash
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   fromDelegate: String! # address
   toDelegate: String!
   blockNumber: BigInt!
@@ -193,8 +283,15 @@ type Delegate @entity {
   power: BigInt!
 }
 
-type Contributor @entity {
+type Contributor @entity @index(fields: ["chainId", "governorAddress", "id"]) {
   id: ID! # tx hash
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
 
   blockNumber: BigInt!
   blockTimestamp: BigInt!
@@ -209,8 +306,15 @@ type Contributor @entity {
   delegatesCountEffective: Int!
 }
 
-type DelegateMapping @entity {
+type DelegateMapping @entity @index(fields: ["chainId", "governorAddress", "from"]) {
   id: ID! # from
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
   from: String! # address
   to: String! # address
 
