@@ -32,11 +32,51 @@ export interface GovernorHandlerOptions {
   textPlus: TextPlus;
 }
 
+interface GovernanceScopeFields {
+  chainId?: number | null;
+  daoCode?: string | null;
+  governorAddress?: string | null;
+  contractAddress?: string | null;
+  logIndex?: number | null;
+  transactionIndex?: number | null;
+}
+
 export class GovernorHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
     private readonly options: GovernorHandlerOptions
   ) {}
+
+  private governorAddress(): string {
+    return DegovIndexerHelpers.normalizeAddress(this.options.indexContract.address)!;
+  }
+
+  private scopeFields(): GovernanceScopeFields {
+    return {
+      chainId: this.options.chainId,
+      daoCode: this.options.work.daoCode,
+      governorAddress: this.governorAddress(),
+    };
+  }
+
+  private eventFields(
+    eventLog: EvmLog<EvmFieldSelection>
+  ): GovernanceScopeFields {
+    return {
+      ...this.scopeFields(),
+      contractAddress: DegovIndexerHelpers.normalizeAddress(eventLog.address),
+      logIndex: eventLog.logIndex,
+      transactionIndex: eventLog.transactionIndex,
+    };
+  }
+
+  private applyScopeFields<T extends object>(
+    target: T,
+    scope: GovernanceScopeFields
+  ): T {
+    Object.assign(target, scope);
+    return target;
+  }
 
   async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const isProposalCreated =
@@ -97,6 +137,7 @@ export class GovernorHandler {
     const proposalId = this.stdProposalId(event.proposalId);
     const entity = new ProposalCreated({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       proposalId,
       proposer: event.proposer,
       targets: event.targets,
@@ -163,6 +204,7 @@ export class GovernorHandler {
 
     const proposal = new Proposal({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       proposalId,
       proposer: event.proposer,
       targets: event.targets,
@@ -188,13 +230,14 @@ export class GovernorHandler {
 
     await this.storeGlobalDataMetric({
       proposalsCount: 1,
-    });
+    }, proposal);
   }
 
   private async storeProposalQueued(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalQueued.decode(eventLog);
     const entity = new ProposalQueued({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       proposalId: this.stdProposalId(event.proposalId),
       etaSeconds: event.etaSeconds,
       blockNumber: BigInt(eventLog.block.height),
@@ -208,6 +251,7 @@ export class GovernorHandler {
     const event = igovernorAbi.events.ProposalExecuted.decode(eventLog);
     const entity = new ProposalExecuted({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       proposalId: this.stdProposalId(event.proposalId),
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
@@ -220,6 +264,7 @@ export class GovernorHandler {
     const event = igovernorAbi.events.ProposalCanceled.decode(eventLog);
     const entity = new ProposalCanceled({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       proposalId: this.stdProposalId(event.proposalId),
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
@@ -232,6 +277,7 @@ export class GovernorHandler {
     const event = igovernorAbi.events.VoteCast.decode(eventLog);
     const entity = new VoteCast({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       voter: event.voter,
       proposalId: this.stdProposalId(event.proposalId),
       support: event.support,
@@ -245,6 +291,7 @@ export class GovernorHandler {
 
     const vcg = new VoteCastGroup({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       type: "vote-cast-without-params",
       voter: event.voter,
       refProposalId: this.stdProposalId(event.proposalId),
@@ -262,6 +309,7 @@ export class GovernorHandler {
     const event = igovernorAbi.events.VoteCastWithParams.decode(eventLog);
     const entity = new VoteCastWithParams({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       voter: event.voter,
       proposalId: this.stdProposalId(event.proposalId),
       support: event.support,
@@ -276,6 +324,7 @@ export class GovernorHandler {
 
     const vcg = new VoteCastGroup({
       id: eventLog.id,
+      ...this.eventFields(eventLog),
       type: "vote-cast-with-params",
       voter: event.voter,
       refProposalId: this.stdProposalId(event.proposalId),
@@ -294,9 +343,11 @@ export class GovernorHandler {
     const proposal: Proposal | undefined = await this.ctx.store.findOne(
       Proposal,
       {
-        where: {
+        where: DegovIndexerHelpers.proposalScopeWhere({
+          chainId: vcg.chainId ?? this.options.chainId,
+          governorAddress: vcg.governorAddress ?? this.governorAddress(),
           proposalId: vcg.refProposalId,
-        },
+        }),
       }
     );
 
@@ -352,6 +403,14 @@ export class GovernorHandler {
     if (storedContributor) {
       storedContributor.lastVoteBlockNumber = BigInt(vcg.blockNumber);
       storedContributor.lastVoteTimestamp = BigInt(vcg.blockTimestamp);
+      this.applyScopeFields(storedContributor, {
+        chainId: vcg.chainId,
+        daoCode: vcg.daoCode,
+        governorAddress: vcg.governorAddress,
+        contractAddress: vcg.contractAddress,
+        logIndex: vcg.logIndex,
+        transactionIndex: vcg.transactionIndex,
+      });
       await this.ctx.store.save(storedContributor);
     }
 
@@ -363,10 +422,13 @@ export class GovernorHandler {
       votesWeightForSum,
       votesWeightAgainstSum,
       votesWeightAbstainSum,
-    });
+    }, vcg);
   }
 
-  private async storeGlobalDataMetric(options: DataMetricOptions) {
+  private async storeGlobalDataMetric(
+    options: DataMetricOptions,
+    source: GovernanceScopeFields
+  ) {
     const storedDataMetric: DataMetric | undefined =
       await this.ctx.store.findOne(DataMetric, {
         where: {
@@ -381,6 +443,7 @@ export class GovernorHandler {
     if (!storedDataMetric) {
       await this.ctx.store.insert(dm);
     }
+    this.applyScopeFields(dm, source);
     dm.proposalsCount =
       (dm.proposalsCount ?? 0) + (options.proposalsCount ?? 0);
     dm.votesCount = (dm.votesCount ?? 0) + (options.votesCount ?? 0);
