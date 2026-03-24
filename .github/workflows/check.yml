@@ -39,8 +39,11 @@ jobs:
       - name: Check build
         working-directory: packages/indexer
         run: |
-          yarn install
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn install --frozen-lockfile
           yarn build
+          yarn test
 
   check-config:
     name: Check Config
