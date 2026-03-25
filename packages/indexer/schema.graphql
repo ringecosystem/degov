@@ -54,6 +54,30 @@ type TokenTransfer @entity @index(fields: ["chainId", "governorAddress", "tokenA
   transactionHash: String!
 }
 
+type VotePowerCheckpoint @entity @index(fields: ["chainId", "governorAddress", "tokenAddress", "account", "clockMode", "timepoint"]) {
+  id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
+  account: String! # address
+  clockMode: String!
+  timepoint: BigInt!
+  previousPower: BigInt!
+  newPower: BigInt!
+  delta: BigInt!
+  cause: String!
+  delegator: String # address
+  fromDelegate: String # address
+  toDelegate: String # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
 ### === igovernor
 
 type ProposalCanceled @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {
