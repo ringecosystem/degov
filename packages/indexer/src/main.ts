@@ -1,4 +1,3 @@
-import { TypeormDatabase } from "@subsquid/typeorm-store";
 import { GovernorHandler } from "./handler/governor";
 import { TokenHandler } from "./handler/token";
 import { EvmBatchProcessor } from "@subsquid/evm-processor";
@@ -6,6 +5,7 @@ import { evmFieldSelection, IndexerProcessorConfig } from "./types";
 import { DegovDataSource } from "./datasource";
 import { ChainTool } from "./internal/chaintool";
 import { TextPlus } from "./internal/textplus";
+import { createDatabase } from "./database";
 
 async function main() {
   const degovConfigPath = process.env.DEGOV_CONFIG_PATH;
@@ -94,10 +94,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   const textPlus = new TextPlus();
 
   processor.run(
-    new TypeormDatabase({
-      supportHotBlocks: true,
-      isolationLevel: "READ COMMITTED",
-    }),
+    createDatabase(),
     async (ctx) => {
       for (const c of ctx.blocks) {
         for (const event of c.logs) {
