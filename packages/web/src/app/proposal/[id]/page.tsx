@@ -13,7 +13,7 @@ import { LoadingState } from "@/components/ui/loading-spinner";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useNotificationVisibility } from "@/hooks/useNotificationVisibility";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { parseDescription } from "@/utils";
 import { CACHE_TIMES } from "@/utils/query-config";
@@ -85,15 +85,27 @@ export default function ProposalDetailPage() {
     return ACTIVE_STATES.includes(proposalStatus?.data as ProposalState);
   }, [proposalStatus?.data]);
 
+  const proposalScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
+
   const {
     data: allData,
     isPending,
     refetch: refetchProposal,
   } = useQuery({
-    queryKey: ["proposal", id, daoConfig?.indexer?.endpoint],
+    queryKey: [
+      "proposal",
+      id,
+      daoConfig?.code,
+      daoConfig?.indexer?.endpoint,
+      proposalScope,
+    ],
     queryFn: () =>
       proposalService.getAllProposals(daoConfig?.indexer.endpoint as string, {
         where: {
+          ...proposalScope,
           proposalId_eq: id as string,
         },
       }),
@@ -142,12 +154,15 @@ export default function ProposalDetailPage() {
         queryKey: [
           "proposalCanceledById",
           data?.proposalId,
+          daoConfig?.code,
           daoConfig?.indexer?.endpoint,
+          proposalScope,
         ],
         queryFn: async () => {
           const result = await proposalService.getProposalCanceledById(
             daoConfig?.indexer?.endpoint as string,
-            data?.proposalId as string
+            data?.proposalId as string,
+            proposalScope
           );
           return result ?? null;
         },
@@ -159,12 +174,15 @@ export default function ProposalDetailPage() {
         queryKey: [
           "proposalExecutedById",
           data?.proposalId,
+          daoConfig?.code,
           daoConfig?.indexer?.endpoint,
+          proposalScope,
         ],
         queryFn: async () => {
           const result = await proposalService.getProposalExecutedById(
             daoConfig?.indexer?.endpoint as string,
-            data?.proposalId as string
+            data?.proposalId as string,
+            proposalScope
           );
           return result ?? null;
         },
@@ -176,12 +194,15 @@ export default function ProposalDetailPage() {
         queryKey: [
           "proposalQueuedById",
           data?.proposalId,
+          daoConfig?.code,
           daoConfig?.indexer?.endpoint,
+          proposalScope,
         ],
         queryFn: async () => {
           const result = await proposalService.getProposalQueuedById(
             daoConfig?.indexer?.endpoint as string,
-            data?.proposalId as string
+            data?.proposalId as string,
+            proposalScope
           );
           return result ?? null;
         },

@@ -9,7 +9,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 import { dayjsHumanize } from "@/utils/date";
 import { formatNumberForDisplay } from "@/utils/number";
@@ -99,9 +99,12 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     });
 
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint ?? "",
+        buildGovernanceScope(daoConfig)
+      ),
     enabled: !!daoConfig?.indexer?.endpoint && type === "default",
   });
 

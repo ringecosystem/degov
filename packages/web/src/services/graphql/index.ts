@@ -1,5 +1,6 @@
 import { clearToken } from "@/lib/auth/token-manager";
 import { getToken } from "@/lib/auth/token-manager";
+import type { Config } from "@/types/config";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
 import { request } from "./client";
@@ -22,6 +23,52 @@ const emptyProposalMetrics: Types.ProposalMetricsItem = {
   votesWithoutParamsCount: "0",
 };
 
+export type GovernanceScope = {
+  chainId_eq?: number;
+  governorAddress_eq?: string;
+  daoCode_eq?: string;
+};
+
+type ProposalVoterFilter = {
+  voter_eq?: string;
+  support_eq?: number;
+};
+
+export type ProposalWhere = GovernanceScope & {
+  proposalId_eq?: string;
+  proposer_eq?: string;
+  description_containsInsensitive?: string;
+  voters_every?: ProposalVoterFilter;
+  voters_some?: ProposalVoterFilter;
+  OR?: {
+    voters_some?: ProposalVoterFilter;
+  };
+};
+
+type ProposalMetricsWhere = GovernanceScope & {
+  id_eq?: string;
+};
+
+const normalizeScopeAddress = (address?: string | null) => {
+  return address ? address.toLowerCase() : undefined;
+};
+
+export const buildGovernanceScope = (
+  daoConfig?: Config | null
+): GovernanceScope => {
+  if (!daoConfig) {
+    return {};
+  }
+
+  return {
+    chainId_eq: daoConfig.chain?.id,
+    governorAddress_eq: normalizeScopeAddress(
+      daoConfig.contracts?.governor
+    ),
+    daoCode_eq: daoConfig.code,
+  };
+};
+
 export const proposalService = {
   getAllProposals: async (
     endpoint: string,
@@ -29,14 +76,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        proposalId_eq?: string;
-        proposer_eq?: string;
-        voters_every?: {
-          voter_eq?: string;
-          support_eq?: number;
-        };
-      };
+      where?: ProposalWhere;
     } = {}
   ) => {
     const response = await request<Types.ProposalResponse>(
@@ -52,14 +92,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        proposalId_eq?: string;
-        proposer_eq?: string;
-        voters_every?: {
-          voter_eq?: string;
-          support_eq?: number;
-        };
-      };
+      where?: ProposalWhere;
       voter?: string;
     } = {}
   ) => {
@@ -76,9 +109,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        description_containsInsensitive?: string;
-      };
+      where?: ProposalWhere;
     } = {}
   ) => {
     const response = await request<Types.ProposalDescriptionResponse>(
@@ -88,15 +119,26 @@ export const proposalService = {
     );
     return response?.proposals ?? [];
   },
-  getProposalMetrics: async (endpoint: string) => {
+  getProposalMetrics: async (endpoint: string, scope?: GovernanceScope) => {
     const response = await request<Types.ProposalMetricsResponse>(
       endpoint,
-      Queries.GET_PROPOSAL_METRICS
+      Queries.GET_PROPOSAL_METRICS,
+      {
+        where: {
+          id_eq: "global",
+          ...scope,
+        } satisfies ProposalMetricsWhere,
+      }
     );
     return response?.dataMetrics?.[0] ?? emptyProposalMetrics;
   },
 
-  getProposalVoteRate: async (endpoint: string, voter: string, limit = 10) => {
+  getProposalVoteRate: async (
+    endpoint: string,
+    voter: string,
+    limit = 10,
+    scope?: GovernanceScope
+  ) => {
     if (!voter) {
       return [] as Types.ProposalVoteRateResponse["proposals"];
     }
@@ -106,6 +148,7 @@ export const proposalService = {
       {
         limit,
         voter: voter.toLowerCase(),
+        where: scope,
       }
     );
     return response?.proposals ?? [];
@@ -175,37 +218,52 @@ export const proposalService = {
     }
   },
 
-  getProposalCanceledById: async (endpoint: string, id: string) => {
+  getProposalCanceledById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalCanceledByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_CANCELED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );
     return response?.proposalCanceleds?.[0];
   },
-  getProposalExecutedById: async (endpoint: string, id: string) => {
+  getProposalExecutedById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalExecutedByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_EXECUTED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );
     return response?.proposalExecuteds?.[0];
   },
-  getProposalQueuedById: async (endpoint: string, id: string) => {
+  getProposalQueuedById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalQueuedByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_QUEUED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );

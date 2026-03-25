@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
@@ -83,10 +83,11 @@ export default function Members() {
   );
 
   const { data: dataMetrics } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
       proposalService.getProposalMetrics(
-        daoConfig?.indexer?.endpoint as string
+        daoConfig?.indexer?.endpoint as string,
+        buildGovernanceScope(daoConfig)
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
   });
