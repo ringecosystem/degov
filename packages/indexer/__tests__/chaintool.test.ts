@@ -114,4 +114,61 @@ describe("ChainTool", () => {
       { functionName: "decimals", args: undefined },
     ]);
   });
+
+  it("falls back to latest block when clock is unavailable", async () => {
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    jest
+      .spyOn(chainTool, "readContract")
+      .mockRejectedValue(new Error("execution reverted: selector not found"));
+    jest.spyOn(chainTool as any, "_executeWithFallbacks").mockImplementation(
+      async (_options: any, action: any) =>
+        action({
+          getBlock: jest.fn().mockResolvedValue({
+            number: 321n,
+            timestamp: 654n,
+          }),
+        })
+    );
+
+    await expect(
+      chainTool.currentClock({
+        chainId: 1,
+        contractAddress,
+      })
+    ).resolves.toEqual({
+      clockMode: ClockMode.BlockNumber,
+      timepoint: 321n,
+      timestampMs: 654_000n,
+    });
+  });
+
+  it("uses getPriorVotes when getPastVotes is unavailable", async () => {
+    const chainTool = new ChainTool();
+    const readContract = jest.spyOn(chainTool, "readContract");
+
+    readContract
+      .mockRejectedValueOnce(new Error("execution reverted: selector not found"))
+      .mockResolvedValueOnce(77n as never);
+
+    await expect(
+      chainTool.historicalVotes({
+        chainId: 1,
+        contractAddress,
+        account: "0x3333333333333333333333333333333333333333",
+        timepoint: 123n,
+      })
+    ).resolves.toEqual({
+      method: "getPriorVotes",
+      votes: 77n,
+    });
+
+    expect(readContract).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        functionName: "getPriorVotes",
+        args: ["0x3333333333333333333333333333333333333333", 123n],
+      })
+    );
+  });
 });

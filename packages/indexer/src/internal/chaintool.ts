@@ -38,6 +38,17 @@ export interface QuorumResult {
   decimals: bigint;
 }
 
+export interface CurrentClockResult {
+  clockMode: ClockMode;
+  timepoint: bigint;
+  timestampMs: bigint;
+}
+
+export interface HistoricalVotesResult {
+  method: "getPastVotes" | "getPriorVotes";
+  votes: bigint;
+}
+
 // Added interface for the quorum cache entry
 export interface QuorumCacheEntry {
   result: QuorumResult;
@@ -89,6 +100,32 @@ const ABI_FUNCTION_DECIMALS: Abi = [
     inputs: [],
     name: "decimals",
     outputs: [{ internalType: "uint8", name: "", type: "uint8" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_GET_PAST_VOTES: Abi = [
+  {
+    inputs: [
+      { internalType: "address", name: "account", type: "address" },
+      { internalType: "uint256", name: "timepoint", type: "uint256" },
+    ],
+    name: "getPastVotes",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_GET_PRIOR_VOTES: Abi = [
+  {
+    inputs: [
+      { internalType: "address", name: "account", type: "address" },
+      { internalType: "uint256", name: "blockNumber", type: "uint256" },
+    ],
+    name: "getPriorVotes",
+    outputs: [{ internalType: "uint96", name: "", type: "uint96" }],
     stateMutability: "view",
     type: "function",
   },
@@ -460,6 +497,99 @@ export class ChainTool {
     }
   }
 
+  async currentClock(options: BaseContractOptions): Promise<CurrentClockResult> {
+    const clockMode = await this.clockMode(options);
+
+    try {
+      const timepoint = BigInt(
+        await this.readContract<bigint>({
+          ...options,
+          abi: ABI_FUNCTION_CLOCK,
+          functionName: "clock",
+        })
+      );
+
+      if (clockMode === ClockMode.Timestamp) {
+        return {
+          clockMode,
+          timepoint,
+          timestampMs: timepoint * 1000n,
+        };
+      }
+
+      const timestampMs =
+        (await this.timepointToTimestampMs({
+          ...options,
+          timepoint,
+          clockMode,
+        })) ?? 0n;
+
+      return {
+        clockMode,
+        timepoint,
+        timestampMs,
+      };
+    } catch (error) {
+      if (!this.isMissingFunctionError(error)) {
+        throw error;
+      }
+    }
+
+    const latestBlock = await this._executeWithFallbacks(options, (client) =>
+      client.getBlock()
+    );
+
+    return {
+      clockMode,
+      timepoint:
+        clockMode === ClockMode.Timestamp
+          ? latestBlock.timestamp
+          : (latestBlock.number ?? 0n),
+      timestampMs: latestBlock.timestamp * 1000n,
+    };
+  }
+
+  async historicalVotes(
+    options: BaseContractOptions & {
+      account: `0x${string}`;
+      timepoint: bigint;
+    }
+  ): Promise<HistoricalVotesResult> {
+    try {
+      const votes = BigInt(
+        await this.readContract<bigint>({
+          ...options,
+          abi: ABI_FUNCTION_GET_PAST_VOTES,
+          functionName: "getPastVotes",
+          args: [options.account, options.timepoint],
+        })
+      );
+
+      return {
+        method: "getPastVotes",
+        votes,
+      };
+    } catch (error) {
+      if (!this.isMissingFunctionError(error)) {
+        throw error;
+      }
+    }
+
+    const votes = BigInt(
+      await this.readContract<bigint>({
+        ...options,
+        abi: ABI_FUNCTION_GET_PRIOR_VOTES,
+        functionName: "getPriorVotes",
+        args: [options.account, options.timepoint],
+      })
+    );
+
+    return {
+      method: "getPriorVotes",
+      votes,
+    };
+  }
+
   async timepointToTimestampMs(options: {
     chainId: number;
     contractAddress: `0x${string}`;
@@ -515,37 +645,15 @@ export class ChainTool {
       if (options.timepoint !== undefined) {
         timepoint = options.timepoint;
       } else {
-        try {
-          const clockResult = await this._executeWithFallbacks(
-            options,
-            (client) =>
-              client.readContract({
-                address: options.contractAddress,
-                abi: ABI_FUNCTION_CLOCK,
-                functionName: "clock",
-              })
-          );
-          timepoint = BigInt(clockResult as any);
-        } catch (e: any) {
-          console.warn(
-            `Failed to query clock for ${options.contractAddress}, falling back to latest block: ${e.message}`
-          );
-          const latestBlock = await this._executeWithFallbacks(
-            options,
-            (client) => client.getBlock()
-          );
-          timepoint =
-            clockMode === ClockMode.Timestamp
-              ? latestBlock.timestamp
-              : latestBlock.number!;
-        }
+        const currentClock = await this.currentClock(options);
+        timepoint = currentClock.timepoint;
 
         switch (clockMode) {
           case ClockMode.Timestamp:
-            timepoint -= 60n * 3n; // 3 minutes ago
+            timepoint = timepoint > 60n * 3n ? timepoint - 60n * 3n : 0n;
             break;
           case ClockMode.BlockNumber:
-            timepoint -= 15n; // 15 blocks ago
+            timepoint = timepoint > 15n ? timepoint - 15n : 0n;
             break;
         }
       }

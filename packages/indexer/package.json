@@ -9,8 +9,10 @@
     "codegen": "sqd codegen",
     "migrate:db": "zx scripts/sqd-migration.mjs",
     "build": "sqd build",
+    "reconcile": "node lib/reconcile.js",
+    "replay:backfill": "./scripts/replay-backfill.sh",
     "test": "jest --runInBand",
-    "test:integration": "jest --runInBand --runTestsByPath __tests__/chaintool.integration.test.ts __tests__/textplus.integration.test.ts"
+    "test:integration": "jest --runInBand --config jest.integration.config.js --runTestsByPath __tests__/chaintool.integration.test.ts __tests__/textplus.integration.test.ts"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^2.3.3",

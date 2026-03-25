@@ -4,6 +4,23 @@ import { join } from "path";
 import { DegovDataSource } from "../src/datasource";
 
 describe("DegovDataSource", () => {
+  const startBlockOverride = process.env.DEGOV_INDEXER_START_BLOCK;
+  const endBlockOverride = process.env.DEGOV_INDEXER_END_BLOCK;
+
+  afterEach(() => {
+    if (startBlockOverride === undefined) {
+      delete process.env.DEGOV_INDEXER_START_BLOCK;
+    } else {
+      process.env.DEGOV_INDEXER_START_BLOCK = startBlockOverride;
+    }
+
+    if (endBlockOverride === undefined) {
+      delete process.env.DEGOV_INDEXER_END_BLOCK;
+    } else {
+      process.env.DEGOV_INDEXER_END_BLOCK = endBlockOverride;
+    }
+  });
+
   it("includes timeLock in indexed contracts", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "degov-datasource-"));
     const configPath = join(tempDir, "degov.yml");
@@ -47,6 +64,42 @@ contracts:
           standard: undefined,
         },
       ]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows start and end block overrides from the environment", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "degov-datasource-"));
+    const configPath = join(tempDir, "degov.yml");
+
+    process.env.DEGOV_INDEXER_START_BLOCK = "100";
+    process.env.DEGOV_INDEXER_END_BLOCK = "200";
+
+    try {
+      await writeFile(
+        configPath,
+        `
+code: demo
+chain:
+  id: 46
+  rpcs:
+    - https://rpc.darwinia.network
+indexer:
+  startBlock: 1
+  endBlock: 2
+contracts:
+  governor: "0x1111111111111111111111111111111111111111"
+  governorToken:
+    address: "0x2222222222222222222222222222222222222222"
+    standard: ERC20
+`
+      );
+
+      const config = await DegovDataSource.fromDegovConfigPath(configPath);
+
+      expect(config.startBlock).toBe(100);
+      expect(config.endBlock).toBe(200);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
