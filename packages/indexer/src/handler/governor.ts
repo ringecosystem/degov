@@ -151,11 +151,13 @@ interface CanonicalProposalMetadata {
 export class GovernorHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
-    private readonly options: GovernorHandlerOptions
+    private readonly options: GovernorHandlerOptions,
   ) {}
 
   private governorAddress(): string {
-    return DegovIndexerHelpers.normalizeAddress(this.options.indexContract.address)!;
+    return DegovIndexerHelpers.normalizeAddress(
+      this.options.indexContract.address,
+    )!;
   }
 
   private scopeFields(): GovernanceScopeFields {
@@ -167,7 +169,7 @@ export class GovernorHandler {
   }
 
   private eventFields(
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ): GovernanceScopeFields {
     return {
       ...this.scopeFields(),
@@ -179,7 +181,7 @@ export class GovernorHandler {
 
   private applyScopeFields<T extends object>(
     target: T,
-    scope: GovernanceScopeFields
+    scope: GovernanceScopeFields,
   ): T {
     Object.assign(target, scope);
     return target;
@@ -187,7 +189,7 @@ export class GovernorHandler {
 
   private hasTopic(
     eventLog: EvmLog<EvmFieldSelection>,
-    topic: string
+    topic: string,
   ): boolean {
     return eventLog.topics.includes(topic);
   }
@@ -203,7 +205,7 @@ export class GovernorHandler {
   private proposalEventEpochId(
     proposal: Proposal,
     state: string,
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ): string {
     return `${proposal.id}:state:${state.toLowerCase()}:${eventLog.id}`;
   }
@@ -212,7 +214,9 @@ export class GovernorHandler {
     return DegovIndexerHelpers.normalizeAddress(value);
   }
 
-  private async findProposal(proposalId: string): Promise<Proposal | undefined> {
+  private async findProposal(
+    proposalId: string,
+  ): Promise<Proposal | undefined> {
     return this.ctx.store.findOne(Proposal, {
       where: DegovIndexerHelpers.proposalScopeWhere({
         chainId: this.options.chainId,
@@ -259,14 +263,13 @@ export class GovernorHandler {
   private async syncTimelockOperationForProposalQueue(
     proposal: Proposal,
     eventLog: EvmLog<EvmFieldSelection>,
-    etaSeconds: bigint
+    etaSeconds: bigint,
   ) {
     if (!proposal.timelockAddress || !proposal.descriptionHash) {
       return;
     }
 
-    const operationId =
-      this.proposalTimelockOperationId(proposal) ?? undefined;
+    const operationId = this.proposalTimelockOperationId(proposal) ?? undefined;
     if (!operationId) {
       return;
     }
@@ -302,7 +305,8 @@ export class GovernorHandler {
     operation.proposal = proposal;
     operation.proposalId = proposal.proposalId;
     operation.logIndex = operation.logIndex ?? eventLog.logIndex;
-    operation.transactionIndex = operation.transactionIndex ?? eventLog.transactionIndex;
+    operation.transactionIndex =
+      operation.transactionIndex ?? eventLog.transactionIndex;
     operation.predecessor = ZERO_BYTES32;
     operation.salt = governorTimelockSalt({
       governorAddress: this.governorAddress(),
@@ -318,7 +322,8 @@ export class GovernorHandler {
     operation.executedCallCount = operation.executedCallCount ?? 0;
     operation.delaySeconds = operation.delaySeconds ?? delaySeconds;
     operation.readyAt = operation.readyAt ?? etaSeconds * 1000n;
-    operation.queuedBlockNumber = operation.queuedBlockNumber ?? BigInt(eventLog.block.height);
+    operation.queuedBlockNumber =
+      operation.queuedBlockNumber ?? BigInt(eventLog.block.height);
     operation.queuedBlockTimestamp =
       operation.queuedBlockTimestamp ?? BigInt(eventLog.block.timestamp);
     operation.queuedTransactionHash =
@@ -350,7 +355,8 @@ export class GovernorHandler {
       call.timelockAddress = proposal.timelockAddress;
       call.contractAddress = proposal.timelockAddress;
       call.logIndex = call.logIndex ?? eventLog.logIndex;
-      call.transactionIndex = call.transactionIndex ?? eventLog.transactionIndex;
+      call.transactionIndex =
+        call.transactionIndex ?? eventLog.transactionIndex;
       call.operation = operation;
       call.operationId = operationId;
       call.proposal = proposal;
@@ -413,7 +419,7 @@ export class GovernorHandler {
     if (
       this.hasTopic(
         eventLog,
-        igovernorAbi.events.LateQuorumVoteExtensionSet.topic
+        igovernorAbi.events.LateQuorumVoteExtensionSet.topic,
       )
     ) {
       await this.storeLateQuorumVoteExtensionSet(eventLog);
@@ -424,9 +430,7 @@ export class GovernorHandler {
     if (this.hasTopic(eventLog, igovernorAbi.events.VoteCast.topic)) {
       await this.storeVoteCast(eventLog);
     }
-    if (
-      this.hasTopic(eventLog, igovernorAbi.events.VoteCastWithParams.topic)
-    ) {
+    if (this.hasTopic(eventLog, igovernorAbi.events.VoteCastWithParams.topic)) {
       await this.storeVoteCastWithParams(eventLog);
     }
   }
@@ -437,15 +441,15 @@ export class GovernorHandler {
 
   private async loadCanonicalProposalMetadata(
     eventLog: EvmLog<EvmFieldSelection>,
-    event: igovernorAbi.ProposalCreatedEventArgs
+    event: igovernorAbi.ProposalCreatedEventArgs,
   ): Promise<CanonicalProposalMetadata> {
     const { chainTool, indexContract, work } = this.options;
     const governorTokenContract = work.contracts.find(
-      (item) => item.name === "governorToken"
+      (item) => item.name === "governorToken",
     );
     if (!governorTokenContract) {
       throw new Error(
-        `governorToken contract not found in work daoCode: ${work.daoCode} -> governorContract: ${indexContract.address}`
+        `governorToken contract not found in work daoCode: ${work.daoCode} -> governorContract: ${indexContract.address}`,
       );
     }
 
@@ -483,7 +487,7 @@ export class GovernorHandler {
         ...contractOptions,
         abi: ABI_FUNCTION_TIMELOCK,
         functionName: "timelock",
-      })
+      }),
     );
     const qmr = await chainTool.quorum({
       ...contractOptions,
@@ -541,8 +545,7 @@ export class GovernorHandler {
       proposalSnapshot,
       quorum: qmr.quorum,
       timelockAddress,
-      voteEndTimestamp:
-        exactEndTimestamp ?? BigInt(fallbackTimestamps.voteEnd),
+      voteEndTimestamp: exactEndTimestamp ?? BigInt(fallbackTimestamps.voteEnd),
       voteStartTimestamp:
         exactStartTimestamp ?? BigInt(fallbackTimestamps.voteStart),
     };
@@ -550,7 +553,7 @@ export class GovernorHandler {
 
   private async storeProposalActions(
     proposal: Proposal,
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ) {
     const actions = proposal.targets.map(
       (target, actionIndex) =>
@@ -567,7 +570,7 @@ export class GovernorHandler {
           blockNumber: proposal.blockNumber,
           blockTimestamp: proposal.blockTimestamp,
           transactionHash: proposal.transactionHash,
-        })
+        }),
     );
 
     if (actions.length > 0) {
@@ -578,7 +581,7 @@ export class GovernorHandler {
   private async storeInitialProposalStateEpochs(
     proposal: Proposal,
     eventLog: EvmLog<EvmFieldSelection>,
-    metadata: CanonicalProposalMetadata
+    metadata: CanonicalProposalMetadata,
   ) {
     const pendingEpoch = new ProposalStateEpoch({
       id: this.proposalStateEpochId(proposal, GOVERNANCE_STATE_PENDING),
@@ -628,7 +631,7 @@ export class GovernorHandler {
   private async storeProposalStateEpoch(
     proposal: Proposal,
     state: string,
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ) {
     const existing = await this.ctx.store.findOne(ProposalStateEpoch, {
       where: {
@@ -714,13 +717,13 @@ export class GovernorHandler {
 
     const canonicalMetadata = await this.loadCanonicalProposalMetadata(
       eventLog,
-      event
+      event,
     );
     const eifo = await this.options.textPlus.extractInfo(event.description);
     this.ctx.log.info(
       `Extracted info for proposal ${proposalId}: ${DegovIndexerHelpers.safeJsonStringify(
-        eifo
-      )}`
+        eifo,
+      )}`,
     );
 
     const proposal = new Proposal({
@@ -758,12 +761,15 @@ export class GovernorHandler {
     await this.storeInitialProposalStateEpochs(
       proposal,
       eventLog,
-      canonicalMetadata
+      canonicalMetadata,
     );
 
-    await this.storeGlobalDataMetric({
-      proposalsCount: 1,
-    }, proposal);
+    await this.storeGlobalDataMetric(
+      {
+        proposalsCount: 1,
+      },
+      proposal,
+    );
   }
 
   private async storeProposalQueued(eventLog: EvmLog<EvmFieldSelection>) {
@@ -785,13 +791,14 @@ export class GovernorHandler {
       proposal.proposalEta = event.etaSeconds;
       proposal.queueReadyAt = event.etaSeconds * 1000n;
       if (proposal.timelockAddress) {
-        const gracePeriod = await this.options.chainTool.readOptionalContract<bigint>({
-          chainId: this.options.chainId,
-          contractAddress: proposal.timelockAddress as `0x${string}`,
-          rpcs: this.options.rpcs,
-          abi: ABI_FUNCTION_GRACE_PERIOD,
-          functionName: "GRACE_PERIOD",
-        });
+        const gracePeriod =
+          await this.options.chainTool.readOptionalContract<bigint>({
+            chainId: this.options.chainId,
+            contractAddress: proposal.timelockAddress as `0x${string}`,
+            rpcs: this.options.rpcs,
+            abi: ABI_FUNCTION_GRACE_PERIOD,
+            functionName: "GRACE_PERIOD",
+          });
         proposal.timelockGracePeriod = gracePeriod;
         proposal.queueExpiresAt =
           gracePeriod !== undefined
@@ -802,12 +809,12 @@ export class GovernorHandler {
       await this.syncTimelockOperationForProposalQueue(
         proposal,
         eventLog,
-        event.etaSeconds
+        event.etaSeconds,
       );
       await this.storeProposalStateEpoch(
         proposal,
         GOVERNANCE_STATE_QUEUED,
-        eventLog
+        eventLog,
       );
     }
   }
@@ -895,13 +902,14 @@ export class GovernorHandler {
         operation.executedBlockNumber = BigInt(eventLog.block.height);
         operation.executedBlockTimestamp = BigInt(eventLog.block.timestamp);
         operation.executedTransactionHash = eventLog.transactionHash;
-        operation.executedCallCount = operation.callCount ?? operation.executedCallCount;
+        operation.executedCallCount =
+          operation.callCount ?? operation.executedCallCount;
         await this.ctx.store.save(operation);
       }
       await this.storeProposalStateEpoch(
         proposal,
         GOVERNANCE_STATE_EXECUTED,
-        eventLog
+        eventLog,
       );
     }
   }
@@ -932,7 +940,7 @@ export class GovernorHandler {
       await this.storeProposalStateEpoch(
         proposal,
         GOVERNANCE_STATE_CANCELED,
-        eventLog
+        eventLog,
       );
     }
   }
@@ -1004,7 +1012,7 @@ export class GovernorHandler {
   }
 
   private async storeQuorumNumeratorUpdated(
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ) {
     const event = igovernorAbi.events.QuorumNumeratorUpdated.decode(eventLog);
     const entity = new QuorumNumeratorUpdated({
@@ -1028,11 +1036,10 @@ export class GovernorHandler {
   }
 
   private async storeLateQuorumVoteExtensionSet(
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ) {
-    const event = igovernorAbi.events.LateQuorumVoteExtensionSet.decode(
-      eventLog
-    );
+    const event =
+      igovernorAbi.events.LateQuorumVoteExtensionSet.decode(eventLog);
     const entity = new LateQuorumVoteExtensionSet({
       id: eventLog.id,
       ...this.eventFields(eventLog),
@@ -1152,7 +1159,7 @@ export class GovernorHandler {
           governorAddress: vcg.governorAddress ?? this.governorAddress(),
           proposalId: vcg.refProposalId,
         }),
-      }
+      },
     );
 
     let votesWeightForSum: bigint = 0n;
@@ -1219,19 +1226,22 @@ export class GovernorHandler {
     }
 
     // store metric
-    await this.storeGlobalDataMetric({
-      votesCount: 1,
-      votesWithParamsCount: +(vcg.type === "vote-cast-with-params"),
-      votesWithoutParamsCount: +(vcg.type === "vote-cast-without-params"),
-      votesWeightForSum,
-      votesWeightAgainstSum,
-      votesWeightAbstainSum,
-    }, vcg);
+    await this.storeGlobalDataMetric(
+      {
+        votesCount: 1,
+        votesWithParamsCount: +(vcg.type === "vote-cast-with-params"),
+        votesWithoutParamsCount: +(vcg.type === "vote-cast-without-params"),
+        votesWeightForSum,
+        votesWeightAgainstSum,
+        votesWeightAbstainSum,
+      },
+      vcg,
+    );
   }
 
   private async storeGlobalDataMetric(
     options: DataMetricOptions,
-    source: GovernanceScopeFields
+    source: GovernanceScopeFields,
   ) {
     const storedDataMetric: DataMetric | undefined =
       await this.ctx.store.findOne(DataMetric, {
