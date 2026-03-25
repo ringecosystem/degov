@@ -31,6 +31,12 @@ class DegovConfigDataSource {
   private packDataSource(rawDegovConfig: string): IndexerProcessorConfig {
     const degovConfig = yaml.parse(rawDegovConfig);
     const { chain, code, indexer, contracts } = degovConfig;
+    const startBlockOverride = this.readIntegerOverride(
+      "DEGOV_INDEXER_START_BLOCK"
+    );
+    const endBlockOverride = this.readIntegerOverride(
+      "DEGOV_INDEXER_END_BLOCK"
+    );
     let rpcs = chain.rpcs ?? [];
     if (indexer.rpc) {
       rpcs = [indexer.rpc, ...rpcs];
@@ -61,8 +67,8 @@ class DegovConfigDataSource {
       capacity: indexer.capacity ?? 30,
       maxBatchCallSize: indexer.maxBatchCallSize ?? 200,
       gateway: indexer.gateway,
-      startBlock: indexer.startBlock,
-      endBlock: indexer.endBlock,
+      startBlock: startBlockOverride ?? indexer.startBlock,
+      endBlock: endBlockOverride ?? indexer.endBlock,
       works: [
         {
           daoCode: code,
@@ -74,6 +80,22 @@ class DegovConfigDataSource {
       } as IndexerProcessorState,
     };
     return ipc;
+  }
+
+  private readIntegerOverride(name: string): number | undefined {
+    const rawValue = process.env[name];
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = Number(rawValue);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new Error(
+        `Environment override ${name} must be a non-negative integer, received: ${rawValue}`
+      );
+    }
+
+    return parsed;
   }
 
   private async readDegovConfigRaw(): Promise<string> {
