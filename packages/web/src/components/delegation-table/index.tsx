@@ -9,7 +9,7 @@ import {
   usePaginationRange,
 } from "@/hooks/usePaginationRange";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
-import { delegateService } from "@/services/graphql";
+import { buildGovernanceScope, delegateService } from "@/services/graphql";
 import type { DelegateItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
@@ -56,6 +56,10 @@ export function DelegationTable({
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
   const [currentPage, setCurrentPage] = useState(1);
+  const governanceScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
 
   const { data: totalVotes } = useCurrentVotingPower(address);
 
@@ -80,13 +84,17 @@ export function DelegationTable({
       orderBy,
       currentPage,
       pageSize,
+      governanceScope,
     ],
     queryFn: () =>
       delegateService.getAllDelegates(daoConfig?.indexer?.endpoint as string, {
         limit: pageSize,
         offset: (currentPage - 1) * pageSize,
         orderBy,
-        where: { toDelegate_eq: address.toLowerCase() },
+        where: {
+          ...governanceScope,
+          toDelegate_eq: address.toLowerCase(),
+        },
       }),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
     placeholderData: (previous) => previous ?? [],

@@ -9,7 +9,7 @@ import {
   PAGINATION_DOTS,
   usePaginationRange,
 } from "@/hooks/usePaginationRange";
-import { delegateService } from "@/services/graphql";
+import { buildGovernanceScope, delegateService } from "@/services/graphql";
 import type { DelegateItem } from "@/services/graphql/types";
 
 import { AddressAvatar } from "../address-avatar";
@@ -41,6 +41,10 @@ export function DelegationList({
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
   const [currentPage, setCurrentPage] = useState(1);
+  const governanceScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
 
   useEffect(() => {
     setCurrentPage(1);
@@ -69,13 +73,17 @@ export function DelegationList({
       orderBy,
       currentPage,
       pageSize,
+      governanceScope,
     ],
     queryFn: () =>
       delegateService.getAllDelegates(daoConfig?.indexer?.endpoint as string, {
         limit: pageSize,
         offset: (currentPage - 1) * pageSize,
         orderBy,
-        where: { toDelegate_eq: address.toLowerCase() },
+        where: {
+          ...governanceScope,
+          toDelegate_eq: address.toLowerCase(),
+        },
       }),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
     placeholderData: (previous) => previous ?? [],

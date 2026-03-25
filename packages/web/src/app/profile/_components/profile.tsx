@@ -18,7 +18,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
-import { delegateService } from "@/services/graphql";
+import { buildGovernanceScope, delegateService } from "@/services/graphql";
 
 import { JoinDelegate } from "./join-delegate";
 import { ReceivedDelegations } from "./received-delegations";
@@ -60,6 +60,10 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
   const { data: governanceToken } = useGovernanceToken();
   const [joinDelegateOpen, setJoinDelegateOpen] = useState(false);
   const { address: account } = useAccount();
+  const governanceScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
 
   // Derive showConnectPrompt from isConnected state
   // Only show prompt if user requested connection but is not yet connected
@@ -80,11 +84,21 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
 
   const { data: delegateMappings, isLoading: isDelegateMappingsLoading } =
     useQuery({
-      queryKey: ["delegateMappings", address, daoConfig?.indexer?.endpoint],
+      queryKey: [
+        "delegateMappings",
+        address,
+        daoConfig?.indexer?.endpoint,
+        governanceScope,
+      ],
       queryFn: () =>
         delegateService.getDelegateMappings(
           daoConfig?.indexer?.endpoint as string,
-          { where: { from_eq: address?.toLowerCase() } }
+          {
+            where: {
+              ...governanceScope,
+              from_eq: address?.toLowerCase(),
+            },
+          }
         ),
       enabled: !!address && !!daoConfig?.indexer?.endpoint,
     });

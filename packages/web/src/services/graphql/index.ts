@@ -49,6 +49,20 @@ type ProposalMetricsWhere = GovernanceScope & {
   id_eq?: string;
 };
 
+type DelegateWhere = GovernanceScope & {
+  toDelegate_eq?: string;
+};
+
+type DelegateMappingWhere = GovernanceScope & {
+  from_eq?: string;
+};
+
+type ContributorWhere = GovernanceScope & {
+  id_in?: string[];
+  id_not_eq?: string;
+  id_eq?: string;
+};
+
 const normalizeScopeAddress = (address?: string | null) => {
   return address ? address.toLowerCase() : undefined;
 };
@@ -289,10 +303,7 @@ export const delegateService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        power_gt?: number;
-        toDelegate_eq?: string;
-      };
+      where?: DelegateWhere;
     } = {}
   ) => {
     const response = await request<Types.DelegateResponse>(
@@ -305,9 +316,7 @@ export const delegateService = {
   getDelegateMappings: async (
     endpoint: string,
     options: {
-      where: {
-        from_eq: string;
-      };
+      where: DelegateMappingWhere;
     } = {
       where: {
         from_eq: "",
@@ -324,9 +333,7 @@ export const delegateService = {
   getDelegateMappingsConnection: async (
     endpoint: string,
     options: {
-      where: {
-        toDelegate_eq: string;
-      };
+      where: DelegateWhere;
       orderBy: string[];
     }
   ) => {
@@ -373,11 +380,7 @@ export const contributorService = {
       limit: number;
       offset: number;
       orderBy?: string | string[];
-      where?: {
-        id_in?: string[];
-        id_not_eq?: string;
-        id_eq?: string;
-      };
+      where?: ContributorWhere;
     } = {
       limit: 10,
       offset: 0,
