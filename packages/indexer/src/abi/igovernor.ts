@@ -7,6 +7,13 @@ export const events = {
     ProposalCreated: event("0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0", "ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)", {"proposalId": p.uint256, "proposer": p.address, "targets": p.array(p.address), "values": p.array(p.uint256), "signatures": p.array(p.string), "calldatas": p.array(p.bytes), "voteStart": p.uint256, "voteEnd": p.uint256, "description": p.string}),
     ProposalExecuted: event("0x712ae1383f79ac853f8d882153778e0260ef8f03b504e2866e0593e04d2b291f", "ProposalExecuted(uint256)", {"proposalId": p.uint256}),
     ProposalQueued: event("0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892", "ProposalQueued(uint256,uint256)", {"proposalId": p.uint256, "etaSeconds": p.uint256}),
+    ProposalExtended: event("0x541f725fb9f7c98a30cc9c0ff32fbb14358cd7159c847a3aa20a2bdc442ba511", "ProposalExtended(uint256,uint64)", {"proposalId": indexed(p.uint256), "extendedDeadline": p.uint64}),
+    VotingDelaySet: event("0xc565b045403dc03c2eea82b81a0465edad9e2e7fc4d97e11421c209da93d7a93", "VotingDelaySet(uint256,uint256)", {"oldVotingDelay": p.uint256, "newVotingDelay": p.uint256}),
+    VotingPeriodSet: event("0x7e3f7f0708a84de9203036abaa450dccc85ad5ff52f78c170f3edb55cf5e8828", "VotingPeriodSet(uint256,uint256)", {"oldVotingPeriod": p.uint256, "newVotingPeriod": p.uint256}),
+    ProposalThresholdSet: event("0xccb45da8d5717e6c4544694297c4ba5cf151d455c9bb0ed4fc7a38411bc05461", "ProposalThresholdSet(uint256,uint256)", {"oldProposalThreshold": p.uint256, "newProposalThreshold": p.uint256}),
+    QuorumNumeratorUpdated: event("0x0553476bf02ef2726e8ce5ced78d63e26e602e4a2257b1f559418e24b4633997", "QuorumNumeratorUpdated(uint256,uint256)", {"oldQuorumNumerator": p.uint256, "newQuorumNumerator": p.uint256}),
+    LateQuorumVoteExtensionSet: event("0x7ca4ac117ed3cdce75c1161d8207c440389b1a15d69d096831664657c07dafc2", "LateQuorumVoteExtensionSet(uint64,uint64)", {"oldVoteExtension": p.uint64, "newVoteExtension": p.uint64}),
+    TimelockChange: event("0x08f74ea46ef7894f65eabfb5e6e695de773a000b47c529ab559178069b226401", "TimelockChange(address,address)", {"oldTimelock": p.address, "newTimelock": p.address}),
     VoteCast: event("0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4", "VoteCast(address,uint256,uint8,uint256,string)", {"voter": indexed(p.address), "proposalId": p.uint256, "support": p.uint8, "weight": p.uint256, "reason": p.string}),
     VoteCastWithParams: event("0xe2babfbac5889a709b63bb7f598b324e08bc5a4fb9ec647fb3cbc9ec07eb8712", "VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)", {"voter": indexed(p.address), "proposalId": p.uint256, "support": p.uint8, "weight": p.uint256, "reason": p.string, "params": p.bytes}),
 }
@@ -39,6 +46,7 @@ export const functions = {
     quorum: viewFun("0xf8ce560a", "quorum(uint256)", {"timepoint": p.uint256}, p.uint256),
     state: viewFun("0x3e4f49e6", "state(uint256)", {"proposalId": p.uint256}, p.uint8),
     supportsInterface: viewFun("0x01ffc9a7", "supportsInterface(bytes4)", {"interfaceId": p.bytes4}, p.bool),
+    timelock: viewFun("0xd33219b4", "timelock()", {}, p.address),
     version: viewFun("0x54fd4d50", "version()", {}, p.string),
     votingDelay: viewFun("0x3932abb1", "votingDelay()", {}, p.uint256),
     votingPeriod: viewFun("0x02a251a3", "votingPeriod()", {}, p.uint256),
@@ -118,6 +126,10 @@ export class Contract extends ContractBase {
         return this.eth_call(functions.supportsInterface, {interfaceId})
     }
 
+    timelock() {
+        return this.eth_call(functions.timelock, {})
+    }
+
     version() {
         return this.eth_call(functions.version, {})
     }
@@ -136,6 +148,13 @@ export type ProposalCanceledEventArgs = EParams<typeof events.ProposalCanceled>
 export type ProposalCreatedEventArgs = EParams<typeof events.ProposalCreated>
 export type ProposalExecutedEventArgs = EParams<typeof events.ProposalExecuted>
 export type ProposalQueuedEventArgs = EParams<typeof events.ProposalQueued>
+export type ProposalExtendedEventArgs = EParams<typeof events.ProposalExtended>
+export type VotingDelaySetEventArgs = EParams<typeof events.VotingDelaySet>
+export type VotingPeriodSetEventArgs = EParams<typeof events.VotingPeriodSet>
+export type ProposalThresholdSetEventArgs = EParams<typeof events.ProposalThresholdSet>
+export type QuorumNumeratorUpdatedEventArgs = EParams<typeof events.QuorumNumeratorUpdated>
+export type LateQuorumVoteExtensionSetEventArgs = EParams<typeof events.LateQuorumVoteExtensionSet>
+export type TimelockChangeEventArgs = EParams<typeof events.TimelockChange>
 export type VoteCastEventArgs = EParams<typeof events.VoteCast>
 export type VoteCastWithParamsEventArgs = EParams<typeof events.VoteCastWithParams>
 
@@ -220,6 +239,9 @@ export type StateReturn = FunctionReturn<typeof functions.state>
 
 export type SupportsInterfaceParams = FunctionArguments<typeof functions.supportsInterface>
 export type SupportsInterfaceReturn = FunctionReturn<typeof functions.supportsInterface>
+
+export type TimelockParams = FunctionArguments<typeof functions.timelock>
+export type TimelockReturn = FunctionReturn<typeof functions.timelock>
 
 export type VersionParams = FunctionArguments<typeof functions.version>
 export type VersionReturn = FunctionReturn<typeof functions.version>

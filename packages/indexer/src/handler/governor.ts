@@ -1,17 +1,29 @@
 import * as igovernorAbi from "../abi/igovernor";
 import { Store } from "@subsquid/typeorm-store";
 import { DataHandlerContext, Log as EvmLog } from "@subsquid/evm-processor";
+import { Abi, keccak256, stringToBytes } from "viem";
 import {
   Contributor,
   DataMetric,
+  GovernanceParameterCheckpoint,
+  LateQuorumVoteExtensionSet,
   Proposal,
+  ProposalAction,
   ProposalCanceled,
   ProposalCreated,
+  ProposalDeadlineExtension,
   ProposalExecuted,
+  ProposalExtended,
   ProposalQueued,
+  ProposalStateEpoch,
+  ProposalThresholdSet,
+  QuorumNumeratorUpdated,
+  TimelockChange,
   VoteCast,
   VoteCastGroup,
   VoteCastWithParams,
+  VotingDelaySet,
+  VotingPeriodSet,
 } from "../model";
 import {
   MetricsId,
@@ -22,6 +34,62 @@ import {
 import { ChainTool, ClockMode } from "../internal/chaintool";
 import { TextPlus } from "../internal/textplus";
 import { DegovIndexerHelpers } from "../internal/helpers";
+
+const ABI_FUNCTION_COUNTING_MODE: Abi = [
+  {
+    inputs: [],
+    name: "COUNTING_MODE",
+    outputs: [{ internalType: "string", name: "", type: "string" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_PROPOSAL_DEADLINE: Abi = [
+  {
+    inputs: [{ internalType: "uint256", name: "proposalId", type: "uint256" }],
+    name: "proposalDeadline",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_PROPOSAL_ETA: Abi = [
+  {
+    inputs: [{ internalType: "uint256", name: "proposalId", type: "uint256" }],
+    name: "proposalEta",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_PROPOSAL_SNAPSHOT: Abi = [
+  {
+    inputs: [{ internalType: "uint256", name: "proposalId", type: "uint256" }],
+    name: "proposalSnapshot",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_TIMELOCK: Abi = [
+  {
+    inputs: [],
+    name: "timelock",
+    outputs: [{ internalType: "address", name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const GOVERNANCE_STATE_PENDING = "Pending";
+const GOVERNANCE_STATE_ACTIVE = "Active";
+const GOVERNANCE_STATE_QUEUED = "Queued";
+const GOVERNANCE_STATE_EXECUTED = "Executed";
+const GOVERNANCE_STATE_CANCELED = "Canceled";
 
 export interface GovernorHandlerOptions {
   chainId: number;
@@ -39,6 +107,21 @@ interface GovernanceScopeFields {
   contractAddress?: string | null;
   logIndex?: number | null;
   transactionIndex?: number | null;
+}
+
+interface CanonicalProposalMetadata {
+  blockInterval?: string;
+  clockMode: ClockMode;
+  countingMode: string;
+  decimals: bigint;
+  descriptionHash: string;
+  proposalDeadline: bigint;
+  proposalEta?: bigint;
+  proposalSnapshot: bigint;
+  quorum: bigint;
+  timelockAddress?: string;
+  voteEndTimestamp: bigint;
+  voteStartTimestamp: bigint;
 }
 
 export class GovernorHandler {
@@ -78,58 +161,340 @@ export class GovernorHandler {
     return target;
   }
 
+  private hasTopic(
+    eventLog: EvmLog<EvmFieldSelection>,
+    topic: string
+  ): boolean {
+    return eventLog.topics.includes(topic);
+  }
+
+  private proposalActionId(proposal: Proposal, actionIndex: number): string {
+    return `${proposal.id}:action:${actionIndex}`;
+  }
+
+  private proposalStateEpochId(proposal: Proposal, state: string): string {
+    return `${proposal.id}:state:${state.toLowerCase()}`;
+  }
+
+  private proposalEventEpochId(
+    proposal: Proposal,
+    state: string,
+    eventLog: EvmLog<EvmFieldSelection>
+  ): string {
+    return `${proposal.id}:state:${state.toLowerCase()}:${eventLog.id}`;
+  }
+
+  private stdAddress(value?: string | null): string | undefined {
+    return DegovIndexerHelpers.normalizeAddress(value);
+  }
+
+  private async findProposal(proposalId: string): Promise<Proposal | undefined> {
+    return this.ctx.store.findOne(Proposal, {
+      where: DegovIndexerHelpers.proposalScopeWhere({
+        chainId: this.options.chainId,
+        governorAddress: this.governorAddress(),
+        proposalId,
+      }),
+    });
+  }
+
   async handle(eventLog: EvmLog<EvmFieldSelection>) {
-    const isProposalCreated =
-      eventLog.topics.findIndex(
-        (item) => item === igovernorAbi.events.ProposalCreated.topic
-      ) != -1;
-    if (isProposalCreated) {
+    if (this.hasTopic(eventLog, igovernorAbi.events.ProposalCreated.topic)) {
       await this.storeProposalCreated(eventLog);
     }
-
-    const isProposalQueued =
-      eventLog.topics.findIndex(
-        (item) => item === igovernorAbi.events.ProposalQueued.topic
-      ) != -1;
-    if (isProposalQueued) {
+    if (this.hasTopic(eventLog, igovernorAbi.events.ProposalQueued.topic)) {
       await this.storeProposalQueued(eventLog);
     }
-
-    const isProposalExcuted =
-      eventLog.topics.findIndex(
-        (item) => item === igovernorAbi.events.ProposalExecuted.topic
-      ) != -1;
-    if (isProposalExcuted) {
+    if (this.hasTopic(eventLog, igovernorAbi.events.ProposalExtended.topic)) {
+      await this.storeProposalExtended(eventLog);
+    }
+    if (this.hasTopic(eventLog, igovernorAbi.events.ProposalExecuted.topic)) {
       await this.storeProposalExecuted(eventLog);
     }
-
-    const isProposalCanceled =
-      eventLog.topics.findIndex(
-        (item) => item === igovernorAbi.events.ProposalCanceled.topic
-      ) != -1;
-    if (isProposalCanceled) {
+    if (this.hasTopic(eventLog, igovernorAbi.events.ProposalCanceled.topic)) {
       await this.storeProposalCanceled(eventLog);
     }
-
-    const isVoteCast =
-      eventLog.topics.findIndex(
-        (item) => item === igovernorAbi.events.VoteCast.topic
-      ) != -1;
-    if (isVoteCast) {
+    if (this.hasTopic(eventLog, igovernorAbi.events.VotingDelaySet.topic)) {
+      await this.storeVotingDelaySet(eventLog);
+    }
+    if (this.hasTopic(eventLog, igovernorAbi.events.VotingPeriodSet.topic)) {
+      await this.storeVotingPeriodSet(eventLog);
+    }
+    if (
+      this.hasTopic(eventLog, igovernorAbi.events.ProposalThresholdSet.topic)
+    ) {
+      await this.storeProposalThresholdSet(eventLog);
+    }
+    if (
+      this.hasTopic(eventLog, igovernorAbi.events.QuorumNumeratorUpdated.topic)
+    ) {
+      await this.storeQuorumNumeratorUpdated(eventLog);
+    }
+    if (
+      this.hasTopic(
+        eventLog,
+        igovernorAbi.events.LateQuorumVoteExtensionSet.topic
+      )
+    ) {
+      await this.storeLateQuorumVoteExtensionSet(eventLog);
+    }
+    if (this.hasTopic(eventLog, igovernorAbi.events.TimelockChange.topic)) {
+      await this.storeTimelockChange(eventLog);
+    }
+    if (this.hasTopic(eventLog, igovernorAbi.events.VoteCast.topic)) {
       await this.storeVoteCast(eventLog);
     }
-
-    const isVoteCastWithParams =
-      eventLog.topics.findIndex(
-        (item) => item === igovernorAbi.events.VoteCastWithParams.topic
-      ) != -1;
-    if (isVoteCastWithParams) {
+    if (
+      this.hasTopic(eventLog, igovernorAbi.events.VoteCastWithParams.topic)
+    ) {
       await this.storeVoteCastWithParams(eventLog);
     }
   }
 
   private stdProposalId(proposalId: bigint): string {
     return `0x${proposalId.toString(16)}`;
+  }
+
+  private async loadCanonicalProposalMetadata(
+    eventLog: EvmLog<EvmFieldSelection>,
+    event: igovernorAbi.ProposalCreatedEventArgs
+  ): Promise<CanonicalProposalMetadata> {
+    const { chainTool, indexContract, work } = this.options;
+    const governorTokenContract = work.contracts.find(
+      (item) => item.name === "governorToken"
+    );
+    if (!governorTokenContract) {
+      throw new Error(
+        `governorToken contract not found in work daoCode: ${work.daoCode} -> governorContract: ${indexContract.address}`
+      );
+    }
+
+    const contractOptions = {
+      chainId: this.options.chainId,
+      rpcs: this.options.rpcs,
+      contractAddress: indexContract.address,
+    };
+    const clockMode = await chainTool.clockMode(contractOptions);
+    const proposalSnapshot = await chainTool.readContract<bigint>({
+      ...contractOptions,
+      abi: ABI_FUNCTION_PROPOSAL_SNAPSHOT,
+      functionName: "proposalSnapshot",
+      args: [event.proposalId],
+    });
+    const proposalDeadline = await chainTool.readContract<bigint>({
+      ...contractOptions,
+      abi: ABI_FUNCTION_PROPOSAL_DEADLINE,
+      functionName: "proposalDeadline",
+      args: [event.proposalId],
+    });
+    const proposalEta = await chainTool.readOptionalContract<bigint>({
+      ...contractOptions,
+      abi: ABI_FUNCTION_PROPOSAL_ETA,
+      functionName: "proposalEta",
+      args: [event.proposalId],
+    });
+    const countingMode = await chainTool.readContract<string>({
+      ...contractOptions,
+      abi: ABI_FUNCTION_COUNTING_MODE,
+      functionName: "COUNTING_MODE",
+    });
+    const timelockAddress = this.stdAddress(
+      await chainTool.readOptionalContract<string>({
+        ...contractOptions,
+        abi: ABI_FUNCTION_TIMELOCK,
+        functionName: "timelock",
+      })
+    );
+    const qmr = await chainTool.quorum({
+      ...contractOptions,
+      governorTokenAddress: governorTokenContract.address,
+      governorTokenStandard: governorTokenContract.standard?.toUpperCase() as
+        | "ERC20"
+        | "ERC721"
+        | undefined,
+      timepoint: proposalSnapshot,
+    });
+
+    const exactStartTimestamp = await chainTool.timepointToTimestampMs({
+      ...contractOptions,
+      timepoint: proposalSnapshot,
+      clockMode,
+    });
+    const exactEndTimestamp = await chainTool.timepointToTimestampMs({
+      ...contractOptions,
+      timepoint: proposalDeadline,
+      clockMode,
+    });
+
+    let blockInterval: number | undefined;
+    if (
+      clockMode === ClockMode.BlockNumber &&
+      (exactStartTimestamp === undefined || exactEndTimestamp === undefined)
+    ) {
+      blockInterval = await chainTool.blockIntervalSeconds({
+        chainId: this.options.chainId,
+        rpcs: this.options.rpcs,
+        enableFloatValue: true,
+      });
+    }
+
+    const fallbackTimestamps = calculateProposalVoteTimestamp({
+      clockMode,
+      proposalVoteStart: Number(proposalSnapshot),
+      proposalVoteEnd: Number(proposalDeadline),
+      proposalCreatedBlock: eventLog.block.height,
+      proposalStartTimestamp: eventLog.block.timestamp,
+      blockInterval: blockInterval ?? 0,
+    });
+
+    return {
+      blockInterval:
+        clockMode === ClockMode.BlockNumber && blockInterval !== undefined
+          ? blockInterval.toString()
+          : undefined,
+      clockMode: qmr.clockMode,
+      countingMode,
+      decimals: qmr.decimals,
+      descriptionHash: keccak256(stringToBytes(event.description)),
+      proposalDeadline,
+      proposalEta,
+      proposalSnapshot,
+      quorum: qmr.quorum,
+      timelockAddress,
+      voteEndTimestamp:
+        exactEndTimestamp ?? BigInt(fallbackTimestamps.voteEnd),
+      voteStartTimestamp:
+        exactStartTimestamp ?? BigInt(fallbackTimestamps.voteStart),
+    };
+  }
+
+  private async storeProposalActions(
+    proposal: Proposal,
+    eventLog: EvmLog<EvmFieldSelection>
+  ) {
+    const actions = proposal.targets.map(
+      (target, actionIndex) =>
+        new ProposalAction({
+          id: this.proposalActionId(proposal, actionIndex),
+          ...this.eventFields(eventLog),
+          proposal,
+          proposalId: proposal.proposalId,
+          actionIndex,
+          target,
+          value: proposal.values[actionIndex] ?? "0",
+          signature: proposal.signatures[actionIndex] ?? "",
+          calldata: proposal.calldatas[actionIndex] ?? "0x",
+          blockNumber: proposal.blockNumber,
+          blockTimestamp: proposal.blockTimestamp,
+          transactionHash: proposal.transactionHash,
+        })
+    );
+
+    if (actions.length > 0) {
+      await this.ctx.store.insert(actions);
+    }
+  }
+
+  private async storeInitialProposalStateEpochs(
+    proposal: Proposal,
+    eventLog: EvmLog<EvmFieldSelection>,
+    metadata: CanonicalProposalMetadata
+  ) {
+    const pendingEpoch = new ProposalStateEpoch({
+      id: this.proposalStateEpochId(proposal, GOVERNANCE_STATE_PENDING),
+      ...this.eventFields(eventLog),
+      proposal,
+      proposalId: proposal.proposalId,
+      state: GOVERNANCE_STATE_PENDING,
+      startTimepoint:
+        metadata.clockMode === ClockMode.Timestamp
+          ? BigInt(Math.floor(eventLog.block.timestamp / 1000))
+          : BigInt(eventLog.block.height),
+      endTimepoint: metadata.proposalSnapshot,
+      startBlockNumber: proposal.blockNumber,
+      startBlockTimestamp: proposal.blockTimestamp,
+      endBlockNumber:
+        metadata.clockMode === ClockMode.BlockNumber
+          ? metadata.proposalSnapshot
+          : undefined,
+      endBlockTimestamp: metadata.voteStartTimestamp,
+      transactionHash: proposal.transactionHash,
+    });
+
+    const activeEpoch = new ProposalStateEpoch({
+      id: this.proposalStateEpochId(proposal, GOVERNANCE_STATE_ACTIVE),
+      ...this.eventFields(eventLog),
+      proposal,
+      proposalId: proposal.proposalId,
+      state: GOVERNANCE_STATE_ACTIVE,
+      startTimepoint: metadata.proposalSnapshot,
+      endTimepoint: metadata.proposalDeadline,
+      startBlockNumber:
+        metadata.clockMode === ClockMode.BlockNumber
+          ? metadata.proposalSnapshot
+          : undefined,
+      startBlockTimestamp: metadata.voteStartTimestamp,
+      endBlockNumber:
+        metadata.clockMode === ClockMode.BlockNumber
+          ? metadata.proposalDeadline
+          : undefined,
+      endBlockTimestamp: metadata.voteEndTimestamp,
+      transactionHash: proposal.transactionHash,
+    });
+
+    await this.ctx.store.insert([pendingEpoch, activeEpoch]);
+  }
+
+  private async storeProposalStateEpoch(
+    proposal: Proposal,
+    state: string,
+    eventLog: EvmLog<EvmFieldSelection>
+  ) {
+    const clockMode = await this.options.chainTool.clockMode({
+      chainId: this.options.chainId,
+      contractAddress: this.options.indexContract.address,
+      rpcs: this.options.rpcs,
+    });
+    const epoch = new ProposalStateEpoch({
+      id: this.proposalEventEpochId(proposal, state, eventLog),
+      ...this.eventFields(eventLog),
+      proposal,
+      proposalId: proposal.proposalId,
+      state,
+      startTimepoint:
+        clockMode === ClockMode.Timestamp
+          ? BigInt(eventLog.block.timestamp / 1000)
+          : BigInt(eventLog.block.height),
+      startBlockNumber: BigInt(eventLog.block.height),
+      startBlockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+
+    await this.ctx.store.insert(epoch);
+  }
+
+  private async storeGovernanceParameterCheckpoint(options: {
+    eventLog: EvmLog<EvmFieldSelection>;
+    eventName: string;
+    parameterName: string;
+    valueType: string;
+    oldValue?: string;
+    newValue: string;
+  }) {
+    const checkpoint = new GovernanceParameterCheckpoint({
+      id: options.eventLog.id,
+      ...this.eventFields(options.eventLog),
+      eventName: options.eventName,
+      parameterName: options.parameterName,
+      valueType: options.valueType,
+      oldValue: options.oldValue,
+      newValue: options.newValue,
+      blockNumber: BigInt(options.eventLog.block.height),
+      blockTimestamp: BigInt(options.eventLog.block.timestamp),
+      transactionHash: options.eventLog.transactionHash,
+    });
+
+    await this.ctx.store.insert(checkpoint);
   }
 
   private async storeProposalCreated(eventLog: EvmLog<EvmFieldSelection>) {
@@ -154,48 +519,11 @@ export class GovernorHandler {
     await this.ctx.store.insert(entity);
     this.ctx.log.info(`Proposal created event: ${proposalId}`);
 
-    const { chainTool, textPlus, indexContract, work } = this.options;
-    const governorTokenContract = work.contracts.find(
-      (item) => item.name === "governorToken"
+    const canonicalMetadata = await this.loadCanonicalProposalMetadata(
+      eventLog,
+      event
     );
-    if (!governorTokenContract) {
-      throw new Error(
-        `governorToken contract not found in work daoCode: ${work.daoCode} -> governorContrace: ${indexContract.address}`
-      );
-    }
-    const qmr = await chainTool.quorum({
-      chainId: this.options.chainId,
-      rpcs: this.options.rpcs,
-      contractAddress: indexContract.address,
-      standard: indexContract.standard?.toUpperCase() as
-        | "ERC20"
-        | "ERC721"
-        | undefined,
-      governorTokenAddress: governorTokenContract.address,
-      governorTokenStandard: governorTokenContract.standard?.toUpperCase() as
-        | "ERC20"
-        | "ERC721"
-        | undefined,
-    });
-    let voteStartTimestamp = Number(event.voteStart) * 1000;
-    let voteEndTimestamp = Number(event.voteEnd) * 1000;
-    const blockInterval = await chainTool.blockIntervalSeconds({
-      chainId: this.options.chainId,
-      rpcs: this.options.rpcs,
-      enableFloatValue: true,
-    });
-    if (qmr.clockMode == ClockMode.BlockNumber) {
-      const cpvt = calculateProposalVoteTimestamp({
-        clockMode: ClockMode.BlockNumber,
-        proposalVoteEnd: Number(event.voteEnd),
-        proposalCreatedBlock: eventLog.block.height,
-        proposalStartTimestamp: eventLog.block.timestamp,
-        blockInterval,
-      });
-      voteStartTimestamp = cpvt.voteStart;
-      voteEndTimestamp = cpvt.voteEnd;
-    }
-    const eifo = await textPlus.extractInfo(event.description);
+    const eifo = await this.options.textPlus.extractInfo(event.description);
     this.ctx.log.info(
       `Extracted info for proposal ${proposalId}: ${DegovIndexerHelpers.safeJsonStringify(
         eifo
@@ -218,15 +546,27 @@ export class GovernorHandler {
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
       // ---
-      voteStartTimestamp: BigInt(voteStartTimestamp),
-      voteEndTimestamp: BigInt(voteEndTimestamp),
-      clockMode: qmr.clockMode,
-      quorum: qmr.quorum,
-      decimals: qmr.decimals,
+      voteStartTimestamp: canonicalMetadata.voteStartTimestamp,
+      voteEndTimestamp: canonicalMetadata.voteEndTimestamp,
+      blockInterval: canonicalMetadata.blockInterval,
+      descriptionHash: canonicalMetadata.descriptionHash,
+      proposalSnapshot: canonicalMetadata.proposalSnapshot,
+      proposalDeadline: canonicalMetadata.proposalDeadline,
+      proposalEta: canonicalMetadata.proposalEta,
+      countingMode: canonicalMetadata.countingMode,
+      timelockAddress: canonicalMetadata.timelockAddress,
+      clockMode: canonicalMetadata.clockMode,
+      quorum: canonicalMetadata.quorum,
+      decimals: canonicalMetadata.decimals,
       title: eifo.title,
-      blockInterval: blockInterval.toString(),
     });
     await this.ctx.store.insert(proposal);
+    await this.storeProposalActions(proposal, eventLog);
+    await this.storeInitialProposalStateEpochs(
+      proposal,
+      eventLog,
+      canonicalMetadata
+    );
 
     await this.storeGlobalDataMetric({
       proposalsCount: 1,
@@ -235,42 +575,276 @@ export class GovernorHandler {
 
   private async storeProposalQueued(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalQueued.decode(eventLog);
+    const proposalId = this.stdProposalId(event.proposalId);
     const entity = new ProposalQueued({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      proposalId: this.stdProposalId(event.proposalId),
+      proposalId,
       etaSeconds: event.etaSeconds,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    const proposal = await this.findProposal(proposalId);
+    if (proposal) {
+      proposal.proposalEta = event.etaSeconds;
+      await this.ctx.store.save(proposal);
+      await this.storeProposalStateEpoch(
+        proposal,
+        GOVERNANCE_STATE_QUEUED,
+        eventLog
+      );
+    }
+  }
+
+  private async storeProposalExtended(eventLog: EvmLog<EvmFieldSelection>) {
+    const event = igovernorAbi.events.ProposalExtended.decode(eventLog);
+    const proposalId = this.stdProposalId(event.proposalId);
+    const entity = new ProposalExtended({
+      id: eventLog.id,
+      ...this.eventFields(eventLog),
+      proposalId,
+      extendedDeadline: BigInt(event.extendedDeadline),
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(entity);
+
+    const proposal = await this.findProposal(proposalId);
+    if (!proposal) {
+      return;
+    }
+
+    const previousDeadline = proposal.proposalDeadline;
+    proposal.proposalDeadline = BigInt(event.extendedDeadline);
+
+    const resolvedVoteEndTimestamp =
+      (await this.options.chainTool.timepointToTimestampMs({
+        chainId: this.options.chainId,
+        contractAddress: this.options.indexContract.address,
+        rpcs: this.options.rpcs,
+        timepoint: BigInt(event.extendedDeadline),
+        clockMode: proposal.clockMode as ClockMode,
+      })) ?? proposal.voteEndTimestamp;
+    proposal.voteEndTimestamp = resolvedVoteEndTimestamp;
+    await this.ctx.store.save(proposal);
+
+    const extension = new ProposalDeadlineExtension({
+      id: `${proposal.id}:deadline-extension:${eventLog.id}`,
+      ...this.eventFields(eventLog),
+      proposal,
+      proposalId,
+      previousDeadline,
+      newDeadline: BigInt(event.extendedDeadline),
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(extension);
+
+    const activeEpoch = await this.ctx.store.findOne(ProposalStateEpoch, {
+      where: {
+        id: this.proposalStateEpochId(proposal, GOVERNANCE_STATE_ACTIVE),
+      },
+    });
+    if (activeEpoch) {
+      activeEpoch.endTimepoint = BigInt(event.extendedDeadline);
+      activeEpoch.endBlockNumber =
+        proposal.clockMode === ClockMode.BlockNumber
+          ? BigInt(event.extendedDeadline)
+          : undefined;
+      activeEpoch.endBlockTimestamp = resolvedVoteEndTimestamp;
+      await this.ctx.store.save(activeEpoch);
+    }
   }
 
   private async storeProposalExecuted(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalExecuted.decode(eventLog);
+    const proposalId = this.stdProposalId(event.proposalId);
     const entity = new ProposalExecuted({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      proposalId: this.stdProposalId(event.proposalId),
+      proposalId,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    const proposal = await this.findProposal(proposalId);
+    if (proposal) {
+      await this.storeProposalStateEpoch(
+        proposal,
+        GOVERNANCE_STATE_EXECUTED,
+        eventLog
+      );
+    }
   }
 
   private async storeProposalCanceled(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalCanceled.decode(eventLog);
+    const proposalId = this.stdProposalId(event.proposalId);
     const entity = new ProposalCanceled({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      proposalId: this.stdProposalId(event.proposalId),
+      proposalId,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    const proposal = await this.findProposal(proposalId);
+    if (proposal) {
+      await this.storeProposalStateEpoch(
+        proposal,
+        GOVERNANCE_STATE_CANCELED,
+        eventLog
+      );
+    }
+  }
+
+  private async storeVotingDelaySet(eventLog: EvmLog<EvmFieldSelection>) {
+    const event = igovernorAbi.events.VotingDelaySet.decode(eventLog);
+    const entity = new VotingDelaySet({
+      id: eventLog.id,
+      ...this.eventFields(eventLog),
+      oldVotingDelay: event.oldVotingDelay,
+      newVotingDelay: event.newVotingDelay,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(entity);
+    await this.storeGovernanceParameterCheckpoint({
+      eventLog,
+      eventName: "VotingDelaySet",
+      parameterName: "votingDelay",
+      valueType: "uint256",
+      oldValue: event.oldVotingDelay.toString(),
+      newValue: event.newVotingDelay.toString(),
+    });
+  }
+
+  private async storeVotingPeriodSet(eventLog: EvmLog<EvmFieldSelection>) {
+    const event = igovernorAbi.events.VotingPeriodSet.decode(eventLog);
+    const entity = new VotingPeriodSet({
+      id: eventLog.id,
+      ...this.eventFields(eventLog),
+      oldVotingPeriod: event.oldVotingPeriod,
+      newVotingPeriod: event.newVotingPeriod,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(entity);
+    await this.storeGovernanceParameterCheckpoint({
+      eventLog,
+      eventName: "VotingPeriodSet",
+      parameterName: "votingPeriod",
+      valueType: "uint256",
+      oldValue: event.oldVotingPeriod.toString(),
+      newValue: event.newVotingPeriod.toString(),
+    });
+  }
+
+  private async storeProposalThresholdSet(eventLog: EvmLog<EvmFieldSelection>) {
+    const event = igovernorAbi.events.ProposalThresholdSet.decode(eventLog);
+    const entity = new ProposalThresholdSet({
+      id: eventLog.id,
+      ...this.eventFields(eventLog),
+      oldProposalThreshold: event.oldProposalThreshold,
+      newProposalThreshold: event.newProposalThreshold,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(entity);
+    await this.storeGovernanceParameterCheckpoint({
+      eventLog,
+      eventName: "ProposalThresholdSet",
+      parameterName: "proposalThreshold",
+      valueType: "uint256",
+      oldValue: event.oldProposalThreshold.toString(),
+      newValue: event.newProposalThreshold.toString(),
+    });
+  }
+
+  private async storeQuorumNumeratorUpdated(
+    eventLog: EvmLog<EvmFieldSelection>
+  ) {
+    const event = igovernorAbi.events.QuorumNumeratorUpdated.decode(eventLog);
+    const entity = new QuorumNumeratorUpdated({
+      id: eventLog.id,
+      ...this.eventFields(eventLog),
+      oldQuorumNumerator: event.oldQuorumNumerator,
+      newQuorumNumerator: event.newQuorumNumerator,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(entity);
+    await this.storeGovernanceParameterCheckpoint({
+      eventLog,
+      eventName: "QuorumNumeratorUpdated",
+      parameterName: "quorumNumerator",
+      valueType: "uint256",
+      oldValue: event.oldQuorumNumerator.toString(),
+      newValue: event.newQuorumNumerator.toString(),
+    });
+  }
+
+  private async storeLateQuorumVoteExtensionSet(
+    eventLog: EvmLog<EvmFieldSelection>
+  ) {
+    const event = igovernorAbi.events.LateQuorumVoteExtensionSet.decode(
+      eventLog
+    );
+    const entity = new LateQuorumVoteExtensionSet({
+      id: eventLog.id,
+      ...this.eventFields(eventLog),
+      oldLateQuorumVoteExtension: BigInt(event.oldVoteExtension),
+      newLateQuorumVoteExtension: BigInt(event.newVoteExtension),
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(entity);
+    await this.storeGovernanceParameterCheckpoint({
+      eventLog,
+      eventName: "LateQuorumVoteExtensionSet",
+      parameterName: "lateQuorumVoteExtension",
+      valueType: "uint64",
+      oldValue: BigInt(event.oldVoteExtension).toString(),
+      newValue: BigInt(event.newVoteExtension).toString(),
+    });
+  }
+
+  private async storeTimelockChange(eventLog: EvmLog<EvmFieldSelection>) {
+    const event = igovernorAbi.events.TimelockChange.decode(eventLog);
+    const oldTimelock = this.stdAddress(event.oldTimelock) ?? event.oldTimelock;
+    const newTimelock = this.stdAddress(event.newTimelock) ?? event.newTimelock;
+    const entity = new TimelockChange({
+      id: eventLog.id,
+      ...this.eventFields(eventLog),
+      oldTimelock,
+      newTimelock,
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+    await this.ctx.store.insert(entity);
+    await this.storeGovernanceParameterCheckpoint({
+      eventLog,
+      eventName: "TimelockChange",
+      parameterName: "timelockAddress",
+      valueType: "address",
+      oldValue: oldTimelock,
+      newValue: newTimelock,
+    });
   }
 
   private async storeVoteCast(eventLog: EvmLog<EvmFieldSelection>) {
@@ -478,30 +1052,39 @@ interface ProposalVoteTimestamp {
   voteEnd: number;
 }
 
-function calculateProposalVoteTimestamp(options: {
+export function calculateProposalVoteTimestamp(options: {
   clockMode: ClockMode;
+  proposalVoteStart: number;
   proposalVoteEnd: number; // seconds (if clockMode is Timestamp)
   proposalCreatedBlock: number; // block number
   proposalStartTimestamp: number; // milliseconds
   blockInterval: number;
 }): ProposalVoteTimestamp {
-  let proposalEndTimestamp;
+  let proposalStartTimestamp: Date;
+  let proposalEndTimestamp: Date;
   switch (options.clockMode) {
     case ClockMode.BlockNumber:
-      const blocksSinceCreation =
+      const startBlocksSinceCreation =
+        options.proposalVoteStart - options.proposalCreatedBlock;
+      const endBlocksSinceCreation =
         options.proposalVoteEnd - options.proposalCreatedBlock;
-      const additionalSeconds = blocksSinceCreation * options.blockInterval;
+      const voteStartSeconds =
+        options.proposalStartTimestamp +
+        startBlocksSinceCreation * options.blockInterval * 1000;
       const voteEndSeconds =
-        options.proposalStartTimestamp + additionalSeconds * 1000;
+        options.proposalStartTimestamp +
+        endBlocksSinceCreation * options.blockInterval * 1000;
+      proposalStartTimestamp = new Date(Math.round(voteStartSeconds));
       proposalEndTimestamp = new Date(Math.round(voteEndSeconds));
       break;
     case ClockMode.Timestamp:
+      proposalStartTimestamp = new Date(+options.proposalVoteStart * 1000);
       proposalEndTimestamp = new Date(+options.proposalVoteEnd * 1000);
       break;
   }
 
   return {
-    voteStart: options.proposalStartTimestamp,
+    voteStart: +proposalStartTimestamp,
     voteEnd: +proposalEndTimestamp,
   };
 }

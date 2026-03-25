@@ -19,10 +19,17 @@ export interface BaseContractOptions {
   rpcs?: string[];
 }
 
+export interface ReadContractOptions extends BaseContractOptions {
+  abi: Abi;
+  functionName: string;
+  args?: readonly unknown[];
+}
+
 export interface QueryQuorumOptions extends BaseContractOptions {
   standard?: "ERC20" | "ERC721";
   governorTokenAddress: `0x${string}`;
   governorTokenStandard?: "ERC20" | "ERC721";
+  timepoint?: bigint;
 }
 
 export interface QuorumResult {
@@ -213,6 +220,15 @@ export class ChainTool {
       return input.replace("wss://", "https://");
     }
     return input;
+  }
+
+  private isMissingFunctionError(error: any): boolean {
+    const message = `${error?.message ?? ""}`;
+    return (
+      message.includes("contract function not found") ||
+      message.includes("execution reverted") ||
+      message.includes("Function does not exist")
+    );
   }
 
   /**
@@ -418,8 +434,60 @@ export class ChainTool {
     }
   }
 
+  async readContract<T = unknown>(options: ReadContractOptions): Promise<T> {
+    const result = await this._executeWithFallbacks(options, (client) =>
+      client.readContract({
+        address: options.contractAddress,
+        abi: options.abi,
+        functionName: options.functionName as never,
+        args: options.args as never,
+      })
+    );
+
+    return result as T;
+  }
+
+  async readOptionalContract<T = unknown>(
+    options: ReadContractOptions
+  ): Promise<T | undefined> {
+    try {
+      return await this.readContract<T>(options);
+    } catch (error) {
+      if (this.isMissingFunctionError(error)) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async timepointToTimestampMs(options: {
+    chainId: number;
+    contractAddress: `0x${string}`;
+    rpcs?: string[];
+    timepoint: bigint;
+    clockMode?: ClockMode;
+  }): Promise<bigint | undefined> {
+    const clockMode =
+      options.clockMode ?? (await this.clockMode(options));
+    if (clockMode === ClockMode.Timestamp) {
+      return options.timepoint * 1000n;
+    }
+
+    try {
+      const block = await this._executeWithFallbacks(options, (client) =>
+        client.getBlock({ blockNumber: options.timepoint })
+      );
+      return block.timestamp * 1000n;
+    } catch (error) {
+      console.warn(
+        `[ChainTool] Failed to resolve block timestamp for timepoint ${options.timepoint} on chain ${options.chainId}: ${error}`
+      );
+      return undefined;
+    }
+  }
+
   async quorum(options: QueryQuorumOptions): Promise<QuorumResult> {
-    const cacheKey = `${options.chainId}:${options.contractAddress}`;
+    const cacheKey = `${options.chainId}:${options.contractAddress}:${options.timepoint?.toString() ?? "latest"}`;
     const cachedEntry = this.quorumCache.get(cacheKey);
 
     // 1. Check if a valid, non-expired cache entry exists.
@@ -444,38 +512,42 @@ export class ChainTool {
       const clockMode = await this.clockMode(options);
       let timepoint: bigint;
 
-      try {
-        const clockResult = await this._executeWithFallbacks(
-          options,
-          (client) =>
-            client.readContract({
-              address: options.contractAddress,
-              abi: ABI_FUNCTION_CLOCK,
-              functionName: "clock",
-            })
-        );
-        timepoint = BigInt(clockResult as any);
-      } catch (e: any) {
-        console.warn(
-          `Failed to query clock for ${options.contractAddress}, falling back to latest block: ${e.message}`
-        );
-        const latestBlock = await this._executeWithFallbacks(
-          options,
-          (client) => client.getBlock()
-        );
-        timepoint =
-          clockMode === ClockMode.Timestamp
-            ? latestBlock.timestamp
-            : latestBlock.number!;
-      }
+      if (options.timepoint !== undefined) {
+        timepoint = options.timepoint;
+      } else {
+        try {
+          const clockResult = await this._executeWithFallbacks(
+            options,
+            (client) =>
+              client.readContract({
+                address: options.contractAddress,
+                abi: ABI_FUNCTION_CLOCK,
+                functionName: "clock",
+              })
+          );
+          timepoint = BigInt(clockResult as any);
+        } catch (e: any) {
+          console.warn(
+            `Failed to query clock for ${options.contractAddress}, falling back to latest block: ${e.message}`
+          );
+          const latestBlock = await this._executeWithFallbacks(
+            options,
+            (client) => client.getBlock()
+          );
+          timepoint =
+            clockMode === ClockMode.Timestamp
+              ? latestBlock.timestamp
+              : latestBlock.number!;
+        }
 
-      switch (clockMode) {
-        case ClockMode.Timestamp:
-          timepoint -= 60n * 3n; // 3 minutes ago
-          break;
-        case ClockMode.BlockNumber:
-          timepoint -= 15n; // 15 blocks ago
-          break;
+        switch (clockMode) {
+          case ClockMode.Timestamp:
+            timepoint -= 60n * 3n; // 3 minutes ago
+            break;
+          case ClockMode.BlockNumber:
+            timepoint -= 15n; // 15 blocks ago
+            break;
+        }
       }
 
       const quorumResult = await this._executeWithFallbacks(options, (client) =>
