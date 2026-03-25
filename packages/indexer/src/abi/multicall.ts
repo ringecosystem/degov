@@ -56,7 +56,7 @@ export class Multicall extends ContractBase {
     const results = await Promise.all(
         pages.map(async (page) => {
             const {returnData} = await this.eth_call(aggregate, {calls: page})
-            return returnData.map((data, i) => page[i].func.decodeResult(data))
+            return returnData.map((data, i) => page[i].func.decodeResult(data)) 
         })
     )
 
@@ -105,7 +105,7 @@ export class Multicall extends ContractBase {
               } else {
                 return {success: false}
               }
-            })
+            }) 
         })
     )
 
