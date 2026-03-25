@@ -1,4 +1,5 @@
 import { createPublicClient, http, webSocket, PublicClient, Abi } from "viem";
+import { DegovIndexerHelpers } from "./helpers";
 
 // --- INTERFACES AND TYPES ---
 
@@ -297,7 +298,11 @@ export class ChainTool {
       } catch (error) {
         lastError = error;
         console.warn(
-          `[ChainTool] RPC request to ${rpcUrl} failed. Trying next...`
+          DegovIndexerHelpers.formatLogLine("chaintool.rpc retry", {
+            chainId,
+            rpc: rpcUrl,
+            error: DegovIndexerHelpers.formatError(error),
+          })
         );
       }
     }
@@ -315,7 +320,9 @@ export class ChainTool {
     const cacheKey = `${chainId}`;
 
     if (this.blockIntervalCache.has(cacheKey)) {
-      console.log(`Using cached block interval for chain ${chainId}`);
+      DegovIndexerHelpers.logVerbose("chaintool.block-interval cache hit", {
+        chainId,
+      });
       return this.blockIntervalCache.get(cacheKey)!;
     }
 
@@ -343,7 +350,11 @@ export class ChainTool {
         successfulIntervals.push(result.value);
       } else {
         console.warn(
-          `[ChainTool] RPC request to ${allRpcs[index]} failed: ${result.reason.message}`
+          DegovIndexerHelpers.formatLogLine("chaintool.block-interval rpc failed", {
+            chainId,
+            rpc: allRpcs[index],
+            error: DegovIndexerHelpers.formatError(result.reason),
+          })
         );
       }
     });
@@ -363,9 +374,11 @@ export class ChainTool {
     }
 
     this.blockIntervalCache.set(cacheKey, averageInterval);
-    console.log(
-      `Calculated final average block interval for chain ${chainId} from ${successfulIntervals.length} RPC(s): ${averageInterval}s`
-    );
+    DegovIndexerHelpers.logVerbose("chaintool.block-interval cached", {
+      chainId,
+      rpcCount: successfulIntervals.length,
+      averageSeconds: averageInterval,
+    });
 
     return averageInterval;
   }
@@ -419,9 +432,10 @@ export class ChainTool {
   async clockMode(options: BaseContractOptions): Promise<ClockMode> {
     const cacheKey = `${options.chainId}:${options.contractAddress}`;
     if (this.clockModeCache.has(cacheKey)) {
-      console.log(
-        `Using cached clock mode for ${options.contractAddress} on chain ${options.chainId}`
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.clock-mode cache hit", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+      });
       return this.clockModeCache.get(cacheKey)!;
     }
 
@@ -444,7 +458,14 @@ export class ChainTool {
           mode === "timestamp" ? ClockMode.Timestamp : ClockMode.BlockNumber;
         if (mode !== "timestamp" && mode !== "blocknumber") {
           console.warn(
-            `Unknown clock mode: ${mode} in result: ${result}. Defaulting to blocknumber.`
+            DegovIndexerHelpers.formatLogLine("chaintool.clock-mode fallback", {
+              chainId: options.chainId,
+              contract: options.contractAddress,
+              reason: "unknown-clock-mode",
+              mode,
+              rawResult: result,
+              fallback: ClockMode.BlockNumber,
+            })
           );
         }
       } else {
@@ -462,7 +483,12 @@ export class ChainTool {
       ) {
         // If the function doesn't exist, it's a blocknumber-based contract. Cache this result.
         console.warn(
-          `CLOCK_MODE function not found for ${options.contractAddress}. Caching as ${ClockMode.BlockNumber}.`
+          DegovIndexerHelpers.formatLogLine("chaintool.clock-mode fallback", {
+            chainId: options.chainId,
+            contract: options.contractAddress,
+            reason: "clock-mode-function-missing",
+            fallback: ClockMode.BlockNumber,
+          })
         );
         this.clockModeCache.set(cacheKey, ClockMode.BlockNumber);
         return ClockMode.BlockNumber;
@@ -610,7 +636,15 @@ export class ChainTool {
       return block.timestamp * 1000n;
     } catch (error) {
       console.warn(
-        `[ChainTool] Failed to resolve block timestamp for timepoint ${options.timepoint} on chain ${options.chainId}: ${error}`
+        DegovIndexerHelpers.formatLogLine(
+          "chaintool.timepoint timestamp unresolved",
+          {
+            chainId: options.chainId,
+            contract: options.contractAddress,
+            timepoint: options.timepoint,
+            error: DegovIndexerHelpers.formatError(error),
+          },
+        )
       );
       return undefined;
     }
@@ -625,18 +659,20 @@ export class ChainTool {
       cachedEntry &&
       Date.now() - cachedEntry.timestamp < QUORUM_CACHE_DURATION_MS
     ) {
-      console.log(
-        `Using fresh cached quorum for ${options.contractAddress} on chain ${options.chainId}`
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.quorum cache hit", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+      });
       return cachedEntry.result;
     }
 
     // 2. If cache is stale or empty, try to fetch new data.
     try {
       if (cachedEntry) {
-        console.log(
-          `Cached quorum for ${options.contractAddress} is stale. Refetching...`
-        );
+        DegovIndexerHelpers.logVerbose("chaintool.quorum cache stale", {
+          chainId: options.chainId,
+          contract: options.contractAddress,
+        });
       }
 
       const clockMode = await this.clockMode(options);
@@ -705,21 +741,32 @@ export class ChainTool {
         result: freshResult,
         timestamp: Date.now(),
       });
-      console.log(
-        `Successfully fetched and cached new quorum for ${options.contractAddress} on chain ${options.chainId}`
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.quorum cached", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+        quorum,
+        decimals,
+        clockMode,
+      });
 
       return freshResult;
     } catch (error) {
       // 3. If fetching fails, use stale data if available.
       console.error(
-        `[ChainTool] Failed to fetch new quorum for ${options.contractAddress}:`,
-        error
+        DegovIndexerHelpers.formatLogLine("chaintool.quorum fetch failed", {
+          chainId: options.chainId,
+          contract: options.contractAddress,
+          error: DegovIndexerHelpers.formatError(error),
+        })
       );
 
       if (cachedEntry) {
         console.warn(
-          `[ChainTool] Serving stale quorum data for ${options.contractAddress} due to fetch failure.`
+          DegovIndexerHelpers.formatLogLine("chaintool.quorum cache used", {
+            chainId: options.chainId,
+            contract: options.contractAddress,
+            reason: "fetch-failed",
+          })
         );
         return cachedEntry.result;
       }

@@ -7,6 +7,7 @@ import {
   IndexerProcessorConfig,
   IndexerProcessorState,
 } from "./types";
+import { DegovIndexerHelpers } from "./internal/helpers";
 
 export class DegovDataSource {
   constructor() {}
@@ -131,7 +132,12 @@ class DegovConfigDataSource {
           break;
         }
       } catch (e) {
-        console.error(e);
+        console.error(
+          DegovIndexerHelpers.formatLogLine("datasource.config read failed", {
+            configPath: this.configPath,
+            error: DegovIndexerHelpers.formatError(e),
+          })
+        );
       }
 
       await setTimeout(1000);
