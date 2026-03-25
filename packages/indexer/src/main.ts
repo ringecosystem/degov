@@ -126,8 +126,10 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
                 case "governorToken":
                   await new TokenHandler(ctx, {
                     chainId: config.chainId,
+                    rpcs: [...new Set([...configRpcs, ...envRpcs])],
                     work,
                     indexContract,
+                    chainTool,
                   }).handle(event);
                   break;
               }

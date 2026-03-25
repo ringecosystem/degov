@@ -11,6 +11,7 @@ import {
   DelegateRolling,
   DelegateVotesChanged,
   TokenTransfer,
+  VotePowerCheckpoint,
 } from "../model";
 import {
   MetricsId,
@@ -19,13 +20,16 @@ import {
   IndexerWork,
 } from "../types";
 import { DegovIndexerHelpers } from "../internal/helpers";
+import { ChainTool, ClockMode } from "../internal/chaintool";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 export interface TokenhandlerOptions {
   chainId: number;
+  rpcs: string[];
   work: IndexerWork;
   indexContract: IndexerContract;
+  chainTool: ChainTool;
 }
 
 interface TokenScopeFields {
@@ -36,6 +40,32 @@ interface TokenScopeFields {
   contractAddress?: string | null;
   logIndex?: number | null;
   transactionIndex?: number | null;
+}
+
+export function votePowerTimepointForLog(options: {
+  clockMode: ClockMode;
+  blockHeight: number;
+  blockTimestampMs: number;
+}): bigint {
+  return options.clockMode === ClockMode.Timestamp
+    ? BigInt(Math.floor(options.blockTimestampMs / 1000))
+    : BigInt(options.blockHeight);
+}
+
+export function classifyVotePowerCheckpointCause(options: {
+  hasDelegateChange: boolean;
+  hasTransfer: boolean;
+}): string {
+  if (options.hasDelegateChange && options.hasTransfer) {
+    return "delegate-change+transfer";
+  }
+  if (options.hasDelegateChange) {
+    return "delegate-change";
+  }
+  if (options.hasTransfer) {
+    return "transfer";
+  }
+  return "delegate-votes-changed";
 }
 
 export class TokenHandler {
@@ -59,6 +89,14 @@ export class TokenHandler {
 
   private tokenAddress(): string {
     return DegovIndexerHelpers.normalizeAddress(this.options.indexContract.address)!;
+  }
+
+  private async voteClockMode(): Promise<ClockMode> {
+    return this.options.chainTool.clockMode({
+      chainId: this.options.chainId,
+      contractAddress: this.governorAddress() as `0x${string}`,
+      rpcs: this.options.rpcs,
+    });
   }
 
   private scopeFields(): TokenScopeFields {
@@ -267,8 +305,61 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+    await this.storeVotePowerCheckpoint(entity, eventLog);
     // store rolling
     await this.updateDelegateRolling(entity);
+  }
+
+  private async storeVotePowerCheckpoint(
+    delegateVotesChanged: DelegateVotesChanged,
+    eventLog: EvmLog<EvmFieldSelection>
+  ) {
+    const [clockMode, delegateRolling, tokenTransfer] = await Promise.all([
+      this.voteClockMode(),
+      this.ctx.store.findOne(DelegateRolling, {
+        where: {
+          transactionHash: delegateVotesChanged.transactionHash,
+        },
+      }),
+      this.ctx.store.findOne(TokenTransfer, {
+        where: {
+          transactionHash: delegateVotesChanged.transactionHash,
+        },
+      }),
+    ]);
+
+    const checkpoint = new VotePowerCheckpoint({
+      id: eventLog.id,
+      ...this.eventFields(eventLog),
+      account:
+        DegovIndexerHelpers.normalizeAddress(delegateVotesChanged.delegate) ??
+        delegateVotesChanged.delegate,
+      clockMode,
+      timepoint: votePowerTimepointForLog({
+        clockMode,
+        blockHeight: eventLog.block.height,
+        blockTimestampMs: eventLog.block.timestamp,
+      }),
+      previousPower: BigInt(delegateVotesChanged.previousVotes),
+      newPower: BigInt(delegateVotesChanged.newVotes),
+      delta:
+        BigInt(delegateVotesChanged.newVotes) -
+        BigInt(delegateVotesChanged.previousVotes),
+      cause: classifyVotePowerCheckpointCause({
+        hasDelegateChange: Boolean(delegateRolling),
+        hasTransfer: Boolean(tokenTransfer),
+      }),
+      delegator: DegovIndexerHelpers.normalizeAddress(delegateRolling?.delegator),
+      fromDelegate: DegovIndexerHelpers.normalizeAddress(
+        delegateRolling?.fromDelegate
+      ),
+      toDelegate: DegovIndexerHelpers.normalizeAddress(delegateRolling?.toDelegate),
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+    });
+
+    await this.ctx.store.insert(checkpoint);
   }
 
   private async updateDelegateRolling(options: DelegateVotesChanged) {
