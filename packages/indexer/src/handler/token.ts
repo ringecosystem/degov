@@ -71,24 +71,26 @@ export function classifyVotePowerCheckpointCause(options: {
 export class TokenHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
-    private readonly options: TokenhandlerOptions
+    private readonly options: TokenhandlerOptions,
   ) {}
 
   private governorAddress(): string {
     const governorAddress = DegovIndexerHelpers.findContractAddress(
       this.options.work,
-      "governor"
+      "governor",
     );
     if (!governorAddress) {
       throw new Error(
-        `governor contract not found in work daoCode: ${this.options.work.daoCode}`
+        `governor contract not found in work daoCode: ${this.options.work.daoCode}`,
       );
     }
     return governorAddress;
   }
 
   private tokenAddress(): string {
-    return DegovIndexerHelpers.normalizeAddress(this.options.indexContract.address)!;
+    return DegovIndexerHelpers.normalizeAddress(
+      this.options.indexContract.address,
+    )!;
   }
 
   private async voteClockMode(): Promise<ClockMode> {
@@ -119,7 +121,7 @@ export class TokenHandler {
 
   private applyScopeFields<T extends object>(
     target: T,
-    scope: TokenScopeFields
+    scope: TokenScopeFields,
   ): T {
     Object.assign(target, scope);
     return target;
@@ -142,7 +144,7 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
     const isDelegateChanged =
       eventLog.topics.findIndex(
-        (item) => item === itokenAbi.events.DelegateChanged.topic
+        (item) => item === itokenAbi.events.DelegateChanged.topic,
       ) != -1;
     if (isDelegateChanged) {
       await this.storeDelegateChanged(eventLog);
@@ -150,7 +152,7 @@ export class TokenHandler {
 
     const isDelegateVotesChanged =
       eventLog.topics.findIndex(
-        (item) => item === itokenAbi.events.DelegateVotesChanged.topic
+        (item) => item === itokenAbi.events.DelegateVotesChanged.topic,
       ) != -1;
     if (isDelegateVotesChanged) {
       await this.storeDelegateVotesChanged(eventLog);
@@ -158,7 +160,7 @@ export class TokenHandler {
 
     const isTokenTransfer =
       eventLog.topics.findIndex(
-        (item) => item === itokenAbi.events.Transfer.topic
+        (item) => item === itokenAbi.events.Transfer.topic,
       ) != -1;
     if (isTokenTransfer) {
       await this.storeTokenTransfer(eventLog);
@@ -170,8 +172,8 @@ export class TokenHandler {
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
     this.ctx.log.info(
       `Received delegate chanaged event: ${DegovIndexerHelpers.safeJsonStringify(
-        event
-      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
+        event,
+      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`,
     );
     const entity = new DelegateChanged({
       id: eventLog.id,
@@ -208,7 +210,10 @@ export class TokenHandler {
         oldDelegateContributor.delegatesCountAll > 0
       ) {
         oldDelegateContributor.delegatesCountAll -= 1;
-        this.applyScopeFields(oldDelegateContributor, this.eventFields(eventLog));
+        this.applyScopeFields(
+          oldDelegateContributor,
+          this.eventFields(eventLog),
+        );
         await this.ctx.store.save(oldDelegateContributor);
       }
     }
@@ -290,8 +295,8 @@ export class TokenHandler {
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
     this.ctx.log.info(
       `Received delegate votes changed event: ${DegovIndexerHelpers.safeJsonStringify(
-        event
-      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
+        event,
+      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`,
     );
     const entity = new DelegateVotesChanged({
       id: eventLog.id,
@@ -312,7 +317,7 @@ export class TokenHandler {
 
   private async storeVotePowerCheckpoint(
     delegateVotesChanged: DelegateVotesChanged,
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ) {
     const [clockMode, delegateRolling, tokenTransfer] = await Promise.all([
       this.voteClockMode(),
@@ -349,11 +354,15 @@ export class TokenHandler {
         hasDelegateChange: Boolean(delegateRolling),
         hasTransfer: Boolean(tokenTransfer),
       }),
-      delegator: DegovIndexerHelpers.normalizeAddress(delegateRolling?.delegator),
-      fromDelegate: DegovIndexerHelpers.normalizeAddress(
-        delegateRolling?.fromDelegate
+      delegator: DegovIndexerHelpers.normalizeAddress(
+        delegateRolling?.delegator,
       ),
-      toDelegate: DegovIndexerHelpers.normalizeAddress(delegateRolling?.toDelegate),
+      fromDelegate: DegovIndexerHelpers.normalizeAddress(
+        delegateRolling?.fromDelegate,
+      ),
+      toDelegate: DegovIndexerHelpers.normalizeAddress(
+        delegateRolling?.toDelegate,
+      ),
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
@@ -371,7 +380,7 @@ export class TokenHandler {
       });
     if (!delegateRolling) {
       this.ctx.log.info(
-        `skipped delegate votes changed, because it's from transfer (checked no delegatechanged event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
+        `skipped delegate votes changed, because it's from transfer (checked no delegatechanged event), delegate: ${options.delegate}, tx: ${options.transactionHash}`,
       );
       return;
     }
@@ -381,16 +390,16 @@ export class TokenHandler {
       dvcDelegate !== delegateRolling.toDelegate
     ) {
       this.ctx.log.info(
-        `skipped delegate votes changed, because it's from transfer (checked no there is no matching delegated changed event), delegate: ${options.delegate}, tx: ${options.transactionHash}`
+        `skipped delegate votes changed, because it's from transfer (checked no there is no matching delegated changed event), delegate: ${options.delegate}, tx: ${options.transactionHash}`,
       );
       return;
     }
     this.ctx.log.info(
       `Queried delegate rolling (update rolling): ${DegovIndexerHelpers.safeJsonStringify(
-        delegateRolling
+        delegateRolling,
       )} options: ${DegovIndexerHelpers.safeJsonStringify(options)} => tx: ${
         options.transactionHash
-      }`
+      }`,
     );
 
     /*
@@ -472,8 +481,8 @@ export class TokenHandler {
     const event = itokenAbi.events.Transfer.decode(eventLog);
     this.ctx.log.info(
       `Received token transfer event: ${DegovIndexerHelpers.safeJsonStringify(
-        event
-      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`
+        event,
+      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`,
     );
     const entity = new TokenTransfer({
       id: eventLog.id,
@@ -533,8 +542,8 @@ export class TokenHandler {
     if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
       this.ctx.log.warn(
         `Delegate from or to is not set. ${DegovIndexerHelpers.safeJsonStringify(
-          currentDelegate
-        )}`
+          currentDelegate,
+        )}`,
       );
     }
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();

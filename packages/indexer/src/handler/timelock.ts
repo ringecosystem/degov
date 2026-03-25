@@ -9,11 +9,7 @@ import {
   TimelockOperation,
   TimelockRoleEvent,
 } from "../model";
-import {
-  EvmFieldSelection,
-  IndexerContract,
-  IndexerWork,
-} from "../types";
+import { EvmFieldSelection, IndexerContract, IndexerWork } from "../types";
 import { ChainTool, ClockMode } from "../internal/chaintool";
 import { DegovIndexerHelpers } from "../internal/helpers";
 import {
@@ -51,17 +47,21 @@ interface TimelockScopeFields {
 export class TimelockHandler {
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
-    private readonly options: TimelockHandlerOptions
+    private readonly options: TimelockHandlerOptions,
   ) {}
 
   private governorAddress(): string | undefined {
-    return DegovIndexerHelpers.findContractAddress(this.options.work, "governor");
+    return DegovIndexerHelpers.findContractAddress(
+      this.options.work,
+      "governor",
+    );
   }
 
   private timelockAddress(): string {
     return (
-      DegovIndexerHelpers.normalizeAddress(this.options.indexContract.address) ??
-      this.options.indexContract.address.toLowerCase()
+      DegovIndexerHelpers.normalizeAddress(
+        this.options.indexContract.address,
+      ) ?? this.options.indexContract.address.toLowerCase()
     );
   }
 
@@ -75,7 +75,7 @@ export class TimelockHandler {
   }
 
   private eventFields(
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ): TimelockScopeFields {
     return {
       ...this.scopeFields(),
@@ -87,7 +87,7 @@ export class TimelockHandler {
 
   private hasTopic(
     eventLog: EvmLog<EvmFieldSelection>,
-    topic: string
+    topic: string,
   ): boolean {
     return eventLog.topics.includes(topic);
   }
@@ -95,7 +95,7 @@ export class TimelockHandler {
   private proposalStateEpochId(
     proposal: Proposal,
     state: string,
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ): string {
     return `${proposal.id}:state:${state.toLowerCase()}:${eventLog.id}`;
   }
@@ -115,7 +115,7 @@ export class TimelockHandler {
   }
 
   private async findOrCreateOperation(
-    operationId: string
+    operationId: string,
   ): Promise<TimelockOperation> {
     const existing = await this.findOperation(operationId);
     if (existing) {
@@ -158,7 +158,7 @@ export class TimelockHandler {
 
   private async bindOperationToProposal(
     operation: TimelockOperation,
-    proposal: Proposal
+    proposal: Proposal,
   ) {
     operation.proposal = proposal;
     operation.proposalId = proposal.proposalId;
@@ -188,7 +188,7 @@ export class TimelockHandler {
   private async ensureProposalStateEpoch(
     proposal: Proposal,
     state: string,
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ) {
     const existing = await this.ctx.store.findOne(ProposalStateEpoch, {
       where: {
@@ -234,7 +234,7 @@ export class TimelockHandler {
 
   private async finalizeOperationExecution(
     operation: TimelockOperation,
-    eventLog: EvmLog<EvmFieldSelection>
+    eventLog: EvmLog<EvmFieldSelection>,
   ) {
     operation.state = TIMELOCK_STATE_DONE;
     operation.executedBlockNumber = BigInt(eventLog.block.height);
@@ -246,7 +246,7 @@ export class TimelockHandler {
       await this.ensureProposalStateEpoch(
         operation.proposal,
         GOVERNANCE_STATE_EXECUTED,
-        eventLog
+        eventLog,
       );
     }
   }
@@ -265,11 +265,16 @@ export class TimelockHandler {
     if (this.hasTopic(eventLog, itimelockcontrollerAbi.events.CallSalt.topic)) {
       await this.storeCallSalt(eventLog);
     }
-    if (this.hasTopic(eventLog, itimelockcontrollerAbi.events.Cancelled.topic)) {
+    if (
+      this.hasTopic(eventLog, itimelockcontrollerAbi.events.Cancelled.topic)
+    ) {
       await this.storeCancelled(eventLog);
     }
     if (
-      this.hasTopic(eventLog, itimelockcontrollerAbi.events.MinDelayChange.topic)
+      this.hasTopic(
+        eventLog,
+        itimelockcontrollerAbi.events.MinDelayChange.topic,
+      )
     ) {
       await this.storeMinDelayChange(eventLog);
     }
@@ -286,7 +291,7 @@ export class TimelockHandler {
     if (
       this.hasTopic(
         eventLog,
-        itimelockcontrollerAbi.events.RoleAdminChanged.topic
+        itimelockcontrollerAbi.events.RoleAdminChanged.topic,
       )
     ) {
       await this.storeRoleAdminChanged(eventLog);
@@ -303,21 +308,24 @@ export class TimelockHandler {
     operation.transactionIndex ??= eventLog.transactionIndex;
     operation.predecessor = event.predecessor.toLowerCase();
     operation.delaySeconds = BigInt(event.delay);
-    operation.readyAt = BigInt(eventLog.block.timestamp) + BigInt(event.delay) * 1000n;
+    operation.readyAt =
+      BigInt(eventLog.block.timestamp) + BigInt(event.delay) * 1000n;
     operation.state =
       operation.readyAt <= BigInt(eventLog.block.timestamp)
         ? TIMELOCK_STATE_READY
         : TIMELOCK_STATE_WAITING;
-    operation.callCount = Math.max(operation.callCount ?? 0, Number(event.index) + 1);
+    operation.callCount = Math.max(
+      operation.callCount ?? 0,
+      Number(event.index) + 1,
+    );
     operation.queuedBlockNumber ??= BigInt(eventLog.block.height);
     operation.queuedBlockTimestamp ??= BigInt(eventLog.block.timestamp);
     operation.queuedTransactionHash ??= eventLog.transactionHash;
 
-    const call = (
-      await this.ctx.store.findOne(TimelockCall, {
+    const call =
+      (await this.ctx.store.findOne(TimelockCall, {
         where: { id: timelockCallEntityId(operation.id, Number(event.index)) },
-      })
-    ) ??
+      })) ??
       new TimelockCall({
         id: timelockCallEntityId(operation.id, Number(event.index)),
         ...this.scopeFields(),
@@ -477,7 +485,7 @@ export class TimelockHandler {
       await this.ensureProposalStateEpoch(
         operation.proposal,
         GOVERNANCE_STATE_CANCELED,
-        eventLog
+        eventLog,
       );
     }
   }
@@ -534,7 +542,8 @@ export class TimelockHandler {
   }
 
   private async storeRoleAdminChanged(eventLog: EvmLog<EvmFieldSelection>) {
-    const event = itimelockcontrollerAbi.events.RoleAdminChanged.decode(eventLog);
+    const event =
+      itimelockcontrollerAbi.events.RoleAdminChanged.decode(eventLog);
     const entity = new TimelockRoleEvent({
       id: eventLog.id,
       ...this.eventFields(eventLog),
