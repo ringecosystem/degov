@@ -18,7 +18,9 @@ import {
   ProposalStateEpoch,
   ProposalThresholdSet,
   QuorumNumeratorUpdated,
+  TimelockCall,
   TimelockChange,
+  TimelockOperation,
   VoteCast,
   VoteCastGroup,
   VoteCastWithParams,
@@ -34,6 +36,18 @@ import {
 import { ChainTool, ClockMode } from "../internal/chaintool";
 import { TextPlus } from "../internal/textplus";
 import { DegovIndexerHelpers } from "../internal/helpers";
+import {
+  governorTimelockSalt,
+  TIMELOCK_STATE_CANCELED,
+  TIMELOCK_STATE_DONE,
+  TIMELOCK_STATE_READY,
+  TIMELOCK_STATE_WAITING,
+  TIMELOCK_TYPE_CONTROL,
+  timelockCallEntityId,
+  timelockOperationEntityId,
+  timelockOperationIdForBatch,
+  ZERO_BYTES32,
+} from "../internal/timelock";
 
 const ABI_FUNCTION_COUNTING_MODE: Abi = [
   {
@@ -80,6 +94,16 @@ const ABI_FUNCTION_TIMELOCK: Abi = [
     inputs: [],
     name: "timelock",
     outputs: [{ internalType: "address", name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_GRACE_PERIOD: Abi = [
+  {
+    inputs: [],
+    name: "GRACE_PERIOD",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
     stateMutability: "view",
     type: "function",
   },
@@ -196,6 +220,162 @@ export class GovernorHandler {
         proposalId,
       }),
     });
+  }
+
+  private proposalTimelockOperationId(proposal: Proposal): string | undefined {
+    if (!proposal.timelockAddress || !proposal.descriptionHash) {
+      return undefined;
+    }
+
+    const salt = governorTimelockSalt({
+      governorAddress: this.governorAddress(),
+      descriptionHash: proposal.descriptionHash,
+    });
+
+    return timelockOperationIdForBatch({
+      targets: proposal.targets,
+      values: proposal.values,
+      calldatas: proposal.calldatas,
+      predecessor: ZERO_BYTES32,
+      salt,
+    });
+  }
+
+  private async findTimelockOperation(proposal: Proposal) {
+    const operationId = this.proposalTimelockOperationId(proposal);
+    if (!operationId || !proposal.timelockAddress) {
+      return undefined;
+    }
+
+    return this.ctx.store.findOne(TimelockOperation, {
+      where: {
+        chainId: this.options.chainId,
+        timelockAddress: proposal.timelockAddress,
+        operationId,
+      },
+    });
+  }
+
+  private async syncTimelockOperationForProposalQueue(
+    proposal: Proposal,
+    eventLog: EvmLog<EvmFieldSelection>,
+    etaSeconds: bigint
+  ) {
+    if (!proposal.timelockAddress || !proposal.descriptionHash) {
+      return;
+    }
+
+    const operationId =
+      this.proposalTimelockOperationId(proposal) ?? undefined;
+    if (!operationId) {
+      return;
+    }
+
+    const operation =
+      (await this.findTimelockOperation(proposal)) ??
+      new TimelockOperation({
+        id: timelockOperationEntityId({
+          chainId: this.options.chainId,
+          timelockAddress: proposal.timelockAddress,
+          operationId,
+        }),
+        operationId,
+        timelockAddress: proposal.timelockAddress,
+        timelockType: TIMELOCK_TYPE_CONTROL,
+        state: TIMELOCK_STATE_WAITING,
+      });
+
+    const delaySeconds =
+      etaSeconds > BigInt(Math.floor(eventLog.block.timestamp / 1000))
+        ? etaSeconds - BigInt(Math.floor(eventLog.block.timestamp / 1000))
+        : 0n;
+    const queuedState =
+      etaSeconds * 1000n <= BigInt(eventLog.block.timestamp)
+        ? TIMELOCK_STATE_READY
+        : TIMELOCK_STATE_WAITING;
+
+    operation.chainId = this.options.chainId;
+    operation.daoCode = this.options.work.daoCode;
+    operation.governorAddress = proposal.governorAddress;
+    operation.timelockAddress = proposal.timelockAddress;
+    operation.contractAddress = proposal.timelockAddress;
+    operation.proposal = proposal;
+    operation.proposalId = proposal.proposalId;
+    operation.logIndex = operation.logIndex ?? eventLog.logIndex;
+    operation.transactionIndex = operation.transactionIndex ?? eventLog.transactionIndex;
+    operation.predecessor = ZERO_BYTES32;
+    operation.salt = governorTimelockSalt({
+      governorAddress: this.governorAddress(),
+      descriptionHash: proposal.descriptionHash,
+    });
+    if (
+      operation.state !== TIMELOCK_STATE_DONE &&
+      operation.state !== TIMELOCK_STATE_CANCELED
+    ) {
+      operation.state = queuedState;
+    }
+    operation.callCount = proposal.targets.length;
+    operation.executedCallCount = operation.executedCallCount ?? 0;
+    operation.delaySeconds = operation.delaySeconds ?? delaySeconds;
+    operation.readyAt = operation.readyAt ?? etaSeconds * 1000n;
+    operation.queuedBlockNumber = operation.queuedBlockNumber ?? BigInt(eventLog.block.height);
+    operation.queuedBlockTimestamp =
+      operation.queuedBlockTimestamp ?? BigInt(eventLog.block.timestamp);
+    operation.queuedTransactionHash =
+      operation.queuedTransactionHash ?? eventLog.transactionHash;
+
+    await this.ctx.store.save(operation);
+
+    for (const [actionIndex, target] of proposal.targets.entries()) {
+      const callId = timelockCallEntityId(operation.id, actionIndex);
+      const existingCall = await this.ctx.store.findOne(TimelockCall, {
+        where: { id: callId },
+      });
+      const call =
+        existingCall ??
+        new TimelockCall({
+          id: callId,
+          operation,
+          operationId,
+          actionIndex,
+          target,
+          value: proposal.values[actionIndex] ?? "0",
+          data: proposal.calldatas[actionIndex] ?? "0x",
+          state: queuedState,
+        });
+
+      call.chainId = this.options.chainId;
+      call.daoCode = this.options.work.daoCode;
+      call.governorAddress = proposal.governorAddress;
+      call.timelockAddress = proposal.timelockAddress;
+      call.contractAddress = proposal.timelockAddress;
+      call.logIndex = call.logIndex ?? eventLog.logIndex;
+      call.transactionIndex = call.transactionIndex ?? eventLog.transactionIndex;
+      call.operation = operation;
+      call.operationId = operationId;
+      call.proposal = proposal;
+      call.proposalId = proposal.proposalId;
+      call.proposalActionIndex = actionIndex;
+      call.proposalActionId = this.proposalActionId(proposal, actionIndex);
+      call.actionIndex = actionIndex;
+      call.target = target;
+      call.value = proposal.values[actionIndex] ?? "0";
+      call.data = proposal.calldatas[actionIndex] ?? "0x";
+      call.predecessor = ZERO_BYTES32;
+      call.delaySeconds = call.delaySeconds ?? delaySeconds;
+      if (call.state !== TIMELOCK_STATE_DONE) {
+        call.state =
+          call.state === TIMELOCK_STATE_CANCELED ? call.state : queuedState;
+      }
+      call.scheduledBlockNumber =
+        call.scheduledBlockNumber ?? BigInt(eventLog.block.height);
+      call.scheduledBlockTimestamp =
+        call.scheduledBlockTimestamp ?? BigInt(eventLog.block.timestamp);
+      call.scheduledTransactionHash =
+        call.scheduledTransactionHash ?? eventLog.transactionHash;
+
+      await this.ctx.store.save(call);
+    }
   }
 
   async handle(eventLog: EvmLog<EvmFieldSelection>) {
@@ -450,6 +630,19 @@ export class GovernorHandler {
     state: string,
     eventLog: EvmLog<EvmFieldSelection>
   ) {
+    const existing = await this.ctx.store.findOne(ProposalStateEpoch, {
+      where: {
+        chainId: this.options.chainId,
+        governorAddress: this.governorAddress(),
+        proposalId: proposal.proposalId,
+        state,
+        transactionHash: eventLog.transactionHash,
+      },
+    });
+    if (existing) {
+      return;
+    }
+
     const clockMode = await this.options.chainTool.clockMode({
       chainId: this.options.chainId,
       contractAddress: this.options.indexContract.address,
@@ -590,7 +783,27 @@ export class GovernorHandler {
     const proposal = await this.findProposal(proposalId);
     if (proposal) {
       proposal.proposalEta = event.etaSeconds;
+      proposal.queueReadyAt = event.etaSeconds * 1000n;
+      if (proposal.timelockAddress) {
+        const gracePeriod = await this.options.chainTool.readOptionalContract<bigint>({
+          chainId: this.options.chainId,
+          contractAddress: proposal.timelockAddress as `0x${string}`,
+          rpcs: this.options.rpcs,
+          abi: ABI_FUNCTION_GRACE_PERIOD,
+          functionName: "GRACE_PERIOD",
+        });
+        proposal.timelockGracePeriod = gracePeriod;
+        proposal.queueExpiresAt =
+          gracePeriod !== undefined
+            ? (event.etaSeconds + gracePeriod) * 1000n
+            : undefined;
+      }
       await this.ctx.store.save(proposal);
+      await this.syncTimelockOperationForProposalQueue(
+        proposal,
+        eventLog,
+        event.etaSeconds
+      );
       await this.storeProposalStateEpoch(
         proposal,
         GOVERNANCE_STATE_QUEUED,
@@ -676,6 +889,15 @@ export class GovernorHandler {
 
     const proposal = await this.findProposal(proposalId);
     if (proposal) {
+      const operation = await this.findTimelockOperation(proposal);
+      if (operation) {
+        operation.state = TIMELOCK_STATE_DONE;
+        operation.executedBlockNumber = BigInt(eventLog.block.height);
+        operation.executedBlockTimestamp = BigInt(eventLog.block.timestamp);
+        operation.executedTransactionHash = eventLog.transactionHash;
+        operation.executedCallCount = operation.callCount ?? operation.executedCallCount;
+        await this.ctx.store.save(operation);
+      }
       await this.storeProposalStateEpoch(
         proposal,
         GOVERNANCE_STATE_EXECUTED,
@@ -699,6 +921,14 @@ export class GovernorHandler {
 
     const proposal = await this.findProposal(proposalId);
     if (proposal) {
+      const operation = await this.findTimelockOperation(proposal);
+      if (operation) {
+        operation.state = TIMELOCK_STATE_CANCELED;
+        operation.cancelledBlockNumber = BigInt(eventLog.block.height);
+        operation.cancelledBlockTimestamp = BigInt(eventLog.block.timestamp);
+        operation.cancelledTransactionHash = eventLog.transactionHash;
+        await this.ctx.store.save(operation);
+      }
       await this.storeProposalStateEpoch(
         proposal,
         GOVERNANCE_STATE_CANCELED,
