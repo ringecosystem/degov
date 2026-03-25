@@ -150,22 +150,18 @@ Extract a title from the content above, following these rules in order:
 
     if (!title) {
       title = this._extractTitleSimplify(description);
-      console.log(
-        DegovIndexerHelpers.formatLogLine("textplus.title extracted", {
-          strategy: "simplify",
-          title,
-        })
-      );
+      DegovIndexerHelpers.logVerbose("textplus.title extracted", {
+        strategy: "simplify",
+        title,
+      });
     }
 
     // If the title is still empty (because AI failed, returned nothing, or was never called),
     // use the local extraction method.
     if (!title) {
-      console.log(
-        DegovIndexerHelpers.formatLogLine("textplus.title fallback", {
-          strategy: "fullback",
-        })
-      );
+      DegovIndexerHelpers.logVerbose("textplus.title fallback", {
+        strategy: "fullback",
+      });
       title = this._extractTitleFullback(description);
     }
 

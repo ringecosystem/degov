@@ -320,11 +320,9 @@ export class ChainTool {
     const cacheKey = `${chainId}`;
 
     if (this.blockIntervalCache.has(cacheKey)) {
-      console.log(
-        DegovIndexerHelpers.formatLogLine("chaintool.block-interval cache hit", {
-          chainId,
-        })
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.block-interval cache hit", {
+        chainId,
+      });
       return this.blockIntervalCache.get(cacheKey)!;
     }
 
@@ -376,13 +374,11 @@ export class ChainTool {
     }
 
     this.blockIntervalCache.set(cacheKey, averageInterval);
-    console.log(
-      DegovIndexerHelpers.formatLogLine("chaintool.block-interval cached", {
-        chainId,
-        rpcCount: successfulIntervals.length,
-        averageSeconds: averageInterval,
-      })
-    );
+    DegovIndexerHelpers.logVerbose("chaintool.block-interval cached", {
+      chainId,
+      rpcCount: successfulIntervals.length,
+      averageSeconds: averageInterval,
+    });
 
     return averageInterval;
   }
@@ -436,12 +432,10 @@ export class ChainTool {
   async clockMode(options: BaseContractOptions): Promise<ClockMode> {
     const cacheKey = `${options.chainId}:${options.contractAddress}`;
     if (this.clockModeCache.has(cacheKey)) {
-      console.log(
-        DegovIndexerHelpers.formatLogLine("chaintool.clock-mode cache hit", {
-          chainId: options.chainId,
-          contract: options.contractAddress,
-        })
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.clock-mode cache hit", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+      });
       return this.clockModeCache.get(cacheKey)!;
     }
 
@@ -665,24 +659,20 @@ export class ChainTool {
       cachedEntry &&
       Date.now() - cachedEntry.timestamp < QUORUM_CACHE_DURATION_MS
     ) {
-      console.log(
-        DegovIndexerHelpers.formatLogLine("chaintool.quorum cache hit", {
-          chainId: options.chainId,
-          contract: options.contractAddress,
-        })
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.quorum cache hit", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+      });
       return cachedEntry.result;
     }
 
     // 2. If cache is stale or empty, try to fetch new data.
     try {
       if (cachedEntry) {
-        console.log(
-          DegovIndexerHelpers.formatLogLine("chaintool.quorum cache stale", {
-            chainId: options.chainId,
-            contract: options.contractAddress,
-          })
-        );
+        DegovIndexerHelpers.logVerbose("chaintool.quorum cache stale", {
+          chainId: options.chainId,
+          contract: options.contractAddress,
+        });
       }
 
       const clockMode = await this.clockMode(options);
@@ -751,15 +741,13 @@ export class ChainTool {
         result: freshResult,
         timestamp: Date.now(),
       });
-      console.log(
-        DegovIndexerHelpers.formatLogLine("chaintool.quorum cached", {
-          chainId: options.chainId,
-          contract: options.contractAddress,
-          quorum,
-          decimals,
-          clockMode,
-        })
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.quorum cached", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+        quorum,
+        decimals,
+        clockMode,
+      });
 
       return freshResult;
     } catch (error) {

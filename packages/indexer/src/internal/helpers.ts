@@ -33,6 +33,14 @@ export class DegovIndexerHelpers {
     return value?.toLowerCase();
   }
 
+  static verboseLoggingEnabled(): boolean {
+    const value = process.env.DEGOV_INDEXER_VERBOSE_LOGS
+      ?.trim()
+      .toLowerCase();
+
+    return value === "1" || value === "true" || value === "yes" || value === "on";
+  }
+
   static formatLogLine(
     step: string,
     fields: Record<string, IndexerLogFieldValue> = {}
@@ -52,6 +60,26 @@ export class DegovIndexerHelpers {
       return error;
     }
     return this.safeJsonStringify(error);
+  }
+
+  static logVerbose(step: string, fields: Record<string, IndexerLogFieldValue> = {}) {
+    if (!this.verboseLoggingEnabled()) {
+      return;
+    }
+
+    console.log(this.formatLogLine(step, fields));
+  }
+
+  static logVerboseInfo(
+    logger: { info: (message: string) => void },
+    step: string,
+    fields: Record<string, IndexerLogFieldValue> = {}
+  ) {
+    if (!this.verboseLoggingEnabled()) {
+      return;
+    }
+
+    logger.info(this.formatLogLine(step, fields));
   }
 
   static findContractAddress(

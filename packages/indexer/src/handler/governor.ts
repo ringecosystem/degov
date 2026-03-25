@@ -727,16 +727,15 @@ export class GovernorHandler {
       event,
     );
     const eifo = await this.options.textPlus.extractInfo(event.description);
-    this.ctx.log.info(
-      DegovIndexerHelpers.formatLogLine(
-        "governor.proposal metadata extracted",
-        {
-          proposalId,
-          title: eifo.title,
-          block: eventLog.block.height,
-          tx: eventLog.transactionHash,
-        },
-      ),
+    DegovIndexerHelpers.logVerboseInfo(
+      this.ctx.log,
+      "governor.proposal metadata extracted",
+      {
+        proposalId,
+        title: eifo.title,
+        block: eventLog.block.height,
+        tx: eventLog.transactionHash,
+      },
     );
 
     const proposal = new Proposal({

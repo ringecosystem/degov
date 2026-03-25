@@ -170,14 +170,16 @@ export class TokenHandler {
   private async storeDelegateChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
-    this.ctx.log.info(
-      DegovIndexerHelpers.formatLogLine("token.delegate-change recorded", {
+    DegovIndexerHelpers.logVerboseInfo(
+      this.ctx.log,
+      "token.delegate-change recorded",
+      {
         delegator: event.delegator,
         from: event.fromDelegate,
         to: event.toDelegate,
         block: eventLog.block.height,
         tx: eventLog.transactionHash,
-      }),
+      },
     );
     const entity = new DelegateChanged({
       id: eventLog.id,
@@ -297,15 +299,17 @@ export class TokenHandler {
   private async storeDelegateVotesChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
-    this.ctx.log.info(
-      DegovIndexerHelpers.formatLogLine("token.delegate-votes recorded", {
+    DegovIndexerHelpers.logVerboseInfo(
+      this.ctx.log,
+      "token.delegate-votes recorded",
+      {
         delegate: event.delegate,
         previousVotes:
           "previousVotes" in event ? event.previousVotes : event.previousBalance,
         newVotes: "newVotes" in event ? event.newVotes : event.newBalance,
         block: eventLog.block.height,
         tx: eventLog.transactionHash,
-      }),
+      },
     );
     const entity = new DelegateVotesChanged({
       id: eventLog.id,
@@ -388,15 +392,14 @@ export class TokenHandler {
         },
       });
     if (!delegateRolling) {
-      this.ctx.log.info(
-        DegovIndexerHelpers.formatLogLine(
-          "token.delegate relation skipped",
-          {
-            reason: "transfer-without-delegate-change",
-            delegate: options.delegate,
-            tx: options.transactionHash,
-          },
-        ),
+      DegovIndexerHelpers.logVerboseInfo(
+        this.ctx.log,
+        "token.delegate relation skipped",
+        {
+          reason: "transfer-without-delegate-change",
+          delegate: options.delegate,
+          tx: options.transactionHash,
+        },
       );
       return;
     }
@@ -405,17 +408,16 @@ export class TokenHandler {
       dvcDelegate !== delegateRolling.fromDelegate &&
       dvcDelegate !== delegateRolling.toDelegate
     ) {
-      this.ctx.log.info(
-        DegovIndexerHelpers.formatLogLine(
-          "token.delegate relation skipped",
-          {
-            reason: "delegate-mismatch-for-transaction",
-            delegate: options.delegate,
-            expectedFrom: delegateRolling.fromDelegate,
-            expectedTo: delegateRolling.toDelegate,
-            tx: options.transactionHash,
-          },
-        ),
+      DegovIndexerHelpers.logVerboseInfo(
+        this.ctx.log,
+        "token.delegate relation skipped",
+        {
+          reason: "delegate-mismatch-for-transaction",
+          delegate: options.delegate,
+          expectedFrom: delegateRolling.fromDelegate,
+          expectedTo: delegateRolling.toDelegate,
+          tx: options.transactionHash,
+        },
       );
       return;
     }
@@ -478,15 +480,17 @@ export class TokenHandler {
       power: options.newVotes - options.previousVotes,
     });
 
-    this.ctx.log.info(
-      DegovIndexerHelpers.formatLogLine("token.delegate relation updated", {
+    DegovIndexerHelpers.logVerboseInfo(
+      this.ctx.log,
+      "token.delegate relation updated",
+      {
         delegator: delegateRolling.delegator,
         from: fromDelegate,
         to: toDelegate,
         delegate: options.delegate,
         delta: options.newVotes - options.previousVotes,
         tx: options.transactionHash,
-      }),
+      },
     );
 
     this.applyScopeFields(delegateRolling, {
@@ -508,15 +512,17 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
 
     const event = itokenAbi.events.Transfer.decode(eventLog);
-    this.ctx.log.info(
-      DegovIndexerHelpers.formatLogLine("token.transfer recorded", {
+    DegovIndexerHelpers.logVerboseInfo(
+      this.ctx.log,
+      "token.transfer recorded",
+      {
         from: event.from,
         to: event.to,
         value: "value" in event ? event.value : event.tokenId,
         standard: contractStandard,
         block: eventLog.block.height,
         tx: eventLog.transactionHash,
-      }),
+      },
     );
     const entity = new TokenTransfer({
       id: eventLog.id,
