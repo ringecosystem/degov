@@ -4,6 +4,7 @@ import {
 } from "@openrouter/ai-sdk-provider";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { DegovIndexerHelpers } from "./helpers";
 
 export interface ExtractTextInfo {
   title: string;
@@ -23,7 +24,9 @@ export class TextPlus {
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
     if (!OPENROUTER_API_KEY) {
       console.warn(
-        "OPENROUTER_API_KEY is not set. AI features will be disabled."
+        DegovIndexerHelpers.formatLogLine("textplus.ai disabled", {
+          reason: "missing-openrouter-api-key",
+        })
       );
       return undefined;
     }
@@ -135,8 +138,11 @@ Extract a title from the content above, following these rules in order:
         }
       } catch (e) {
         console.error(
-          "Error generating title with AI. Falling back to local extraction.",
-          e
+          DegovIndexerHelpers.formatLogLine("textplus.title generation failed", {
+            strategy: "ai",
+            fallback: "local",
+            error: DegovIndexerHelpers.formatError(e),
+          })
         );
         // AI failed, title is still ""
       }
@@ -144,14 +150,21 @@ Extract a title from the content above, following these rules in order:
 
     if (!title) {
       title = this._extractTitleSimplify(description);
-      console.log("Extracted title simplify:", title);
+      console.log(
+        DegovIndexerHelpers.formatLogLine("textplus.title extracted", {
+          strategy: "simplify",
+          title,
+        })
+      );
     }
 
     // If the title is still empty (because AI failed, returned nothing, or was never called),
     // use the local extraction method.
     if (!title) {
       console.log(
-        "No suitable title was found. Using local fallback extractor."
+        DegovIndexerHelpers.formatLogLine("textplus.title fallback", {
+          strategy: "fullback",
+        })
       );
       title = this._extractTitleFullback(description);
     }

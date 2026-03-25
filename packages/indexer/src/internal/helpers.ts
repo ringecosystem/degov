@@ -6,6 +6,16 @@ export interface ProposalScopeWhereOptions {
   proposalId: string;
 }
 
+export type IndexerLogFieldValue =
+  | string
+  | number
+  | boolean
+  | bigint
+  | null
+  | undefined
+  | Record<string, unknown>
+  | unknown[];
+
 export class DegovIndexerHelpers {
   static safeJsonStringify(
     value: any,
@@ -23,6 +33,27 @@ export class DegovIndexerHelpers {
     return value?.toLowerCase();
   }
 
+  static formatLogLine(
+    step: string,
+    fields: Record<string, IndexerLogFieldValue> = {}
+  ): string {
+    const details = Object.entries(fields)
+      .filter(([, value]) => value !== undefined && value !== null && value !== "")
+      .map(([key, value]) => `${key}=${this.formatLogValue(value)}`);
+
+    return details.length > 0 ? `${step} | ${details.join(" ")}` : step;
+  }
+
+  static formatError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    if (typeof error === "string") {
+      return error;
+    }
+    return this.safeJsonStringify(error);
+  }
+
   static findContractAddress(
     work: IndexerWork,
     contractName: ContractName
@@ -38,5 +69,18 @@ export class DegovIndexerHelpers {
       governorAddress: this.normalizeAddress(options.governorAddress),
       proposalId: options.proposalId,
     };
+  }
+
+  private static formatLogValue(value: IndexerLogFieldValue): string {
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
+    if (typeof value === "string") {
+      return /\s/.test(value) ? JSON.stringify(value) : value;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    return this.safeJsonStringify(value);
   }
 }

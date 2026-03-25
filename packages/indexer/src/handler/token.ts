@@ -171,9 +171,13 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
     this.ctx.log.info(
-      `Received delegate chanaged event: ${DegovIndexerHelpers.safeJsonStringify(
-        event,
-      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`,
+      DegovIndexerHelpers.formatLogLine("token.delegate-change recorded", {
+        delegator: event.delegator,
+        from: event.fromDelegate,
+        to: event.toDelegate,
+        block: eventLog.block.height,
+        tx: eventLog.transactionHash,
+      }),
     );
     const entity = new DelegateChanged({
       id: eventLog.id,
@@ -294,9 +298,14 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
     this.ctx.log.info(
-      `Received delegate votes changed event: ${DegovIndexerHelpers.safeJsonStringify(
-        event,
-      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`,
+      DegovIndexerHelpers.formatLogLine("token.delegate-votes recorded", {
+        delegate: event.delegate,
+        previousVotes:
+          "previousVotes" in event ? event.previousVotes : event.previousBalance,
+        newVotes: "newVotes" in event ? event.newVotes : event.newBalance,
+        block: eventLog.block.height,
+        tx: eventLog.transactionHash,
+      }),
     );
     const entity = new DelegateVotesChanged({
       id: eventLog.id,
@@ -380,7 +389,14 @@ export class TokenHandler {
       });
     if (!delegateRolling) {
       this.ctx.log.info(
-        `skipped delegate votes changed, because it's from transfer (checked no delegatechanged event), delegate: ${options.delegate}, tx: ${options.transactionHash}`,
+        DegovIndexerHelpers.formatLogLine(
+          "token.delegate relation skipped",
+          {
+            reason: "transfer-without-delegate-change",
+            delegate: options.delegate,
+            tx: options.transactionHash,
+          },
+        ),
       );
       return;
     }
@@ -390,17 +406,19 @@ export class TokenHandler {
       dvcDelegate !== delegateRolling.toDelegate
     ) {
       this.ctx.log.info(
-        `skipped delegate votes changed, because it's from transfer (checked no there is no matching delegated changed event), delegate: ${options.delegate}, tx: ${options.transactionHash}`,
+        DegovIndexerHelpers.formatLogLine(
+          "token.delegate relation skipped",
+          {
+            reason: "delegate-mismatch-for-transaction",
+            delegate: options.delegate,
+            expectedFrom: delegateRolling.fromDelegate,
+            expectedTo: delegateRolling.toDelegate,
+            tx: options.transactionHash,
+          },
+        ),
       );
       return;
     }
-    this.ctx.log.info(
-      `Queried delegate rolling (update rolling): ${DegovIndexerHelpers.safeJsonStringify(
-        delegateRolling,
-      )} options: ${DegovIndexerHelpers.safeJsonStringify(options)} => tx: ${
-        options.transactionHash
-      }`,
-    );
 
     /*
     // delegate change b to c
@@ -460,6 +478,17 @@ export class TokenHandler {
       power: options.newVotes - options.previousVotes,
     });
 
+    this.ctx.log.info(
+      DegovIndexerHelpers.formatLogLine("token.delegate relation updated", {
+        delegator: delegateRolling.delegator,
+        from: fromDelegate,
+        to: toDelegate,
+        delegate: options.delegate,
+        delta: options.newVotes - options.previousVotes,
+        tx: options.transactionHash,
+      }),
+    );
+
     this.applyScopeFields(delegateRolling, {
       chainId: options.chainId,
       daoCode: options.daoCode,
@@ -480,9 +509,14 @@ export class TokenHandler {
 
     const event = itokenAbi.events.Transfer.decode(eventLog);
     this.ctx.log.info(
-      `Received token transfer event: ${DegovIndexerHelpers.safeJsonStringify(
-        event,
-      )}, at ${eventLog.block.height}, tx: ${eventLog.transactionHash}`,
+      DegovIndexerHelpers.formatLogLine("token.transfer recorded", {
+        from: event.from,
+        to: event.to,
+        value: "value" in event ? event.value : event.tokenId,
+        standard: contractStandard,
+        block: eventLog.block.height,
+        tx: eventLog.transactionHash,
+      }),
     );
     const entity = new TokenTransfer({
       id: eventLog.id,
@@ -541,9 +575,12 @@ export class TokenHandler {
   private async storeDelegate(currentDelegate: Delegate, options?: {}) {
     if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
       this.ctx.log.warn(
-        `Delegate from or to is not set. ${DegovIndexerHelpers.safeJsonStringify(
-          currentDelegate,
-        )}`,
+        DegovIndexerHelpers.formatLogLine("token.delegate invalid", {
+          reason: "missing-delegate-address",
+          from: currentDelegate.fromDelegate,
+          to: currentDelegate.toDelegate,
+          tx: currentDelegate.transactionHash,
+        }),
       );
     }
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
@@ -726,7 +763,13 @@ export class TokenHandler {
         });
         clearTimeout(timeoutId);
       } catch (error) {
-        this.ctx.log.error(`'failed to sync user power: ${error}`);
+        this.ctx.log.error(
+          DegovIndexerHelpers.formatLogLine("token.contributor sync failed", {
+            address: storedContributor.id,
+            power: storedContributor.power,
+            error: DegovIndexerHelpers.formatError(error),
+          }),
+        );
       }
     }
 

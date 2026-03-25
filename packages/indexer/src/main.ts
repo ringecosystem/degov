@@ -5,6 +5,7 @@ import { EvmBatchProcessor } from "@subsquid/evm-processor";
 import { evmFieldSelection, IndexerProcessorConfig } from "./types";
 import { DegovDataSource } from "./datasource";
 import { ChainTool } from "./internal/chaintool";
+import { DegovIndexerHelpers } from "./internal/helpers";
 import { TextPlus } from "./internal/textplus";
 import { createDatabase } from "./database";
 
@@ -23,7 +24,6 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   const envVarName = `CHAIN_RPC_${config.chainId}`.trim();
   const envRpcsRaw = process.env[envVarName];
   let envRpcs: string[] = [];
-  console.log(`ENV RPCS Raw: ${envRpcsRaw} of key [${envVarName}]`);
 
   if (envRpcsRaw) {
     envRpcs = envRpcsRaw
@@ -51,16 +51,16 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
 
   const pickedIndex = Math.floor(Math.random() * selectedRpcs.length);
   const randomRpcUrl = selectedRpcs[pickedIndex];
-  console.log("Loaded ENV RPC endpoints:");
-  envRpcs.forEach((url, index) => {
-    console.log(` - [${index}] ${url}`);
-  });
-  console.log("Loaded Config RPC endpoints:");
-  configRpcs.forEach((url, index) => {
-    console.log(` - [${index}] ${url}`);
-  });
   console.log(
-    `Using RPC endpoint: ${randomRpcUrl} picked index ${pickedIndex} from ${selectedRpcs.length} (source: ${rpcSource})`,
+    DegovIndexerHelpers.formatLogLine("processor.rpc selected", {
+      chainId: config.chainId,
+      envVar: envVarName,
+      envRpcCount: envRpcs.length,
+      configRpcCount: configRpcs.length,
+      source: rpcSource,
+      selectedIndex: pickedIndex,
+      selectedRpc: randomRpcUrl,
+    }),
   );
 
   const processor = new EvmBatchProcessor()
@@ -85,9 +85,11 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
       transaction: true,
     });
     console.log(
-      `Add log watch for ${address.join(", ")} for range ${JSON.stringify(
-        range,
-      )}`,
+      DegovIndexerHelpers.formatLogLine("processor.watch registered", {
+        contracts: address,
+        fromBlock: range.from,
+        toBlock: range.to,
+      }),
     );
   });
 
@@ -142,7 +144,13 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
               }
             } catch (e) {
               ctx.log.warn(
-                `(evm) unhandled contract ${indexContract.name} at ${event.block.height} ${event.transactionHash}, reason: ${e}, stopped from ${ctx.blocks[0].header.height} block`,
+                DegovIndexerHelpers.formatLogLine("processor.event failed", {
+                  contract: indexContract.name,
+                  block: event.block.height,
+                  tx: event.transactionHash,
+                  startBlock: ctx.blocks[0].header.height,
+                  error: DegovIndexerHelpers.formatError(e),
+                }),
               );
               throw e;
             }
@@ -154,12 +162,22 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
 }
 
 main()
-  .then(() => console.log("done"))
+  .then(() =>
+    console.log(DegovIndexerHelpers.formatLogLine("processor finished")),
+  )
   .catch((err) => {
-    console.error(err);
+    console.error(
+      DegovIndexerHelpers.formatLogLine("processor failed", {
+        error: DegovIndexerHelpers.formatError(err),
+      }),
+    );
     process.exit(1);
   });
 
 process.on("uncaughtException", (error) => {
-  console.error(error);
+  console.error(
+    DegovIndexerHelpers.formatLogLine("processor uncaught exception", {
+      error: DegovIndexerHelpers.formatError(error),
+    }),
+  );
 });

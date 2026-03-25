@@ -44,4 +44,29 @@ describe("DegovIndexerHelpers", () => {
       proposalId: "0x01",
     });
   });
+
+  it("formats log lines with compact ordered fields", () => {
+    expect(
+      DegovIndexerHelpers.formatLogLine("token.transfer recorded", {
+        from: "0xabc",
+        to: "0xdef",
+        value: 42n,
+        block: 123,
+        note: "from mint",
+        ignored: undefined,
+      })
+    ).toBe(
+      'token.transfer recorded | from=0xabc to=0xdef value=42 block=123 note="from mint"'
+    );
+  });
+
+  it("formats errors without leaking object noise", () => {
+    expect(
+      DegovIndexerHelpers.formatError(new Error("rpc timeout"))
+    ).toBe("rpc timeout");
+    expect(DegovIndexerHelpers.formatError("plain error")).toBe("plain error");
+    expect(
+      DegovIndexerHelpers.formatError({ code: "E_TIMEOUT", retryable: true })
+    ).toBe('{"code":"E_TIMEOUT","retryable":true}');
+  });
 });

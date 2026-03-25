@@ -713,7 +713,14 @@ export class GovernorHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
-    this.ctx.log.info(`Proposal created event: ${proposalId}`);
+    this.ctx.log.info(
+      DegovIndexerHelpers.formatLogLine("governor.proposal created", {
+        proposalId,
+        proposer: event.proposer,
+        block: eventLog.block.height,
+        tx: eventLog.transactionHash,
+      }),
+    );
 
     const canonicalMetadata = await this.loadCanonicalProposalMetadata(
       eventLog,
@@ -721,9 +728,15 @@ export class GovernorHandler {
     );
     const eifo = await this.options.textPlus.extractInfo(event.description);
     this.ctx.log.info(
-      `Extracted info for proposal ${proposalId}: ${DegovIndexerHelpers.safeJsonStringify(
-        eifo,
-      )}`,
+      DegovIndexerHelpers.formatLogLine(
+        "governor.proposal metadata extracted",
+        {
+          proposalId,
+          title: eifo.title,
+          block: eventLog.block.height,
+          tx: eventLog.transactionHash,
+        },
+      ),
     );
 
     const proposal = new Proposal({
