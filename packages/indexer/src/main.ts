@@ -1,5 +1,6 @@
 import { TypeormDatabase } from "@subsquid/typeorm-store";
 import { GovernorHandler } from "./handler/governor";
+import { TimelockHandler } from "./handler/timelock";
 import { TokenHandler } from "./handler/token";
 import { EvmBatchProcessor } from "@subsquid/evm-processor";
 import { evmFieldSelection, IndexerProcessorConfig } from "./types";
@@ -125,6 +126,15 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
                   break;
                 case "governorToken":
                   await new TokenHandler(ctx, {
+                    chainId: config.chainId,
+                    rpcs: [...new Set([...configRpcs, ...envRpcs])],
+                    work,
+                    indexContract,
+                    chainTool,
+                  }).handle(event);
+                  break;
+                case "timeLock":
+                  await new TimelockHandler(ctx, {
                     chainId: config.chainId,
                     rpcs: [...new Set([...configRpcs, ...envRpcs])],
                     work,

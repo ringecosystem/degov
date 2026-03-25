@@ -335,6 +335,7 @@ type Proposal @entity @index(fields: ["chainId", "governorAddress", "proposalId"
   actions: [ProposalAction!] @derivedFrom(field: "proposal")
   stateEpochs: [ProposalStateEpoch!] @derivedFrom(field: "proposal")
   deadlineExtensions: [ProposalDeadlineExtension!] @derivedFrom(field: "proposal")
+  timelockOperations: [TimelockOperation!] @derivedFrom(field: "proposal")
 
   metricsVotesCount: Int
   metricsVotesWithParamsCount: Int
@@ -351,8 +352,11 @@ type Proposal @entity @index(fields: ["chainId", "governorAddress", "proposalId"
   proposalSnapshot: BigInt
   proposalDeadline: BigInt
   proposalEta: BigInt
+  queueReadyAt: BigInt
+  queueExpiresAt: BigInt
   countingMode: String
   timelockAddress: String # address
+  timelockGracePeriod: BigInt
   clockMode: String!
   quorum: BigInt!
   decimals: BigInt!
@@ -428,6 +432,108 @@ type ProposalDeadlineExtension @entity @index(fields: ["chainId", "governorAddre
   proposalId: String! # uint256
   previousDeadline: BigInt
   newDeadline: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type TimelockOperation @entity @index(fields: ["chainId", "governorAddress", "timelockAddress", "proposalId", "operationId"]) {
+  id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  timelockAddress: String! # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
+  proposal: Proposal
+  proposalId: String # uint256
+  operationId: String! # bytes32
+  timelockType: String!
+  predecessor: String # bytes32
+  salt: String # bytes32
+  state: String!
+  callCount: Int
+  executedCallCount: Int
+  delaySeconds: BigInt
+  readyAt: BigInt
+  expiresAt: BigInt
+  queuedBlockNumber: BigInt
+  queuedBlockTimestamp: BigInt
+  queuedTransactionHash: String
+  cancelledBlockNumber: BigInt
+  cancelledBlockTimestamp: BigInt
+  cancelledTransactionHash: String
+  executedBlockNumber: BigInt
+  executedBlockTimestamp: BigInt
+  executedTransactionHash: String
+  calls: [TimelockCall!] @derivedFrom(field: "operation")
+}
+
+type TimelockCall @entity @index(fields: ["chainId", "governorAddress", "timelockAddress", "operationId", "actionIndex"]) {
+  id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  timelockAddress: String! # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
+  operation: TimelockOperation!
+  operationId: String! # bytes32
+  proposal: Proposal
+  proposalId: String # uint256
+  proposalActionId: String
+  proposalActionIndex: Int
+  actionIndex: Int!
+  target: String! # address
+  value: String! # uint256
+  data: String! # bytes
+  predecessor: String # bytes32
+  delaySeconds: BigInt
+  state: String!
+  scheduledBlockNumber: BigInt
+  scheduledBlockTimestamp: BigInt
+  scheduledTransactionHash: String
+  executedBlockNumber: BigInt
+  executedBlockTimestamp: BigInt
+  executedTransactionHash: String
+}
+
+type TimelockRoleEvent @entity @index(fields: ["chainId", "governorAddress", "timelockAddress", "role", "eventName"]) {
+  id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  timelockAddress: String! # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
+  eventName: String!
+  role: String! # bytes32
+  roleLabel: String
+  account: String # address
+  sender: String # address
+  previousAdminRole: String # bytes32
+  previousAdminRoleLabel: String
+  newAdminRole: String # bytes32
+  newAdminRoleLabel: String
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type TimelockMinDelayChange @entity @index(fields: ["chainId", "governorAddress", "timelockAddress", "blockNumber"]) {
+  id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  timelockAddress: String! # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
+  oldDuration: BigInt!
+  newDuration: BigInt!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
