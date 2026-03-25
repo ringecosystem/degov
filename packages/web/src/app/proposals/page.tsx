@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
@@ -78,10 +78,11 @@ function ProposalsContent() {
 
   // Get proposal metrics (including total count)
   const { data: dataMetrics } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
       proposalService.getProposalMetrics(
-        daoConfig?.indexer?.endpoint as string
+        daoConfig?.indexer?.endpoint as string,
+        buildGovernanceScope(daoConfig)
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
     placeholderData: keepPreviousData,

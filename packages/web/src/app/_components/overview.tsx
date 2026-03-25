@@ -6,7 +6,7 @@ import { useReadContract } from "wagmi";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
@@ -30,9 +30,12 @@ export const Overview = () => {
     });
 
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint ?? "",
+        buildGovernanceScope(daoConfig)
+      ),
     enabled: !!daoConfig?.indexer?.endpoint,
     placeholderData: keepPreviousData,
   });
