@@ -3,8 +3,13 @@ import {
   TokenHandler,
   votePowerTimepointForLog,
 } from "../src/handler/token";
+import * as itokenerc20 from "../src/abi/itokenerc20";
 import { ChainTool, ClockMode } from "../src/internal/chaintool";
 import {
+  Contributor,
+  DataMetric,
+  Delegate,
+  DelegateMapping,
   DelegateRolling,
   DelegateVotesChanged,
   TokenTransfer,
@@ -177,4 +182,201 @@ describe("token vote power checkpoints", () => {
       transactionHash: "0xdeadbeef",
     });
   });
+
+  it("clears undelegated mappings instead of attributing power to the zero address", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 100n,
+      }),
+      new Contributor({
+        id: "0x1111111111111111111111111111111111111111",
+        power: 100n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111",
+        fromDelegate: "0x2222222222222222222222222222222222222222",
+        toDelegate: "0x1111111111111111111111111111111111111111",
+        power: 100n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0x2222222222222222222222222222222222222222",
+        from: "0x2222222222222222222222222222222222222222",
+        to: "0x1111111111111111111111111111111111111111",
+        power: 100n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    const undelegateLog = {
+      id: "log-undelegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: {
+        height: 10,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xundelegate",
+    } as any;
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0x2222222222222222222222222222222222222222",
+        fromDelegate: "0x1111111111111111111111111111111111111111",
+        toDelegate: "0x0000000000000000000000000000000000000000",
+      } as any);
+
+    await (handler as any).storeDelegateChanged(undelegateLog);
+
+    expect(
+      store.findEntity(DelegateMapping, "0x2222222222222222222222222222222222222222")
+    ).toBeUndefined();
+    expect(
+      store.findEntity(Contributor, "0x0000000000000000000000000000000000000000")
+    ).toBeUndefined();
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValue({
+        delegate: "0x1111111111111111111111111111111111111111",
+        previousVotes: 100n,
+        newVotes: 0n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      ...undelegateLog,
+      id: "log-votes",
+      logIndex: 2,
+    });
+
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111"
+      )
+    ).toBeUndefined();
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(0n);
+    expect(
+      store.findEntity(Contributor, "0x1111111111111111111111111111111111111111")
+        ?.power
+    ).toBe(0n);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0x2222222222222222222222222222222222222222",
+      to: "0x3333333333333333333333333333333333333333",
+      value: 50n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      ...undelegateLog,
+      id: "log-transfer",
+      logIndex: 3,
+      transactionHash: "0xtransfer-after-undelegate",
+    });
+
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x2222222222222222222222222222222222222222_0x0000000000000000000000000000000000000000"
+      )
+    ).toBeUndefined();
+    expect(
+      store.findEntity(Contributor, "0x0000000000000000000000000000000000000000")
+    ).toBeUndefined();
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(0n);
+  });
 });
+
+class MemoryStore {
+  private readonly records = new Map<string, Map<string, any>>();
+
+  constructor(entities: any[] = []) {
+    for (const entity of entities) {
+      this.upsert(entity);
+    }
+  }
+
+  async findOne(entity: any, options: { where: Record<string, unknown> }) {
+    const values = [...(this.records.get(entity.name)?.values() ?? [])];
+    return values.find((record) =>
+      Object.entries(options.where).every(([key, value]) => record[key] === value)
+    );
+  }
+
+  async insert(entity: any) {
+    this.upsert(entity);
+  }
+
+  async save(entity: any) {
+    this.upsert(entity);
+  }
+
+  async remove(entity: any, id: string) {
+    this.records.get(entity.name)?.delete(id);
+  }
+
+  findEntity(entity: any, id: string) {
+    return this.records.get(entity.name)?.get(id);
+  }
+
+  private upsert(entity: any) {
+    const name = entity.constructor.name;
+    const bucket = this.records.get(name) ?? new Map<string, any>();
+    bucket.set(entity.id, entity);
+    this.records.set(name, bucket);
+  }
+}
+
+function buildTokenHandler(store: MemoryStore) {
+  return new TokenHandler(
+    {
+      store,
+      log: {
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      },
+    } as any,
+    {
+      chainId: 1,
+      rpcs: ["https://rpc.example.invalid"],
+      work: {
+        daoCode: "demo",
+        contracts: [
+          {
+            name: "governor",
+            address: "0x9999999999999999999999999999999999999999",
+          },
+          {
+            name: "governorToken",
+            address: "0x8888888888888888888888888888888888888888",
+            standard: "ERC20",
+          },
+        ],
+      },
+      indexContract: {
+        name: "governorToken",
+        address: "0x8888888888888888888888888888888888888888",
+        standard: "ERC20",
+      },
+      chainTool: new ChainTool(),
+    }
+  );
+}
