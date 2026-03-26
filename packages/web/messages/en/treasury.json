@@ -3,5 +3,40 @@
   "viewOnExplorer": "View on Explorer",
   "totalValue": "Total Value",
   "priceUnavailable": "Token price data is not available at this time",
-  "safes": "Safes"
+  "safes": "Safes",
+  "viewMore": "View more",
+  "empty": {
+    "noAssetsFound": "No assets found"
+  },
+  "tooltip": {
+    "tokenValueInfo": "Displaying tokens with minimal value of $0.01."
+  },
+  "fallback": {
+    "notAvailable": "N/A",
+    "token": "Token",
+    "unknown": "Unknown"
+  },
+  "accessibility": {
+    "tokenValueInfoLabel": "Token value display info",
+    "chainIcon": "Chain icon",
+    "externalLink": "External link"
+  },
+  "headers": {
+    "token": "Token",
+    "portfolio": "Portfolio %",
+    "price24h": "Price (24h)",
+    "balance": "Balance",
+    "name": "Name",
+    "network": "Network",
+    "action": "Action"
+  },
+  "mobile": {
+    "value": "Value",
+    "balance": "Balance"
+  },
+  "safe": {
+    "safe": "Safe",
+    "safes": "Safes",
+    "viewOnSafe": "view on Safe"
+  }
 }

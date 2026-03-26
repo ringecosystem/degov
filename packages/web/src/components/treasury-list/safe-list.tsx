@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useChainInfo } from "@/hooks/useChainInfo";
@@ -21,19 +22,23 @@ const Caption = ({
   caption?: string;
   handleViewMore: () => void;
 }) => {
+  const t = useTranslations("treasury");
   return (
     <div className="flex justify-center items-center w-full border border-border/20 bg-card rounded-[14px] px-4 py-2">
       <button
         onClick={handleViewMore}
         className="text-foreground transition-colors hover:text-foreground/80"
       >
-        {caption || "View more"}
+        {caption || t("viewMore")}
       </button>
     </div>
   );
 };
 
 export function SafeList({ caption }: SafeListProps) {
+  const t = useTranslations("treasury.safe");
+  const tCommon = useTranslations("treasury");
+  const tEmpty = useTranslations("treasury.empty");
   const daoConfig = useDaoConfig();
   const { chainInfo: flatChainInfo, isFetching } = useChainInfo();
   const [visibleItems, setVisibleItems] = useState(5);
@@ -75,7 +80,9 @@ export function SafeList({ caption }: SafeListProps) {
   if (isFetching) {
     return (
       <div className="space-y-4">
-        <h4 className="text-[16px] font-semibold text-foreground">Safes</h4>
+        <h4 className="text-[16px] font-semibold text-foreground">
+          {t("safes")}
+        </h4>
         {Array.from({ length: 3 }).map((_, index) => (
           <div
             key={index}
@@ -100,9 +107,11 @@ export function SafeList({ caption }: SafeListProps) {
   if (!data?.length) {
     return (
       <div className="space-y-4">
-        <h4 className="text-[16px] font-semibold text-foreground">Safe</h4>
+        <h4 className="text-[16px] font-semibold text-foreground">
+          {t("safe")}
+        </h4>
         <div className="rounded-[14px] bg-card p-[20px] text-center text-foreground/60">
-          No assets found
+          {tEmpty("noAssetsFound")}
         </div>
       </div>
     );
@@ -110,7 +119,9 @@ export function SafeList({ caption }: SafeListProps) {
 
   return (
     <div className="space-y-4">
-      <h4 className="text-[16px] font-semibold text-foreground">Safes</h4>
+      <h4 className="text-[16px] font-semibold text-foreground">
+        {t("safes")}
+      </h4>
 
       {displayData?.map((value, index) => (
         <div
@@ -133,10 +144,10 @@ export function SafeList({ caption }: SafeListProps) {
                   rel="noreferrer"
                   className="flex items-center gap-[5px]"
                 >
-                  <span className="text-[12px]">view on Safe</span>
+                  <span className="text-[12px]">{t("viewOnSafe")}</span>
                   <Image
                     src="/assets/image/safe.svg"
-                    alt="external-link"
+                    alt={tCommon("accessibility.externalLink")}
                     className="h-[16px] w-[16px]"
                     width={20}
                     height={20}

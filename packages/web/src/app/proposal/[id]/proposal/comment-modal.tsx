@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import { CloseIcon } from "@/components/icons";
 import {
   Dialog,
@@ -19,12 +21,13 @@ export function CommentModal({
   onOpenChange,
   commentData,
 }: CommentModalProps) {
+  const t = useTranslations("proposalDetail.commentModal");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[90%] lg:w-[700px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px] sm:max-w-[700px]">
         <DialogHeader className="flex w-full flex-row items-center justify-between">
           <DialogTitle className="text-[18px] font-semibold">
-            Comment
+            {t("title")}
           </DialogTitle>
           <CloseIcon
             width={24}

@@ -1,12 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 
 import { ErrorMessage } from "@/components/error-message";
 import { Input } from "@/components/ui/input";
 
-import { calldataSchema } from "./schema";
+import { createCalldataSchema } from "./schema";
 
 import type { Calldata, CalldataItem } from "./schema";
 import type { FieldError, FieldErrors } from "react-hook-form";
@@ -28,7 +29,9 @@ export function CallDataInputForm({
   onFieldUntouchArray,
   touchedFields,
 }: CallDataInputFormProps) {
+  const t = useTranslations("proposalEditor");
   const prevCalldataRef = useRef<CalldataItem[]>(calldata);
+  const calldataSchema = useMemo(() => createCalldataSchema(t), [t]);
 
   const {
     control,
@@ -199,7 +202,7 @@ export function CallDataInputForm({
                     onClick={(e) => addArrayItem(index, e)}
                   >
                     <Plus className="h-[18px] w-[18px]" />
-                    Add Item
+                    {t("custom.addItem")}
                   </button>
                 </div>
               ) : (

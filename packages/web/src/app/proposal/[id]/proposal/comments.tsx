@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import {
   useMemo,
   useState,
@@ -31,6 +32,9 @@ interface CommentsProps {
 
 const PAGE_SIZE = 20;
 export const Comments = ({ comments }: CommentsProps) => {
+  const t = useTranslations("proposalDetail.comments");
+  const proposalsT = useTranslations("proposals");
+  const voteLabels = useTranslations("proposals.voteLabels");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
   const [currentCommentRow, setCurrentCommentRow] = useState<
@@ -94,7 +98,7 @@ export const Comments = ({ comments }: CommentsProps) => {
     }, 0n);
   }, [comments]);
 
-  const getVoteDisplay = (
+  const getVoteDisplay = useCallback((
     support: VoteType,
     reason?: string,
     onComment?: (reason: string) => void
@@ -102,19 +106,19 @@ export const Comments = ({ comments }: CommentsProps) => {
     const voteConfig = {
       [VoteType.For]: {
         icon: "✓",
-        label: "For",
+        label: voteLabels("for"),
         bgColor: "bg-success",
         textColor: "text-foreground",
       },
       [VoteType.Against]: {
         icon: "✕",
-        label: "Against",
+        label: voteLabels("against"),
         bgColor: "bg-danger",
         textColor: "text-foreground",
       },
       [VoteType.Abstain]: {
         icon: "—",
-        label: "Abstain",
+        label: voteLabels("abstain"),
         bgColor: "bg-muted-foreground",
         textColor: "text-foreground",
       },
@@ -145,12 +149,12 @@ export const Comments = ({ comments }: CommentsProps) => {
                 {reason}
               </div>
             </TooltipTrigger>
-            <TooltipContent>Click to view comment</TooltipContent>
+            <TooltipContent>{t("clickToViewComment")}</TooltipContent>
           </Tooltip>
         )}
       </div>
     );
-  };
+  }, [t, voteLabels]);
 
   const toggleVoteFilter = useCallback(
     (voteType: VoteType) => {
@@ -168,7 +172,7 @@ export const Comments = ({ comments }: CommentsProps) => {
   const columns = useMemo<ColumnType<ProposalVoterItem>[]>(() => {
     return [
       {
-        title: "Voter",
+        title: t("columns.voter"),
         key: "voter",
         width: "26.5%",
         className: "text-left",
@@ -184,7 +188,7 @@ export const Comments = ({ comments }: CommentsProps) => {
       {
         title: (
           <div className="flex items-center gap-[4px]">
-            <span>Choice</span>
+            <span>{t("columns.choice")}</span>
             <span
               onClick={() => toggleVoteFilter(VoteType.For)}
               className={cn(
@@ -233,7 +237,7 @@ export const Comments = ({ comments }: CommentsProps) => {
       {
         title: (
           <SortableCell
-            label="Date"
+            label={t("columns.date")}
             sortState={
               sortState.field === "date" ? sortState.direction : undefined
             }
@@ -268,7 +272,7 @@ export const Comments = ({ comments }: CommentsProps) => {
       {
         title: (
           <SortableCell
-            label="Voting Power"
+            label={t("columns.votingPower")}
             sortState={
               sortState.field === "power" ? sortState.direction : undefined
             }
@@ -311,6 +315,8 @@ export const Comments = ({ comments }: CommentsProps) => {
     handleDateSortChange,
     handlePowerSortChange,
     daoConfig?.chain?.explorers,
+    getVoteDisplay,
+    t,
   ]);
 
   const hasMoreItems = visibleCount < sortedComments.length;
@@ -323,7 +329,7 @@ export const Comments = ({ comments }: CommentsProps) => {
             dataSource={visibleComments}
             columns={columns}
             isLoading={false}
-            emptyText="No votes yet"
+            emptyText={t("noVotesYet")}
             rowKey="id"
             maxHeight="100%"
             tableClassName="table-fixed"
@@ -340,13 +346,13 @@ export const Comments = ({ comments }: CommentsProps) => {
                     className="text-foreground transition-colors hover:text-foreground/80"
                   >
                     {isPending
-                      ? "Loading..."
-                      : `Load More (${sortedComments.length - visibleCount})`}
+                      ? proposalsT("loading")
+                      : `${t("loadMore")} (${sortedComments.length - visibleCount})`}
                   </button>
                 </div>
               ) : sortedComments.length > PAGE_SIZE ? (
                 <div className="text-muted-foreground text-xs">
-                  Showing all {sortedComments.length} votes
+                  {t("showingAll", { count: sortedComments.length })}
                 </div>
               ) : null
             }

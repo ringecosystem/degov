@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { isAddress, type Abi, type AbiItem } from "viem";
@@ -24,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { isValidAbi } from "@/utils/abi";
 
 import { CallDataInputForm } from "./calldata-input-form";
-import { customActionSchema } from "./schema";
+import { createCustomActionSchema } from "./schema";
 
 import type { CustomContent } from "./schema";
 import type { Address } from "viem";
@@ -44,8 +45,10 @@ export const CustomPanel = ({
   onChange,
   onRemove,
 }: CustomPanelProps) => {
+  const t = useTranslations("proposalEditor");
   const daoConfig = useDaoConfig();
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
+  const customActionSchema = useMemo(() => createCustomActionSchema(t), [t]);
 
   const {
     control,
@@ -247,7 +250,9 @@ export const CustomPanel = ({
       )}
     >
       <div className="flex items-center justify-between">
-        <h4 className="text-[18px] font-semibold">Action #{index}</h4>
+        <h4 className="text-[18px] font-semibold">
+          {t("actions.actionNumber", { index })}
+        </h4>
 
         <Button
           className="h-[30px] gap-[5px] rounded-[100px] border border-foreground bg-card p-[10px]"
@@ -255,7 +260,7 @@ export const CustomPanel = ({
           onClick={() => onRemove(index)}
         >
           <ProposalCloseIcon width={16} height={16} className="text-current" />
-          <span>Remove action</span>
+          <span>{t("actions.removeAction")}</span>
         </Button>
       </div>
 
@@ -263,7 +268,7 @@ export const CustomPanel = ({
         {/* Target Address Input */}
         <div className="flex flex-col gap-[10px]">
           <label className="text-[14px] text-foreground" htmlFor="target">
-            Target contract address
+            {t("custom.targetContractAddress")}
           </label>
 
           {/* <Input
@@ -279,7 +284,7 @@ export const CustomPanel = ({
             id="target"
             value={watchedTarget}
             onChange={(value) => setValue("target", value as Address)}
-            placeholder="Enter the target address..."
+            placeholder={t("custom.placeholders.targetAddress")}
             className={cn(
               "border-border/20 bg-card",
               errors.target && "border-danger"
@@ -288,12 +293,12 @@ export const CustomPanel = ({
           {isLoadingBytecode ? (
             <span className="text-sm inline-flex items-center gap-2 text-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading contract info...
+              {t("custom.loadingContractInfo")}
             </span>
           ) : errors.target ? (
             <ErrorMessage message={errors.target.message} />
           ) : watchedTarget && isAddress(watchedTarget || "") && !bytecode ? (
-            <ErrorMessage message="The address must be a contract address, not an EOA address" />
+            <ErrorMessage message={t("custom.contractAddressError")} />
           ) : null}
         </div>
 
@@ -302,7 +307,7 @@ export const CustomPanel = ({
             {/* Contract Type Selection */}
             <div className="flex flex-col gap-[10px]">
               <label className="text-[14px] text-foreground">
-                Use the imported ABI or upload yours
+                {t("custom.abiSource")}
               </label>
               <Controller
                 name="contractType"
@@ -318,7 +323,7 @@ export const CustomPanel = ({
                         errors.contractType && "border-red-500"
                       )}
                     >
-                      <SelectValue placeholder="Select an option" />
+                      <SelectValue placeholder={t("custom.selectOption")} />
                     </SelectTrigger>
                     <SelectContent className="border-border/20 bg-card">
                       {abiList.map((item) => (
@@ -326,7 +331,9 @@ export const CustomPanel = ({
                           {item.label}
                         </SelectItem>
                       ))}
-                      <SelectItem value="custom">Upload an ABI</SelectItem>
+                      <SelectItem value="custom">
+                        {t("custom.uploadAbi")}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 )}
@@ -360,7 +367,7 @@ export const CustomPanel = ({
               )?.length && (
                 <div className="flex flex-col gap-[10px]">
                   <label className="text-[14px] text-foreground">
-                    Contract method
+                    {t("custom.contractMethod")}
                   </label>
                   <Controller
                     name="contractMethod"
@@ -376,7 +383,9 @@ export const CustomPanel = ({
                             errors.contractMethod && "border-red-500"
                           )}
                         >
-                          <SelectValue placeholder="Select the contract method..." />
+                          <SelectValue
+                            placeholder={t("custom.selectContractMethod")}
+                          />
                         </SelectTrigger>
                         <SelectContent className="border-border/20 bg-card">
                           {watchedCustomAbiContent
@@ -411,7 +420,9 @@ export const CustomPanel = ({
             {/* Calldata Input */}
             {watchedCalldata && !!watchedCalldata?.length && (
               <div className="flex flex-col gap-[10px]">
-                <h4 className="text-[14px] text-foreground">Parameters</h4>
+                <h4 className="text-[14px] text-foreground">
+                  {t("custom.parameters")}
+                </h4>
                 <Controller
                   name="calldata"
                   control={control}
@@ -438,19 +449,21 @@ export const CustomPanel = ({
             {isPayable && (
               <div className="flex flex-col gap-[10px]">
                 <h4 className="text-[18px] font-semibold text-foreground">
-                  Value
+                  {t("custom.value")}
                 </h4>
                 <label className="text-[14px] text-foreground">
-                  The amount of {daoConfig?.chain?.nativeToken?.symbol} you wish
-                  to send the target address ( External Account or Smart
-                  Contract)
+                  {t("custom.valueDescription", {
+                    symbol: daoConfig?.chain?.nativeToken?.symbol ?? "",
+                  })}
                 </label>
                 <div className="flex flex-row gap-[10px]">
                   <span className="inline-flex h-[37px] w-[200px] items-center justify-center truncate rounded-[4px] border border-border bg-card-background px-[10px] text-[14px] text-foreground">
                     {daoConfig?.chain?.nativeToken?.symbol}
                   </span>
                   <Input
-                    placeholder={`${daoConfig?.chain?.nativeToken?.symbol} amount`}
+                    placeholder={t("custom.placeholders.amount", {
+                      symbol: daoConfig?.chain?.nativeToken?.symbol ?? "",
+                    })}
                     className="h-[37px] border-border bg-card"
                     {...register("value")}
                   />

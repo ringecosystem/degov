@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
-import { AddressResolver } from "@/components/address-resolver";
 import { CloseIcon } from "@/components/icons";
 import { TransactionToast } from "@/components/transaction-toast";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ export function ChangeDelegate({
   to,
   onSelect,
 }: ChangeDelegateProps) {
+  const t = useTranslations("profile.changeDelegate");
   const daoConfig = useDaoConfig();
   const queryClient = useQueryClient();
   const { delegate, isPending: isPendingDelegate } = useDelegate();
@@ -48,7 +49,7 @@ export function ChangeDelegate({
         <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
           <DialogHeader className="flex w-full flex-row items-center justify-between">
             <DialogTitle className="text-[18px] font-extrabold">
-              Change Delegate
+              {t("title")}
             </DialogTitle>
             <CloseIcon
               width={24}
@@ -59,11 +60,7 @@ export function ChangeDelegate({
           </DialogHeader>
           <Separator className="my-0 bg-muted-foreground/40" />
           <p className="text-[14px] text-foreground font-semibold">
-            You are going to change your delegate from{" "}
-            <AddressResolver address={to as `0x${string}`} showShortAddress>
-              {(value) => `@${value}`}
-            </AddressResolver>{" "}
-            to others, either to yourself or to other accounts.
+            {t("description", { delegate: to })}
           </p>
           <Separator className="my-0 bg-muted-foreground/40" />
           <div className="flex flex-col gap-[20px]">
@@ -73,14 +70,14 @@ export function ChangeDelegate({
               isLoading={isPendingDelegate}
               onClick={handleDelegate}
             >
-              Myself
+              {t("myself")}
             </Button>
             <Button
               className="w-full rounded-[100px] border-border bg-card"
               variant="outline"
               onClick={() => onSelect("else")}
             >
-              Someone else
+              {t("someoneElse")}
             </Button>
           </div>
         </DialogContent>

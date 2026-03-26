@@ -1,4 +1,5 @@
 "use client";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -21,15 +22,29 @@ const Caption = ({
   caption?: string;
   handleViewMore: () => void;
 }) => (
+  <CaptionContent caption={caption} handleViewMore={handleViewMore} />
+);
+
+const CaptionContent = ({
+  caption,
+  handleViewMore,
+}: {
+  caption?: string;
+  handleViewMore: () => void;
+}) => {
+  const t = useTranslations("treasury");
+  return (
   <button
     onClick={handleViewMore}
     className="flex w-full items-center justify-center rounded-2xl bg-card p-2.5 text-sm font-medium text-foreground shadow-[6px_6px_54px_rgba(0,0,0,0.05)] transition-opacity hover:opacity-80"
   >
-    {caption || "View more"}
+    {caption || t("viewMore")}
   </button>
-);
+  );
+};
 
 export function TreasuryList({ data, caption, isLoading }: TreasuryListProps) {
+  const t = useTranslations("treasury");
   const daoConfig = useDaoConfig();
   const [visibleItems, setVisibleItems] = useState(5);
 
@@ -52,7 +67,7 @@ export function TreasuryList({ data, caption, isLoading }: TreasuryListProps) {
     return (
       <div className="space-y-2.5">
         <h4 className="hidden text-[12px] font-semibold text-foreground lg:block">
-          Treasury Assets
+          {t("title")}
         </h4>
         {Array.from({ length: 3 }).map((_, index) => (
           <div
@@ -82,10 +97,10 @@ export function TreasuryList({ data, caption, isLoading }: TreasuryListProps) {
     return (
       <div className="space-y-2.5">
         <h4 className="hidden text-[12px] font-semibold text-foreground lg:block">
-          Treasury Assets
+          {t("title")}
         </h4>
         <div className="rounded-2xl bg-card p-[10px] text-center text-foreground/60">
-          No assets found
+          {t("empty.noAssetsFound")}
         </div>
       </div>
     );
@@ -96,7 +111,7 @@ export function TreasuryList({ data, caption, isLoading }: TreasuryListProps) {
   return (
     <div className="space-y-2.5">
       <h4 className="hidden text-[12px] font-semibold text-foreground lg:block">
-        Treasury Assets
+        {t("title")}
       </h4>
 
       {displayData.map((asset) => (

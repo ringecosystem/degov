@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import {
@@ -38,6 +39,7 @@ export const Overview = ({
   delegationStatusText,
   isDelegateMappingsLoading,
 }: OverviewProps) => {
+  const t = useTranslations("profile.overview");
   const { formattedVotes, votes, isLoading } = useAddressVotes(address);
 
   const daoConfig = useDaoConfig();
@@ -100,31 +102,36 @@ export const Overview = ({
           <div>{`${participationRate.toFixed(0)}%`}</div>
         </TooltipTrigger>
         <TooltipContent className="bg-card border border-card-background shadow-xs max-w-[350px] rounded-[26px] p-[20px] text-[14px]">
-          <span>{`Participated in ${participatedCount}/${total} of recent proposals`}</span>
+          <span>
+            {t("participationTooltip", {
+              participatedCount,
+              total,
+            })}
+          </span>
         </TooltipContent>
       </Tooltip>
     );
-  }, [votedProposals]);
+  }, [t, votedProposals]);
 
   const data: OverviewCardData[] = useMemo(() => {
     return [
       {
-        title: "Total Voting Power",
+        title: t("cards.totalVotingPower"),
         value: votingPowerWithPercentage,
         isLoading: isLoading || isMetricsLoading,
       },
       {
-        title: "Governance Balance",
+        title: t("cards.governanceBalance"),
         value: tokenBalance,
         isLoading: isLoadingTokenBalance,
       },
       {
-        title: "Delegating To",
+        title: t("cards.delegatingTo"),
         value: delegationStatusText,
         isLoading: isDelegateMappingsLoading,
       },
       {
-        title: "Participation Rate",
+        title: t("cards.participationRate"),
         value: participationValue,
         isLoading: isParticipationLoading,
       },
@@ -139,6 +146,7 @@ export const Overview = ({
     isDelegateMappingsLoading,
     participationValue,
     isParticipationLoading,
+    t,
   ]);
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-[20px] w-full">

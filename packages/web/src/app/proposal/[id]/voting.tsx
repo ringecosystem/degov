@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -44,6 +45,7 @@ export function Voting({
   isPending,
   onCastVote,
 }: VotingProps) {
+  const t = useTranslations("proposalDetail.voting");
   const { formattedVotes, votes, refetch, isFetching } = useMyVotes();
   const [support, setSupport] = useState<VoteType>(VoteType.For);
   const [reason, setReason] = useState("");
@@ -70,7 +72,9 @@ export function Voting({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
         <DialogHeader className="flex w-full flex-row items-center justify-between">
-          <DialogTitle className="text-[18px] font-bold">Voting</DialogTitle>
+          <DialogTitle className="text-[18px] font-bold">
+            {t("title")}
+          </DialogTitle>
           <CloseIcon
             width={24}
             height={24}
@@ -88,7 +92,7 @@ export function Voting({
           </div>
 
           <div className="flex items-center justify-between rounded-[4px] border border-muted-foreground p-[10px]">
-            <span className="text-[14px]">Voting power</span>
+            <span className="text-[14px]">{t("votingPower")}</span>
             {isFetching ? (
               <Skeleton className="h-[36px] w-[100px]" />
             ) : (
@@ -99,14 +103,14 @@ export function Voting({
           </div>
 
           <div className="flex items-center justify-between rounded-[4px] border border-muted-foreground p-[10px]">
-            <span className="text-[14px]">Proposal lD</span>
+            <span className="text-[14px]">{t("proposalId")}</span>
             <span className="text-[26px] font-semibold">
               {proposalId ? formatShortAddress(proposalId) : ""}
             </span>
           </div>
 
           <div className="flex flex-col gap-[5px]">
-            <h4 className="text-[14px] font-normal">Vote</h4>
+            <h4 className="text-[14px] font-normal">{t("vote")}</h4>
             <div className="flex items-center justify-between gap-[10px]">
               <VoteStatusAction
                 variant={VoteType.For}
@@ -130,10 +134,10 @@ export function Voting({
           </div>
 
           <div className="flex flex-col gap-[5px]">
-            <h4 className="text-[14px] font-normal">Add comment</h4>
+            <h4 className="text-[14px] font-normal">{t("addComment")}</h4>
             <Textarea
               className="rounded-[10px] border border-border text--muted-foreground bg-card p-[10px]"
-              placeholder="Why are you voting this way?"
+              placeholder={t("commentPlaceholder")}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
@@ -145,7 +149,7 @@ export function Voting({
           disabled={!proposalId || !votes || votes === BigInt(0)}
           isLoading={isPending}
         >
-          Submit
+          {t("submit")}
         </Button>
       </DialogContent>
     </Dialog>

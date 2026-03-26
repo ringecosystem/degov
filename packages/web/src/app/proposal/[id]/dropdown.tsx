@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import { MoreIcon, CancelIcon } from "@/components/icons";
 import {
   DropdownMenu,
@@ -15,6 +17,7 @@ export const Dropdown = ({
   showCancel,
   handleCancelProposal,
 }: DropdownProps) => {
+  const t = useTranslations("proposalDetail.dropdown");
   return (
     showCancel && (
       <DropdownMenu>
@@ -37,7 +40,7 @@ export const Dropdown = ({
               onSelect={handleCancelProposal}
             >
               <CancelIcon width={20} height={20} className="text-current" />
-              <span>Cancel Proposal</span>
+              <span>{t("cancelProposal")}</span>
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
