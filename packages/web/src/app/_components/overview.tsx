@@ -1,6 +1,7 @@
 "use client";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { isNumber } from "lodash-es";
+import { useTranslations } from "next-intl";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
@@ -14,6 +15,7 @@ import { OverviewProposalsSummaryDropdown } from "./overview-proposals-summary";
 
 export const Overview = () => {
   const daoConfig = useDaoConfig();
+  const t = useTranslations("dashboard.overview");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
     useReadContract({
@@ -40,11 +42,11 @@ export const Overview = () => {
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px]">
       <h3 className="text-[16px] lg:text-[18px] font-extrabold text-foreground">
-        Overview
+        {t("title")}
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-[15px] lg:gap-[20px] xl:grid-cols-4">
         <OverviewItem
-          title="Proposals"
+          title={t("proposals")}
           link={`/proposals`}
           icon="/assets/image/proposals-colorful.svg"
           isLoading={isProposalMetricsLoading}
@@ -65,7 +67,7 @@ export const Overview = () => {
           </>
         </OverviewItem>
         <OverviewItem
-          title="Delegates"
+          title={t("delegates")}
           link={`/delegates`}
           icon="/assets/image/members-colorful.svg"
           isLoading={isProposalMetricsLoading}
@@ -73,7 +75,7 @@ export const Overview = () => {
           {formatNumberForDisplay(dataMetrics?.memberCount ?? 0, 0)[0]}
         </OverviewItem>
         <OverviewItem
-          title="Total Voting Power"
+          title={t("totalVotingPower")}
           icon="/assets/image/total-vote-colorful.svg"
           isLoading={isProposalMetricsLoading}
         >
@@ -84,7 +86,7 @@ export const Overview = () => {
           }
         </OverviewItem>
         <OverviewItem
-          title="Total Supply"
+          title={t("totalSupply")}
           isLoading={isTotalSupplyLoading}
           icon="/assets/image/delegated-vote-colorful.svg"
         >

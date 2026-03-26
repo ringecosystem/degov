@@ -1,9 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-
 import { DeviceRouter } from "@/components/device-router";
 import { PageTransition } from "@/components/motion/page-transition";
+import { usePathname } from "@/i18n/navigation";
 
 interface ConditionalLayoutProps {
   children: React.ReactNode;

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -7,6 +6,7 @@ import { OffchainDiscussionIcon } from "@/components/icons";
 import { ProposalStatus } from "@/components/proposal-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { Link } from "@/i18n/navigation";
 import type {
   ProposalItem,
   ProposalQueuedByIdItem,
@@ -24,7 +24,6 @@ interface SummaryProps {
   proposalQueuedById?: ProposalQueuedByIdItem;
   isAllQueriesFetching: boolean;
   onRefetch: () => void;
-  id: string | string[];
 }
 
 export const Summary = ({
@@ -34,14 +33,13 @@ export const Summary = ({
   proposalQueuedById,
   isAllQueriesFetching,
   onRefetch,
-  id,
 }: SummaryProps) => {
   const daoConfig = useDaoConfig();
 
   const proposalLink = useMemo(() => {
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/proposal/${id}`;
-  }, [id]);
+    return window.location.href;
+  }, []);
 
   const explorerUrl = daoConfig?.chain?.explorers?.[0];
   const txHash = data?.transactionHash;

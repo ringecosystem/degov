@@ -1,8 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -13,6 +12,7 @@ import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
+import { Link, useRouter } from "@/i18n/navigation";
 
 const Faqs = dynamic(
   () => import("@/components/faqs").then((mod) => mod.Faqs),
@@ -33,6 +33,7 @@ const NewPublishWarning = dynamic(
 export const Proposals = () => {
   const daoConfig = useDaoConfig();
   const router = useRouter();
+  const t = useTranslations("dashboard.proposals");
   const { isConnected } = useAccount();
   const [publishWarningOpen, setPublishWarningOpen] = useState(false);
 
@@ -53,7 +54,7 @@ export const Proposals = () => {
         <div className="flex-1 flex flex-col gap-[8px] lg:gap-[10px]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-[10px] sm:gap-0">
             <h3 className="text-[16px] lg:text-[18px] font-extrabold">
-              Proposals
+              {t("title")}
             </h3>
             <div className="items-center gap-[8px] lg:gap-[10px] flex-wrap hidden lg:flex">
               {daoConfig?.offChainDiscussionUrl ? (
@@ -72,8 +73,8 @@ export const Proposals = () => {
                       height={16}
                       className="size-[16px] lg:size-[20px] text-current"
                     />
-                    <span className="hidden sm:inline">Join Discussion</span>
-                    <span className="sm:hidden">Discussion</span>
+                    <span className="hidden sm:inline">{t("joinDiscussion")}</span>
+                    <span className="sm:hidden">{t("discussion")}</span>
                   </Link>
                 </Button>
               ) : null}
@@ -86,8 +87,8 @@ export const Proposals = () => {
                   height={16}
                   className="size-[16px] lg:size-[20px] text-current"
                 />
-                <span className="hidden sm:inline">New Proposal</span>
-                <span className="sm:hidden">New</span>
+                <span className="hidden sm:inline">{t("newProposal")}</span>
+                <span className="sm:hidden">{t("new")}</span>
               </Button>
             </div>
           </div>

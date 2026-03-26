@@ -2,6 +2,7 @@
 
 import { filter, isFinite, isNil, partition, sumBy } from "lodash-es";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import ClipboardIconButton from "@/components/clipboard-icon-button";
@@ -26,6 +27,7 @@ import { formatNumberForDisplay } from "@/utils";
 
 export default function Treasury() {
   const daoConfig = useDaoConfig();
+  const t = useTranslations("treasury");
   const timeLockAddress =
     daoConfig?.contracts?.timeLock || daoConfig?.contracts?.governor;
   const formattedAddress = useMemo(() => {
@@ -75,7 +77,7 @@ export default function Treasury() {
       <header className="flex flex-col gap-[10px] sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-[5px]">
           <h3 className="text-[18px] font-semibold text-foreground lg:text-[18px]">
-            Treasury Assets
+            {t("title")}
           </h3>
           {formattedAddress ? (
             <span className="text-[16px] font-normal text-muted-foreground lg:text-[16px]">
@@ -90,7 +92,7 @@ export default function Treasury() {
                 href={`${daoConfig?.chain?.explorers?.[0]}/address/${timeLockAddress}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="View on Explorer"
+                title={t("viewOnExplorer")}
               >
                 <ExternalLinkIcon
                   width={16}
@@ -104,7 +106,7 @@ export default function Treasury() {
 
         <div className="flex items-center gap-[10px]">
           <span className="hidden text-[16px] font-normal leading-normal text-muted-foreground lg:block lg:text-[18px]">
-            Total Value
+            {t("totalValue")}
           </span>
           {isLoading ? (
             <Skeleton className="h-[28px] w-[120px] lg:h-[36px] lg:w-[140px]" />
@@ -126,7 +128,7 @@ export default function Treasury() {
                       height={20}
                       className="text-current"
                     />
-                    Token price data is not available at this time
+                    {t("priceUnavailable")}
                   </span>
                 </TooltipContent>
               </Tooltip>
@@ -144,7 +146,9 @@ export default function Treasury() {
         <TreasuryTable data={filteredAssets} isLoading={isLoading} />
 
         <div className="flex flex-col gap-[20px]">
-          <h3 className="text-[18px] font-extrabold text-foreground">Safes</h3>
+          <h3 className="text-[18px] font-extrabold text-foreground">
+            {t("safes")}
+          </h3>
           <SafeTable />
         </div>
       </div>

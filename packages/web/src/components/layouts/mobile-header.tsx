@@ -1,7 +1,7 @@
 "use client";
 import { Menu, Search } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import React, { useMemo } from "react";
 
 import { AppIcon, LogoIcon } from "@/components/icons";
@@ -9,6 +9,7 @@ import { SearchModal } from "@/components/search-modal";
 import { DEGOV_APPS_URL } from "@/config/base";
 import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { Link } from "@/i18n/navigation";
 
 import { MobileMenu } from "./mobile-menu";
 
@@ -16,6 +17,8 @@ export const MobileHeader = () => {
   const [open, setOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const config = useDaoConfig();
+  const tSearch = useTranslations("common.search");
+  const tMenu = useTranslations("common.menu");
 
   const { isDarkTheme } = useCustomTheme();
 
@@ -65,14 +68,20 @@ export const MobileHeader = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <button className="p-2 rounded-lg hover:bg-card transition-colors">
+            <button
+              className="p-2 rounded-lg hover:bg-card transition-colors"
+              aria-label={tSearch("open")}
+            >
               <Search
                 className="h-5 w-5 text-foreground"
                 onClick={() => setOpen(true)}
               />
             </button>
             <MobileMenu open={menuOpen} onMenuToggle={handleMenuToggle}>
-              <button className="p-2 rounded-lg hover:bg-card transition-colors">
+              <button
+                className="p-2 rounded-lg hover:bg-card transition-colors"
+                aria-label={tMenu("open")}
+              >
                 <Menu className="h-5 w-5 text-foreground" />
               </button>
             </MobileMenu>

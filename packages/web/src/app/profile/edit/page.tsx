@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount } from "wagmi";
@@ -12,6 +11,7 @@ import { WithConnect } from "@/components/with-connect";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { profileQueryKey, useProfileQuery } from "@/hooks/useProfileQuery";
 import { useSiweAuth } from "@/hooks/useSiweAuth";
+import { useRouter } from "@/i18n/navigation";
 import { profileService } from "@/services/graphql";
 import type { ProfileData } from "@/services/graphql/types/profile";
 

@@ -1,0 +1,24 @@
+{
+  "title": "All Proposals",
+  "titleWithCount": "All Proposals ({count})",
+  "statusPlaceholder": "Select status",
+  "myProposals": "My proposals",
+  "newProposal": "New Proposal",
+  "all": "All",
+  "voteFor": "Vote For",
+  "voteAgainst": "Vote Against",
+  "voteAbstain": "Vote Abstain",
+  "viewAll": "View all",
+  "viewMore": "View more",
+  "loading": "Loading...",
+  "noProposals": "No proposals",
+  "columns": {
+    "proposal": "Proposal",
+    "votes": "Votes"
+  },
+  "voteLabels": {
+    "for": "For",
+    "against": "Against",
+    "abstain": "Abstain"
+  }
+}

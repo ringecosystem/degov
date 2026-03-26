@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 
@@ -7,6 +7,7 @@ import { AddressResolver } from "@/components/address-resolver";
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { VoteType } from "@/config/vote";
 import { useBatchProfiles } from "@/hooks/useBatchProfiles";
+import { Link } from "@/i18n/navigation";
 import type { ProposalListItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
@@ -30,13 +31,15 @@ const Caption = ({
   loadMoreData: () => void;
   isLoading: boolean;
 }) => {
+  const t = useTranslations("proposals");
+
   return type === "active" ? (
     <div className="flex justify-center items-center">
       <Link
         href="/proposals"
         className="text-foreground transition-colors hover:text-foreground/80"
       >
-        View all
+        {t("viewAll")}
       </Link>
     </div>
   ) : (
@@ -47,7 +50,7 @@ const Caption = ({
           className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           disabled={isLoading}
         >
-          {isLoading ? "Loading..." : "View more"}
+          {isLoading ? t("loading") : t("viewMore")}
         </button>
       }
     </div>
@@ -63,6 +66,7 @@ export function ProposalsTable({
   address?: Address;
   support?: SupportFilter;
 }) {
+  const t = useTranslations("proposals");
   const { address: connectedAddress } = useAccount();
   const pageSize = type === "active" ? 8 : DEFAULT_PAGE_SIZE;
   const initialPageSize = type === "active" ? 8 : INITIAL_LIST_PAGE_SIZE;
@@ -105,31 +109,31 @@ export function ProposalsTable({
           return {
             color: "bg-success",
             textColor: "text-success",
-            label: "For",
+            label: t("voteLabels.for"),
           };
         case VoteType.Against: // 0
           return {
             color: "bg-danger",
             textColor: "text-danger",
-            label: "Against",
+            label: t("voteLabels.against"),
           };
         case VoteType.Abstain: // 2
           return {
             color: "bg-muted-foreground",
             textColor: "text-muted-foreground",
-            label: "Abstain",
+            label: t("voteLabels.abstain"),
           };
         default:
           return null;
       }
     },
-    [connectedAddress]
+    [connectedAddress, t]
   );
 
   const columns = useMemo<ColumnType<ProposalListItem>[]>(
     () => [
       {
-        title: "Proposal",
+        title: t("columns.proposal"),
         key: "description",
         width: "70%",
         className: "text-left w-full lg:w-[70%]",
@@ -209,7 +213,7 @@ export function ProposalsTable({
         ),
       },
       {
-        title: "Votes",
+        title: t("columns.votes"),
         key: "votes",
         width: "30%",
         className: "hidden lg:table-cell",
@@ -236,7 +240,7 @@ export function ProposalsTable({
         },
       },
     ],
-    [proposalStatusState, getUserVoteStatus]
+    [proposalStatusState, getUserVoteStatus, t]
   );
 
   return (
@@ -245,7 +249,7 @@ export function ProposalsTable({
         dataSource={state.data}
         columns={columns as ColumnType<ProposalListItem>[]}
         isLoading={state.isPending}
-        emptyText="No proposals"
+        emptyText={t("noProposals")}
         rowKey="id"
         caption={
           state.hasNextPage && (

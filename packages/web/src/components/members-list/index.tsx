@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import { Link } from "@/i18n/navigation";
 import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
@@ -30,6 +31,8 @@ const Caption = ({
   loadMoreData: () => void;
   isLoading: boolean;
 }) => {
+  const t = useTranslations("delegates");
+
   return (
     <div className="flex justify-center items-center w-full border border-border/20 bg-card rounded-[14px] px-4 py-2">
       <button
@@ -37,7 +40,7 @@ const Caption = ({
         className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
         disabled={isLoading}
       >
-        {isLoading ? "Loading..." : "View more"}
+        {isLoading ? t("loading") : t("viewMore")}
       </button>
     </div>
   );
@@ -50,6 +53,7 @@ export function MembersList({
   orderBy,
   hasUserSorted,
 }: MembersListProps) {
+  const t = useTranslations("delegates");
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
@@ -116,7 +120,7 @@ export function MembersList({
   if (dataSource.length === 0) {
     return (
       <div className="rounded-[14px] bg-card p-[20px] text-center text-foreground/60">
-        {searchTerm ? "No matching delegates found" : "No Delegates"}
+        {searchTerm ? t("noMatchingDelegates") : t("noDelegates")}
       </div>
     );
   }
@@ -184,7 +188,7 @@ export function MembersList({
                 onClick={() => onDelegate?.(record)}
                 className="h-8 rounded-full border border-border bg-card px-4 text-sm"
               >
-                Delegate
+                {t("delegate")}
               </Button>
             </div>
           </div>

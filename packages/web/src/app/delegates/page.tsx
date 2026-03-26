@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import dynamic from "next/dynamic";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 import { useDebounce } from "react-use";
 import { useAccount } from "wagmi";
@@ -64,6 +65,7 @@ const ORDER_BY_MAP: Record<
 export default function Members() {
   const { isConnected } = useAccount();
   const daoConfig = useDaoConfig();
+  const t = useTranslations("delegates");
   const [address, setAddress] = useState<Address | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const [isLoadAttempted, setIsLoadAttempted] = useState(false);
@@ -145,9 +147,9 @@ export default function Members() {
   const getDisplayTitle = () => {
     const totalCount = dataMetrics?.memberCount;
     if (totalCount !== undefined) {
-      return `Delegates (${totalCount})`;
+      return t("titleWithCount", { count: totalCount });
     }
-    return "Delegates";
+    return t("title");
   };
 
   const showConnectPrompt = !isConnected && isLoadAttempted;
@@ -165,7 +167,7 @@ export default function Members() {
               <Input
                 id="search-delegates-global"
                 name="search-delegates"
-                placeholder="Search by ENS or address"
+                placeholder={t("searchPlaceholder")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-full flex-1 appearance-none bg-transparent outline-hidden border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
@@ -230,7 +232,7 @@ export default function Members() {
               <Input
                 id="search-delegates-main"
                 name="search-delegates"
-                placeholder="Search by ENS or address"
+                placeholder={t("searchPlaceholder")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-full flex-1 appearance-none bg-transparent outline-hidden border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"

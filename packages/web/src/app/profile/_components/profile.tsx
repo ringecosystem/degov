@@ -1,8 +1,6 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { isAddress, type Address } from "viem";
 import { useAccount, useAccountEffect, useReadContract } from "wagmi";
@@ -18,6 +16,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { Link, useRouter } from "@/i18n/navigation";
 import { delegateService } from "@/services/graphql";
 
 import { JoinDelegate } from "./join-delegate";

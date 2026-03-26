@@ -1,0 +1,49 @@
+{
+  "sidebar": {
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar"
+  },
+  "search": {
+    "open": "Open search",
+    "placeholder": "Search...",
+    "title": "Search proposals",
+    "loadMore": "Load more",
+    "loading": "Loading...",
+    "noResults": "No results found.",
+    "startTyping": "Start typing to search..."
+  },
+  "menu": {
+    "open": "Open menu"
+  },
+  "connect": {
+    "connectWallet": "Connect Wallet",
+    "errorChain": "Wrong network",
+    "profile": "Profile",
+    "disconnect": "Disconnect",
+    "votingPower": "Voting Power",
+    "balance": "Balance"
+  },
+  "indexer": {
+    "currentlyAtBlock": "Currently at block {indexedBlock} of {currentBlock}",
+    "poweredBy": "Powered by",
+    "brand": "DeGov.AI"
+  },
+  "loading": {
+    "title": "Loading...",
+    "description": "Please wait while we load the content"
+  },
+  "error": {
+    "title": "Something went wrong",
+    "retry": "Try Again"
+  },
+  "notFound": {
+    "description": "We’ve searched the entire universe and still couldn’t find what you’re looking for.",
+    "backToHome": "Back to Home"
+  },
+  "labels": {
+    "edit": "Edit",
+    "agent": "Agent",
+    "na": "N/A",
+    "usd": "USD"
+  }
+}

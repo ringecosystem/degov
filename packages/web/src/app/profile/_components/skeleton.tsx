@@ -1,7 +1,7 @@
 "use client";
-import Link from "next/link";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { Link } from "@/i18n/navigation";
 
 export const ProfileSkeleton = ({ isDelegate }: { isDelegate: boolean }) => {
   return (
