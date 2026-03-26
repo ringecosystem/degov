@@ -43,7 +43,7 @@ const ACTIVE_STATES: ProposalState[] = [
 export default function ProposalDetailPage() {
   const daoConfig = useDaoConfig();
   const showNotification = useNotificationVisibility();
-  const t = useTranslations("proposals");
+  const t = useTranslations("proposalDetail.page");
 
   const params = useParams();
   const id = params?.id;
@@ -51,7 +51,7 @@ export default function ProposalDetailPage() {
   const proposalDisplayId = useMemo(() => {
     const rawId = Array.isArray(id) ? id[0] : id;
     if (!rawId) {
-      return "Proposal";
+      return t("fallbackTitle");
     }
 
     if (rawId.length <= 12) {
@@ -59,7 +59,7 @@ export default function ProposalDetailPage() {
     }
 
     return `${rawId.slice(0, 6)}...${rawId.slice(-6)}`;
-  }, [id]);
+  }, [id, t]);
 
   const validId = useMemo(() => {
     if (!id) return null;
@@ -273,8 +273,8 @@ export default function ProposalDetailPage() {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <LoadingState
-          title="Proposal Loading"
-          description="Loading proposal data, please wait..."
+          title={t("loadingTitle")}
+          description={t("loadingDescription")}
         />
       </div>
     );

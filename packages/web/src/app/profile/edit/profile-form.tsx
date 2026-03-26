@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -84,98 +85,102 @@ function parseDiscordUrl(value: string): string {
   return trimmed;
 }
 
-const FormSchema = z.object({
-  name: z
-    .string()
-    .min(5, "Display name must be at least 5 characters")
-    .max(50, "Display name cannot exceed 50 characters")
-    .regex(
-      /^[A-Za-z0-9\s\-_]+$/,
-      "Display name can only contain letters, numbers, spaces, hyphens, underscores"
-    )
-    .trim()
-    .optional()
-    .or(z.literal("")),
+const createFormSchema = (
+  t: (key: string) => string
+) =>
+  z.object({
+    name: z
+      .string()
+      .min(5, t("validation.displayNameMin"))
+      .max(50, t("validation.displayNameMax"))
+      .regex(/^[A-Za-z0-9\s\-_]+$/, t("validation.displayNamePattern"))
+      .trim()
+      .optional()
+      .or(z.literal("")),
 
-  delegate_statement: z
-    .string()
-    .max(1000, "Delegate statement cannot exceed 1000 characters")
-    .trim(),
+    delegate_statement: z
+      .string()
+      .max(1000, t("validation.delegateStatementMax"))
+      .trim(),
 
-  email: z
-    .string()
-    .email("Invalid email address")
-    .trim()
-    .toLowerCase()
-    .optional()
-    .or(z.literal("")),
+    email: z
+      .string()
+      .email(t("validation.invalidEmail"))
+      .trim()
+      .toLowerCase()
+      .optional()
+      .or(z.literal("")),
 
-  twitter: z
-    .string()
-    .transform(parseTwitterUrl)
-    .refine(
-      (val) => {
-        if (val === "") return true;
-        return /^[A-Za-z0-9_]{1,15}$/.test(val);
-      },
-      {
-        message: "Invalid X username",
-      }
-    )
-    .optional()
-    .or(z.literal("")),
+    twitter: z
+      .string()
+      .transform(parseTwitterUrl)
+      .refine(
+        (val) => {
+          if (val === "") return true;
+          return /^[A-Za-z0-9_]{1,15}$/.test(val);
+        },
+        {
+          message: t("validation.invalidXUsername"),
+        }
+      )
+      .optional()
+      .or(z.literal("")),
 
-  telegram: z
-    .string()
-    .transform(parseTelegramUrl)
-    .refine(
-      (val) => {
-        if (val === "") return true;
-        return /^[A-Za-z0-9_]{5,32}$/.test(val);
-      },
-      {
-        message: "Invalid Telegram username",
-      }
-    )
-    .optional()
-    .or(z.literal("")),
+    telegram: z
+      .string()
+      .transform(parseTelegramUrl)
+      .refine(
+        (val) => {
+          if (val === "") return true;
+          return /^[A-Za-z0-9_]{5,32}$/.test(val);
+        },
+        {
+          message: t("validation.invalidTelegramUsername"),
+        }
+      )
+      .optional()
+      .or(z.literal("")),
 
-  github: z
-    .string()
-    .transform(parseGithubUrl)
-    .refine(
-      (val) => {
-        if (val === "") return true;
-        return /^[A-Za-z0-9](?!.*--)([A-Za-z0-9-]){0,37}[A-Za-z0-9]$/.test(val);
-      },
-      {
-        message: "Invalid GitHub username",
-      }
-    )
-    .optional()
-    .or(z.literal("")),
+    github: z
+      .string()
+      .transform(parseGithubUrl)
+      .refine(
+        (val) => {
+          if (val === "") return true;
+          return /^[A-Za-z0-9](?!.*--)([A-Za-z0-9-]){0,37}[A-Za-z0-9]$/.test(
+            val
+          );
+        },
+        {
+          message: t("validation.invalidGithubUsername"),
+        }
+      )
+      .optional()
+      .or(z.literal("")),
 
-  discord: z
-    .string()
-    .transform(parseDiscordUrl)
-    .refine(
-      (val) => {
-        if (val === "") return true;
-        const newFormat = /^[a-z0-9._]{2,32}$/.test(val) && !/\.\./.test(val);
-        const userIdFormat = /^[0-9]{17,19}$/.test(val);
-        const legacyFormat = /^.{2,32}#[0-9]{4}$/.test(val);
+    discord: z
+      .string()
+      .transform(parseDiscordUrl)
+      .refine(
+        (val) => {
+          if (val === "") return true;
+          const newFormat = /^[a-z0-9._]{2,32}$/.test(val) && !/\.\./.test(val);
+          const userIdFormat = /^[0-9]{17,19}$/.test(val);
+          const legacyFormat = /^.{2,32}#[0-9]{4}$/.test(val);
 
-        return newFormat || userIdFormat || legacyFormat;
-      },
-      {
-        message: "Invalid Discord username",
-      }
-    )
-    .optional()
-    .or(z.literal("")),
-});
+          return newFormat || userIdFormat || legacyFormat;
+        },
+        {
+          message: t("validation.invalidDiscordUsername"),
+        }
+      )
+      .optional()
+      .or(z.literal("")),
+  });
 
-export type ProfileFormData = z.infer<typeof FormSchema>;
+type ProfileFormSchema = ReturnType<typeof createFormSchema>;
+
+export type ProfileFormData = z.infer<ProfileFormSchema>;
 
 export function ProfileForm({
   onSubmitForm,
@@ -188,9 +193,11 @@ export function ProfileForm({
   isLoading: boolean;
   onChange?: () => void;
 }) {
+  const t = useTranslations("profile.edit");
+  const formSchema = createFormSchema(t);
   const router = useRouter();
   const form = useForm<ProfileFormData>({
-    resolver: zodResolver(FormSchema),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       delegate_statement: "",
@@ -252,11 +259,11 @@ export function ProfileForm({
               <FormItem>
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">
-                    Display Name
+                    {t("fieldLabels.displayName")}
                   </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="Enter your name"
+                      placeholder={t("placeholders.displayName")}
                       {...field}
                       className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
@@ -274,11 +281,11 @@ export function ProfileForm({
               <FormItem>
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
                   <FormLabel className="w-[140px] shrink-0">
-                    Delegate Statement
+                    {t("fieldLabels.delegateStatement")}
                   </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="You statement that shows your commitment to the community and what you will do for the community."
+                      placeholder={t("placeholders.delegateStatement")}
                       {...field}
                       className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
@@ -295,10 +302,12 @@ export function ProfileForm({
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
-                  <FormLabel className="w-[140px] shrink-0">X</FormLabel>
+                  <FormLabel className="w-[140px] shrink-0">
+                    {t("fieldLabels.x")}
+                  </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="username or https://x.com/username"
+                      placeholder={t("placeholders.x")}
                       {...field}
                       className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
@@ -315,10 +324,12 @@ export function ProfileForm({
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
-                  <FormLabel className="w-[140px] shrink-0">Telegram</FormLabel>
+                  <FormLabel className="w-[140px] shrink-0">
+                    {t("fieldLabels.telegram")}
+                  </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="username or https://t.me/username"
+                      placeholder={t("placeholders.telegram")}
                       {...field}
                       className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
@@ -335,10 +346,12 @@ export function ProfileForm({
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
-                  <FormLabel className="w-[140px] shrink-0">Github</FormLabel>
+                  <FormLabel className="w-[140px] shrink-0">
+                    {t("fieldLabels.github")}
+                  </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="username or https://github.com/username"
+                      placeholder={t("placeholders.github")}
                       {...field}
                       className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
@@ -355,10 +368,12 @@ export function ProfileForm({
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-[10px]">
-                  <FormLabel className="w-[140px] shrink-0">Discord</FormLabel>
+                  <FormLabel className="w-[140px] shrink-0">
+                    {t("fieldLabels.discord")}
+                  </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="userid or https://discordapp.com/users/userid"
+                      placeholder={t("placeholders.discord")}
                       {...field}
                       className="w-full border-border bg-transparent placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
                     />
@@ -381,14 +396,16 @@ export function ProfileForm({
                 router.push("/profile");
               }}
             >
-              Cancel
+              {t("actions.cancel")}
             </Button>
             <Button
               type="submit"
               className="w-[155px] rounded-[100px]"
               isLoading={form.formState.isSubmitting || isLoading}
             >
-              {form.formState.isSubmitting ? "Saving..." : "Save"}
+              {form.formState.isSubmitting
+                ? t("actions.saving")
+                : t("actions.save")}
             </Button>
           </div>
         </form>

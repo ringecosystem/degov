@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import { ProposalCloseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -16,6 +18,7 @@ export const ReplacePanel = ({
   onReplace,
   onRemove,
 }: ReplacePanelProps) => {
+  const t = useTranslations("proposalEditor.actions");
   return (
     <div
       className={cn(
@@ -24,14 +27,16 @@ export const ReplacePanel = ({
       )}
     >
       <header className="flex items-center justify-between">
-        <h4 className="text-[18px] font-semibold">Action #{index}</h4>
+        <h4 className="text-[18px] font-semibold">
+          {t("actionNumber", { index })}
+        </h4>
         <Button
           className="h-[30px] gap-[5px] rounded-[100px] border border-foreground bg-card p-[10px]"
           variant="outline"
           onClick={() => onRemove(index)}
         >
           <ProposalCloseIcon width={16} height={16} className="text-current" />
-          <span>Remove action</span>
+          <span>{t("removeAction")}</span>
         </Button>
       </header>
       <div className="mx-auto flex w-full max-w-[850px] flex-col gap-[20px]">

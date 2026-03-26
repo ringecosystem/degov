@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { useReadContract } from "wagmi";
 
@@ -21,6 +22,7 @@ export default function AiAnalysisPage({
 }: {
   params: Promise<{ proposalId: string }>;
 }) {
+  const t = useTranslations("aiAnalysis");
   const [proposalId, setProposalId] = useState<string>("");
   const daoConfig = useDaoConfig();
 
@@ -73,7 +75,7 @@ export default function AiAnalysisPage({
 
         return {
           proposalId: proposal.proposalId,
-          title: parsedDescription.mainText || `Proposal ${proposalId}`,
+          title: parsedDescription.mainText || proposalId,
           description: parsedDescription.mainText || proposal.description,
           proposer: proposal.proposer,
           blockTimestamp: proposal.blockTimestamp,
@@ -110,7 +112,7 @@ export default function AiAnalysisPage({
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <p className="text-text-secondary">Loading...</p>
+          <p className="text-text-secondary">{t("loading.page")}</p>
         </div>
       </div>
     );
@@ -121,7 +123,7 @@ export default function AiAnalysisPage({
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-text-secondary">Loading AI analysis...</p>
+          <p className="text-text-secondary">{t("loading.page")}</p>
         </div>
       </div>
     );
@@ -136,7 +138,7 @@ export default function AiAnalysisPage({
             onClick={handleRefresh}
             className="px-4 py-2 bg-foreground text-background rounded-lg hover:bg-foreground/90 cursor-pointer"
           >
-            Retry
+            {t("errors.retry")}
           </button>
         </div>
       </div>
@@ -147,12 +149,12 @@ export default function AiAnalysisPage({
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <p className="text-text-secondary">No proposal data found</p>
+          <p className="text-text-secondary">{t("errors.noProposalData")}</p>
           <button
             onClick={handleRefresh}
             className="mt-4 px-4 py-2 bg-foreground text-background rounded-lg hover:bg-foreground/90 cursor-pointer"
           >
-            Retry
+            {t("errors.retry")}
           </button>
         </div>
       </div>

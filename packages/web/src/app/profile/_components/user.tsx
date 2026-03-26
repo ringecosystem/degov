@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { AddressAvatar } from "@/components/address-avatar";
@@ -42,6 +43,7 @@ export const User = ({
   onEditProfile,
   onDelegate,
 }: UserProps) => {
+  const t = useTranslations("profile.user");
   const daoConfig = useDaoConfig();
   const { isAiBot } = useAiBotAddress(address);
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -121,23 +123,23 @@ export const User = ({
           }}
         >
           {isAiBot ? (
-            <span>
-              An AI-powered delegate that actively votes on governance
-              proposals. Learn more at
-              <a
-                href="https://docs.degov.ai/governance/agent/overview"
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline ml-1"
-              >
-                https://docs.degov.ai/governance/agent/overview
-                <ExternalLinkIcon
-                  width={16}
-                  height={16}
-                  className="text-muted-foreground"
-                />
-              </a>
-            </span>
+            t.rich("aiStatement", {
+              link: (chunks) => (
+                <a
+                  href="https://docs.degov.ai/governance/agent/overview"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:underline ml-1"
+                >
+                  {chunks}
+                  <ExternalLinkIcon
+                    width={16}
+                    height={16}
+                    className="text-muted-foreground"
+                  />
+                </a>
+              ),
+            })
           ) : (
             <div onClick={() => setShowFullDescription(!showFullDescription)}>
               {profile?.delegate_statement}
@@ -146,7 +148,7 @@ export const User = ({
         </p>
       ) : (
         <p className="mb-0 line-clamp-3 text-[14px] font-normal leading-[18px] text-foreground">
-          No delegate statement found.
+          {t("noDelegateStatement")}
         </p>
       )}
 

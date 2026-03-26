@@ -1,5 +1,6 @@
 "use client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import {
   Fragment,
   useCallback,
@@ -40,10 +41,10 @@ import { PreviewPanel } from "./preview-panel";
 import { ProposalPanel } from "./proposal-panel";
 import { ReplacePanel } from "./replace-panel";
 import {
-  proposalSchema,
-  customActionSchema,
-  transferSchema,
-  xaccountSchema,
+  createProposalSchema,
+  createCustomActionSchema,
+  createTransferSchema,
+  createXaccountSchema,
 } from "./schema";
 import { Sidebar } from "./sidebar";
 import { TransferPanel } from "./transfer-panel";
@@ -68,6 +69,7 @@ const PublishButton = ({
   isLoading: boolean;
   onClick?: (e: React.MouseEvent) => void;
 }) => {
+  const t = useTranslations("proposalEditor.page");
   return (
     <Button
       className="gap-[5px] rounded-[100px]"
@@ -76,12 +78,14 @@ const PublishButton = ({
       isLoading={isLoading}
     >
       <PlusIcon width={16} height={16} className="text-current" />
-      <span>Publish</span>
+      <span>{t("publish")}</span>
     </Button>
   );
 };
 
 export default function NewProposal() {
+  const t = useTranslations("proposalEditor.page");
+  const schemaT = useTranslations("proposalEditor");
   const panelRefs = useRef<Map<string, HTMLFormElement>>(new Map());
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -93,6 +97,22 @@ export default function NewProposal() {
   const [tab, setTab] = useState<"edit" | "add" | "preview">("edit");
 
   const initialActionsRef = useRef<string>(JSON.stringify(DEFAULT_ACTIONS));
+  const proposalSchema = useMemo(
+    () => createProposalSchema(schemaT),
+    [schemaT]
+  );
+  const transferSchema = useMemo(
+    () => createTransferSchema(schemaT),
+    [schemaT]
+  );
+  const customActionSchema = useMemo(
+    () => createCustomActionSchema(schemaT),
+    [schemaT]
+  );
+  const xaccountSchema = useMemo(
+    () => createXaccountSchema(schemaT),
+    [schemaT]
+  );
 
   const actionsChanged = useMemo(() => {
     const currentActionsJson = JSON.stringify(actions);
@@ -101,8 +121,7 @@ export default function NewProposal() {
 
   const { resetChanges } = useUnsavedChangesAlert({
     hasChanges: actionsChanged,
-    message:
-      "Please confirm that you want to leave this page. If you leave this page, your changes will be lost.",
+    message: t("unsavedChanges"),
   });
 
   const { createProposal, isPending, proposalId } = useProposal();
@@ -231,7 +250,7 @@ export default function NewProposal() {
     });
 
     return state;
-  }, [actions]);
+  }, [actions, customActionSchema, proposalSchema, transferSchema, xaccountSchema]);
 
   const handlePublish = useCallback(async () => {
     try {
@@ -251,12 +270,12 @@ export default function NewProposal() {
       console.error(error);
       toast.error(
         (error as { shortMessage: string }).shortMessage ??
-          "Failed to create proposal"
+          t("publishFailed")
       );
     } finally {
       setPublishLoading(false);
     }
-  }, [actions, createProposal, resetChanges]);
+  }, [actions, createProposal, resetChanges, t]);
 
   const handlePublishSuccess: SuccessType = useCallback(() => {
     const endpoint = daoConfig?.indexer?.endpoint;
@@ -305,7 +324,7 @@ export default function NewProposal() {
     <WithConnect>
       <div className="flex flex-col gap-[20px] p-[30px]">
         <header className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">New Proposal</h2>
+          <h2 className="text-2xl font-semibold">{t("title")}</h2>
           {actions.length === 0 ||
           [...validationState.values()].some((v) => !v) ? (
             <Tooltip>
@@ -317,7 +336,7 @@ export default function NewProposal() {
                   />
                 </div>
               </TooltipTrigger>
-              <TooltipContent>Please fix all errors</TooltipContent>
+              <TooltipContent>{t("fixErrors")}</TooltipContent>
             </Tooltip>
           ) : (
             <Button
@@ -326,7 +345,7 @@ export default function NewProposal() {
               isLoading={publishLoading || isPending || isLoading}
             >
               <PlusIcon width={16} height={16} className="text-current" />
-              <span>Publish</span>
+              <span>{t("publish")}</span>
             </Button>
           )}
         </header>

@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -28,6 +29,7 @@ export function JoinDelegate({
   amount,
   symbol,
 }: JoinDelegateProps) {
+  const t = useTranslations("profile.joinDelegate");
   const daoConfig = useDaoConfig();
   const queryClient = useQueryClient();
   const { delegate, isPending: isPendingDelegate } = useDelegate();
@@ -47,7 +49,7 @@ export function JoinDelegate({
         <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
           <DialogHeader className="flex w-full flex-row items-center justify-between">
             <DialogTitle className="text-[18px] font-extrabold">
-              Join as Delegate
+              {t("title")}
             </DialogTitle>
             <CloseIcon
               width={24}
@@ -58,9 +60,10 @@ export function JoinDelegate({
           </DialogHeader>
           <Separator className="my-0 bg-muted-foreground/40" />
           <p className="text-[14px] text-foreground font-semibold">
-            You are going to participate in the delegation by converting your{" "}
-            {amount} {symbol} to voting power. Please continue if you want to
-            proceed.
+            {t("description", {
+              amount,
+              symbol,
+            })}
           </p>
           <Separator className="my-0 bg-muted-foreground/40" />
           <div className="grid grid-cols-2 gap-[20px]">
@@ -69,14 +72,14 @@ export function JoinDelegate({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               className="w-full rounded-[100px]"
               isLoading={isPendingDelegate}
               onClick={handleDelegate}
             >
-              Continue
+              {t("continue")}
             </Button>
           </div>
         </DialogContent>

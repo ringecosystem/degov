@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -9,16 +11,17 @@ import {
 } from "@/components/ui/table";
 
 export function TableSkeleton() {
+  const t = useTranslations("treasury.headers");
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-1/3 rounded-l-[14px] text-left">
-            Name
+            {t("name")}
           </TableHead>
-          <TableHead className="w-1/3 text-center">Network</TableHead>
+          <TableHead className="w-1/3 text-center">{t("network")}</TableHead>
           <TableHead className="w-1/3 rounded-r-[14px] text-right">
-            Action
+            {t("action")}
           </TableHead>
         </TableRow>
       </TableHeader>

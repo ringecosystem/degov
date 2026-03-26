@@ -1,0 +1,100 @@
+{
+  "breadcrumbs": {
+    "delegates": "Delegates"
+  },
+  "overview": {
+    "participationTooltip": "Participated in {participatedCount}/{total} of recent proposals",
+    "cards": {
+      "totalVotingPower": "Total Voting Power",
+      "governanceBalance": "Governance Balance",
+      "delegatingTo": "Delegating To",
+      "participationRate": "Participation Rate"
+    }
+  },
+  "delegationStatus": {
+    "none": {
+      "display": "Haven't delegated yet",
+      "button": "Join as Delegate"
+    },
+    "self": {
+      "display": "Self",
+      "button": "Change Delegate"
+    },
+    "other": {
+      "display": "{amount} {symbol} to",
+      "button": "Change Delegate"
+    }
+  },
+  "changeDelegate": {
+    "title": "Change Delegate",
+    "description": "You are going to change your delegate from {delegate} to others, either to yourself or to other accounts.",
+    "myself": "Myself",
+    "someoneElse": "Someone else"
+  },
+  "joinDelegate": {
+    "title": "Join as Delegate",
+    "description": "You are going to participate in the delegation by converting your {amount} {symbol} to voting power. Please continue if you want to proceed.",
+    "cancel": "Cancel",
+    "continue": "Continue"
+  },
+  "receivedDelegations": {
+    "title": "Received Delegations",
+    "titleWithCount": "Received Delegations ({count})"
+  },
+  "user": {
+    "aiStatement": "An AI-powered delegate that actively votes on governance proposals. Learn more at <link>https://docs.degov.ai/governance/agent/overview</link>.",
+    "noDelegateStatement": "No delegate statement found."
+  },
+  "actions": {
+    "editProfile": "Edit Profile",
+    "delegate": "Delegate"
+  },
+  "edit": {
+    "title": "Edit Profile",
+    "avatar": {
+      "invalidFormat": "Please upload a JPG, PNG, GIF or WebP image.",
+      "maxSize": "Maximum file size is {size}MB.",
+      "processingFailed": "Image processing failed",
+      "alt": "Profile avatar",
+      "processing": "Processing...",
+      "upload": "Upload Avatar"
+    },
+    "fieldLabels": {
+      "displayName": "Display Name",
+      "delegateStatement": "Delegate Statement",
+      "email": "Email",
+      "x": "X",
+      "telegram": "Telegram",
+      "github": "Github",
+      "discord": "Discord"
+    },
+    "placeholders": {
+      "displayName": "Enter your name",
+      "delegateStatement": "Your statement that shows your commitment to the community and what you will do for the community.",
+      "x": "username or https://x.com/username",
+      "telegram": "username or https://t.me/username",
+      "github": "username or https://github.com/username",
+      "discord": "userid or https://discordapp.com/users/userid"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving..."
+    },
+    "messages": {
+      "updated": "Profile updated successfully",
+      "updateFailed": "Failed to update profile"
+    },
+    "validation": {
+      "displayNameMin": "Display name must be at least 5 characters",
+      "displayNameMax": "Display name cannot exceed 50 characters",
+      "displayNamePattern": "Display name can only contain letters, numbers, spaces, hyphens, underscores",
+      "delegateStatementMax": "Delegate statement cannot exceed 1000 characters",
+      "invalidEmail": "Invalid email address",
+      "invalidXUsername": "Invalid X username",
+      "invalidTelegramUsername": "Invalid Telegram username",
+      "invalidGithubUsername": "Invalid GitHub username",
+      "invalidDiscordUsername": "Invalid Discord username"
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import {
   ProposalActionCheckIcon,
   ErrorIcon,
@@ -21,10 +23,12 @@ const VOTE_ICON_MAP: Partial<
   [VoteType.Abstain]: CancelIcon,
 };
 
-const VOTE_LABEL_MAP: Partial<Record<VoteType, string>> = {
-  [VoteType.For]: "For",
-  [VoteType.Against]: "Against",
-  [VoteType.Abstain]: "Abstain",
+const VOTE_LABEL_KEY_MAP: Partial<
+  Record<VoteType, "for" | "against" | "abstain">
+> = {
+  [VoteType.For]: "for",
+  [VoteType.Against]: "against",
+  [VoteType.Abstain]: "abstain",
 };
 interface ActionGroupDisplayProps {
   status?: ProposalState;
@@ -42,25 +46,30 @@ export const ActionGroupDisplay = ({
   canExecute,
   hasTimelock,
 }: ActionGroupDisplayProps) => {
+  const t = useTranslations("proposalDetail.actionGroup");
+  const voteLabels = useTranslations("proposals.voteLabels");
+
   if (status === ProposalState.Pending) {
     return (
       <div className="flex items-center gap-[10px]">
         <ClockIcon width={20} height={20} className="text-current" />
-        <p>Voting starts soon</p>
+        <p>{t("votingStartsSoon")}</p>
       </div>
     );
   }
   if (status === ProposalState.Active) {
     const VoteIcon =
       votedSupport !== undefined ? VOTE_ICON_MAP[votedSupport] : null;
-    const voteLabel =
-      votedSupport !== undefined ? VOTE_LABEL_MAP[votedSupport] : null;
+    const voteLabelKey =
+      votedSupport !== undefined ? VOTE_LABEL_KEY_MAP[votedSupport] : null;
 
-    if (VoteIcon && voteLabel) {
+    if (VoteIcon && voteLabelKey) {
       return (
         <p className="flex items-center gap-[10px] text-[14px] font-normal">
           <VoteIcon width={20} height={20} className="text-current" />
-          You voted {voteLabel}
+          {t("youVoted", {
+            voteLabel: voteLabels(voteLabelKey),
+          })}
         </p>
       );
     }
@@ -70,7 +79,7 @@ export const ActionGroupDisplay = ({
         onClick={() => onClick("vote")}
         isLoading={isLoading}
       >
-        Vote Onchain
+        {t("voteOnchain")}
       </Button>
     );
   }
@@ -84,7 +93,7 @@ export const ActionGroupDisplay = ({
           disabled={!canExecute}
           onClick={() => onClick("execute")}
         >
-          Execute
+          {t("execute")}
         </Button>
       );
     }
@@ -96,7 +105,7 @@ export const ActionGroupDisplay = ({
         isLoading={isLoading}
         onClick={() => onClick("queue")}
       >
-        Queue
+        {t("queue")}
       </Button>
     );
   }
@@ -108,7 +117,7 @@ export const ActionGroupDisplay = ({
         disabled={!canExecute}
         onClick={() => onClick("execute")}
       >
-        Execute
+        {t("execute")}
       </Button>
     );
   }
@@ -120,7 +129,7 @@ export const ActionGroupDisplay = ({
           height={20}
           className="text-current"
         />
-        <p>Proposal executed</p>
+        <p>{t("proposalExecuted")}</p>
       </div>
     );
   }
@@ -128,7 +137,7 @@ export const ActionGroupDisplay = ({
     return (
       <div className="flex items-center gap-[10px]">
         <CancelIcon width={20} height={20} className="text-current" />
-        <p>Proposal canceled</p>
+        <p>{t("proposalCanceled")}</p>
       </div>
     );
   }
@@ -136,7 +145,7 @@ export const ActionGroupDisplay = ({
     return (
       <div className="flex items-center gap-[10px]">
         <CancelIcon width={20} height={20} className="text-current" />
-        <p>Proposal expired</p>
+        <p>{t("proposalExpired")}</p>
       </div>
     );
   }
@@ -144,7 +153,7 @@ export const ActionGroupDisplay = ({
     return (
       <div className="flex items-center gap-[10px]">
         <CancelIcon width={20} height={20} className="text-current" />
-        <p>Proposal defeated</p>
+        <p>{t("proposalDefeated")}</p>
       </div>
     );
   }

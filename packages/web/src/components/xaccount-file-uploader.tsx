@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 
@@ -21,6 +22,7 @@ export const XAccountFileUploader = ({
   isUploaded,
   isError,
 }: XAccountFileUploaderProps) => {
+  const t = useTranslations("proposalEditor.files.json");
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       const file = acceptedFiles[0];
@@ -58,26 +60,26 @@ export const XAccountFileUploader = ({
       <input {...getInputProps()} />
       {isDragActive ? (
         <p className="text-[18px] font-semibold text-foreground">
-          Drop your json file here
+          {t("drop")}
         </p>
       ) : (
         <>
           <p className="text-[18px] font-normal text-foreground">
-            Drag and drop your json file
+            {t("drag")}
           </p>
           <p className="text-[14px] text-muted-foreground">
-            Or click to browse your json files
+            {t("browse")}
           </p>
           {isError && (
             <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
               <ProposalActionErrorIcon width={16} height={16} />
-              Must be a valid json file.
+              {t("invalid")}
             </p>
           )}
           {isUploaded && (
             <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
               <ProposalActionCheckIcon width={16} height={16} />
-              JSON file uploaded
+              {t("uploaded")}
             </p>
           )}
         </>

@@ -1,5 +1,6 @@
 import { blo } from "blo";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 import { ExternalLinkIcon } from "@/components/icons";
 
@@ -9,6 +10,8 @@ interface AssetProps {
   symbol: string;
 }
 export const Asset = ({ link, explorer, symbol }: AssetProps) => {
+  const t = useTranslations("treasury");
+
   return (
     <a
       className="flex items-center gap-[10px] text-[14px] text-foreground transition-opacity hover:underline hover:opacity-80"
@@ -18,13 +21,13 @@ export const Asset = ({ link, explorer, symbol }: AssetProps) => {
     >
       <Image
         src={blo(link as `0x${string}` || "")}
-        alt={symbol || "N/A"}
+        alt={symbol || t("fallback.notAvailable")}
         className="h-[30px] w-[30px] rounded-full"
         width={30}
         height={30}
       />
       <span className="text-[14px] capitalize text-foreground">
-        {symbol || "N/A"}
+        {symbol || t("fallback.notAvailable")}
       </span>
       <ExternalLinkIcon
         width={16}
