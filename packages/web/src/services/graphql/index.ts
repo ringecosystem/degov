@@ -7,6 +7,7 @@ import { request } from "./client";
 import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
+import { resolveGovernanceCounts } from "./types/counts";
 
 import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
@@ -145,6 +146,13 @@ export const proposalService = {
       }
     );
     return response?.dataMetrics?.[0] ?? emptyProposalMetrics;
+  },
+  getGovernanceCounts: async (endpoint: string) => {
+    const response = await request<Types.GovernanceCountsResponse>(
+      endpoint,
+      Queries.GET_GOVERNANCE_COUNTS
+    );
+    return resolveGovernanceCounts(response);
   },
 
   getProposalVoteRate: async (
