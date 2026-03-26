@@ -1,5 +1,4 @@
 "use client";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -22,10 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useRouter } from "@/i18n/navigation";
-import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
@@ -64,7 +62,6 @@ function ProposalsContent() {
   const typeParam = searchParams?.get("type");
   const supportParam = searchParams?.get("support");
   const addressParam = searchParams?.get("address");
-  const daoConfig = useDaoConfig();
 
   const [support, setSupport] = useState<SupportSelection>(
     normalizeSupportParam(supportParam)
@@ -79,16 +76,7 @@ function ProposalsContent() {
   // Get voting power information
   const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
 
-  // Get proposal metrics (including total count)
-  const { data: dataMetrics } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
-    queryFn: () =>
-      proposalService.getProposalMetrics(
-        daoConfig?.indexer?.endpoint as string
-      ),
-    enabled: !!daoConfig?.indexer?.endpoint,
-    placeholderData: keepPreviousData,
-  });
+  const { data: governanceCounts } = useGovernanceCounts();
 
   // Update URL when filters change
   const updateUrlParams = (
@@ -129,10 +117,8 @@ function ProposalsContent() {
   };
 
   const getDisplayTitle = () => {
-    const totalCount = dataMetrics?.proposalsCount
-      ? parseInt(dataMetrics.proposalsCount)
-      : null;
-    if (totalCount !== null) {
+    const totalCount = governanceCounts?.proposalsCount;
+    if (totalCount !== undefined) {
       return t("titleWithCount", { count: totalCount });
     }
 

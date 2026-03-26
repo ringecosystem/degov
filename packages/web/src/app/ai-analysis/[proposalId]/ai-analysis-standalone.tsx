@@ -1,6 +1,5 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import Link from "next/link";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -14,6 +13,7 @@ import { LoadingState, ErrorState } from "@/components/ui/loading-spinner";
 import { VoteStatusAction } from "@/components/vote-status";
 import { VoteType } from "@/config/vote";
 import { useDeviceDetection } from "@/hooks/useDeviceDetection";
+import { Link } from "@/i18n/navigation";
 import type { AiAnalysisData } from "@/types/ai-analysis";
 import { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription } from "@/utils";

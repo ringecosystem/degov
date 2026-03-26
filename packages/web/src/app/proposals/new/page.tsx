@@ -1,6 +1,5 @@
 "use client";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import {
   Fragment,
   useCallback,
@@ -27,6 +26,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useProposal } from "@/hooks/useProposal";
 import { useUnsavedChangesAlert } from "@/hooks/useUnsavedChangesAlert";
+import { useRouter } from "@/i18n/navigation";
 
 import { CustomPanel } from "./custom-panel";
 import {

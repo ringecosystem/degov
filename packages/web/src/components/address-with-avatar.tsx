@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
 import {
@@ -8,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
+import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 import { AiIcon } from "./icons/ai-icon";
