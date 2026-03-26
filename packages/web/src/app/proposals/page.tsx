@@ -1,4 +1,5 @@
 "use client";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
@@ -20,8 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
+import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
@@ -59,6 +61,7 @@ function ProposalsContent() {
   const typeParam = searchParams?.get("type");
   const supportParam = searchParams?.get("support");
   const addressParam = searchParams?.get("address");
+  const daoConfig = useDaoConfig();
 
   const [support, setSupport] = useState<SupportSelection>(
     normalizeSupportParam(supportParam)
@@ -73,7 +76,16 @@ function ProposalsContent() {
   // Get voting power information
   const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
 
-  const { data: governanceCounts } = useGovernanceCounts();
+  // Get proposal metrics (including total count)
+  const { data: dataMetrics } = useQuery({
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryFn: () =>
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint as string
+      ),
+    enabled: !!daoConfig?.indexer?.endpoint,
+    placeholderData: keepPreviousData,
+  });
 
   // Update URL when filters change
   const updateUrlParams = (
@@ -114,8 +126,10 @@ function ProposalsContent() {
   };
 
   const getDisplayTitle = () => {
-    const totalCount = governanceCounts?.proposalsCount;
-    if (totalCount !== undefined) {
+    const totalCount = dataMetrics?.proposalsCount
+      ? parseInt(dataMetrics.proposalsCount)
+      : null;
+    if (totalCount !== null) {
       return `All Proposals (${totalCount})`;
     }
 

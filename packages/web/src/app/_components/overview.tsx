@@ -1,11 +1,11 @@
 "use client";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { isNumber } from "lodash-es";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
 import { proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
 
@@ -36,8 +36,6 @@ export const Overview = () => {
     enabled: !!daoConfig?.indexer?.endpoint,
     placeholderData: keepPreviousData,
   });
-  const { data: governanceCounts, isLoading: isGovernanceCountsLoading } =
-    useGovernanceCounts();
 
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px]">
@@ -49,14 +47,16 @@ export const Overview = () => {
           title="Proposals"
           link={`/proposals`}
           icon="/assets/image/proposals-colorful.svg"
-          isLoading={isGovernanceCountsLoading}
+          isLoading={isProposalMetricsLoading}
           priority
         >
           <>
             <div className="flex items-center gap-[8px] lg:gap-[10px]">
               {
                 formatNumberForDisplay(
-                  governanceCounts?.proposalsCount ?? 0,
+                  isNumber(dataMetrics?.proposalsCount)
+                    ? dataMetrics?.proposalsCount
+                    : 0,
                   0
                 )[0]
               }
@@ -68,9 +68,9 @@ export const Overview = () => {
           title="Delegates"
           link={`/delegates`}
           icon="/assets/image/members-colorful.svg"
-          isLoading={isGovernanceCountsLoading}
+          isLoading={isProposalMetricsLoading}
         >
-          {formatNumberForDisplay(governanceCounts?.delegatesCount ?? 0, 0)[0]}
+          {formatNumberForDisplay(dataMetrics?.memberCount ?? 0, 0)[0]}
         </OverviewItem>
         <OverviewItem
           title="Total Voting Power"
