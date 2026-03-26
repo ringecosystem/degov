@@ -302,6 +302,223 @@ describe("token vote power checkpoints", () => {
     ).toBeUndefined();
     expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(0n);
   });
+
+  it("preserves normal redelegation bookkeeping between non-zero delegates", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 100n,
+      }),
+      new Contributor({
+        id: "0x1111111111111111111111111111111111111111",
+        power: 100n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111",
+        fromDelegate: "0x2222222222222222222222222222222222222222",
+        toDelegate: "0x1111111111111111111111111111111111111111",
+        power: 100n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0x2222222222222222222222222222222222222222",
+        from: "0x2222222222222222222222222222222222222222",
+        to: "0x1111111111111111111111111111111111111111",
+        power: 100n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0x2222222222222222222222222222222222222222",
+        fromDelegate: "0x1111111111111111111111111111111111111111",
+        toDelegate: "0x3333333333333333333333333333333333333333",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-redelegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: {
+        height: 11,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xredelegate",
+    } as any);
+
+    expect(
+      store.findEntity(DelegateMapping, "0x2222222222222222222222222222222222222222")
+    ).toMatchObject({
+      from: "0x2222222222222222222222222222222222222222",
+      to: "0x3333333333333333333333333333333333333333",
+      power: 0n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x1111111111111111111111111111111111111111")
+    ).toMatchObject({
+      delegatesCountAll: 0,
+      delegatesCountEffective: 1,
+      power: 100n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x3333333333333333333333333333333333333333")
+    ).toMatchObject({
+      delegatesCountAll: 1,
+      delegatesCountEffective: 0,
+      power: 0n,
+    });
+
+    const delegateVotesChangedDecode = jest.spyOn(
+      itokenerc20.events.DelegateVotesChanged,
+      "decode"
+    );
+    delegateVotesChangedDecode
+      .mockReturnValueOnce({
+        delegate: "0x1111111111111111111111111111111111111111",
+        previousVotes: 100n,
+        newVotes: 0n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0x3333333333333333333333333333333333333333",
+        previousVotes: 0n,
+        newVotes: 100n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-old-delegate-votes",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: {
+        height: 11,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xredelegate",
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-new-delegate-votes",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 3,
+      transactionIndex: 1,
+      block: {
+        height: 11,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xredelegate",
+    } as any);
+
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111"
+      )
+    ).toBeUndefined();
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x2222222222222222222222222222222222222222_0x3333333333333333333333333333333333333333"
+      )
+    ).toMatchObject({
+      power: 100n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x1111111111111111111111111111111111111111")
+    ).toMatchObject({
+      delegatesCountAll: 0,
+      delegatesCountEffective: 0,
+      power: 0n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x3333333333333333333333333333333333333333")
+    ).toMatchObject({
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
+      power: 100n,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(100n);
+    expect(
+      store.findEntity(DataMetric, "0x3333333333333333333333333333333333333333")
+    ).toBeUndefined();
+    expect(
+      store.findEntity(Contributor, "0x0000000000000000000000000000000000000000")
+    ).toBeUndefined();
+  });
+
+  it("still materializes self-delegation from the undelegated state", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0x4444444444444444444444444444444444444444",
+        fromDelegate: "0x0000000000000000000000000000000000000000",
+        toDelegate: "0x4444444444444444444444444444444444444444",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-self-delegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: {
+        height: 12,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xself-delegate",
+    } as any);
+
+    expect(
+      store.findEntity(DelegateMapping, "0x4444444444444444444444444444444444444444")
+    ).toMatchObject({
+      from: "0x4444444444444444444444444444444444444444",
+      to: "0x4444444444444444444444444444444444444444",
+      power: 0n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x4444444444444444444444444444444444444444_0x4444444444444444444444444444444444444444"
+      )
+    ).toMatchObject({
+      power: 0n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x4444444444444444444444444444444444444444")
+    ).toMatchObject({
+      power: 0n,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(0n);
+    expect(
+      store.findEntity(Contributor, "0x0000000000000000000000000000000000000000")
+    ).toBeUndefined();
+  });
 });
 
 class MemoryStore {

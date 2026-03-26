@@ -123,7 +123,24 @@ export class TokenHandler {
     target: T,
     scope: TokenScopeFields,
   ): T {
-    Object.assign(target, scope);
+    const {
+      chainId,
+      daoCode,
+      governorAddress,
+      tokenAddress,
+      contractAddress,
+      logIndex,
+      transactionIndex,
+    } = scope;
+    Object.assign(target, {
+      chainId,
+      daoCode,
+      governorAddress,
+      tokenAddress,
+      contractAddress,
+      logIndex,
+      transactionIndex,
+    });
     return target;
   }
 
