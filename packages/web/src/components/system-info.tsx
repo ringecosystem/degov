@@ -7,6 +7,7 @@ import { useReadContract } from "wagmi";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
@@ -107,6 +108,10 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       ),
     enabled: !!daoConfig?.indexer?.endpoint && type === "default",
   });
+  const { data: governanceCounts, isLoading: isGovernanceCountsLoading } =
+    useGovernanceCounts({
+      enabled: type === "default",
+    });
 
   const systemData = useMemo(() => {
     if (type === "proposal") {
@@ -151,7 +156,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         ? formatTokenAmount(totalSupply)?.formatted ?? "0"
         : "0";
 
-      const totalDelegates: number = dataMetrics?.memberCount ?? 0;
+      const totalDelegates = governanceCounts?.delegatesCount ?? 0;
 
       const votingPowerPercentage =
         dataMetrics?.powerSum && totalSupply
@@ -168,7 +173,15 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         votingPowerPercentage,
       };
     }
-  }, [type, dataMetrics, totalSupply, formatTokenAmount, governanceParams, isBlockTimeLoading]);
+  }, [
+    type,
+    dataMetrics,
+    governanceCounts,
+    totalSupply,
+    formatTokenAmount,
+    governanceParams,
+    isBlockTimeLoading,
+  ]);
 
   const explorerUrl = daoConfig?.chain?.explorers?.[0];
 
@@ -282,7 +295,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       <SystemInfoItem
         label="Total Delegates"
         value={systemData.totalDelegates ?? 0}
-        isLoading={isProposalMetricsLoading}
+        isLoading={isGovernanceCountsLoading}
       />
     </div>
   );
