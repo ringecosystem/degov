@@ -1,4 +1,5 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
@@ -18,7 +19,8 @@ import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
-import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
@@ -61,6 +63,7 @@ const ORDER_BY_MAP: Record<
 
 export default function Members() {
   const { isConnected } = useAccount();
+  const daoConfig = useDaoConfig();
   const [address, setAddress] = useState<Address | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const [isLoadAttempted, setIsLoadAttempted] = useState(false);
@@ -78,7 +81,15 @@ export default function Members() {
     300,
     [searchTerm]
   );
-  const { data: governanceCounts } = useGovernanceCounts();
+
+  const { data: dataMetrics } = useQuery({
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryFn: () =>
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint as string
+      ),
+    enabled: !!daoConfig?.indexer?.endpoint,
+  });
 
   const handleDelegate = useCallback(
     (value: ContributorItem) => {
@@ -132,7 +143,7 @@ export default function Members() {
     applySortState("delegators", direction);
 
   const getDisplayTitle = () => {
-    const totalCount = governanceCounts?.delegatesCount;
+    const totalCount = dataMetrics?.memberCount;
     if (totalCount !== undefined) {
       return `Delegates (${totalCount})`;
     }
