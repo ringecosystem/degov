@@ -6,7 +6,7 @@ import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
