@@ -10,7 +10,7 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: darwinia-network/devops/actions/smart-vercel@main
         name: Deploy degov
@@ -26,4 +26,3 @@ jobs:
           enable_notify_slack: false
           slack_channel: public-degov
           slack_webhook: ${{ secrets.SLACK_INCOMING_WEBHOOK_URL }}
-

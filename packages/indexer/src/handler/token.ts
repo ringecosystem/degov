@@ -123,7 +123,24 @@ export class TokenHandler {
     target: T,
     scope: TokenScopeFields,
   ): T {
-    Object.assign(target, scope);
+    const {
+      chainId,
+      daoCode,
+      governorAddress,
+      tokenAddress,
+      contractAddress,
+      logIndex,
+      transactionIndex,
+    } = scope;
+    Object.assign(target, {
+      chainId,
+      daoCode,
+      governorAddress,
+      tokenAddress,
+      contractAddress,
+      logIndex,
+      transactionIndex,
+    });
     return target;
   }
 
@@ -138,6 +155,10 @@ export class TokenHandler {
     const contractStandard = this.contractStandard();
     const isErc721 = contractStandard === "erc721";
     return isErc721 ? itokenerc721 : itokenerc20;
+  }
+
+  private isZeroAddress(address?: string | null) {
+    return (address ?? "").toLowerCase() === zeroAddress;
   }
 
   async handle(eventLog: EvmLog<EvmFieldSelection>) {
@@ -224,46 +245,51 @@ export class TokenHandler {
       }
     }
 
-    // Increase the new delegate's count
-    let newDelegateContributor: Contributor | undefined =
-      await this.ctx.store.findOne(Contributor, {
-        where: {
-          id: entity.toDelegate,
-        },
-      });
+    await this.ctx.store.remove(DelegateMapping, entity.delegator);
+    if (!this.isZeroAddress(entity.toDelegate)) {
+      // Increase the new delegate's count
+      let newDelegateContributor: Contributor | undefined =
+        await this.ctx.store.findOne(Contributor, {
+          where: {
+            id: entity.toDelegate,
+          },
+        });
 
-    if (newDelegateContributor) {
-      newDelegateContributor.delegatesCountAll += 1;
-      this.applyScopeFields(newDelegateContributor, this.eventFields(eventLog));
-      await this.ctx.store.save(newDelegateContributor);
-    } else {
-      const contributor = new Contributor({
-        id: entity.toDelegate,
+      if (newDelegateContributor) {
+        newDelegateContributor.delegatesCountAll += 1;
+        this.applyScopeFields(
+          newDelegateContributor,
+          this.eventFields(eventLog),
+        );
+        await this.ctx.store.save(newDelegateContributor);
+      } else {
+        const contributor = new Contributor({
+          id: entity.toDelegate,
+          ...this.eventFields(eventLog),
+          blockNumber: entity.blockNumber,
+          blockTimestamp: entity.blockTimestamp,
+          transactionHash: entity.transactionHash,
+          power: 0n,
+          delegatesCountAll: 1,
+          delegatesCountEffective: 0,
+        });
+        await this.ctx.store.insert(contributor);
+        await this.increaseMetricsContributorCount(contributor);
+      }
+
+      // Only persist active delegation targets; zero address means undelegated.
+      const currentDelegateMapping = new DelegateMapping({
+        id: entity.delegator,
         ...this.eventFields(eventLog),
+        from: entity.delegator,
+        to: entity.toDelegate,
+        power: 0n,
         blockNumber: entity.blockNumber,
         blockTimestamp: entity.blockTimestamp,
         transactionHash: entity.transactionHash,
-        power: 0n,
-        delegatesCountAll: 1,
-        delegatesCountEffective: 0,
       });
-      await this.ctx.store.insert(contributor);
-      await this.increaseMetricsContributorCount(contributor);
+      await this.ctx.store.insert(currentDelegateMapping);
     }
-
-    // store delegate mapping
-    await this.ctx.store.remove(DelegateMapping, entity.delegator);
-    const currentDelegateMapping = new DelegateMapping({
-      id: entity.delegator,
-      ...this.eventFields(eventLog),
-      from: entity.delegator,
-      to: entity.toDelegate,
-      power: 0n,
-      blockNumber: entity.blockNumber,
-      blockTimestamp: entity.blockTimestamp,
-      transactionHash: entity.transactionHash,
-    });
-    await this.ctx.store.insert(currentDelegateMapping);
 
     // store delegate rolling
     const delegateRolling = new DelegateRolling({
@@ -591,6 +617,9 @@ export class TokenHandler {
     }
     currentDelegate.fromDelegate = currentDelegate.fromDelegate.toLowerCase();
     currentDelegate.toDelegate = currentDelegate.toDelegate.toLowerCase();
+    if (this.isZeroAddress(currentDelegate.toDelegate)) {
+      return;
+    }
     currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
 
     let storedDelegateFromWithTo: Delegate | undefined =
