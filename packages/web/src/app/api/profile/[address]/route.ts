@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
         u.last_login_time,
         u.ctime,
         u.utime,
-        a.image as avatar
+        coalesce(a.image, '') as avatar
       from d_user as u
       left join d_avatar as a on u.id = a.id
       where u.address = ${address} and u.dao_code = ${daocode}

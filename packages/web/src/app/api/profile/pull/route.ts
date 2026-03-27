@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         u.last_login_time,
         u.ctime,
         u.utime,
-        a.image as avatar
+        coalesce(a.image, '') as avatar
       from d_user as u
       left join d_avatar as a on u.id = a.id
       where u.address in ${sql(body)} and u.dao_code = ${daocode}
@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
       storedMembers,
       contributorsByAddress
     );
-
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
     console.warn("err", err);

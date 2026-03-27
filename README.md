@@ -33,7 +33,6 @@ DeGov.AI is an open-source, on-chain governance platform built for DAOs in the E
    ```env
    DEGOV_DB_PASSWORD=your-secure-password
    DEGOV_WEB_JWT_SECRET=your-jwt-secret
-   DEGOV_SYNC_AUTH_TOKEN=your-sync-token
    CHAIN_RPC_1=https://eth-mainnet-rpc-url
    ```
 

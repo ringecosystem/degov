@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { Resp } from "@/types/api";
@@ -7,25 +6,6 @@ import type { NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const settedSyncToken = process.env.DEGOV_SYNC_AUTH_TOKEN;
-    if (!settedSyncToken) {
-      return NextResponse.json(
-        Resp.err("missing sync token please contact admin"),
-        { status: 400 }
-      );
-    }
-    const headersList = await headers();
-    const inputSyncToken = headersList.get("x-degov-sync-token");
-    if (!inputSyncToken || inputSyncToken !== settedSyncToken) {
-      return NextResponse.json(Resp.err("missing or invalid sync token"), {
-        status: 400,
-      });
-    }
-    const inputDaocode = headersList.get("x-degov-daocode");
-    if (!inputDaocode) {
-      return NextResponse.json(Resp.err("Missing DAO code. Please add x-degov-daocode header."), { status: 400 });
-    }
-
     const payloads = await request.json();
     if (!Array.isArray(payloads)) {
       return NextResponse.json(Resp.err("invalid payloads"), { status: 400 });
@@ -35,7 +15,6 @@ export async function POST(request: NextRequest) {
     for (const payload of payloads) {
       switch (payload.method) {
         case "sync.user.power": {
-          // Keep accepting the legacy payload during the compatibility window.
           break;
         }
         default: {
@@ -43,10 +22,12 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    const rdata = {
-      invalidMethods,
-    };
-    return NextResponse.json(Resp.ok(rdata));
+
+    return NextResponse.json(
+      Resp.ok({
+        invalidMethods,
+      })
+    );
   } catch (err) {
     console.warn("err", err);
     return NextResponse.json(Resp.err("sync failed"), { status: 400 });

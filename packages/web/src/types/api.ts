@@ -37,7 +37,6 @@ export interface DUser {
   address: string;
   dao_code: string;
   name?: string;
-  power?: string;
   email?: string;
   twitter?: string;
   github?: string;
