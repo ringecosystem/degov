@@ -9,6 +9,83 @@ describe("ChainTool", () => {
     jest.restoreAllMocks();
   });
 
+  it("stops retrying deterministic contract call failures across RPC fallbacks", async () => {
+    const chainTool = new ChainTool();
+    let attempts = 0;
+    const executeWithFallbacks = (chainTool as any)._executeWithFallbacks.bind(
+      chainTool,
+    );
+
+    await expect(
+      executeWithFallbacks(
+        {
+          chainId: 999999,
+          rpcs: [
+            "https://rpc-1.example",
+            "https://rpc-2.example",
+            "https://rpc-3.example",
+          ],
+        },
+        async () => {
+          attempts += 1;
+          throw new Error(
+            'The contract function "CLOCK_MODE" reverted.\nDetails: execution reverted',
+          );
+        },
+      ),
+    ).rejects.toThrow('The contract function "CLOCK_MODE" reverted.');
+
+    expect(attempts).toBe(1);
+  });
+
+  it("keeps retrying transient RPC failures across fallback endpoints", async () => {
+    const chainTool = new ChainTool();
+    let attempts = 0;
+    const executeWithFallbacks = (chainTool as any)._executeWithFallbacks.bind(
+      chainTool,
+    );
+
+    await expect(
+      executeWithFallbacks(
+        {
+          chainId: 999999,
+          rpcs: [
+            "https://rpc-1.example",
+            "https://rpc-2.example",
+            "https://rpc-3.example",
+          ],
+        },
+        async () => {
+          attempts += 1;
+          throw new Error(
+            'HTTP request failed.\nStatus: 429\nDetails: "Too many connections. Please try again later."',
+          );
+        },
+      ),
+    ).rejects.toThrow("All RPC requests failed for chain 999999.");
+
+    expect(attempts).toBe(3);
+  });
+
+  it("falls back to blocknumber when CLOCK_MODE deterministically reverts", async () => {
+    const deterministicChainTool = new ChainTool();
+
+    jest
+      .spyOn(deterministicChainTool as any, "_executeWithFallbacks")
+      .mockRejectedValue(
+        new Error(
+          'The contract function "CLOCK_MODE" reverted.\nDetails: execution reverted',
+        ),
+      );
+
+    await expect(
+      deterministicChainTool.clockMode({
+        chainId: 1,
+        contractAddress: "0x323A76393544d5ecca80cd6ef2A560C6a395b7E3",
+      }),
+    ).resolves.toBe(ClockMode.BlockNumber);
+  });
+
   it("returns undefined for optional contract functions that are not available", async () => {
     const chainTool = new ChainTool();
     jest
@@ -205,6 +282,34 @@ describe("ChainTool", () => {
       clockMode: ClockMode.BlockNumber,
       timepoint: 321n,
       timestampMs: 654_000n,
+    });
+  });
+
+  it("falls back to latest block when clock deterministically reverts", async () => {
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    jest
+      .spyOn(chainTool, "readContract")
+      .mockRejectedValue(new Error('The contract function "clock" reverted.'));
+    jest.spyOn(chainTool as any, "_executeWithFallbacks").mockImplementation(
+      async (_options: any, action: any) =>
+        action({
+          getBlock: jest.fn().mockResolvedValue({
+            number: 987n,
+            timestamp: 111n,
+          }),
+        }),
+    );
+
+    await expect(
+      chainTool.currentClock({
+        chainId: 1,
+        contractAddress,
+      }),
+    ).resolves.toEqual({
+      clockMode: ClockMode.BlockNumber,
+      timepoint: 987n,
+      timestampMs: 111_000n,
     });
   });
 
