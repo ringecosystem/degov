@@ -47,6 +47,9 @@
   "actions": {
     "ok": "OK"
   },
+  "alert": {
+    "close": "Close Alert"
+  },
   "links": {
     "viewOnExplorer": "View on explorer"
   },
@@ -106,6 +109,14 @@
       "bulletList": "Bullet List",
       "orderedList": "Ordered List",
       "taskList": "Task List"
+    },
+    "heading": {
+      "ariaLabel": "Format text as heading",
+      "tooltip": "Heading"
+    },
+    "textAlign": {
+      "ariaLabel": "Text alignment",
+      "tooltip": "Text alignment"
     }
   },
   "labels": {
