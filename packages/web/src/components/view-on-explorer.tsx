@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import { cn } from "@/lib/utils";
 
 import { ExternalLinkIcon } from "./icons";
@@ -13,6 +15,8 @@ export const ViewOnExplorer = ({
   className,
   imgClassName,
 }: ViewOnExplorerProps) => {
+  const t = useTranslations("common.links");
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -32,7 +36,7 @@ export const ViewOnExplorer = ({
           />
         </a>
       </TooltipTrigger>
-      <TooltipContent>View on explorer</TooltipContent>
+      <TooltipContent>{t("viewOnExplorer")}</TooltipContent>
     </Tooltip>
   );
 };

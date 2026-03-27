@@ -1,4 +1,5 @@
 "use client";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { dayjsHumanize } from "@/utils/date";
 
 export const Parameters = () => {
+  const t = useTranslations("common.governance");
   const [open, setOpen] = useState(false);
   const {
     data: governanceParams,
@@ -33,7 +35,7 @@ export const Parameters = () => {
             formatTokenAmount(governanceParams.proposalThreshold)?.formatted ??
             "0"
           } ${governanceToken?.symbol ?? ""}`
-        : "None";
+        : t("none");
 
     const votingDelayFormatted =
       isBlockTimeLoading
@@ -42,7 +44,7 @@ export const Parameters = () => {
           governanceParams?.votingDelayInSeconds !== null &&
           !isNaN(governanceParams.votingDelayInSeconds)
         ? dayjsHumanize(governanceParams.votingDelayInSeconds)
-        : "None";
+        : t("none");
 
     const votingPeriodFormatted =
       isBlockTimeLoading
@@ -51,12 +53,12 @@ export const Parameters = () => {
           governanceParams?.votingPeriodInSeconds !== null &&
           !isNaN(governanceParams.votingPeriodInSeconds)
         ? dayjsHumanize(governanceParams.votingPeriodInSeconds)
-        : "None";
+        : t("none");
 
     const timeLockDelayFormatted =
       governanceParams?.timeLockDelay !== undefined
         ? dayjsHumanize(Number(governanceParams.timeLockDelay))
-        : "None";
+        : t("none");
 
     return {
       proposalThresholdFormatted,
@@ -64,7 +66,13 @@ export const Parameters = () => {
       votingPeriodFormatted,
       timeLockDelayFormatted,
     };
-  }, [governanceParams, isBlockTimeLoading, formatTokenAmount, governanceToken?.symbol]);
+  }, [
+    formatTokenAmount,
+    governanceParams,
+    governanceToken?.symbol,
+    isBlockTimeLoading,
+    t,
+  ]);
 
   useEffect(() => {
     if (open) {
@@ -80,7 +88,7 @@ export const Parameters = () => {
           className="rounded-full border-always-light bg-transparent text-always-light hover:bg-transparent hover:text-always-light hover:opacity-80 duration-300 transition-opacity"
           size="sm"
         >
-          Parameters
+          {t("parametersTitle")}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -88,12 +96,12 @@ export const Parameters = () => {
         align="start"
       >
         <div className="text-[16px] font-semibold text-foreground">
-          Parameters
+          {t("parametersTitle")}
         </div>
         <div className="flex flex-col gap-[20px]">
           <div className="flex items-center justify-between gap-[10px]">
             <span className="text-[14px] font-normal text-foreground/40">
-              Proposal threshold
+              {t("proposalThreshold")}
             </span>
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading ? (
@@ -106,7 +114,7 @@ export const Parameters = () => {
 
           <div className="flex items-center justify-between gap-[10px]">
             <span className="text-[14px] font-normal text-foreground/40">
-              Proposal delay
+              {t("proposalDelay")}
             </span>
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading || formattedData.votingDelayFormatted === null ? (
@@ -119,7 +127,7 @@ export const Parameters = () => {
 
           <div className="flex items-center justify-between gap-[10px]">
             <span className="text-[14px] font-normal text-foreground/40">
-              Voting period
+              {t("votingPeriod")}
             </span>
             <span className="text-[14px] font-normal text-foreground">
               {isStaticLoading || formattedData.votingPeriodFormatted === null ? (
@@ -133,7 +141,7 @@ export const Parameters = () => {
           {daoConfig?.contracts?.timeLock && (
             <div className="flex items-center justify-between gap-[10px]">
               <span className="text-[14px] font-normal text-foreground/40">
-                TimeLock delay
+                {t("timeLockDelay")}
               </span>
               <span className="text-[14px] font-normal text-foreground">
                 {isStaticLoading ? (

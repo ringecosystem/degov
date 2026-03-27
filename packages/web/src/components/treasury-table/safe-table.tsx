@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Empty } from "@/components/ui/empty";
@@ -27,6 +28,8 @@ interface SafeTableProps {
 }
 
 export function SafeTable({ caption }: SafeTableProps) {
+  const t = useTranslations("treasury");
+  const safeT = useTranslations("treasury.safe");
   const daoConfig = useDaoConfig();
   const { chainInfo: flatChainInfo, isFetching } = useChainInfo();
   const [visibleItems, setVisibleItems] = useState(5);
@@ -77,18 +80,20 @@ export function SafeTable({ caption }: SafeTableProps) {
                 className="text-foreground transition-colors hover:text-foreground/80 cursor-pointer"
                 onClick={handleViewMore}
               >
-                {caption || "View more"}
+                {caption || t("viewMore")}
               </span>
             </TableCaption>
           )}
           <TableHeader>
             <TableRow>
               <TableHead className="w-1/3 rounded-l-[14px] text-left">
-                Name
+                {t("headers.name")}
               </TableHead>
-              <TableHead className="w-1/3 text-center">Network</TableHead>
+              <TableHead className="w-1/3 text-center">
+                {t("headers.network")}
+              </TableHead>
               <TableHead className="w-1/3 rounded-r-[14px] text-right">
-                Action
+                {t("headers.action")}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -117,7 +122,7 @@ export function SafeTable({ caption }: SafeTableProps) {
                       {value?.chainIcon && (
                         <Image
                           src={value?.chainIcon}
-                          alt="chain-icon"
+                          alt={t("accessibility.chainIcon")}
                           className="shrink-0"
                           width={20}
                           height={20}
@@ -139,10 +144,10 @@ export function SafeTable({ caption }: SafeTableProps) {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      view on Safe
+                      {safeT("viewOnSafe")}
                       <Image
                         src="/assets/image/safe.svg"
-                        alt="external-link"
+                        alt={t("accessibility.externalLink")}
                         className="h-[20px] w-[20px]"
                         width={20}
                         height={20}
@@ -157,7 +162,7 @@ export function SafeTable({ caption }: SafeTableProps) {
       )}
       {!data?.length && (
         <Empty
-          label="No assets found"
+          label={t("empty.noAssetsFound")}
           style={{
             height: 24 * 6,
           }}

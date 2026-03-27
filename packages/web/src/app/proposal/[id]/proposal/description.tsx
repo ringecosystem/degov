@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import { useTranslations } from "next-intl";
 import { useMemo, useRef, useEffect, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +29,7 @@ export const Description = ({
   data?: ProposalItem;
   isFetching: boolean;
 }) => {
+  const t = useTranslations("proposalDetail.description");
   const [isExpanded, setIsExpanded] = useState(false);
   const [showToggle, setShowToggle] = useState(false);
   const markdownRef = useRef<HTMLDivElement>(null);
@@ -93,7 +95,7 @@ export const Description = ({
             className="flex flex-col border-t border-card-background pt-[20px] text-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
             onClick={toggleExpanded}
           >
-            <span>{isExpanded ? "Show less" : "Show more"}</span>
+            <span>{isExpanded ? t("showLess") : t("showMore")}</span>
           </div>
         )}
       </div>

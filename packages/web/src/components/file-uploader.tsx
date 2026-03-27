@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 
@@ -22,6 +23,7 @@ export const FileUploader = ({
   isUploaded,
   isError,
 }: FileUploaderProps) => {
+  const t = useTranslations("proposalEditor.files.abi");
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       const file = acceptedFiles[0];
@@ -59,26 +61,26 @@ export const FileUploader = ({
       <input {...getInputProps()} />
       {isDragActive ? (
         <p className="text-[18px] font-semibold text-foreground">
-          Drop your ABI file here
+          {t("drop")}
         </p>
       ) : (
         <>
           <p className="text-[18px] font-normal text-foreground">
-            Drag and drop your ABI file
+            {t("drag")}
           </p>
           <p className="text-[14px] text-muted-foreground">
-            Or click to browse your json files
+            {t("browse")}
           </p>
           {isError && (
             <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
               <ProposalActionErrorIcon width={16} height={16} />
-              Must be a valid abi json file.
+              {t("invalid")}
             </p>
           )}
           {isUploaded && (
             <p className="flex items-center justify-center gap-[4px] text-[14px] text-foreground">
               <ProposalActionCheckIcon width={16} height={16} />
-              ABI file uploaded
+              {t("uploaded")}
             </p>
           )}
         </>

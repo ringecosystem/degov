@@ -2,17 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { Empty } from "@/components/ui/empty";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 
 export default function AppsPage() {
   const daoConfig = useDaoConfig();
+  const t = useTranslations("apps");
 
   if (!daoConfig?.apps || daoConfig.apps.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <Empty label="No Apps Available" />
+        <Empty label={t("empty.noAppsAvailable")} />
       </div>
     );
   }
@@ -20,7 +22,7 @@ export default function AppsPage() {
   return (
     <div className="flex flex-col gap-[20px]">
       <div className="flex items-center justify-between">
-        <h1 className="text-[18px] font-extrabold">Apps</h1>
+        <h1 className="text-[18px] font-extrabold">{t("title")}</h1>
       </div>
 
       <div

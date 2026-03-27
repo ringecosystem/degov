@@ -1,6 +1,7 @@
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
+import { Link } from "@/i18n/navigation";
 import type { ProposalListItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
@@ -23,13 +24,15 @@ const Caption = ({
   loadMoreData: () => void;
   isLoading: boolean;
 }) => {
+  const t = useTranslations("proposals");
+
   return type === "active" ? (
     <div className="flex justify-center items-center w-full border border-border/20  bg-card rounded-[14px] px-4 py-2">
       <Link
         href="/proposals"
         className="w-full text-center text-foreground transition-colors hover:text-foreground/80"
       >
-        View all
+        {t("viewAll")}
       </Link>
     </div>
   ) : (
@@ -40,7 +43,7 @@ const Caption = ({
           className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={isLoading}
         >
-          {isLoading ? "Loading..." : "View More"}
+          {isLoading ? t("loading") : t("viewMore")}
         </button>
       }
     </div>
@@ -56,6 +59,7 @@ export function ProposalsList({
   address?: Address;
   support?: SupportFilter;
 }) {
+  const t = useTranslations("proposals");
   const pageSize = type === "active" ? 8 : DEFAULT_PAGE_SIZE;
   const initialPageSize = type === "active" ? 8 : INITIAL_LIST_PAGE_SIZE;
 
@@ -82,7 +86,7 @@ export function ProposalsList({
   if (state.data.length === 0) {
     return (
       <div className="rounded-[14px] bg-card p-[20px] text-center text-foreground/60">
-        No proposals
+        {t("noProposals")}
       </div>
     );
   }

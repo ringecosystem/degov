@@ -1,0 +1,42 @@
+{
+  "loading": {
+    "title": "Analyzing Proposal",
+    "description": "Fetching AI voting analysis data from DeGov.AI agent...",
+    "page": "Loading AI analysis..."
+  },
+  "errors": {
+    "loadFailedTitle": "Failed to Load Analysis",
+    "noAnalysisTitle": "No Analysis Available",
+    "noAnalysisDescription": "AI analysis data is not available for this proposal yet.",
+    "noProposalData": "No proposal data found",
+    "retry": "Retry"
+  },
+  "sections": {
+    "reasonAnalysis": "Agent Voting Reason Analysis",
+    "voteAnalysis": "Vote Analysis",
+    "finalDecision": "Final Decision",
+    "executiveSummary": "Executive Summary",
+    "votingReason": "Voting Reason"
+  },
+  "labels": {
+    "proposalId": "Proposal ID:",
+    "proposedBy": "Proposed by",
+    "on": "On",
+    "chain": "Chain",
+    "x": "X",
+    "dao": "DAO",
+    "created": "Created",
+    "confidence": "Confidence",
+    "for": "For",
+    "against": "Against",
+    "abstain": "Abstain",
+    "positive": "Positive",
+    "negative": "Negative",
+    "neutral": "Neutral"
+  },
+  "cards": {
+    "xPoll": "X Poll",
+    "onChainVotes": "On-Chain Votes",
+    "commentSentiment": "Comment Sentiment"
+  }
+}

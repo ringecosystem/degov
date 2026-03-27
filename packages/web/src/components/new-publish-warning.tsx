@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { CloseIcon } from "@/components/icons";
@@ -24,6 +25,8 @@ export function NewPublishWarning({
   open,
   onOpenChange,
 }: NewPublishWarningProps) {
+  const t = useTranslations("proposalEditor.publishWarning");
+  const commonT = useTranslations("common.actions");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
   const formattedData = useMemo(() => {
@@ -51,7 +54,7 @@ export function NewPublishWarning({
                 fill="currentColor"
               ></path>
             </svg>{" "}
-            Inefficient Voting Power
+            {t("title")}
           </DialogTitle>
           <CloseIcon
             width={24}
@@ -65,7 +68,7 @@ export function NewPublishWarning({
           {/* Required Voting Power Section */}
           <div className="flex items-center justify-between rounded-[10px] bg-card-background p-[20px]">
             <span className="text-[14px] font-normal text-foreground">
-              Required Voting Power
+              {t("requiredVotingPower")}
             </span>
             <span className="text-[26px] font-semibold text-foreground">
               {formattedData.formattedProposalThreshold}
@@ -75,7 +78,7 @@ export function NewPublishWarning({
           {/* Your Voting Power Section */}
           <div className="flex items-center justify-between rounded-[10px] bg-card-background p-[20px]">
             <span className="text-[14px] font-normal text-foreground">
-              Your Voting Power
+              {t("yourVotingPower")}
             </span>
             <span className="text-[26px] font-semibold text-foreground">
               {formattedData.formattedVotes}
@@ -84,8 +87,9 @@ export function NewPublishWarning({
 
           {/* Need more voting power message */}
           <p className="text-[14px] text-foreground">
-            Need {formattedData.formattedVotingPowerNeeded} more Voting Power to
-            create the proposal.
+            {t("needMoreVotingPower", {
+              amount: formattedData.formattedVotingPowerNeeded,
+            })}
           </p>
 
           <div className="flex flex-col gap-[20px] border-t border-border/50 pt-[20px]">
@@ -95,7 +99,7 @@ export function NewPublishWarning({
                 onOpenChange(false);
               }}
             >
-              OK
+              {commonT("ok")}
             </Button>
           </div>
         </div>

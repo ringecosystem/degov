@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 // --- Hooks ---
@@ -46,6 +47,7 @@ export const TableDropdownMenu = React.forwardRef<
     },
     ref
   ) => {
+    const t = useTranslations("common.editor.table");
     const editor = useTiptapEditor(providedEditor);
     const [isOpen, setIsOpen] = React.useState(false);
 
@@ -123,14 +125,14 @@ export const TableDropdownMenu = React.forwardRef<
             data-active-state={isTableActive ? "on" : "off"}
             role="button"
             tabIndex={-1}
-            aria-label="Table options"
-            tooltip="Table"
+            aria-label={t("ariaLabel")}
+            tooltip={t("tooltip")}
             className={className}
             {...props}
           >
             {children || (
               <>
-                Table
+                {t("tooltip")}
                 <ChevronDownIcon className="tiptap-button-dropdown-small" />
               </>
             )}
@@ -145,7 +147,7 @@ export const TableDropdownMenu = React.forwardRef<
                   onClick={insertTable}
                   className="w-full text-left px-3 py-2"
                 >
-                  Insert Table
+                  {t("insertTable")}
                 </Button>
               </DropdownMenuItem>
             </DropdownMenuGroup>
@@ -153,14 +155,14 @@ export const TableDropdownMenu = React.forwardRef<
             <>
               <DropdownMenuGroup>
                 <div className="px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Columns
+                  {t("columns")}
                 </div>
                 <DropdownMenuItem asChild>
                   <Button
                     onClick={addColumnBefore}
                     className="w-full text-left px-3 py-2"
                   >
-                    Add Column Before
+                    {t("addColumnBefore")}
                   </Button>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
@@ -168,7 +170,7 @@ export const TableDropdownMenu = React.forwardRef<
                     onClick={addColumnAfter}
                     className="w-full text-left px-3 py-2"
                   >
-                    Add Column After
+                    {t("addColumnAfter")}
                   </Button>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
@@ -176,21 +178,21 @@ export const TableDropdownMenu = React.forwardRef<
                     onClick={deleteColumn}
                     className="w-full text-left px-3 py-2"
                   >
-                    Delete Column
+                    {t("deleteColumn")}
                   </Button>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
 
               <DropdownMenuGroup>
                 <div className="px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Rows
+                  {t("rows")}
                 </div>
                 <DropdownMenuItem asChild>
                   <Button
                     onClick={addRowBefore}
                     className="w-full text-left px-3 py-2"
                   >
-                    Add Row Before
+                    {t("addRowBefore")}
                   </Button>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
@@ -198,7 +200,7 @@ export const TableDropdownMenu = React.forwardRef<
                     onClick={addRowAfter}
                     className="w-full text-left px-3 py-2"
                   >
-                    Add Row After
+                    {t("addRowAfter")}
                   </Button>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
@@ -206,21 +208,21 @@ export const TableDropdownMenu = React.forwardRef<
                     onClick={deleteRow}
                     className="w-full text-left px-3 py-2"
                   >
-                    Delete Row
+                    {t("deleteRow")}
                   </Button>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
 
               <DropdownMenuGroup>
                 <div className="px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Cells
+                  {t("cells")}
                 </div>
                 <DropdownMenuItem asChild>
                   <Button
                     onClick={mergeOrSplit}
                     className="w-full text-left px-3 py-2"
                   >
-                    Merge/Split Cells
+                    {t("mergeOrSplitCells")}
                   </Button>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -231,7 +233,7 @@ export const TableDropdownMenu = React.forwardRef<
                     onClick={deleteTable}
                     className="w-full text-left px-3 py-2 text-red-600 dark:text-red-400"
                   >
-                    Delete Table
+                    {t("deleteTable")}
                   </Button>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
