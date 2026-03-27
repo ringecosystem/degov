@@ -87,6 +87,56 @@ const ABI_FUNCTION_DECIMALS: Abi = [
   },
 ];
 
+const DETERMINISTIC_CONTRACT_ERROR_PATTERNS = [
+  /contract function .* reverted/i,
+  /execution reverted/i,
+  /contract function not found/i,
+  /returned no data/i,
+  /function selector was not recognized/i,
+];
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error ?? "");
+}
+
+function isDeterministicContractCallError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return DETERMINISTIC_CONTRACT_ERROR_PATTERNS.some((pattern) =>
+    pattern.test(message)
+  );
+}
+
+function isClockModeUnavailableError(error: unknown): boolean {
+  const message = errorMessage(error);
+
+  return (
+    message.includes("CLOCK_MODE") &&
+    isDeterministicContractCallError(error)
+  );
+}
+
+function clockModeFallbackReason(error: unknown): string {
+  const message = errorMessage(error);
+
+  if (
+    message.includes("contract function not found") ||
+    message.includes("returned no data") ||
+    message.includes("Function selector was not recognized")
+  ) {
+    return "missing";
+  }
+
+  if (message.includes("reverted") || message.includes("execution reverted")) {
+    return "reverted";
+  }
+
+  return "unavailable";
+}
+
 // --- CHAINTOOL CLASS ---
 
 export class ChainTool {
@@ -242,6 +292,9 @@ export class ChainTool {
         });
         return await action(client);
       } catch (error) {
+        if (isDeterministicContractCallError(error)) {
+          throw error;
+        }
         lastError = error;
         console.warn(
           `[ChainTool] RPC request to ${rpcUrl} failed. Trying next...`
@@ -400,16 +453,11 @@ export class ChainTool {
 
       this.clockModeCache.set(cacheKey, modeToCache);
       return modeToCache;
-    } catch (error: any) {
-      const message = error.message;
-      if (
-        message &&
-        (message.includes("contract function not found") ||
-          message.includes("CLOCK_MODE"))
-      ) {
-        // If the function doesn't exist, it's a blocknumber-based contract. Cache this result.
+    } catch (error) {
+      if (isClockModeUnavailableError(error)) {
+        const reason = clockModeFallbackReason(error);
         console.warn(
-          `CLOCK_MODE function not found for ${options.contractAddress}. Caching as ${ClockMode.BlockNumber}.`
+          `CLOCK_MODE unavailable for ${options.contractAddress} (${reason}). Caching as ${ClockMode.BlockNumber}.`
         );
         this.clockModeCache.set(cacheKey, ClockMode.BlockNumber);
         return ClockMode.BlockNumber;
