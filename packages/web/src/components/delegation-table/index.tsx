@@ -10,7 +10,7 @@ import {
 } from "@/hooks/usePaginationRange";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
 import { buildGovernanceScope, delegateService } from "@/services/graphql";
-import type { DelegateItem } from "@/services/graphql/types";
+import type { DelegateMappingItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
@@ -76,7 +76,7 @@ export function DelegationTable({
     }
   }, [currentPage, totalPageCount]);
 
-  const { data: pageData = [], isFetching } = useQuery<DelegateItem[]>({
+  const { data: pageData = [], isFetching } = useQuery<DelegateMappingItem[]>({
     queryKey: [
       "delegation-table",
       daoConfig?.indexer?.endpoint,
@@ -87,22 +87,25 @@ export function DelegationTable({
       governanceScope,
     ],
     queryFn: () =>
-      delegateService.getAllDelegates(daoConfig?.indexer?.endpoint as string, {
+      delegateService.getDelegateMappings(
+        daoConfig?.indexer?.endpoint as string,
+        {
         limit: pageSize,
         offset: (currentPage - 1) * pageSize,
         orderBy,
         where: {
           ...governanceScope,
-          toDelegate_eq: address.toLowerCase(),
+          to_eq: address.toLowerCase(),
         },
-      }),
+      }
+      ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
     placeholderData: (previous) => previous ?? [],
   });
 
   const paginationRange = usePaginationRange(currentPage, totalPageCount);
 
-  const columns = useMemo<ColumnType<DelegateItem>[]>(
+  const columns = useMemo<ColumnType<DelegateMappingItem>[]>(
     () => [
       {
         title: "Delegator",
@@ -111,7 +114,7 @@ export function DelegationTable({
         className: "text-left",
         render: (record) => (
           <AddressWithAvatar
-            address={record?.fromDelegate as `0x${string}`}
+            address={record?.from as `0x${string}`}
             avatarSize={30}
             align="start"
           />
@@ -225,7 +228,7 @@ export function DelegationTable({
 }
 
 interface DelegatorVotesDisplayProps {
-  record: DelegateItem;
+  record: DelegateMappingItem;
   formatTokenAmount: (amount: bigint) => { formatted: string } | undefined;
   totalVotes: bigint;
 }

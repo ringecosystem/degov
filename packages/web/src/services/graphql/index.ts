@@ -56,6 +56,7 @@ type DelegateWhere = GovernanceScope & {
 
 type DelegateMappingWhere = GovernanceScope & {
   from_eq?: string;
+  to_eq?: string;
 };
 
 type ContributorWhere = GovernanceScope & {
@@ -324,6 +325,9 @@ export const delegateService = {
   getDelegateMappings: async (
     endpoint: string,
     options: {
+      limit?: number;
+      offset?: number;
+      orderBy?: string | string[];
       where: DelegateMappingWhere;
     } = {
       where: {
@@ -334,23 +338,32 @@ export const delegateService = {
     const response = await request<Types.DelegateMappingResponse>(
       endpoint,
       Queries.GET_DELEGATE_MAPPINGS,
-      options
+      {
+        limit: options?.limit,
+        offset: options?.offset,
+        orderBy: Array.isArray(options?.orderBy)
+          ? options.orderBy
+          : options?.orderBy
+            ? [options.orderBy]
+            : undefined,
+        where: options?.where,
+      }
     );
     return response?.delegateMappings ?? [];
   },
   getDelegateMappingsConnection: async (
     endpoint: string,
     options: {
-      where: DelegateWhere;
+      where: DelegateMappingWhere;
       orderBy: string[];
     }
   ) => {
-    const response = await request<Types.DelegateConnectionResponse>(
+    const response = await request<Types.DelegateMappingConnectionResponse>(
       endpoint,
       Queries.GET_DELEGATE_MAPPINGS_CONNECTION,
       options
     );
-    return response?.delegatesConnection;
+    return response?.delegateMappingsConnection;
   },
 };
 

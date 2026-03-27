@@ -61,7 +61,7 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
         {
           where: {
             ...governanceScope,
-            toDelegate_eq: address.toLowerCase(),
+            to_eq: address.toLowerCase(),
           },
           orderBy: ["id_ASC"],
         }
