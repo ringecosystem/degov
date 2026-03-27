@@ -10,7 +10,7 @@ import {
   usePaginationRange,
 } from "@/hooks/usePaginationRange";
 import { buildGovernanceScope, delegateService } from "@/services/graphql";
-import type { DelegateMappingItem } from "@/services/graphql/types";
+import type { DelegateItem } from "@/services/graphql/types";
 
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
@@ -65,7 +65,7 @@ export function DelegationList({
     data: pageData = [],
     isLoading,
     isFetching,
-  } = useQuery<DelegateMappingItem[]>({
+  } = useQuery<DelegateItem[]>({
     queryKey: [
       "delegation-list",
       daoConfig?.indexer?.endpoint,
@@ -76,17 +76,18 @@ export function DelegationList({
       governanceScope,
     ],
     queryFn: () =>
-      delegateService.getDelegateMappings(
+      delegateService.getAllDelegates(
         daoConfig?.indexer?.endpoint as string,
         {
-        limit: pageSize,
-        offset: (currentPage - 1) * pageSize,
-        orderBy,
-        where: {
-          ...governanceScope,
-          to_eq: address.toLowerCase(),
-        },
-      }
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+          orderBy,
+          where: {
+            ...governanceScope,
+            toDelegate_eq: address.toLowerCase(),
+            isCurrent_eq: true,
+          },
+        }
       ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
     placeholderData: (previous) => previous ?? [],
@@ -97,7 +98,7 @@ export function DelegationList({
       Array.from(
         new Set(
           (pageData ?? [])
-            .map((item) => item.from?.toLowerCase())
+            .map((item) => item.fromDelegate?.toLowerCase())
             .filter(Boolean) as string[]
         )
       ).sort((a, b) => a.localeCompare(b)),
@@ -146,7 +147,7 @@ export function DelegationList({
 
   return (
     <div className="space-y-3">
-      {pageData.map((record: DelegateMappingItem) => {
+      {pageData.map((record: DelegateItem) => {
         const userPower = record?.power ? BigInt(record.power) : 0n;
         const formattedAmount = formatTokenAmount(userPower);
 
@@ -158,13 +159,13 @@ export function DelegationList({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <AddressAvatar
-                  address={record?.from as `0x${string}`}
+                  address={record?.fromDelegate as `0x${string}`}
                   size={40}
                   skipFetch
                 />
                 <div className="flex flex-col gap-1 flex-1 min-w-0">
                   <AddressResolver
-                    address={record?.from as `0x${string}`}
+                    address={record?.fromDelegate as `0x${string}`}
                     showShortAddress
                     skipFetch
                   >

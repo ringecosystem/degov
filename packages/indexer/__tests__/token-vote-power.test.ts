@@ -203,6 +203,7 @@ describe("token vote power checkpoints", () => {
         id: "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111",
         fromDelegate: "0x2222222222222222222222222222222222222222",
         toDelegate: "0x1111111111111111111111111111111111111111",
+        isCurrent: true,
         power: 100n,
         blockNumber: 1n,
         blockTimestamp: 1n,
@@ -272,7 +273,10 @@ describe("token vote power checkpoints", () => {
         Delegate,
         "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111"
       )
-    ).toBeUndefined();
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+    });
     expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(0n);
     expect(
       store.findEntity(Contributor, "0x1111111111111111111111111111111111111111")
@@ -323,6 +327,7 @@ describe("token vote power checkpoints", () => {
         id: "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111",
         fromDelegate: "0x2222222222222222222222222222222222222222",
         toDelegate: "0x1111111111111111111111111111111111111111",
+        isCurrent: true,
         power: 100n,
         blockNumber: 1n,
         blockTimestamp: 1n,
@@ -431,7 +436,10 @@ describe("token vote power checkpoints", () => {
         Delegate,
         "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111"
       )
-    ).toBeUndefined();
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+    });
     expect(
       store.findEntity(
         Delegate,
@@ -439,6 +447,7 @@ describe("token vote power checkpoints", () => {
       )
     ).toMatchObject({
       power: 100n,
+      isCurrent: true,
     });
     expect(
       store.findEntity(Contributor, "0x1111111111111111111111111111111111111111")
@@ -461,6 +470,86 @@ describe("token vote power checkpoints", () => {
     expect(
       store.findEntity(Contributor, "0x0000000000000000000000000000000000000000")
     ).toBeUndefined();
+  });
+
+  it("marks redelegated zero-power rows as historical while preserving the current relation", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+      new Contributor({
+        id: "0x1111111111111111111111111111111111111111",
+        power: 0n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 0,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111",
+        fromDelegate: "0x2222222222222222222222222222222222222222",
+        toDelegate: "0x1111111111111111111111111111111111111111",
+        isCurrent: true,
+        power: 0n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0x2222222222222222222222222222222222222222",
+        from: "0x2222222222222222222222222222222222222222",
+        to: "0x1111111111111111111111111111111111111111",
+        power: 0n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0x2222222222222222222222222222222222222222",
+        fromDelegate: "0x1111111111111111111111111111111111111111",
+        toDelegate: "0x3333333333333333333333333333333333333333",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-zero-redelegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: {
+        height: 20,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xzero-redelegate",
+    } as any);
+
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x2222222222222222222222222222222222222222_0x1111111111111111111111111111111111111111"
+      )
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+      transactionHash: "0xzero-redelegate",
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x2222222222222222222222222222222222222222_0x3333333333333333333333333333333333333333"
+      )
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: true,
+      transactionHash: "0xzero-redelegate",
+    });
   });
 
   it("still materializes self-delegation from the undelegated state", async () => {
@@ -549,6 +638,7 @@ describe("token vote power checkpoints", () => {
         id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0x1111111111111111111111111111111111111111",
         fromDelegate: "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
         toDelegate: "0x1111111111111111111111111111111111111111",
+        isCurrent: true,
         power: 1n,
         blockNumber: 1n,
         blockTimestamp: 1n,
@@ -558,6 +648,7 @@ describe("token vote power checkpoints", () => {
         id: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_0x2222222222222222222222222222222222222222",
         fromDelegate: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
         toDelegate: "0x2222222222222222222222222222222222222222",
+        isCurrent: true,
         power: 1n,
         blockNumber: 1n,
         blockTimestamp: 1n,
@@ -565,7 +656,7 @@ describe("token vote power checkpoints", () => {
       }),
       new DelegateMapping({
         id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        from: "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
+        from: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         to: "0x1111111111111111111111111111111111111111",
         power: 1n,
         blockNumber: 1n,
@@ -574,7 +665,7 @@ describe("token vote power checkpoints", () => {
       }),
       new DelegateMapping({
         id: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        from: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+        from: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         to: "0x2222222222222222222222222222222222222222",
         power: 1n,
         blockNumber: 1n,
@@ -604,8 +695,8 @@ describe("token vote power checkpoints", () => {
     } as any);
 
     expect(store.findEntity(TokenTransfer, "log-erc721-transfer")).toMatchObject({
-      from: "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
-      to: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+      from: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      to: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       value: 1234n,
       standard: "erc721",
       transactionHash: "0xerc721-transfer",
@@ -615,7 +706,10 @@ describe("token vote power checkpoints", () => {
         Delegate,
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0x1111111111111111111111111111111111111111",
       ),
-    ).toBeUndefined();
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: true,
+    });
     expect(
       store.findEntity(
         Delegate,
@@ -623,6 +717,7 @@ describe("token vote power checkpoints", () => {
       ),
     ).toMatchObject({
       power: 2n,
+      isCurrent: true,
     });
     expect(
       store.findEntity(Contributor, "0x1111111111111111111111111111111111111111"),
