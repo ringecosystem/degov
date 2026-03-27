@@ -69,6 +69,19 @@ export function classifyVotePowerCheckpointCause(options: {
 }
 
 export class TokenHandler {
+  private voteClockModePromise?: Promise<ClockMode>;
+  private globalDataMetric?: DataMetric;
+  private globalDataMetricDirty = false;
+  private readonly delegateRollingByTx = new Map<string, DelegateRolling | null>();
+  private readonly tokenTransferByTx = new Map<string, TokenTransfer | null>();
+  private readonly delegateMappingByFrom = new Map<string, DelegateMapping | null>();
+  private readonly contributorById = new Map<string, Contributor | null>();
+  private readonly delegateById = new Map<string, Delegate | null>();
+  private readonly dirtyDelegateRollings = new Map<string, DelegateRolling>();
+  private readonly dirtyDelegateMappings = new Map<string, DelegateMapping>();
+  private readonly dirtyContributors = new Map<string, Contributor>();
+  private readonly dirtyDelegates = new Map<string, Delegate>();
+
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
     private readonly options: TokenhandlerOptions,
@@ -94,11 +107,15 @@ export class TokenHandler {
   }
 
   private async voteClockMode(): Promise<ClockMode> {
-    return this.options.chainTool.clockMode({
-      chainId: this.options.chainId,
-      contractAddress: this.governorAddress() as `0x${string}`,
-      rpcs: this.options.rpcs,
-    });
+    if (!this.voteClockModePromise) {
+      this.voteClockModePromise = this.options.chainTool.clockMode({
+        chainId: this.options.chainId,
+        contractAddress: this.governorAddress() as `0x${string}`,
+        rpcs: this.options.rpcs,
+      });
+    }
+
+    return this.voteClockModePromise;
   }
 
   private scopeFields(): TokenScopeFields {
@@ -161,6 +178,192 @@ export class TokenHandler {
     return (address ?? "").toLowerCase() === zeroAddress;
   }
 
+  private async getDelegateRollingByTransactionHash(
+    transactionHash: string,
+  ): Promise<DelegateRolling | undefined> {
+    if (this.delegateRollingByTx.has(transactionHash)) {
+      return this.delegateRollingByTx.get(transactionHash) ?? undefined;
+    }
+
+    const value =
+      (await this.ctx.store.findOne(DelegateRolling, {
+        where: {
+          transactionHash,
+        },
+      })) ?? null;
+
+    this.delegateRollingByTx.set(transactionHash, value);
+    return value ?? undefined;
+  }
+
+  private rememberDelegateRolling(entity: DelegateRolling) {
+    this.delegateRollingByTx.set(entity.transactionHash, entity);
+  }
+
+  private markDelegateRollingDirty(entity: DelegateRolling) {
+    this.dirtyDelegateRollings.set(entity.id, entity);
+  }
+
+  private async getTokenTransferByTransactionHash(
+    transactionHash: string,
+  ): Promise<TokenTransfer | undefined> {
+    if (this.tokenTransferByTx.has(transactionHash)) {
+      return this.tokenTransferByTx.get(transactionHash) ?? undefined;
+    }
+
+    const value =
+      (await this.ctx.store.findOne(TokenTransfer, {
+        where: {
+          transactionHash,
+        },
+      })) ?? null;
+
+    this.tokenTransferByTx.set(transactionHash, value);
+    return value ?? undefined;
+  }
+
+  private rememberTokenTransfer(entity: TokenTransfer) {
+    this.tokenTransferByTx.set(entity.transactionHash, entity);
+  }
+
+  private async getDelegateMappingByFrom(
+    from: string,
+  ): Promise<DelegateMapping | undefined> {
+    const normalizedFrom = from.toLowerCase();
+    if (this.delegateMappingByFrom.has(normalizedFrom)) {
+      return this.delegateMappingByFrom.get(normalizedFrom) ?? undefined;
+    }
+
+    const value =
+      (await this.ctx.store.findOne(DelegateMapping, {
+        where: {
+          from: normalizedFrom,
+        },
+      })) ?? null;
+
+    this.delegateMappingByFrom.set(normalizedFrom, value);
+    return value ?? undefined;
+  }
+
+  private rememberDelegateMapping(entity: DelegateMapping) {
+    this.delegateMappingByFrom.set(entity.from.toLowerCase(), entity);
+  }
+
+  private markDelegateMappingDirty(entity: DelegateMapping) {
+    this.dirtyDelegateMappings.set(entity.id.toLowerCase(), entity);
+  }
+
+  private forgetDelegateMapping(from: string) {
+    this.delegateMappingByFrom.set(from.toLowerCase(), null);
+  }
+
+  private async getContributorById(id: string): Promise<Contributor | undefined> {
+    const normalizedId = id.toLowerCase();
+    if (this.contributorById.has(normalizedId)) {
+      return this.contributorById.get(normalizedId) ?? undefined;
+    }
+
+    const value =
+      (await this.ctx.store.findOne(Contributor, {
+        where: {
+          id: normalizedId,
+        },
+      })) ?? null;
+
+    this.contributorById.set(normalizedId, value);
+    return value ?? undefined;
+  }
+
+  private rememberContributor(entity: Contributor) {
+    this.contributorById.set(entity.id.toLowerCase(), entity);
+  }
+
+  private markContributorDirty(entity: Contributor) {
+    this.dirtyContributors.set(entity.id.toLowerCase(), entity);
+  }
+
+  private async getDelegateById(id: string): Promise<Delegate | undefined> {
+    const normalizedId = id.toLowerCase();
+    if (this.delegateById.has(normalizedId)) {
+      return this.delegateById.get(normalizedId) ?? undefined;
+    }
+
+    const value =
+      (await this.ctx.store.findOne(Delegate, {
+        where: {
+          id: normalizedId,
+        },
+      })) ?? null;
+
+    this.delegateById.set(normalizedId, value);
+    return value ?? undefined;
+  }
+
+  private rememberDelegate(entity: Delegate) {
+    this.delegateById.set(entity.id.toLowerCase(), entity);
+  }
+
+  private markDelegateDirty(entity: Delegate) {
+    this.dirtyDelegates.set(entity.id.toLowerCase(), entity);
+  }
+
+  private forgetDelegate(id: string) {
+    this.delegateById.set(id.toLowerCase(), null);
+  }
+
+  private async getGlobalDataMetric(
+    source: TokenScopeFields,
+  ): Promise<DataMetric> {
+    if (!this.globalDataMetric) {
+      const storedDataMetric: DataMetric | undefined =
+        await this.ctx.store.findOne(DataMetric, {
+          where: {
+            id: MetricsId.global,
+          },
+        });
+
+      this.globalDataMetric =
+        storedDataMetric ??
+        new DataMetric({
+          id: MetricsId.global,
+        });
+
+      if (!storedDataMetric) {
+        await this.ctx.store.insert(this.globalDataMetric);
+      }
+    }
+
+    this.applyScopeFields(this.globalDataMetric, source);
+    return this.globalDataMetric;
+  }
+
+  async flush() {
+    if (this.dirtyDelegateRollings.size > 0) {
+      await this.ctx.store.save([...this.dirtyDelegateRollings.values()]);
+      this.dirtyDelegateRollings.clear();
+    }
+
+    if (this.dirtyDelegateMappings.size > 0) {
+      await this.ctx.store.save([...this.dirtyDelegateMappings.values()]);
+      this.dirtyDelegateMappings.clear();
+    }
+
+    if (this.dirtyDelegates.size > 0) {
+      await this.ctx.store.save([...this.dirtyDelegates.values()]);
+      this.dirtyDelegates.clear();
+    }
+
+    if (this.dirtyContributors.size > 0) {
+      await this.ctx.store.save([...this.dirtyContributors.values()]);
+      this.dirtyContributors.clear();
+    }
+
+    if (this.globalDataMetric && this.globalDataMetricDirty) {
+      await this.ctx.store.save(this.globalDataMetric);
+      this.globalDataMetricDirty = false;
+    }
+  }
+
   async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const isDelegateChanged =
@@ -217,20 +420,12 @@ export class TokenHandler {
     // update delegators count all
     // First, check if delegator had previous delegation
     let previousDelegateMapping: DelegateMapping | undefined =
-      await this.ctx.store.findOne(DelegateMapping, {
-        where: {
-          from: entity.delegator,
-        },
-      });
+      await this.getDelegateMappingByFrom(entity.delegator);
 
     // If there was a previous delegation, decrease the old delegate's count
     if (previousDelegateMapping) {
       let oldDelegateContributor: Contributor | undefined =
-        await this.ctx.store.findOne(Contributor, {
-          where: {
-            id: previousDelegateMapping.to,
-          },
-        });
+        await this.getContributorById(previousDelegateMapping.to);
 
       if (
         oldDelegateContributor &&
@@ -241,19 +436,17 @@ export class TokenHandler {
           oldDelegateContributor,
           this.eventFields(eventLog),
         );
-        await this.ctx.store.save(oldDelegateContributor);
+        this.rememberContributor(oldDelegateContributor);
+        this.markContributorDirty(oldDelegateContributor);
       }
     }
 
     await this.ctx.store.remove(DelegateMapping, entity.delegator);
+    this.forgetDelegateMapping(entity.delegator);
     if (!this.isZeroAddress(entity.toDelegate)) {
       // Increase the new delegate's count
       let newDelegateContributor: Contributor | undefined =
-        await this.ctx.store.findOne(Contributor, {
-          where: {
-            id: entity.toDelegate,
-          },
-        });
+        await this.getContributorById(entity.toDelegate);
 
       if (newDelegateContributor) {
         newDelegateContributor.delegatesCountAll += 1;
@@ -261,7 +454,8 @@ export class TokenHandler {
           newDelegateContributor,
           this.eventFields(eventLog),
         );
-        await this.ctx.store.save(newDelegateContributor);
+        this.rememberContributor(newDelegateContributor);
+        this.markContributorDirty(newDelegateContributor);
       } else {
         const contributor = new Contributor({
           id: entity.toDelegate,
@@ -274,6 +468,7 @@ export class TokenHandler {
           delegatesCountEffective: 0,
         });
         await this.ctx.store.insert(contributor);
+        this.rememberContributor(contributor);
         await this.increaseMetricsContributorCount(contributor);
       }
 
@@ -289,6 +484,7 @@ export class TokenHandler {
         transactionHash: entity.transactionHash,
       });
       await this.ctx.store.insert(currentDelegateMapping);
+      this.rememberDelegateMapping(currentDelegateMapping);
     }
 
     // store delegate rolling
@@ -303,6 +499,7 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(delegateRolling);
+    this.rememberDelegateRolling(delegateRolling);
 
     // store self delegate
     if (
@@ -360,16 +557,8 @@ export class TokenHandler {
   ) {
     const [clockMode, delegateRolling, tokenTransfer] = await Promise.all([
       this.voteClockMode(),
-      this.ctx.store.findOne(DelegateRolling, {
-        where: {
-          transactionHash: delegateVotesChanged.transactionHash,
-        },
-      }),
-      this.ctx.store.findOne(TokenTransfer, {
-        where: {
-          transactionHash: delegateVotesChanged.transactionHash,
-        },
-      }),
+      this.getDelegateRollingByTransactionHash(delegateVotesChanged.transactionHash),
+      this.getTokenTransferByTransactionHash(delegateVotesChanged.transactionHash),
     ]);
 
     const checkpoint = new VotePowerCheckpoint({
@@ -412,11 +601,7 @@ export class TokenHandler {
 
   private async updateDelegateRolling(options: DelegateVotesChanged) {
     const delegateRolling: DelegateRolling | undefined =
-      await this.ctx.store.findOne(DelegateRolling, {
-        where: {
-          transactionHash: options.transactionHash,
-        },
-      });
+      await this.getDelegateRollingByTransactionHash(options.transactionHash);
     if (!delegateRolling) {
       DegovIndexerHelpers.logVerboseInfo(
         this.ctx.log,
@@ -528,7 +713,8 @@ export class TokenHandler {
       logIndex: options.logIndex,
       transactionIndex: options.transactionIndex,
     });
-    await this.ctx.store.save(delegateRolling);
+    this.rememberDelegateRolling(delegateRolling);
+    this.markDelegateRollingDirty(delegateRolling);
     await this.storeDelegate(delegate);
   }
 
@@ -562,21 +748,14 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+    this.rememberTokenTransfer(entity);
 
     // store delegate
     const storedFromDelegate: DelegateMapping | undefined =
-      await this.ctx.store.findOne(DelegateMapping, {
-        where: {
-          from: entity.from,
-        },
-      });
+      await this.getDelegateMappingByFrom(entity.from);
 
     const storedToDelegate: DelegateMapping | undefined =
-      await this.ctx.store.findOne(DelegateMapping, {
-        where: {
-          from: entity.to,
-        },
-      });
+      await this.getDelegateMappingByFrom(entity.to);
 
     if (storedFromDelegate) {
       const fromDelegate = new Delegate({
@@ -623,16 +802,13 @@ export class TokenHandler {
     currentDelegate.id = `${currentDelegate.fromDelegate}_${currentDelegate.toDelegate}`;
 
     let storedDelegateFromWithTo: Delegate | undefined =
-      await this.ctx.store.findOne(Delegate, {
-        where: {
-          id: currentDelegate.id,
-        },
-      });
+      await this.getDelegateById(currentDelegate.id);
 
     let newDelegatePowerOfFromTo;
     let delegatesCountEffective = 0;
     if (!storedDelegateFromWithTo) {
       await this.ctx.store.insert(currentDelegate);
+      this.rememberDelegate(currentDelegate);
       delegatesCountEffective += 1;
       newDelegatePowerOfFromTo = currentDelegate.power;
     } else {
@@ -655,22 +831,20 @@ export class TokenHandler {
       // Remove delegate record if power is zero
       if (storedDelegateFromWithTo.power === 0n) {
         await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
+        this.forgetDelegate(storedDelegateFromWithTo.id);
         // Only decrement count if transitioning from non-zero to zero
         if (oldPower !== 0n) {
           delegatesCountEffective -= 1;
         }
       } else {
-        await this.ctx.store.save(storedDelegateFromWithTo);
+        this.rememberDelegate(storedDelegateFromWithTo);
+        this.markDelegateDirty(storedDelegateFromWithTo);
       }
       newDelegatePowerOfFromTo = storedDelegateFromWithTo.power;
     }
 
     const storedFromDelegate: DelegateMapping | undefined =
-      await this.ctx.store.findOne(DelegateMapping, {
-        where: {
-          from: currentDelegate.fromDelegate,
-        },
-      });
+      await this.getDelegateMappingByFrom(currentDelegate.fromDelegate);
     if (storedFromDelegate) {
       storedFromDelegate.power = newDelegatePowerOfFromTo;
       this.applyScopeFields(storedFromDelegate, {
@@ -682,7 +856,8 @@ export class TokenHandler {
         logIndex: currentDelegate.logIndex,
         transactionIndex: currentDelegate.transactionIndex,
       });
-      await this.ctx.store.save(storedFromDelegate);
+      this.rememberDelegateMapping(storedFromDelegate);
+      this.markDelegateMappingDirty(storedFromDelegate);
     }
 
     // store contributor
@@ -705,20 +880,15 @@ export class TokenHandler {
     await this.storeContributor(contributor);
 
     // store metrics
-    const storedDataMetric: DataMetric | undefined =
-      await this.ctx.store.findOne(DataMetric, {
-        where: {
-          id: MetricsId.global,
-        },
-      });
-    const dm = storedDataMetric
-      ? storedDataMetric
-      : new DataMetric({
-          id: MetricsId.global,
-        });
-    if (!storedDataMetric) {
-      await this.ctx.store.insert(dm);
-    }
+    const dm = await this.getGlobalDataMetric({
+      chainId: currentDelegate.chainId,
+      daoCode: currentDelegate.daoCode,
+      governorAddress: currentDelegate.governorAddress,
+      tokenAddress: currentDelegate.tokenAddress,
+      contractAddress: currentDelegate.contractAddress,
+      logIndex: currentDelegate.logIndex,
+      transactionIndex: currentDelegate.transactionIndex,
+    });
     this.applyScopeFields(dm, {
       chainId: currentDelegate.chainId,
       daoCode: currentDelegate.daoCode,
@@ -729,16 +899,12 @@ export class TokenHandler {
       transactionIndex: currentDelegate.transactionIndex,
     });
     dm.powerSum = (dm.powerSum ?? 0n) + currentDelegate.power;
-    await this.ctx.store.save(dm);
+    this.globalDataMetricDirty = true;
   }
 
   private async storeContributor(contributor: Contributor) {
     let storedContributor: Contributor | undefined =
-      await this.ctx.store.findOne(Contributor, {
-        where: {
-          id: contributor.id,
-        },
-      });
+      await this.getContributorById(contributor.id);
 
     let storeMemberMetrics = false;
     // update stored contributor
@@ -761,12 +927,14 @@ export class TokenHandler {
         storedContributor.delegatesCountEffective +
         contributor.delegatesCountEffective;
 
-      await this.ctx.store.save(storedContributor);
+      this.rememberContributor(storedContributor);
+      this.markContributorDirty(storedContributor);
     } else {
       storeMemberMetrics = true;
       // save new contributor
       await this.ctx.store.insert(contributor);
       storedContributor = contributor;
+      this.rememberContributor(storedContributor);
     }
 
     // sync user power
@@ -816,19 +984,9 @@ export class TokenHandler {
 
   private async increaseMetricsContributorCount(source: TokenScopeFields) {
     // increase metrics for memberCount
-    const storedDataMetric: DataMetric | undefined =
-      await this.ctx.store.findOne(DataMetric, {
-        where: {
-          id: MetricsId.global,
-        },
-      });
-    const dm = storedDataMetric
-      ? storedDataMetric
-      : new DataMetric({
-          id: MetricsId.global,
-        });
+    const dm = await this.getGlobalDataMetric(source);
     this.applyScopeFields(dm, source);
     dm.memberCount = (dm.memberCount ?? 0) + 1;
-    await this.ctx.store.save(dm);
+    this.globalDataMetricDirty = true;
   }
 }

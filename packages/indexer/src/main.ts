@@ -9,6 +9,14 @@ import { DegovIndexerHelpers } from "./internal/helpers";
 import { TextPlus } from "./internal/textplus";
 import { createDatabase } from "./database";
 
+type BatchHandler = GovernorHandler | TokenHandler | TimelockHandler;
+
+function isFlushableHandler(
+  handler: BatchHandler,
+): handler is BatchHandler & { flush: () => Promise<void> } {
+  return "flush" in handler && typeof handler.flush === "function";
+}
+
 async function main() {
   const degovConfigPath = process.env.DEGOV_CONFIG_PATH;
   if (!degovConfigPath) {
@@ -99,6 +107,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   processor.run(
     createDatabase(),
     async (ctx) => {
+      const batchHandlers = new Map<string, BatchHandler>();
       const batchStartedAt = Date.now();
       const batchStartBlock = ctx.blocks[0]?.header.height;
       const batchEndBlock = ctx.blocks[ctx.blocks.length - 1]?.header.height;
@@ -165,6 +174,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
 
             try {
               matchedLogsSeen += 1;
+              const handlerKey = `${work.daoCode}:${indexContract.name}`;
               maybeLogBatchHeartbeat({
                 currentBlock: event.block.height,
                 contract: indexContract.name,
@@ -173,32 +183,53 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
 
               switch (indexContract.name) {
                 case "governor":
-                  await new GovernorHandler(ctx, {
-                    chainId: config.chainId,
-                    rpcs: [...new Set([...configRpcs, ...envRpcs])],
-                    work,
-                    indexContract,
-                    chainTool,
-                    textPlus,
-                  }).handle(event);
+                  {
+                    let handler = batchHandlers.get(handlerKey);
+                    if (!handler) {
+                      handler = new GovernorHandler(ctx, {
+                        chainId: config.chainId,
+                        rpcs: [...new Set([...configRpcs, ...envRpcs])],
+                        work,
+                        indexContract,
+                        chainTool,
+                        textPlus,
+                      });
+                      batchHandlers.set(handlerKey, handler);
+                    }
+                    await (handler as GovernorHandler).handle(event);
+                  }
                   break;
                 case "governorToken":
-                  await new TokenHandler(ctx, {
-                    chainId: config.chainId,
-                    rpcs: [...new Set([...configRpcs, ...envRpcs])],
-                    work,
-                    indexContract,
-                    chainTool,
-                  }).handle(event);
+                  {
+                    let handler = batchHandlers.get(handlerKey);
+                    if (!handler) {
+                      handler = new TokenHandler(ctx, {
+                        chainId: config.chainId,
+                        rpcs: [...new Set([...configRpcs, ...envRpcs])],
+                        work,
+                        indexContract,
+                        chainTool,
+                      });
+                      batchHandlers.set(handlerKey, handler);
+                    }
+                    await (handler as TokenHandler).handle(event);
+                  }
                   break;
                 case "timeLock":
-                  await new TimelockHandler(ctx, {
-                    chainId: config.chainId,
-                    rpcs: [...new Set([...configRpcs, ...envRpcs])],
-                    work,
-                    indexContract,
-                    chainTool,
-                  }).handle(event);
+                  {
+                    let handler = batchHandlers.get(handlerKey);
+                    if (!handler) {
+                      handler = new TimelockHandler(ctx, {
+                        chainId: config.chainId,
+                        rpcs: [...new Set([...configRpcs, ...envRpcs])],
+                        work,
+                        indexContract,
+                        chainTool,
+                      });
+                      batchHandlers.set(handlerKey, handler);
+                    }
+                    await (handler as TimelockHandler).handle(event);
+                  }
                   break;
               }
 
@@ -220,6 +251,12 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
               throw e;
             }
           }
+        }
+      }
+
+      for (const handler of batchHandlers.values()) {
+        if (isFlushableHandler(handler)) {
+          await handler.flush();
         }
       }
     },
