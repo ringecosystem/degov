@@ -19,6 +19,8 @@ import {
 
 describe("token vote power checkpoints", () => {
   afterEach(() => {
+    delete process.env.DEGOV_SYNC_ENDPOINT;
+    delete process.env.DEGOV_SYNC_AUTH_TOKEN;
     jest.restoreAllMocks();
   });
 
@@ -637,6 +639,51 @@ describe("token vote power checkpoints", () => {
       delegatesCountEffective: 1,
     });
     expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(2n);
+  });
+
+  it("does not block contributor writes on slow sync endpoint calls", async () => {
+    process.env.DEGOV_SYNC_ENDPOINT = "https://sync.example.invalid";
+    process.env.DEGOV_SYNC_AUTH_TOKEN = "test-token";
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store);
+
+    global.fetch = jest.fn(
+      async () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ ok: true, status: 200 }), 50);
+        })
+    ) as any;
+
+    const contributor = new Contributor({
+      id: "0x1111111111111111111111111111111111111111",
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      contractAddress: "0x8888888888888888888888888888888888888888",
+      blockNumber: 1n,
+      blockTimestamp: 1n,
+      transactionHash: "0xseed",
+      power: 42n,
+      delegatesCountAll: 0,
+      delegatesCountEffective: 1,
+    });
+
+    await expect(
+      Promise.race([
+        (handler as any).storeContributor(contributor).then(() => "resolved"),
+        new Promise((resolve) => setTimeout(() => resolve("timeout"), 10)),
+      ])
+    ).resolves.toBe("resolved");
+
+    expect(store.findEntity(Contributor, contributor.id)).toMatchObject({
+      power: 42n,
+      delegatesCountEffective: 1,
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
   });
 });
 
