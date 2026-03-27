@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
 import {
@@ -7,6 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 import { formatShortAddress } from "@/utils/address";
 

@@ -1,4 +1,5 @@
 "use client";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { TokenMinimalValueIcon } from "@/components/icons";
@@ -40,73 +41,88 @@ const formatPercent = (value: number, decimals: number = 2) =>
   `${value.toFixed(decimals)}%`;
 
 const TokenHeaderLabel = () => (
-  <span className="inline-flex items-center gap-[6px]">
-    Token
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          aria-label="Token value display info"
-          className="inline-flex h-[14px] w-[14px] cursor-default items-center justify-center text-muted-foreground"
-          tabIndex={0}
-        >
-          <TokenMinimalValueIcon aria-hidden="true" />
-        </span>
-      </TooltipTrigger>
-      <TooltipPortal>
-        <TooltipContent side="top">
-          Displaying tokens with minimal value of $0.01.
-        </TooltipContent>
-      </TooltipPortal>
-    </Tooltip>
-  </span>
+  <TokenHeaderLabelContent />
 );
 
-const TableSkeleton = () => (
-  <Table>
-    <TableHeader>
-      <TableRow>
-        <TableHead className="w-[350px] rounded-l-[14px] text-left">
-          <TokenHeaderLabel />
-        </TableHead>
-        <TableHead className="w-[215px] text-left">Portfolio %</TableHead>
-        <TableHead className="w-[215px] text-left">Price (24h)</TableHead>
-        <TableHead className="w-[180px] text-right rounded-r-[14px]">
-          Balance
-        </TableHead>
-      </TableRow>
-    </TableHeader>
-    <TableBody>
-      {Array.from({ length: 5 }).map((_, index) => (
-        <TableRow key={index}>
-          <TableCell>
-            <div className="flex items-center gap-[10px]">
-              <Skeleton className="h-[30px] w-[30px] rounded-full" />
-              <div className="flex flex-col gap-[6px]">
-                <Skeleton className="h-[14px] w-[120px]" />
-                <Skeleton className="h-[12px] w-[80px]" />
-              </div>
-            </div>
-          </TableCell>
-          <TableCell className="text-left">
-            <Skeleton className="h-[14px] w-[60px]" />
-          </TableCell>
-          <TableCell className="text-left">
-            <div className="flex flex-col items-start gap-[6px]">
-              <Skeleton className="h-[14px] w-[80px]" />
-              <Skeleton className="h-[12px] w-[90px]" />
-            </div>
-          </TableCell>
-          <TableCell className="text-right">
-            <div className="flex flex-col items-end gap-[6px]">
-              <Skeleton className="h-[14px] w-[80px]" />
-              <Skeleton className="h-[12px] w-[100px]" />
-            </div>
-          </TableCell>
+const TokenHeaderLabelContent = () => {
+  const t = useTranslations("treasury");
+  return (
+    <span className="inline-flex items-center gap-[6px]">
+      {t("headers.token")}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            aria-label={t("accessibility.tokenValueInfoLabel")}
+            className="inline-flex h-[14px] w-[14px] cursor-default items-center justify-center text-muted-foreground"
+            tabIndex={0}
+          >
+            <TokenMinimalValueIcon aria-hidden="true" />
+          </span>
+        </TooltipTrigger>
+        <TooltipPortal>
+          <TooltipContent side="top">
+            {t("tooltip.tokenValueInfo")}
+          </TooltipContent>
+        </TooltipPortal>
+      </Tooltip>
+    </span>
+  );
+};
+
+const TableSkeleton = () => {
+  const t = useTranslations("treasury");
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-[350px] rounded-l-[14px] text-left">
+            <TokenHeaderLabel />
+          </TableHead>
+          <TableHead className="w-[215px] text-left">
+            {t("headers.portfolio")}
+          </TableHead>
+          <TableHead className="w-[215px] text-left">
+            {t("headers.price24h")}
+          </TableHead>
+          <TableHead className="w-[180px] text-right rounded-r-[14px]">
+            {t("headers.balance")}
+          </TableHead>
         </TableRow>
-      ))}
-    </TableBody>
-  </Table>
-);
+      </TableHeader>
+      <TableBody>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <TableRow key={index}>
+            <TableCell>
+              <div className="flex items-center gap-[10px]">
+                <Skeleton className="h-[30px] w-[30px] rounded-full" />
+                <div className="flex flex-col gap-[6px]">
+                  <Skeleton className="h-[14px] w-[120px]" />
+                  <Skeleton className="h-[12px] w-[80px]" />
+                </div>
+              </div>
+            </TableCell>
+            <TableCell className="text-left">
+              <Skeleton className="h-[14px] w-[60px]" />
+            </TableCell>
+            <TableCell className="text-left">
+              <div className="flex flex-col items-start gap-[6px]">
+                <Skeleton className="h-[14px] w-[80px]" />
+                <Skeleton className="h-[12px] w-[90px]" />
+              </div>
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="flex flex-col items-end gap-[6px]">
+                <Skeleton className="h-[14px] w-[80px]" />
+                <Skeleton className="h-[12px] w-[100px]" />
+              </div>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+};
 
 const getChangeClassName = (value: number) => {
   if (value > 0) return "text-success";
@@ -119,6 +135,7 @@ export function TreasuryTable({
   caption,
   isLoading,
 }: TreasuryTableProps) {
+  const t = useTranslations("treasury");
   const daoConfig = useDaoConfig();
   const [visibleItems, setVisibleItems] = useState(5);
 
@@ -149,7 +166,7 @@ export function TreasuryTable({
     return (
       <div className="rounded-[14px] bg-card p-[20px] shadow-card">
         <Empty
-          label="No assets found"
+          label={t("empty.noAssetsFound")}
           style={{
             height: 24 * 6,
           }}
@@ -163,12 +180,12 @@ export function TreasuryTable({
       <Table>
         {data.length >= 5 && hasMoreItems && (
           <TableCaption className="pb-0">
-            <span
-              className="cursor-pointer text-foreground transition-colors hover:text-foreground/80"
-              onClick={handleViewMore}
-            >
-              {caption || "View more"}
-            </span>
+              <span
+                className="cursor-pointer text-foreground transition-colors hover:text-foreground/80"
+                onClick={handleViewMore}
+              >
+              {caption || t("viewMore")}
+              </span>
           </TableCaption>
         )}
         <TableHeader>
@@ -176,10 +193,14 @@ export function TreasuryTable({
             <TableHead className="w-[350px] rounded-l-[14px] text-left">
               <TokenHeaderLabel />
             </TableHead>
-            <TableHead className="w-[215px] text-left">Portfolio %</TableHead>
-            <TableHead className="w-[215px] text-left">Price (24h)</TableHead>
+            <TableHead className="w-[215px] text-left">
+              {t("headers.portfolio")}
+            </TableHead>
+            <TableHead className="w-[215px] text-left">
+              {t("headers.price24h")}
+            </TableHead>
             <TableHead className="w-[180px] text-right rounded-r-[14px]">
-              Balance
+              {t("headers.balance")}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -208,7 +229,7 @@ export function TreasuryTable({
                     <span className="text-[14px] font-medium text-foreground">
                       {priceAvailable
                         ? formatCurrency(asset.priceValue)
-                        : "N/A"}
+                        : t("fallback.notAvailable")}
                     </span>
                     {hasPriceChange ? (
                       <span
@@ -221,7 +242,7 @@ export function TreasuryTable({
                       </span>
                     ) : (
                       <span className="text-[12px] text-muted-foreground">
-                        N/A
+                        {t("fallback.notAvailable")}
                       </span>
                     )}
                   </div>
@@ -231,7 +252,7 @@ export function TreasuryTable({
                     <span className="text-[14px] font-medium text-foreground">
                       {hasBalanceUSD
                         ? formatCurrencyFixed(asset.balanceUSDValue)
-                        : "N/A"}
+                        : t("fallback.notAvailable")}
                     </span>
                     <span className="text-[12px] text-muted-foreground">
                       {`${

@@ -1,7 +1,8 @@
 "use client";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Suspense, useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
+import { useRouter } from "@/i18n/navigation";
 import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
@@ -58,6 +60,7 @@ const normalizeSupportParam = (value: string | null): SupportSelection => {
 function ProposalsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const t = useTranslations("proposals");
   const typeParam = searchParams?.get("type");
   const supportParam = searchParams?.get("support");
   const addressParam = searchParams?.get("address");
@@ -76,7 +79,6 @@ function ProposalsContent() {
   // Get voting power information
   const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
 
-  // Get proposal metrics (including total count)
   const { data: dataMetrics } = useQuery({
     queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>
@@ -130,10 +132,10 @@ function ProposalsContent() {
       ? parseInt(dataMetrics.proposalsCount)
       : null;
     if (totalCount !== null) {
-      return `All Proposals (${totalCount})`;
+      return t("titleWithCount", { count: totalCount });
     }
 
-    return "All Proposals";
+    return t("title");
   };
 
   const handleNewProposalClick = useCallback(() => {
@@ -165,7 +167,7 @@ function ProposalsContent() {
                       htmlFor="my-proposals"
                       className="cursor-pointer text-[14px] font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
-                      My Proposals
+                      {t("myProposals")}
                     </label>
                   </div>
                   <Select
@@ -174,14 +176,14 @@ function ProposalsContent() {
                     disabled={!isMyProposals}
                   >
                     <SelectTrigger className="w-auto flex-1 lg:w-[130px] rounded-[100px] border border-border px-[10px]">
-                      <SelectValue placeholder="Select Status" />
+                      <SelectValue placeholder={t("statusPlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        <SelectItem value="all">All</SelectItem>
-                        <SelectItem value="1">Vote For</SelectItem>
-                        <SelectItem value="0">Vote Against</SelectItem>
-                        <SelectItem value="2">Vote Abstain</SelectItem>
+                        <SelectItem value="all">{t("all")}</SelectItem>
+                        <SelectItem value="1">{t("voteFor")}</SelectItem>
+                        <SelectItem value="0">{t("voteAgainst")}</SelectItem>
+                        <SelectItem value="2">{t("voteAbstain")}</SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -198,7 +200,7 @@ function ProposalsContent() {
                     height={20}
                     className="size-[20px] text-current"
                   />
-                  New Proposal
+                  {t("newProposal")}
                 </Button>
               </div>
             </div>
@@ -246,12 +248,14 @@ function ProposalsContent() {
 }
 
 export default function Proposals() {
+  const t = useTranslations("proposals");
+
   return (
     <Suspense
       fallback={
         <div className="flex flex-col gap-[30px]">
           <div className="flex items-center justify-between gap-[20px]">
-            <h3 className="text-[18px] font-extrabold">All Proposals</h3>
+            <h3 className="text-[18px] font-extrabold">{t("title")}</h3>
             <div className="w-[300px] h-[40px] animate-pulse bg-gray-700 rounded-[100px]"></div>
           </div>
           <div className="w-full h-[400px] animate-pulse bg-gray-800 rounded-md"></div>

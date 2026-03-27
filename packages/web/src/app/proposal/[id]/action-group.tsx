@@ -1,5 +1,6 @@
 "use client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount, useReadContract } from "wagmi";
@@ -48,6 +49,7 @@ export default function ActionGroup({
   isAllQueriesFetching,
   onRefetch,
 }: ActionGroupProps) {
+  const t = useTranslations("proposalDetail.toasts");
   const { isConnected, address } = useAccount();
   const queryClient = useQueryClient();
   const daoConfig = useDaoConfig();
@@ -149,7 +151,7 @@ export default function ActionGroup({
           error as {
             shortMessage: string;
           }
-        )?.shortMessage ?? "Failed to cancel proposal"
+        )?.shortMessage ?? t("failedToCancel")
       );
     } finally {
       setCancelProposalOpen(false);
@@ -160,6 +162,7 @@ export default function ActionGroup({
     data?.originalDescription,
     data?.targets,
     data?.values,
+    t,
   ]);
 
   const handleCancelProposalSuccess = useCallback(() => {
@@ -191,13 +194,13 @@ export default function ActionGroup({
         console.error(error);
         toast.error(
           (error as { shortMessage: string })?.shortMessage ??
-            "Failed to cast vote"
+            t("failedToCastVote")
         );
       } finally {
         setVoting(false);
       }
     },
-    [castVote]
+    [castVote, t]
   );
 
   const handleCastVoteSuccess = useCallback(() => {
@@ -228,7 +231,7 @@ export default function ActionGroup({
       console.error(error);
       toast.error(
         (error as { shortMessage: string })?.shortMessage ??
-          "Failed to queue proposal"
+          t("failedToQueue")
       );
     }
   }, [
@@ -237,6 +240,7 @@ export default function ActionGroup({
     data?.originalDescription,
     data?.targets,
     data?.values,
+    t,
   ]);
 
   const handleQueueProposalSuccess = useCallback(() => {
@@ -260,7 +264,7 @@ export default function ActionGroup({
       console.error(error);
       toast.error(
         (error as { shortMessage: string })?.shortMessage ??
-          "Failed to execute proposal"
+          t("failedToExecute")
       );
     }
   }, [
@@ -269,6 +273,7 @@ export default function ActionGroup({
     data?.originalDescription,
     data?.targets,
     data?.values,
+    t,
   ]);
 
   const handleExecuteProposalSuccess = useCallback(() => {
@@ -279,10 +284,18 @@ export default function ActionGroup({
 
   const hasTimelock = useMemo(() => {
     return (
+      Boolean(data?.timelockAddress) ||
+      Boolean(data?.queueReadyAt) ||
+      Boolean(data?.queueExpiresAt) ||
       govParams?.timeLockDelayInSeconds !== undefined &&
       govParams?.timeLockDelayInSeconds !== null
     );
-  }, [govParams?.timeLockDelayInSeconds]);
+  }, [
+    data?.queueExpiresAt,
+    data?.queueReadyAt,
+    data?.timelockAddress,
+    govParams?.timeLockDelayInSeconds,
+  ]);
 
   useEffect(() => {
     if (status !== ProposalState.Queued || !hasTimelock) {
@@ -304,6 +317,9 @@ export default function ActionGroup({
     }
 
     if (status === ProposalState.Queued) {
+      const queueReadyAt = data?.queueReadyAt
+        ? BigInt(data.queueReadyAt)
+        : undefined;
       const queuedBlockTimestamp = proposalQueuedById?.blockTimestamp
         ? BigInt(proposalQueuedById?.blockTimestamp)
         : undefined;
@@ -314,6 +330,9 @@ export default function ActionGroup({
           ? BigInt(BigInt(timeLockDelayInSeconds) * 1000n)
           : undefined;
 
+      if (queueReadyAt !== undefined) {
+        return currentTime >= queueReadyAt;
+      }
       if (!queuedBlockTimestamp) return false;
       if (timeLockDelay === undefined) return true;
 
@@ -322,6 +341,7 @@ export default function ActionGroup({
     }
     return false;
   }, [
+    data?.queueReadyAt,
     status,
     proposalQueuedById,
     govParams?.timeLockDelayInSeconds,

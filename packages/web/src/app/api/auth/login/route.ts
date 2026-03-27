@@ -59,7 +59,15 @@ export async function POST(request: NextRequest) {
 
     const sql = databaseConnection();
     const [storedUser] =
-      await sql`select * from d_user where address = ${address} and dao_code = ${daocode} limit 1`;
+      await sql`
+        select
+          id,
+          last_login_time,
+          utime
+        from d_user
+        where address = ${address} and dao_code = ${daocode}
+        limit 1
+      `;
     if (!storedUser) {
       const newUser: DUser = {
         id: snowflake.generate(),

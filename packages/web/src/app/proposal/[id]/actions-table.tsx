@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
@@ -12,6 +13,7 @@ interface ActionsTableProps {
 }
 
 export function ActionsTable({ data, isFetching }: ActionsTableProps) {
+  const t = useTranslations("proposalDetail.actionsTable");
   const actions = useMemo(() => {
     // If the proposal is a self-proposal and value is 0, return an empty array
     if (
@@ -45,7 +47,7 @@ export function ActionsTable({ data, isFetching }: ActionsTableProps) {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: DEFAULT_ANIMATION_DURATION }}
         >
-          Actions
+          {t("title")}
         </motion.h4>
       </header>
 

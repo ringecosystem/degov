@@ -1,6 +1,7 @@
 "use client";
 
 import { Interface } from "ethers";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import { isAddress } from "viem";
 
@@ -19,6 +20,7 @@ const DEFAULT_TRANSFER_SIGNATURE =
   "transfer(address recipient, uint256 amount)";
 
 export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
+  const t = useTranslations("proposalEditor.preview");
   const daoConfig = useDaoConfig();
   const decimals = daoConfig?.chain?.nativeToken?.decimals ?? 18;
 
@@ -142,7 +144,7 @@ export const ActionsPanel = ({ actions }: ActionsPanelProps) => {
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px] shadow-card">
       <header className="flex items-center justify-between border-b border-card-background pb-[10px]">
-        <h4 className="text-[18px] font-semibold">Actions</h4>
+        <h4 className="text-[18px] font-semibold">{t("actions")}</h4>
       </header>
       <ActionTableSummary actions={encodedActions} isLoading={isLoading} />
     </div>

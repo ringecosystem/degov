@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
@@ -9,8 +10,8 @@ import {
   usePaginationRange,
 } from "@/hooks/usePaginationRange";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
-import { delegateService } from "@/services/graphql";
-import type { DelegateItem } from "@/services/graphql/types";
+import { buildGovernanceScope, delegateService } from "@/services/graphql";
+import type { DelegateMappingItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
@@ -53,9 +54,14 @@ export function DelegationTable({
   onDateSortChange,
   onPowerSortChange,
 }: DelegationTableProps) {
+  const t = useTranslations("profile.receivedDelegations");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
   const [currentPage, setCurrentPage] = useState(1);
+  const governanceScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
 
   const { data: totalVotes } = useCurrentVotingPower(address);
 
@@ -72,7 +78,7 @@ export function DelegationTable({
     }
   }, [currentPage, totalPageCount]);
 
-  const { data: pageData = [], isFetching } = useQuery<DelegateItem[]>({
+  const { data: pageData = [], isFetching } = useQuery<DelegateMappingItem[]>({
     queryKey: [
       "delegation-table",
       daoConfig?.indexer?.endpoint,
@@ -80,30 +86,37 @@ export function DelegationTable({
       orderBy,
       currentPage,
       pageSize,
+      governanceScope,
     ],
     queryFn: () =>
-      delegateService.getAllDelegates(daoConfig?.indexer?.endpoint as string, {
+      delegateService.getDelegateMappings(
+        daoConfig?.indexer?.endpoint as string,
+        {
         limit: pageSize,
         offset: (currentPage - 1) * pageSize,
         orderBy,
-        where: { toDelegate_eq: address.toLowerCase() },
-      }),
+        where: {
+          ...governanceScope,
+          to_eq: address.toLowerCase(),
+        },
+      }
+      ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
     placeholderData: (previous) => previous ?? [],
   });
 
   const paginationRange = usePaginationRange(currentPage, totalPageCount);
 
-  const columns = useMemo<ColumnType<DelegateItem>[]>(
+  const columns = useMemo<ColumnType<DelegateMappingItem>[]>(
     () => [
       {
-        title: "Delegator",
+        title: t("columns.delegator"),
         key: "delegator",
         width: "33%",
         className: "text-left",
         render: (record) => (
           <AddressWithAvatar
-            address={record?.fromDelegate as `0x${string}`}
+            address={record?.from as `0x${string}`}
             avatarSize={30}
             align="start"
           />
@@ -112,7 +125,7 @@ export function DelegationTable({
       {
         title: (
           <SortableCell
-            label="Date"
+            label={t("columns.date")}
             sortState={
               sortState.field === "date" ? sortState.direction : undefined
             }
@@ -133,7 +146,7 @@ export function DelegationTable({
       {
         title: (
           <SortableCell
-            label="Votes"
+            label={t("columns.votes")}
             sortState={
               sortState.field === "power" ? sortState.direction : undefined
             }
@@ -163,6 +176,7 @@ export function DelegationTable({
       sortState.direction,
       onDateSortChange,
       onPowerSortChange,
+      t,
     ]
   );
 
@@ -173,7 +187,7 @@ export function DelegationTable({
           dataSource={pageData}
           columns={columns}
           isLoading={isFetching}
-          emptyText={<span>No delegations yet</span>}
+          emptyText={<span>{t("empty")}</span>}
           rowKey="id"
         />
       </div>
@@ -217,7 +231,7 @@ export function DelegationTable({
 }
 
 interface DelegatorVotesDisplayProps {
-  record: DelegateItem;
+  record: DelegateMappingItem;
   formatTokenAmount: (amount: bigint) => { formatted: string } | undefined;
   totalVotes: bigint;
 }

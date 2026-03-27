@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import {
@@ -13,27 +14,6 @@ import { cn } from "@/lib/utils";
 
 import type { FC } from "react";
 
-const text = {
-  [VoteType.For]: {
-    label: "For",
-    color: "bg-success",
-    icon: VoteForIcon,
-    defaultIcon: VoteForDefaultIcon,
-  },
-  [VoteType.Against]: {
-    label: "Against",
-    color: "bg-danger",
-    icon: VoteAgainstIcon,
-    defaultIcon: VoteAgainstDefaultIcon,
-  },
-  [VoteType.Abstain]: {
-    label: "Abstain",
-    color: "bg-muted-foreground",
-    icon: VoteAbstainIcon,
-    defaultIcon: VoteAbstainDefaultIcon,
-  },
-};
-
 interface VoteStatusActionProps {
   variant: VoteType;
   className?: string;
@@ -47,7 +27,28 @@ export const VoteStatusAction: FC<VoteStatusActionProps> = ({
   type,
   onChangeVote,
 }) => {
+  const t = useTranslations("proposals.voteLabels");
   const [isHovered, setIsHovered] = useState(false);
+  const text = {
+    [VoteType.For]: {
+      label: t("for"),
+      color: "bg-success",
+      icon: VoteForIcon,
+      defaultIcon: VoteForDefaultIcon,
+    },
+    [VoteType.Against]: {
+      label: t("against"),
+      color: "bg-danger",
+      icon: VoteAgainstIcon,
+      defaultIcon: VoteAgainstDefaultIcon,
+    },
+    [VoteType.Abstain]: {
+      label: t("abstain"),
+      color: "bg-muted-foreground",
+      icon: VoteAbstainIcon,
+      defaultIcon: VoteAbstainDefaultIcon,
+    },
+  };
 
   const isActive = type === "active" || isHovered;
   const IconComponent = isActive

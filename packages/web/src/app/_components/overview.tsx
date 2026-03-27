@@ -1,12 +1,13 @@
 "use client";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { isNumber } from "lodash-es";
+import { useTranslations } from "next-intl";
 import { useReadContract } from "wagmi";
 
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { proposalService } from "@/services/graphql";
+import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { formatNumberForDisplay } from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
@@ -14,6 +15,7 @@ import { OverviewProposalsSummaryDropdown } from "./overview-proposals-summary";
 
 export const Overview = () => {
   const daoConfig = useDaoConfig();
+  const t = useTranslations("dashboard.overview");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: totalSupply, isLoading: isTotalSupplyLoading } =
     useReadContract({
@@ -30,33 +32,36 @@ export const Overview = () => {
     });
 
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint ?? "",
+        buildGovernanceScope(daoConfig)
+      ),
     enabled: !!daoConfig?.indexer?.endpoint,
     placeholderData: keepPreviousData,
   });
+  const { data: governanceCounts, isLoading: isGovernanceCountsLoading } =
+    useGovernanceCounts();
 
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px]">
       <h3 className="text-[16px] lg:text-[18px] font-extrabold text-foreground">
-        Overview
+        {t("title")}
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-[15px] lg:gap-[20px] xl:grid-cols-4">
         <OverviewItem
-          title="Proposals"
+          title={t("proposals")}
           link={`/proposals`}
           icon="/assets/image/proposals-colorful.svg"
-          isLoading={isProposalMetricsLoading}
+          isLoading={isGovernanceCountsLoading}
           priority
         >
           <>
             <div className="flex items-center gap-[8px] lg:gap-[10px]">
               {
                 formatNumberForDisplay(
-                  isNumber(dataMetrics?.proposalsCount)
-                    ? dataMetrics?.proposalsCount
-                    : 0,
+                  governanceCounts?.proposalsCount ?? 0,
                   0
                 )[0]
               }
@@ -65,15 +70,15 @@ export const Overview = () => {
           </>
         </OverviewItem>
         <OverviewItem
-          title="Delegates"
+          title={t("delegates")}
           link={`/delegates`}
           icon="/assets/image/members-colorful.svg"
-          isLoading={isProposalMetricsLoading}
+          isLoading={isGovernanceCountsLoading}
         >
-          {formatNumberForDisplay(dataMetrics?.memberCount ?? 0, 0)[0]}
+          {formatNumberForDisplay(governanceCounts?.delegatesCount ?? 0, 1)[0]}
         </OverviewItem>
         <OverviewItem
-          title="Total Voting Power"
+          title={t("totalVotingPower")}
           icon="/assets/image/total-vote-colorful.svg"
           isLoading={isProposalMetricsLoading}
         >
@@ -84,7 +89,7 @@ export const Overview = () => {
           }
         </OverviewItem>
         <OverviewItem
-          title="Total Supply"
+          title={t("totalSupply")}
           isLoading={isTotalSupplyLoading}
           icon="/assets/image/delegated-vote-colorful.svg"
         >

@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -9,7 +10,7 @@ import { XAccountFileUploader } from "@/components/xaccount-file-uploader";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 
-import { xaccountSchema } from "./schema";
+import { createXaccountSchema } from "./schema";
 
 import type { XAccountContent } from "./schema";
 
@@ -26,7 +27,9 @@ export const XAccountPanel = ({
   onChange,
   onRemove,
 }: XAccountPanelProps) => {
+  const t = useTranslations("proposalEditor");
   const daoConfig = useDaoConfig();
+  const xaccountSchema = useMemo(() => createXaccountSchema(t), [t]);
   const [xAccountData, setXAccountData] = useState<XAccountContent>(
     {} as XAccountContent
   );
@@ -74,10 +77,10 @@ export const XAccountPanel = ({
         setXAccountData({} as XAccountContent);
         onChange({} as XAccountContent);
         setIsValidJSON(false);
-        setValidationError("Invalid JSON format");
+        setValidationError(t("xaccount.validation.invalidJson"));
       }
     },
-    [onChange]
+    [onChange, t, xaccountSchema]
   );
 
   return (
@@ -88,7 +91,9 @@ export const XAccountPanel = ({
       )}
     >
       <div className="flex items-center justify-between">
-        <h4 className="text-[18px] font-semibold">Action #{index}</h4>
+        <h4 className="text-[18px] font-semibold">
+          {t("actions.actionNumber", { index })}
+        </h4>
 
         <Button
           className="h-[30px] gap-[5px] rounded-[100px] border border-foreground bg-card p-[10px] text-foreground"
@@ -96,30 +101,30 @@ export const XAccountPanel = ({
           onClick={() => onRemove(index)}
         >
           <ProposalCloseIcon width={16} height={16} />
-          <span>Remove action</span>
+          <span>{t("actions.removeAction")}</span>
         </Button>
       </div>
 
       <div className="mx-auto flex w-full flex-col gap-[20px]">
         <p className="text-[14px] font-normal">
-          The cross-chain governance capability in degov relies on the{" "}
-          <Link
-            href="https://github.com/ringecosystem/XAccount"
-            target="_blank"
-            rel="noreferrer"
-            className="underline"
-          >
-            XAccount
-          </Link>{" "}
-          contract mechanism. You need to first create an XAccount on the target
-          chain first, construct the cross-chain governance call, and then
-          execute it in this chain.
+          {t.rich("xaccount.description", {
+            link: (chunks) => (
+              <Link
+                href="https://github.com/ringecosystem/XAccount"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
         <div className="flex justify-center">
           <Button className="rounded-[100px] bg-foreground text-background" asChild>
             <Link href={xaccountLink} target="_blank" rel="noreferrer">
               <ProposalPlusIcon width={20} height={20} />
-              Generate Action on XAccount Box
+              {t("xaccount.generateAction")}
             </Link>
           </Button>
         </div>
@@ -127,7 +132,7 @@ export const XAccountPanel = ({
         <div className="flex flex-col gap-[20px]">
           <div className="flex flex-col gap-[10px]">
             <label className="text-[14px] text-foreground">
-              Upload the generated cross-chain action json file
+              {t("xaccount.uploadLabel")}
             </label>
             <XAccountFileUploader
               onUpload={handleUploadXAccount}
@@ -137,8 +142,7 @@ export const XAccountPanel = ({
             />
             <p className="text-[14px] text-foreground mx-auto items-center flex gap-[8px]">
               <span className="w-[4px] h-[4px] inline-block rounded-full bg-foreground"></span>{" "}
-              All the fields will be filled automatically when the correct
-              generated action file is imported.
+              {t("xaccount.autoFill")}
             </p>
           </div>
         </div>
@@ -148,11 +152,13 @@ export const XAccountPanel = ({
           <div className="flex flex-col gap-[20px]">
             {/* action details */}
             <div className="flex flex-col gap-[10px]">
-              <h3 className="text-[18px] font-semibold">Action Details</h3>
+              <h3 className="text-[18px] font-semibold">
+                {t("xaccount.actionDetails")}
+              </h3>
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  from
+                  {t("xaccount.fields.from")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -166,7 +172,7 @@ export const XAccountPanel = ({
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  to
+                  {t("xaccount.fields.to")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -180,7 +186,7 @@ export const XAccountPanel = ({
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  value
+                  {t("xaccount.fields.value")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -194,7 +200,7 @@ export const XAccountPanel = ({
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  calldata
+                  {t("xaccount.fields.calldata")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -210,12 +216,12 @@ export const XAccountPanel = ({
             {/* Cross-chain Transaction Details */}
             <div className="flex flex-col gap-[10px]">
               <h3 className="text-[18px] font-semibold">
-                Cross-chain Transaction Details
+                {t("xaccount.crossChainDetails")}
               </h3>
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  target contract address
+                  {t("xaccount.fields.targetContractAddress")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -229,7 +235,7 @@ export const XAccountPanel = ({
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  value
+                  {t("xaccount.fields.value")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -243,7 +249,7 @@ export const XAccountPanel = ({
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  contract method
+                  {t("xaccount.fields.contractMethod")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -258,11 +264,13 @@ export const XAccountPanel = ({
 
             {/* Calldatas */}
             <div className="flex flex-col gap-[10px]">
-              <h3 className="text-[18px] font-semibold">Parameters</h3>
+              <h3 className="text-[18px] font-semibold">
+                {t("xaccount.parameters")}
+              </h3>
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  toChainId
+                  {t("xaccount.fields.toChainId")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -276,7 +284,7 @@ export const XAccountPanel = ({
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  toDapp
+                  {t("xaccount.fields.toDapp")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -290,7 +298,7 @@ export const XAccountPanel = ({
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  message
+                  {t("xaccount.fields.message")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"
@@ -304,7 +312,7 @@ export const XAccountPanel = ({
 
               <div className="flex gap-[10px] items-start">
                 <div className="w-[200px] text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center bg-card-background">
-                  params
+                  {t("xaccount.fields.params")}
                 </div>
                 <div
                   className="flex-1 text-foreground text-[14px] p-[10px] border border-border/20 rounded-[4px] flex items-center font-mono"

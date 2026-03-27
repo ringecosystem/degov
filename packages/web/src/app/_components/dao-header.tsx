@@ -2,6 +2,7 @@
 import { TooltipTrigger } from "@radix-ui/react-tooltip";
 import { capitalize } from "lodash-es";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Fragment, useMemo, useState } from "react";
 
@@ -35,6 +36,7 @@ const socialIconMap = {
 
 export const DaoHeader = () => {
   const config = useDaoConfig();
+  const t = useTranslations("dashboard.header");
   const [showFullDescription, setShowFullDescription] = useState(false);
   const { theme } = useTheme();
   const { data: botMember } = useBotMemberData();
@@ -81,7 +83,7 @@ export const DaoHeader = () => {
                 className="h-6 px-2.5 rounded-[100px] outline outline-offset-[-0.50px] outline-always-light inline-flex justify-center items-center gap-[5px] hover:bg-always-light/10 transition-colors lg:hidden"
               >
                 <span className="text-always-light text-sm font-normal font-['SF_UI_Display']">
-                  Edit
+                  {t("edit")}
                 </span>
               </a>
             )}
@@ -95,7 +97,7 @@ export const DaoHeader = () => {
             {botMember && (
               <div className="px-2.5 py-[5px] bg-always-light rounded-[10px] inline-flex justify-start items-center gap-2.5 hover:bg-always-light/80 transition-colors">
                 <div className="justify-start text-always-dark text-xs font-semibold font-['SF_UI_Display']">
-                  Agent
+                  {t("agent")}
                 </div>
               </div>
             )}
@@ -110,7 +112,7 @@ export const DaoHeader = () => {
                 className="h-6 px-2.5 rounded-[100px] outline outline-offset-[-0.50px] outline-always-light inline-flex justify-center items-center gap-[5px] hover:bg-always-light/10 transition-colors"
               >
                 <span className="text-always-light text-sm font-normal font-['SF_UI_Display']">
-                  Edit
+                  {t("edit")}
                 </span>
               </a>
             </div>

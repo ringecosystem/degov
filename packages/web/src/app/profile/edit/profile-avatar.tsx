@@ -1,6 +1,7 @@
 "use client";
 
 import ImageComponent from "next/image";
+import { useTranslations } from "next-intl";
 import { useRef, useState, useCallback, useEffect } from "react";
 import { toast } from "react-toastify";
 
@@ -36,6 +37,7 @@ export function ProfileAvatar({
   onAvatarChange,
   isLoading,
 }: ProfileAvatarProps) {
+  const t = useTranslations("profile.edit.avatar");
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(
     initialAvatar || undefined
   );
@@ -48,12 +50,12 @@ export function ProfileAvatar({
       if (!file) return;
 
       if (!IMAGE_CONFIG.acceptedFormats.includes(file.type)) {
-        toast.error("Please upload a JPG, PNG, GIF or WebP image.");
+        toast.error(t("invalidFormat"));
         return;
       }
 
       if (file.size > IMAGE_CONFIG.maxSizeMB * 1024 * 1024) {
-        toast.error(`Maximum file size is ${IMAGE_CONFIG.maxSizeMB}MB.`);
+        toast.error(t("maxSize", { size: IMAGE_CONFIG.maxSizeMB }));
         return;
       }
 
@@ -65,13 +67,13 @@ export function ProfileAvatar({
         onAvatarChange(base64);
       } catch (error) {
         console.error("Error processing image:", error);
-        toast.error("Image processing failed");
+        toast.error(t("processingFailed"));
       } finally {
         setIsProcessing(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [onAvatarChange]
+    [onAvatarChange, t]
   );
 
   const compressImage = (file: File): Promise<string> => {
@@ -156,7 +158,7 @@ export function ProfileAvatar({
         {previewUrl ? (
           <ImageComponent
             src={previewUrl}
-            alt="Profile avatar"
+            alt={t("alt")}
             className="h-full w-full object-cover"
             width={110}
             height={110}
@@ -184,7 +186,7 @@ export function ProfileAvatar({
         onClick={handleButtonClick}
         isLoading={isProcessing || isLoading}
       >
-        {isProcessing ? "Processing..." : "Upload Avatar"}
+        {isProcessing ? t("processing") : t("upload")}
       </Button>
     </div>
   );

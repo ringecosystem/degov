@@ -1,4 +1,5 @@
 import { createPublicClient, http, webSocket, PublicClient, Abi } from "viem";
+import { DegovIndexerHelpers } from "./helpers";
 
 // --- INTERFACES AND TYPES ---
 
@@ -19,16 +20,34 @@ export interface BaseContractOptions {
   rpcs?: string[];
 }
 
+export interface ReadContractOptions extends BaseContractOptions {
+  abi: Abi;
+  functionName: string;
+  args?: readonly unknown[];
+}
+
 export interface QueryQuorumOptions extends BaseContractOptions {
   standard?: "ERC20" | "ERC721";
   governorTokenAddress: `0x${string}`;
   governorTokenStandard?: "ERC20" | "ERC721";
+  timepoint?: bigint;
 }
 
 export interface QuorumResult {
   clockMode: ClockMode;
   quorum: bigint;
   decimals: bigint;
+}
+
+export interface CurrentClockResult {
+  clockMode: ClockMode;
+  timepoint: bigint;
+  timestampMs: bigint;
+}
+
+export interface HistoricalVotesResult {
+  method: "getPastVotes" | "getPriorVotes";
+  votes: bigint;
 }
 
 // Added interface for the quorum cache entry
@@ -86,6 +105,81 @@ const ABI_FUNCTION_DECIMALS: Abi = [
     type: "function",
   },
 ];
+
+const ABI_FUNCTION_GET_PAST_VOTES: Abi = [
+  {
+    inputs: [
+      { internalType: "address", name: "account", type: "address" },
+      { internalType: "uint256", name: "timepoint", type: "uint256" },
+    ],
+    name: "getPastVotes",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_GET_PRIOR_VOTES: Abi = [
+  {
+    inputs: [
+      { internalType: "address", name: "account", type: "address" },
+      { internalType: "uint256", name: "blockNumber", type: "uint256" },
+    ],
+    name: "getPriorVotes",
+    outputs: [{ internalType: "uint96", name: "", type: "uint96" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const DETERMINISTIC_CONTRACT_ERROR_PATTERNS = [
+  /contract function .* reverted/i,
+  /execution reverted/i,
+  /contract function not found/i,
+  /returned no data/i,
+  /function selector was not recognized/i,
+];
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error ?? "");
+}
+
+function isDeterministicContractCallError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return DETERMINISTIC_CONTRACT_ERROR_PATTERNS.some((pattern) =>
+    pattern.test(message)
+  );
+}
+
+function isClockModeUnavailableError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return (
+    message.includes("CLOCK_MODE") &&
+    isDeterministicContractCallError(error)
+  );
+}
+
+function clockModeFallbackReason(error: unknown): string {
+  const message = errorMessage(error);
+
+  if (
+    message.includes("contract function not found") ||
+    message.includes("returned no data") ||
+    message.includes("function selector was not recognized")
+  ) {
+    return "clock-mode-function-missing";
+  }
+
+  if (message.includes("reverted") || message.includes("execution reverted")) {
+    return "clock-mode-function-reverted";
+  }
+
+  return "clock-mode-function-unavailable";
+}
 
 // --- CHAINTOOL CLASS ---
 
@@ -215,6 +309,17 @@ export class ChainTool {
     return input;
   }
 
+  private isMissingFunctionError(error: any): boolean {
+    const message = errorMessage(error).toLowerCase();
+    return (
+      isDeterministicContractCallError(error) ||
+      message.includes("contract function not found") ||
+      message.includes("function does not exist") ||
+      message.includes("reverted with the following reason") ||
+      message.includes("vm exception while processing transaction: revert")
+    );
+  }
+
   /**
    * Helper to execute a viem action with multiple RPC fallbacks for reliability.
    * It tries each RPC endpoint in sequence until one succeeds.
@@ -242,9 +347,16 @@ export class ChainTool {
         });
         return await action(client);
       } catch (error) {
+        if (isDeterministicContractCallError(error)) {
+          throw error;
+        }
         lastError = error;
         console.warn(
-          `[ChainTool] RPC request to ${rpcUrl} failed. Trying next...`
+          DegovIndexerHelpers.formatLogLine("chaintool.rpc retry", {
+            chainId,
+            rpc: rpcUrl,
+            error: DegovIndexerHelpers.formatError(error),
+          })
         );
       }
     }
@@ -262,7 +374,9 @@ export class ChainTool {
     const cacheKey = `${chainId}`;
 
     if (this.blockIntervalCache.has(cacheKey)) {
-      console.log(`Using cached block interval for chain ${chainId}`);
+      DegovIndexerHelpers.logVerbose("chaintool.block-interval cache hit", {
+        chainId,
+      });
       return this.blockIntervalCache.get(cacheKey)!;
     }
 
@@ -290,7 +404,11 @@ export class ChainTool {
         successfulIntervals.push(result.value);
       } else {
         console.warn(
-          `[ChainTool] RPC request to ${allRpcs[index]} failed: ${result.reason.message}`
+          DegovIndexerHelpers.formatLogLine("chaintool.block-interval rpc failed", {
+            chainId,
+            rpc: allRpcs[index],
+            error: DegovIndexerHelpers.formatError(result.reason),
+          })
         );
       }
     });
@@ -310,9 +428,11 @@ export class ChainTool {
     }
 
     this.blockIntervalCache.set(cacheKey, averageInterval);
-    console.log(
-      `Calculated final average block interval for chain ${chainId} from ${successfulIntervals.length} RPC(s): ${averageInterval}s`
-    );
+    DegovIndexerHelpers.logVerbose("chaintool.block-interval cached", {
+      chainId,
+      rpcCount: successfulIntervals.length,
+      averageSeconds: averageInterval,
+    });
 
     return averageInterval;
   }
@@ -366,9 +486,10 @@ export class ChainTool {
   async clockMode(options: BaseContractOptions): Promise<ClockMode> {
     const cacheKey = `${options.chainId}:${options.contractAddress}`;
     if (this.clockModeCache.has(cacheKey)) {
-      console.log(
-        `Using cached clock mode for ${options.contractAddress} on chain ${options.chainId}`
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.clock-mode cache hit", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+      });
       return this.clockModeCache.get(cacheKey)!;
     }
 
@@ -391,7 +512,14 @@ export class ChainTool {
           mode === "timestamp" ? ClockMode.Timestamp : ClockMode.BlockNumber;
         if (mode !== "timestamp" && mode !== "blocknumber") {
           console.warn(
-            `Unknown clock mode: ${mode} in result: ${result}. Defaulting to blocknumber.`
+            DegovIndexerHelpers.formatLogLine("chaintool.clock-mode fallback", {
+              chainId: options.chainId,
+              contract: options.contractAddress,
+              reason: "unknown-clock-mode",
+              mode,
+              rawResult: result,
+              fallback: ClockMode.BlockNumber,
+            })
           );
         }
       } else {
@@ -400,16 +528,15 @@ export class ChainTool {
 
       this.clockModeCache.set(cacheKey, modeToCache);
       return modeToCache;
-    } catch (error: any) {
-      const message = error.message;
-      if (
-        message &&
-        (message.includes("contract function not found") ||
-          message.includes("CLOCK_MODE"))
-      ) {
-        // If the function doesn't exist, it's a blocknumber-based contract. Cache this result.
+    } catch (error) {
+      if (isClockModeUnavailableError(error)) {
         console.warn(
-          `CLOCK_MODE function not found for ${options.contractAddress}. Caching as ${ClockMode.BlockNumber}.`
+          DegovIndexerHelpers.formatLogLine("chaintool.clock-mode fallback", {
+            chainId: options.chainId,
+            contract: options.contractAddress,
+            reason: clockModeFallbackReason(error),
+            fallback: ClockMode.BlockNumber,
+          })
         );
         this.clockModeCache.set(cacheKey, ClockMode.BlockNumber);
         return ClockMode.BlockNumber;
@@ -418,8 +545,161 @@ export class ChainTool {
     }
   }
 
+  async readContract<T = unknown>(options: ReadContractOptions): Promise<T> {
+    const result = await this._executeWithFallbacks(options, (client) =>
+      client.readContract({
+        address: options.contractAddress,
+        abi: options.abi,
+        functionName: options.functionName as never,
+        args: options.args as never,
+      })
+    );
+
+    return result as T;
+  }
+
+  async readOptionalContract<T = unknown>(
+    options: ReadContractOptions
+  ): Promise<T | undefined> {
+    try {
+      return await this.readContract<T>(options);
+    } catch (error) {
+      if (this.isMissingFunctionError(error)) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async currentClock(options: BaseContractOptions): Promise<CurrentClockResult> {
+    const clockMode = await this.clockMode(options);
+
+    try {
+      const timepoint = BigInt(
+        await this.readContract<bigint>({
+          ...options,
+          abi: ABI_FUNCTION_CLOCK,
+          functionName: "clock",
+        })
+      );
+
+      if (clockMode === ClockMode.Timestamp) {
+        return {
+          clockMode,
+          timepoint,
+          timestampMs: timepoint * 1000n,
+        };
+      }
+
+      const timestampMs =
+        (await this.timepointToTimestampMs({
+          ...options,
+          timepoint,
+          clockMode,
+        })) ?? 0n;
+
+      return {
+        clockMode,
+        timepoint,
+        timestampMs,
+      };
+    } catch (error) {
+      if (!this.isMissingFunctionError(error)) {
+        throw error;
+      }
+    }
+
+    const latestBlock = await this._executeWithFallbacks(options, (client) =>
+      client.getBlock()
+    );
+
+    return {
+      clockMode,
+      timepoint:
+        clockMode === ClockMode.Timestamp
+          ? latestBlock.timestamp
+          : (latestBlock.number ?? 0n),
+      timestampMs: latestBlock.timestamp * 1000n,
+    };
+  }
+
+  async historicalVotes(
+    options: BaseContractOptions & {
+      account: `0x${string}`;
+      timepoint: bigint;
+    }
+  ): Promise<HistoricalVotesResult> {
+    try {
+      const votes = BigInt(
+        await this.readContract<bigint>({
+          ...options,
+          abi: ABI_FUNCTION_GET_PAST_VOTES,
+          functionName: "getPastVotes",
+          args: [options.account, options.timepoint],
+        })
+      );
+
+      return {
+        method: "getPastVotes",
+        votes,
+      };
+    } catch (error) {
+      if (!this.isMissingFunctionError(error)) {
+        throw error;
+      }
+    }
+
+    const votes = BigInt(
+      await this.readContract<bigint>({
+        ...options,
+        abi: ABI_FUNCTION_GET_PRIOR_VOTES,
+        functionName: "getPriorVotes",
+        args: [options.account, options.timepoint],
+      })
+    );
+
+    return {
+      method: "getPriorVotes",
+      votes,
+    };
+  }
+
+  async timepointToTimestampMs(options: {
+    chainId: number;
+    contractAddress: `0x${string}`;
+    rpcs?: string[];
+    timepoint: bigint;
+    clockMode?: ClockMode;
+  }): Promise<bigint | undefined> {
+    const clockMode =
+      options.clockMode ?? (await this.clockMode(options));
+    if (clockMode === ClockMode.Timestamp) {
+      return options.timepoint * 1000n;
+    }
+
+    try {
+      const block = await this._executeWithFallbacks(options, (client) =>
+        client.getBlock({ blockNumber: options.timepoint })
+      );
+      return block.timestamp * 1000n;
+    } catch (error) {
+      console.warn(
+        DegovIndexerHelpers.formatLogLine(
+          "chaintool.timepoint timestamp unresolved",
+          {
+            chainId: options.chainId,
+            contract: options.contractAddress,
+            timepoint: options.timepoint,
+            error: DegovIndexerHelpers.formatError(error),
+          },
+        )
+      );
+      return undefined;
+    }
+  }
+
   async quorum(options: QueryQuorumOptions): Promise<QuorumResult> {
-    const cacheKey = `${options.chainId}:${options.contractAddress}`;
+    const cacheKey = `${options.chainId}:${options.contractAddress}:${options.timepoint?.toString() ?? "latest"}`;
     const cachedEntry = this.quorumCache.get(cacheKey);
 
     // 1. Check if a valid, non-expired cache entry exists.
@@ -427,55 +707,39 @@ export class ChainTool {
       cachedEntry &&
       Date.now() - cachedEntry.timestamp < QUORUM_CACHE_DURATION_MS
     ) {
-      console.log(
-        `Using fresh cached quorum for ${options.contractAddress} on chain ${options.chainId}`
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.quorum cache hit", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+      });
       return cachedEntry.result;
     }
 
     // 2. If cache is stale or empty, try to fetch new data.
     try {
       if (cachedEntry) {
-        console.log(
-          `Cached quorum for ${options.contractAddress} is stale. Refetching...`
-        );
+        DegovIndexerHelpers.logVerbose("chaintool.quorum cache stale", {
+          chainId: options.chainId,
+          contract: options.contractAddress,
+        });
       }
 
       const clockMode = await this.clockMode(options);
       let timepoint: bigint;
 
-      try {
-        const clockResult = await this._executeWithFallbacks(
-          options,
-          (client) =>
-            client.readContract({
-              address: options.contractAddress,
-              abi: ABI_FUNCTION_CLOCK,
-              functionName: "clock",
-            })
-        );
-        timepoint = BigInt(clockResult as any);
-      } catch (e: any) {
-        console.warn(
-          `Failed to query clock for ${options.contractAddress}, falling back to latest block: ${e.message}`
-        );
-        const latestBlock = await this._executeWithFallbacks(
-          options,
-          (client) => client.getBlock()
-        );
-        timepoint =
-          clockMode === ClockMode.Timestamp
-            ? latestBlock.timestamp
-            : latestBlock.number!;
-      }
+      if (options.timepoint !== undefined) {
+        timepoint = options.timepoint;
+      } else {
+        const currentClock = await this.currentClock(options);
+        timepoint = currentClock.timepoint;
 
-      switch (clockMode) {
-        case ClockMode.Timestamp:
-          timepoint -= 60n * 3n; // 3 minutes ago
-          break;
-        case ClockMode.BlockNumber:
-          timepoint -= 15n; // 15 blocks ago
-          break;
+        switch (clockMode) {
+          case ClockMode.Timestamp:
+            timepoint = timepoint > 60n * 3n ? timepoint - 60n * 3n : 0n;
+            break;
+          case ClockMode.BlockNumber:
+            timepoint = timepoint > 15n ? timepoint - 15n : 0n;
+            break;
+        }
       }
 
       const quorumResult = await this._executeWithFallbacks(options, (client) =>
@@ -525,21 +789,32 @@ export class ChainTool {
         result: freshResult,
         timestamp: Date.now(),
       });
-      console.log(
-        `Successfully fetched and cached new quorum for ${options.contractAddress} on chain ${options.chainId}`
-      );
+      DegovIndexerHelpers.logVerbose("chaintool.quorum cached", {
+        chainId: options.chainId,
+        contract: options.contractAddress,
+        quorum,
+        decimals,
+        clockMode,
+      });
 
       return freshResult;
     } catch (error) {
       // 3. If fetching fails, use stale data if available.
       console.error(
-        `[ChainTool] Failed to fetch new quorum for ${options.contractAddress}:`,
-        error
+        DegovIndexerHelpers.formatLogLine("chaintool.quorum fetch failed", {
+          chainId: options.chainId,
+          contract: options.contractAddress,
+          error: DegovIndexerHelpers.formatError(error),
+        })
       );
 
       if (cachedEntry) {
         console.warn(
-          `[ChainTool] Serving stale quorum data for ${options.contractAddress} due to fetch failure.`
+          DegovIndexerHelpers.formatLogLine("chaintool.quorum cache used", {
+            chainId: options.chainId,
+            contract: options.contractAddress,
+            reason: "fetch-failed",
+          })
         );
         return cachedEntry.result;
       }

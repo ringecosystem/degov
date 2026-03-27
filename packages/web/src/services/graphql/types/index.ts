@@ -3,5 +3,6 @@ export * from "./delegates";
 export * from "./squidStatus";
 export * from "./profile";
 export * from "./contributors";
+export * from "./counts";
 export * from "./notifications";
 export * from "./treasury";

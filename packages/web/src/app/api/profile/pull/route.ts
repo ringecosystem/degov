@@ -4,6 +4,11 @@ import { Resp } from "@/types/api";
 
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
+import * as graphql from "../../common/graphql";
+import {
+  overlayProfilesWithContributorPower,
+  type StoredProfileRow,
+} from "../../common/profile-power";
 
 import type { NextRequest } from "next/server";
 
@@ -20,11 +25,11 @@ export async function POST(request: NextRequest) {
     const daocode = degovConfig.code;
 
     const sql = databaseConnection();
-    const members = await sql`
+    const storedMembers = (await sql`
       select
         u.id,
-        u.address,
         u.dao_code,
+        u.address,
         u.name,
         u.email,
         u.twitter,
@@ -41,7 +46,15 @@ export async function POST(request: NextRequest) {
       from d_user as u
       left join d_avatar as a on u.id = a.id
       where u.address in ${sql(body)} and u.dao_code = ${daocode}
-    `;
+    `) as StoredProfileRow[];
+    const contributorsByAddress = await graphql.inspectContributorsByAddress({
+      request,
+      addresses: storedMembers.map((member) => member.address),
+    });
+    const members = overlayProfilesWithContributorPower(
+      storedMembers,
+      contributorsByAddress
+    );
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
     console.warn("err", err);

@@ -1,11 +1,13 @@
 import { clearToken } from "@/lib/auth/token-manager";
 import { getToken } from "@/lib/auth/token-manager";
+import type { Config } from "@/types/config";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
 import { request } from "./client";
 import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
+import { resolveGovernanceCounts } from "./types/counts";
 
 import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
@@ -22,6 +24,67 @@ const emptyProposalMetrics: Types.ProposalMetricsItem = {
   votesWithoutParamsCount: "0",
 };
 
+export type GovernanceScope = {
+  chainId_eq?: number;
+  governorAddress_eq?: string;
+  daoCode_eq?: string;
+};
+
+type ProposalVoterFilter = {
+  voter_eq?: string;
+  support_eq?: number;
+};
+
+export type ProposalWhere = GovernanceScope & {
+  proposalId_eq?: string;
+  proposer_eq?: string;
+  description_containsInsensitive?: string;
+  voters_every?: ProposalVoterFilter;
+  voters_some?: ProposalVoterFilter;
+  OR?: {
+    voters_some?: ProposalVoterFilter;
+  };
+};
+
+type ProposalMetricsWhere = GovernanceScope & {
+  id_eq?: string;
+};
+
+type DelegateWhere = GovernanceScope & {
+  toDelegate_eq?: string;
+};
+
+type DelegateMappingWhere = GovernanceScope & {
+  from_eq?: string;
+  to_eq?: string;
+};
+
+type ContributorWhere = GovernanceScope & {
+  id_in?: string[];
+  id_not_eq?: string;
+  id_eq?: string;
+};
+
+const normalizeScopeAddress = (address?: string | null) => {
+  return address ? address.toLowerCase() : undefined;
+};
+
+export const buildGovernanceScope = (
+  daoConfig?: Config | null
+): GovernanceScope => {
+  if (!daoConfig) {
+    return {};
+  }
+
+  return {
+    chainId_eq: daoConfig.chain?.id,
+    governorAddress_eq: normalizeScopeAddress(
+      daoConfig.contracts?.governor
+    ),
+    daoCode_eq: daoConfig.code,
+  };
+};
+
 export const proposalService = {
   getAllProposals: async (
     endpoint: string,
@@ -29,14 +92,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        proposalId_eq?: string;
-        proposer_eq?: string;
-        voters_every?: {
-          voter_eq?: string;
-          support_eq?: number;
-        };
-      };
+      where?: ProposalWhere;
     } = {}
   ) => {
     const response = await request<Types.ProposalResponse>(
@@ -52,14 +108,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        proposalId_eq?: string;
-        proposer_eq?: string;
-        voters_every?: {
-          voter_eq?: string;
-          support_eq?: number;
-        };
-      };
+      where?: ProposalWhere;
       voter?: string;
     } = {}
   ) => {
@@ -76,9 +125,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        description_containsInsensitive?: string;
-      };
+      where?: ProposalWhere;
     } = {}
   ) => {
     const response = await request<Types.ProposalDescriptionResponse>(
@@ -88,15 +135,33 @@ export const proposalService = {
     );
     return response?.proposals ?? [];
   },
-  getProposalMetrics: async (endpoint: string) => {
+  getProposalMetrics: async (endpoint: string, scope?: GovernanceScope) => {
     const response = await request<Types.ProposalMetricsResponse>(
       endpoint,
-      Queries.GET_PROPOSAL_METRICS
+      Queries.GET_PROPOSAL_METRICS,
+      {
+        where: {
+          id_eq: "global",
+          ...scope,
+        } satisfies ProposalMetricsWhere,
+      }
     );
     return response?.dataMetrics?.[0] ?? emptyProposalMetrics;
   },
+  getGovernanceCounts: async (endpoint: string) => {
+    const response = await request<Types.GovernanceCountsResponse>(
+      endpoint,
+      Queries.GET_GOVERNANCE_COUNTS
+    );
+    return resolveGovernanceCounts(response);
+  },
 
-  getProposalVoteRate: async (endpoint: string, voter: string, limit = 10) => {
+  getProposalVoteRate: async (
+    endpoint: string,
+    voter: string,
+    limit = 10,
+    scope?: GovernanceScope
+  ) => {
     if (!voter) {
       return [] as Types.ProposalVoteRateResponse["proposals"];
     }
@@ -106,6 +171,7 @@ export const proposalService = {
       {
         limit,
         voter: voter.toLowerCase(),
+        where: scope,
       }
     );
     return response?.proposals ?? [];
@@ -175,37 +241,52 @@ export const proposalService = {
     }
   },
 
-  getProposalCanceledById: async (endpoint: string, id: string) => {
+  getProposalCanceledById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalCanceledByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_CANCELED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );
     return response?.proposalCanceleds?.[0];
   },
-  getProposalExecutedById: async (endpoint: string, id: string) => {
+  getProposalExecutedById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalExecutedByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_EXECUTED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );
     return response?.proposalExecuteds?.[0];
   },
-  getProposalQueuedById: async (endpoint: string, id: string) => {
+  getProposalQueuedById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalQueuedByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_QUEUED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );
@@ -231,10 +312,7 @@ export const delegateService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        power_gt?: number;
-        toDelegate_eq?: string;
-      };
+      where?: DelegateWhere;
     } = {}
   ) => {
     const response = await request<Types.DelegateResponse>(
@@ -247,9 +325,10 @@ export const delegateService = {
   getDelegateMappings: async (
     endpoint: string,
     options: {
-      where: {
-        from_eq: string;
-      };
+      limit?: number;
+      offset?: number;
+      orderBy?: string | string[];
+      where: DelegateMappingWhere;
     } = {
       where: {
         from_eq: "",
@@ -259,25 +338,32 @@ export const delegateService = {
     const response = await request<Types.DelegateMappingResponse>(
       endpoint,
       Queries.GET_DELEGATE_MAPPINGS,
-      options
+      {
+        limit: options?.limit,
+        offset: options?.offset,
+        orderBy: Array.isArray(options?.orderBy)
+          ? options.orderBy
+          : options?.orderBy
+            ? [options.orderBy]
+            : undefined,
+        where: options?.where,
+      }
     );
     return response?.delegateMappings ?? [];
   },
   getDelegateMappingsConnection: async (
     endpoint: string,
     options: {
-      where: {
-        toDelegate_eq: string;
-      };
+      where: DelegateMappingWhere;
       orderBy: string[];
     }
   ) => {
-    const response = await request<Types.DelegateConnectionResponse>(
+    const response = await request<Types.DelegateMappingConnectionResponse>(
       endpoint,
       Queries.GET_DELEGATE_MAPPINGS_CONNECTION,
       options
     );
-    return response?.delegatesConnection;
+    return response?.delegateMappingsConnection;
   },
 };
 
@@ -315,11 +401,7 @@ export const contributorService = {
       limit: number;
       offset: number;
       orderBy?: string | string[];
-      where?: {
-        id_in?: string[];
-        id_not_eq?: string;
-        id_eq?: string;
-      };
+      where?: ContributorWhere;
     } = {
       limit: 10,
       offset: 0,

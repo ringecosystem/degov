@@ -1,7 +1,7 @@
 "use client";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 
 import { Nav } from "@/app/nav";
@@ -17,6 +17,7 @@ import { INDEXER_CONFIG } from "@/config/indexer";
 import { useBlockSync } from "@/hooks/useBlockSync";
 import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_WIDTH = {
@@ -31,6 +32,7 @@ const SIDEBAR_PADDING = {
 
 export const Aside = () => {
   const config = useDaoConfig();
+  const t = useTranslations("common.sidebar");
   const [collapsed, setCollapsed] = useState(false);
   const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
   const { isDarkTheme } = useCustomTheme();
@@ -75,7 +77,7 @@ export const Aside = () => {
         <button
           onClick={toggleCollapse}
           className="absolute -right-3 top-[100px] z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-background shadow-md hover:scale-105 transition-all duration-100 focus:outline-hidden border border-border"
-          aria-label={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          aria-label={collapsed ? t("expand") : t("collapse")}
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>

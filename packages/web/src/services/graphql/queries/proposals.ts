@@ -28,11 +28,20 @@ export const GET_ALL_PROPOSALS = gql`
       voteStart
       voteStartTimestamp
       voteEndTimestamp
+      proposalDeadline
+      proposalEta
+      queueReadyAt
+      queueExpiresAt
       blockInterval
       clockMode
       quorum
       decimals
       title
+      chainId
+      daoCode
+      governorAddress
+      timelockAddress
+      timelockGracePeriod
       metricsVotesWeightAbstainSum
       metricsVotesWeightAgainstSum
       metricsVotesWeightForSum
@@ -70,6 +79,8 @@ export const GET_PROPOSALS_LIST = gql`
       blockTimestamp
       id
       proposalId
+      chainId
+      governorAddress
       proposer
       title
       metricsVotesWeightAbstainSum
@@ -97,6 +108,8 @@ export const GET_PROPOSALS_BY_DESCRIPTION = gql`
       where: $where
     ) {
       proposalId
+      chainId
+      governorAddress
       description
     }
   }
@@ -151,8 +164,8 @@ export const GET_PROPOSAL_QUEUED_BY_ID = gql`
 `;
 
 export const GET_PROPOSAL_METRICS = gql`
-  query GetProposalMetrics {
-    dataMetrics {
+  query GetProposalMetrics($where: DataMetricWhereInput) {
+    dataMetrics(where: $where) {
       memberCount
       powerSum
       proposalsCount
@@ -167,11 +180,16 @@ export const GET_PROPOSAL_METRICS = gql`
 `;
 
 export const GET_PROPOSAL_VOTE_RATE = gql`
-  query QueryProposalVoteRate($voter: String!, $limit: Int!) {
+  query QueryProposalVoteRate(
+    $voter: String!
+    $limit: Int!
+    $where: ProposalWhereInput
+  ) {
     proposals(
       offset: 0
       limit: $limit
       orderBy: blockTimestamp_DESC_NULLS_LAST
+      where: $where
     ) {
       id
       title

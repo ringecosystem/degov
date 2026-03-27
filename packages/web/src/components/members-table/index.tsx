@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 import { formatInteger } from "@/utils/number";
@@ -44,13 +45,17 @@ export function MembersTable({
   onLastVotedSortChange,
   onDelegatorsSortChange,
 }: MembersTableProps) {
+  const t = useTranslations("delegates");
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint ?? "",
+        buildGovernanceScope(daoConfig)
+      ),
     enabled: !!daoConfig?.indexer?.endpoint,
   });
   const initialPageSize =
@@ -79,7 +84,7 @@ export function MembersTable({
   const columns = useMemo<ColumnType<ContributorItem>[]>(
     () => [
       {
-        title: "Name",
+        title: t("columns.name"),
         key: "name",
         width: "236.6px",
         className: "text-left",
@@ -90,7 +95,7 @@ export function MembersTable({
       {
         title: (
           <SortableCell
-            label="Voting Power"
+            label={t("columns.votingPower")}
             sortState={
               sortState.field === "power" ? sortState.direction : undefined
             }
@@ -131,7 +136,7 @@ export function MembersTable({
       {
         title: (
           <SortableCell
-            label="Last Voted"
+            label={t("columns.lastVoted")}
             sortState={
               sortState.field === "lastVoted" ? sortState.direction : undefined
             }
@@ -147,7 +152,7 @@ export function MembersTable({
           if (!record?.lastVoteTimestamp) {
             return (
               <span className="text-muted-foreground text-sm">
-                No Vote History
+                {t("noVoteHistory")}
               </span>
             );
           }
@@ -162,7 +167,7 @@ export function MembersTable({
       {
         title: (
           <SortableCell
-            label="Delegators"
+            label={t("columns.delegators")}
             sortState={
               sortState.field === "delegators" ? sortState.direction : undefined
             }
@@ -181,7 +186,7 @@ export function MembersTable({
         ),
       },
       {
-        title: "Action",
+        title: t("columns.action"),
         key: "action",
         width: "215.26px",
         className: "text-right",
@@ -193,7 +198,7 @@ export function MembersTable({
             }}
             className="h-[30px] rounded-[100px] border border-border bg-card p-[10px]"
           >
-            Delegate
+            {t("delegate")}
           </Button>
         ),
       },
@@ -208,6 +213,7 @@ export function MembersTable({
       onPowerSortChange,
       onLastVotedSortChange,
       onDelegatorsSortChange,
+      t,
     ]
   );
 
@@ -219,14 +225,14 @@ export function MembersTable({
         dataSource={dataSource}
         rowKey="id"
         isLoading={isPending}
-        emptyText={searchTerm ? "No matching delegates found" : "No Delegates"}
+        emptyText={searchTerm ? t("noMatchingDelegates") : t("noDelegates")}
         caption={
           hasNextPage && !searchTerm ? (
             <div
               className="text-foreground transition-colors hover:text-foreground/80 cursor-pointer"
               onClick={loadMoreData}
             >
-              {isFetchingNextPage ? "Loading more..." : "View more"}
+              {isFetchingNextPage ? t("loadingMore") : t("viewMore")}
             </div>
           ) : null
         }

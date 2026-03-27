@@ -1,4 +1,5 @@
 import BigNumber from "bignumber.js";
+import { useTranslations } from "next-intl";
 
 import type { TreasuryAssetWithPortfolio } from "@/hooks/useTreasuryAssets";
 import { formatCurrencyFixed, formatNumberForDisplay } from "@/utils";
@@ -24,11 +25,12 @@ const formatTokenAmount = (balance?: string) => {
 };
 
 export function MobileAssetItem({ asset, explorer }: MobileAssetItemProps) {
+  const t = useTranslations("treasury");
   const hasBalanceUSD =
     asset.balanceUSD !== null && asset.balanceUSD !== undefined;
   const valueDisplay = hasBalanceUSD
     ? formatCurrencyFixed(asset.balanceUSDValue)
-    : "N/A";
+    : t("fallback.notAvailable");
   const balanceDisplay = `${formatTokenAmount(asset.balance)} ${
     asset.symbol || ""
   }`.trim();
@@ -40,11 +42,11 @@ export function MobileAssetItem({ asset, explorer }: MobileAssetItemProps) {
       </div>
       <div className="inline-flex flex-col items-end gap-2.5">
         <div className="inline-flex items-center gap-[5px] text-[12px]">
-          <span className="text-muted-foreground">Value</span>
+          <span className="text-muted-foreground">{t("mobile.value")}</span>
           <span className="text-foreground">{valueDisplay}</span>
         </div>
         <div className="inline-flex items-center gap-[5px] text-[12px]">
-          <span className="text-muted-foreground">Balance</span>
+          <span className="text-muted-foreground">{t("mobile.balance")}</span>
           <span className="text-foreground">{balanceDisplay}</span>
         </div>
       </div>

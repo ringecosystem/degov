@@ -1,4 +1,5 @@
 "use client";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
@@ -17,6 +18,7 @@ export const VoteStatistics = ({
   abstainVotes,
   className,
 }: VoteStatisticsProps) => {
+  const t = useTranslations("proposals");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
   const { forPercentage, againstPercentage, abstainPercentage } =
@@ -47,7 +49,7 @@ export const VoteStatistics = ({
   if (forVotes === 0n && againstVotes === 0n && abstainVotes === 0n) {
     return (
       <span className="text-[16px] font-normal text-muted-foreground ">
-        No votes
+        {t("noVotes")}
       </span>
     );
   }

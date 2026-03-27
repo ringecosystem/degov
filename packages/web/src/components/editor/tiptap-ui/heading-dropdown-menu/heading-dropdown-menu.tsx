@@ -1,6 +1,7 @@
 "use client";
 
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 // --- Hooks ---
@@ -41,6 +42,7 @@ export function HeadingDropdownMenu({
   onOpenChange,
   ...props
 }: HeadingDropdownMenuProps) {
+  const t = useTranslations("common.editor.heading");
   const [isOpen, setIsOpen] = React.useState(false);
   const editor = useTiptapEditor(providedEditor);
 
@@ -106,9 +108,9 @@ export function HeadingDropdownMenu({
           data-disabled={isDisabled}
           role="button"
           tabIndex={-1}
-          aria-label="Format text as heading"
+          aria-label={t("ariaLabel")}
           aria-pressed={isAnyHeadingActive}
-          tooltip="Heading"
+          tooltip={t("tooltip")}
           {...props}
         >
           {getActiveIcon()}

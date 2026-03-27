@@ -17,6 +17,7 @@ export type DelegateMappingItem = {
   blockTimestamp: string;
   from: string;
   id: string;
+  power: string;
   to: string;
   transactionHash: string;
 };

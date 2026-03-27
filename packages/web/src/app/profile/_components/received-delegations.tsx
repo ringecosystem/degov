@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useTranslations } from "next-intl";
+import { useMemo, useState } from "react";
 
 import { DelegationList } from "@/components/delegation-list";
 import { DelegationTable } from "@/components/delegation-table";
@@ -11,7 +12,7 @@ import type {
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { delegateService } from "@/services/graphql";
+import { buildGovernanceScope, delegateService } from "@/services/graphql";
 
 import type { Address } from "viem";
 
@@ -39,19 +40,30 @@ const ORDER_BY_MAP: Record<
 };
 
 export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
+  const t = useTranslations("profile.receivedDelegations");
   const daoConfig = useDaoConfig();
   const [sortState, setSortState] =
     useState<DelegationSortState>(DEFAULT_SORT_STATE);
+  const governanceScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
 
   // Get received delegations count
   const { data: delegationConnection } = useQuery({
-    queryKey: ["delegatesConnection", address, daoConfig?.indexer?.endpoint],
+    queryKey: [
+      "delegatesConnection",
+      address,
+      daoConfig?.indexer?.endpoint,
+      governanceScope,
+    ],
     queryFn: () =>
       delegateService.getDelegateMappingsConnection(
         daoConfig?.indexer?.endpoint as string,
         {
           where: {
-            toDelegate_eq: address.toLowerCase(),
+            ...governanceScope,
+            to_eq: address.toLowerCase(),
           },
           orderBy: ["id_ASC"],
         }
@@ -62,9 +74,9 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
   const getDisplayTitle = () => {
     const totalCount = delegationConnection?.totalCount;
     if (totalCount !== undefined) {
-      return `Received Delegations (${totalCount})`;
+      return t("titleWithCount", { count: totalCount });
     }
-    return "Received Delegations";
+    return t("title");
   };
 
   const orderBy = ORDER_BY_MAP[sortState.field][sortState.direction];

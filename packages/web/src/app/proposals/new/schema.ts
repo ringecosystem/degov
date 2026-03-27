@@ -4,87 +4,95 @@ import { z } from "zod";
 import { isValidAbi } from "@/utils/abi";
 import { generateHash } from "@/utils/helpers";
 
+type TranslationFn = (
+  key: string,
+  values?: Record<string, string | number | Date>
+) => string;
+
 /**
  * Proposal content schema
  */
-export const proposalSchema = z.object({
-  title: z
-    .string()
-    .min(1, "Title is required")
-    .max(80, "Title must be less than 80 characters"),
-  markdown: z
-    .string()
-    .min(1, "Proposal description is required")
-    .refine((val) => {
-      if (!val) return false;
-      const cleanContent = val
-        .replace(/<[^>]*>/g, "")
-        .replace(/\u200B/g, "")
-        .replace(/\s/g, "");
+export const createProposalSchema = (t: TranslationFn) =>
+  z.object({
+    title: z
+      .string()
+      .min(1, t("proposal.validation.titleRequired"))
+      .max(80, t("proposal.validation.titleMax")),
+    markdown: z
+      .string()
+      .min(1, t("proposal.validation.descriptionRequired"))
+      .refine((val) => {
+        if (!val) return false;
+        const cleanContent = val
+          .replace(/<[^>]*>/g, "")
+          .replace(/\u200B/g, "")
+          .replace(/\s/g, "");
 
-      return cleanContent.length > 0;
-    }, "Proposal description is required"),
-  discussion: z
-    .string()
-    .optional()
-    .refine((val) => {
-      if (!val) return true; // Optional field, empty is valid
-      // Basic URL validation
-      try {
-        new URL(val);
-        return true;
-      } catch {
-        return false;
-      }
-    }, "Must be a valid URL"),
-});
+        return cleanContent.length > 0;
+      }, t("proposal.validation.descriptionRequired")),
+    discussion: z
+      .string()
+      .optional()
+      .refine((val) => {
+        if (!val) return true;
+        try {
+          new URL(val);
+          return true;
+        } catch {
+          return false;
+        }
+      }, t("proposal.validation.discussionUrl")),
+  });
 
-export type ProposalContent = z.infer<typeof proposalSchema>;
+export type ProposalContent = z.infer<ReturnType<typeof createProposalSchema>>;
 
 /**
  * Transfer content schema
  */
-export const transferSchema = z.object({
-  recipient: z
-    .string()
-    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
-  amount: z
-    .string()
-    .min(1, "Amount is required")
-    .refine(
-      (val) => !isNaN(Number(val)) && Number(val) > 0,
-      "Amount must be greater than 0"
-    ),
-});
+export const createTransferSchema = (t: TranslationFn) =>
+  z.object({
+    recipient: z
+      .string()
+      .refine((val) => isAddress(val), t("transfer.errors.recipientAddress")),
+    amount: z
+      .string()
+      .min(1, t("transfer.errors.amountRequired"))
+      .refine(
+        (val) => !isNaN(Number(val)) && Number(val) > 0,
+        t("transfer.errors.amountPositive")
+      ),
+  });
 
-export type TransferContent = z.infer<typeof transferSchema>;
+export type TransferContent = z.infer<ReturnType<typeof createTransferSchema>>;
 
 /**
  * custom schema
  */
-export const calldataItemSchema = z
-  .object({
-    name: z.string(),
-    type: z.string(),
-    value: z.union([z.string(), z.array(z.string())]),
-    isArray: z.boolean(),
-  })
-  .refine(
-    (data) => {
-      return isValidCalldataValue(data.value, data.type);
-    },
-    {
-      message: "Parameter value is required and must match the argument type",
-      path: ["value"],
-    }
-  );
-export type CalldataItem = z.infer<typeof calldataItemSchema>;
+export const createCalldataItemSchema = (t: TranslationFn) =>
+  z
+    .object({
+      name: z.string(),
+      type: z.string(),
+      value: z.union([z.string(), z.array(z.string())]),
+      isArray: z.boolean(),
+    })
+    .refine(
+      (data) => {
+        return isValidCalldataValue(data.value, data.type);
+      },
+      {
+        message: t("custom.validation.parameterValue"),
+        path: ["value"],
+      }
+    );
+export type CalldataItem = z.infer<ReturnType<typeof createCalldataItemSchema>>;
 
-export const calldataSchema = z.object({
-  calldataItems: z.array(calldataItemSchema),
-});
+export const createCalldataSchema = (t: TranslationFn) =>
+  z.object({
+    calldataItems: z.array(createCalldataItemSchema(t)),
+  });
 
-export type Calldata = z.infer<typeof calldataSchema>;
+export type Calldata = z.infer<ReturnType<typeof createCalldataSchema>>;
 
 export const isValidCalldataValue = (
   value: string | string[],
@@ -153,84 +161,91 @@ const isValidSingleValue = (value: string, type: string): boolean => {
   }
 };
 
-export const customActionSchema = z.object({
-  target: z
-    .string()
-    .min(1, "Target address is required")
-    .refine((val) => isAddress(val), "Must be a valid eth address"),
-  contractType: z.string(),
-  contractMethod: z.string(),
-  calldata: z.array(calldataItemSchema).optional(),
-  value: z
-    .string()
-    .optional()
+export const createCustomActionSchema = (t: TranslationFn) =>
+  z.object({
+    target: z
+      .string()
+      .min(1, t("custom.validation.targetRequired"))
+      .refine((val) => isAddress(val), t("custom.validation.targetAddress")),
+    contractType: z.string(),
+    contractMethod: z.string(),
+    calldata: z.array(createCalldataItemSchema(t)).optional(),
+    value: z
+      .string()
+      .optional()
+      .refine(
+        (val) => !val || (!isNaN(Number(val)) && Number(val) >= 0),
+        t("custom.validation.valueNonNegative")
+      ),
+    customAbiContent: z.array(z.any()).refine((val) => {
+      if (!val) return false;
+      if (Array.isArray(val) && val.length === 0) return false;
+      try {
+        return isValidAbi(val);
+      } catch {
+        return false;
+      }
+    }, t("custom.validation.validAbi")),
+  });
+
+export type CustomContent = z.infer<ReturnType<typeof createCustomActionSchema>>;
+
+export const createTransactionSchema = (t: TranslationFn) =>
+  z.object({
+    from: z
+      .string()
+      .refine((val) => isAddress(val), t("xaccount.validation.address")),
+    to: z
+      .string()
+      .refine((val) => isAddress(val), t("xaccount.validation.address")),
+    value: z.string(),
+    calldata: z.string(),
+  });
+
+export type TransactionContent = z.infer<ReturnType<typeof createTransactionSchema>>;
+
+export const createCrossChainCallParamsSchema = (t: TranslationFn) =>
+  z.object({
+    toChainId: z.string(),
+    toDapp: z
+      .string()
+      .refine((val) => isAddress(val), t("xaccount.validation.address")),
+    message: z.string(),
+    params: z.string(),
+  });
+
+export const createCrossChainCallSchema = (t: TranslationFn) =>
+  z.object({
+    port: z
+      .string()
+      .refine((val) => isAddress(val), t("xaccount.validation.address")),
+    value: z.string(),
+    function: z.string(),
+    params: createCrossChainCallParamsSchema(t),
+  });
+
+export type CrossChainCallContent = z.infer<
+  ReturnType<typeof createCrossChainCallSchema>
+>;
+
+export const createXaccountSchema = (t: TranslationFn) =>
+  z
+    .object({
+      sourceChainId: z.number(),
+      targetChainId: z.number(),
+      crossChainCallHash: z.string(),
+      transaction: createTransactionSchema(t),
+      crossChainCall: createCrossChainCallSchema(t),
+    })
     .refine(
-      (val) => !val || (!isNaN(Number(val)) && Number(val) >= 0),
-      "Value must be a non-negative number"
-    ),
-  customAbiContent: z.array(z.any()).refine((val) => {
-    if (!val) return false;
-    if (Array.isArray(val) && val.length === 0) return false;
-    try {
-      return isValidAbi(val);
-    } catch {
-      return false;
-    }
-  }, "Must be a valid ABI JSON file"),
-});
+      (data) => {
+        const calculatedHash = generateHash(data.crossChainCall);
+        return calculatedHash === data.crossChainCallHash;
+      },
+      {
+        message: t("xaccount.validation.hashFailed"),
+        path: ["crossChainCallHash"],
+      }
+    );
 
-export type CustomContent = z.infer<typeof customActionSchema>;
-
-export const transactionSchema = z.object({
-  from: z
-    .string()
-    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
-  to: z
-    .string()
-    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
-  value: z.string(),
-  calldata: z.string(),
-});
-
-export type TransactionContent = z.infer<typeof transactionSchema>;
-
-export const crossChainCallParamsSchema = z.object({
-  toChainId: z.string(),
-  toDapp: z
-    .string()
-    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
-  message: z.string(),
-  params: z.string(),
-});
-
-export const crossChainCallSchema = z.object({
-  port: z
-    .string()
-    .refine((val) => isAddress(val), "Must be a valid Ethereum address"),
-  value: z.string(),
-  function: z.string(),
-  params: crossChainCallParamsSchema,
-});
-
-export type CrossChainCallContent = z.infer<typeof crossChainCallSchema>;
-
-export const xaccountSchema = z
-  .object({
-    sourceChainId: z.number(),
-    targetChainId: z.number(),
-    crossChainCallHash: z.string(),
-    transaction: transactionSchema,
-    crossChainCall: crossChainCallSchema,
-  })
-  .refine(
-    (data) => {
-      const calculatedHash = generateHash(data.crossChainCall);
-      return calculatedHash === data.crossChainCallHash;
-    },
-    {
-      message: "Cross-chain call hash verification failed",
-      path: ["crossChainCallHash"],
-    }
-  );
-
-export type XAccountContent = z.infer<typeof xaccountSchema>;
+export type XAccountContent = z.infer<ReturnType<typeof createXaccountSchema>>;

@@ -6,6 +6,11 @@ import { Resp } from "@/types/api";
 
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
+import * as graphql from "../../common/graphql";
+import {
+  overlayProfileWithContributorPower,
+  type StoredProfileRow,
+} from "../../common/profile-power";
 
 import type { NextRequest } from "next/server";
 
@@ -39,11 +44,11 @@ export async function GET(request: NextRequest) {
     }
     const sql = databaseConnection();
 
-    const [storedUser] = await sql`
+    const [storedUser] = (await sql`
       select
         u.id,
-        u.address,
         u.dao_code,
+        u.address,
         u.name,
         u.email,
         u.twitter,
@@ -61,9 +66,24 @@ export async function GET(request: NextRequest) {
       left join d_avatar as a on u.id = a.id
       where u.address = ${address} and u.dao_code = ${daocode}
       limit 1
-      `;
+    `) as StoredProfileRow[];
 
-    return NextResponse.json(Resp.ok(storedUser));
+    if (!storedUser) {
+      return NextResponse.json(Resp.ok(storedUser));
+    }
+
+    const contributor = await graphql.inspectContributor({
+      request,
+      address,
+    });
+    const profile = overlayProfileWithContributorPower(
+      storedUser,
+      new Map(
+        contributor ? [[contributor.id.toLowerCase(), contributor]] : undefined
+      )
+    );
+
+    return NextResponse.json(Resp.ok(profile));
   } catch (err) {
     console.warn("err", err);
     const fullMsg = `${(err as Error)?.message || err}`;
@@ -102,7 +122,27 @@ export async function POST(request: NextRequest) {
     const sql = databaseConnection();
 
     const [storedUser] =
-      await sql`select * from d_user where address = ${address} and dao_code = ${daocode} limit 1`;
+      (await sql`
+        select
+          id,
+          dao_code,
+          address,
+          name,
+          email,
+          twitter,
+          github,
+          discord,
+          telegram,
+          medium,
+          delegate_statement,
+          additional,
+          last_login_time,
+          ctime,
+          utime
+        from d_user
+        where address = ${address} and dao_code = ${daocode}
+        limit 1
+      `) as StoredProfileRow[];
     if (!storedUser) {
       return NextResponse.json(Resp.err("unreachable, qed"));
     }

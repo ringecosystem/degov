@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import { Button } from "@/components/ui/button";
 
 interface UserActionGroupProps {
@@ -14,6 +16,8 @@ export const UserActionGroup = ({
   onEditProfile,
   onDelegate,
 }: UserActionGroupProps) => {
+  const t = useTranslations("profile.actions");
+
   return (
     <div className="flex items-center gap-[10px]">
       {isOwnProfile ? (
@@ -23,11 +27,11 @@ export const UserActionGroup = ({
           size="sm"
           onClick={onEditProfile}
         >
-          Edit Profile
+          {t("editProfile")}
         </Button>
       ) : null}
       <Button className="rounded-full" onClick={onDelegate} size="sm">
-        {isDelegate ? "Delegate" : buttonText}
+        {isDelegate ? t("delegate") : buttonText}
       </Button>
     </div>
   );
