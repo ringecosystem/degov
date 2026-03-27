@@ -36,7 +36,10 @@ type DelegateVotesChanged @entity @index(fields: ["chainId", "governorAddress", 
   transactionHash: String!
 }
 
-type TokenTransfer @entity @index(fields: ["chainId", "governorAddress", "tokenAddress"]) {
+type TokenTransfer
+  @entity
+  @index(fields: ["chainId", "governorAddress", "tokenAddress"])
+  @index(fields: ["transactionHash"]) {
   id: ID!
   chainId: Int
   daoCode: String
@@ -561,7 +564,10 @@ type DataMetric @entity @index(fields: ["chainId", "governorAddress", "daoCode"]
 }
 
 
-type DelegateRolling @entity @index(fields: ["chainId", "governorAddress", "delegator"]) {
+type DelegateRolling
+  @entity
+  @index(fields: ["chainId", "governorAddress", "delegator"])
+  @index(fields: ["transactionHash"]) {
   id: ID! # tx hash
   chainId: Int
   daoCode: String

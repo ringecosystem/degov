@@ -1,5 +1,5 @@
-module.exports = class Data1774519274742 {
-    name = 'Data1774519274742'
+module.exports = class Data1774616794168 {
+    name = 'Data1774616794168'
 
     async up(db) {
         await db.query(`CREATE TABLE "delegate_changed" ("id" character varying NOT NULL, "chain_id" integer, "dao_code" text, "governor_address" text, "token_address" text, "contract_address" text, "log_index" integer, "transaction_index" integer, "delegator" text NOT NULL, "from_delegate" text NOT NULL, "to_delegate" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_82fcd22b1159cec837a6062982f" PRIMARY KEY ("id"))`)
@@ -7,6 +7,7 @@ module.exports = class Data1774519274742 {
         await db.query(`CREATE TABLE "delegate_votes_changed" ("id" character varying NOT NULL, "chain_id" integer, "dao_code" text, "governor_address" text, "token_address" text, "contract_address" text, "log_index" integer, "transaction_index" integer, "delegate" text NOT NULL, "previous_votes" numeric NOT NULL, "new_votes" numeric NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_a38fef07a3e775591ad1d4de0ad" PRIMARY KEY ("id"))`)
         await db.query(`CREATE INDEX "IDX_8b36c6f37c8e64f25dd9e5264d" ON "delegate_votes_changed" ("chain_id", "governor_address", "delegate") `)
         await db.query(`CREATE TABLE "token_transfer" ("id" character varying NOT NULL, "chain_id" integer, "dao_code" text, "governor_address" text, "token_address" text, "contract_address" text, "log_index" integer, "transaction_index" integer, "from" text NOT NULL, "to" text NOT NULL, "value" numeric NOT NULL, "standard" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_77384b7f5874553f012eba9da41" PRIMARY KEY ("id"))`)
+        await db.query(`CREATE INDEX "IDX_121840740598d8260873c7de04" ON "token_transfer" ("transaction_hash") `)
         await db.query(`CREATE INDEX "IDX_e3fe323128cc8da72b2d7b5d6a" ON "token_transfer" ("chain_id", "governor_address", "token_address") `)
         await db.query(`CREATE TABLE "vote_power_checkpoint" ("id" character varying NOT NULL, "chain_id" integer, "dao_code" text, "governor_address" text, "token_address" text, "contract_address" text, "log_index" integer, "transaction_index" integer, "account" text NOT NULL, "clock_mode" text NOT NULL, "timepoint" numeric NOT NULL, "previous_power" numeric NOT NULL, "new_power" numeric NOT NULL, "delta" numeric NOT NULL, "cause" text NOT NULL, "delegator" text, "from_delegate" text, "to_delegate" text, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, CONSTRAINT "PK_a7046c290a7a7d881283853f3f7" PRIMARY KEY ("id"))`)
         await db.query(`CREATE INDEX "IDX_08c8f53fdccf02212a8da0ee1e" ON "vote_power_checkpoint" ("chain_id", "governor_address", "token_address", "account", "clock_mode", "timepoint") `)
@@ -66,6 +67,7 @@ module.exports = class Data1774519274742 {
         await db.query(`CREATE TABLE "data_metric" ("id" character varying NOT NULL, "chain_id" integer, "dao_code" text, "governor_address" text, "token_address" text, "contract_address" text, "log_index" integer, "transaction_index" integer, "proposals_count" integer, "votes_count" integer, "votes_with_params_count" integer, "votes_without_params_count" integer, "votes_weight_for_sum" numeric, "votes_weight_against_sum" numeric, "votes_weight_abstain_sum" numeric, "power_sum" numeric, "member_count" integer, CONSTRAINT "PK_25f5e39e9c7755e2233bcbdc255" PRIMARY KEY ("id"))`)
         await db.query(`CREATE INDEX "IDX_95c80384fafd3caf17631ee3a4" ON "data_metric" ("chain_id", "governor_address", "dao_code") `)
         await db.query(`CREATE TABLE "delegate_rolling" ("id" character varying NOT NULL, "chain_id" integer, "dao_code" text, "governor_address" text, "token_address" text, "contract_address" text, "log_index" integer, "transaction_index" integer, "delegator" text NOT NULL, "from_delegate" text NOT NULL, "to_delegate" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, "from_previous_votes" numeric, "from_new_votes" numeric, "to_previous_votes" numeric, "to_new_votes" numeric, CONSTRAINT "PK_976ac6dd5a215cf1276bbf56adf" PRIMARY KEY ("id"))`)
+        await db.query(`CREATE INDEX "IDX_40c2d2d26c1139b07284a7ed7e" ON "delegate_rolling" ("transaction_hash") `)
         await db.query(`CREATE INDEX "IDX_f68da56408b641c4ed4d4e1a96" ON "delegate_rolling" ("chain_id", "governor_address", "delegator") `)
         await db.query(`CREATE TABLE "delegate" ("id" character varying NOT NULL, "chain_id" integer, "dao_code" text, "governor_address" text, "token_address" text, "contract_address" text, "log_index" integer, "transaction_index" integer, "from_delegate" text NOT NULL, "to_delegate" text NOT NULL, "block_number" numeric NOT NULL, "block_timestamp" numeric NOT NULL, "transaction_hash" text NOT NULL, "power" numeric NOT NULL, CONSTRAINT "PK_810516365b3daa9f6d6d2d4f2b7" PRIMARY KEY ("id"))`)
         await db.query(`CREATE INDEX "IDX_3ff4b3a851b38f29afb15bafcc" ON "delegate" ("chain_id", "governor_address", "from_delegate", "to_delegate") `)
@@ -88,6 +90,7 @@ module.exports = class Data1774519274742 {
         await db.query(`DROP TABLE "delegate_votes_changed"`)
         await db.query(`DROP INDEX "public"."IDX_8b36c6f37c8e64f25dd9e5264d"`)
         await db.query(`DROP TABLE "token_transfer"`)
+        await db.query(`DROP INDEX "public"."IDX_121840740598d8260873c7de04"`)
         await db.query(`DROP INDEX "public"."IDX_e3fe323128cc8da72b2d7b5d6a"`)
         await db.query(`DROP TABLE "vote_power_checkpoint"`)
         await db.query(`DROP INDEX "public"."IDX_08c8f53fdccf02212a8da0ee1e"`)
@@ -147,6 +150,7 @@ module.exports = class Data1774519274742 {
         await db.query(`DROP TABLE "data_metric"`)
         await db.query(`DROP INDEX "public"."IDX_95c80384fafd3caf17631ee3a4"`)
         await db.query(`DROP TABLE "delegate_rolling"`)
+        await db.query(`DROP INDEX "public"."IDX_40c2d2d26c1139b07284a7ed7e"`)
         await db.query(`DROP INDEX "public"."IDX_f68da56408b641c4ed4d4e1a96"`)
         await db.query(`DROP TABLE "delegate"`)
         await db.query(`DROP INDEX "public"."IDX_3ff4b3a851b38f29afb15bafcc"`)
