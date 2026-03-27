@@ -23,6 +23,8 @@ model d_user {
   last_login_time    DateTime
   ctime              DateTime  @default(now())
   utime              DateTime? @updatedAt
+
+  @@index([dao_code, address], map: "d_user_dao_code_address_idx")
 }
 
 model d_avatar {
