@@ -177,7 +177,7 @@ describe("Chain Tool Test", () => {
               contractAddress: dao.contracts.governor as `0x${string}`,
               governorTokenAddress: dao.contracts.governorToken
                 .address as `0x${string}`,
-              standard: dao.contracts.governorToken.standard as
+              governorTokenStandard: dao.contracts.governorToken.standard as
                 | "ERC20"
                 | "ERC721",
             });
