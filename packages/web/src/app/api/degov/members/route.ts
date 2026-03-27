@@ -4,6 +4,8 @@ import { Resp } from "@/types/api";
 
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
+import * as graphql from "../../common/graphql";
+import { rankMembersByContributorPower } from "../../common/profile-power";
 
 import type { NextRequest } from "next/server";
 
@@ -27,26 +29,36 @@ export async function GET(request: NextRequest) {
     const daocode = degovConfig.code;
 
     const sql = databaseConnection();
-    const members = await sql`
-    WITH ranked_members AS (
-      SELECT
-        u.*,
-        a.image as avatar,
-        ROW_NUMBER() OVER (
-          ORDER BY 
-          CASE WHEN u.power = '' THEN NULL ELSE u.power END DESC NULLS LAST, 
-          u.ctime DESC
-        ) AS rn
-      FROM d_user AS u
-      LEFT JOIN d_avatar AS a ON u.id = a.id
-      WHERE u.dao_code = ${daocode}
-      ORDER BY u.power desc, u.ctime DESC
-    )
-    SELECT * FROM ranked_members
-    WHERE rn > ${checkpoint}
-    ORDER BY rn
-    LIMIT ${limit}
+    const storedMembers = await sql`
+      select
+        u.id,
+        u.dao_code,
+        u.address,
+        u.name,
+        u.email,
+        u.twitter,
+        u.github,
+        u.discord,
+        u.telegram,
+        u.medium,
+        u.delegate_statement,
+        u.additional,
+        u.last_login_time,
+        u.ctime,
+        u.utime,
+        a.image as avatar
+      from d_user as u
+      left join d_avatar as a on u.id = a.id
+      where u.dao_code = ${daocode}
     `;
+    const contributorsByAddress = await graphql.inspectContributorsByAddress({
+      request,
+      addresses: storedMembers.map((member) => member.address),
+    });
+    const members = rankMembersByContributorPower(
+      storedMembers,
+      contributorsByAddress
+    ).slice(checkpoint, checkpoint + limit);
 
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
