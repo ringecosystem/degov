@@ -79,7 +79,6 @@ function ProposalsContent() {
   // Get voting power information
   const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
 
-  // Get proposal metrics (including total count)
   const { data: dataMetrics } = useQuery({
     queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
     queryFn: () =>

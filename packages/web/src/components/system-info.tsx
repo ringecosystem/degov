@@ -8,9 +8,10 @@ import { useReadContract } from "wagmi";
 import { abi as tokenAbi } from "@/config/abi/token";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
+import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
 import { useGovernanceParams } from "@/hooks/useGovernanceParams";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 import { dayjsHumanize } from "@/utils/date";
 import { formatNumberForDisplay } from "@/utils/number";
@@ -101,11 +102,18 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     });
 
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint ?? "",
+        buildGovernanceScope(daoConfig)
+      ),
     enabled: !!daoConfig?.indexer?.endpoint && type === "default",
   });
+  const { data: governanceCounts, isLoading: isGovernanceCountsLoading } =
+    useGovernanceCounts({
+      enabled: type === "default",
+    });
 
   const systemData = useMemo(() => {
     if (type === "proposal") {
@@ -150,7 +158,10 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         ? formatTokenAmount(totalSupply)?.formatted ?? "0"
         : "0";
 
-      const totalDelegates: number = dataMetrics?.memberCount ?? 0;
+      const totalDelegates = formatNumberForDisplay(
+        governanceCounts?.delegatesCount ?? 0,
+        1
+      )[0];
 
       const votingPowerPercentage =
         dataMetrics?.powerSum && totalSupply
@@ -175,6 +186,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     t,
     totalSupply,
     type,
+    governanceCounts,
   ]);
 
   const explorerUrl = daoConfig?.chain?.explorers?.[0];
@@ -289,7 +301,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       <SystemInfoItem
         label={t("totalDelegates")}
         value={systemData.totalDelegates ?? 0}
-        isLoading={isProposalMetricsLoading}
+        isLoading={isGovernanceCountsLoading}
       />
     </div>
   );
