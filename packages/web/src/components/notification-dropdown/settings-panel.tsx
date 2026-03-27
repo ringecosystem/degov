@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { EmailBindIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
@@ -23,6 +25,7 @@ export const SettingsPanel = ({
   votingEndReminder,
   onToggle,
 }: SettingsPanelProps) => {
+  const t = useTranslations("notifications.settings");
   const appUrl = useDeGovAppsNavigation();
   return (
     <DropdownMenuContent
@@ -42,7 +45,7 @@ export const SettingsPanel = ({
         <div className="flex flex-col gap-[5px]">
           <div className="flex items-center gap-[10px]">
             <h3 className="text-foreground font-semibold text-[14px] flex-1">
-              New proposals
+              {t("newProposals")}
             </h3>
             <Switch
               checked={newProposals}
@@ -52,14 +55,14 @@ export const SettingsPanel = ({
             />
           </div>
           <p className="text-muted-foreground text-xs">
-            Notified of all new proposals of this DAO.
+            {t("newProposalsDescription")}
           </p>
         </div>
 
         <div className="flex flex-col gap-[5px]">
           <div className="flex items-center gap-[10px]">
             <h3 className="text-foreground font-semibold text-[14px] flex-1">
-              Voting end reminder
+              {t("votingEndReminder")}
             </h3>
             <Switch
               checked={votingEndReminder}
@@ -69,14 +72,14 @@ export const SettingsPanel = ({
             />
           </div>
           <p className="text-muted-foreground text-xs">
-            Receive notifications before the proposal voting ends.
+            {t("votingEndReminderDescription")}
           </p>
         </div>
         {appUrl && (
           <div className="w-full flex justify-end">
             <Button className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] py-[5px] px-[10px] h-auto">
               <a href={appUrl} target="_blank" rel="noopener noreferrer">
-                Notification setting
+                {t("notificationSetting")}
               </a>
             </Button>
           </div>

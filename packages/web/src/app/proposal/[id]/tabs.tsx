@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
+import { useTranslations } from "next-intl";
 import { useState, useMemo } from "react";
 
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
@@ -54,6 +55,7 @@ const contentVariants = {
 };
 
 export const Tabs = ({ data, isFetching }: TabsProps) => {
+  const t = useTranslations("proposalDetail.tabs");
   const [activeTab, setActiveTab] = useState<TabType>("content");
   const daoConfig = useDaoConfig();
 
@@ -61,11 +63,11 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
     const baseTabs = [
       {
         key: "content" as TabType,
-        label: "Content",
+        label: t("content"),
       },
       {
         key: "votes" as TabType,
-        label: "Votes",
+        label: t("votes"),
       },
     ];
 
@@ -73,12 +75,12 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
     if (daoConfig?.aiAgent?.endpoint) {
       baseTabs.push({
         key: "ai-review" as TabType,
-        label: "Summary",
+        label: t("summary"),
       });
     }
 
     return baseTabs;
-  }, [daoConfig?.aiAgent?.endpoint]);
+  }, [daoConfig?.aiAgent?.endpoint, t]);
 
   return (
     <div className="flex flex-col h-full min-h-0">

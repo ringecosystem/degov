@@ -1,5 +1,6 @@
 "use client";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { useTranslations } from "next-intl";
 import { useAccount } from "wagmi";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -15,6 +16,7 @@ export const ConnectButton = ({
 }) => {
   const { openConnectModal } = useConnectModal();
   const dappConfig = useDaoConfig();
+  const t = useTranslations("common.connect");
   const { chainId, address, isConnected, isConnecting, isReconnecting } =
     useAccount();
 
@@ -31,7 +33,7 @@ export const ConnectButton = ({
         }}
         className="rounded-[100px] flex-1 max-w-[200px]"
       >
-        Connect Wallet
+        {t("connectWallet")}
       </Button>
     );
   }
@@ -39,7 +41,7 @@ export const ConnectButton = ({
   if (Number(chainId) !== Number(dappConfig?.chain?.id)) {
     return (
       <Button variant="destructive" className="cursor-auto rounded-[100px]">
-        Error Chain
+        {t("errorChain")}
       </Button>
     );
   }

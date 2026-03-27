@@ -2,6 +2,8 @@
 // Layout with async data fetching is automatically dynamic in Next.js 16
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { Suspense } from "react";
 
 import "./globals.css";
@@ -142,6 +144,8 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const locale = await getLocale();
+  const messages = await getMessages();
   const initialConfig = isDegovApiConfiguredServer()
     ? await getRemoteConfig()
     : await getDaoConfigServer();
@@ -152,7 +156,7 @@ export default async function RootLayout({
   const isDemoDao = initialConfig?.name === "DeGov Demo DAO";
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         {indexerOrigin && <link rel="preconnect" href={indexerOrigin} />}
         {rpcOrigin && <link rel="preconnect" href={rpcOrigin} />}
@@ -176,16 +180,18 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <NextThemeProvider>
-          <ConfigProvider initialConfig={initialConfig}>
-            <TooltipProvider delayDuration={0}>
-              <ConditionalLayout banner={<DemoTipsBanner isDemoDao={isDemoDao} />}>
-                {children}
-              </ConditionalLayout>
-              <ToastContainer />
-            </TooltipProvider>
-          </ConfigProvider>
-        </NextThemeProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <NextThemeProvider>
+            <ConfigProvider initialConfig={initialConfig}>
+              <TooltipProvider delayDuration={0}>
+                <ConditionalLayout banner={<DemoTipsBanner isDemoDao={isDemoDao} />}>
+                  {children}
+                </ConditionalLayout>
+                <ToastContainer />
+              </TooltipProvider>
+            </ConfigProvider>
+          </NextThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

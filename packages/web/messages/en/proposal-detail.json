@@ -1,0 +1,113 @@
+{
+  "page": {
+    "title": "Proposal",
+    "fallbackTitle": "Proposal",
+    "copyLink": "Copy link",
+    "proposedBy": "Proposed by",
+    "on": "on",
+    "discussion": "Discussion",
+    "loadingTitle": "Proposal Loading",
+    "loadingDescription": "Loading proposal data, please wait..."
+  },
+  "tabs": {
+    "content": "Content",
+    "votes": "Votes",
+    "summary": "Summary"
+  },
+  "dropdown": {
+    "cancelProposal": "Cancel Proposal"
+  },
+  "cancelDialog": {
+    "title": "Cancel Proposal",
+    "description": "Once canceled, a proposal can no longer be executed. Please note: proposals can only be canceled in certain scenarios.",
+    "close": "Close",
+    "confirm": "Cancel Proposal"
+  },
+  "voting": {
+    "title": "Voting",
+    "votingPower": "Voting power",
+    "proposalId": "Proposal ID",
+    "vote": "Vote",
+    "addComment": "Add comment",
+    "commentPlaceholder": "Why are you voting this way?",
+    "submit": "Submit"
+  },
+  "currentVotes": {
+    "title": "Current Votes",
+    "quorum": "Quorum",
+    "majoritySupport": "Majority support",
+    "yes": "Yes",
+    "no": "No",
+    "participation": "{current} of {required}"
+  },
+  "status": {
+    "title": "Status",
+    "publishOnChain": "Publish onChain",
+    "startVotingPeriod": "Start voting period",
+    "endVotingPeriod": "End voting period",
+    "queueProposal": "Queue proposal",
+    "executeProposal": "Execute proposal",
+    "proposalQueued": "Proposal queued",
+    "proposalExecuted": "Proposal executed",
+    "proposalCanceled": "Proposal canceled",
+    "proposalDefeated": "Proposal defeated",
+    "proposalExpired": "Proposal expired",
+    "viewOnExplorer": "View on Explorer"
+  },
+  "actionGroup": {
+    "voteOnchain": "Vote Onchain",
+    "execute": "Execute",
+    "queue": "Queue",
+    "votingStartsSoon": "Voting starts soon",
+    "youVoted": "You voted {voteLabel}",
+    "proposalExecuted": "Proposal executed",
+    "proposalCanceled": "Proposal canceled",
+    "proposalExpired": "Proposal expired",
+    "proposalDefeated": "Proposal defeated"
+  },
+  "comments": {
+    "clickToViewComment": "Click to view comment",
+    "loadMore": "View more",
+    "noVotesYet": "No votes yet",
+    "showingAll": "Showing all {count} votes",
+    "params": "{count} params",
+    "columns": {
+      "voter": "Voter",
+      "choice": "Choice",
+      "date": "Date",
+      "votingPower": "Voting Power"
+    }
+  },
+  "commentModal": {
+    "title": "Comment"
+  },
+  "actionsTable": {
+    "title": "Actions",
+    "headers": {
+      "type": "Type",
+      "to": "To",
+      "action": "Action"
+    },
+    "xAccountCrossChain": "XAccount Cross-chain",
+    "noAddress": "No address",
+    "params": "{count} params",
+    "viewJson": "View Json",
+    "back": "Back",
+    "empty": "No Actions"
+  },
+  "toasts": {
+    "failedToCancel": "Failed to cancel proposal",
+    "failedToCastVote": "Failed to cast vote",
+    "failedToQueue": "Failed to queue proposal",
+    "failedToExecute": "Failed to execute proposal"
+  },
+  "description": {
+    "showMore": "Show more",
+    "showLess": "Show less"
+  },
+  "aiSummary": {
+    "loading": "AI is analyzing the proposal...",
+    "error": "Failed to load AI summary. Please try again later.",
+    "unavailable": "AI analysis data is not available for this proposal yet."
+  }
+}

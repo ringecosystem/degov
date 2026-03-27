@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount } from "wagmi";
@@ -12,6 +12,7 @@ import { WithConnect } from "@/components/with-connect";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { profileQueryKey, useProfileQuery } from "@/hooks/useProfileQuery";
 import { useSiweAuth } from "@/hooks/useSiweAuth";
+import { useRouter } from "@/i18n/navigation";
 import { profileService } from "@/services/graphql";
 import type { ProfileData } from "@/services/graphql/types/profile";
 
@@ -21,20 +22,13 @@ import { ProfileForm } from "./profile-form";
 import type { ProfileFormData } from "./profile-form";
 
 export function ProfileEditSkeleton() {
+  const t = useTranslations("profile.edit");
   return (
     <div className="mx-auto w-full max-w-[820px] space-y-[20px] p-[30px]">
-      <h3 className="text-[18px] font-semibold">Edit Profile</h3>
+      <h3 className="text-[18px] font-semibold">{t("title")}</h3>
       <div className="grid w-full grid-cols-[600px_200px] gap-[20px]">
         <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-          {[
-            "Display Name",
-            "Delegate Statement",
-            "Email",
-            "X",
-            "Telegram",
-            "Github",
-            "Discord",
-          ].map((label, index) => (
+          {Array.from({ length: 7 }).map((_, index) => (
             <div
               key={index}
               className="flex flex-row items-center justify-between gap-[10px]"
@@ -65,6 +59,7 @@ export function ProfileEditSkeleton() {
   );
 }
 export default function Edit() {
+  const t = useTranslations("profile.edit");
   const router = useRouter();
   const { address } = useAccount();
   const daoConfig = useDaoConfig();
@@ -90,7 +85,7 @@ export default function Edit() {
               refetchType: "all",
             });
           }
-          toast.success("Profile updated successfully", {
+          toast.success(t("messages.updated"), {
             onClose: () => {
               router.push(`/profile`);
             },
@@ -100,13 +95,13 @@ export default function Edit() {
           console.log("401");
           break;
         default:
-          toast.error(data?.message || "Failed to update profile");
+          toast.error(data?.message || t("messages.updateFailed"));
           break;
       }
     },
     onError: (error) => {
       console.log(error);
-      toast.error((error as Error)?.message || "Failed to update profile");
+      toast.error((error as Error)?.message || t("messages.updateFailed"));
     },
   });
 
@@ -164,7 +159,7 @@ export default function Edit() {
   return (
     <WithConnect>
       <div className="mx-auto w-full max-w-[820px] space-y-[20px] lg:p-[30px]">
-        <h3 className="text-[18px] font-semibold">Edit Profile</h3>
+        <h3 className="text-[18px] font-semibold">{t("title")}</h3>
         <div className="lg:hidden">
           <ProfileAvatar
             address={address}

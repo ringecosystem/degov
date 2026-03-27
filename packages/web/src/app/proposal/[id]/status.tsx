@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -24,12 +25,13 @@ import { ProposalState } from "@/types/proposal";
 import { formatTimestampToDayTime, getTimeRemaining } from "@/utils/date";
 
 const StatusSkeleton = () => {
+  const t = useTranslations("proposalDetail.status");
   const stagesCount = 4;
   const stages = Array(stagesCount).fill(null);
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <h3 className="text-[18px] text-foreground">Status</h3>
+      <h3 className="text-[18px] text-foreground">{t("title")}</h3>
       <Separator className="bg-border/20" />
       <div className="relative">
         <div className="absolute bottom-0 left-[14px] top-3 h-[calc(100%-40px)] w-0.5 bg-foreground/10" />
@@ -99,6 +101,7 @@ const Status: React.FC<StatusProps> = ({
   proposalQueuedById,
   isLoading,
 }) => {
+  const t = useTranslations("proposalDetail.status");
   const daoConfig = useDaoConfig();
   const { data: govParams } = useGovernanceParams();
 
@@ -126,24 +129,12 @@ const Status: React.FC<StatusProps> = ({
 
   const hasTimelock = useMemo(() => {
     return (
-      Boolean(data?.timelockAddress) ||
-      Boolean(data?.queueReadyAt) ||
-      Boolean(data?.queueExpiresAt) ||
       govParams?.timeLockDelayInSeconds !== undefined &&
       govParams?.timeLockDelayInSeconds !== null
     );
-  }, [
-    data?.queueExpiresAt,
-    data?.queueReadyAt,
-    data?.timelockAddress,
-    govParams?.timeLockDelayInSeconds,
-  ]);
+  }, [govParams?.timeLockDelayInSeconds]);
 
   const executeEnabledTime = useMemo(() => {
-    if (data?.queueReadyAt) {
-      return BigInt(data.queueReadyAt);
-    }
-
     if (
       !proposalQueuedById?.blockTimestamp ||
       !govParams?.timeLockDelayInSeconds ||
@@ -156,17 +147,13 @@ const Status: React.FC<StatusProps> = ({
       BigInt(proposalQueuedById.blockTimestamp) +
       BigInt(govParams.timeLockDelayInSeconds * 1000)
     );
-  }, [
-    data?.queueReadyAt,
-    proposalQueuedById?.blockTimestamp,
-    govParams?.timeLockDelayInSeconds,
-  ]);
+  }, [proposalQueuedById?.blockTimestamp, govParams?.timeLockDelayInSeconds]);
 
   const stages: ProposalStage[] = useMemo(() => {
     const baseStages: ProposalStage[] = [
       {
         key: "publish" as ProposalStageKey,
-        title: "Publish onChain",
+        title: t("publishOnChain"),
         timestamp: formatTimestampToDayTime(data?.blockTimestamp),
         icon: (
           <StatusPublishedIcon
@@ -180,7 +167,7 @@ const Status: React.FC<StatusProps> = ({
       },
       {
         key: "start" as ProposalStageKey,
-        title: "Start voting period",
+        title: t("startVotingPeriod"),
         timestamp: formatTimestampToDayTime(voteStartTimestamp ?? ""),
         icon: (
           <StatusStartedIcon width={28} height={28} className="text-current" />
@@ -188,7 +175,7 @@ const Status: React.FC<StatusProps> = ({
       },
       {
         key: "end" as ProposalStageKey,
-        title: "End voting period",
+        title: t("endVotingPeriod"),
         timestamp: formatTimestampToDayTime(voteEndTimestamp ?? ""),
         remaining: votingPeriodRemaining,
         icon: (
@@ -209,7 +196,7 @@ const Status: React.FC<StatusProps> = ({
         if (hasTimelock) {
           additionalStages.push({
             key: "queue" as ProposalStageKey,
-            title: "Queue proposal",
+            title: t("queueProposal"),
             timestamp: proposalQueuedById?.blockTimestamp
               ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
               : "",
@@ -229,7 +216,7 @@ const Status: React.FC<StatusProps> = ({
         // Always add execute stage
         additionalStages.push({
           key: "execute" as ProposalStageKey,
-          title: "Execute proposal",
+          title: t("executeProposal"),
           timestamp: proposalExecutedById?.blockTimestamp
             ? formatTimestampToDayTime(proposalExecutedById?.blockTimestamp)
             : "",
@@ -249,27 +236,23 @@ const Status: React.FC<StatusProps> = ({
           if (status === ProposalState.Pending) {
             return {
               ...v,
-              isActive: v.title === "Publish onChain",
-              isCurrent: v.title === "Publish onChain",
+              isActive: v.key === "publish",
+              isCurrent: v.key === "publish",
             };
           }
           if (status === ProposalState.Active) {
             return {
               ...v,
-              isActive:
-                v.title === "Publish onChain" ||
-                v.title === "Start voting period",
-              isCurrent: v.title === "Start voting period",
+              isActive: v.key === "publish" || v.key === "start",
+              isCurrent: v.key === "start",
             };
           }
           if (status === ProposalState.Succeeded) {
             return {
               ...v,
               isActive:
-                v.title === "Publish onChain" ||
-                v.title === "Start voting period" ||
-                v.title === "End voting period",
-              isCurrent: v.title === "End voting period",
+                v.key === "publish" || v.key === "start" || v.key === "end",
+              isCurrent: v.key === "end",
             };
           }
 
@@ -278,7 +261,7 @@ const Status: React.FC<StatusProps> = ({
             let isCurrent = false;
 
             if (v.key === "queue") {
-              title = "Proposal queued";
+              title = t("proposalQueued");
               isCurrent = true;
             }
 
@@ -291,7 +274,7 @@ const Status: React.FC<StatusProps> = ({
                     String(executeEnabledTime)
                   ),
                   remaining: getTimeRemaining(Number(executeEnabledTime)) ?? "",
-                  isActive: title !== "Execute proposal",
+                  isActive: false,
                   isCurrent: false,
                 };
               }
@@ -300,7 +283,7 @@ const Status: React.FC<StatusProps> = ({
             return {
               ...v,
               title,
-              isActive: title !== "Execute proposal",
+              isActive: v.key !== "execute",
               isCurrent,
             };
           }
@@ -309,16 +292,16 @@ const Status: React.FC<StatusProps> = ({
             let title = v.title;
             let isCurrent = false;
             if (v.key === "queue") {
-              title = "Proposal queued";
+              title = t("proposalQueued");
             }
             if (v.key === "execute") {
-              title = "Proposal executed";
+              title = t("proposalExecuted");
               isCurrent = true;
             }
             return {
               ...v,
               title,
-              isActive: title !== "Execute proposal",
+              isActive: v.key !== "execute" || isCurrent,
               isCurrent,
             };
           }
@@ -339,7 +322,7 @@ const Status: React.FC<StatusProps> = ({
 
           {
             key: "cancel" as ProposalStageKey,
-            title: "Proposal canceled",
+            title: t("proposalCanceled"),
             timestamp: formatTimestampToDayTime(
               proposalCanceledById?.blockTimestamp
             ),
@@ -362,7 +345,7 @@ const Status: React.FC<StatusProps> = ({
           })),
           {
             key: "defeated" as ProposalStageKey,
-            title: "Proposal defeated",
+            title: t("proposalDefeated"),
             icon: (
               <CancelIcon width={28} height={28} className="text-current" />
             ),
@@ -379,11 +362,9 @@ const Status: React.FC<StatusProps> = ({
           })),
           {
             key: "expired" as ProposalStageKey,
-            title: "Proposal expired",
-            timestamp: data?.queueExpiresAt
-              ? formatTimestampToDayTime(data.queueExpiresAt)
-              : proposalQueuedById?.blockTimestamp
-                ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
+            title: t("proposalExpired"),
+            timestamp: proposalQueuedById?.blockTimestamp
+              ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
               : "",
             icon: (
               <StatusQueuedIcon
@@ -397,7 +378,7 @@ const Status: React.FC<StatusProps> = ({
           },
           {
             key: "execute" as ProposalStageKey,
-            title: "Execute proposal",
+            title: t("executeProposal"),
             icon: (
               <CancelIcon width={28} height={28} className="text-current" />
             ),
@@ -423,6 +404,7 @@ const Status: React.FC<StatusProps> = ({
     status,
     executeEnabledTime,
     hasTimelock,
+    t,
   ]);
 
   if (isLoading) {
@@ -431,7 +413,9 @@ const Status: React.FC<StatusProps> = ({
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
-      <h3 className="text-[18px] text-foreground font-semibold">Status</h3>
+      <h3 className="text-[18px] text-foreground font-semibold">
+        {t("title")}
+      </h3>
       <Separator className="bg-border/20" />
       <div className="relative">
         <div className="absolute bottom-0 left-[14px] top-3 h-[calc(100%-40px)] w-0.5 bg-foreground/10" />
@@ -481,7 +465,7 @@ const Status: React.FC<StatusProps> = ({
                 href={stage.viewOnExplorer}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="View on Explorer"
+                title={t("viewOnExplorer")}
                 className="hover:opacity-80 transition-opacity duration-300"
               >
                 <ExternalLinkIcon

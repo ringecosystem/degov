@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
@@ -38,6 +39,7 @@ export function DelegationList({
   orderBy,
   totalCount,
 }: DelegationListProps) {
+  const t = useTranslations("profile.receivedDelegations");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
   const [currentPage, setCurrentPage] = useState(1);
@@ -140,7 +142,7 @@ export function DelegationList({
   if (!pageData || pageData.length === 0) {
     return (
       <div className="rounded-[14px] bg-card p-[20px] text-center text-muted-foreground">
-        No delegations yet
+        {t("empty")}
       </div>
     );
   }

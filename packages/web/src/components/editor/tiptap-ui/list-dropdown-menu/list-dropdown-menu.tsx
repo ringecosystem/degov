@@ -1,6 +1,7 @@
 "use client";
 
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 // --- Hooks ---
@@ -21,8 +22,8 @@ import {
 import {
   ListButton,
   canToggleList,
+  getListOptions,
   isListActive,
-  listOptions,
   type ListType,
 } from "../list-button/list-button";
 
@@ -62,9 +63,10 @@ export function isAnyListActive(
 }
 
 export function getFilteredListOptions(
-  availableTypes: ListType[]
-): typeof listOptions {
-  return listOptions.filter(
+  availableTypes: ListType[],
+  labels: ReturnType<typeof getListOptions>
+) {
+  return labels.filter(
     (option) => !option.type || availableTypes.includes(option.type)
   );
 }
@@ -93,7 +95,8 @@ export function shouldShowListDropdown(params: {
 
 export function useListDropdownState(
   editor: Editor | null,
-  availableTypes: ListType[]
+  availableTypes: ListType[],
+  labels: ReturnType<typeof getListOptions>
 ) {
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -102,8 +105,8 @@ export function useListDropdownState(
   );
 
   const filteredLists = React.useMemo(
-    () => getFilteredListOptions(availableTypes),
-    [availableTypes]
+    () => getFilteredListOptions(availableTypes, labels),
+    [availableTypes, labels]
   );
 
   const canToggleAny = canToggleAnyList(editor, availableTypes);
@@ -130,7 +133,7 @@ export function useListDropdownState(
 
 export function useActiveListIcon(
   editor: Editor | null,
-  filteredLists: typeof listOptions
+  filteredLists: ReturnType<typeof getListOptions>
 ) {
   return React.useCallback(() => {
     const activeOption = filteredLists.find((option) =>
@@ -152,7 +155,9 @@ export function ListDropdownMenu({
   onOpenChange,
   ...props
 }: ListDropdownMenuProps) {
+  const t = useTranslations("common.editor.list");
   const editor = useTiptapEditor(providedEditor);
+  const labels = React.useMemo(() => getListOptions(t), [t]);
 
   const {
     isOpen,
@@ -161,7 +166,7 @@ export function ListDropdownMenu({
     canToggleAny,
     isAnyActive,
     handleOpenChange,
-  } = useListDropdownState(editor, types);
+  } = useListDropdownState(editor, types, labels);
 
   const getActiveIcon = useActiveListIcon(editor, filteredLists);
 
@@ -193,8 +198,8 @@ export function ListDropdownMenu({
           data-active-state={isAnyActive ? "on" : "off"}
           role="button"
           tabIndex={-1}
-          aria-label="List options"
-          tooltip="List"
+          aria-label={t("ariaLabel")}
+          tooltip={t("tooltip")}
           {...props}
         >
           {getActiveIcon()}

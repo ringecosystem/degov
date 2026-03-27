@@ -99,6 +99,7 @@ export const Faqs = ({
     collapsible ? defaultCollapsed : false
   );
 
+  const shouldRenderContent = !collapsible || !isCollapsed;
   const faqList = useMemo(() => {
     if (type === "general") {
       return config?.theme?.faqs && config.theme.faqs.length > 0
@@ -107,8 +108,6 @@ export const Faqs = ({
     }
     return defaultFaqList[type];
   }, [config, type]);
-
-  const shouldRenderContent = !collapsible || !isCollapsed;
 
   return (
     <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] lg:w-[360px] shadow-card">

@@ -1,5 +1,5 @@
 import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 import { useDebounce } from "react-use";
 
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useRouter as useLocaleRouter } from "@/i18n/navigation";
 import type { Types } from "@/services/graphql";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
@@ -43,8 +44,9 @@ export function SearchModal({
   open = false,
   onOpenChange,
 }: SearchModalProps) {
-  const router = useRouter();
+  const router = useLocaleRouter();
   const daoConfig = useDaoConfig();
+  const t = useTranslations("common.search");
   const [search, setSearch] = React.useState("");
   const [debouncedSearch, setDebouncedValue] = React.useState("");
 
@@ -134,7 +136,7 @@ export function SearchModal({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[800px] p-[20px] border-none shadow-lg flex flex-col gap-[20px] rounded-[26px]! bg-card backdrop-blur">
         <DialogHeader className="hidden">
-          <DialogTitle>Search Proposals</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
         </DialogHeader>
 
         <div className="flex items-center gap-[10px]">
@@ -142,7 +144,7 @@ export function SearchModal({
             autoFocus
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..."
+            placeholder={t("placeholder")}
             className="bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[14px] border border-gray-1 h-[36px] rounded-[19px] px-[17px] py-[9px]"
           />
           <button
@@ -226,14 +228,14 @@ export function SearchModal({
                     className="text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={isFetchingNextPage}
                   >
-                    {isFetchingNextPage ? "Loading..." : "Load more"}
+                    {isFetchingNextPage ? t("loading") : t("loadMore")}
                   </button>
                 </div>
               )}
             </div>
           ) : (
             <div className="py-6 text-center text-muted-foreground">
-              {search ? "No results found." : "Start typing to search..."}
+              {search ? t("noResults") : t("startTyping")}
             </div>
           )}
         </div>

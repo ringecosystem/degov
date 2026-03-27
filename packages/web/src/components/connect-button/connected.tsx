@@ -1,5 +1,5 @@
 import { ChevronDown, Power } from "lucide-react";
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useMemo } from "react";
 import { formatUnits } from "viem";
 import { useReadContract } from "wagmi";
@@ -16,6 +16,7 @@ import { useDisconnectWallet } from "@/hooks/useDisconnectWallet";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
+import { Link } from "@/i18n/navigation";
 import { formatShortAddress } from "@/utils";
 
 import { AddressAvatar } from "../address-avatar";
@@ -32,6 +33,7 @@ interface ConnectedProps {
 export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   const { disconnectWallet } = useDisconnectWallet();
   const daoConfig = useDaoConfig();
+  const t = useTranslations("common.connect");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
     useGovernanceToken();
@@ -161,7 +163,7 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
         </div>
         <div className="rounded-[14px] border border-border/20 bg-bg-2 p-[10px] shadow-card">
           <div className="flex items-center justify-between text-[12px] text-foreground/80">
-            <span className="font-normal">Voting Power</span>
+            <span className="font-normal">{t("votingPower")}</span>
             {isVotingPowerSectionLoading ? (
               <Skeleton className="h-[16px] w-[120px] bg-border/20" />
             ) : (
@@ -175,7 +177,7 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
           </div>
           <div className="my-[10px] h-px bg-border/20" />
           <div className="flex items-center justify-between text-[12px] text-foreground/80">
-            <span className="font-normal">Balance</span>
+            <span className="font-normal">{t("balance")}</span>
             {isBalanceSectionLoading ? (
               <Skeleton className="h-[16px] w-[140px] bg-border/20" />
             ) : (
@@ -198,7 +200,7 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
               className="text-foreground"
             >
               <ProfileIcon width={20} height={20} className="text-current" />
-              <span className="text-[14px]">Profile</span>
+              <span className="text-[14px]">{t("profile")}</span>
             </Link>
           </Button>
           <Button
@@ -207,7 +209,7 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
             variant="outline"
           >
             <Power size={20} className="text-current" strokeWidth={2} />
-            <span className="text-[14px]">Disconnect</span>
+            <span className="text-[14px]">{t("disconnect")}</span>
           </Button>
         </div>
       </DropdownMenuContent>

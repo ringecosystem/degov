@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useEffect } from "react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useMemo } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 
 import { Editor } from "@/components/editor";
@@ -7,7 +8,7 @@ import { ErrorMessage } from "@/components/error-message";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import { proposalSchema } from "./schema";
+import { createProposalSchema } from "./schema";
 
 import type { ProposalContent } from "./schema";
 
@@ -24,6 +25,12 @@ export const ProposalPanel = ({
   content,
   onChange,
 }: ProposalPanelProps) => {
+  const t = useTranslations("proposalEditor.proposal");
+  const schemaT = useTranslations("proposalEditor");
+  const proposalSchema = useMemo(
+    () => createProposalSchema(schemaT),
+    [schemaT]
+  );
   const {
     register,
     control,
@@ -65,13 +72,13 @@ export const ProposalPanel = ({
     >
       <div className="flex flex-col gap-[10px]">
         <label className="text-[14px] text-foreground" htmlFor="title">
-          Title
+          {t("title")}
         </label>
         <Input
           id="title"
           {...register("title")}
           aria-invalid={errors.title ? "true" : "false"}
-          placeholder="Enter the title of your proposal"
+          placeholder={t("placeholders.title")}
           className={cn(
             "border-border/20 bg-card",
             errors.title && "border-red-500"
@@ -81,7 +88,7 @@ export const ProposalPanel = ({
       </div>
       <div className="flex flex-col gap-[10px]">
         <label className="text-[14px] text-foreground" htmlFor="description">
-          Description
+          {t("description")}
         </label>
         <Controller
           name="markdown"
@@ -93,7 +100,7 @@ export const ProposalPanel = ({
                 onChange={(newValue) => {
                   field.onChange(newValue);
                 }}
-                placeholder="Enter the description of your proposal"
+                placeholder={t("placeholders.description")}
                 className={cn(
                   "border border-border/20 bg-card",
                   errors.markdown && "border-red-500"
@@ -108,13 +115,13 @@ export const ProposalPanel = ({
       </div>
       <div className="flex flex-col gap-[10px]">
         <label className="text-[14px] text-foreground" htmlFor="discussion">
-          Offchain discussion (Optional)
+          {t("offchainDiscussion")}
         </label>
         <Input
           id="discussion"
           {...register("discussion")}
           aria-invalid={errors.discussion ? "true" : "false"}
-          placeholder="eg, http://forum.example.com/t/1234"
+          placeholder={t("placeholders.discussion")}
           className={cn(
             "border-border/20 bg-card",
             errors.discussion && "border-red-500"

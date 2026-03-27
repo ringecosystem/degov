@@ -1,6 +1,7 @@
 "use client";
 
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 // --- Hooks ---
@@ -115,6 +116,8 @@ export const useLinkHandler = (props: LinkHandlerProps) => {
 
 export const LinkButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, children, ...props }, ref) => {
+    const t = useTranslations("common.editor.link");
+
     return (
       <Button
         type="button"
@@ -122,8 +125,8 @@ export const LinkButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
         data-style="ghost"
         role="button"
         tabIndex={-1}
-        aria-label="Link"
-        tooltip="Link"
+        aria-label={t("ariaLabel")}
+        tooltip={t("tooltip")}
         ref={ref}
         {...props}
       >
@@ -152,6 +155,7 @@ const LinkMain: React.FC<LinkMainProps> = ({
   removeLink,
   isActive,
 }) => {
+  const t = useTranslations("common.editor.link");
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -163,7 +167,7 @@ const LinkMain: React.FC<LinkMainProps> = ({
     <>
       <input
         type="url"
-        placeholder="Paste a link..."
+        placeholder={t("placeholder")}
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -177,7 +181,7 @@ const LinkMain: React.FC<LinkMainProps> = ({
         <Button
           type="button"
           onClick={setLink}
-          title="Apply link"
+          title={t("apply")}
           disabled={!url && !isActive}
           data-style="ghost"
         >
@@ -191,7 +195,7 @@ const LinkMain: React.FC<LinkMainProps> = ({
         <Button
           type="button"
           onClick={() => window.open(url, "_blank")}
-          title="Open in new window"
+          title={t("openInNewWindow")}
           disabled={!url && !isActive}
           data-style="ghost"
         >
@@ -201,7 +205,7 @@ const LinkMain: React.FC<LinkMainProps> = ({
         <Button
           type="button"
           onClick={removeLink}
-          title="Remove link"
+          title={t("remove")}
           disabled={!url && !isActive}
           data-style="ghost"
         >
