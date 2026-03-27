@@ -111,6 +111,8 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
       const batchStartedAt = Date.now();
       const batchStartBlock = ctx.blocks[0]?.header.height;
       const batchEndBlock = ctx.blocks[ctx.blocks.length - 1]?.header.height;
+      const totalBlocks = ctx.blocks.length;
+      const totalLogs = ctx.blocks.reduce((count, block) => count + block.logs.length, 0);
       const heartbeatIntervalMs =
         DegovIndexerHelpers.progressHeartbeatIntervalMs();
       let lastHeartbeatAt = batchStartedAt;
@@ -129,16 +131,32 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
         }
 
         lastHeartbeatAt = now;
+        const elapsedMs = now - batchStartedAt;
+        const elapsedSeconds = Math.max(elapsedMs / 1000, 1);
+        const remainingBlocks = Math.max(totalBlocks - blocksSeen, 0);
+        const remainingLogs = Math.max(totalLogs - logsSeen, 0);
+        const logsPerSecond = logsSeen / elapsedSeconds;
         const heartbeatFields: Record<string, string | number> = {
           startBlock: batchStartBlock ?? fields.currentBlock,
           endBlock: batchEndBlock ?? fields.currentBlock,
           currentBlock: fields.currentBlock,
           blocksSeen,
-          totalBlocks: ctx.blocks.length,
+          totalBlocks,
+          remainingBlocks,
+          blocksRate: `${(blocksSeen / elapsedSeconds).toFixed(2)}/s`,
           logsSeen,
+          totalLogs,
+          remainingLogs,
+          logsRate: `${logsPerSecond.toFixed(0)}/s`,
           matchedLogsSeen,
-          elapsed: DegovIndexerHelpers.formatDurationMs(now - batchStartedAt),
+          elapsed: DegovIndexerHelpers.formatDurationMs(elapsedMs),
         };
+
+        if (logsSeen > 0 && remainingLogs > 0) {
+          heartbeatFields.eta = DegovIndexerHelpers.formatDurationMs(
+            Math.ceil((remainingLogs / logsPerSecond) * 1000),
+          );
+        }
 
         if (DegovIndexerHelpers.verboseLoggingEnabled()) {
           heartbeatFields.contract = fields.contract ?? "";
