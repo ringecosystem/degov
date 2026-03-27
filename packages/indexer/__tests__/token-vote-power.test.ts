@@ -4,6 +4,7 @@ import {
   votePowerTimepointForLog,
 } from "../src/handler/token";
 import * as itokenerc20 from "../src/abi/itokenerc20";
+import * as itokenerc721 from "../src/abi/itokenerc721";
 import { ChainTool, ClockMode } from "../src/internal/chaintool";
 import {
   Contributor,
@@ -519,6 +520,124 @@ describe("token vote power checkpoints", () => {
       store.findEntity(Contributor, "0x0000000000000000000000000000000000000000")
     ).toBeUndefined();
   });
+
+  it("tracks ERC721 transfers as token ids while applying single-vote power deltas", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 2n,
+      }),
+      new Contributor({
+        id: "0x1111111111111111111111111111111111111111",
+        power: 1n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Contributor({
+        id: "0x2222222222222222222222222222222222222222",
+        power: 1n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0x1111111111111111111111111111111111111111",
+        fromDelegate: "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
+        toDelegate: "0x1111111111111111111111111111111111111111",
+        power: 1n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_0x2222222222222222222222222222222222222222",
+        fromDelegate: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+        toDelegate: "0x2222222222222222222222222222222222222222",
+        power: 1n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        from: "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
+        to: "0x1111111111111111111111111111111111111111",
+        power: 1n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        from: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+        to: "0x2222222222222222222222222222222222222222",
+        power: 1n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store, "ERC721");
+
+    jest.spyOn(itokenerc721.events.Transfer, "decode").mockReturnValue({
+      from: "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
+      to: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+      tokenId: 1234n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "log-erc721-transfer",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: {
+        height: 15,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xerc721-transfer",
+    } as any);
+
+    expect(store.findEntity(TokenTransfer, "log-erc721-transfer")).toMatchObject({
+      from: "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
+      to: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+      value: 1234n,
+      standard: "erc721",
+      transactionHash: "0xerc721-transfer",
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0x1111111111111111111111111111111111111111",
+      ),
+    ).toBeUndefined();
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_0x2222222222222222222222222222222222222222",
+      ),
+    ).toMatchObject({
+      power: 2n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x1111111111111111111111111111111111111111"),
+    ).toMatchObject({
+      power: 0n,
+      delegatesCountEffective: 0,
+    });
+    expect(
+      store.findEntity(Contributor, "0x2222222222222222222222222222222222222222"),
+    ).toMatchObject({
+      power: 2n,
+      delegatesCountEffective: 1,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(2n);
+  });
 });
 
 class MemoryStore {
@@ -561,7 +680,7 @@ class MemoryStore {
   }
 }
 
-function buildTokenHandler(store: MemoryStore) {
+function buildTokenHandler(store: MemoryStore, standard: "ERC20" | "ERC721" = "ERC20") {
   return new TokenHandler(
     {
       store,
@@ -584,14 +703,14 @@ function buildTokenHandler(store: MemoryStore) {
           {
             name: "governorToken",
             address: "0x8888888888888888888888888888888888888888",
-            standard: "ERC20",
+            standard,
           },
         ],
       },
       indexContract: {
         name: "governorToken",
         address: "0x8888888888888888888888888888888888888888",
-        standard: "ERC20",
+        standard,
       },
       chainTool: new ChainTool(),
     }

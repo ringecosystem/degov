@@ -115,6 +115,53 @@ describe("ChainTool", () => {
     ]);
   });
 
+  it("treats ERC721 governor tokens as zero-decimal without calling decimals()", async () => {
+    const chainTool = new ChainTool();
+    const readContractCalls: Array<{
+      functionName: string;
+      args?: readonly unknown[];
+    }> = [];
+
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    const executeWithFallbacks = jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) => {
+        return action({
+          readContract: jest.fn().mockImplementation(async (request) => {
+            readContractCalls.push({
+              functionName: request.functionName,
+              args: request.args,
+            });
+
+            if (request.functionName === "quorum") {
+              return 7n;
+            }
+
+            throw new Error(`Unexpected function: ${request.functionName}`);
+          }),
+        });
+      }) as jest.Mock;
+
+    await expect(
+      chainTool.quorum({
+        chainId: 1,
+        contractAddress,
+        governorTokenAddress,
+        governorTokenStandard: "ERC721",
+        timepoint: 123n,
+      }),
+    ).resolves.toEqual({
+      clockMode: ClockMode.BlockNumber,
+      quorum: 7n,
+      decimals: 0n,
+    });
+
+    expect(executeWithFallbacks).toHaveBeenCalledTimes(1);
+    expect(readContractCalls).toEqual([
+      { functionName: "quorum", args: [123n] },
+    ]);
+  });
+
   it("falls back to latest block when clock is unavailable", async () => {
     const chainTool = new ChainTool();
     jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
