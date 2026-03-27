@@ -12,6 +12,7 @@
   "viewMore": "View more",
   "loading": "Loading...",
   "noProposals": "No proposals",
+  "noVotes": "No votes",
   "columns": {
     "proposal": "Proposal",
     "votes": "Votes"

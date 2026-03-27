@@ -39,7 +39,13 @@
   },
   "receivedDelegations": {
     "title": "Received Delegations",
-    "titleWithCount": "Received Delegations ({count})"
+    "titleWithCount": "Received Delegations ({count})",
+    "columns": {
+      "delegator": "Delegator",
+      "date": "Date",
+      "votes": "Votes"
+    },
+    "empty": "No delegations yet"
   },
   "user": {
     "aiStatement": "An AI-powered delegate that actively votes on governance proposals. Learn more at <link>https://docs.degov.ai/governance/agent/overview</link>.",

@@ -6,6 +6,7 @@
   "search": {
     "open": "Open search",
     "placeholder": "Search...",
+    "daoPlaceholder": "Search proposals on this DAO",
     "title": "Search proposals",
     "loadMore": "Load more",
     "loading": "Loading...",
@@ -17,6 +18,7 @@
   },
   "connect": {
     "connectWallet": "Connect Wallet",
+    "exploreFeatures": "Explore more features by connecting your wallet.",
     "errorChain": "Wrong network",
     "profile": "Profile",
     "disconnect": "Disconnect",
@@ -34,11 +36,77 @@
   },
   "error": {
     "title": "Something went wrong",
-    "retry": "Try Again"
+    "description": "Sorry, something went wrong",
+    "retry": "Try Again",
+    "refresh": "Refresh"
   },
   "notFound": {
     "description": "We’ve searched the entire universe and still couldn’t find what you’re looking for.",
     "backToHome": "Back to Home"
+  },
+  "actions": {
+    "ok": "OK"
+  },
+  "links": {
+    "viewOnExplorer": "View on explorer"
+  },
+  "tooltips": {
+    "aiDelegate": "An AI-Powered delegate that can accept delegations and vote on your behalf based on the community's preferences."
+  },
+  "pagination": {
+    "navigation": "pagination",
+    "previousPage": "Previous Page",
+    "nextPage": "Next Page"
+  },
+  "governance": {
+    "parametersTitle": "Parameters",
+    "systemInfoTitle": "System Info",
+    "none": "None",
+    "proposalThreshold": "Proposal threshold",
+    "proposalDelay": "Proposal delay",
+    "votingDelay": "Voting Delay",
+    "votingPeriod": "Voting Period",
+    "timeLockDelay": "TimeLock Delay",
+    "quorumNeeded": "Quorum Needed",
+    "totalVotingPower": "Total Voting Power",
+    "totalSupply": "Total Supply",
+    "totalDelegates": "Total Delegates"
+  },
+  "demoBanner": {
+    "message": "Note: Welcome to the DeGov demo. Comment your ETH address <link>here</link> to receive test tokens."
+  },
+  "editor": {
+    "table": {
+      "ariaLabel": "Table options",
+      "tooltip": "Table",
+      "insertTable": "Insert Table",
+      "columns": "Columns",
+      "addColumnBefore": "Add Column Before",
+      "addColumnAfter": "Add Column After",
+      "deleteColumn": "Delete Column",
+      "rows": "Rows",
+      "addRowBefore": "Add Row Before",
+      "addRowAfter": "Add Row After",
+      "deleteRow": "Delete Row",
+      "cells": "Cells",
+      "mergeOrSplitCells": "Merge/Split Cells",
+      "deleteTable": "Delete Table"
+    },
+    "link": {
+      "ariaLabel": "Link",
+      "tooltip": "Link",
+      "placeholder": "Paste a link...",
+      "apply": "Apply link",
+      "openInNewWindow": "Open in new window",
+      "remove": "Remove link"
+    },
+    "list": {
+      "ariaLabel": "List options",
+      "tooltip": "List",
+      "bulletList": "Bullet List",
+      "orderedList": "Ordered List",
+      "taskList": "Task List"
+    }
   },
   "labels": {
     "edit": "Edit",

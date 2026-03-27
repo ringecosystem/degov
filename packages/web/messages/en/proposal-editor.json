@@ -107,6 +107,12 @@
     "showLess": "Show less",
     "actions": "Actions"
   },
+  "publishWarning": {
+    "title": "Inefficient Voting Power",
+    "requiredVotingPower": "Required Voting Power",
+    "yourVotingPower": "Your Voting Power",
+    "needMoreVotingPower": "Need {amount} more Voting Power to create the proposal."
+  },
   "files": {
     "abi": {
       "drop": "Drop your ABI file here",

@@ -15,5 +15,11 @@
     "delegators": "Delegators",
     "action": "Action"
   },
-  "noVoteHistory": "No vote history"
+  "noVoteHistory": "No vote history",
+  "actions": {
+    "delegateVotes": "Delegate votes"
+  },
+  "messages": {
+    "failedToDelegateVotes": "Failed to delegate votes"
+  }
 }
