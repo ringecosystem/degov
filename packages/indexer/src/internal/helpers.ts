@@ -17,6 +17,8 @@ export type IndexerLogFieldValue =
   | unknown[];
 
 export class DegovIndexerHelpers {
+  private static readonly defaultProgressHeartbeatMs = 10_000;
+
   static safeJsonStringify(
     value: any,
     replacer: (key: string, value: any) => any = (_, v) => v
@@ -39,6 +41,42 @@ export class DegovIndexerHelpers {
       .toLowerCase();
 
     return value === "1" || value === "true" || value === "yes" || value === "on";
+  }
+
+  static progressHeartbeatIntervalMs(): number {
+    const rawValue = process.env.DEGOV_INDEXER_PROGRESS_HEARTBEAT_MS?.trim();
+
+    if (!rawValue) {
+      return this.defaultProgressHeartbeatMs;
+    }
+
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return this.defaultProgressHeartbeatMs;
+    }
+
+    return Math.floor(parsed);
+  }
+
+  static formatDurationMs(durationMs: number): string {
+    if (durationMs < 1000) {
+      return `${durationMs}ms`;
+    }
+
+    const totalSeconds = Math.floor(durationMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h${minutes}m${seconds}s`;
+    }
+
+    if (minutes > 0) {
+      return `${minutes}m${seconds}s`;
+    }
+
+    return `${seconds}s`;
   }
 
   static formatLogLine(

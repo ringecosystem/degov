@@ -99,8 +99,60 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   processor.run(
     createDatabase(),
     async (ctx) => {
+      const batchStartedAt = Date.now();
+      const batchStartBlock = ctx.blocks[0]?.header.height;
+      const batchEndBlock = ctx.blocks[ctx.blocks.length - 1]?.header.height;
+      const heartbeatIntervalMs =
+        DegovIndexerHelpers.progressHeartbeatIntervalMs();
+      let lastHeartbeatAt = batchStartedAt;
+      let blocksSeen = 0;
+      let logsSeen = 0;
+      let matchedLogsSeen = 0;
+
+      const maybeLogBatchHeartbeat = (fields: {
+        currentBlock: number;
+        contract?: string;
+        tx?: string;
+      }) => {
+        const now = Date.now();
+        if (now - lastHeartbeatAt < heartbeatIntervalMs) {
+          return;
+        }
+
+        lastHeartbeatAt = now;
+        const heartbeatFields: Record<string, string | number> = {
+          startBlock: batchStartBlock ?? fields.currentBlock,
+          endBlock: batchEndBlock ?? fields.currentBlock,
+          currentBlock: fields.currentBlock,
+          blocksSeen,
+          totalBlocks: ctx.blocks.length,
+          logsSeen,
+          matchedLogsSeen,
+          elapsed: DegovIndexerHelpers.formatDurationMs(now - batchStartedAt),
+        };
+
+        if (DegovIndexerHelpers.verboseLoggingEnabled()) {
+          heartbeatFields.contract = fields.contract ?? "";
+          heartbeatFields.tx = fields.tx ?? "";
+        }
+
+        console.log(
+          DegovIndexerHelpers.formatLogLine(
+            "processor.batch heartbeat",
+            heartbeatFields,
+          ),
+        );
+      };
+
       for (const c of ctx.blocks) {
+        blocksSeen += 1;
+        maybeLogBatchHeartbeat({
+          currentBlock: c.header.height,
+        });
+
         for (const event of c.logs) {
+          logsSeen += 1;
+
           for (const work of config.works) {
             const indexContract = work.contracts.find(
               (item) =>
@@ -112,6 +164,13 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
             }
 
             try {
+              matchedLogsSeen += 1;
+              maybeLogBatchHeartbeat({
+                currentBlock: event.block.height,
+                contract: indexContract.name,
+                tx: event.transactionHash,
+              });
+
               switch (indexContract.name) {
                 case "governor":
                   await new GovernorHandler(ctx, {
@@ -142,6 +201,12 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
                   }).handle(event);
                   break;
               }
+
+              maybeLogBatchHeartbeat({
+                currentBlock: event.block.height,
+                contract: indexContract.name,
+                tx: event.transactionHash,
+              });
             } catch (e) {
               ctx.log.warn(
                 DegovIndexerHelpers.formatLogLine("processor.event failed", {
