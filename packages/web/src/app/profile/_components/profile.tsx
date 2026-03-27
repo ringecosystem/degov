@@ -92,12 +92,14 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
         governanceScope,
       ],
       queryFn: () =>
-        delegateService.getDelegateMappings(
+        delegateService.getAllDelegates(
           daoConfig?.indexer?.endpoint as string,
           {
+            orderBy: "blockTimestamp_DESC_NULLS_LAST",
             where: {
               ...governanceScope,
-              from_eq: address?.toLowerCase(),
+              fromDelegate_eq: address?.toLowerCase(),
+              isCurrent_eq: true,
             },
           }
         ),
@@ -135,12 +137,12 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     const latestDelegation = delegateMappings[0];
 
     // Check if delegating to self
-    if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
+    if (latestDelegation.toDelegate.toLowerCase() === address.toLowerCase()) {
       return {
         type: "self",
         displayText: t("delegationStatus.self.display"),
         buttonText: t("delegationStatus.self.button"),
-        to: latestDelegation.to,
+        to: latestDelegation.toDelegate,
       };
     }
 
@@ -152,7 +154,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
         symbol: governanceToken?.symbol ?? "",
       }),
       buttonText: t("delegationStatus.other.button"),
-      to: latestDelegation.to,
+      to: latestDelegation.toDelegate,
     };
   }, [
     delegateMappings,

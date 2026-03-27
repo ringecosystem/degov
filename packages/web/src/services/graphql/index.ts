@@ -51,7 +51,9 @@ type ProposalMetricsWhere = GovernanceScope & {
 };
 
 type DelegateWhere = GovernanceScope & {
+  fromDelegate_eq?: string;
   toDelegate_eq?: string;
+  isCurrent_eq?: boolean;
 };
 
 type DelegateMappingWhere = GovernanceScope & {
@@ -311,16 +313,39 @@ export const delegateService = {
     options: {
       limit?: number;
       offset?: number;
-      orderBy?: string;
+      orderBy?: string | string[];
       where?: DelegateWhere;
     } = {}
   ) => {
     const response = await request<Types.DelegateResponse>(
       endpoint,
       Queries.GET_DELEGATES,
-      options
+      {
+        limit: options?.limit,
+        offset: options?.offset,
+        orderBy: Array.isArray(options?.orderBy)
+          ? options.orderBy
+          : options?.orderBy
+            ? [options.orderBy]
+            : undefined,
+        where: options?.where,
+      }
     );
     return response?.delegates ?? [];
+  },
+  getDelegatesConnection: async (
+    endpoint: string,
+    options: {
+      where: DelegateWhere;
+      orderBy: string[];
+    }
+  ) => {
+    const response = await request<Types.DelegateConnectionResponse>(
+      endpoint,
+      Queries.GET_DELEGATES_CONNECTION,
+      options
+    );
+    return response?.delegatesConnection;
   },
   getDelegateMappings: async (
     endpoint: string,

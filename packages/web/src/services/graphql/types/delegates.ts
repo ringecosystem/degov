@@ -3,6 +3,7 @@ export type DelegateItem = {
   blockTimestamp: string;
   fromDelegate: string;
   id: string;
+  isCurrent: boolean;
   power: string;
   toDelegate: string;
   transactionHash: string;

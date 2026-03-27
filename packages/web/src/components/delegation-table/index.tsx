@@ -11,7 +11,7 @@ import {
 } from "@/hooks/usePaginationRange";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
 import { buildGovernanceScope, delegateService } from "@/services/graphql";
-import type { DelegateMappingItem } from "@/services/graphql/types";
+import type { DelegateItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
@@ -78,7 +78,7 @@ export function DelegationTable({
     }
   }, [currentPage, totalPageCount]);
 
-  const { data: pageData = [], isFetching } = useQuery<DelegateMappingItem[]>({
+  const { data: pageData = [], isFetching } = useQuery<DelegateItem[]>({
     queryKey: [
       "delegation-table",
       daoConfig?.indexer?.endpoint,
@@ -89,17 +89,18 @@ export function DelegationTable({
       governanceScope,
     ],
     queryFn: () =>
-      delegateService.getDelegateMappings(
+      delegateService.getAllDelegates(
         daoConfig?.indexer?.endpoint as string,
         {
-        limit: pageSize,
-        offset: (currentPage - 1) * pageSize,
-        orderBy,
-        where: {
-          ...governanceScope,
-          to_eq: address.toLowerCase(),
-        },
-      }
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+          orderBy,
+          where: {
+            ...governanceScope,
+            toDelegate_eq: address.toLowerCase(),
+            isCurrent_eq: true,
+          },
+        }
       ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
     placeholderData: (previous) => previous ?? [],
@@ -107,7 +108,7 @@ export function DelegationTable({
 
   const paginationRange = usePaginationRange(currentPage, totalPageCount);
 
-  const columns = useMemo<ColumnType<DelegateMappingItem>[]>(
+  const columns = useMemo<ColumnType<DelegateItem>[]>(
     () => [
       {
         title: t("columns.delegator"),
@@ -116,7 +117,7 @@ export function DelegationTable({
         className: "text-left",
         render: (record) => (
           <AddressWithAvatar
-            address={record?.from as `0x${string}`}
+            address={record?.fromDelegate as `0x${string}`}
             avatarSize={30}
             align="start"
           />
@@ -231,7 +232,7 @@ export function DelegationTable({
 }
 
 interface DelegatorVotesDisplayProps {
-  record: DelegateMappingItem;
+  record: DelegateItem;
   formatTokenAmount: (amount: bigint) => { formatted: string } | undefined;
   totalVotes: bigint;
 }

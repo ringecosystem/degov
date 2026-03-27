@@ -58,12 +58,13 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
       governanceScope,
     ],
     queryFn: () =>
-      delegateService.getDelegateMappingsConnection(
+      delegateService.getDelegatesConnection(
         daoConfig?.indexer?.endpoint as string,
         {
           where: {
             ...governanceScope,
-            to_eq: address.toLowerCase(),
+            toDelegate_eq: address.toLowerCase(),
+            isCurrent_eq: true,
           },
           orderBy: ["id_ASC"],
         }
