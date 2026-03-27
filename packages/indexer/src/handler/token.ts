@@ -254,7 +254,9 @@ export class TokenHandler {
   }
 
   private forgetDelegateMapping(from: string) {
-    this.delegateMappingByFrom.set(from.toLowerCase(), null);
+    const normalizedFrom = from.toLowerCase();
+    this.delegateMappingByFrom.set(normalizedFrom, null);
+    this.dirtyDelegateMappings.delete(normalizedFrom);
   }
 
   private async getContributorById(id: string): Promise<Contributor | undefined> {
@@ -308,7 +310,9 @@ export class TokenHandler {
   }
 
   private forgetDelegate(id: string) {
-    this.delegateById.set(id.toLowerCase(), null);
+    const normalizedId = id.toLowerCase();
+    this.delegateById.set(normalizedId, null);
+    this.dirtyDelegates.delete(normalizedId);
   }
 
   private async getGlobalDataMetric(

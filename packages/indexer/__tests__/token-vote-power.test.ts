@@ -697,6 +697,116 @@ describe("token vote power checkpoints", () => {
     );
   });
 
+  it("does not resurrect an undelegated mapping during batch flush", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    const delegateChangedDecode = jest.spyOn(
+      itokenerc20.events.DelegateChanged,
+      "decode"
+    );
+    const delegateVotesChangedDecode = jest.spyOn(
+      itokenerc20.events.DelegateVotesChanged,
+      "decode"
+    );
+
+    delegateChangedDecode.mockReturnValueOnce({
+      delegator: "0xd25f3ff4d63179800dce837dc5412dac1ba6133f",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0xb9259aeedf68948647be301844174f5e249c2948",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-initial-delegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: {
+        height: 10,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xinitial-delegate",
+    } as any);
+
+    delegateVotesChangedDecode.mockReturnValueOnce({
+      delegate: "0xb9259aeedf68948647be301844174f5e249c2948",
+      previousVotes: 0n,
+      newVotes: 24162269903537182680n,
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-initial-votes",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: {
+        height: 10,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xinitial-delegate",
+    } as any);
+
+    delegateChangedDecode.mockReturnValueOnce({
+      delegator: "0xd25f3ff4d63179800dce837dc5412dac1ba6133f",
+      fromDelegate: "0xb9259aeedf68948647be301844174f5e249c2948",
+      toDelegate: "0x0000000000000000000000000000000000000000",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-undelegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 3,
+      transactionIndex: 1,
+      block: {
+        height: 11,
+        timestamp: 1_700_000_100_000,
+      },
+      transactionHash: "0xundelegate",
+    } as any);
+
+    delegateVotesChangedDecode.mockReturnValueOnce({
+      delegate: "0xb9259aeedf68948647be301844174f5e249c2948",
+      previousVotes: 24162269903537182680n,
+      newVotes: 0n,
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-undelegate-votes",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 4,
+      transactionIndex: 1,
+      block: {
+        height: 11,
+        timestamp: 1_700_000_100_000,
+      },
+      transactionHash: "0xundelegate",
+    } as any);
+
+    await (handler as any).flush();
+
+    expect(
+      store.findEntity(DelegateMapping, "0xd25f3ff4d63179800dce837dc5412dac1ba6133f")
+    ).toBeUndefined();
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xd25f3ff4d63179800dce837dc5412dac1ba6133f_0xb9259aeedf68948647be301844174f5e249c2948"
+      )
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+    });
+  });
+
   it("tracks ERC721 transfers as token ids while applying single-vote power deltas", async () => {
     const store = new MemoryStore([
       new DataMetric({
