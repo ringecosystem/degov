@@ -17,6 +17,12 @@
   "dropdown": {
     "cancelProposal": "Cancel Proposal"
   },
+  "cancelDialog": {
+    "title": "Cancel Proposal",
+    "description": "Once canceled, a proposal can no longer be executed. Please note: proposals can only be canceled in certain scenarios.",
+    "close": "Close",
+    "confirm": "Cancel Proposal"
+  },
   "voting": {
     "title": "Voting",
     "votingPower": "Voting power",

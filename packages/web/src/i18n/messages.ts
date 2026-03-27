@@ -6,6 +6,7 @@ async function loadEnglishMessages(): Promise<AbstractIntlMessages> {
   const [
     common,
     navigation,
+    apps,
     dashboard,
     delegates,
     proposals,
@@ -18,6 +19,7 @@ async function loadEnglishMessages(): Promise<AbstractIntlMessages> {
   ] = await Promise.all([
     import("../../messages/en/common.json"),
     import("../../messages/en/navigation.json"),
+    import("../../messages/en/apps.json"),
     import("../../messages/en/dashboard.json"),
     import("../../messages/en/delegates.json"),
     import("../../messages/en/proposals.json"),
@@ -32,6 +34,7 @@ async function loadEnglishMessages(): Promise<AbstractIntlMessages> {
   return {
     common: common.default,
     navigation: navigation.default,
+    apps: apps.default,
     dashboard: dashboard.default,
     delegates: delegates.default,
     proposals: proposals.default,
