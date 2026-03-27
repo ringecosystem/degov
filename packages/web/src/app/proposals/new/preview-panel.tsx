@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import { useTranslations } from "next-intl";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -21,6 +22,7 @@ const MAX_COLLAPSED_HEIGHT = 644;
 marked.use();
 
 export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
+  const t = useTranslations("proposalEditor.preview");
   const { address } = useAccount();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showToggle, setShowToggle] = useState(false);
@@ -31,18 +33,18 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
     if (actions[0]?.type === "proposal") {
       const content = actions[0]?.content as ProposalContent;
       return {
-        title: content.title?.trim() || "Untitled",
+        title: content.title?.trim() || t("untitled"),
         markdown: content.markdown ?? "",
         discussion: content.discussion,
       };
     }
 
     return {
-      title: "Untitled",
+      title: t("untitled"),
       markdown: "",
       discussion: undefined,
     };
-  }, [actions]);
+  }, [actions, t]);
 
   const sanitizedHtml = useMemo(() => {
     const html = marked.parse(proposalContent.markdown ?? "") as string;
@@ -102,7 +104,7 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
 
         <div className="flex items-center gap-[10px] text-[12px] lg:text-[16px]">
           <div className="flex items-center gap-[5px]">
-            <span className="hidden lg:block">Proposed by</span>
+            <span className="hidden lg:block">{t("proposedBy")}</span>
             {address && (
               <AddressWithAvatar
                 address={address}
@@ -119,7 +121,7 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-5 h-5 bg-light rounded-full flex justify-center items-center hover:opacity-80 transition-opacity"
-                title="Discussion"
+                title={t("discussion")}
               >
                 <OffchainDiscussionIcon
                   width={12}
@@ -162,7 +164,7 @@ export const PreviewPanel = ({ visible, actions }: PreviewPanelProps) => {
                 className="flex flex-col border-t border-card-background pt-[20px] text-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
                 onClick={toggleExpanded}
               >
-                <span>{isExpanded ? "Show less" : "Show more"}</span>
+                <span>{isExpanded ? t("showLess") : t("showMore")}</span>
               </div>
             )}
           </div>

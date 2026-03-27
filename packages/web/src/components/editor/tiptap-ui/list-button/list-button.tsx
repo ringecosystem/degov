@@ -1,6 +1,7 @@
 "use client";
 
 import { isNodeSelection, type Editor } from "@tiptap/react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 // --- Hooks ---
@@ -23,6 +24,8 @@ export interface ListOption {
   icon: React.ElementType;
 }
 
+type ListLabelGetter = ReturnType<typeof useTranslations<"common.editor.list">>;
+
 export interface ListButtonProps extends Omit<ButtonProps, "type"> {
   /**
    * The TipTap editor instance.
@@ -43,23 +46,25 @@ export interface ListButtonProps extends Omit<ButtonProps, "type"> {
   hideWhenUnavailable?: boolean;
 }
 
-export const listOptions: ListOption[] = [
-  {
-    label: "Bullet List",
-    type: "bulletList",
-    icon: ListIcon,
-  },
-  {
-    label: "Ordered List",
-    type: "orderedList",
-    icon: ListOrderedIcon,
-  },
-  {
-    label: "Task List",
-    type: "taskList",
-    icon: ListTodoIcon,
-  },
-];
+export function getListOptions(t: ListLabelGetter): ListOption[] {
+  return [
+    {
+      label: t("bulletList"),
+      type: "bulletList",
+      icon: ListIcon,
+    },
+    {
+      label: t("orderedList"),
+      type: "orderedList",
+      icon: ListOrderedIcon,
+    },
+    {
+      label: t("taskList"),
+      type: "taskList",
+      icon: ListTodoIcon,
+    },
+  ];
+}
 
 export const listShortcutKeys: Record<ListType, string> = {
   bulletList: "Ctrl-Shift-8",
@@ -115,8 +120,11 @@ export function toggleList(editor: Editor | null, type: ListType): void {
   }
 }
 
-export function getListOption(type: ListType): ListOption | undefined {
-  return listOptions.find((option) => option.type === type);
+export function getListOption(
+  type: ListType,
+  t: ListLabelGetter
+): ListOption | undefined {
+  return getListOptions(t).find((option) => option.type === type);
 }
 
 export function shouldShowListButton(params: {
@@ -143,9 +151,13 @@ export function shouldShowListButton(params: {
   return true;
 }
 
-export function useListState(editor: Editor | null, type: ListType) {
+export function useListState(
+  editor: Editor | null,
+  type: ListType,
+  t: ListLabelGetter
+) {
   const listInSchema = isNodeInSchema(type, editor);
-  const listOption = getListOption(type);
+  const listOption = getListOption(type, t);
   const isActive = isListActive(editor, type);
   const shortcutKey = listShortcutKeys[type];
 
@@ -171,10 +183,12 @@ export const ListButton = React.forwardRef<HTMLButtonElement, ListButtonProps>(
     },
     ref
   ) => {
+    const t = useTranslations("common.editor.list");
     const editor = useTiptapEditor(providedEditor);
     const { listInSchema, listOption, isActive, shortcutKey } = useListState(
       editor,
-      type
+      type,
+      t
     );
 
     const Icon = listOption?.icon || ListIcon;

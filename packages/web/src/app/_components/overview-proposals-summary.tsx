@@ -1,6 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { AlertCircleIcon } from "@/components/icons";
@@ -51,6 +52,7 @@ type OverviewProposalsSummaryDropdownProps = {
 export const OverviewProposalsSummaryDropdown = ({
   daoCode,
 }: OverviewProposalsSummaryDropdownProps) => {
+  const tLoading = useTranslations("common.loading");
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
 
   const getColorVar = (state?: ProposalState) => {
@@ -138,7 +140,9 @@ export const OverviewProposalsSummaryDropdown = ({
       >
         <div className="flex flex-col justify-start gap-[20px]">
           {isSummaryStatesLoading ? (
-            <div className="text-sm text-foreground/60">Loading...</div>
+            <div className="text-sm text-foreground/60">
+              {tLoading("title")}
+            </div>
           ) : (
             summaryItems.map((item) => (
               <div

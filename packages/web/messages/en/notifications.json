@@ -1,0 +1,46 @@
+{
+  "settings": {
+    "newProposals": "New proposals",
+    "newProposalsDescription": "Notified of all new proposals of this DAO.",
+    "votingEndReminder": "Voting end reminder",
+    "votingEndReminderDescription": "Receive notifications before the proposal voting ends.",
+    "notificationSetting": "Notification setting"
+  },
+  "emailBind": {
+    "title": "Bind Email",
+    "yourEmail": "Your Email",
+    "verificationCode": "Verification Code",
+    "placeholders": {
+      "email": "yourname@example.com",
+      "code": "e.g., 123456"
+    },
+    "actions": {
+      "send": "Send",
+      "verify": "Verify"
+    },
+    "messages": {
+      "verified": "Email verified successfully"
+    },
+    "errors": {
+      "invalidEmail": "Please enter a valid email address",
+      "sendFailed": "Failed to send verification code",
+      "invalidCode": "Invalid verification code. Please try again."
+    }
+  },
+  "proposal": {
+    "title": "Notifications",
+    "subscribe": "Subscribe",
+    "unsubscribe": "Unsubscribe",
+    "bindEmailFirst": "Please bind your email address first to receive notifications",
+    "subscribed": "Successfully subscribed to proposal notifications",
+    "unsubscribed": "Successfully unsubscribed from proposal notifications",
+    "failed": "Failed to {operation} proposal",
+    "operationSubscribe": "subscribe to",
+    "operationUnsubscribe": "unsubscribe from"
+  },
+  "dropdown": {
+    "failed": "Failed to {operation}",
+    "operationSubscribe": "subscribe to",
+    "operationUpdate": "update subscription for"
+  }
+}

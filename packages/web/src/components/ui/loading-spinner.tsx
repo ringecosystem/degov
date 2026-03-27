@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import React from "react";
 
 import { cn } from "@/lib/utils";
@@ -41,10 +42,14 @@ interface LoadingStateProps {
 }
 
 export const LoadingState: React.FC<LoadingStateProps> = ({
-  title = "Loading...",
+  title,
   description,
   className,
 }) => {
+  const t = useTranslations("common.loading");
+  const resolvedTitle = title ?? t("title");
+  const resolvedDescription = description ?? t("description");
+
   return (
     <motion.div
       className={cn(
@@ -62,16 +67,16 @@ export const LoadingState: React.FC<LoadingStateProps> = ({
         animate={{ opacity: 1 }}
         transition={{ delay: 0.1 }}
       >
-        {title}
+        {resolvedTitle}
       </motion.h3>
-      {description && (
+      {resolvedDescription && (
         <motion.p
           className="text-sm text-muted-foreground text-center max-w-md"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.15 }}
         >
-          {description}
+          {resolvedDescription}
         </motion.p>
       )}
     </motion.div>
@@ -86,11 +91,14 @@ interface ErrorStateProps {
 }
 
 export const ErrorState: React.FC<ErrorStateProps> = ({
-  title = "Something went wrong",
+  title,
   description,
   onRetry,
   className,
 }) => {
+  const t = useTranslations("common.error");
+  const resolvedTitle = title ?? t("title");
+
   return (
     <div
       className={cn(
@@ -113,7 +121,9 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
           />
         </svg>
       </div>
-      <h3 className="text-lg font-medium text-foreground mb-2">{title}</h3>
+      <h3 className="text-lg font-medium text-foreground mb-2">
+        {resolvedTitle}
+      </h3>
       {description && (
         <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
           {description}
@@ -124,7 +134,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
           onClick={onRetry}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
         >
-          Try Again
+          {t("retry")}
         </button>
       )}
     </div>

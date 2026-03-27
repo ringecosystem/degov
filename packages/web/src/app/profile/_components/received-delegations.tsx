@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { DelegationList } from "@/components/delegation-list";
@@ -39,6 +40,7 @@ const ORDER_BY_MAP: Record<
 };
 
 export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
+  const t = useTranslations("profile.receivedDelegations");
   const daoConfig = useDaoConfig();
   const [sortState, setSortState] =
     useState<DelegationSortState>(DEFAULT_SORT_STATE);
@@ -56,12 +58,13 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
       governanceScope,
     ],
     queryFn: () =>
-      delegateService.getDelegateMappingsConnection(
+      delegateService.getDelegatesConnection(
         daoConfig?.indexer?.endpoint as string,
         {
           where: {
             ...governanceScope,
-            to_eq: address.toLowerCase(),
+            toDelegate_eq: address.toLowerCase(),
+            isCurrent_eq: true,
           },
           orderBy: ["id_ASC"],
         }
@@ -72,9 +75,9 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
   const getDisplayTitle = () => {
     const totalCount = delegationConnection?.totalCount;
     if (totalCount !== undefined) {
-      return `Received Delegations (${totalCount})`;
+      return t("titleWithCount", { count: totalCount });
     }
-    return "Received Delegations";
+    return t("title");
   };
 
   const orderBy = ORDER_BY_MAP[sortState.field][sortState.direction];

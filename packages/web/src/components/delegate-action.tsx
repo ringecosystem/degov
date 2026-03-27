@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { toast } from "react-toastify";
 import { useAccount, useReadContract } from "wagmi";
@@ -34,6 +35,7 @@ export function DelegateAction({
   onOpenChange,
   address,
 }: DelegateActionProps) {
+  const t = useTranslations("delegates");
   const daoConfig = useDaoConfig();
   const queryClient = useQueryClient();
   const [hash, setHash] = useState<string | null>(null);
@@ -71,10 +73,10 @@ export function DelegateAction({
     } catch (error) {
       toast.error(
         (error as { shortMessage: string })?.shortMessage ??
-          "Failed to delegate votes"
+          t("messages.failedToDelegateVotes")
       );
     }
-  }, [address, delegate, onOpenChange]);
+  }, [address, delegate, onOpenChange, t]);
 
   return (
     <>
@@ -82,7 +84,7 @@ export function DelegateAction({
         <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
           <DialogHeader className="flex w-full flex-row items-center justify-between">
             <DialogTitle className="text-[18px] font-extrabold">
-              Delegate
+              {t("delegate")}
             </DialogTitle>
             <CloseIcon
               width={24}
@@ -110,7 +112,7 @@ export function DelegateAction({
               }
               onClick={handleDelegate}
             >
-              Delegate votes{" "}
+              {t("actions.delegateVotes")}{" "}
               {tokenBalance
                 ? formatBigIntForDisplay(
                     tokenBalance,

@@ -2,8 +2,8 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { isNil } from "lodash-es";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useReadContract } from "wagmi";
 
@@ -13,6 +13,7 @@ import { LoadingState } from "@/components/ui/loading-spinner";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useNotificationVisibility } from "@/hooks/useNotificationVisibility";
+import { Link } from "@/i18n/navigation";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { parseDescription } from "@/utils";
@@ -42,6 +43,7 @@ const ACTIVE_STATES: ProposalState[] = [
 export default function ProposalDetailPage() {
   const daoConfig = useDaoConfig();
   const showNotification = useNotificationVisibility();
+  const t = useTranslations("proposalDetail.page");
 
   const params = useParams();
   const id = params?.id;
@@ -49,7 +51,7 @@ export default function ProposalDetailPage() {
   const proposalDisplayId = useMemo(() => {
     const rawId = Array.isArray(id) ? id[0] : id;
     if (!rawId) {
-      return "Proposal";
+      return t("fallbackTitle");
     }
 
     if (rawId.length <= 12) {
@@ -57,7 +59,7 @@ export default function ProposalDetailPage() {
     }
 
     return `${rawId.slice(0, 6)}...${rawId.slice(-6)}`;
-  }, [id]);
+  }, [id, t]);
 
   const validId = useMemo(() => {
     if (!id) return null;
@@ -292,8 +294,8 @@ export default function ProposalDetailPage() {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <LoadingState
-          title="Proposal Loading"
-          description="Loading proposal data, please wait..."
+          title={t("loadingTitle")}
+          description={t("loadingDescription")}
         />
       </div>
     );
@@ -309,7 +311,7 @@ export default function ProposalDetailPage() {
           className="text-muted-foreground hover:underline"
           href="/proposals"
         >
-          Proposals
+          {t("title")}
         </Link>
         <span className="text-muted-foreground">/</span>
         <span>{proposalDisplayId}</span>
@@ -324,7 +326,6 @@ export default function ProposalDetailPage() {
               proposalQueuedById={proposalQueuedById}
               isAllQueriesFetching={isAllQueriesFetching}
               onRefetch={refetchPageData}
-              id={id as string}
             />
             <div className="flex-1 min-h-0">
               <Tabs data={data} isFetching={isPending} />
@@ -359,7 +360,6 @@ export default function ProposalDetailPage() {
           proposalQueuedById={proposalQueuedById}
           isAllQueriesFetching={isAllQueriesFetching}
           onRefetch={refetchPageData}
-          id={id as string}
         />
         <CurrentVotes
           proposalVotesData={proposalVotesData}

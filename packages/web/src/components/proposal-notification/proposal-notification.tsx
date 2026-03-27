@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
@@ -25,6 +26,7 @@ interface ProposalNotificationProps {
 export const ProposalNotification = ({
   proposalId,
 }: ProposalNotificationProps) => {
+  const t = useTranslations("notifications.proposal");
   const daoConfig = useDaoConfig();
   const appUrl = useDeGovAppsNavigation();
   const { ensureAuth, isAuthenticating, isAuthenticated } = useEnsureAuth();
@@ -67,9 +69,7 @@ export const ProposalNotification = ({
 
     // Check email binding after authentication
     if (!channelData?.isEmailBound) {
-      toast.error(
-        "Please bind your email address first to receive notifications"
-      );
+      toast.error(t("bindEmailFirst"));
       return;
     }
 
@@ -80,7 +80,7 @@ export const ProposalNotification = ({
           daoCode: daoConfig.code,
           proposalId: proposalId,
         });
-        toast.success("Successfully unsubscribed from proposal notifications");
+        toast.success(t("unsubscribed"));
       } else {
         await subscribeProposalMutation.mutateAsync({
           daoCode: daoConfig.code,
@@ -90,15 +90,17 @@ export const ProposalNotification = ({
             { name: FeatureName.PROPOSAL_STATE_CHANGED, strategy: "true" },
           ],
         });
-        toast.success("Successfully subscribed to proposal notifications");
+        toast.success(t("subscribed"));
       }
     } catch (error: unknown) {
       const errorMessage = extractErrorMessage(error);
       toast.error(
         errorMessage ||
-          `Failed to ${
-            isSubscribed ? "unsubscribe from" : "subscribe to"
-          } proposal`
+          t("failed", {
+            operation: isSubscribed
+              ? t("operationUnsubscribe")
+              : t("operationSubscribe"),
+          })
       );
     } finally {
       setIsProcessing(false);
@@ -112,6 +114,7 @@ export const ProposalNotification = ({
     isSubscribed,
     unsubscribeProposalMutation,
     subscribeProposalMutation,
+    t,
   ]);
 
   const isLoading =
@@ -126,7 +129,7 @@ export const ProposalNotification = ({
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
       <div className="flex items-center justify-between">
         <h3 className="text-[18px] text-foreground font-semibold">
-          Notifications
+          {t("title")}
         </h3>
         {appUrl && (
           <a href={appUrl} target="_blank" rel="noopener noreferrer">
@@ -148,7 +151,7 @@ export const ProposalNotification = ({
           isLoading={isLoading}
         >
           <NotificationIcon width={20} height={20} />
-          {isSubscribed ? "Unsubscribe" : "Subscribe"}
+          {isSubscribed ? t("unsubscribe") : t("subscribe")}
         </Button>
       </div>
     </div>

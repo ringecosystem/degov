@@ -1,5 +1,6 @@
 "use client";
 import { Search } from "lucide-react";
+import { useTranslations } from "next-intl";
 import React from "react";
 
 import { ConnectButton } from "@/components/connect-button";
@@ -9,6 +10,7 @@ import { ThemeSelector } from "@/components/theme-selector";
 import { useNotificationVisibility } from "@/hooks/useNotificationVisibility";
 
 export const Header = () => {
+  const tSearch = useTranslations("common.search");
   const [open, setOpen] = React.useState(false);
   const showNotification = useNotificationVisibility();
   return (
@@ -19,7 +21,7 @@ export const Header = () => {
         >
           <Search className="h-[15px] w-[15px] text-foreground/50" />
           <input
-            placeholder="Search proposals on this DAO"
+            placeholder={tSearch("daoPlaceholder")}
             className="h-full flex-1 appearance-none bg-transparent outline-hidden placeholder:text-foreground/50 placeholder:text-[14px] placeholder:font-normal"
             readOnly
             id="global-search"

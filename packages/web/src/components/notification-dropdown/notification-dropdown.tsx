@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
@@ -45,6 +46,7 @@ interface CountdownState {
 }
 
 export const NotificationDropdown = () => {
+  const t = useTranslations("notifications.dropdown");
   const config = useDaoConfig();
   const [isOpen, setIsOpen] = useState(false);
   const { ensureAuth, isAuthenticating } = useEnsureAuth();
@@ -121,9 +123,9 @@ export const NotificationDropdown = () => {
       // Roll back optimistic state on failure
       setOptimisticSettings(rollbackSettings);
       const errorMessage = extractErrorMessage(error);
-      toast.error(errorMessage || `Failed to ${operation}`);
+      toast.error(errorMessage || t("failed", { operation }));
     },
-    []
+    [t]
   );
 
   // Helper function to subscribe to features
@@ -164,7 +166,7 @@ export const NotificationDropdown = () => {
           return key === setting || value;
         }).map((key) => createFeature(key, "true"));
 
-        subscribeToFeatures(activeFeatures, settings, "subscribe to");
+        subscribeToFeatures(activeFeatures, settings, t("operationSubscribe"));
       } else {
         // Unsubscribe: check if other features are still active
         const otherActiveFeatures = FEATURE_KEYS.filter((key) => {
@@ -177,17 +179,25 @@ export const NotificationDropdown = () => {
           const allFeaturesDisabled = FEATURE_KEYS.map((key) =>
             createFeature(key, "false")
           );
-          subscribeToFeatures(allFeaturesDisabled, settings, "update subscription for");
+          subscribeToFeatures(
+            allFeaturesDisabled,
+            settings,
+            t("operationUpdate")
+          );
         } else {
           // Keep other active features
           const remainingFeatures = otherActiveFeatures.map((key) =>
             createFeature(key, "true")
           );
-          subscribeToFeatures(remainingFeatures, settings, "update subscription for");
+          subscribeToFeatures(
+            remainingFeatures,
+            settings,
+            t("operationUpdate")
+          );
         }
       }
     },
-    [settings, subscribeToFeatures]
+    [settings, subscribeToFeatures, t]
   );
 
   const handleStartCountdown = useCallback((duration: number) => {

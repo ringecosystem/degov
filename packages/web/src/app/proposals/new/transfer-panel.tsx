@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { parseUnits, formatUnits, type Address } from "viem";
@@ -14,7 +15,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import { formatBigIntForDisplay } from "@/utils/number";
 
-import { transferSchema } from "./schema";
+import { createTransferSchema } from "./schema";
 
 import type { TransferContent } from "./schema";
 
@@ -52,7 +53,9 @@ export const TransferPanel = ({
   onChange,
   onRemove,
 }: TransferPanelProps) => {
+  const t = useTranslations("proposalEditor");
   const daoConfig = useDaoConfig();
+  const transferSchema = useMemo(() => createTransferSchema(t), [t]);
 
   const {
     control,
@@ -159,20 +162,22 @@ export const TransferPanel = ({
       )}
     >
       <header className="flex items-center justify-between">
-        <h4 className="text-[18px] font-semibold">Action #{index}</h4>
+        <h4 className="text-[18px] font-semibold">
+          {t("actions.actionNumber", { index })}
+        </h4>
         <Button
           className="h-[30px] gap-[5px] rounded-[100px] border  border-foreground bg-card p-[10px]"
           variant="outline"
           onClick={() => onRemove(index)}
         >
           <ProposalCloseIcon width={16} height={16} className="text-current" />
-          <span>Remove action</span>
+          <span>{t("actions.removeAction")}</span>
         </Button>
       </header>
       <div className="mx-auto flex w-full flex-col gap-[20px]">
         <div className="flex flex-col gap-[10px]">
           <label className="text-[14px] text-foreground" htmlFor="recipient">
-            Transfer to
+            {t("transfer.transferTo")}
           </label>
 
           <Controller
@@ -183,7 +188,7 @@ export const TransferPanel = ({
                 id="recipient"
                 value={field.value}
                 onChange={field.onChange}
-                placeholder="Enter address"
+                placeholder={t("transfer.placeholders.recipient")}
                 className={cn(
                   "border-border/20 bg-card",
                   errors.recipient && "border-red-500"
@@ -198,7 +203,7 @@ export const TransferPanel = ({
 
         <div className="flex flex-col gap-[10px]">
           <label className="text-[14px] text-foreground" htmlFor="amount">
-            Transfer amount
+            {t("transfer.transferAmount")}
           </label>
           <div
             className={cn(
@@ -213,7 +218,7 @@ export const TransferPanel = ({
                 render={({ field }) => (
                   <input
                     className="w-full bg-transparent text-[36px] font-semibold tabular-nums text-foreground placeholder:text-foreground/50 focus-visible:outline-hidden"
-                    placeholder="0.000"
+                    placeholder={t("transfer.placeholders.amount")}
                     type="text"
                     inputMode="decimal"
                     value={field.value}
@@ -237,7 +242,7 @@ export const TransferPanel = ({
             <div className="flex items-center justify-end gap-[10px]">
               {/* <span className="text-[14px] text-foreground/50"></span> */}
               <span className="inline-flex shrink-0 items-center gap-[5px] text-[14px] text-muted-foreground">
-                Balance:
+                {t("transfer.balance")}:
                 {isLoading ? (
                   <Skeleton className="h-[20px] w-[80px] rounded-[4px]" />
                 ) : (
@@ -254,14 +259,14 @@ export const TransferPanel = ({
                 onClick={handleMaxAmount}
               >
                 <span className="justify-start text-muted-foreground text-sm font-normal">
-                  Max
+                  {t("transfer.max")}
                 </span>
               </button>
             </div>
           </div>
           {errors.amount && <ErrorMessage message={errors.amount.message} />}
           {isValueGreaterThanBalance && (
-            <ErrorMessage message="Balance is not enough" />
+            <ErrorMessage message={t("transfer.errors.balanceNotEnough")} />
           )}
         </div>
       </div>

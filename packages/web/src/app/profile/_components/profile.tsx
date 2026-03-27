@@ -1,8 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 import { isAddress, type Address } from "viem";
 import { useAccount, useAccountEffect, useReadContract } from "wagmi";
@@ -18,6 +17,7 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { Link, useRouter } from "@/i18n/navigation";
 import { buildGovernanceScope, delegateService } from "@/services/graphql";
 
 import { JoinDelegate } from "./join-delegate";
@@ -49,6 +49,7 @@ interface ProfileProps {
 }
 
 export const Profile = ({ address, isDelegate }: ProfileProps) => {
+  const t = useTranslations("profile");
   const [open, setOpen] = useState(false);
   const { isConnected } = useAccount();
   const [delegateOpen, setDelegateOpen] = useState(false);
@@ -91,12 +92,14 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
         governanceScope,
       ],
       queryFn: () =>
-        delegateService.getDelegateMappings(
+        delegateService.getAllDelegates(
           daoConfig?.indexer?.endpoint as string,
           {
+            orderBy: "blockTimestamp_DESC_NULLS_LAST",
             where: {
               ...governanceScope,
-              from_eq: address?.toLowerCase(),
+              fromDelegate_eq: address?.toLowerCase(),
+              isCurrent_eq: true,
             },
           }
         ),
@@ -126,29 +129,32 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     if (!delegateMappings || delegateMappings.length === 0) {
       return {
         type: "none",
-        displayText: "Haven't delegated yet",
-        buttonText: "Join as Delegate",
+        displayText: t("delegationStatus.none.display"),
+        buttonText: t("delegationStatus.none.button"),
       };
     }
 
     const latestDelegation = delegateMappings[0];
 
     // Check if delegating to self
-    if (latestDelegation.to.toLowerCase() === address.toLowerCase()) {
+    if (latestDelegation.toDelegate.toLowerCase() === address.toLowerCase()) {
       return {
         type: "self",
-        displayText: "Self",
-        buttonText: "Change Delegate",
-        to: latestDelegation.to,
+        displayText: t("delegationStatus.self.display"),
+        buttonText: t("delegationStatus.self.button"),
+        to: latestDelegation.toDelegate,
       };
     }
 
     // Delegating to someone else
     return {
       type: "other",
-      displayText: `${balance ?? "0.00"} ${governanceToken?.symbol} to`,
-      buttonText: "Change Delegate",
-      to: latestDelegation.to,
+      displayText: t("delegationStatus.other.display", {
+        amount: balance ?? "0.00",
+        symbol: governanceToken?.symbol ?? "",
+      }),
+      buttonText: t("delegationStatus.other.button"),
+      to: latestDelegation.toDelegate,
     };
   }, [
     delegateMappings,
@@ -156,6 +162,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
     tokenBalance,
     formatTokenAmount,
     governanceToken,
+    t,
   ]);
 
   const isOwnProfile = useMemo(() => {
@@ -249,7 +256,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
                 href="/delegates"
                 className="text-muted-foreground hover:text-foreground"
               >
-                Delegates
+                {t("breadcrumbs.delegates")}
               </Link>
               <span className="text-muted-foreground">/</span>
               <AddressResolver
@@ -273,7 +280,7 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
             href="/delegates"
             className="text-muted-foreground hover:text-foreground"
           >
-            Delegates
+            {t("breadcrumbs.delegates")}
           </Link>
           <span className="text-muted-foreground">/</span>
           <AddressResolver address={address as `0x${string}`} showShortAddress>

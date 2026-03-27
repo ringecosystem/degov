@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { BottomLogoIcon } from "@/components/icons";
 import type { BlockSyncStatus } from "@/hooks/useBlockSync";
@@ -27,6 +28,7 @@ export function IndexerStatus({
 }: IndexerStatusProps) {
   const { chainInfo } = useChainInfo();
   const daoConfig = useDaoConfig();
+  const t = useTranslations("common.indexer");
 
   const networkIcon = processChainIconUrl(
     chainInfo?.[daoConfig?.chain?.id ?? ""]?.icon
@@ -34,7 +36,10 @@ export function IndexerStatus({
 
   const clampedPercentage = Math.max(0, Math.min(syncPercentage, 100));
   const formattedPercentage = clampedPercentage.toFixed(1);
-  const hoverMessage = `Currently at block ${indexedBlock.toLocaleString()} of ${currentBlock.toLocaleString()}`;
+  const hoverMessage = t("currentlyAtBlock", {
+    indexedBlock: indexedBlock.toLocaleString(),
+    currentBlock: currentBlock.toLocaleString(),
+  });
 
   return (
     <div className="flex flex-col gap-[16px]">
@@ -85,7 +90,7 @@ export function IndexerStatus({
       </Tooltip>
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">
-        <span>Powered By</span>
+        <span>{t("poweredBy")}</span>
         <Link
           href="https://degov.ai"
           target="_blank"
@@ -94,7 +99,7 @@ export function IndexerStatus({
         >
           <BottomLogoIcon width={14} height={14} />
         </Link>
-        <span>DeGov.AI</span>
+        <span>{t("brand")}</span>
       </div>
     </div>
   );

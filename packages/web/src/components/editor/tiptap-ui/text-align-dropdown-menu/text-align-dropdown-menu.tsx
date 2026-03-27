@@ -1,6 +1,7 @@
 "use client";
 
 import { type Editor } from "@tiptap/react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 // --- Icons ---
@@ -51,6 +52,7 @@ export function TextAlignDropdownMenu({
   onOpenChange,
   ...props
 }: TextAlignDropdownMenuProps) {
+  const t = useTranslations("common.editor.textAlign");
   const [isOpen, setIsOpen] = React.useState(false);
   const editor = useTiptapEditor(providedEditor);
 
@@ -89,8 +91,8 @@ export function TextAlignDropdownMenu({
           data-active-state={isAnyAlignActive ? "on" : "off"}
           role="button"
           tabIndex={-1}
-          aria-label="Text alignment"
-          tooltip="Text alignment"
+          aria-label={t("ariaLabel")}
+          tooltip={t("tooltip")}
           {...props}
         >
           {getActiveIcon()}

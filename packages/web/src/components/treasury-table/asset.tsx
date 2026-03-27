@@ -1,5 +1,6 @@
 import { blo } from "blo";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { ExternalLinkIcon } from "@/components/icons";
@@ -44,6 +45,7 @@ interface AssetProps {
 }
 
 export const Asset = ({ asset, explorer }: AssetProps) => {
+  const t = useTranslations("treasury");
   const daoConfig = useDaoConfig();
   const daoLogo = daoConfig?.logo ?? "";
   const defaultPlaceholder =
@@ -81,12 +83,12 @@ export const Asset = ({ asset, explorer }: AssetProps) => {
         key={imageKey}
         src={asset.logo}
         fallback={fallbackSrc || daoLogo || defaultPlaceholder}
-        alt={asset.symbol || asset.name || "Token"}
+        alt={asset.symbol || asset.name || t("fallback.token")}
         imageKey={imageKey}
       />
       <div className="flex flex-col min-w-0">
         <span className="text-[14px] font-medium text-foreground truncate">
-          {asset.name || asset.symbol || "Unknown"}
+          {asset.name || asset.symbol || t("fallback.unknown")}
         </span>
       </div>
     </>

@@ -605,6 +605,7 @@ type Delegate @entity @index(fields: ["chainId", "governorAddress", "fromDelegat
   blockTimestamp: BigInt!
   transactionHash: String!
 
+  isCurrent: Boolean!
   power: BigInt!
 }
 

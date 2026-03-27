@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslations } from "next-intl";
 
 import { PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export const Sidebar = ({
   onAddAction,
   onSetTab,
 }: SidebarProps) => {
+  const t = useTranslations("proposalEditor.actions");
   const isNotAddAction = (a: Action): a is Exclude<Action, AddAction> => a.type !== "add";
   return (
     <aside className="flex w-[300px] shrink-0 flex-col gap-[10px] rounded-[14px]">
@@ -78,7 +80,7 @@ export const Sidebar = ({
             height={16}
             className="text-current"
           />
-          <span>Add Action</span>
+          <span>{t("addAction")}</span>
         </Button>
       </motion.div>
     </aside>

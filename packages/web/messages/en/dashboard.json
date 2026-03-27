@@ -1,0 +1,20 @@
+{
+  "overview": {
+    "title": "Overview",
+    "proposals": "Proposals",
+    "delegates": "Delegates",
+    "totalVotingPower": "Total Voting Power",
+    "totalSupply": "Total Supply"
+  },
+  "header": {
+    "edit": "Edit",
+    "agent": "Agent"
+  },
+  "proposals": {
+    "title": "Proposals",
+    "joinDiscussion": "Join Discussion",
+    "discussion": "Discussion",
+    "newProposal": "New Proposal",
+    "new": "New"
+  }
+}

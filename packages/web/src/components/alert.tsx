@@ -1,6 +1,7 @@
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
@@ -20,6 +21,7 @@ const alertVariants = {
 };
 
 const Alert = ({ message, closable = false, duration }: AlertProps) => {
+  const t = useTranslations("common.alert");
   const [isVisible, setIsVisible] = useState(true);
 
   const handleClose = () => setIsVisible(false);
@@ -53,7 +55,7 @@ const Alert = ({ message, closable = false, duration }: AlertProps) => {
             <button
               className="flex cursor-pointer items-center justify-center"
               onClick={handleClose}
-              aria-label="Close Alert"
+              aria-label={t("close")}
             >
               <X size={16} />
             </button>

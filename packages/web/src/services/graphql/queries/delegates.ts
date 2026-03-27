@@ -17,9 +17,21 @@ export const GET_DELEGATES = gql`
       blockTimestamp
       fromDelegate
       id
+      isCurrent
       power
       toDelegate
       transactionHash
+    }
+  }
+`;
+
+export const GET_DELEGATES_CONNECTION = gql`
+  query GetDelegatesConnection(
+    $where: DelegateWhereInput
+    $orderBy: [DelegateOrderByInput!]!
+  ) {
+    delegatesConnection(where: $where, orderBy: $orderBy) {
+      totalCount
     }
   }
 `;

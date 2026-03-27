@@ -51,7 +51,9 @@ type ProposalMetricsWhere = GovernanceScope & {
 };
 
 type DelegateWhere = GovernanceScope & {
+  fromDelegate_eq?: string;
   toDelegate_eq?: string;
+  isCurrent_eq?: boolean;
 };
 
 type DelegateMappingWhere = GovernanceScope & {
@@ -311,16 +313,39 @@ export const delegateService = {
     options: {
       limit?: number;
       offset?: number;
-      orderBy?: string;
+      orderBy?: string | string[];
       where?: DelegateWhere;
     } = {}
   ) => {
     const response = await request<Types.DelegateResponse>(
       endpoint,
       Queries.GET_DELEGATES,
-      options
+      {
+        limit: options?.limit,
+        offset: options?.offset,
+        orderBy: Array.isArray(options?.orderBy)
+          ? options.orderBy
+          : options?.orderBy
+            ? [options.orderBy]
+            : undefined,
+        where: options?.where,
+      }
     );
     return response?.delegates ?? [];
+  },
+  getDelegatesConnection: async (
+    endpoint: string,
+    options: {
+      where: DelegateWhere;
+      orderBy: string[];
+    }
+  ) => {
+    const response = await request<Types.DelegateConnectionResponse>(
+      endpoint,
+      Queries.GET_DELEGATES_CONNECTION,
+      options
+    );
+    return response?.delegatesConnection;
   },
   getDelegateMappings: async (
     endpoint: string,
@@ -470,47 +495,6 @@ export const profileService = {
 };
 
 export const memberService = {
-  getMembers: async (
-    checkpoint?: number,
-    limit?: number
-  ): Promise<Types.MemberResponse> => {
-    try {
-      const url = new URL("/api/degov/members", window.location.origin);
-
-      if (checkpoint) {
-        url.searchParams.set("checkpoint", checkpoint.toString());
-      }
-
-      if (limit) {
-        url.searchParams.set("limit", limit.toString());
-      }
-
-      const response = await fetch(url.toString(), {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (response.status === 401) {
-        return {
-          code: 401,
-          data: [],
-          message: "Unauthorized",
-        };
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error("Error fetching members:", error);
-      return {
-        code: 500,
-        data: [],
-        message: (error as Error)?.message || "Failed to fetch members",
-      };
-    }
-  },
-
   // ### [degov] Profile pull
   // POST https://degov-dev.vercel.app/api/profile/pull
   // Content-Type: application/json
@@ -519,17 +503,6 @@ export const memberService = {
   //   "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
   //   "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9"
   // ]
-
-  getMemberTotal: async (): Promise<Types.MemberTotalResponse> => {
-    const response = await fetch(`/api/degov/metrics`, {
-      next: { revalidate: 60, tags: ["member-metrics"] },
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    const data = await response.json();
-    return data;
-  },
 
   // ### [degov] Profile pull
   getProfilePull: async (

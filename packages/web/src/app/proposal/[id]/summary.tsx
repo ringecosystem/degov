@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -7,6 +7,7 @@ import { OffchainDiscussionIcon } from "@/components/icons";
 import { ProposalStatus } from "@/components/proposal-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { Link } from "@/i18n/navigation";
 import type {
   ProposalItem,
   ProposalQueuedByIdItem,
@@ -24,7 +25,6 @@ interface SummaryProps {
   proposalQueuedById?: ProposalQueuedByIdItem;
   isAllQueriesFetching: boolean;
   onRefetch: () => void;
-  id: string | string[];
 }
 
 export const Summary = ({
@@ -34,14 +34,14 @@ export const Summary = ({
   proposalQueuedById,
   isAllQueriesFetching,
   onRefetch,
-  id,
 }: SummaryProps) => {
+  const t = useTranslations("proposalDetail.page");
   const daoConfig = useDaoConfig();
 
   const proposalLink = useMemo(() => {
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/proposal/${id}`;
-  }, [id]);
+    return window.location.href;
+  }, []);
 
   const explorerUrl = daoConfig?.chain?.explorers?.[0];
   const txHash = data?.transactionHash;
@@ -89,7 +89,7 @@ export const Summary = ({
           <ClipboardIconButton
             text={proposalLink}
             size={20}
-            copyText="Copy link"
+            copyText={t("copyLink")}
           />
         )}
       </h2>
@@ -99,7 +99,7 @@ export const Summary = ({
       ) : (
         <div className="flex items-center gap-[10px] text-[12px] lg:text-[16px]">
           <div className="flex items-center gap-[5px]">
-            <span className="hidden lg:block">Proposed by</span>
+            <span className="hidden lg:block">{t("proposedBy")}</span>
             {!!data?.proposer && (
               <AddressWithAvatar
                 address={data?.proposer as `0x${string}`}
@@ -109,7 +109,7 @@ export const Summary = ({
             )}
           </div>
           <span className="text-foreground flex items-center gap-[5px]">
-            <div className="hidden lg:block">on</div>
+            <div className="hidden lg:block">{t("on")}</div>
             {hasExplorerLink ? (
               <Link
                 href={`${explorerUrl}/tx/${txHash}`}
@@ -138,7 +138,7 @@ export const Summary = ({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-5 h-5 bg-light rounded-full flex justify-center items-center hover:opacity-80 transition-opacity"
-                  title="Discussion"
+                  title={t("discussion")}
                 >
                   <OffchainDiscussionIcon
                     width={12}

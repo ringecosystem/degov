@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 import { useReadContract } from "wagmi";
 
@@ -72,6 +73,7 @@ interface SystemInfoProps {
 }
 
 export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
+  const t = useTranslations("common.governance");
   const daoConfig = useDaoConfig();
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
@@ -127,18 +129,18 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       const votingDelayFormatted = isBlockTimeLoading
         ? null
         : governanceParams?.votingDelayInSeconds
-        ? dayjsHumanize(governanceParams.votingDelayInSeconds) ?? "None"
-        : "None";
+        ? dayjsHumanize(governanceParams.votingDelayInSeconds) ?? t("none")
+        : t("none");
 
       const votingPeriodFormatted = isBlockTimeLoading
         ? null
         : governanceParams?.votingPeriodInSeconds
-        ? dayjsHumanize(governanceParams.votingPeriodInSeconds) ?? "None"
-        : "None";
+        ? dayjsHumanize(governanceParams.votingPeriodInSeconds) ?? t("none")
+        : t("none");
 
       const timeLockDelayFormatted = governanceParams?.timeLockDelayInSeconds
-        ? dayjsHumanize(governanceParams.timeLockDelayInSeconds) ?? "None"
-        : "None";
+        ? dayjsHumanize(governanceParams.timeLockDelayInSeconds) ?? t("none")
+        : t("none");
 
       return {
         proposalThresholdFormatted,
@@ -177,13 +179,14 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       };
     }
   }, [
-    type,
     dataMetrics,
-    governanceCounts,
-    totalSupply,
     formatTokenAmount,
     governanceParams,
     isBlockTimeLoading,
+    t,
+    totalSupply,
+    type,
+    governanceCounts,
   ]);
 
   const explorerUrl = daoConfig?.chain?.explorers?.[0];
@@ -192,7 +195,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
     return (
       <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] w-[360px] shadow-card">
         <div className="flex items-center gap-[10px]">
-          <h2 className="text-[18px] font-semibold">System Info</h2>
+          <h2 className="text-[18px] font-semibold">{t("systemInfoTitle")}</h2>
         </div>
 
         <div className="h-px w-full bg-card-background"></div>
@@ -221,7 +224,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         )}
 
         <SystemInfoItem
-          label="Proposal Threshold"
+          label={t("proposalThreshold")}
           value={`${systemData.proposalThresholdFormatted} ${
             governanceToken?.symbol ?? ""
           }`}
@@ -229,19 +232,19 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         />
 
         <SystemInfoItem
-          label="Voting Delay"
-          value={systemData.votingDelayFormatted ?? "None"}
+          label={t("votingDelay")}
+          value={systemData.votingDelayFormatted ?? t("none")}
           isLoading={isStaticLoading || (type === "proposal" && systemData.votingDelayFormatted === null)}
         />
 
         <SystemInfoItem
-          label="Voting Period"
-          value={systemData.votingPeriodFormatted ?? "None"}
+          label={t("votingPeriod")}
+          value={systemData.votingPeriodFormatted ?? t("none")}
           isLoading={isStaticLoading || (type === "proposal" && systemData.votingPeriodFormatted === null)}
         />
 
         <SystemInfoItem
-          label="Quorum Needed"
+          label={t("quorumNeeded")}
           value={`${systemData.quorumFormatted} ${
             governanceToken?.symbol ?? ""
           }`}
@@ -249,8 +252,8 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         />
 
         <SystemInfoItem
-          label="TimeLock Delay"
-          value={systemData.timeLockDelayFormatted ?? "None"}
+          label={t("timeLockDelay")}
+          value={systemData.timeLockDelayFormatted ?? t("none")}
           isLoading={isStaticLoading}
         />
       </div>
@@ -260,7 +263,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
   return (
     <div className="flex flex-col gap-[20px] p-[20px] bg-card rounded-[14px] w-[360px] shadow-card">
       <div className="flex items-center gap-[10px]">
-        <h2 className="text-[18px] font-semibold">System Info</h2>
+        <h2 className="text-[18px] font-semibold">{t("systemInfoTitle")}</h2>
       </div>
 
       <div className="h-px w-full bg-card-background"></div>
@@ -280,7 +283,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       />
 
       <SystemInfoItem
-        label="Total Voting Power"
+        label={t("totalVotingPower")}
         value={`${systemData.totalVotingPower} ${
           governanceToken?.symbol ?? ""
         } (${systemData.votingPowerPercentage}%)`}
@@ -288,7 +291,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       />
 
       <SystemInfoItem
-        label="Total Supply"
+        label={t("totalSupply")}
         value={`${systemData.totalSupplyFormatted} ${
           governanceToken?.symbol ?? ""
         }`}
@@ -296,7 +299,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
       />
 
       <SystemInfoItem
-        label="Total Delegates"
+        label={t("totalDelegates")}
         value={systemData.totalDelegates ?? 0}
         isLoading={isGovernanceCountsLoading}
       />

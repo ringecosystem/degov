@@ -1,9 +1,13 @@
 "use client";
-import Link from "next/link";
+
+import { useTranslations } from "next-intl";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { Link } from "@/i18n/navigation";
 
 export const ProfileSkeleton = ({ isDelegate }: { isDelegate: boolean }) => {
+  const t = useTranslations("profile.breadcrumbs");
+
   return (
     <div className="flex flex-col gap-[20px]">
       {isDelegate ? (
@@ -12,7 +16,7 @@ export const ProfileSkeleton = ({ isDelegate }: { isDelegate: boolean }) => {
             href="/delegates"
             className="text-muted-foreground hover:text-foreground"
           >
-            Delegates
+            {t("delegates")}
           </Link>
           <span className="text-muted-foreground">/</span>
           <Skeleton className="h-[24px] w-[120px]" />

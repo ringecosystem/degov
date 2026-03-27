@@ -364,6 +364,63 @@ export class TokenHandler {
     }
   }
 
+  private async upsertDelegateSnapshot(options: {
+    fromDelegate: string;
+    toDelegate: string;
+    blockNumber: bigint;
+    blockTimestamp: bigint;
+    transactionHash: string;
+    isCurrent: boolean;
+  } & TokenScopeFields) {
+    const fromDelegate =
+      DegovIndexerHelpers.normalizeAddress(options.fromDelegate) ??
+      options.fromDelegate;
+    const toDelegate =
+      DegovIndexerHelpers.normalizeAddress(options.toDelegate) ??
+      options.toDelegate;
+    if (!fromDelegate || !toDelegate || this.isZeroAddress(toDelegate)) {
+      return;
+    }
+
+    const id = `${fromDelegate}_${toDelegate}`;
+    const storedDelegate = await this.ctx.store.findOne(Delegate, {
+      where: {
+        id,
+      },
+    });
+
+    if (storedDelegate) {
+      storedDelegate.blockNumber = options.blockNumber;
+      storedDelegate.blockTimestamp = options.blockTimestamp;
+      storedDelegate.transactionHash = options.transactionHash;
+      storedDelegate.isCurrent = options.isCurrent;
+      this.applyScopeFields(storedDelegate, options);
+      this.rememberDelegate(storedDelegate);
+      this.markDelegateDirty(storedDelegate);
+      return;
+    }
+
+    const delegate = new Delegate({
+      id,
+      chainId: options.chainId,
+      daoCode: options.daoCode,
+      governorAddress: options.governorAddress,
+      tokenAddress: options.tokenAddress,
+      contractAddress: options.contractAddress,
+      logIndex: options.logIndex,
+      transactionIndex: options.transactionIndex,
+      fromDelegate,
+      toDelegate,
+      blockNumber: options.blockNumber,
+      blockTimestamp: options.blockTimestamp,
+      transactionHash: options.transactionHash,
+      isCurrent: options.isCurrent,
+      power: 0n,
+    });
+    await this.ctx.store.insert(delegate);
+    this.rememberDelegate(delegate);
+  }
+
   async handle(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const isDelegateChanged =
@@ -394,13 +451,20 @@ export class TokenHandler {
   private async storeDelegateChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateChanged.decode(eventLog);
+    const delegator =
+      DegovIndexerHelpers.normalizeAddress(event.delegator) ?? event.delegator;
+    const fromDelegate =
+      DegovIndexerHelpers.normalizeAddress(event.fromDelegate) ??
+      event.fromDelegate;
+    const toDelegate =
+      DegovIndexerHelpers.normalizeAddress(event.toDelegate) ?? event.toDelegate;
     DegovIndexerHelpers.logVerboseInfo(
       this.ctx.log,
       "token.delegate-change recorded",
       {
-        delegator: event.delegator,
-        from: event.fromDelegate,
-        to: event.toDelegate,
+        delegator,
+        from: fromDelegate,
+        to: toDelegate,
         block: eventLog.block.height,
         tx: eventLog.transactionHash,
       },
@@ -408,9 +472,9 @@ export class TokenHandler {
     const entity = new DelegateChanged({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      delegator: event.delegator,
-      fromDelegate: event.fromDelegate,
-      toDelegate: event.toDelegate,
+      delegator,
+      fromDelegate,
+      toDelegate,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
@@ -424,6 +488,16 @@ export class TokenHandler {
 
     // If there was a previous delegation, decrease the old delegate's count
     if (previousDelegateMapping) {
+      await this.upsertDelegateSnapshot({
+        ...this.eventFields(eventLog),
+        fromDelegate: entity.delegator,
+        toDelegate: previousDelegateMapping.to,
+        blockNumber: entity.blockNumber,
+        blockTimestamp: entity.blockTimestamp,
+        transactionHash: entity.transactionHash,
+        isCurrent: false,
+      });
+
       let oldDelegateContributor: Contributor | undefined =
         await this.getContributorById(previousDelegateMapping.to);
 
@@ -485,6 +559,22 @@ export class TokenHandler {
       });
       await this.ctx.store.insert(currentDelegateMapping);
       this.rememberDelegateMapping(currentDelegateMapping);
+      if (
+        !(
+          entity.fromDelegate === zeroAddress &&
+          entity.delegator === entity.toDelegate
+        )
+      ) {
+        await this.upsertDelegateSnapshot({
+          ...this.eventFields(eventLog),
+          fromDelegate: entity.delegator,
+          toDelegate: entity.toDelegate,
+          blockNumber: entity.blockNumber,
+          blockTimestamp: entity.blockTimestamp,
+          transactionHash: entity.transactionHash,
+          isCurrent: true,
+        });
+      }
     }
 
     // store delegate rolling
@@ -501,7 +591,7 @@ export class TokenHandler {
     await this.ctx.store.insert(delegateRolling);
     this.rememberDelegateRolling(delegateRolling);
 
-    // store self delegate
+    // Self-delegation still materializes an effective edge immediately.
     if (
       entity.fromDelegate === zeroAddress &&
       entity.delegator === entity.toDelegate
@@ -522,11 +612,13 @@ export class TokenHandler {
   private async storeDelegateVotesChanged(eventLog: EvmLog<EvmFieldSelection>) {
     const itokenAbi = this.itokenAbi();
     const event = itokenAbi.events.DelegateVotesChanged.decode(eventLog);
+    const delegate =
+      DegovIndexerHelpers.normalizeAddress(event.delegate) ?? event.delegate;
     DegovIndexerHelpers.logVerboseInfo(
       this.ctx.log,
       "token.delegate-votes recorded",
       {
-        delegate: event.delegate,
+        delegate,
         previousVotes:
           "previousVotes" in event ? event.previousVotes : event.previousBalance,
         newVotes: "newVotes" in event ? event.newVotes : event.newBalance,
@@ -537,7 +629,7 @@ export class TokenHandler {
     const entity = new DelegateVotesChanged({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      delegate: event.delegate,
+      delegate,
       previousVotes:
         "previousVotes" in event ? event.previousVotes : event.previousBalance,
       newVotes: "newVotes" in event ? event.newVotes : event.newBalance,
@@ -724,12 +816,14 @@ export class TokenHandler {
     const itokenAbi = this.itokenAbi();
 
     const event = itokenAbi.events.Transfer.decode(eventLog);
+    const from = DegovIndexerHelpers.normalizeAddress(event.from) ?? event.from;
+    const to = DegovIndexerHelpers.normalizeAddress(event.to) ?? event.to;
     DegovIndexerHelpers.logVerboseInfo(
       this.ctx.log,
       "token.transfer recorded",
       {
-        from: event.from,
-        to: event.to,
+        from,
+        to,
         value: "value" in event ? event.value : event.tokenId,
         standard: contractStandard,
         block: eventLog.block.height,
@@ -739,8 +833,8 @@ export class TokenHandler {
     const entity = new TokenTransfer({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      from: event.from,
-      to: event.to,
+      from,
+      to,
       value: "value" in event ? event.value : event.tokenId,
       standard: contractStandard,
       blockNumber: BigInt(eventLog.block.height),
@@ -804,9 +898,15 @@ export class TokenHandler {
     let storedDelegateFromWithTo: Delegate | undefined =
       await this.getDelegateById(currentDelegate.id);
 
+    const storedFromDelegate: DelegateMapping | undefined =
+      await this.getDelegateMappingByFrom(currentDelegate.fromDelegate);
+    const isCurrent =
+      storedFromDelegate?.to?.toLowerCase() === currentDelegate.toDelegate;
+
     let newDelegatePowerOfFromTo;
     let delegatesCountEffective = 0;
     if (!storedDelegateFromWithTo) {
+      currentDelegate.isCurrent = isCurrent;
       await this.ctx.store.insert(currentDelegate);
       this.rememberDelegate(currentDelegate);
       delegatesCountEffective += 1;
@@ -819,6 +919,7 @@ export class TokenHandler {
       storedDelegateFromWithTo.blockTimestamp = currentDelegate.blockTimestamp;
       storedDelegateFromWithTo.transactionHash =
         currentDelegate.transactionHash;
+      storedDelegateFromWithTo.isCurrent = isCurrent;
       this.applyScopeFields(storedDelegateFromWithTo, {
         chainId: currentDelegate.chainId,
         daoCode: currentDelegate.daoCode,
@@ -828,23 +929,17 @@ export class TokenHandler {
         logIndex: currentDelegate.logIndex,
         transactionIndex: currentDelegate.transactionIndex,
       });
-      // Remove delegate record if power is zero
-      if (storedDelegateFromWithTo.power === 0n) {
-        await this.ctx.store.remove(Delegate, storedDelegateFromWithTo.id);
-        this.forgetDelegate(storedDelegateFromWithTo.id);
-        // Only decrement count if transitioning from non-zero to zero
-        if (oldPower !== 0n) {
-          delegatesCountEffective -= 1;
-        }
-      } else {
-        this.rememberDelegate(storedDelegateFromWithTo);
-        this.markDelegateDirty(storedDelegateFromWithTo);
+      if (oldPower === 0n && storedDelegateFromWithTo.power !== 0n) {
+        delegatesCountEffective += 1;
       }
+      // Keep zero-power rows so current and historical relations remain queryable.
+      if (storedDelegateFromWithTo.power === 0n && oldPower !== 0n) {
+        delegatesCountEffective -= 1;
+      }
+      this.rememberDelegate(storedDelegateFromWithTo);
+      this.markDelegateDirty(storedDelegateFromWithTo);
       newDelegatePowerOfFromTo = storedDelegateFromWithTo.power;
     }
-
-    const storedFromDelegate: DelegateMapping | undefined =
-      await this.getDelegateMappingByFrom(currentDelegate.fromDelegate);
     if (storedFromDelegate) {
       storedFromDelegate.power = newDelegatePowerOfFromTo;
       this.applyScopeFields(storedFromDelegate, {
@@ -935,45 +1030,6 @@ export class TokenHandler {
       await this.ctx.store.insert(contributor);
       storedContributor = contributor;
       this.rememberContributor(storedContributor);
-    }
-
-    // sync user power
-    const syncEndpoint = process.env.DEGOV_SYNC_ENDPOINT;
-    const syncAuthToken = process.env.DEGOV_SYNC_AUTH_TOKEN;
-    if (syncEndpoint && syncAuthToken) {
-      try {
-        const controller = new AbortController();
-        const signal = controller.signal;
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-        await fetch(syncEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-degov-sync-token": syncAuthToken,
-            "x-degov-daocode": this.options.work.daoCode,
-          },
-          body: JSON.stringify([
-            {
-              method: "sync.user.power",
-              body: {
-                address: storedContributor.id,
-                power: storedContributor.power.toString(),
-              },
-            },
-          ]),
-          signal,
-        });
-        clearTimeout(timeoutId);
-      } catch (error) {
-        this.ctx.log.error(
-          DegovIndexerHelpers.formatLogLine("token.contributor sync failed", {
-            address: storedContributor.id,
-            power: storedContributor.power,
-            error: DegovIndexerHelpers.formatError(error),
-          }),
-        );
-      }
     }
 
     if (!storeMemberMetrics) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { AlertIcon } from "@/components/icons";
 
 interface DemoTipsBannerProps {
@@ -7,6 +9,8 @@ interface DemoTipsBannerProps {
 }
 
 export function DemoTipsBanner({ isDemoDao }: DemoTipsBannerProps) {
+  const t = useTranslations("common.demoBanner");
+
   if (!isDemoDao) return null;
 
   return (
@@ -15,16 +19,18 @@ export function DemoTipsBanner({ isDemoDao }: DemoTipsBannerProps) {
         <span className="flex items-center gap-[10px] bg-success p-[20px] rounded-[14px]">
           <AlertIcon width={24} height={24} className="shrink-0" />
           <span className="text-[16px] text-always-light font-semibold">
-            Note: Welcome to the DeGov demo. Comment your ETH address at{" "}
-            <a
-              href="https://github.com/ringecosystem/degov/discussions/48"
-              target="_blank"
-              rel="noreferrer"
-              className="font-bold underline"
-            >
-              here
-            </a>{" "}
-            to receive test tokens.
+            {t.rich("message", {
+              link: (chunks) => (
+                <a
+                  href="https://github.com/ringecosystem/degov/discussions/48"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-bold underline"
+                >
+                  {chunks}
+                </a>
+              ),
+            })}
           </span>
         </span>
       </div>

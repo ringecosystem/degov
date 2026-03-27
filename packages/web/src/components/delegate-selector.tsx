@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -27,6 +28,7 @@ export function DelegateSelector({
   onOpenChange,
   onSelect,
 }: DelegateSelectorProps) {
+  const t = useTranslations("profile.changeDelegate");
   const daoConfig = useDaoConfig();
   const queryClient = useQueryClient();
   const { delegate, isPending: isPendingDelegate } = useDelegate();
@@ -46,7 +48,7 @@ export function DelegateSelector({
         <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
           <DialogHeader className="flex w-full flex-row items-center justify-between">
             <DialogTitle className="text-[18px] font-extrabold">
-              Delegate
+              {t("title")}
             </DialogTitle>
             <CloseIcon
               width={24}
@@ -63,14 +65,14 @@ export function DelegateSelector({
               isLoading={isPendingDelegate}
               onClick={handleDelegate}
             >
-              Myself
+              {t("myself")}
             </Button>
             <Button
               className="w-full rounded-[100px] border-border bg-card"
               variant="outline"
               onClick={() => onSelect("else")}
             >
-              Someone else
+              {t("someoneElse")}
             </Button>
           </div>
         </DialogContent>
