@@ -485,6 +485,25 @@ export class TokenHandler {
     // First, check if delegator had previous delegation
     let previousDelegateMapping: DelegateMapping | undefined =
       await this.getDelegateMappingByFrom(entity.delegator);
+    const isNoopDelegateChange =
+      previousDelegateMapping?.to === entity.toDelegate &&
+      entity.fromDelegate === entity.toDelegate;
+
+    if (isNoopDelegateChange) {
+      const delegateRolling = new DelegateRolling({
+        id: eventLog.id,
+        ...this.eventFields(eventLog),
+        delegator: event.delegator,
+        fromDelegate: event.fromDelegate,
+        toDelegate: event.toDelegate,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+      });
+      await this.ctx.store.insert(delegateRolling);
+      this.rememberDelegateRolling(delegateRolling);
+      return;
+    }
 
     // If there was a previous delegation, decrease the old delegate's count
     if (previousDelegateMapping) {

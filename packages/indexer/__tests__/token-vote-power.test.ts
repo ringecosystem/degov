@@ -610,6 +610,93 @@ describe("token vote power checkpoints", () => {
     ).toBeUndefined();
   });
 
+  it("ignores noop delegate changes that keep the same effective delegate", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 307279092879868136263502n,
+      }),
+      new Contributor({
+        id: "0xa6c177dcbd481a3138d858022b3f2fe184793778",
+        power: 307279092879868136263502n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0x28db77e391e92eb5113ebbf3355d8ba0cbc6ebbd_0xa6c177dcbd481a3138d858022b3f2fe184793778",
+        fromDelegate: "0x28db77e391e92eb5113ebbf3355d8ba0cbc6ebbd",
+        toDelegate: "0xa6c177dcbd481a3138d858022b3f2fe184793778",
+        isCurrent: true,
+        power: 307279092879868136263502n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0x28db77e391e92eb5113ebbf3355d8ba0cbc6ebbd",
+        from: "0x28db77e391e92eb5113ebbf3355d8ba0cbc6ebbd",
+        to: "0xa6c177dcbd481a3138d858022b3f2fe184793778",
+        power: 307279092879868136263502n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0x28db77e391e92eb5113ebbf3355d8ba0cbc6ebbd",
+        fromDelegate: "0xa6c177dcbd481a3138d858022b3f2fe184793778",
+        toDelegate: "0xa6c177dcbd481a3138d858022b3f2fe184793778",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-noop-delegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: {
+        height: 12,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xnoop-delegate",
+    } as any);
+
+    expect(
+      store.findEntity(DelegateMapping, "0x28db77e391e92eb5113ebbf3355d8ba0cbc6ebbd")
+    ).toMatchObject({
+      to: "0xa6c177dcbd481a3138d858022b3f2fe184793778",
+      power: 307279092879868136263502n,
+      transactionHash: "0xseed",
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x28db77e391e92eb5113ebbf3355d8ba0cbc6ebbd_0xa6c177dcbd481a3138d858022b3f2fe184793778"
+      )
+    ).toMatchObject({
+      power: 307279092879868136263502n,
+      isCurrent: true,
+      transactionHash: "0xseed",
+    });
+    expect(
+      store.findEntity(Contributor, "0xa6c177dcbd481a3138d858022b3f2fe184793778")
+    ).toMatchObject({
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
+      power: 307279092879868136263502n,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(
+      307279092879868136263502n
+    );
+  });
+
   it("tracks ERC721 transfers as token ids while applying single-vote power deltas", async () => {
     const store = new MemoryStore([
       new DataMetric({
