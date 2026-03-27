@@ -1,0 +1,25 @@
+{
+  "title": "Delegates",
+  "titleWithCount": "Delegates ({count})",
+  "searchPlaceholder": "Search by ENS or address",
+  "viewMore": "View more",
+  "loading": "Loading...",
+  "loadingMore": "Loading more...",
+  "noDelegates": "No delegates",
+  "noMatchingDelegates": "No matching delegates found",
+  "delegate": "Delegate",
+  "columns": {
+    "name": "Name",
+    "votingPower": "Voting Power",
+    "lastVoted": "Last Voted",
+    "delegators": "Delegators",
+    "action": "Action"
+  },
+  "noVoteHistory": "No vote history",
+  "actions": {
+    "delegateVotes": "Delegate votes"
+  },
+  "messages": {
+    "failedToDelegateVotes": "Failed to delegate votes"
+  }
+}

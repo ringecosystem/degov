@@ -1,0 +1,132 @@
+{
+  "page": {
+    "title": "New Proposal",
+    "publish": "Publish",
+    "fixErrors": "Please fix all errors",
+    "publishFailed": "Failed to create proposal",
+    "unsavedChanges": "Please confirm that you want to leave this page. If you leave this page, your changes will be lost."
+  },
+  "actions": {
+    "proposal": "Proposal",
+    "transfer": "Transfer",
+    "custom": "Custom",
+    "preview": "Preview",
+    "xAccountCrossChain": "XAccount Cross-chain",
+    "addAction": "Add Action",
+    "removeAction": "Remove action",
+    "actionNumber": "Action #{index}"
+  },
+  "proposal": {
+    "title": "Title",
+    "description": "Description",
+    "offchainDiscussion": "Offchain discussion (Optional)",
+    "placeholders": {
+      "title": "Enter the title of your proposal",
+      "description": "Enter the description of your proposal",
+      "discussion": "eg, http://forum.example.com/t/1234"
+    },
+    "validation": {
+      "titleRequired": "Title is required",
+      "titleMax": "Title must be less than 80 characters",
+      "descriptionRequired": "Proposal description is required",
+      "discussionUrl": "Must be a valid URL"
+    }
+  },
+  "transfer": {
+    "transferTo": "Transfer to",
+    "transferAmount": "Transfer amount",
+    "balance": "Balance",
+    "max": "Max",
+    "placeholders": {
+      "recipient": "Enter address",
+      "amount": "0.000"
+    },
+    "errors": {
+      "balanceNotEnough": "Balance is not enough",
+      "recipientAddress": "Must be a valid Ethereum address",
+      "amountRequired": "Amount is required",
+      "amountPositive": "Amount must be greater than 0"
+    }
+  },
+  "custom": {
+    "targetContractAddress": "Target contract address",
+    "loadingContractInfo": "Loading contract info...",
+    "contractAddressError": "The address must be a contract address, not an EOA address",
+    "abiSource": "Use the imported ABI or upload yours",
+    "selectOption": "Select an option",
+    "uploadAbi": "Upload an ABI",
+    "contractMethod": "Contract method",
+    "selectContractMethod": "Select the contract method...",
+    "parameters": "Parameters",
+    "addItem": "Add Item",
+    "value": "Value",
+    "valueDescription": "The amount of {symbol} you wish to send the target address (External Account or Smart Contract)",
+    "placeholders": {
+      "targetAddress": "Enter the target address...",
+      "amount": "{symbol} amount"
+    },
+    "validation": {
+      "targetRequired": "Target address is required",
+      "targetAddress": "Must be a valid eth address",
+      "parameterValue": "Parameter value is required and must match the argument type",
+      "valueNonNegative": "Value must be a non-negative number",
+      "validAbi": "Must be a valid ABI JSON file"
+    }
+  },
+  "xaccount": {
+    "description": "The cross-chain governance capability in degov relies on the <link>XAccount</link> contract mechanism. You need to first create an XAccount on the target chain first, construct the cross-chain governance call, and then execute it in this chain.",
+    "generateAction": "Generate Action on XAccount Box",
+    "uploadLabel": "Upload the generated cross-chain action json file",
+    "autoFill": "All the fields will be filled automatically when the correct generated action file is imported.",
+    "actionDetails": "Action Details",
+    "crossChainDetails": "Cross-chain Transaction Details",
+    "parameters": "Parameters",
+    "fields": {
+      "from": "from",
+      "to": "to",
+      "value": "value",
+      "calldata": "calldata",
+      "targetContractAddress": "target contract address",
+      "contractMethod": "contract method",
+      "toChainId": "toChainId",
+      "toDapp": "toDapp",
+      "message": "message",
+      "params": "params"
+    },
+    "validation": {
+      "address": "Must be a valid Ethereum address",
+      "hashFailed": "Cross-chain call hash verification failed",
+      "invalidJson": "Invalid JSON format"
+    }
+  },
+  "preview": {
+    "untitled": "Untitled",
+    "proposedBy": "Proposed by",
+    "discussion": "Discussion",
+    "showMore": "Show more",
+    "showLess": "Show less",
+    "actions": "Actions"
+  },
+  "publishWarning": {
+    "title": "Inefficient Voting Power",
+    "requiredVotingPower": "Required Voting Power",
+    "yourVotingPower": "Your Voting Power",
+    "needMoreVotingPower": "Need {amount} more Voting Power to create the proposal."
+  },
+  "files": {
+    "abi": {
+      "drop": "Drop your ABI file here",
+      "drag": "Drag and drop your ABI file",
+      "browse": "Or click to browse your json files",
+      "invalid": "Must be a valid abi json file.",
+      "uploaded": "ABI file uploaded"
+    },
+    "json": {
+      "drop": "Drop your json file here",
+      "drag": "Drag and drop your json file",
+      "browse": "Or click to browse your json files",
+      "invalid": "Must be a valid json file.",
+      "uploaded": "JSON file uploaded"
+    }
+  }
+}

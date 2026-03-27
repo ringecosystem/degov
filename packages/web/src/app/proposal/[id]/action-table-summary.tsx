@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 import React from "react";
 import { useMemo, useState } from "react";
 
@@ -42,6 +43,7 @@ export function ActionTableSummary({
   actions,
   isLoading = false,
 }: ActionTableSummaryProps) {
+  const t = useTranslations("proposalDetail.actionsTable");
   const daoConfig = useDaoConfig();
   const [openParams, setOpenParams] = useState<number[]>([]);
   const [jsonViewIndexes, setJsonViewIndexes] = useState<number[]>([]);
@@ -133,19 +135,19 @@ export function ActionTableSummary({
                 className="text-left rounded-l-[14px]"
                 style={{ width: COLUMN_WIDTHS.type }}
               >
-                Type
+                {t("headers.type")}
               </TableHead>
               <TableHead
                 className="text-left"
                 style={{ width: COLUMN_WIDTHS.to }}
               >
-                To
+                {t("headers.to")}
               </TableHead>
               <TableHead
                 className="text-left rounded-r-[14px]"
                 style={{ width: COLUMN_WIDTHS.action }}
               >
-                Action
+                {t("headers.action")}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -188,7 +190,7 @@ export function ActionTableSummary({
                             })()}
                             <span className="text-[14px] capitalize">
                               {record.type === "xAccount"
-                                ? "XAccount Cross-chain"
+                                ? t("xAccountCrossChain")
                                 : record.type}
                             </span>
                           </div>
@@ -216,7 +218,7 @@ export function ActionTableSummary({
                             </span>
                           ) : (
                             <span className="text-muted-foreground">
-                              No address
+                              {t("noAddress")}
                             </span>
                           )}
                         </TableCell>
@@ -244,7 +246,9 @@ export function ActionTableSummary({
                                 asChild
                               >
                                 <motion.div whileTap={{ scale: 0.95 }}>
-                                  {record.params.length} params
+                                  {t("params", {
+                                    count: record.params.length,
+                                  })}
                                   <ChevronDown
                                     className={cn(
                                       "h-4 w-4 transition-transform duration-200 ml-1",
@@ -327,7 +331,7 @@ export function ActionTableSummary({
                                             className="h-7 px-2.5 py-1 rounded-[100px] outline-1 outline-offset-[-0.50px] outline-foreground inline-flex justify-center items-center gap-[5px] hover:bg-accent cursor-pointer transition-colors"
                                           >
                                             <span className="text-foreground text-sm font-normal">
-                                              View Json
+                                              {t("viewJson")}
                                             </span>
                                           </button>
                                         </div>
@@ -384,7 +388,7 @@ export function ActionTableSummary({
                                             className="h-7 px-2.5 py-1 rounded-[100px] outline-1 outline-offset-[-0.50px] outline-foreground inline-flex justify-center items-center gap-[5px] hover:bg-accent cursor-pointer transition-colors"
                                           >
                                             <span className="text-foreground text-sm font-normal">
-                                              Back
+                                              {t("back")}
                                             </span>
                                           </button>
                                         </div>
@@ -405,7 +409,7 @@ export function ActionTableSummary({
 
         {!isLoading && data.length === 0 && (
           <Empty
-            label="No Actions"
+            label={t("empty")}
             style={{
               height: 120,
             }}

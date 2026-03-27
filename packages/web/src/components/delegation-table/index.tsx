@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
@@ -53,6 +54,7 @@ export function DelegationTable({
   onDateSortChange,
   onPowerSortChange,
 }: DelegationTableProps) {
+  const t = useTranslations("profile.receivedDelegations");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const daoConfig = useDaoConfig();
   const [currentPage, setCurrentPage] = useState(1);
@@ -97,7 +99,7 @@ export function DelegationTable({
   const columns = useMemo<ColumnType<DelegateItem>[]>(
     () => [
       {
-        title: "Delegator",
+        title: t("columns.delegator"),
         key: "delegator",
         width: "33%",
         className: "text-left",
@@ -112,7 +114,7 @@ export function DelegationTable({
       {
         title: (
           <SortableCell
-            label="Date"
+            label={t("columns.date")}
             sortState={
               sortState.field === "date" ? sortState.direction : undefined
             }
@@ -133,7 +135,7 @@ export function DelegationTable({
       {
         title: (
           <SortableCell
-            label="Votes"
+            label={t("columns.votes")}
             sortState={
               sortState.field === "power" ? sortState.direction : undefined
             }
@@ -163,6 +165,7 @@ export function DelegationTable({
       sortState.direction,
       onDateSortChange,
       onPowerSortChange,
+      t,
     ]
   );
 
@@ -173,7 +176,7 @@ export function DelegationTable({
           dataSource={pageData}
           columns={columns}
           isLoading={isFetching}
-          emptyText={<span>No delegations yet</span>}
+          emptyText={<span>{t("empty")}</span>}
           rowKey="id"
         />
       </div>

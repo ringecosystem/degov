@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { AddressAvatar } from "@/components/address-avatar";
 import { AddressResolver } from "@/components/address-resolver";
@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
+import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 import { AiIcon } from "./icons/ai-icon";
@@ -35,6 +36,7 @@ export function AddressWithAvatar({
   customLink,
   skipFetch = false,
 }: AddressWithAvatarProps) {
+  const t = useTranslations("common.tooltips");
   const { isAiBot } = useAiBotAddress(address);
   return (
     <Link
@@ -80,8 +82,7 @@ export function AddressWithAvatar({
             </span>
           </TooltipTrigger>
           <TooltipContent className="max-w-[200px]" side={side} align={align}>
-            An AI-Powered delegate that can accept delegations and vote on your
-            behalf based on the community&apos;s preferences.
+            {t("aiDelegate")}
           </TooltipContent>
         </Tooltip>
       )}

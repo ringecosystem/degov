@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { marked } from "marked";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
@@ -10,6 +11,7 @@ import { proposalService } from "@/services/graphql";
 marked.use();
 
 const AiSummaryLoading = () => {
+  const t = useTranslations("proposalDetail.aiSummary");
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 p-4 bg-card rounded-lg border border-border">
@@ -19,7 +21,7 @@ const AiSummaryLoading = () => {
           <div className="w-2 h-2 bg-foreground rounded-full animate-bounce"></div>
         </div>
         <p className="text-sm text-foreground font-medium">
-          AI is analyzing the proposal...
+          {t("loading")}
         </p>
       </div>
     </div>
@@ -27,6 +29,7 @@ const AiSummaryLoading = () => {
 };
 
 export const AiSummary = ({ id }: { id: string }) => {
+  const t = useTranslations("proposalDetail.aiSummary");
   const daoConfig = useDaoConfig();
   const daoCode = daoConfig?.code;
   const { data, isLoading, error } = useQuery({
@@ -56,7 +59,7 @@ export const AiSummary = ({ id }: { id: string }) => {
   if (error) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        <p>Failed to load AI summary. Please try again later.</p>
+        <p>{t("error")}</p>
       </div>
     );
   }

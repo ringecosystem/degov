@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useReducer, useCallback, useState } from "react";
 import { toast } from "react-toastify";
 import { z } from "zod";
@@ -66,6 +67,7 @@ export const EmailBindForm = ({
   onCountdownTick,
   isLoading = false,
 }: EmailBindFormProps) => {
+  const t = useTranslations("notifications.emailBind");
   const resendOTPMutation = useResendOTP();
   const verifyEmailMutation = useVerifyNotificationChannel();
 
@@ -90,7 +92,7 @@ export const EmailBindForm = ({
     setSendError("");
 
     if (!isEmailValid) {
-      setSendError("Please enter a valid email address");
+      setSendError(t("errors.invalidEmail"));
       return;
     }
 
@@ -103,12 +105,11 @@ export const EmailBindForm = ({
             onStartCountdown(rate);
             setSendError("");
           } else {
-            setSendError(data.message || "Failed to send verification code");
+            setSendError(data.message || t("errors.sendFailed"));
           }
         },
         onError: (error: unknown) => {
-          const errorMessage =
-            extractErrorMessage(error) || "Failed to send verification code";
+          const errorMessage = extractErrorMessage(error) || t("errors.sendFailed");
           setSendError(errorMessage);
         },
       }
@@ -119,6 +120,7 @@ export const EmailBindForm = ({
     sendingLoading,
     resendOTPMutation,
     onStartCountdown,
+    t,
   ]);
 
   const handleVerifyCode = useCallback(async () => {
@@ -137,17 +139,15 @@ export const EmailBindForm = ({
       {
         onSuccess: (data) => {
           if (data.code === 0) {
-            toast.success("Email verified successfully");
+            toast.success(t("messages.verified"));
             onVerified(state.email);
             setVerificationError("");
           } else {
-            setVerificationError(
-              "Invalid verification code. Please try again."
-            );
+            setVerificationError(t("errors.invalidCode"));
           }
         },
         onError: () => {
-          setVerificationError("Invalid verification code. Please try again.");
+          setVerificationError(t("errors.invalidCode"));
         },
       }
     );
@@ -158,6 +158,7 @@ export const EmailBindForm = ({
     verifyEmailMutation,
     onVerified,
     verifyLoading,
+    t,
   ]);
 
   return (
@@ -170,19 +171,19 @@ export const EmailBindForm = ({
         <div className="flex items-center gap-[5px]">
           <EmailBindIcon width={24} height={24} className="text-foreground" />
           <span className="text-foreground text-[14px] font-semibold">
-            Bind Email
+            {t("title")}
           </span>
         </div>
         <div className="h-px w-full bg-grey-2/50"></div>
 
         <div>
           <label className="block text-sm font-normal text-foreground mb-[5px]">
-            Your Email
+            {t("yourEmail")}
           </label>
           <div className="flex gap-[10px]">
             <Input
               type="email"
-              placeholder="yourname@example.com"
+              placeholder={t("placeholders.email")}
               value={state.email}
               onChange={(e) => {
                 const value = e.target.value.trim();
@@ -190,7 +191,7 @@ export const EmailBindForm = ({
                 setEmailError("");
                 setSendError("");
                 if (value && !emailSchema.safeParse(value).success) {
-                  setEmailError("Invalid email address");
+                  setEmailError(t("errors.invalidEmail"));
                 }
               }}
               className={`flex-1 bg-input border-border text-foreground placeholder:text-muted-foreground rounded-[100px] px-[10px] text-[16px] font-normal ${
@@ -213,7 +214,7 @@ export const EmailBindForm = ({
                   onTick={onCountdownTick}
                 />
               ) : (
-                "Send"
+                t("actions.send")
               )}
             </Button>
           </div>
@@ -227,12 +228,12 @@ export const EmailBindForm = ({
 
         <div>
           <label className="block text-sm font-normal text-foreground mb-[5px]">
-            Verification Code
+            {t("verificationCode")}
           </label>
           <div className="flex gap-[10px]">
             <Input
               type="text"
-              placeholder="e.g., 123456"
+              placeholder={t("placeholders.code")}
               value={state.verificationCode}
               onChange={(e) => {
                 dispatch({
@@ -252,7 +253,7 @@ export const EmailBindForm = ({
               className="bg-foreground hover:bg-foreground/90 text-[14px] font-semibold text-dark rounded-[100px] w-[100px]"
               size="sm"
             >
-              Verify
+              {t("actions.verify")}
             </Button>
           </div>
           {verificationError && (

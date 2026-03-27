@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { ProposalActionCheckIcon, ErrorIcon } from "@/components/icons";
@@ -6,16 +7,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 
 const CurrentVotesSkeleton = () => {
+  const t = useTranslations("proposalDetail.currentVotes");
+  const voteLabels = useTranslations("proposals.voteLabels");
+
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[20px]">
-      <h3 className="text-[18px] font-semibold">Current Votes</h3>
+      <h3 className="text-[18px] font-semibold">{t("title")}</h3>
       <Separator className="my-0! bg-border/20" />
 
       <div className="flex flex-col gap-[20px]">
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
             <Skeleton className="h-[20px] w-[20px] rounded-full" />
-            <span className="text-[14px] font-normal">Quorum</span>
+            <span className="text-[14px] font-normal">{t("quorum")}</span>
           </div>
           <Skeleton className="h-[18px] w-[120px]" />
         </div>
@@ -24,7 +28,9 @@ const CurrentVotesSkeleton = () => {
           <div className="flex items-center justify-between gap-[10px]">
             <div className="flex items-center gap-[5px]">
               <Skeleton className="h-[20px] w-[20px] rounded-full" />
-              <span className="text-[14px] font-normal">Majority support</span>
+              <span className="text-[14px] font-normal">
+                {t("majoritySupport")}
+              </span>
             </div>
             <Skeleton className="h-[18px] w-[40px]" />
           </div>
@@ -35,7 +41,7 @@ const CurrentVotesSkeleton = () => {
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
             <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
-            <span className="text-[14px] font-normal">For</span>
+            <span className="text-[14px] font-normal">{voteLabels("for")}</span>
           </div>
           <Skeleton className="h-[18px] w-[80px]" />
         </div>
@@ -43,7 +49,9 @@ const CurrentVotesSkeleton = () => {
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
             <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
-            <span className="text-[14px] font-normal">Against</span>
+            <span className="text-[14px] font-normal">
+              {voteLabels("against")}
+            </span>
           </div>
           <Skeleton className="h-[18px] w-[80px]" />
         </div>
@@ -51,7 +59,9 @@ const CurrentVotesSkeleton = () => {
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
             <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
-            <span className="text-[14px] font-normal">Abstain</span>
+            <span className="text-[14px] font-normal">
+              {voteLabels("abstain")}
+            </span>
           </div>
           <Skeleton className="h-[18px] w-[80px]" />
         </div>
@@ -74,6 +84,8 @@ export const CurrentVotes = ({
   quorumRequired,
   isLoading,
 }: CurrentVotesProps) => {
+  const t = useTranslations("proposalDetail.currentVotes");
+  const voteLabels = useTranslations("proposals.voteLabels");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
   const { totalVotesCast, totalParticipation } = useMemo(() => {
@@ -115,7 +127,7 @@ export const CurrentVotes = ({
 
   return (
     <div className="flex flex-col gap-[20px] rounded-[14px] bg-card p-[10px] lg:p-[20px] shadow-card">
-      <h3 className="text-[18px] font-semibold">Current Votes</h3>
+      <h3 className="text-[18px] font-semibold">{t("title")}</h3>
       <Separator className="my-0! bg-border/20" />
 
       <div className="flex flex-col gap-[20px]">
@@ -134,18 +146,20 @@ export const CurrentVotes = ({
                 className="rounded-full text-current"
               />
             )}
-            <span className="text-[14px] font-normal">Quorum</span>
+            <span className="text-[14px] font-normal">{t("quorum")}</span>
           </div>
           <span className="flex items-center gap-[5px]">
-            {formatTokenAmount(totalParticipation).formatted} of{" "}
-            <span>{formatTokenAmount(quorumRequired).formatted}</span>
+            {t("participation", {
+              current: formatTokenAmount(totalParticipation).formatted,
+              required: formatTokenAmount(quorumRequired).formatted,
+            })}
           </span>
         </div>
 
         <div className="flex flex-col gap-[10px]">
           <div className="flex items-center justify-between gap-[10px]">
             <div className="flex items-center gap-[5px]">
-              {calculateMajoritySupport(proposalVotesData) === "Yes" ? (
+              {proposalVotesData.forVotes > proposalVotesData.againstVotes ? (
                 <ProposalActionCheckIcon
                   width={20}
                   height={20}
@@ -158,10 +172,16 @@ export const CurrentVotes = ({
                   className="rounded-full text-current"
                 />
               )}
-              <span className="text-[14px] font-normal">Majority support</span>
+              <span className="text-[14px] font-normal">
+                {t("majoritySupport")}
+              </span>
             </div>
 
-            <span>{calculateMajoritySupport(proposalVotesData)}</span>
+            <span>
+              {proposalVotesData.forVotes > proposalVotesData.againstVotes
+                ? t("yes")
+                : t("no")}
+            </span>
           </div>
 
           <div className="flex h-[6px] w-full items-center rounded-[2px]">
@@ -189,7 +209,9 @@ export const CurrentVotes = ({
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
             <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
-            <span className="text-[14px] font-normal">For</span>
+            <span className="text-[14px] font-normal">
+              {voteLabels("for")}
+            </span>
           </div>
 
           <span>{formatTokenAmount(proposalVotesData.forVotes).formatted}</span>
@@ -198,7 +220,9 @@ export const CurrentVotes = ({
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
             <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
-            <span className="text-[14px] font-normal">Against</span>
+            <span className="text-[14px] font-normal">
+              {voteLabels("against")}
+            </span>
           </div>
 
           <span>
@@ -209,7 +233,9 @@ export const CurrentVotes = ({
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
             <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
-            <span className="text-[14px] font-normal">Abstain</span>
+            <span className="text-[14px] font-normal">
+              {voteLabels("abstain")}
+            </span>
           </div>
 
           <span>
@@ -220,11 +246,3 @@ export const CurrentVotes = ({
     </div>
   );
 };
-
-function calculateMajoritySupport(votesData: {
-  againstVotes: bigint;
-  forVotes: bigint;
-  abstainVotes: bigint;
-}): string {
-  return votesData.forVotes > votesData.againstVotes ? "Yes" : "No";
-}

@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import React, { useMemo } from "react";
 
 import { AddressWithAvatar } from "@/components/address-with-avatar";
@@ -14,6 +14,7 @@ import { LoadingState, ErrorState } from "@/components/ui/loading-spinner";
 import { VoteStatusAction } from "@/components/vote-status";
 import { VoteType } from "@/config/vote";
 import { useDeviceDetection } from "@/hooks/useDeviceDetection";
+import { Link } from "@/i18n/navigation";
 import type { AiAnalysisData } from "@/types/ai-analysis";
 import { ProposalState } from "@/types/proposal";
 import { extractTitleAndDescription } from "@/utils";
@@ -74,6 +75,7 @@ const VoteProgressBar = ({
   abstainVotes: string;
   abstainPercentage: number;
 }) => {
+  const voteLabels = useTranslations("aiAnalysis.labels");
   return (
     <div className="flex flex-col gap-[10px]">
       <div className="flex h-[6px] w-full items-center rounded-[2px] overflow-hidden bg-muted">
@@ -93,17 +95,21 @@ const VoteProgressBar = ({
       <div className="flex flex-wrap gap-4 sm:gap-6 justify-between">
         <div className="flex items-center gap-[5px]">
           <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
-          <span className="text-[14px] font-normal">For</span>
+          <span className="text-[14px] font-normal">{voteLabels("for")}</span>
           <span className="text-[14px] font-medium">{forVotes}</span>
         </div>
         <div className="flex items-center gap-[5px]">
           <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
-          <span className="text-[14px] font-normal">Against</span>
+          <span className="text-[14px] font-normal">
+            {voteLabels("against")}
+          </span>
           <span className="text-[14px] font-medium">{againstVotes}</span>
         </div>
         <div className="flex items-center gap-[5px]">
           <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
-          <span className="text-[14px] font-normal">Abstain</span>
+          <span className="text-[14px] font-normal">
+            {voteLabels("abstain")}
+          </span>
           <span className="text-[14px] font-medium">{abstainVotes}</span>
         </div>
       </div>
@@ -120,6 +126,7 @@ const SentimentProgressBar = ({
   negative: number;
   neutral: number;
 }) => {
+  const t = useTranslations("aiAnalysis.labels");
   return (
     <div className="flex flex-col gap-[10px]">
       <div className="flex h-[6px] w-full items-center rounded-[2px] overflow-hidden bg-muted">
@@ -133,17 +140,17 @@ const SentimentProgressBar = ({
       <div className="flex flex-wrap gap-4 sm:gap-6 justify-between">
         <div className="flex items-center gap-[5px]">
           <span className="inline-block h-[16px] w-[16px] rounded-full bg-success" />
-          <span className="text-[14px] font-normal">Positive</span>
+          <span className="text-[14px] font-normal">{t("positive")}</span>
           <span className="text-[14px] font-medium">{positive}%</span>
         </div>
         <div className="flex items-center gap-[5px]">
           <span className="inline-block h-[16px] w-[16px] rounded-full bg-danger" />
-          <span className="text-[14px] font-normal">Negative</span>
+          <span className="text-[14px] font-normal">{t("negative")}</span>
           <span className="text-[14px] font-medium">{negative}%</span>
         </div>
         <div className="flex items-center gap-[5px]">
           <span className="inline-block h-[16px] w-[16px] rounded-full bg-muted-foreground" />
-          <span className="text-[14px] font-normal">Neutral</span>
+          <span className="text-[14px] font-normal">{t("neutral")}</span>
           <span className="text-[14px] font-medium">{neutral}%</span>
         </div>
       </div>
@@ -204,6 +211,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
   error = null,
   onRefresh,
 }) => {
+  const t = useTranslations("aiAnalysis");
   const { isClient } = useDeviceDetection();
 
   const analysisOutput = analysisData?.fulfilled_explain?.output;
@@ -225,8 +233,8 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
     if (loading) {
       return (
         <LoadingState
-          title="Analyzing Proposal"
-          description="Fetching AI voting analysis data from DeGov.AI agent..."
+          title={t("loading.title")}
+          description={t("loading.description")}
           className="min-h-[400px]"
         />
       );
@@ -235,7 +243,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
     if (error) {
       return (
         <ErrorState
-          title="Failed to Load Analysis"
+          title={t("errors.loadFailedTitle")}
           description={error}
           onRetry={onRefresh}
           className="min-h-[400px]"
@@ -246,8 +254,8 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
     if (!analysisData || !analysisOutput || !votingBreakdown) {
       return (
         <ErrorState
-          title="No Analysis Available"
-          description="AI analysis data is not available for this proposal yet."
+          title={t("errors.noAnalysisTitle")}
+          description={t("errors.noAnalysisDescription")}
           onRetry={onRefresh}
           className="min-h-[400px]"
         />
@@ -262,7 +270,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             <div className="flex items-center gap-[10px]">
               <AiTitleIcon1 className="w-[32px] h-[32px]" />
               <h2 className="text-[18px] lg:text-[26px] font-semibold text-foreground">
-                Agent Voting Reason Analysis
+                {t("sections.reasonAnalysis")}
               </h2>
             </div>
 
@@ -287,14 +295,14 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               </Link>
             </h3>
             <div className="text-[12px] lg:text-[14px] text-foreground">
-              <span className="font-normal">Proposal ID:</span>{" "}
+              <span className="font-normal">{t("labels.proposalId")}</span>{" "}
               <span className="font-semibold break-all block lg:inline">
                 {analysisData.proposal_id}
               </span>
             </div>
             <div className="flex items-center gap-[20px] lg:gap-[5px] text-[12px] lg:text-[14px]">
               <span className=" text-foreground hidden lg:block">
-                Proposed by
+                {t("labels.proposedBy")}
               </span>
               {!!proposalData.proposer && (
                 <AddressWithAvatar
@@ -305,7 +313,7 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               )}
 
               <span className="text-foreground flex items-center gap-[20px] lg:gap-[5px]">
-                <div className="hidden lg:block">On</div>
+                <div className="hidden lg:block">{t("labels.on")}</div>
                 <span className="font-semibold">
                   {proposalData.blockTimestamp
                     ? formatTimeAgo(proposalData.blockTimestamp)
@@ -316,13 +324,15 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-foreground">Chain</div>
+              <div className="text-[12px] text-foreground">
+                {t("labels.chain")}
+              </div>
               <div className="text-[14px] font-semibold">
                 {analysisData.dao.config.chain.name}
               </div>
             </div>
             <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-foreground">X</div>
+              <div className="text-[12px] text-foreground">{t("labels.x")}</div>
               <a
                 href={`https://x.com/${analysisData.twitter_user.username}/status/${analysisData.id}`}
                 target="_blank"
@@ -333,7 +343,9 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               </a>
             </div>
             <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-foreground">DAO</div>
+              <div className="text-[12px] text-foreground">
+                {t("labels.dao")}
+              </div>
               <a
                 href={analysisData?.dao?.links?.website}
                 target="_blank"
@@ -344,7 +356,9 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               </a>
             </div>
             <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[10px]">
-              <div className="text-[12px] text-foreground">Created</div>
+              <div className="text-[12px] text-foreground">
+                {t("labels.created")}
+              </div>
               <div className="text-[14px] font-semibold">
                 {new Date(analysisData.ctime).toISOString()}
               </div>
@@ -356,11 +370,13 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
         <div className="rounded-[14px] flex flex-col gap-[20px]">
           <div className="flex items-center gap-[10px]">
             <AiTitleIcon2 className="w-[32px] h-[32px]" />
-            <h3 className="text-[18px] font-semibold">Vote Analysis</h3>
+            <h3 className="text-[18px] font-semibold">
+              {t("sections.voteAnalysis")}
+            </h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-card p-[10px] lg:p-[20px] rounded-[14px] flex flex-col gap-[20px]">
-              <h4 className="text-[18px] font-medium">X Poll</h4>
+              <h4 className="text-[18px] font-medium">{t("cards.xPoll")}</h4>
               <VoteProgressBar
                 forVotes={votingBreakdown.twitterPoll.for.toString()}
                 forPercentage={votingBreakdown.twitterPoll.for}
@@ -372,7 +388,9 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             </div>
 
             <div className="bg-card p-[10px] lg:p-[20px] rounded-[14px] flex flex-col gap-[20px]">
-              <h4 className="text-[18px] font-medium">On-Chain Votes</h4>
+              <h4 className="text-[18px] font-medium">
+                {t("cards.onChainVotes")}
+              </h4>
               <VoteProgressBar
                 forVotes={formatVoteCount(votingBreakdown.onChainVotes.for)}
                 forPercentage={
@@ -412,7 +430,9 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
             </div>
 
             <div className="bg-card p-[10px] lg:p-[20px] rounded-[14px] flex flex-col gap-[20px]">
-              <h4 className="text-[18px] font-medium">Comment Sentiment</h4>
+              <h4 className="text-[18px] font-medium">
+                {t("cards.commentSentiment")}
+              </h4>
               <SentimentProgressBar
                 positive={votingBreakdown.twitterComments.positive}
                 negative={votingBreakdown.twitterComments.negative}
@@ -426,7 +446,9 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
         <div className="flex flex-col gap-[20px]">
           <div className="flex items-center gap-[10px]">
             <AiTitleIcon3 />
-            <h3 className="text-[18px] font-semibold">Final Decision</h3>
+            <h3 className="text-[18px] font-semibold">
+              {t("sections.finalDecision")}
+            </h3>
           </div>
 
           <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] border border-border/20">
@@ -438,14 +460,16 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
               />
               <div className="flex items-center gap-2">
                 <span className="text-[14px] text-muted-foreground hidden lg:block">
-                  Confidence
+                  {t("labels.confidence")}
                 </span>
                 <StarRating rating={analysisOutput.confidence} />
               </div>
             </div>
 
             <div className="flex flex-col gap-[10px] bg-card-background rounded-[14px] p-[10px] lg:p-[20px]">
-              <h4 className="text-[18px] font-semibold">Executive Summary</h4>
+              <h4 className="text-[18px] font-semibold">
+                {t("sections.executiveSummary")}
+              </h4>
               <div
                 className="markdown-body"
                 dangerouslySetInnerHTML={{ __html: reasoningLiteHtml }}
@@ -454,7 +478,9 @@ export const AiAnalysisStandalone: React.FC<AiAnalysisStandaloneProps> = ({
           </div>
 
           <div className="rounded-[14px] bg-card p-[10px] lg:p-[20px] flex flex-col gap-[20px]">
-            <h3 className="text-[18px] font-semibold">Voting Reason</h3>
+            <h3 className="text-[18px] font-semibold">
+              {t("sections.votingReason")}
+            </h3>
             <div className="w-full h-px bg-gray-1"></div>
             <div
               className="markdown-body overflow-y-auto"

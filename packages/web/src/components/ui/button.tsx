@@ -1,6 +1,9 @@
+"use client";
+
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -54,6 +57,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
+    const t = useTranslations("common.loading");
     const Comp = asChild ? Slot : "button";
     return (
       <Comp
@@ -65,7 +69,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {isLoading ? (
           <>
             <Loader2 className="animate-spin" />
-            <span>Loading...</span>
+            <span>{t("title")}</span>
           </>
         ) : (
           children

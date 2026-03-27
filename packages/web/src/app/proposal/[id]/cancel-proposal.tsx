@@ -1,4 +1,6 @@
 
+import { useTranslations } from "next-intl";
+
 import { CloseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,12 +27,14 @@ export function CancelProposal({
   isLoading,
   onCancelProposal,
 }: DelegateActionProps) {
+  const t = useTranslations("proposalDetail.cancelDialog");
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[400px] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
         <DialogHeader className="flex w-full flex-row items-center justify-between">
           <DialogTitle className="text-[18px] font-normal">
-            Cancel proposal
+            {t("title")}
           </DialogTitle>
           <CloseIcon
             width={24}
@@ -40,10 +44,7 @@ export function CancelProposal({
           />
         </DialogHeader>
         <Separator className="my-0 bg-muted-foreground/40" />
-        <div className="w-[360px] font-normal leading-normal">
-          Once cancelled, a proposal can no longer be executed. Please note:
-          Proposals can only be cancelled in certain scenarios.
-        </div>
+        <div className="w-[360px] font-normal leading-normal">{t("description")}</div>
         <Separator className="my-0 bg-muted-foreground/40" />
         <div className="grid grid-cols-2 gap-[20px]">
           <Button
@@ -51,7 +52,7 @@ export function CancelProposal({
             variant="outline"
             onClick={() => onOpenChange(false)}
           >
-            Close
+            {t("close")}
           </Button>
           <Button
             className="rounded-[100px]"
@@ -59,7 +60,7 @@ export function CancelProposal({
             isLoading={isLoading}
             onClick={onCancelProposal}
           >
-            Cancel proposal
+            {t("confirm")}
           </Button>
         </div>
       </DialogContent>

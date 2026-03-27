@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import {
   ProposalActionIconMap,
   getProposalActionIcon,
@@ -37,6 +39,7 @@ export const NewProposalAction = ({
   active,
   error,
 }: NewProposalActionProps) => {
+  const t = useTranslations("proposalEditor.actions");
   const iconNode =
     ACTION_ICON_NODE[type] ??
     (() => {
@@ -55,7 +58,7 @@ export const NewProposalAction = ({
       >
         {iconNode}
         <span className="text-[14px] font-normal text-foreground">
-          Proposal
+          {t("proposal")}
         </span>
         {error && (
           <span className="absolute right-[20px] top-1/2 h-[10px] w-[10px] -translate-y-1/2 rounded-full bg-danger"></span>
@@ -74,7 +77,7 @@ export const NewProposalAction = ({
       >
         {iconNode}
         <span className="text-[14px] font-normal text-foreground">
-          Transfer
+          {t("transfer")}
         </span>
         {error && (
           <span className="absolute right-[20px] top-1/2 h-[10px] w-[10px] -translate-y-1/2 rounded-full bg-danger"></span>
@@ -92,7 +95,9 @@ export const NewProposalAction = ({
         onClick={() => onSwitch?.("custom")}
       >
         {iconNode}
-        <span className="text-[14px] font-normal text-foreground">Custom</span>
+        <span className="text-[14px] font-normal text-foreground">
+          {t("custom")}
+        </span>
         {error && (
           <span className="absolute right-[20px] top-1/2 h-[10px] w-[10px] -translate-y-1/2 rounded-full bg-danger"></span>
         )}
@@ -141,7 +146,9 @@ export const NewProposalAction = ({
         onClick={() => onSwitch?.("preview")}
       >
         {iconNode}
-        <span className="text-[14px] font-normal text-foreground">Preview</span>
+        <span className="text-[14px] font-normal text-foreground">
+          {t("preview")}
+        </span>
       </div>
     );
   }

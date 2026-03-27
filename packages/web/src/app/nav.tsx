@@ -1,6 +1,5 @@
 "use client";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { getNavIcon } from "@/components/icons/nav-icon-map";
@@ -12,6 +11,7 @@ import {
 } from "@/components/ui/tooltip";
 import { routes } from "@/config/route";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 interface NavProps {
@@ -23,6 +23,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
   const pathname = usePathname();
   const router = useRouter();
   const daoConfig = useDaoConfig();
+  const t = useTranslations("navigation");
 
   // Filter routes based on configuration
   const visibleRoutes = useMemo(() => {
@@ -81,7 +82,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                   </span>
 
                   {!collapsed && (
-                    <span className="text-[16px] truncate">{route.key}</span>
+                    <span className="text-[16px] truncate">{t(route.key)}</span>
                   )}
                 </Link>
               </TooltipTrigger>
@@ -89,7 +90,7 @@ export const Nav = ({ collapsed = false, onMenuToggle }: NavProps) => {
                 side="right"
                 className={collapsed ? "" : "hidden"}
               >
-                {route.key}
+                {t(route.key)}
               </TooltipContent>
             </Tooltip>
           );
