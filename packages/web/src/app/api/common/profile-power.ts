@@ -1,6 +1,25 @@
 import type { ContributorItem } from "../../../services/graphql/types/contributors";
 
 export type ContributorMap = Map<string, ContributorItem>;
+export type StoredProfileRow = {
+  id: string;
+  dao_code: string;
+  address: string;
+  name?: string | null;
+  email?: string | null;
+  twitter?: string | null;
+  github?: string | null;
+  discord?: string | null;
+  telegram?: string | null;
+  medium?: string | null;
+  delegate_statement?: string | null;
+  additional?: string | null;
+  last_login_time: string;
+  ctime?: string | null;
+  utime?: string | null;
+  avatar?: string | null;
+  power?: string | null;
+};
 
 const DEFAULT_POWER = "0";
 

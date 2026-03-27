@@ -7,7 +7,10 @@ import { Resp } from "@/types/api";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 import * as graphql from "../../common/graphql";
-import { overlayProfileWithContributorPower } from "../../common/profile-power";
+import {
+  overlayProfileWithContributorPower,
+  type StoredProfileRow,
+} from "../../common/profile-power";
 
 import type { NextRequest } from "next/server";
 
@@ -41,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
     const sql = databaseConnection();
 
-    const [storedUser] = await sql`
+    const [storedUser] = (await sql`
       select
         u.id,
         u.dao_code,
@@ -63,7 +66,7 @@ export async function GET(request: NextRequest) {
       left join d_avatar as a on u.id = a.id
       where u.address = ${address} and u.dao_code = ${daocode}
       limit 1
-    `;
+    `) as StoredProfileRow[];
 
     if (!storedUser) {
       return NextResponse.json(Resp.ok(storedUser));
@@ -119,7 +122,7 @@ export async function POST(request: NextRequest) {
     const sql = databaseConnection();
 
     const [storedUser] =
-      await sql`
+      (await sql`
         select
           id,
           dao_code,
@@ -139,7 +142,7 @@ export async function POST(request: NextRequest) {
         from d_user
         where address = ${address} and dao_code = ${daocode}
         limit 1
-      `;
+      `) as StoredProfileRow[];
     if (!storedUser) {
       return NextResponse.json(Resp.err("unreachable, qed"));
     }
