@@ -261,11 +261,13 @@ export class ChainTool {
   }
 
   private isMissingFunctionError(error: any): boolean {
-    const message = `${error?.message ?? ""}`;
+    const message = `${error?.message ?? ""}`.toLowerCase();
     return (
       message.includes("contract function not found") ||
       message.includes("execution reverted") ||
-      message.includes("Function does not exist")
+      message.includes("function does not exist") ||
+      message.includes("reverted with the following reason") ||
+      message.includes("vm exception while processing transaction: revert")
     );
   }
 

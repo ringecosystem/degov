@@ -25,6 +25,24 @@ describe("ChainTool", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("returns undefined when optional contract reads fail through RPC fallback wrapping", async () => {
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "readContract").mockRejectedValue(
+      new Error(
+        'All RPC requests failed for chain 46. Last error: The contract function "GRACE_PERIOD" reverted with the following reason:\nVM Exception while processing transaction: revert',
+      ),
+    );
+
+    await expect(
+      chainTool.readOptionalContract({
+        chainId: 46,
+        contractAddress,
+        abi: [],
+        functionName: "GRACE_PERIOD",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("resolves block-number timepoints to block timestamps in milliseconds", async () => {
     const chainTool = new ChainTool();
     const executeWithFallbacks = jest
