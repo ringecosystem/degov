@@ -156,7 +156,10 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         ? formatTokenAmount(totalSupply)?.formatted ?? "0"
         : "0";
 
-      const totalDelegates = governanceCounts?.delegatesCount ?? 0;
+      const totalDelegates = formatNumberForDisplay(
+        governanceCounts?.delegatesCount ?? 0,
+        1
+      )[0];
 
       const votingPowerPercentage =
         dataMetrics?.powerSum && totalSupply

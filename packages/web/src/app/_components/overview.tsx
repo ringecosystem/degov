@@ -73,7 +73,7 @@ export const Overview = () => {
           icon="/assets/image/members-colorful.svg"
           isLoading={isGovernanceCountsLoading}
         >
-          {formatNumberForDisplay(governanceCounts?.delegatesCount ?? 0, 0)[0]}
+          {formatNumberForDisplay(governanceCounts?.delegatesCount ?? 0, 1)[0]}
         </OverviewItem>
         <OverviewItem
           title="Total Voting Power"
