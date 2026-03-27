@@ -1,50 +1,92 @@
 import { TextPlus } from "../src/internal/textplus";
 
-require("dotenv").config();
+const mockGenerateObject = jest.fn();
+const mockCreateOpenRouter = jest.fn(
+  (_config?: unknown) => (model: string) => model
+);
 
-interface DescriptionResult {
-  proposalId: string;
-  description: string;
-}
+jest.mock("ai", () => ({
+  generateObject: (input: unknown) => mockGenerateObject(input),
+}));
 
-async function queryDescriptions(): Promise<DescriptionResult[]> {
-  const response = await fetch("https://indexer.degov.ai/unlock-dao/graphql", {
-    headers: {
-      accept: "application/json, multipart/mixed",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      query: `query QueryProposals {
-        proposals(limit: 10, offset: 5) {
-          description
-          proposalId
-        }
-      }`,
-      operationName: "QueryProposals",
-    }),
-    method: "POST",
+jest.mock("@openrouter/ai-sdk-provider", () => ({
+  createOpenRouter: (input: unknown) => mockCreateOpenRouter(input),
+}));
+
+describe("TextPlus", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env = { ...originalEnv };
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_DEFAULT_MODEL;
+    jest.spyOn(console, "log").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    jest.spyOn(console, "error").mockImplementation(() => {});
   });
-  const ret = await response.json();
-  return ret.data.proposals;
-}
 
-describe("Chain Tool Test", () => {
-  const textPlus = new TextPlus();
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
 
-  it(
-    "check extractInfo",
-    async () => {
-      const drs = await queryDescriptions();
+  afterAll(() => {
+    process.env = originalEnv;
+  });
 
-      const resultsPromises = drs.map(async (dr) => {
-        const r = await textPlus.extractInfo(dr.description);
-        return `- ${r.title} -> ${dr.proposalId}`; // -> ${dr.proposalId}
-      });
+  it("extracts titles locally when AI features are unavailable", async () => {
+    const textPlus = new TextPlus();
 
-      const allResults = await Promise.all(resultsPromises);
+    await expect(
+      textPlus.extractInfo("# Steward for Operations & Coordination\n\nBody copy")
+    ).resolves.toEqual({
+      title: "Steward for Operations & Coordination",
+    });
 
-      console.log(allResults.join("\n"));
-    },
-    1000 * 60
-  );
+    await expect(
+      textPlus.extractInfo("Add 2,222,222 UP for Incentives on Uniswap + Gamma")
+    ).resolves.toEqual({
+      title: "Add 2,222,222 UP for Incentives on Uniswap + Gamma",
+    });
+
+    expect(mockGenerateObject).not.toHaveBeenCalled();
+  });
+
+  it("prefers an AI-generated title when OpenRouter is configured", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    process.env.OPENROUTER_DEFAULT_MODEL = "openai/gpt-4.1-mini";
+    mockGenerateObject.mockResolvedValue({
+      object: { title: "AI curated title" },
+    });
+
+    const textPlus = new TextPlus();
+    const result = await textPlus.extractInfo("# Local fallback title");
+
+    expect(result).toEqual({ title: "AI curated title" });
+    expect(mockCreateOpenRouter).toHaveBeenCalledWith({
+      apiKey: "test-key",
+    });
+    expect(mockGenerateObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "openai/gpt-4.1-mini",
+      })
+    );
+  });
+
+  it("falls back to local extraction when AI generation errors", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mockGenerateObject.mockRejectedValue(new Error("provider timeout"));
+
+    const textPlus = new TextPlus();
+    const result = await textPlus.extractInfo(
+      "# Retroactive Funding August 2024"
+    );
+
+    expect(result).toEqual({
+      title: "Retroactive Funding August 2024",
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("textplus.title generation failed")
+    );
+  });
 });
