@@ -20,9 +20,28 @@ export async function POST(request: NextRequest) {
     const daocode = degovConfig.code;
 
     const sql = databaseConnection();
-    const members = await sql`select * from d_user where address in ${sql(
-      body
-    )} and dao_code = ${daocode}`;
+    const members = await sql`
+      select
+        u.id,
+        u.address,
+        u.dao_code,
+        u.name,
+        u.email,
+        u.twitter,
+        u.github,
+        u.discord,
+        u.telegram,
+        u.medium,
+        u.delegate_statement,
+        u.additional,
+        u.last_login_time,
+        u.ctime,
+        u.utime,
+        coalesce(a.image, '') as avatar
+      from d_user as u
+      left join d_avatar as a on u.id = a.id
+      where u.address in ${sql(body)} and u.dao_code = ${daocode}
+    `;
     return NextResponse.json(Resp.ok(members));
   } catch (err) {
     console.warn("err", err);

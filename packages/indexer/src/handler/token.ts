@@ -474,39 +474,6 @@ export class TokenHandler {
       storedContributor = contributor;
     }
 
-    // sync user power
-    const syncEndpoint = process.env.DEGOV_SYNC_ENDPOINT;
-    const syncAuthToken = process.env.DEGOV_SYNC_AUTH_TOKEN;
-    if (syncEndpoint && syncAuthToken) {
-      try {
-        const controller = new AbortController();
-        const signal = controller.signal;
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-        await fetch(syncEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-degov-sync-token": syncAuthToken,
-            "x-degov-daocode": this.options.work.daoCode,
-          },
-          body: JSON.stringify([
-            {
-              method: "sync.user.power",
-              body: {
-                address: storedContributor.id,
-                power: storedContributor.power.toString(),
-              },
-            },
-          ]),
-          signal,
-        });
-        clearTimeout(timeoutId);
-      } catch (error) {
-        this.ctx.log.error(`'failed to sync user power: ${error}`);
-      }
-    }
-
     if (!storeMemberMetrics) {
       return;
     }

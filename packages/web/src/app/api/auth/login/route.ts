@@ -7,7 +7,6 @@ import { Resp } from "@/types/api";
 
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
-import * as graphql from "../../common/graphql";
 import { nonceCache } from "../../common/nonce-cache";
 import { snowflake } from "../../common/toolkit";
 
@@ -62,21 +61,10 @@ export async function POST(request: NextRequest) {
     const [storedUser] =
       await sql`select * from d_user where address = ${address} and dao_code = ${daocode} limit 1`;
     if (!storedUser) {
-      const contributor = await graphql.inspectContributor({
-        address,
-        request,
-      });
-      let power = "0";
-      if (contributor) {
-        power = contributor.power;
-      }
-      const hexPower = `0x${BigInt(power).toString(16).padStart(64, "0")}`;
-
       const newUser: DUser = {
         id: snowflake.generate(),
         dao_code: daocode,
         address,
-        power: hexPower,
         last_login_time: new Date().toISOString(),
       };
       await sql`insert into d_user ${sql(
@@ -84,8 +72,7 @@ export async function POST(request: NextRequest) {
         "id",
         "dao_code",
         "address",
-        "last_login_time",
-        "power"
+        "last_login_time"
       )}`;
     } else {
       storedUser.last_login_time = new Date().toISOString();

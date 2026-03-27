@@ -9,26 +9,11 @@ export type ProfileData = ProfileFormData & {
 export type Member = {
   id: string;
   address: string;
+  dao_code?: string;
   ctime: string;
   utime: string;
   last_login_time: string;
-  power: string;
-  rn?: number;
 } & ProfileData;
-
-export type MemberResponse = {
-  code: number;
-  data: Member[];
-  message: string;
-};
-
-export type MemberTotalResponse = {
-  code: number;
-  data: {
-    member_count: number;
-  };
-  message: string;
-};
 
 export type ProfilePullResponse = {
   code: number;

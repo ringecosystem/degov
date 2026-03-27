@@ -40,7 +40,24 @@ export async function GET(request: NextRequest) {
     const sql = databaseConnection();
 
     const [storedUser] = await sql`
-      select u.*, a.image as avatar from d_user as u
+      select
+        u.id,
+        u.address,
+        u.dao_code,
+        u.name,
+        u.email,
+        u.twitter,
+        u.github,
+        u.discord,
+        u.telegram,
+        u.medium,
+        u.delegate_statement,
+        u.additional,
+        u.last_login_time,
+        u.ctime,
+        u.utime,
+        coalesce(a.image, '') as avatar
+      from d_user as u
       left join d_avatar as a on u.id = a.id
       where u.address = ${address} and u.dao_code = ${daocode}
       limit 1
