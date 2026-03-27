@@ -65,6 +65,10 @@ export function formatBigIntForDisplay(
   return formatNumberForDisplay(numberValue)[0];
 }
 
+export function formatDelegateCountForDisplay(num: number): string {
+  return formatNumberForDisplay(num, 1)[0];
+}
+
 /**
  * Formats a BigInt number with decimals into two display formats
  * @param {bigint} value - The BigInt value to format

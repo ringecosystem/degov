@@ -7,7 +7,10 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { useGovernanceCounts } from "@/hooks/useGovernanceCounts";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
-import { formatNumberForDisplay } from "@/utils/number";
+import {
+  formatDelegateCountForDisplay,
+  formatNumberForDisplay,
+} from "@/utils/number";
 
 import { OverviewItem } from "./overview-item";
 import { OverviewProposalsSummaryDropdown } from "./overview-proposals-summary";
@@ -73,7 +76,7 @@ export const Overview = () => {
           icon="/assets/image/members-colorful.svg"
           isLoading={isGovernanceCountsLoading}
         >
-          {formatNumberForDisplay(governanceCounts?.delegatesCount ?? 0, 0)[0]}
+          {formatDelegateCountForDisplay(governanceCounts?.delegatesCount ?? 0)}
         </OverviewItem>
         <OverviewItem
           title="Total Voting Power"
