@@ -13,10 +13,7 @@ import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 import { dayjsHumanize } from "@/utils/date";
-import {
-  formatDelegateCountForDisplay,
-  formatNumberForDisplay,
-} from "@/utils/number";
+import { formatNumberForDisplay } from "@/utils/number";
 
 import { Skeleton } from "./ui/skeleton";
 
@@ -159,9 +156,10 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
         ? formatTokenAmount(totalSupply)?.formatted ?? "0"
         : "0";
 
-      const totalDelegates = formatDelegateCountForDisplay(
-        governanceCounts?.delegatesCount ?? 0
-      );
+      const totalDelegates = formatNumberForDisplay(
+        governanceCounts?.delegatesCount ?? 0,
+        1
+      )[0];
 
       const votingPowerPercentage =
         dataMetrics?.powerSum && totalSupply

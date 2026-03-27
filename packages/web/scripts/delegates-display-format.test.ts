@@ -15,20 +15,17 @@ const systemInfoSource = readFileSync(
   "utf8"
 );
 
-test("delegate display helper keeps one decimal of compact precision", () => {
-  assert.match(
-    numberUtilsSource,
-    /export function formatDelegateCountForDisplay\(num: number\): string \{\s+return formatNumberForDisplay\(num, 1\)\[0\];\s+\}/
-  );
+test("delegate display uses shared number formatting without a delegate-specific helper", () => {
+  assert.doesNotMatch(numberUtilsSource, /formatDelegateCountForDisplay/);
 });
 
-test("overview and system info both use the delegate display helper", () => {
+test("overview and system info both use compact number formatting with one decimal for delegates", () => {
   assert.match(
     overviewSource,
-    /formatDelegateCountForDisplay\(governanceCounts\?\.delegatesCount \?\? 0\)/
+    /formatNumberForDisplay\(governanceCounts\?\.delegatesCount \?\? 0, 1\)\[0\]/
   );
   assert.match(
     systemInfoSource,
-    /const totalDelegates = formatDelegateCountForDisplay\(\s*governanceCounts\?\.delegatesCount \?\? 0\s*\)/
+    /const totalDelegates = formatNumberForDisplay\(\s*governanceCounts\?\.delegatesCount \?\? 0,\s*1\s*\)\[0\]/
   );
 });
