@@ -1,237 +1,187 @@
-import { ChainTool } from "../src/internal/chaintool";
+import { ChainTool, ClockMode } from "../src/internal/chaintool";
 
-describe("Chain Tool Test", () => {
-  const chainTool = new ChainTool();
-  // Increased timeout to allow for multiple network requests, especially with RPC fallbacks.
-  const TEST_TIMEOUT = 1000 * 60 * 5;
+const mockCreatePublicClient = jest.fn();
+const mockHttp = jest.fn((url: string) => ({ url }));
 
-  it(
-    "should fetch block intervals and print all results at once",
-    async () => {
-      const chains = [
-        { id: 1, name: "ethereum" },
-        { id: 10, name: "op" },
-        { id: 46, name: "darwinia", rpcs: ["https://rpc.darwinia.network"] },
-        { id: 56, name: "bsc" },
-        { id: 100, name: "gnosis" },
-        { id: 137, name: "polygon" },
-        { id: 2710, name: "morph" },
-        { id: 5000, name: "mantle" },
-        { id: 8453, name: "base" },
-        { id: 42161, name: "arbitrum" },
-        { id: 43114, name: "avalanche-c" },
-        { id: 59144, name: "linea" },
-        { id: 81457, name: "blast" },
-        { id: 534352, name: "scroll" },
-      ];
+jest.mock("viem", () => ({
+  createPublicClient: (config: unknown) => mockCreatePublicClient(config),
+  http: (url: string) => mockHttp(url),
+  webSocket: jest.fn(),
+}));
 
-      console.log("Starting to fetch block intervals for all chains...\n");
+describe("ChainTool", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(console, "log").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
 
-      const results = await Promise.allSettled(
-        chains.map(async (chain) => {
-          try {
-            const interval = await chainTool.blockIntervalSeconds({
-              chainId: chain.id,
-              rpcs: chain.rpcs,
-              enableFloatValue: true,
-            });
-            // Return a consistent success object
-            return {
-              name: chain.name,
-              status: "fulfilled" as const,
-              value: interval,
-            };
-          } catch (error) {
-            const errorMessage =
-              error instanceof Error
-                ? error.message
-                : "An unknown error occurred";
-            // Return a consistent failure object
-            return {
-              name: chain.name,
-              status: "rejected" as const,
-              reason: errorMessage,
-            };
-          }
-        })
-      );
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
 
-      const outputLines: string[] = [];
-      outputLines.push("--- Block Interval Results ---");
+  it("aggregates successful block intervals across RPCs and caches the result", async () => {
+    mockCreatePublicClient.mockImplementation(({ transport }) => ({
+      rpcUrl: transport.url,
+    }));
 
-      results.forEach((result) => {
-        // The promise itself will always be 'fulfilled' because we are catching errors inside the map.
-        if (result.status === "fulfilled") {
-          const outcome = result.value;
-          // We check our custom status property to see if the operation succeeded.
-          if (outcome.status === "fulfilled") {
-            const line = `✅ ${outcome.name.padEnd(
-              12
-            )}: ${outcome.value.toFixed(2)} seconds`;
-            outputLines.push(line);
-          } else {
-            const line = `❌ ${outcome.name.padEnd(12)}: Failed (${
-              outcome.reason
-            })`;
-            outputLines.push(line);
-          }
-        }
-      });
+    const chainTool = new ChainTool();
+    const intervalSpy = jest.spyOn<any, any>(
+      chainTool as any,
+      "_calculateIntervalForSingleRpc"
+    );
+    intervalSpy.mockImplementation(async (...args: any[]) => {
+      const client = args[0] as { rpcUrl: string };
+      switch (client.rpcUrl) {
+        case "https://rpc-primary.example":
+          return 3;
+        case "https://rpc-secondary.example":
+          return 5;
+        default:
+          throw new Error("upstream timeout");
+      }
+    });
 
-      outputLines.push("\n--- Test Complete ---");
-      console.log(outputLines.join("\n"));
-    },
-    TEST_TIMEOUT
-  );
+    const result = await chainTool.blockIntervalSeconds({
+      chainId: 999999,
+      rpcs: [
+        "wss://rpc-primary.example",
+        "https://rpc-failing.example",
+        "https://rpc-secondary.example",
+      ],
+      enableFloatValue: true,
+    });
 
-  it(
-    "check quorum",
-    async () => {
-      const daos = [
-        {
-          dao: "ens-dao",
-          chain: 1,
-          contracts: {
-            governor: "0x323A76393544d5ecca80cd6ef2A560C6a395b7E3",
-            governorToken: {
-              address: "0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72",
-              standard: "ERC20",
-            },
-          },
-        },
-        {
-          dao: "aquari-dao",
-          chain: 8453,
-          contracts: {
-            governor: "0x062f87ae9eCAd31398C0cF5Ef269feb9050b9DF6",
-            governorToken: {
-              address: "0x23c2e12caaE858f1cc7a4B3d1499C6881C86839b",
-              standard: "ERC20",
-            },
-          },
-        },
-        {
-          dao: "ring-dao",
-          chain: 46,
-          contracts: {
-            governor: "0x52cDD25f7C83c335236Ce209fA1ec8e197E96533",
-            governorToken: {
-              address: "0xdafa555e2785DC8834F4Ea9D1ED88B6049142999",
-              standard: "ERC20",
-            },
-          },
-        },
-        {
-          dao: "ring-dao-guild",
-          chain: 46,
-          contracts: {
-            governor: "0x234179ae929D886fceA83a6D04af69A86134AA3B",
-            governorToken: {
-              address: "0x21D4A3c5390D098073598d30FD49d32F9d9E355E",
-              standard: "ERC721",
-            },
-          },
-        },
-        {
-          dao: "unlock-dao",
-          chain: 8453,
-          contracts: {
-            governor: "0x65bA0624403Fc5Ca2b20479e9F626eD4D78E0aD9",
-            governorToken: {
-              address: "0xaC27fa800955849d6D17cC8952Ba9dD6EAA66187",
-              standard: "ERC20",
-            },
-          },
-        },
-        {
-          dao: "hai-dao",
-          chain: 10,
-          contracts: {
-            governor: "0xe807f3282f3391d237BA8B9bECb0d8Ea3ba23777",
-            governorToken: {
-              address: "0xf467C7d5a4A9C4687fFc7986aC6aD5A4c81E1404",
-              standard: "ERC20",
-            },
-          },
-        },
-        {
-          dao: "gmx-dao",
-          chain: 42161,
-          contracts: {
-            governor: "0x03e8f708e9C85EDCEaa6AD7Cd06824CeB82A7E68",
-            governorToken: {
-              address: "0x2A29D3a792000750807cc401806d6fd539928481",
-              standard: "ERC20",
-            },
-          },
-        },
-      ];
+    expect(result).toBe(4);
+    expect(mockHttp).toHaveBeenNthCalledWith(1, "https://rpc-primary.example");
+    expect(mockHttp).toHaveBeenNthCalledWith(2, "https://rpc-failing.example");
+    expect(mockHttp).toHaveBeenNthCalledWith(3, "https://rpc-secondary.example");
+    expect(intervalSpy).toHaveBeenCalledTimes(3);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("https://rpc-failing.example failed")
+    );
 
-      console.log("\nStarting to fetch quorum for all DAOs...\n");
+    intervalSpy.mockClear();
 
-      const results = await Promise.allSettled(
-        daos.map(async (dao) => {
-          try {
-            const result = await chainTool.quorum({
-              chainId: dao.chain,
-              contractAddress: dao.contracts.governor as `0x${string}`,
-              governorTokenAddress: dao.contracts.governorToken
-                .address as `0x${string}`,
-              standard: dao.contracts.governorToken.standard as
-                | "ERC20"
-                | "ERC721",
-            });
-            return {
-              name: dao.dao,
-              status: "fulfilled" as const,
-              value: result,
-            };
-          } catch (error) {
-            const errorMessage =
-              error instanceof Error
-                ? error.message
-                : "An unknown error occurred";
-            return {
-              name: dao.dao,
-              status: "rejected" as const,
-              reason: errorMessage,
-            };
-          }
-        })
-      );
+    const cachedResult = await chainTool.blockIntervalSeconds({
+      chainId: 999999,
+      rpcs: [
+        "wss://rpc-primary.example",
+        "https://rpc-failing.example",
+        "https://rpc-secondary.example",
+      ],
+      enableFloatValue: true,
+    });
 
-      const outputLines: string[] = [];
-      outputLines.push("--- Quorum Results ---");
+    expect(cachedResult).toBe(4);
+    expect(intervalSpy).not.toHaveBeenCalled();
+  });
 
-      results.forEach((result) => {
-        if (result.status === "fulfilled") {
-          const outcome = result.value;
-          if (outcome.status === "fulfilled") {
-            const { clockMode, quorum, decimals } = outcome.value;
-            const quorumFormatted =
-              decimals && decimals > 1n
-                ? (Number(quorum) / 10 ** Number(decimals)).toLocaleString()
-                : quorum.toString();
-            const line = `✅ ${outcome.name.padEnd(
-              15
-            )}: Quorum: ${quorumFormatted.padEnd(
-              20
-            )} | ClockMode: ${clockMode.padEnd(12)} | Decimals: ${
-              decimals ?? "N/A"
-            }`;
-            outputLines.push(line);
-          } else {
-            const line = `❌ ${outcome.name.padEnd(15)}: Failed (${
-              outcome.reason
-            })`;
-            outputLines.push(line);
+  it("uses clock fallback data to compute quorum and reuses a fresh cache entry", async () => {
+    const quorumCalls: bigint[] = [];
+    const fakeClient = {
+      getBlock: jest.fn(async () => ({
+        timestamp: 1000n,
+        number: 250n,
+      })),
+      readContract: jest.fn(
+        async ({
+          functionName,
+          args,
+        }: {
+          functionName: string;
+          args?: bigint[];
+        }) => {
+          switch (functionName) {
+            case "CLOCK_MODE":
+              return "mode=timestamp";
+            case "clock":
+              throw new Error("clock unavailable");
+            case "quorum":
+              quorumCalls.push(args?.[0] ?? 0n);
+              return 77n;
+            case "decimals":
+              return 18;
+            default:
+              throw new Error(`Unexpected functionName: ${functionName}`);
           }
         }
-      });
+      ),
+    };
 
-      outputLines.push("\n--- Test Complete ---");
-      console.log(outputLines.join("\n"));
-    },
-    TEST_TIMEOUT
-  );
+    const chainTool = new ChainTool();
+    const executeSpy = jest.spyOn<any, any>(
+      chainTool as any,
+      "_executeWithFallbacks"
+    );
+    executeSpy.mockImplementation(async (...args: any[]) => {
+      const action = args[1] as (client: typeof fakeClient) => Promise<unknown>;
+      return action(fakeClient);
+    });
+
+    const options = {
+      chainId: 1,
+      contractAddress: "0x0000000000000000000000000000000000000001" as const,
+      governorTokenAddress:
+        "0x0000000000000000000000000000000000000002" as const,
+    };
+
+    const result = await chainTool.quorum(options);
+
+    expect(result).toEqual({
+      clockMode: ClockMode.Timestamp,
+      quorum: 77n,
+      decimals: 18n,
+    });
+    expect(fakeClient.getBlock).toHaveBeenCalledTimes(1);
+    expect(quorumCalls).toEqual([820n]);
+    expect(executeSpy).toHaveBeenCalledTimes(5);
+
+    const cachedResult = await chainTool.quorum(options);
+
+    expect(cachedResult).toEqual(result);
+    expect(executeSpy).toHaveBeenCalledTimes(5);
+  });
+
+  it("serves stale cached quorum data when refresh fails", async () => {
+    const chainTool = new ChainTool();
+    const cachedResult = {
+      clockMode: ClockMode.BlockNumber,
+      quorum: 55n,
+      decimals: 0n,
+    };
+
+    (
+      chainTool as unknown as {
+        quorumCache: Map<
+          string,
+          { result: typeof cachedResult; timestamp: number }
+        >;
+      }
+    ).quorumCache.set(`1:0x0000000000000000000000000000000000000003`, {
+      result: cachedResult,
+      timestamp: Date.now() - 31 * 60 * 1000,
+    });
+
+    const executeSpy = jest.spyOn<any, any>(
+      chainTool as any,
+      "_executeWithFallbacks"
+    );
+    executeSpy.mockRejectedValue(new Error("RPCs unavailable"));
+
+    const result = await chainTool.quorum({
+      chainId: 1,
+      contractAddress: "0x0000000000000000000000000000000000000003",
+      governorTokenAddress:
+        "0x0000000000000000000000000000000000000004",
+      governorTokenStandard: "ERC721",
+    });
+
+    expect(result).toEqual(cachedResult);
+    expect(console.error).toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Serving stale quorum data")
+    );
+  });
 });
