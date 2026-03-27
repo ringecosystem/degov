@@ -13,7 +13,7 @@ import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
 import { dayjsHumanize } from "@/utils/date";
-import { formatNumberForDisplay } from "@/utils/number";
+import { formatInteger, formatNumberForDisplay } from "@/utils/number";
 
 import { Skeleton } from "./ui/skeleton";
 
@@ -294,7 +294,7 @@ export const SystemInfo = ({ type = "default" }: SystemInfoProps) => {
 
       <SystemInfoItem
         label="Total Delegates"
-        value={systemData.totalDelegates ?? 0}
+        value={formatInteger(systemData.totalDelegates ?? 0, "0")}
         isLoading={isGovernanceCountsLoading}
       />
     </div>
