@@ -510,17 +510,11 @@ export class GovernorHandler {
       clockMode,
     });
 
-    let blockInterval: number | undefined;
-    if (
-      clockMode === ClockMode.BlockNumber &&
-      (exactStartTimestamp === undefined || exactEndTimestamp === undefined)
-    ) {
-      blockInterval = await chainTool.blockIntervalSeconds({
-        chainId: this.options.chainId,
-        rpcs: this.options.rpcs,
-        enableFloatValue: true,
-      });
-    }
+    const blockInterval = await chainTool.blockIntervalSeconds({
+      chainId: this.options.chainId,
+      rpcs: this.options.rpcs,
+      enableFloatValue: true,
+    });
 
     const fallbackTimestamps = calculateProposalVoteTimestamp({
       clockMode,
@@ -532,10 +526,7 @@ export class GovernorHandler {
     });
 
     return {
-      blockInterval:
-        clockMode === ClockMode.BlockNumber && blockInterval !== undefined
-          ? blockInterval.toString()
-          : undefined,
+      blockInterval: blockInterval.toString(),
       clockMode: qmr.clockMode,
       countingMode,
       decimals: qmr.decimals,
