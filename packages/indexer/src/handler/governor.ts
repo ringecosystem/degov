@@ -510,16 +510,36 @@ export class GovernorHandler {
       clockMode,
     });
 
-    let blockInterval: number | undefined;
+    let blockInterval = resolveProposalBlockInterval({
+      clockMode,
+      proposalVoteStart: proposalSnapshot,
+      proposalVoteEnd: proposalDeadline,
+      exactStartTimestamp,
+      exactEndTimestamp,
+    });
     if (
-      clockMode === ClockMode.BlockNumber &&
-      (exactStartTimestamp === undefined || exactEndTimestamp === undefined)
+      blockInterval === undefined &&
+      (clockMode === ClockMode.Timestamp ||
+        exactStartTimestamp === undefined ||
+        exactEndTimestamp === undefined)
     ) {
-      blockInterval = await chainTool.blockIntervalSeconds({
-        chainId: this.options.chainId,
-        rpcs: this.options.rpcs,
-        enableFloatValue: true,
-      });
+      try {
+        blockInterval = await chainTool.blockIntervalSeconds({
+          chainId: this.options.chainId,
+          rpcs: this.options.rpcs,
+          enableFloatValue: true,
+        });
+      } catch (error) {
+        if (clockMode === ClockMode.Timestamp) {
+          this.ctx.log.warn(
+            `Unable to persist blockInterval for timestamp proposal ${this.stdProposalId(
+              event.proposalId,
+            )}: ${DegovIndexerHelpers.formatError(error)}`,
+          );
+        } else {
+          throw error;
+        }
+      }
     }
 
     const fallbackTimestamps = calculateProposalVoteTimestamp({
@@ -533,9 +553,7 @@ export class GovernorHandler {
 
     return {
       blockInterval:
-        clockMode === ClockMode.BlockNumber && blockInterval !== undefined
-          ? blockInterval.toString()
-          : undefined,
+        blockInterval !== undefined ? blockInterval.toString() : undefined,
       clockMode: qmr.clockMode,
       countingMode,
       decimals: qmr.decimals,
@@ -1339,4 +1357,29 @@ export function calculateProposalVoteTimestamp(options: {
     voteStart: +proposalStartTimestamp,
     voteEnd: +proposalEndTimestamp,
   };
+}
+
+function resolveProposalBlockInterval(options: {
+  clockMode: ClockMode;
+  proposalVoteStart: bigint;
+  proposalVoteEnd: bigint;
+  exactStartTimestamp?: bigint;
+  exactEndTimestamp?: bigint;
+}): number | undefined {
+  if (
+    options.clockMode !== ClockMode.BlockNumber ||
+    options.exactStartTimestamp === undefined ||
+    options.exactEndTimestamp === undefined
+  ) {
+    return undefined;
+  }
+
+  const blockSpan = options.proposalVoteEnd - options.proposalVoteStart;
+  const timestampSpanMs =
+    options.exactEndTimestamp - options.exactStartTimestamp;
+  if (blockSpan <= 0n || timestampSpanMs <= 0n) {
+    return undefined;
+  }
+
+  return Number(timestampSpanMs) / Number(blockSpan) / 1000;
 }
