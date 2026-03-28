@@ -8,7 +8,7 @@ import { useReadContract } from "wagmi";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { useAiAnalysis } from "@/hooks/useAiAnalysis";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { parseDescription } from "@/utils/helpers";
 
@@ -56,7 +56,13 @@ export default function AiAnalysisPage({
     error: proposalError,
     refetch: refetchProposal,
   } = useQuery({
-    queryKey: ["proposal", proposalId, daoConfig?.indexer?.endpoint],
+    queryKey: [
+      "proposal",
+      proposalId,
+      daoConfig?.code,
+      daoConfig?.indexer?.endpoint,
+      daoConfig,
+    ],
     queryFn: async () => {
       if (!proposalId || !daoConfig?.indexer?.endpoint) return null;
 
@@ -64,6 +70,7 @@ export default function AiAnalysisPage({
         daoConfig.indexer.endpoint,
         {
           where: {
+            ...buildGovernanceScope(daoConfig),
             proposalId_eq: proposalId,
           },
         }

@@ -1,12 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { proposalService } from "@/services/graphql";
-import { contributorService } from "@/services/graphql";
+import {
+  buildGovernanceScope,
+  contributorService,
+  proposalService,
+} from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
 export function useBotMemberData() {
   const daoConfig = useDaoConfig();
+  const governanceScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
 
   const {
     data: botAddress,
@@ -27,6 +35,7 @@ export function useBotMemberData() {
       "bot-contributor",
       botAddress,
       daoConfig?.indexer?.endpoint,
+      governanceScope,
     ],
     queryFn: async () => {
       const address = botAddress?.toLowerCase();
@@ -38,6 +47,7 @@ export function useBotMemberData() {
           limit: 1,
           offset: 0,
           where: {
+            ...governanceScope,
             id_in: [address],
           },
         }

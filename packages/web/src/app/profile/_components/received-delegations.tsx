@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { DelegationList } from "@/components/delegation-list";
 import { DelegationTable } from "@/components/delegation-table";
@@ -12,7 +12,7 @@ import type {
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { delegateService } from "@/services/graphql";
+import { buildGovernanceScope, delegateService } from "@/services/graphql";
 
 import type { Address } from "viem";
 
@@ -44,16 +44,27 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
   const daoConfig = useDaoConfig();
   const [sortState, setSortState] =
     useState<DelegationSortState>(DEFAULT_SORT_STATE);
+  const governanceScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
 
   // Get received delegations count
   const { data: delegationConnection } = useQuery({
-    queryKey: ["delegatesConnection", address, daoConfig?.indexer?.endpoint],
+    queryKey: [
+      "delegatesConnection",
+      address,
+      daoConfig?.indexer?.endpoint,
+      governanceScope,
+    ],
     queryFn: () =>
-      delegateService.getDelegateMappingsConnection(
+      delegateService.getDelegatesConnection(
         daoConfig?.indexer?.endpoint as string,
         {
           where: {
+            ...governanceScope,
             toDelegate_eq: address.toLowerCase(),
+            isCurrent_eq: true,
           },
           orderBy: ["id_ASC"],
         }

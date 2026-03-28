@@ -23,11 +23,13 @@ treasuryAssets:
   - name: ENS
     contract: "0x1234"
     standard: ERC20
+    logo: null
 `) as {
     treasuryAssets: {
       name: string;
       contract: string;
       standard: string;
+      logo: null;
     }[];
   };
 

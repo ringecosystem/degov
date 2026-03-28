@@ -1,11 +1,13 @@
 import { clearToken } from "@/lib/auth/token-manager";
 import { getToken } from "@/lib/auth/token-manager";
+import type { Config } from "@/types/config";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
 import { request } from "./client";
 import * as Mutations from "./mutations";
 import * as Queries from "./queries";
 import * as Types from "./types";
+import { resolveGovernanceCounts } from "./types/counts";
 
 import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
@@ -22,6 +24,69 @@ const emptyProposalMetrics: Types.ProposalMetricsItem = {
   votesWithoutParamsCount: "0",
 };
 
+export type GovernanceScope = {
+  chainId_eq?: number;
+  governorAddress_eq?: string;
+  daoCode_eq?: string;
+};
+
+type ProposalVoterFilter = {
+  voter_eq?: string;
+  support_eq?: number;
+};
+
+export type ProposalWhere = GovernanceScope & {
+  proposalId_eq?: string;
+  proposer_eq?: string;
+  description_containsInsensitive?: string;
+  voters_every?: ProposalVoterFilter;
+  voters_some?: ProposalVoterFilter;
+  OR?: {
+    voters_some?: ProposalVoterFilter;
+  };
+};
+
+type ProposalMetricsWhere = GovernanceScope & {
+  id_eq?: string;
+};
+
+type DelegateWhere = GovernanceScope & {
+  fromDelegate_eq?: string;
+  toDelegate_eq?: string;
+  isCurrent_eq?: boolean;
+};
+
+type DelegateMappingWhere = GovernanceScope & {
+  from_eq?: string;
+  to_eq?: string;
+};
+
+type ContributorWhere = GovernanceScope & {
+  id_in?: string[];
+  id_not_eq?: string;
+  id_eq?: string;
+};
+
+const normalizeScopeAddress = (address?: string | null) => {
+  return address ? address.toLowerCase() : undefined;
+};
+
+export const buildGovernanceScope = (
+  daoConfig?: Config | null
+): GovernanceScope => {
+  if (!daoConfig) {
+    return {};
+  }
+
+  return {
+    chainId_eq: daoConfig.chain?.id,
+    governorAddress_eq: normalizeScopeAddress(
+      daoConfig.contracts?.governor
+    ),
+    daoCode_eq: daoConfig.code,
+  };
+};
+
 export const proposalService = {
   getAllProposals: async (
     endpoint: string,
@@ -29,14 +94,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        proposalId_eq?: string;
-        proposer_eq?: string;
-        voters_every?: {
-          voter_eq?: string;
-          support_eq?: number;
-        };
-      };
+      where?: ProposalWhere;
     } = {}
   ) => {
     const response = await request<Types.ProposalResponse>(
@@ -52,14 +110,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        proposalId_eq?: string;
-        proposer_eq?: string;
-        voters_every?: {
-          voter_eq?: string;
-          support_eq?: number;
-        };
-      };
+      where?: ProposalWhere;
       voter?: string;
     } = {}
   ) => {
@@ -76,9 +127,7 @@ export const proposalService = {
       limit?: number;
       offset?: number;
       orderBy?: string;
-      where?: {
-        description_containsInsensitive?: string;
-      };
+      where?: ProposalWhere;
     } = {}
   ) => {
     const response = await request<Types.ProposalDescriptionResponse>(
@@ -88,15 +137,33 @@ export const proposalService = {
     );
     return response?.proposals ?? [];
   },
-  getProposalMetrics: async (endpoint: string) => {
+  getProposalMetrics: async (endpoint: string, scope?: GovernanceScope) => {
     const response = await request<Types.ProposalMetricsResponse>(
       endpoint,
-      Queries.GET_PROPOSAL_METRICS
+      Queries.GET_PROPOSAL_METRICS,
+      {
+        where: {
+          id_eq: "global",
+          ...scope,
+        } satisfies ProposalMetricsWhere,
+      }
     );
     return response?.dataMetrics?.[0] ?? emptyProposalMetrics;
   },
+  getGovernanceCounts: async (endpoint: string) => {
+    const response = await request<Types.GovernanceCountsResponse>(
+      endpoint,
+      Queries.GET_GOVERNANCE_COUNTS
+    );
+    return resolveGovernanceCounts(response);
+  },
 
-  getProposalVoteRate: async (endpoint: string, voter: string, limit = 10) => {
+  getProposalVoteRate: async (
+    endpoint: string,
+    voter: string,
+    limit = 10,
+    scope?: GovernanceScope
+  ) => {
     if (!voter) {
       return [] as Types.ProposalVoteRateResponse["proposals"];
     }
@@ -106,6 +173,7 @@ export const proposalService = {
       {
         limit,
         voter: voter.toLowerCase(),
+        where: scope,
       }
     );
     return response?.proposals ?? [];
@@ -175,37 +243,52 @@ export const proposalService = {
     }
   },
 
-  getProposalCanceledById: async (endpoint: string, id: string) => {
+  getProposalCanceledById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalCanceledByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_CANCELED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );
     return response?.proposalCanceleds?.[0];
   },
-  getProposalExecutedById: async (endpoint: string, id: string) => {
+  getProposalExecutedById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalExecutedByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_EXECUTED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );
     return response?.proposalExecuteds?.[0];
   },
-  getProposalQueuedById: async (endpoint: string, id: string) => {
+  getProposalQueuedById: async (
+    endpoint: string,
+    id: string,
+    scope?: GovernanceScope
+  ) => {
     const response = await request<Types.ProposalQueuedByIdResponse>(
       endpoint,
       Queries.GET_PROPOSAL_QUEUED_BY_ID,
       {
         where: {
           proposalId_eq: id,
+          ...scope,
         },
       }
     );
@@ -230,26 +313,47 @@ export const delegateService = {
     options: {
       limit?: number;
       offset?: number;
-      orderBy?: string;
-      where?: {
-        power_gt?: number;
-        toDelegate_eq?: string;
-      };
+      orderBy?: string | string[];
+      where?: DelegateWhere;
     } = {}
   ) => {
     const response = await request<Types.DelegateResponse>(
       endpoint,
       Queries.GET_DELEGATES,
-      options
+      {
+        limit: options?.limit,
+        offset: options?.offset,
+        orderBy: Array.isArray(options?.orderBy)
+          ? options.orderBy
+          : options?.orderBy
+            ? [options.orderBy]
+            : undefined,
+        where: options?.where,
+      }
     );
     return response?.delegates ?? [];
+  },
+  getDelegatesConnection: async (
+    endpoint: string,
+    options: {
+      where: DelegateWhere;
+      orderBy: string[];
+    }
+  ) => {
+    const response = await request<Types.DelegateConnectionResponse>(
+      endpoint,
+      Queries.GET_DELEGATES_CONNECTION,
+      options
+    );
+    return response?.delegatesConnection;
   },
   getDelegateMappings: async (
     endpoint: string,
     options: {
-      where: {
-        from_eq: string;
-      };
+      limit?: number;
+      offset?: number;
+      orderBy?: string | string[];
+      where: DelegateMappingWhere;
     } = {
       where: {
         from_eq: "",
@@ -259,25 +363,32 @@ export const delegateService = {
     const response = await request<Types.DelegateMappingResponse>(
       endpoint,
       Queries.GET_DELEGATE_MAPPINGS,
-      options
+      {
+        limit: options?.limit,
+        offset: options?.offset,
+        orderBy: Array.isArray(options?.orderBy)
+          ? options.orderBy
+          : options?.orderBy
+            ? [options.orderBy]
+            : undefined,
+        where: options?.where,
+      }
     );
     return response?.delegateMappings ?? [];
   },
   getDelegateMappingsConnection: async (
     endpoint: string,
     options: {
-      where: {
-        toDelegate_eq: string;
-      };
+      where: DelegateMappingWhere;
       orderBy: string[];
     }
   ) => {
-    const response = await request<Types.DelegateConnectionResponse>(
+    const response = await request<Types.DelegateMappingConnectionResponse>(
       endpoint,
       Queries.GET_DELEGATE_MAPPINGS_CONNECTION,
       options
     );
-    return response?.delegatesConnection;
+    return response?.delegateMappingsConnection;
   },
 };
 
@@ -315,11 +426,7 @@ export const contributorService = {
       limit: number;
       offset: number;
       orderBy?: string | string[];
-      where?: {
-        id_in?: string[];
-        id_not_eq?: string;
-        id_eq?: string;
-      };
+      where?: ContributorWhere;
     } = {
       limit: 10,
       offset: 0,
@@ -388,47 +495,6 @@ export const profileService = {
 };
 
 export const memberService = {
-  getMembers: async (
-    checkpoint?: number,
-    limit?: number
-  ): Promise<Types.MemberResponse> => {
-    try {
-      const url = new URL("/api/degov/members", window.location.origin);
-
-      if (checkpoint) {
-        url.searchParams.set("checkpoint", checkpoint.toString());
-      }
-
-      if (limit) {
-        url.searchParams.set("limit", limit.toString());
-      }
-
-      const response = await fetch(url.toString(), {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (response.status === 401) {
-        return {
-          code: 401,
-          data: [],
-          message: "Unauthorized",
-        };
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error("Error fetching members:", error);
-      return {
-        code: 500,
-        data: [],
-        message: (error as Error)?.message || "Failed to fetch members",
-      };
-    }
-  },
-
   // ### [degov] Profile pull
   // POST https://degov-dev.vercel.app/api/profile/pull
   // Content-Type: application/json
@@ -437,17 +503,6 @@ export const memberService = {
   //   "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
   //   "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9"
   // ]
-
-  getMemberTotal: async (): Promise<Types.MemberTotalResponse> => {
-    const response = await fetch(`/api/degov/metrics`, {
-      next: { revalidate: 60, tags: ["member-metrics"] },
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    const data = await response.json();
-    return data;
-  },
 
   // ### [degov] Profile pull
   getProfilePull: async (

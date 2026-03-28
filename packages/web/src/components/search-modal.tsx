@@ -16,7 +16,7 @@ import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useRouter as useLocaleRouter } from "@/i18n/navigation";
 import type { Types } from "@/services/graphql";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
 
 // Helper function to strip HTML tags from text
@@ -60,7 +60,9 @@ export function SearchModal({
   const queryKey = [
     "proposals-search",
     debouncedSearch,
+    daoConfig?.code,
     daoConfig?.indexer?.endpoint,
+    daoConfig,
   ] as const;
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -77,6 +79,7 @@ export function SearchModal({
           daoConfig?.indexer?.endpoint ?? "",
           {
             where: {
+              ...buildGovernanceScope(daoConfig),
               description_containsInsensitive: debouncedSearch,
             },
             limit: DEFAULT_PAGE_SIZE,

@@ -10,6 +10,10 @@ jest.mock("viem", () => ({
 }));
 
 describe("ChainTool", () => {
+  const contractAddress = "0x1111111111111111111111111111111111111111" as const;
+  const governorTokenAddress =
+    "0x2222222222222222222222222222222222222222" as const;
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, "log").mockImplementation(() => {});
@@ -21,6 +25,83 @@ describe("ChainTool", () => {
     jest.restoreAllMocks();
   });
 
+  it("stops retrying deterministic contract call failures across RPC fallbacks", async () => {
+    const chainTool = new ChainTool();
+    let attempts = 0;
+    const executeWithFallbacks = (chainTool as any)._executeWithFallbacks.bind(
+      chainTool,
+    );
+
+    await expect(
+      executeWithFallbacks(
+        {
+          chainId: 999999,
+          rpcs: [
+            "https://rpc-1.example",
+            "https://rpc-2.example",
+            "https://rpc-3.example",
+          ],
+        },
+        async () => {
+          attempts += 1;
+          throw new Error(
+            'The contract function "CLOCK_MODE" reverted.\nDetails: execution reverted',
+          );
+        },
+      ),
+    ).rejects.toThrow('The contract function "CLOCK_MODE" reverted.');
+
+    expect(attempts).toBe(1);
+  });
+
+  it("keeps retrying transient RPC failures across fallback endpoints", async () => {
+    const chainTool = new ChainTool();
+    let attempts = 0;
+    const executeWithFallbacks = (chainTool as any)._executeWithFallbacks.bind(
+      chainTool,
+    );
+
+    await expect(
+      executeWithFallbacks(
+        {
+          chainId: 999999,
+          rpcs: [
+            "https://rpc-1.example",
+            "https://rpc-2.example",
+            "https://rpc-3.example",
+          ],
+        },
+        async () => {
+          attempts += 1;
+          throw new Error(
+            'HTTP request failed.\nStatus: 429\nDetails: "Too many connections. Please try again later."',
+          );
+        },
+      ),
+    ).rejects.toThrow("All RPC requests failed for chain 999999.");
+
+    expect(attempts).toBe(3);
+  });
+
+  it("falls back to blocknumber when CLOCK_MODE deterministically reverts", async () => {
+    const deterministicChainTool = new ChainTool();
+
+    jest
+      .spyOn(deterministicChainTool as any, "_executeWithFallbacks")
+      .mockRejectedValue(
+        new Error(
+          'The contract function "CLOCK_MODE" reverted.\nDetails: execution reverted',
+        ),
+      );
+
+    await expect(
+      deterministicChainTool.clockMode({
+        chainId: 1,
+        contractAddress: "0x323A76393544d5ecca80cd6ef2A560C6a395b7E3",
+      }),
+    ).resolves.toBe(ClockMode.BlockNumber);
+  });
+
   it("aggregates successful block intervals across RPCs and caches the result", async () => {
     mockCreatePublicClient.mockImplementation(({ transport }) => ({
       rpcUrl: transport.url,
@@ -29,7 +110,7 @@ describe("ChainTool", () => {
     const chainTool = new ChainTool();
     const intervalSpy = jest.spyOn<any, any>(
       chainTool as any,
-      "_calculateIntervalForSingleRpc"
+      "_calculateIntervalForSingleRpc",
     );
     intervalSpy.mockImplementation(async (...args: any[]) => {
       const client = args[0] as { rpcUrl: string };
@@ -59,7 +140,7 @@ describe("ChainTool", () => {
     expect(mockHttp).toHaveBeenNthCalledWith(3, "https://rpc-secondary.example");
     expect(intervalSpy).toHaveBeenCalledTimes(3);
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining("https://rpc-failing.example failed")
+      expect.stringContaining("https://rpc-failing.example"),
     );
 
     intervalSpy.mockClear();
@@ -97,7 +178,7 @@ describe("ChainTool", () => {
             case "CLOCK_MODE":
               return "mode=timestamp";
             case "clock":
-              throw new Error("clock unavailable");
+              throw new Error("execution reverted: selector not found");
             case "quorum":
               quorumCalls.push(args?.[0] ?? 0n);
               return 77n;
@@ -106,14 +187,14 @@ describe("ChainTool", () => {
             default:
               throw new Error(`Unexpected functionName: ${functionName}`);
           }
-        }
+        },
       ),
     };
 
     const chainTool = new ChainTool();
     const executeSpy = jest.spyOn<any, any>(
       chainTool as any,
-      "_executeWithFallbacks"
+      "_executeWithFallbacks",
     );
     executeSpy.mockImplementation(async (...args: any[]) => {
       const action = args[1] as (client: typeof fakeClient) => Promise<unknown>;
@@ -159,14 +240,14 @@ describe("ChainTool", () => {
           { result: typeof cachedResult; timestamp: number }
         >;
       }
-    ).quorumCache.set(`1:0x0000000000000000000000000000000000000003`, {
+    ).quorumCache.set(`1:0x0000000000000000000000000000000000000003:latest`, {
       result: cachedResult,
       timestamp: Date.now() - 31 * 60 * 1000,
     });
 
     const executeSpy = jest.spyOn<any, any>(
       chainTool as any,
-      "_executeWithFallbacks"
+      "_executeWithFallbacks",
     );
     executeSpy.mockRejectedValue(new Error("RPCs unavailable"));
 
@@ -181,7 +262,263 @@ describe("ChainTool", () => {
     expect(result).toEqual(cachedResult);
     expect(console.error).toHaveBeenCalled();
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Serving stale quorum data")
+      expect.stringContaining("chaintool.quorum cache used"),
+    );
+  });
+
+  it("returns undefined for optional contract functions that are not available", async () => {
+    const chainTool = new ChainTool();
+    jest
+      .spyOn(chainTool, "readContract")
+      .mockRejectedValue(new Error("execution reverted: selector not found"));
+
+    await expect(
+      chainTool.readOptionalContract({
+        chainId: 1,
+        contractAddress,
+        abi: [],
+        functionName: "timelock",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("returns undefined when optional contract reads fail through RPC fallback wrapping", async () => {
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "readContract").mockRejectedValue(
+      new Error(
+        'All RPC requests failed for chain 46. Last error: The contract function "GRACE_PERIOD" reverted with the following reason:\nVM Exception while processing transaction: revert',
+      ),
+    );
+
+    await expect(
+      chainTool.readOptionalContract({
+        chainId: 46,
+        contractAddress,
+        abi: [],
+        functionName: "GRACE_PERIOD",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("resolves block-number timepoints to block timestamps in milliseconds", async () => {
+    const chainTool = new ChainTool();
+    const executeWithFallbacks = jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) => {
+        return action({
+          getBlock: jest.fn().mockResolvedValue({ timestamp: 123n }),
+        });
+      }) as jest.Mock;
+
+    await expect(
+      chainTool.timepointToTimestampMs({
+        chainId: 1,
+        contractAddress,
+        timepoint: 456n,
+        clockMode: ClockMode.BlockNumber,
+      }),
+    ).resolves.toBe(123_000n);
+    expect(executeWithFallbacks).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns timestamp timepoints directly in milliseconds", async () => {
+    const chainTool = new ChainTool();
+    const executeWithFallbacks = jest.spyOn(
+      chainTool as any,
+      "_executeWithFallbacks",
+    );
+
+    await expect(
+      chainTool.timepointToTimestampMs({
+        chainId: 1,
+        contractAddress,
+        timepoint: 789n,
+        clockMode: ClockMode.Timestamp,
+      }),
+    ).resolves.toBe(789_000n);
+    expect(executeWithFallbacks).not.toHaveBeenCalled();
+  });
+
+  it("queries quorum with the proposal snapshot timepoint instead of a near-head fallback", async () => {
+    const chainTool = new ChainTool();
+    const readContractCalls: Array<{
+      functionName: string;
+      args?: readonly unknown[];
+    }> = [];
+
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    const executeWithFallbacks = jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) => {
+        return action({
+          readContract: jest.fn().mockImplementation(async (request) => {
+            readContractCalls.push({
+              functionName: request.functionName,
+              args: request.args,
+            });
+
+            switch (request.functionName) {
+              case "quorum":
+                return 42n;
+              case "decimals":
+                return 18;
+              default:
+                throw new Error(`Unexpected function: ${request.functionName}`);
+            }
+          }),
+        });
+      }) as jest.Mock;
+
+    await expect(
+      chainTool.quorum({
+        chainId: 1,
+        contractAddress,
+        governorTokenAddress,
+        governorTokenStandard: "ERC20",
+        timepoint: 999n,
+      }),
+    ).resolves.toEqual({
+      clockMode: ClockMode.BlockNumber,
+      quorum: 42n,
+      decimals: 18n,
+    });
+
+    expect(executeWithFallbacks).toHaveBeenCalledTimes(2);
+    expect(readContractCalls).toEqual([
+      { functionName: "quorum", args: [999n] },
+      { functionName: "decimals", args: undefined },
+    ]);
+  });
+
+  it("treats ERC721 governor tokens as zero-decimal without calling decimals()", async () => {
+    const chainTool = new ChainTool();
+    const readContractCalls: Array<{
+      functionName: string;
+      args?: readonly unknown[];
+    }> = [];
+
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    const executeWithFallbacks = jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) => {
+        return action({
+          readContract: jest.fn().mockImplementation(async (request) => {
+            readContractCalls.push({
+              functionName: request.functionName,
+              args: request.args,
+            });
+
+            if (request.functionName === "quorum") {
+              return 7n;
+            }
+
+            throw new Error(`Unexpected function: ${request.functionName}`);
+          }),
+        });
+      }) as jest.Mock;
+
+    await expect(
+      chainTool.quorum({
+        chainId: 1,
+        contractAddress,
+        governorTokenAddress,
+        governorTokenStandard: "ERC721",
+        timepoint: 123n,
+      }),
+    ).resolves.toEqual({
+      clockMode: ClockMode.BlockNumber,
+      quorum: 7n,
+      decimals: 0n,
+    });
+
+    expect(executeWithFallbacks).toHaveBeenCalledTimes(1);
+    expect(readContractCalls).toEqual([
+      { functionName: "quorum", args: [123n] },
+    ]);
+  });
+
+  it("falls back to latest block when clock is unavailable", async () => {
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    jest
+      .spyOn(chainTool, "readContract")
+      .mockRejectedValue(new Error("execution reverted: selector not found"));
+    jest.spyOn(chainTool as any, "_executeWithFallbacks").mockImplementation(
+      async (_options: any, action: any) =>
+        action({
+          getBlock: jest.fn().mockResolvedValue({
+            number: 321n,
+            timestamp: 654n,
+          }),
+        })
+    );
+
+    await expect(
+      chainTool.currentClock({
+        chainId: 1,
+        contractAddress,
+      })
+    ).resolves.toEqual({
+      clockMode: ClockMode.BlockNumber,
+      timepoint: 321n,
+      timestampMs: 654_000n,
+    });
+  });
+
+  it("falls back to latest block when clock deterministically reverts", async () => {
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    jest
+      .spyOn(chainTool, "readContract")
+      .mockRejectedValue(new Error('The contract function "clock" reverted.'));
+    jest.spyOn(chainTool as any, "_executeWithFallbacks").mockImplementation(
+      async (_options: any, action: any) =>
+        action({
+          getBlock: jest.fn().mockResolvedValue({
+            number: 987n,
+            timestamp: 111n,
+          }),
+        }),
+    );
+
+    await expect(
+      chainTool.currentClock({
+        chainId: 1,
+        contractAddress,
+      }),
+    ).resolves.toEqual({
+      clockMode: ClockMode.BlockNumber,
+      timepoint: 987n,
+      timestampMs: 111_000n,
+    });
+  });
+
+  it("uses getPriorVotes when getPastVotes is unavailable", async () => {
+    const chainTool = new ChainTool();
+    const readContract = jest.spyOn(chainTool, "readContract");
+
+    readContract
+      .mockRejectedValueOnce(new Error("execution reverted: selector not found"))
+      .mockResolvedValueOnce(77n as never);
+
+    await expect(
+      chainTool.historicalVotes({
+        chainId: 1,
+        contractAddress,
+        account: "0x3333333333333333333333333333333333333333",
+        timepoint: 123n,
+      })
+    ).resolves.toEqual({
+      method: "getPriorVotes",
+      votes: 77n,
+    });
+
+    expect(readContract).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        functionName: "getPriorVotes",
+        args: ["0x3333333333333333333333333333333333333333", 123n],
+      })
     );
   });
 });

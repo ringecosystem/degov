@@ -4,6 +4,7 @@
     "target": "esnext",
     "module": "CommonJS",
     "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
     "checkJs": false,
     "declaration": true,
     "declarationMap": true,

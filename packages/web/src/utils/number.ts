@@ -16,8 +16,8 @@ export function toFixedTrimZeros(num: number, decimals: number): string {
 
 /**
  * Formats a number according to its magnitude, returning both abbreviated and full formats.
- * @param {number} num - The number to format.
- * @param {number} decimals - Number of decimal places
+ * @param {number} num - Raw numeric value before any compact suffixing or locale separator formatting.
+ * @param {number} decimals - Non-negative integer count of fraction digits to keep in both the compact and full display strings.
  * @returns {[string, string]} - An array containing shortFormat and longFormat.
  */
 export function formatNumberForDisplay(

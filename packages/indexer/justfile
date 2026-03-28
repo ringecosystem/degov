@@ -1,0 +1,70 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default:
+    @just --list
+
+yarn := "npx -y yarn@1.22.22"
+
+install:
+    {{yarn}} install --ignore-scripts
+
+clean:
+    npx sqd clean
+
+up:
+    npx sqd up
+
+down:
+    npx sqd down
+
+codegen-abi:
+    {{yarn}} run codegen:abi
+
+codegen-schema:
+    {{yarn}} run codegen:schema
+
+codegen:
+    {{yarn}} run codegen
+
+build:
+    {{yarn}} run build
+
+migrate-db:
+    {{yarn}} run migrate:db
+
+migrate-db-force:
+    {{yarn}} run migrate:db -- --force
+
+process:
+    npx sqd process
+
+serve:
+    npx sqd serve
+
+run:
+    npx sqd run .
+
+start:
+    sh ./scripts/start.sh
+
+smart-start:
+    sh ./scripts/smart-start.sh
+
+smart-start-force:
+    sh ./scripts/smart-start.sh force
+
+graphql-server:
+    sh ./scripts/graphql-server.sh
+
+reconcile:
+    {{yarn}} run build
+    node lib/reconcile.js
+
+replay-backfill:
+    {{yarn}} run replay:backfill
+
+test:
+    {{yarn}} run test
+
+test-integration:
+    {{yarn}} run test:integration

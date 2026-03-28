@@ -6,7 +6,7 @@ import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 import { Link } from "@/i18n/navigation";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
 import { AddressAvatar } from "../address-avatar";
@@ -58,9 +58,12 @@ export function MembersList({
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
   const { data: dataMetrics, isLoading: isProposalMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint ?? "",
+        buildGovernanceScope(daoConfig)
+      ),
     enabled: !!daoConfig?.indexer?.endpoint,
   });
 

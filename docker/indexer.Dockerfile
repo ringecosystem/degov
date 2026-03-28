@@ -13,7 +13,9 @@ COPY packages/indexer .
 COPY docker/services.d /etc/services.d
 
 RUN npm i -g @subsquid/cli \
-  && yarn install \
+  && corepack enable \
+  && corepack prepare yarn@1.22.22 --activate \
+  && yarn install --frozen-lockfile \
   && yarn build \
   && yarn cache clean \
   && npm cache clean --force

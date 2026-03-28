@@ -284,10 +284,18 @@ export default function ActionGroup({
 
   const hasTimelock = useMemo(() => {
     return (
+      Boolean(data?.timelockAddress) ||
+      Boolean(data?.queueReadyAt) ||
+      Boolean(data?.queueExpiresAt) ||
       govParams?.timeLockDelayInSeconds !== undefined &&
       govParams?.timeLockDelayInSeconds !== null
     );
-  }, [govParams?.timeLockDelayInSeconds]);
+  }, [
+    data?.queueExpiresAt,
+    data?.queueReadyAt,
+    data?.timelockAddress,
+    govParams?.timeLockDelayInSeconds,
+  ]);
 
   useEffect(() => {
     if (status !== ProposalState.Queued || !hasTimelock) {
@@ -309,6 +317,9 @@ export default function ActionGroup({
     }
 
     if (status === ProposalState.Queued) {
+      const queueReadyAt = data?.queueReadyAt
+        ? BigInt(data.queueReadyAt)
+        : undefined;
       const queuedBlockTimestamp = proposalQueuedById?.blockTimestamp
         ? BigInt(proposalQueuedById?.blockTimestamp)
         : undefined;
@@ -319,6 +330,9 @@ export default function ActionGroup({
           ? BigInt(BigInt(timeLockDelayInSeconds) * 1000n)
           : undefined;
 
+      if (queueReadyAt !== undefined) {
+        return currentTime >= queueReadyAt;
+      }
       if (!queuedBlockTimestamp) return false;
       if (timeLockDelay === undefined) return true;
 
@@ -327,6 +341,7 @@ export default function ActionGroup({
     }
     return false;
   }, [
+    data?.queueReadyAt,
     status,
     proposalQueuedById,
     govParams?.timeLockDelayInSeconds,
