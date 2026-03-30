@@ -896,6 +896,22 @@ export class TokenHandler {
     await this.ctx.store.insert(entity);
     this.rememberTokenTransfer(entity);
 
+    const delegateRolling = await this.getDelegateRollingByTransactionHash(
+      entity.transactionHash,
+    );
+    if (delegateRolling) {
+      DegovIndexerHelpers.logVerboseInfo(
+        this.ctx.log,
+        "token.delegate relation skipped",
+        {
+          reason: "transfer-covered-by-delegate-change",
+          tx: entity.transactionHash,
+          delegator: delegateRolling.delegator,
+        },
+      );
+      return;
+    }
+
     // store delegate
     const storedFromDelegate: DelegateMapping | undefined =
       await this.getDelegateMappingByFrom(entity.from);
@@ -992,8 +1008,12 @@ export class TokenHandler {
       this.markDelegateDirty(storedDelegateFromWithTo);
       newDelegatePowerOfFromTo = storedDelegateFromWithTo.power;
     }
-    if (storedFromDelegate) {
-      storedFromDelegate.power = newDelegatePowerOfFromTo;
+    if (
+      storedFromDelegate &&
+      isCurrent &&
+      storedFromDelegate.to?.toLowerCase() === currentDelegate.toDelegate
+    ) {
+      storedFromDelegate.power = storedFromDelegate.power + currentDelegate.power;
       this.applyScopeFields(storedFromDelegate, {
         chainId: currentDelegate.chainId,
         daoCode: currentDelegate.daoCode,

@@ -973,6 +973,386 @@ describe("token vote power checkpoints", () => {
     });
   });
 
+  it("does not let a historical relation overwrite the current delegate mapping power", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 50n,
+      }),
+      new Contributor({
+        id: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        power: 50n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Contributor({
+        id: "0xcccccccccccccccccccccccccccccccccccccccc",
+        power: 20n,
+        delegatesCountAll: 0,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0xcccccccccccccccccccccccccccccccccccccccc",
+        fromDelegate: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        toDelegate: "0xcccccccccccccccccccccccccccccccccccccccc",
+        isCurrent: false,
+        power: 20n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        fromDelegate: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        toDelegate: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        isCurrent: true,
+        power: 50n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        from: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        to: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        power: 50n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    await (handler as any).storeDelegate(
+      new Delegate({
+        chainId: 1,
+        daoCode: "demo",
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+        contractAddress: "0x8888888888888888888888888888888888888888",
+        logIndex: 2,
+        transactionIndex: 2,
+        fromDelegate: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        toDelegate: "0xcccccccccccccccccccccccccccccccccccccccc",
+        blockNumber: 2n,
+        blockTimestamp: 2n,
+        transactionHash: "0xhistorical-delta",
+        power: -20n,
+      })
+    );
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      )
+    ).toMatchObject({
+      to: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      power: 50n,
+    });
+  });
+
+  it("tracks current delegate mapping power independently from historical delegate totals", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 100n,
+      }),
+      new Contributor({
+        id: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        power: 50n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        fromDelegate: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        toDelegate: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        isCurrent: true,
+        power: 100n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        from: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        to: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        power: 50n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    await (handler as any).storeDelegate(
+      new Delegate({
+        chainId: 1,
+        daoCode: "demo",
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+        contractAddress: "0x8888888888888888888888888888888888888888",
+        logIndex: 2,
+        transactionIndex: 2,
+        fromDelegate: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        toDelegate: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        blockNumber: 2n,
+        blockTimestamp: 2n,
+        transactionHash: "0xcurrent-delta",
+        power: 10n,
+      })
+    );
+
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({
+      power: 110n,
+      isCurrent: true,
+    });
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      )
+    ).toMatchObject({
+      to: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      power: 60n,
+    });
+  });
+
+  it("does not double count delegate power when delegate change, transfer, and vote update share a transaction", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    const sharedLog = {
+      address: "0x8888888888888888888888888888888888888888",
+      transactionIndex: 1,
+      block: {
+        height: 13579039,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xb2e42c615286384babed2c89ee5e14c38c98b0221b7baeab958babf735435414",
+    } as any;
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0xd144d064a7e573e8c77c0d0d2049a243c740882f",
+        fromDelegate: "0x0000000000000000000000000000000000000000",
+        toDelegate: "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      ...sharedLog,
+      id: "log-delegate-changed",
+      logIndex: 99,
+    });
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
+      to: "0xd144d064a7e573e8c77c0d0d2049a243c740882f",
+      value: 1143544204434688311296n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      ...sharedLog,
+      id: "log-transfer",
+      logIndex: 100,
+    });
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValue({
+        delegate: "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+        previousVotes: 0n,
+        newVotes: 1143544204434688311296n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      ...sharedLog,
+      id: "log-votes-changed",
+      logIndex: 101,
+    });
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0xd144d064a7e573e8c77c0d0d2049a243c740882f"
+      )
+    ).toMatchObject({
+      to: "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+      power: 1143544204434688311296n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xd144d064a7e573e8c77c0d0d2049a243c740882f_0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5"
+      )
+    ).toMatchObject({
+      power: 1143544204434688311296n,
+      isCurrent: true,
+    });
+    expect(
+      store.findEntity(
+        Contributor,
+        "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5"
+      )
+    ).toMatchObject({
+      power: 1143544204434688311296n,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
+    });
+  });
+
+  it("returns current delegate mapping power to zero after a full transfer out with no delegate change", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0xd144d064a7e573e8c77c0d0d2049a243c740882f",
+        fromDelegate: "0x0000000000000000000000000000000000000000",
+        toDelegate: "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-delegate-changed-init",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 99,
+      transactionIndex: 1,
+      block: {
+        height: 13579039,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash:
+        "0xb2e42c615286384babed2c89ee5e14c38c98b0221b7baeab958babf735435414",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
+      to: "0xd144d064a7e573e8c77c0d0d2049a243c740882f",
+      value: 1143544204434688311296n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-init",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 100,
+      transactionIndex: 1,
+      block: {
+        height: 13579039,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash:
+        "0xb2e42c615286384babed2c89ee5e14c38c98b0221b7baeab958babf735435414",
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+        previousVotes: 0n,
+        newVotes: 1143544204434688311296n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+        previousVotes: 1143544204434688311296n,
+        newVotes: 0n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-votes-changed-init",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 101,
+      transactionIndex: 1,
+      block: {
+        height: 13579039,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash:
+        "0xb2e42c615286384babed2c89ee5e14c38c98b0221b7baeab958babf735435414",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0xd144d064a7e573e8c77c0d0d2049a243c740882f",
+      to: "0x616116777efa63666436e9d132899467fb9a3d41",
+      value: 1143544204434688311296n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-out",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 322,
+      transactionIndex: 2,
+      block: {
+        height: 13598117,
+        timestamp: 1_700_000_000_100,
+      },
+      transactionHash:
+        "0x66e804e23a6c1d63ce950df2017a3917b7b0106e2abf1d17243b7ab5fdb20f06",
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-votes-changed-out",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 323,
+      transactionIndex: 2,
+      block: {
+        height: 13598117,
+        timestamp: 1_700_000_000_100,
+      },
+      transactionHash:
+        "0x66e804e23a6c1d63ce950df2017a3917b7b0106e2abf1d17243b7ab5fdb20f06",
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0xd144d064a7e573e8c77c0d0d2049a243c740882f"
+      )
+    ).toMatchObject({
+      to: "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+      power: 0n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xd144d064a7e573e8c77c0d0d2049a243c740882f_0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5"
+      )
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: true,
+    });
+  });
+
   it("tracks ERC721 transfers as token ids while applying single-vote power deltas", async () => {
     const store = new MemoryStore([
       new DataMetric({
