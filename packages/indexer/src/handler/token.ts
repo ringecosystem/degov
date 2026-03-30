@@ -970,6 +970,7 @@ export class TokenHandler {
       await this.getDelegateMappingByFrom(currentDelegate.fromDelegate);
     const isCurrent =
       storedFromDelegate?.to?.toLowerCase() === currentDelegate.toDelegate;
+    const previousCurrentMappingPower = storedFromDelegate?.power ?? null;
 
     let newDelegatePowerOfFromTo;
     let delegatesCountEffective = 0;
@@ -982,7 +983,16 @@ export class TokenHandler {
     } else {
       // update delegate
       const oldPower = storedDelegateFromWithTo.power;
-      storedDelegateFromWithTo.power += currentDelegate.power;
+      const reactivatedCurrentRelation =
+        isCurrent &&
+        previousCurrentMappingPower === 0n &&
+        currentDelegate.power > 0n;
+
+      if (reactivatedCurrentRelation) {
+        storedDelegateFromWithTo.power = currentDelegate.power;
+      } else {
+        storedDelegateFromWithTo.power += currentDelegate.power;
+      }
       storedDelegateFromWithTo.blockNumber = currentDelegate.blockNumber;
       storedDelegateFromWithTo.blockTimestamp = currentDelegate.blockTimestamp;
       storedDelegateFromWithTo.transactionHash =
@@ -997,7 +1007,10 @@ export class TokenHandler {
         logIndex: currentDelegate.logIndex,
         transactionIndex: currentDelegate.transactionIndex,
       });
-      if (oldPower === 0n && storedDelegateFromWithTo.power !== 0n) {
+      if (
+        (oldPower === 0n || reactivatedCurrentRelation) &&
+        storedDelegateFromWithTo.power !== 0n
+      ) {
         delegatesCountEffective += 1;
       }
       // Keep zero-power rows so current and historical relations remain queryable.

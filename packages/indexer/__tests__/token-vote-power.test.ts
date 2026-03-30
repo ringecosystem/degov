@@ -1353,6 +1353,143 @@ describe("token vote power checkpoints", () => {
     });
   });
 
+  it("reactivates a historical relation without carrying forward stale power", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+      new Contributor({
+        id: "0x8787fc2de4de95c53e5e3a4e5459247d9773ea52",
+        power: 10000n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Contributor({
+        id: "0x1d5460f896521ad685ea4c3f2c679ec0b6806359",
+        power: 0n,
+        delegatesCountAll: 0,
+        delegatesCountEffective: 0,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0x406e27929a19b2886d644165f37e7fa34100e2fd_0x8787fc2de4de95c53e5e3a4e5459247d9773ea52",
+        fromDelegate: "0x406e27929a19b2886d644165f37e7fa34100e2fd",
+        toDelegate: "0x8787fc2de4de95c53e5e3a4e5459247d9773ea52",
+        isCurrent: true,
+        power: 10000n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0x406e27929a19b2886d644165f37e7fa34100e2fd_0x1d5460f896521ad685ea4c3f2c679ec0b6806359",
+        fromDelegate: "0x406e27929a19b2886d644165f37e7fa34100e2fd",
+        toDelegate: "0x1d5460f896521ad685ea4c3f2c679ec0b6806359",
+        isCurrent: false,
+        power: 10000n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xhistorical",
+      }),
+      new DelegateMapping({
+        id: "0x406e27929a19b2886d644165f37e7fa34100e2fd",
+        from: "0x406e27929a19b2886d644165f37e7fa34100e2fd",
+        to: "0x8787fc2de4de95c53e5e3a4e5459247d9773ea52",
+        power: 10000n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0x406e27929a19b2886d644165f37e7fa34100e2fd",
+        fromDelegate: "0x8787fc2de4de95c53e5e3a4e5459247d9773ea52",
+        toDelegate: "0x1d5460f896521ad685ea4c3f2c679ec0b6806359",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-delegate-changed-reactivate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 133,
+      transactionIndex: 1,
+      block: {
+        height: 24406531,
+        timestamp: 1_700_000_000_200,
+      },
+      transactionHash:
+        "0xe29491e8cb273dda45aeea7e54383ca4dd6adb79f83c20663abfa2bc16838aa3",
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: "0x8787fc2de4de95c53e5e3a4e5459247d9773ea52",
+        previousVotes: 10000n,
+        newVotes: 0n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0x1d5460f896521ad685ea4c3f2c679ec0b6806359",
+        previousVotes: 0n,
+        newVotes: 10000n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-votes-changed-old",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 134,
+      transactionIndex: 1,
+      block: {
+        height: 24406531,
+        timestamp: 1_700_000_000_200,
+      },
+      transactionHash:
+        "0xe29491e8cb273dda45aeea7e54383ca4dd6adb79f83c20663abfa2bc16838aa3",
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-votes-changed-new",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 135,
+      transactionIndex: 1,
+      block: {
+        height: 24406531,
+        timestamp: 1_700_000_000_200,
+      },
+      transactionHash:
+        "0xe29491e8cb273dda45aeea7e54383ca4dd6adb79f83c20663abfa2bc16838aa3",
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0x406e27929a19b2886d644165f37e7fa34100e2fd"
+      )
+    ).toMatchObject({
+      to: "0x1d5460f896521ad685ea4c3f2c679ec0b6806359",
+      power: 10000n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x406e27929a19b2886d644165f37e7fa34100e2fd_0x1d5460f896521ad685ea4c3f2c679ec0b6806359"
+      )
+    ).toMatchObject({
+      power: 10000n,
+      isCurrent: true,
+    });
+  });
+
   it("tracks ERC721 transfers as token ids while applying single-vote power deltas", async () => {
     const store = new MemoryStore([
       new DataMetric({
