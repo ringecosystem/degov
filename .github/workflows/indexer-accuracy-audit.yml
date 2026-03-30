@@ -95,7 +95,8 @@ jobs:
         with:
           script: |
             const fs = require("node:fs");
-            const title = "[Indexer Audit] Data accuracy anomalies";
+            const issueDate = new Date().toISOString().slice(0, 10);
+            const title = `[Indexer Audit][${issueDate}][run-${context.runNumber}] Data accuracy anomalies`;
             const body = fs.readFileSync(
               "packages/indexer/indexer-accuracy-issue-body.md",
               "utf8"
