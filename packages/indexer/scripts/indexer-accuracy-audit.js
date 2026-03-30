@@ -8,8 +8,8 @@ const {
 } = require("viem");
 
 const TOP_CONTRIBUTORS_QUERY = `
-  query TopContributors($limit: Int!) {
-    contributors(limit: $limit, orderBy: [power_DESC]) {
+  query TopContributors($limit: Int!, $offset: Int!) {
+    contributors(limit: $limit, offset: $offset, orderBy: [power_DESC]) {
       id
       power
       delegatesCountAll
@@ -19,12 +19,12 @@ const TOP_CONTRIBUTORS_QUERY = `
 `;
 
 const NEGATIVE_ROWS_QUERY = `
-  query NegativeRows($limit: Int!) {
-    contributors(limit: $limit, orderBy: [power_ASC], where: { power_lt: 0 }) {
+  query NegativeRows($limit: Int!, $offset: Int!) {
+    contributors(limit: $limit, offset: $offset, orderBy: [power_ASC], where: { power_lt: 0 }) {
       id
       power
     }
-    delegates(limit: $limit, orderBy: [power_ASC], where: { power_lt: 0 }) {
+    delegates(limit: $limit, offset: $offset, orderBy: [power_ASC], where: { power_lt: 0 }) {
       id
       fromDelegate
       toDelegate
@@ -163,24 +163,52 @@ async function graphqlRequest(endpoint, query, variables = {}) {
 }
 
 async function fetchTopContributors(target, limit) {
-  const data = await graphqlRequest(
-    target.indexerEndpoint,
-    TOP_CONTRIBUTORS_QUERY,
-    { limit }
-  );
-  return data.contributors ?? [];
+  const contributors = [];
+  let offset = 0;
+
+  while (true) {
+    const data = await graphqlRequest(
+      target.indexerEndpoint,
+      TOP_CONTRIBUTORS_QUERY,
+      { limit, offset }
+    );
+    const page = data.contributors ?? [];
+    contributors.push(...page);
+
+    if (page.length < limit) {
+      break;
+    }
+
+    offset += limit;
+  }
+
+  return contributors;
 }
 
 async function fetchNegativeRows(target, limit) {
-  const data = await graphqlRequest(
-    target.indexerEndpoint,
-    NEGATIVE_ROWS_QUERY,
-    { limit }
-  );
-  return {
-    contributors: data.contributors ?? [],
-    delegates: data.delegates ?? [],
-  };
+  const contributors = [];
+  const delegates = [];
+  let offset = 0;
+
+  while (true) {
+    const data = await graphqlRequest(
+      target.indexerEndpoint,
+      NEGATIVE_ROWS_QUERY,
+      { limit, offset }
+    );
+    const contributorPage = data.contributors ?? [];
+    const delegatePage = data.delegates ?? [];
+    contributors.push(...contributorPage);
+    delegates.push(...delegatePage);
+
+    if (contributorPage.length < limit && delegatePage.length < limit) {
+      break;
+    }
+
+    offset += limit;
+  }
+
+  return { contributors, delegates };
 }
 
 function createClient(target) {
