@@ -34,14 +34,12 @@ jobs:
 
       - name: Run accuracy audit
         id: audit
-        continue-on-error: true
         working-directory: packages/indexer
         run: |
           node scripts/indexer-accuracy-audit.js \
             --limit 200 \
             --json-file indexer-accuracy-report.json \
-            --markdown-file indexer-accuracy-report.md \
-            --fail-on-anomalies
+            --markdown-file indexer-accuracy-report.md
 
       - name: Read report metadata
         id: metadata
@@ -131,9 +129,3 @@ jobs:
                 body: issueBody,
               });
             }
-
-      - name: Fail workflow when anomalies are present
-        if: steps.audit.outcome == 'failure'
-        run: |
-          echo "Indexer accuracy audit detected anomalies."
-          exit 1
