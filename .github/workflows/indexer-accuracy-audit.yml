@@ -80,21 +80,29 @@ jobs:
         working-directory: packages/indexer
         run: cat indexer-accuracy-report.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Build concise GitHub issue body
+        if: always() && steps.metadata.outputs.has_anomalies == 'true'
+        working-directory: packages/indexer
+        run: |
+          node scripts/indexer-accuracy-issue-body.js \
+            --report-json indexer-accuracy-report.json \
+            --report-markdown indexer-accuracy-report.md \
+            --issue-body-file indexer-accuracy-issue-body.md \
+            --report-url-file indexer-accuracy-report-url.txt \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - name: Create or update GitHub issue
         if: always() && steps.metadata.outputs.has_anomalies == 'true'
         uses: actions/github-script@v8
         with:
           script: |
             const fs = require("node:fs");
-
-            const marker = "<!-- indexer-accuracy-audit -->";
             const title = "[Indexer Audit] Data accuracy anomalies";
             const body = fs.readFileSync(
-              "packages/indexer/indexer-accuracy-report.md",
+              "packages/indexer/indexer-accuracy-issue-body.md",
               "utf8"
             );
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const issueBody = `${marker}\n${body}\n_Run: ${runUrl}_\n`;
+            const issueBody = body;
 
             const { owner, repo } = context.repo;
             const { data: issues } = await github.rest.issues.listForRepo({
