@@ -72,9 +72,15 @@ export class TokenHandler {
   private voteClockModePromise?: Promise<ClockMode>;
   private globalDataMetric?: DataMetric;
   private globalDataMetricDirty = false;
-  private readonly delegateRollingByTx = new Map<string, DelegateRolling | null>();
+  private readonly delegateRollingByTx = new Map<
+    string,
+    DelegateRolling | null
+  >();
   private readonly tokenTransferByTx = new Map<string, TokenTransfer | null>();
-  private readonly delegateMappingByFrom = new Map<string, DelegateMapping | null>();
+  private readonly delegateMappingByFrom = new Map<
+    string,
+    DelegateMapping | null
+  >();
   private readonly contributorById = new Map<string, Contributor | null>();
   private readonly delegateById = new Map<string, Delegate | null>();
   private readonly dirtyDelegateRollings = new Map<string, DelegateRolling>();
@@ -259,7 +265,9 @@ export class TokenHandler {
     this.dirtyDelegateMappings.delete(normalizedFrom);
   }
 
-  private async getContributorById(id: string): Promise<Contributor | undefined> {
+  private async getContributorById(
+    id: string,
+  ): Promise<Contributor | undefined> {
     const normalizedId = id.toLowerCase();
     if (this.contributorById.has(normalizedId)) {
       return this.contributorById.get(normalizedId) ?? undefined;
@@ -368,14 +376,16 @@ export class TokenHandler {
     }
   }
 
-  private async upsertDelegateSnapshot(options: {
-    fromDelegate: string;
-    toDelegate: string;
-    blockNumber: bigint;
-    blockTimestamp: bigint;
-    transactionHash: string;
-    isCurrent: boolean;
-  } & TokenScopeFields) {
+  private async upsertDelegateSnapshot(
+    options: {
+      fromDelegate: string;
+      toDelegate: string;
+      blockNumber: bigint;
+      blockTimestamp: bigint;
+      transactionHash: string;
+      isCurrent: boolean;
+    } & TokenScopeFields,
+  ) {
     const fromDelegate =
       DegovIndexerHelpers.normalizeAddress(options.fromDelegate) ??
       options.fromDelegate;
@@ -457,7 +467,8 @@ export class TokenHandler {
       DegovIndexerHelpers.normalizeAddress(event.fromDelegate) ??
       event.fromDelegate;
     const toDelegate =
-      DegovIndexerHelpers.normalizeAddress(event.toDelegate) ?? event.toDelegate;
+      DegovIndexerHelpers.normalizeAddress(event.toDelegate) ??
+      event.toDelegate;
     DegovIndexerHelpers.logVerboseInfo(
       this.ctx.log,
       "token.delegate-change recorded",
@@ -639,7 +650,9 @@ export class TokenHandler {
       {
         delegate,
         previousVotes:
-          "previousVotes" in event ? event.previousVotes : event.previousBalance,
+          "previousVotes" in event
+            ? event.previousVotes
+            : event.previousBalance,
         newVotes: "newVotes" in event ? event.newVotes : event.newBalance,
         block: eventLog.block.height,
         tx: eventLog.transactionHash,
@@ -668,8 +681,12 @@ export class TokenHandler {
   ) {
     const [clockMode, delegateRolling, tokenTransfer] = await Promise.all([
       this.voteClockMode(),
-      this.getDelegateRollingByTransactionHash(delegateVotesChanged.transactionHash),
-      this.getTokenTransferByTransactionHash(delegateVotesChanged.transactionHash),
+      this.getDelegateRollingByTransactionHash(
+        delegateVotesChanged.transactionHash,
+      ),
+      this.getTokenTransferByTransactionHash(
+        delegateVotesChanged.transactionHash,
+      ),
     ]);
 
     const checkpoint = new VotePowerCheckpoint({
