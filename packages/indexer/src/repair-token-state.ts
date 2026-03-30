@@ -6,6 +6,8 @@ import { DataSource } from "typeorm";
 import { DegovDataSource } from "./datasource";
 import {
   aggregateContributorsFromMappings,
+  countRepairedContributorRows,
+  resolveRepairedDelegationPower,
   selectEffectiveDelegations,
 } from "./internal/token-state-repair";
 
@@ -18,6 +20,7 @@ interface RepairCliOptions {
 interface RepairSourceRow {
   delegator: string;
   toDelegate: string;
+  power: string | null;
   daoCode: string | null;
   governorAddress: string | null;
   tokenAddress: string | null;
@@ -136,6 +139,7 @@ async function main() {
           SELECT DISTINCT ON (lower(dm.from))
             lower(dm.from) AS "delegator",
             lower(dm.to) AS "toDelegate",
+            dm.power::text AS "power",
             dm.dao_code AS "daoCode",
             lower(dm.governor_address) AS "governorAddress",
             lower(dm.token_address) AS "tokenAddress",
@@ -159,6 +163,7 @@ async function main() {
           SELECT DISTINCT ON (lower(dc.delegator))
             lower(dc.delegator) AS "delegator",
             lower(dc.to_delegate) AS "toDelegate",
+            NULL::text AS "power",
             dc.dao_code AS "daoCode",
             lower(dc.governor_address) AS "governorAddress",
             lower(dc.token_address) AS "tokenAddress",
@@ -178,7 +183,9 @@ async function main() {
       )) as RepairSourceRow[];
 
       const sourceByDelegator = new Map<string, RepairSourceRow>();
+      const fallbackByDelegator = new Map<string, RepairSourceRow>();
       for (const row of fallbackRows) {
+        fallbackByDelegator.set(row.delegator, row);
         sourceByDelegator.set(row.delegator, row);
       }
       for (const row of latestChanges) {
@@ -234,6 +241,10 @@ async function main() {
         const relationId = `${delegation.delegator}_${delegation.toDelegate}`;
         const existing = delegateRowById.get(relationId);
         const source = sourceByDelegator.get(delegation.delegator);
+        const repairedPower = resolveRepairedDelegationPower({
+          existingPower: existing?.power,
+          fallbackPower: fallbackByDelegator.get(delegation.delegator)?.power,
+        });
 
         if (existing) {
           await manager.query(
@@ -262,7 +273,7 @@ async function main() {
             VALUES (
               $1, $2, $3, $4, $5, $6,
               $7, $8, $9, $10, $11::numeric,
-              $12::numeric, $13, true, 0
+              $12::numeric, $13, true, $14::numeric
             )
             ON CONFLICT (id) DO NOTHING
           `,
@@ -280,8 +291,25 @@ async function main() {
             source.blockNumber,
             source.blockTimestamp,
             source.transactionHash,
+            repairedPower.toString(),
           ],
         );
+
+        delegateRowById.set(relationId, {
+          id: relationId,
+          fromDelegate: delegation.delegator,
+          toDelegate: delegation.toDelegate,
+          power: repairedPower.toString(),
+          daoCode: source.daoCode,
+          governorAddress: source.governorAddress ?? governorAddress,
+          tokenAddress: source.tokenAddress ?? tokenAddress,
+          contractAddress: source.contractAddress,
+          logIndex: source.logIndex,
+          transactionIndex: source.transactionIndex,
+          blockNumber: source.blockNumber,
+          blockTimestamp: source.blockTimestamp,
+          transactionHash: source.transactionHash,
+        });
       }
 
       await manager.query(
@@ -302,7 +330,10 @@ async function main() {
         return {
           delegator: delegation.delegator,
           toDelegate: delegation.toDelegate,
-          power: BigInt(delegateRow?.power ?? "0") < 0n ? 0n : BigInt(delegateRow?.power ?? "0"),
+          power: resolveRepairedDelegationPower({
+            existingPower: delegateRow?.power,
+            fallbackPower: fallbackByDelegator.get(delegation.delegator)?.power,
+          }),
           daoCode: source?.daoCode ?? work.daoCode,
           contractAddress: source?.contractAddress ?? token.address,
           logIndex: source?.logIndex ?? null,
@@ -452,6 +483,12 @@ async function main() {
         (sum, aggregate) => sum + aggregate.power,
         0n,
       );
+      const repairedContributorCount = countRepairedContributorRows({
+        existingContributorIds: contributorRows.map((row) => row.id),
+        aggregateContributorIds: contributorAggregates.map(
+          (aggregate) => aggregate.contributorId,
+        ),
+      });
 
       const dataMetricRows = await manager.query(
         `
@@ -480,7 +517,7 @@ async function main() {
             governorAddress,
             tokenAddress,
             totalPower.toString(),
-            contributorRows.length,
+            repairedContributorCount,
           ],
         );
       } else {
@@ -499,7 +536,7 @@ async function main() {
             governorAddress,
             tokenAddress,
             totalPower.toString(),
-            contributorRows.length,
+            repairedContributorCount,
           ],
         );
       }

@@ -1,5 +1,7 @@
 import {
   aggregateContributorsFromMappings,
+  countRepairedContributorRows,
+  resolveRepairedDelegationPower,
   selectEffectiveDelegations,
 } from "../src/internal/token-state-repair";
 
@@ -80,5 +82,28 @@ describe("token state repair helpers", () => {
         delegatesCountEffective: 0,
       },
     ]);
+  });
+
+  it("preserves fallback power when recreating a missing current delegate row", () => {
+    expect(
+      resolveRepairedDelegationPower({
+        fallbackPower: "42",
+      }),
+    ).toBe(42n);
+  });
+
+  it("counts existing and newly inserted contributors when refreshing metrics", () => {
+    expect(
+      countRepairedContributorRows({
+        existingContributorIds: [
+          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ],
+        aggregateContributorIds: [
+          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "0xcccccccccccccccccccccccccccccccccccccccc",
+        ],
+      }),
+    ).toBe(3);
   });
 });

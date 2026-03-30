@@ -28,6 +28,42 @@ export interface ContributorAggregateRow {
   delegatesCountEffective: number;
 }
 
+function parsePower(value: string | null | undefined): bigint | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  return BigInt(value);
+}
+
+export function clampNonNegativePower(power: bigint): bigint {
+  return power < 0n ? 0n : power;
+}
+
+export function resolveRepairedDelegationPower(options: {
+  existingPower?: string | null;
+  fallbackPower?: string | null;
+}): bigint {
+  return clampNonNegativePower(
+    parsePower(options.existingPower) ?? parsePower(options.fallbackPower) ?? 0n,
+  );
+}
+
+export function countRepairedContributorRows(options: {
+  existingContributorIds: string[];
+  aggregateContributorIds: string[];
+}): number {
+  const contributorIds = new Set(
+    options.existingContributorIds.map((contributorId) => normalizeAddress(contributorId)),
+  );
+
+  for (const contributorId of options.aggregateContributorIds) {
+    contributorIds.add(normalizeAddress(contributorId));
+  }
+
+  return contributorIds.size;
+}
+
 function normalizeAddress(value: string): string {
   return value.toLowerCase();
 }
@@ -81,7 +117,7 @@ export function aggregateContributorsFromMappings(
 
   for (const mapping of mappings) {
     const contributorId = normalizeAddress(mapping.toDelegate);
-    const power = mapping.power < 0n ? 0n : mapping.power;
+    const power = clampNonNegativePower(mapping.power);
     const current =
       aggregates.get(contributorId) ??
       {
