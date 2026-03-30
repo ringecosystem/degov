@@ -1,9 +1,14 @@
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
 const {
   auditTarget,
   buildMarkdownReport,
   compactAmount,
   fetchNegativeRows,
   fetchTopContributors,
+  loadTargets,
   parseArgs,
   summarizeAudit,
 } = require("../scripts/indexer-accuracy-audit");
@@ -158,6 +163,8 @@ describe("indexer accuracy audit", () => {
 
   it("parses CLI flags for report output and strict mode", () => {
     const options = parseArgs([
+      "--audit-config-file",
+      "workflow-targets.yml",
       "--limit",
       "50",
       "--negative-limit=25",
@@ -172,6 +179,7 @@ describe("indexer accuracy audit", () => {
       "--fail-on-anomalies",
     ]);
 
+    expect(options.auditConfigFile).toMatch(/workflow-targets\.yml$/);
     expect(options.limit).toBe(50);
     expect(options.negativeLimit).toBe(25);
     expect(options.concurrency).toBe(4);
@@ -185,7 +193,7 @@ describe("indexer accuracy audit", () => {
     expect(compactAmount("-1", 18)).toBe("-0");
   });
 
-  it("paginates contributors until the full set is fetched", async () => {
+  it("queries contributors with the requested cap", async () => {
     const originalFetch = global.fetch;
     const fetchMock = jest
       .fn()
@@ -196,15 +204,8 @@ describe("indexer accuracy audit", () => {
             contributors: [
               { id: "0x1", power: "100" },
               { id: "0x2", power: "90" },
+              { id: "0x3", power: "80" },
             ],
-          },
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          data: {
-            contributors: [{ id: "0x3", power: "80" }],
           },
         }),
       });
@@ -215,7 +216,7 @@ describe("indexer accuracy audit", () => {
         {
           indexerEndpoint: "https://indexer.example/graphql",
         },
-        2
+        3
       )
     ).resolves.toEqual([
       { id: "0x1", power: "100" },
@@ -223,20 +224,16 @@ describe("indexer accuracy audit", () => {
       { id: "0x3", power: "80" },
     ]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).variables).toEqual({
-      limit: 2,
+      limit: 3,
       offset: 0,
-    });
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).variables).toEqual({
-      limit: 2,
-      offset: 2,
     });
 
     global.fetch = originalFetch;
   });
 
-  it("paginates negative rows until contributors and delegates are exhausted", async () => {
+  it("queries negative rows with the requested cap", async () => {
     const originalFetch = global.fetch;
     const fetchMock = jest
       .fn()
@@ -247,6 +244,7 @@ describe("indexer accuracy audit", () => {
             contributors: [
               { id: "0xdead", power: "-1" },
               { id: "0xbeef", power: "-2" },
+              { id: "0xcafe", power: "-6" },
             ],
             delegates: [
               {
@@ -261,16 +259,6 @@ describe("indexer accuracy audit", () => {
                 toDelegate: "0x4",
                 power: "-4",
               },
-            ],
-          },
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          data: {
-            contributors: [],
-            delegates: [
               {
                 id: "0x5_0x6",
                 fromDelegate: "0x5",
@@ -288,12 +276,13 @@ describe("indexer accuracy audit", () => {
         {
           indexerEndpoint: "https://indexer.example/graphql",
         },
-        2
+        3
       )
     ).resolves.toEqual({
       contributors: [
         { id: "0xdead", power: "-1" },
         { id: "0xbeef", power: "-2" },
+        { id: "0xcafe", power: "-6" },
       ],
       delegates: [
         {
@@ -317,7 +306,57 @@ describe("indexer accuracy audit", () => {
       ],
     });
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).variables).toEqual({
+      limit: 3,
+      offset: 0,
+    });
+
     global.fetch = originalFetch;
+  });
+
+  it("loads workflow-configured targets with per-indexer caps", async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "indexer-accuracy-audit-")
+    );
+    const targetsFile = path.join(tempDir, "targets.json");
+    const auditConfigFile = path.join(tempDir, "audit-targets.yml");
+
+    fs.writeFileSync(
+      targetsFile,
+      JSON.stringify([
+        {
+          code: "ring-dao",
+          name: "RingDAO",
+          indexerEndpoint: "https://indexer.degov.ai/ring-dao/graphql",
+          rpcUrl: "https://rpc.darwinia.network",
+          governorToken: "0xdafa555e2785DC8834F4Ea9D1ED88B6049142999",
+          governor: "0x52cDD25f7C83c335236Ce209fA1ec8e197E96533",
+        },
+      ])
+    );
+    fs.writeFileSync(
+      auditConfigFile,
+      [
+        "- name: ring-dao",
+        "  indexer: https://indexer.degov.ai/ring-dao.graphql",
+        "  limit: 50",
+      ].join("\n")
+    );
+
+    await expect(loadTargets(targetsFile, auditConfigFile)).resolves.toEqual([
+      {
+        code: "ring-dao",
+        name: "RingDAO",
+        indexerEndpoint: "https://indexer.degov.ai/ring-dao.graphql",
+        rpcUrl: "https://rpc.darwinia.network",
+        governorToken: "0xdafa555e2785DC8834F4Ea9D1ED88B6049142999",
+        governor: "0x52cDD25f7C83c335236Ce209fA1ec8e197E96533",
+        tokenDecimals: 18,
+        limit: 50,
+        negativeLimit: 50,
+      },
+    ]);
   });
 
   it("builds a concise GitHub issue body with external report links", () => {
