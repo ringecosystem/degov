@@ -1,5 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const YAML = require("yaml");
 const {
   createPublicClient,
   formatUnits,
@@ -43,6 +44,7 @@ const GOVERNOR_ABI = parseAbi([
 ]);
 
 const DEFAULT_OPTIONS = {
+  auditConfigFile: "",
   concurrency: 10,
   failOnAnomalies: false,
   jsonFile: "",
@@ -72,6 +74,9 @@ function parseArgs(argv) {
     const expectsValue = inlineValue === undefined;
 
     switch (flag) {
+      case "--audit-config-file":
+        options.auditConfigFile = path.resolve(process.cwd(), value);
+        break;
       case "--limit":
         options.limit = Number.parseInt(value, 10);
         break;
@@ -118,18 +123,103 @@ function parseArgs(argv) {
   return options;
 }
 
-async function loadTargets(targetsFile) {
+function parseStructuredFile(raw, filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === ".yaml" || extension === ".yml") {
+    return YAML.parse(raw);
+  }
+
+  return JSON.parse(raw);
+}
+
+function parseOptionalPositiveInt(value, fieldName) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${fieldName} must be a positive integer`);
+  }
+
+  return parsed;
+}
+
+function normalizeTarget(target) {
+  return {
+    tokenDecimals: 18,
+    ...target,
+  };
+}
+
+function resolveConfiguredTarget(baseTargets, configuredTarget) {
+  const targetCode = configuredTarget.code ?? configuredTarget.name;
+  const configuredIndexer =
+    configuredTarget.indexerEndpoint ?? configuredTarget.indexer;
+  const baseTarget = baseTargets.find((target) => {
+    if (targetCode && target.code === targetCode) {
+      return true;
+    }
+
+    if (!targetCode && configuredIndexer) {
+      return target.indexerEndpoint === configuredIndexer;
+    }
+
+    return false;
+  });
+
+  if (!baseTarget) {
+    throw new Error(
+      `Unknown audit target: ${targetCode ?? configuredIndexer ?? "unknown"}`
+    );
+  }
+
+  const limit = parseOptionalPositiveInt(configuredTarget.limit, "limit");
+  const negativeLimit = parseOptionalPositiveInt(
+    configuredTarget.negativeLimit,
+    "negativeLimit"
+  );
+
+  return {
+    ...baseTarget,
+    ...(configuredIndexer
+      ? {
+          indexerEndpoint: configuredIndexer,
+        }
+      : {}),
+    ...(limit !== undefined ? { limit } : {}),
+    ...(negativeLimit !== undefined
+      ? { negativeLimit }
+      : limit !== undefined
+        ? { negativeLimit: limit }
+        : {}),
+  };
+}
+
+async function loadTargets(targetsFile, auditConfigFile = "") {
   const raw = await fs.readFile(targetsFile, "utf8");
-  const targets = JSON.parse(raw);
+  const targets = parseStructuredFile(raw, targetsFile);
 
   if (!Array.isArray(targets) || targets.length === 0) {
     throw new Error("Targets file must contain a non-empty array");
   }
 
-  return targets.map((target) => ({
-    tokenDecimals: 18,
-    ...target,
-  }));
+  const baseTargets = targets.map(normalizeTarget);
+
+  if (!auditConfigFile) {
+    return baseTargets;
+  }
+
+  const auditConfigRaw = await fs.readFile(auditConfigFile, "utf8");
+  const auditConfig = parseStructuredFile(auditConfigRaw, auditConfigFile);
+
+  if (!Array.isArray(auditConfig) || auditConfig.length === 0) {
+    throw new Error("Audit config file must contain a non-empty array");
+  }
+
+  return auditConfig.map((configuredTarget) =>
+    resolveConfiguredTarget(baseTargets, configuredTarget)
+  );
 }
 
 async function graphqlRequest(endpoint, query, variables = {}) {
@@ -163,52 +253,26 @@ async function graphqlRequest(endpoint, query, variables = {}) {
 }
 
 async function fetchTopContributors(target, limit) {
-  const contributors = [];
-  let offset = 0;
+  const data = await graphqlRequest(
+    target.indexerEndpoint,
+    TOP_CONTRIBUTORS_QUERY,
+    { limit, offset: 0 }
+  );
 
-  while (true) {
-    const data = await graphqlRequest(
-      target.indexerEndpoint,
-      TOP_CONTRIBUTORS_QUERY,
-      { limit, offset }
-    );
-    const page = data.contributors ?? [];
-    contributors.push(...page);
-
-    if (page.length < limit) {
-      break;
-    }
-
-    offset += limit;
-  }
-
-  return contributors;
+  return data.contributors ?? [];
 }
 
 async function fetchNegativeRows(target, limit) {
-  const contributors = [];
-  const delegates = [];
-  let offset = 0;
+  const data = await graphqlRequest(
+    target.indexerEndpoint,
+    NEGATIVE_ROWS_QUERY,
+    { limit, offset: 0 }
+  );
 
-  while (true) {
-    const data = await graphqlRequest(
-      target.indexerEndpoint,
-      NEGATIVE_ROWS_QUERY,
-      { limit, offset }
-    );
-    const contributorPage = data.contributors ?? [];
-    const delegatePage = data.delegates ?? [];
-    contributors.push(...contributorPage);
-    delegates.push(...delegatePage);
-
-    if (contributorPage.length < limit && delegatePage.length < limit) {
-      break;
-    }
-
-    offset += limit;
-  }
-
-  return { contributors, delegates };
+  return {
+    contributors: data.contributors ?? [],
+    delegates: data.delegates ?? [],
+  };
 }
 
 function createClient(target) {
@@ -362,12 +426,15 @@ async function auditTarget(target, options, services = {}) {
     services.fetchTopContributors ?? fetchTopContributors;
   const fetchNegatives = services.fetchNegativeRows ?? fetchNegativeRows;
   const readVotes = services.readCurrentVotes ?? readCurrentVotes;
+  const contributorLimit = target.limit ?? options.limit;
+  const negativeLimit =
+    target.negativeLimit ?? target.limit ?? options.negativeLimit;
 
-  const result = createTargetSkeleton(target, options.limit);
+  const result = createTargetSkeleton(target, contributorLimit);
 
   const [contributorsResult, negativesResult] = await Promise.allSettled([
-    fetchContributors(target, options.limit),
-    fetchNegatives(target, options.negativeLimit),
+    fetchContributors(target, contributorLimit),
+    fetchNegatives(target, negativeLimit),
   ]);
 
   if (contributorsResult.status === "rejected") {
@@ -647,7 +714,10 @@ function printConsoleSummary(report) {
 
 async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
-  const targets = await loadTargets(options.targetsFile);
+  const targets = await loadTargets(
+    options.targetsFile,
+    options.auditConfigFile
+  );
   const report = await runAudit(targets, options);
   const markdown = buildMarkdownReport(report, targets);
 
