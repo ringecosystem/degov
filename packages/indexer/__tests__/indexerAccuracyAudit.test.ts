@@ -4,6 +4,12 @@ const {
   parseArgs,
   summarizeAudit,
 } = require("../scripts/indexer-accuracy-audit");
+const {
+  buildIssueBody,
+  GITHUB_ISSUE_BODY_MAX_LENGTH,
+  ISSUE_BODY_MARKER,
+  ISSUE_BODY_TRUNCATION_NOTICE,
+} = require("../scripts/indexer-accuracy-issue-body");
 
 describe("indexer accuracy audit", () => {
   const target = {
@@ -172,5 +178,37 @@ describe("indexer accuracy audit", () => {
     expect(options.markdownFile).toBe("report.md");
     expect(options.targetsFile).toMatch(/custom-targets\.json$/);
     expect(options.failOnAnomalies).toBe(true);
+  });
+
+  it("keeps short GitHub issue bodies unchanged", () => {
+    const reportMarkdown = "## Indexer Accuracy Audit\n\n- Total anomalies: 1\n";
+    const runUrl = "https://github.com/ringecosystem/degov/actions/runs/123";
+
+    const body = buildIssueBody(reportMarkdown, runUrl);
+
+    expect(body).toBe(
+      `${ISSUE_BODY_MARKER}\n${reportMarkdown.trimEnd()}\n_Run: ${runUrl}_\n`
+    );
+  });
+
+  it("truncates oversized GitHub issue bodies to the API limit", () => {
+    const reportMarkdown = [
+      "## Indexer Accuracy Audit",
+      "",
+      "### Summary",
+      "",
+      `- Total anomalies: ${2000}`,
+      "",
+      `${"mismatch detail\n".repeat(8000)}`,
+    ].join("\n");
+    const runUrl = "https://github.com/ringecosystem/degov/actions/runs/123";
+
+    const body = buildIssueBody(reportMarkdown, runUrl);
+
+    expect(body.length).toBeLessThanOrEqual(GITHUB_ISSUE_BODY_MAX_LENGTH);
+    expect(body).toContain("## Indexer Accuracy Audit");
+    expect(body).toContain(ISSUE_BODY_TRUNCATION_NOTICE);
+    expect(body).toContain(`_Run: ${runUrl}_`);
+    expect(body.startsWith(`${ISSUE_BODY_MARKER}\n`)).toBe(true);
   });
 });
