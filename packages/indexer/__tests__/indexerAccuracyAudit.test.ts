@@ -4,6 +4,10 @@ const {
   parseArgs,
   summarizeAudit,
 } = require("../scripts/indexer-accuracy-audit");
+const {
+  buildIssueBody,
+  uploadMarkdownReport,
+} = require("../scripts/indexer-accuracy-issue-body");
 
 describe("indexer accuracy audit", () => {
   const target = {
@@ -172,5 +176,183 @@ describe("indexer accuracy audit", () => {
     expect(options.markdownFile).toBe("report.md");
     expect(options.targetsFile).toMatch(/custom-targets\.json$/);
     expect(options.failOnAnomalies).toBe(true);
+  });
+
+  it("builds a concise GitHub issue body with external report links", () => {
+    const report = {
+      generatedAt: "2026-03-30T06:00:00.000Z",
+      summary: {
+        checkedAccounts: 2,
+        matches: 1,
+        mismatches: 1,
+        voteReadErrors: 0,
+        negativeContributors: 0,
+        negativeDelegates: 1,
+        queryErrors: 0,
+        totalAnomalies: 2,
+      },
+      targets: [
+        {
+          code: "ens-dao",
+          name: "ENS",
+          checkedAccounts: 2,
+          limit: 2,
+          matches: 1,
+          mismatches: [
+            {
+              address: "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+              contributorPower: "963786580523623804032252",
+              detailPower: "149622029144045802445500",
+              detailSource: "token.getVotes",
+              delta: "814164551379578001586752",
+              hint: "index-higher-with-negative-delegates",
+            },
+          ],
+          voteReadErrors: [],
+          negativeContributors: [],
+          negativeDelegates: [
+            {
+              id: "0xaaa_0xbbb",
+              fromDelegate: "0xaaa",
+              toDelegate: "0xbbb",
+              power: "-2",
+              hint: "negative-delegate-power",
+            },
+          ],
+          queryErrors: [],
+          anomalyCount: 2,
+        },
+      ],
+    };
+
+    const issueBody = buildIssueBody({
+      report,
+      reportUrl: "https://paste.rs/abc123",
+      runUrl: "https://github.com/ringecosystem/degov/actions/runs/23730563489",
+    });
+
+    expect(issueBody).toContain("## Indexer accuracy audit detected anomalies");
+    expect(issueBody).toContain(
+      "ENS (`ens-dao`): 2 anomalies; mismatches 1; read errors 0; negative contributors 0; negative delegates 1; query errors 0"
+    );
+    expect(issueBody).toContain(
+      "- Full markdown report: [rendered report](https://paste.rs/abc123.md)"
+    );
+    expect(issueBody).toContain("- Raw markdown: https://paste.rs/abc123");
+    expect(issueBody).not.toContain(
+      "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5"
+    );
+  });
+
+  it("keeps the GitHub issue body compact when many DAOs have anomalies", () => {
+    const targets = Array.from({ length: 12 }, (_value, index) => ({
+      code: `dao-${index + 1}`,
+      name: `DAO ${index + 1}`,
+      checkedAccounts: 1,
+      limit: 1,
+      matches: 0,
+      mismatches: [{}],
+      voteReadErrors: [],
+      negativeContributors: [],
+      negativeDelegates: [],
+      queryErrors: [],
+      anomalyCount: 1,
+    }));
+    const report = {
+      generatedAt: "2026-03-30T06:00:00.000Z",
+      summary: {
+        checkedAccounts: 12,
+        matches: 0,
+        mismatches: 12,
+        voteReadErrors: 0,
+        negativeContributors: 0,
+        negativeDelegates: 0,
+        queryErrors: 0,
+        totalAnomalies: 12,
+      },
+      targets,
+    };
+
+    const issueBody = buildIssueBody({
+      report,
+      reportUrl: "https://paste.rs/abc123",
+      runUrl: "https://github.com/ringecosystem/degov/actions/runs/23730563489",
+      maxSummaryTargets: 3,
+    });
+
+    expect(issueBody).toContain("DAO 1 (`dao-1`): 1 anomalies");
+    expect(issueBody).toContain("DAO 3 (`dao-3`): 1 anomalies");
+    expect(issueBody).not.toContain("DAO 4 (`dao-4`): 1 anomalies");
+    expect(issueBody).toContain(
+      "9 more DAOs omitted from this summary. See the full report for complete details."
+    );
+  });
+
+  it("uploads markdown reports to the configured paste host", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({
+      status: 201,
+      statusText: "Created",
+      text: async () => "https://paste.rs/abc123\n",
+    });
+
+    await expect(
+      uploadMarkdownReport("# Hello", {
+        fetchImpl,
+        pasteBaseUrl: "https://paste.rs/",
+      })
+    ).resolves.toBe("https://paste.rs/abc123");
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://paste.rs/",
+      expect.objectContaining({
+        method: "POST",
+        body: "# Hello",
+      })
+    );
+  });
+
+  it("falls back to workflow artifacts when report upload fails", () => {
+    const report = {
+      generatedAt: "2026-03-30T06:00:00.000Z",
+      summary: {
+        checkedAccounts: 1,
+        matches: 0,
+        mismatches: 1,
+        voteReadErrors: 0,
+        negativeContributors: 0,
+        negativeDelegates: 0,
+        queryErrors: 0,
+        totalAnomalies: 1,
+      },
+      targets: [
+        {
+          code: "ens-dao",
+          name: "ENS",
+          checkedAccounts: 1,
+          limit: 1,
+          matches: 0,
+          mismatches: [{}],
+          voteReadErrors: [],
+          negativeContributors: [],
+          negativeDelegates: [],
+          queryErrors: [],
+          anomalyCount: 1,
+        },
+      ],
+    };
+
+    const issueBody = buildIssueBody({
+      report,
+      runUrl: "https://github.com/ringecosystem/degov/actions/runs/23730563489",
+      uploadError: "Paste upload failed with HTTP 503 Service Unavailable",
+    });
+
+    expect(issueBody).toContain(
+      "Full markdown report upload was unavailable. Use the workflow run artifacts for the complete report."
+    );
+    expect(issueBody).toContain(
+      "Upload error: Paste upload failed with HTTP 503 Service Unavailable"
+    );
+    expect(issueBody).not.toContain("rendered report");
   });
 });
