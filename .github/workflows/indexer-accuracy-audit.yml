@@ -1,0 +1,131 @@
+name: Indexer Accuracy Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: indexer-accuracy-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit indexer accuracy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Install indexer dependencies
+        working-directory: packages/indexer
+        run: yarn install --frozen-lockfile
+
+      - name: Run accuracy audit
+        id: audit
+        working-directory: packages/indexer
+        run: |
+          node scripts/indexer-accuracy-audit.js \
+            --limit 200 \
+            --json-file indexer-accuracy-report.json \
+            --markdown-file indexer-accuracy-report.md
+
+      - name: Read report metadata
+        id: metadata
+        if: always()
+        working-directory: packages/indexer
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+
+          const outputPath = process.env.GITHUB_OUTPUT;
+          const report = JSON.parse(
+            fs.readFileSync("indexer-accuracy-report.json", "utf8")
+          );
+
+          fs.appendFileSync(
+            outputPath,
+            `has_anomalies=${report.summary.totalAnomalies > 0}\n`
+          );
+          fs.appendFileSync(
+            outputPath,
+            `total_anomalies=${report.summary.totalAnomalies}\n`
+          );
+          NODE
+
+      - name: Upload audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: indexer-accuracy-audit
+          path: |
+            packages/indexer/indexer-accuracy-report.json
+            packages/indexer/indexer-accuracy-report.md
+
+      - name: Publish job summary
+        if: always()
+        working-directory: packages/indexer
+        run: cat indexer-accuracy-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build concise GitHub issue body
+        if: always() && steps.metadata.outputs.has_anomalies == 'true'
+        working-directory: packages/indexer
+        run: |
+          node scripts/indexer-accuracy-issue-body.js \
+            --report-json indexer-accuracy-report.json \
+            --report-markdown indexer-accuracy-report.md \
+            --issue-body-file indexer-accuracy-issue-body.md \
+            --report-url-file indexer-accuracy-report-url.txt \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Create or update GitHub issue
+        if: always() && steps.metadata.outputs.has_anomalies == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("node:fs");
+            const title = "[Indexer Audit] Data accuracy anomalies";
+            const body = fs.readFileSync(
+              "packages/indexer/indexer-accuracy-issue-body.md",
+              "utf8"
+            );
+            const issueBody = body;
+
+            const { owner, repo } = context.repo;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: "open",
+              per_page: 100,
+            });
+
+            const existing = issues.find(
+              (issue) => !issue.pull_request && issue.title === title
+            );
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body: issueBody,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body: issueBody,
+              });
+            }
