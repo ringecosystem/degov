@@ -387,11 +387,7 @@ export class TokenHandler {
     }
 
     const id = `${fromDelegate}_${toDelegate}`;
-    const storedDelegate = await this.ctx.store.findOne(Delegate, {
-      where: {
-        id,
-      },
-    });
+    const storedDelegate = await this.getDelegateById(id);
 
     if (storedDelegate) {
       storedDelegate.blockNumber = options.blockNumber;

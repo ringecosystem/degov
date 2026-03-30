@@ -887,6 +887,92 @@ describe("token vote power checkpoints", () => {
     });
   });
 
+  it("preserves in-batch delegate power when snapshots update the same relation before flush", async () => {
+    class SnapshotBlindStore extends MemoryStore {
+      override async findOne(
+        entity: any,
+        options: { where: Record<string, unknown> }
+      ) {
+        if (entity === Delegate && "id" in options.where) {
+          return undefined;
+        }
+        return super.findOne(entity, options);
+      }
+    }
+
+    const store = new SnapshotBlindStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    await (handler as any).storeDelegate(
+      new Delegate({
+        chainId: 1,
+        daoCode: "demo",
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+        contractAddress: "0x8888888888888888888888888888888888888888",
+        logIndex: 1,
+        transactionIndex: 1,
+        fromDelegate: "0x3a3ee61f7c6e1994a2001762250a5e17b2061b6d",
+        toDelegate: "0x809fa673fe2ab515faa168259cb14e2bedebf68e",
+        blockNumber: 22431465n,
+        blockTimestamp: 1n,
+        transactionHash: "0xpositive",
+        power: 115702885900196237403783n,
+      })
+    );
+
+    await (handler as any).upsertDelegateSnapshot({
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      contractAddress: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 2,
+      fromDelegate: "0x3a3ee61f7c6e1994a2001762250a5e17b2061b6d",
+      toDelegate: "0x809fa673fe2ab515faa168259cb14e2bedebf68e",
+      blockNumber: 22434323n,
+      blockTimestamp: 2n,
+      transactionHash: "0xsnapshot",
+      isCurrent: false,
+    });
+
+    await (handler as any).storeDelegate(
+      new Delegate({
+        chainId: 1,
+        daoCode: "demo",
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+        contractAddress: "0x8888888888888888888888888888888888888888",
+        logIndex: 3,
+        transactionIndex: 3,
+        fromDelegate: "0x3a3ee61f7c6e1994a2001762250a5e17b2061b6d",
+        toDelegate: "0x809fa673fe2ab515faa168259cb14e2bedebf68e",
+        blockNumber: 22434323n,
+        blockTimestamp: 2n,
+        transactionHash: "0xnegative",
+        power: -115702885900196237403783n,
+      })
+    );
+
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x3a3ee61f7c6e1994a2001762250a5e17b2061b6d_0x809fa673fe2ab515faa168259cb14e2bedebf68e"
+      )
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+      transactionHash: "0xnegative",
+    });
+  });
+
   it("tracks ERC721 transfers as token ids while applying single-vote power deltas", async () => {
     const store = new MemoryStore([
       new DataMetric({

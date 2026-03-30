@@ -56,6 +56,19 @@ smart-start-force:
 graphql-server:
     sh ./scripts/graphql-server.sh
 
+verify-range config_path start_block end_block force='force':
+    sh ./scripts/local-verify-range.sh "{{config_path}}" "{{start_block}}" "{{end_block}}" "{{force}}"
+
+verify-sample delegator delegate='':
+    if [ -n "{{delegate}}" ]; then \
+      node ./scripts/local-verify-query.mjs --delegator "{{delegator}}" --delegate "{{delegate}}"; \
+    else \
+      node ./scripts/local-verify-query.mjs --delegator "{{delegator}}"; \
+    fi
+
+verify-negative-current limit='20':
+    node ./scripts/local-verify-query.mjs --negative-current --limit "{{limit}}"
+
 reconcile:
     {{yarn}} run build
     node lib/reconcile.js
