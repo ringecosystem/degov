@@ -930,6 +930,347 @@ describe("token vote power checkpoints", () => {
     });
     expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(2n);
   });
+
+  it("does not leave negative historical delegate rows after redelegation cycles", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+    const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    const txBatches = [
+      [
+        {
+          method: "Transfer",
+          value: 30_000000000000000000n,
+          from: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          to: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          fromDelegate: "0x0000000000000000000000000000000000000000",
+          toDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 0n,
+          newVotes: 30_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "Transfer",
+          value: 15_000000000000000000n,
+          from: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          to: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 30_000000000000000000n,
+          newVotes: 45_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          fromDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          toDelegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 45_000000000000000000n,
+          newVotes: 0n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+          previousVotes: 0n,
+          newVotes: 45_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+          fromDelegate: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+          toDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+          previousVotes: 30_000000000000000000n,
+          newVotes: 0n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 0n,
+          newVotes: 30_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          fromDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          toDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          previousVotes: 25_000000000000000000n,
+          newVotes: 0n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 30_000000000000000000n,
+          newVotes: 55_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          fromDelegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+          toDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+          previousVotes: 45_000000000000000000n,
+          newVotes: 0n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 55_000000000000000000n,
+          newVotes: 100_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "Transfer",
+          value: 25_000000000000000000n,
+          from: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          to: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 100_000000000000000000n,
+          newVotes: 75_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          fromDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          toDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 75_000000000000000000n,
+          newVotes: 50_000000000000000000n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          previousVotes: 0n,
+          newVotes: 25_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+          fromDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          toDelegate: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 50_000000000000000000n,
+          newVotes: 20_000000000000000000n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xa23d90f2fb496f3055d3d96a2dc991e9133efee9",
+          previousVotes: 0n,
+          newVotes: 30_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          fromDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          toDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          previousVotes: 25_000000000000000000n,
+          newVotes: 0n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 20_000000000000000000n,
+          newVotes: 45_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          fromDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          toDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 45_000000000000000000n,
+          newVotes: 20_000000000000000000n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          previousVotes: 0n,
+          newVotes: 25_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          fromDelegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          toDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          previousVotes: 20_000000000000000000n,
+          newVotes: 0n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          previousVotes: 25_000000000000000000n,
+          newVotes: 45_000000000000000000n,
+        },
+      ],
+      [
+        {
+          method: "DelegateChanged",
+          delegator: "0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+          fromDelegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          toDelegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+          previousVotes: 75_000000000000000000n,
+          newVotes: 55_000000000000000000n,
+        },
+        {
+          method: "DelegateVotesChanged",
+          delegate: "0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+          previousVotes: 0n,
+          newVotes: 20_000000000000000000n,
+        },
+      ],
+    ] as const;
+
+    for (const [index, batch] of txBatches.entries()) {
+      const transactionHash = `0xtx${index + 1}`;
+      for (const [logIndex, entry] of batch.entries()) {
+        const baseLog = {
+          id: `${transactionHash}-${logIndex + 1}`,
+          address: "0x8888888888888888888888888888888888888888",
+          logIndex: logIndex + 1,
+          transactionIndex: 1,
+          block: {
+            height: index + 1,
+            timestamp: 1_700_000_000_000 + index * 1_000,
+          },
+          transactionHash,
+        } as any;
+
+        if (entry.method === "DelegateChanged") {
+          jest
+            .spyOn(itokenerc20.events.DelegateChanged, "decode")
+            .mockReturnValueOnce(entry as any);
+          await (handler as any).storeDelegateChanged(baseLog);
+          continue;
+        }
+
+        if (entry.method === "DelegateVotesChanged") {
+          jest
+            .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+            .mockReturnValueOnce(entry as any);
+          await (handler as any).storeDelegateVotesChanged(baseLog);
+          continue;
+        }
+
+        jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+          from: entry.from,
+          to: entry.to,
+          value: entry.value,
+        } as any);
+        await (handler as any).storeTokenTransfer(baseLog);
+      }
+    }
+
+    await (handler as any).flush();
+
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xf25f97f6f7657a210daeb1cd6042b769fae95488_0xf25f97f6f7657a210daeb1cd6042b769fae95488",
+      ),
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xf25f97f6f7657a210daeb1cd6042b769fae95488_0x3e8436e87abb49efe1a958ee73fbb7a12b419aab",
+      ),
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xf25f97f6f7657a210daeb1cd6042b769fae95488_0x92e9fb99e99d79bc47333e451e7c6490dbf24b22",
+      ),
+    ).toMatchObject({
+      power: 20_000000000000000000n,
+      isCurrent: true,
+    });
+
+    const negativeDelegates = [...store.allEntities(Delegate)].filter(
+      (delegate) => delegate.power < 0n,
+    );
+    expect(negativeDelegates).toEqual([]);
+  });
 });
 
 class MemoryStore {
@@ -962,6 +1303,10 @@ class MemoryStore {
 
   findEntity(entity: any, id: string) {
     return this.records.get(entity.name)?.get(id);
+  }
+
+  allEntities(entity: any) {
+    return [...(this.records.get(entity.name)?.values() ?? [])];
   }
 
   private upsert(entity: any) {

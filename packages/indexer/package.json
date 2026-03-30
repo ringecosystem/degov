@@ -9,6 +9,7 @@
     "codegen": "sqd codegen",
     "migrate:db": "zx scripts/sqd-migration.mjs",
     "build": "sqd build",
+    "repair:token-state": "node lib/repair-token-state.js",
     "reconcile": "node lib/reconcile.js",
     "replay:backfill": "./scripts/replay-backfill.sh",
     "test": "jest --runInBand",
