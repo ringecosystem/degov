@@ -214,6 +214,10 @@ export class GovernorHandler {
     return DegovIndexerHelpers.normalizeAddress(value);
   }
 
+  private stdAddresses(values?: readonly string[] | null): string[] {
+    return (values ?? []).map((value) => this.stdAddress(value) ?? value);
+  }
+
   private async findProposal(
     proposalId: string,
   ): Promise<Proposal | undefined> {
@@ -687,12 +691,14 @@ export class GovernorHandler {
   private async storeProposalCreated(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.ProposalCreated.decode(eventLog);
     const proposalId = this.stdProposalId(event.proposalId);
+    const proposer = this.stdAddress(event.proposer) ?? event.proposer;
+    const targets = this.stdAddresses(event.targets);
     const entity = new ProposalCreated({
       id: eventLog.id,
       ...this.eventFields(eventLog),
       proposalId,
-      proposer: event.proposer,
-      targets: event.targets,
+      proposer,
+      targets,
       values: event.values.map((item) => item.toString()),
       signatures: event.signatures,
       calldatas: event.calldatas,
@@ -707,7 +713,7 @@ export class GovernorHandler {
     this.ctx.log.info(
       DegovIndexerHelpers.formatLogLine("governor.proposal created", {
         proposalId,
-        proposer: event.proposer,
+        proposer,
         block: eventLog.block.height,
         tx: eventLog.transactionHash,
       }),
@@ -733,8 +739,8 @@ export class GovernorHandler {
       id: eventLog.id,
       ...this.eventFields(eventLog),
       proposalId,
-      proposer: event.proposer,
-      targets: event.targets,
+      proposer,
+      targets,
       values: event.values.map((item) => item.toString()),
       signatures: event.signatures,
       calldatas: event.calldatas,
@@ -1089,10 +1095,11 @@ export class GovernorHandler {
 
   private async storeVoteCast(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.VoteCast.decode(eventLog);
+    const voter = this.stdAddress(event.voter) ?? event.voter;
     const entity = new VoteCast({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      voter: event.voter,
+      voter,
       proposalId: this.stdProposalId(event.proposalId),
       support: event.support,
       weight: event.weight,
@@ -1107,7 +1114,7 @@ export class GovernorHandler {
       id: eventLog.id,
       ...this.eventFields(eventLog),
       type: "vote-cast-without-params",
-      voter: event.voter,
+      voter,
       refProposalId: this.stdProposalId(event.proposalId),
       support: event.support,
       weight: event.weight,
@@ -1121,10 +1128,11 @@ export class GovernorHandler {
 
   private async storeVoteCastWithParams(eventLog: EvmLog<EvmFieldSelection>) {
     const event = igovernorAbi.events.VoteCastWithParams.decode(eventLog);
+    const voter = this.stdAddress(event.voter) ?? event.voter;
     const entity = new VoteCastWithParams({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      voter: event.voter,
+      voter,
       proposalId: this.stdProposalId(event.proposalId),
       support: event.support,
       weight: event.weight,
@@ -1140,7 +1148,7 @@ export class GovernorHandler {
       id: eventLog.id,
       ...this.eventFields(eventLog),
       type: "vote-cast-with-params",
-      voter: event.voter,
+      voter,
       refProposalId: this.stdProposalId(event.proposalId),
       support: event.support,
       weight: event.weight,

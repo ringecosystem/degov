@@ -807,6 +807,86 @@ describe("token vote power checkpoints", () => {
     });
   });
 
+  it("matches delegate vote changes even when delegate rolling uses checksum addresses", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValue({
+        delegator: "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
+        fromDelegate: "0x0000000000000000000000000000000000000000",
+        toDelegate: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-checksum-delegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: {
+        height: 12,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xchecksum-delegate",
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValue({
+        delegate: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        previousVotes: 0n,
+        newVotes: 50n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-checksum-votes",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: {
+        height: 12,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: "0xchecksum-delegate",
+    } as any);
+
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({
+      power: 50n,
+      isCurrent: true,
+      transactionHash: "0xchecksum-delegate",
+    });
+    expect(
+      store.findEntity(DelegateMapping, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    ).toMatchObject({
+      to: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      power: 50n,
+      transactionHash: "0xchecksum-delegate",
+    });
+    expect(
+      store.findEntity(Contributor, "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    ).toMatchObject({
+      power: 50n,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
+      transactionHash: "0xchecksum-delegate",
+    });
+  });
+
   it("tracks ERC721 transfers as token ids while applying single-vote power deltas", async () => {
     const store = new MemoryStore([
       new DataMetric({

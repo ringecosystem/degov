@@ -497,9 +497,9 @@ export class TokenHandler {
       const delegateRolling = new DelegateRolling({
         id: eventLog.id,
         ...this.eventFields(eventLog),
-        delegator: event.delegator,
-        fromDelegate: event.fromDelegate,
-        toDelegate: event.toDelegate,
+        delegator,
+        fromDelegate,
+        toDelegate,
         blockNumber: BigInt(eventLog.block.height),
         blockTimestamp: BigInt(eventLog.block.timestamp),
         transactionHash: eventLog.transactionHash,
@@ -604,9 +604,9 @@ export class TokenHandler {
     const delegateRolling = new DelegateRolling({
       id: eventLog.id,
       ...this.eventFields(eventLog),
-      delegator: event.delegator,
-      fromDelegate: event.fromDelegate,
-      toDelegate: event.toDelegate,
+      delegator,
+      fromDelegate,
+      toDelegate,
       blockNumber: BigInt(eventLog.block.height),
       blockTimestamp: BigInt(eventLog.block.timestamp),
       transactionHash: eventLog.transactionHash,
@@ -729,10 +729,26 @@ export class TokenHandler {
       );
       return;
     }
-    const dvcDelegate = options.delegate.toLowerCase();
+    const dvcDelegate =
+      DegovIndexerHelpers.normalizeAddress(options.delegate) ??
+      options.delegate.toLowerCase();
+    const rollingDelegator =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.delegator) ??
+      delegateRolling.delegator.toLowerCase();
+    const rollingFromDelegate =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.fromDelegate) ??
+      delegateRolling.fromDelegate.toLowerCase();
+    const rollingToDelegate =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.toDelegate) ??
+      delegateRolling.toDelegate.toLowerCase();
+
+    delegateRolling.delegator = rollingDelegator;
+    delegateRolling.fromDelegate = rollingFromDelegate;
+    delegateRolling.toDelegate = rollingToDelegate;
+
     if (
-      dvcDelegate !== delegateRolling.fromDelegate &&
-      dvcDelegate !== delegateRolling.toDelegate
+      dvcDelegate !== rollingFromDelegate &&
+      dvcDelegate !== rollingToDelegate
     ) {
       DegovIndexerHelpers.logVerboseInfo(
         this.ctx.log,
@@ -740,8 +756,8 @@ export class TokenHandler {
         {
           reason: "delegate-mismatch-for-transaction",
           delegate: options.delegate,
-          expectedFrom: delegateRolling.fromDelegate,
-          expectedTo: delegateRolling.toDelegate,
+          expectedFrom: rollingFromDelegate,
+          expectedTo: rollingToDelegate,
           tx: options.transactionHash,
         },
       );
@@ -758,36 +774,36 @@ export class TokenHandler {
      }
     */
     let fromDelegate, toDelegate;
-    if (options.delegate === delegateRolling.fromDelegate) {
+    if (dvcDelegate === rollingFromDelegate) {
       const isDelegateChangeToAnother =
-        delegateRolling.delegator !== delegateRolling.fromDelegate &&
-        delegateRolling.delegator !== delegateRolling.toDelegate;
+        rollingDelegator !== rollingFromDelegate &&
+        rollingDelegator !== rollingToDelegate;
 
       delegateRolling.fromNewVotes = options.newVotes;
       delegateRolling.fromPreviousVotes = options.previousVotes;
       // retuning power to self
       if (
-        (delegateRolling.delegator === delegateRolling.toDelegate &&
-          delegateRolling.fromDelegate !== zeroAddress) ||
+        (rollingDelegator === rollingToDelegate &&
+          rollingFromDelegate !== zeroAddress) ||
         isDelegateChangeToAnother
       ) {
-        fromDelegate = delegateRolling.delegator;
-        toDelegate = delegateRolling.fromDelegate;
+        fromDelegate = rollingDelegator;
+        toDelegate = rollingFromDelegate;
       } else {
         // delegate to other
-        fromDelegate = delegateRolling.fromDelegate;
-        toDelegate = delegateRolling.delegator;
+        fromDelegate = rollingFromDelegate;
+        toDelegate = rollingDelegator;
       }
     }
-    if (options.delegate === delegateRolling.toDelegate) {
+    if (dvcDelegate === rollingToDelegate) {
       delegateRolling.toNewVotes = options.newVotes;
       delegateRolling.toPreviousVotes = options.previousVotes;
 
-      fromDelegate = delegateRolling.delegator;
+      fromDelegate = rollingDelegator;
       toDelegate =
-        delegateRolling.delegator === delegateRolling.toDelegate
-          ? delegateRolling.delegator
-          : delegateRolling.toDelegate;
+        rollingDelegator === rollingToDelegate
+          ? rollingDelegator
+          : rollingToDelegate;
     }
 
     const delegate = new Delegate({

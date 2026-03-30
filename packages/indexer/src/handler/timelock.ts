@@ -65,6 +65,10 @@ export class TimelockHandler {
     );
   }
 
+  private stdAddress(value?: string | null): string | undefined {
+    return DegovIndexerHelpers.normalizeAddress(value);
+  }
+
   private scopeFields(): TimelockScopeFields {
     return {
       chainId: this.options.chainId,
@@ -301,6 +305,7 @@ export class TimelockHandler {
   private async storeCallScheduled(eventLog: EvmLog<EvmFieldSelection>) {
     const event = itimelockcontrollerAbi.events.CallScheduled.decode(eventLog);
     const operationId = event.id.toLowerCase();
+    const target = this.stdAddress(event.target) ?? event.target;
     const operation = await this.findOrCreateOperation(operationId);
 
     operation.contractAddress = this.timelockAddress();
@@ -338,7 +343,7 @@ export class TimelockHandler {
           ? this.proposalActionId(operation.proposal, Number(event.index))
           : undefined,
         actionIndex: Number(event.index),
-        target: event.target,
+        target,
         value: event.value.toString(),
         data: event.data,
         predecessor: event.predecessor.toLowerCase(),
@@ -360,7 +365,7 @@ export class TimelockHandler {
     call.proposalActionId = operation.proposal
       ? this.proposalActionId(operation.proposal, Number(event.index))
       : undefined;
-    call.target = event.target;
+    call.target = target;
     call.value = event.value.toString();
     call.data = event.data;
     call.predecessor = event.predecessor.toLowerCase();
@@ -377,6 +382,7 @@ export class TimelockHandler {
   private async storeCallExecuted(eventLog: EvmLog<EvmFieldSelection>) {
     const event = itimelockcontrollerAbi.events.CallExecuted.decode(eventLog);
     const operationId = event.id.toLowerCase();
+    const target = this.stdAddress(event.target) ?? event.target;
     const operation = await this.findOrCreateOperation(operationId);
     const actionIndex = Number(event.index);
     const callId = timelockCallEntityId(operation.id, actionIndex);
@@ -398,7 +404,7 @@ export class TimelockHandler {
           ? this.proposalActionId(operation.proposal, actionIndex)
           : undefined,
         actionIndex,
-        target: event.target,
+        target,
         value: event.value.toString(),
         data: event.data,
         state: TIMELOCK_STATE_DONE,
@@ -421,7 +427,7 @@ export class TimelockHandler {
       ? this.proposalActionId(operation.proposal, actionIndex)
       : undefined;
     call.actionIndex = actionIndex;
-    call.target = event.target;
+    call.target = target;
     call.value = event.value.toString();
     call.data = event.data;
     call.state = TIMELOCK_STATE_DONE;
