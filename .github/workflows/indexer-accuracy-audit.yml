@@ -36,8 +36,20 @@ jobs:
         id: audit
         working-directory: packages/indexer
         run: |
+          cat <<'YAML' > indexer-accuracy-audit-config.yml
+          - name: ens-dao
+            indexer: https://indexer.degov.ai/ens-dao/graphql
+            limit: 100
+          - name: seamless-dao
+            indexer: https://indexer.degov.ai/seamless-dao/graphql
+            limit: 100
+          - name: ring-dao
+            indexer: https://indexer.degov.ai/ring-dao/graphql
+            limit: 100
+          YAML
+
           node scripts/indexer-accuracy-audit.js \
-            --limit 200 \
+            --audit-config-file indexer-accuracy-audit-config.yml \
             --json-file indexer-accuracy-report.json \
             --markdown-file indexer-accuracy-report.md
 
