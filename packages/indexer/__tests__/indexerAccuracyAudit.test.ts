@@ -1,6 +1,9 @@
 const {
   auditTarget,
   buildMarkdownReport,
+  compactAmount,
+  fetchNegativeRows,
+  fetchTopContributors,
   parseArgs,
   summarizeAudit,
 } = require("../scripts/indexer-accuracy-audit");
@@ -176,6 +179,145 @@ describe("indexer accuracy audit", () => {
     expect(options.markdownFile).toBe("report.md");
     expect(options.targetsFile).toMatch(/custom-targets\.json$/);
     expect(options.failOnAnomalies).toBe(true);
+  });
+
+  it("preserves compact negative zero display when formatting tiny negatives", () => {
+    expect(compactAmount("-1", 18)).toBe("-0");
+  });
+
+  it("paginates contributors until the full set is fetched", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            contributors: [
+              { id: "0x1", power: "100" },
+              { id: "0x2", power: "90" },
+            ],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            contributors: [{ id: "0x3", power: "80" }],
+          },
+        }),
+      });
+    global.fetch = fetchMock;
+
+    await expect(
+      fetchTopContributors(
+        {
+          indexerEndpoint: "https://indexer.example/graphql",
+        },
+        2
+      )
+    ).resolves.toEqual([
+      { id: "0x1", power: "100" },
+      { id: "0x2", power: "90" },
+      { id: "0x3", power: "80" },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).variables).toEqual({
+      limit: 2,
+      offset: 0,
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).variables).toEqual({
+      limit: 2,
+      offset: 2,
+    });
+
+    global.fetch = originalFetch;
+  });
+
+  it("paginates negative rows until contributors and delegates are exhausted", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            contributors: [
+              { id: "0xdead", power: "-1" },
+              { id: "0xbeef", power: "-2" },
+            ],
+            delegates: [
+              {
+                id: "0x1_0x2",
+                fromDelegate: "0x1",
+                toDelegate: "0x2",
+                power: "-3",
+              },
+              {
+                id: "0x3_0x4",
+                fromDelegate: "0x3",
+                toDelegate: "0x4",
+                power: "-4",
+              },
+            ],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            contributors: [],
+            delegates: [
+              {
+                id: "0x5_0x6",
+                fromDelegate: "0x5",
+                toDelegate: "0x6",
+                power: "-5",
+              },
+            ],
+          },
+        }),
+      });
+    global.fetch = fetchMock;
+
+    await expect(
+      fetchNegativeRows(
+        {
+          indexerEndpoint: "https://indexer.example/graphql",
+        },
+        2
+      )
+    ).resolves.toEqual({
+      contributors: [
+        { id: "0xdead", power: "-1" },
+        { id: "0xbeef", power: "-2" },
+      ],
+      delegates: [
+        {
+          id: "0x1_0x2",
+          fromDelegate: "0x1",
+          toDelegate: "0x2",
+          power: "-3",
+        },
+        {
+          id: "0x3_0x4",
+          fromDelegate: "0x3",
+          toDelegate: "0x4",
+          power: "-4",
+        },
+        {
+          id: "0x5_0x6",
+          fromDelegate: "0x5",
+          toDelegate: "0x6",
+          power: "-5",
+        },
+      ],
+    });
+
+    global.fetch = originalFetch;
   });
 
   it("builds a concise GitHub issue body with external report links", () => {
