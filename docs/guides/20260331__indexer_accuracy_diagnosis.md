@@ -77,6 +77,23 @@ It also checks whether the target address itself already has:
 - negative `Contributor` rows
 - negative `Delegate` rows touching the address
 
+For negative current `Delegate` rows, the script now also prints tx-local
+signals that help identify the remaining ENS failure family:
+
+- `noop-same-target=yes`: the delegator history contains a no-op
+  `DelegateChanged(A -> A)` for the same delegate target
+- `same-target-dc=<n>`: how many `DelegateChanged` rows in history point to the
+  same target delegate
+- `transfer-overlap-dc=<n>`: how many of those target-facing delegate changes
+  share a transaction hash with a `Transfer`
+
+That combination is the signature of the tx-local `DelegateRolling` /
+`DelegateVotesChanged` mismatch family:
+
+- multiple delegators appear in the same transaction
+- or the same delegate target appears multiple times in the same transaction
+- and one or more no-op `DelegateChanged(A -> A)` rows pollute rolling matching
+
 ## How to read the output
 
 The script prints 4 sections:
@@ -99,6 +116,14 @@ If the script finds bad mappings, it prints a `Suspects` section with:
 - latest relevant `Transfer`
 - latest relevant `VotePowerCheckpoint`
 
+If it finds negative current `Delegate` rows, it also prints a
+`Negative Delegate Analyses` section with:
+
+- the negative row power
+- the current `DelegateMapping` power for the same edge
+- the classification hint
+- tx-local rolling mismatch signals
+
 ## Example: ENS `0x983110...`
 
 This command:
@@ -119,6 +144,50 @@ was used to diagnose an ENS mismatch where:
 
 That showed the real bug: the relation target was still correct, but the
 transfer-out had not cleared the current mapping power.
+
+## Example: ENS negative delegate family
+
+This command:
+
+```bash
+cd /code/helixbox/degov/packages/indexer
+just diagnose-address 0x1f3d3a7a9c548be39539b39d7400302753e20591 ens-dao
+```
+
+now prints a `Negative Delegate Analyses` section such as:
+
+```text
+- 0x04b05... -> 0x1f3d...: row -3.32K, mapping ... power -3.32K,
+  hint negative-mapping-from-tx-local-rolling-mismatch,
+  signals noop-same-target=yes, same-target-dc=2, transfer-overlap-dc=2
+```
+
+Read that output as:
+
+- the current edge itself is already negative
+- the delegator history contains a no-op delegate change for the same target
+- the target appears multiple times in delegate-change rows
+- those delegate changes overlap with transfer rows in the same transaction
+
+That is the signature of the ENS tx-local pairing bug fixed in
+`packages/indexer/src/handler/token.ts`:
+
+- `storeTokenTransfer()` must not skip the incoming transfer side just because a
+  same-tx delegate change exists for that delegator
+- `updateDelegateRolling()` must not let aggregate same-tx
+  `DelegateVotesChanged` deltas override the exact transfer-backed relation
+- no-op `DelegateChanged(A -> A)` rows must not be allowed to pollute rolling
+  matching
+
+The same family can also appear as `index-lower-than-chain`, not only as a
+negative edge. In that variant, a same-tx outgoing delta that belongs to a
+different delegator is subtracted from the wrong transfer-backed relation. The
+diagnosis signature is usually:
+
+- one negative current edge already exists for the same target
+- another current mapping for the same target shows `indexed-power-lower-than-balance`
+- the lower mapping and the negative edge share transaction-local overlap with
+  `DelegateChanged` and `Transfer` rows
 
 ## Related commands
 

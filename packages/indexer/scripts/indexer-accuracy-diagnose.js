@@ -445,6 +445,7 @@ function buildSummary({
   negativeContributors,
   negativeDelegates,
   inspectedMappings,
+  negativeDelegateAnalyses,
 }) {
   const mismatchCount = inspectedMappings.filter(
     (entry) => entry.anomaly !== null,
@@ -473,12 +474,119 @@ function buildSummary({
       : null,
     negativeContributors,
     negativeDelegates,
+    negativeDelegateAnalyses,
     mappingChecks: {
       checked: inspectedMappings.length,
       mismatches: mismatchCount,
       explainedDelta: explainedDelta.toString(),
     },
     mismatchedMappings: inspectedMappings.filter((entry) => entry.anomaly),
+  };
+}
+
+function collectNegativeDelegateSignals({
+  row,
+  currentMapping,
+  history,
+}) {
+  const mappingPower = currentMapping ? BigInt(currentMapping.power) : null;
+  const rowPower = BigInt(row.power);
+  const noopChangesInSameTarget = (history.delegateChangeds ?? []).some(
+    (item) =>
+      item.fromDelegate?.toLowerCase() === item.toDelegate?.toLowerCase() &&
+      item.toDelegate?.toLowerCase() === row.toDelegate.toLowerCase(),
+  );
+  const sameTargetDelegateChanges = (history.delegateChangeds ?? []).filter(
+    (item) => item.toDelegate?.toLowerCase() === row.toDelegate.toLowerCase(),
+  );
+  const txsWithTransferAndDelegateChange = new Set(
+    (history.tokenTransfers ?? []).map((item) => item.transactionHash),
+  );
+  const overlappingDelegateChangeCount = sameTargetDelegateChanges.filter(
+    (item) => txsWithTransferAndDelegateChange.has(item.transactionHash),
+  ).length;
+
+  return {
+    rowPower,
+    mappingPower,
+    noopChangesInSameTarget,
+    sameTargetDelegateChangeCount: sameTargetDelegateChanges.length,
+    overlappingDelegateChangeCount,
+  };
+}
+
+function classifyNegativeDelegate({
+  row,
+  currentMapping,
+  history,
+}) {
+  if (!currentMapping && row.isCurrent) {
+    return "negative-current-delegate-without-mapping";
+  }
+  if (!currentMapping) {
+    return "negative-historical-delegate-without-mapping";
+  }
+
+  const {
+    rowPower,
+    mappingPower,
+    noopChangesInSameTarget,
+    overlappingDelegateChangeCount,
+  } = collectNegativeDelegateSignals({
+    row,
+    currentMapping,
+    history,
+  });
+
+  if (mappingPower === 0n && row.isCurrent) {
+    return "current-delegate-drift-after-mapping-zeroed";
+  }
+  if (
+    mappingPower < 0n &&
+    (noopChangesInSameTarget || overlappingDelegateChangeCount > 0)
+  ) {
+    return "negative-mapping-from-tx-local-rolling-mismatch";
+  }
+  if (
+    mappingPower > 0n &&
+    row.isCurrent &&
+    currentMapping.to?.toLowerCase() === row.toDelegate.toLowerCase()
+  ) {
+    return "current-delegate-drift-below-current-mapping";
+  }
+  if (mappingPower === rowPower) {
+    return "negative-mapping-power";
+  }
+
+  return "negative-delegate-needs-manual-review";
+}
+
+async function inspectNegativeDelegate(target, row, historyLimit) {
+  const history = await graphqlRequest(
+    target.indexerEndpoint,
+    DELEGATOR_HISTORY_QUERY,
+    {
+      delegator: row.fromDelegate,
+      delegateId: row.id,
+      historyLimit,
+    },
+  );
+  const currentMapping = history.delegateMappings?.[0] ?? null;
+
+  return {
+    row,
+    currentMapping,
+    signals: collectNegativeDelegateSignals({
+      row,
+      currentMapping,
+      history,
+    }),
+    classification: classifyNegativeDelegate({
+      row,
+      currentMapping,
+      history,
+    }),
+    history,
   };
 }
 
@@ -509,6 +617,31 @@ function printHumanReport(report) {
     `Negative contributor rows: ${report.negativeContributors.length}`,
     `Negative delegate rows touching address: ${report.negativeDelegates.length}`,
   ]);
+
+  if ((report.negativeDelegateAnalyses ?? []).length > 0) {
+    printSection(
+      "Negative Delegate Analyses",
+      report.negativeDelegateAnalyses.map((entry) => {
+        const mapping = entry.currentMapping;
+        const mappingText = mapping
+          ? `${mapping.from} -> ${mapping.to} power ${compactAmount(mapping.power, decimals)}`
+          : "missing";
+        const signals = entry.signals ?? {};
+        const signalText = [
+          signals.noopChangesInSameTarget ? "noop-same-target=yes" : null,
+          Number.isInteger(signals.sameTargetDelegateChangeCount)
+            ? `same-target-dc=${signals.sameTargetDelegateChangeCount}`
+            : null,
+          Number.isInteger(signals.overlappingDelegateChangeCount)
+            ? `transfer-overlap-dc=${signals.overlappingDelegateChangeCount}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        return `- ${entry.row.fromDelegate} -> ${entry.row.toDelegate}: row ${compactAmount(entry.row.power, decimals)}, mapping ${mappingText}, hint ${entry.classification}${signalText ? `, signals ${signalText}` : ""}`;
+      }),
+    );
+  }
 
   printSection("Mapping Checks", [
     `Incoming mappings checked: ${report.mappingChecks.checked}`,
@@ -580,6 +713,11 @@ async function diagnoseAddress(options) {
         options.historyLimit,
       ),
   );
+  const negativeDelegateAnalyses = await runWithConcurrency(
+    overview.delegates ?? [],
+    options.concurrency,
+    (row) => inspectNegativeDelegate(target, row, options.historyLimit),
+  );
 
   return buildSummary({
     target,
@@ -588,6 +726,7 @@ async function diagnoseAddress(options) {
     negativeContributors: overview.negativeContributors ?? [],
     negativeDelegates: overview.delegates ?? [],
     inspectedMappings: enrichedMappings,
+    negativeDelegateAnalyses,
   });
 }
 
@@ -605,6 +744,8 @@ async function main(argv = process.argv.slice(2)) {
 
 module.exports = {
   classifyMappingAnomaly,
+  classifyNegativeDelegate,
+  collectNegativeDelegateSignals,
   diagnoseAddress,
   parseArgs,
   resolveTarget,

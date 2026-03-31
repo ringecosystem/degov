@@ -1,5 +1,7 @@
 const {
   classifyMappingAnomaly,
+  classifyNegativeDelegate,
+  collectNegativeDelegateSignals,
   parseArgs,
 } = require("../scripts/indexer-accuracy-diagnose");
 
@@ -50,5 +52,92 @@ describe("indexer accuracy diagnose", () => {
         expectedDelegate: "0x2222222222222222222222222222222222222222",
       }),
     ).toBe("negative-mapping-power");
+  });
+
+  it("classifies negative delegate rows caused by tx-local rolling mismatches and drift", () => {
+    expect(
+      classifyNegativeDelegate({
+        row: {
+          fromDelegate: "0x1",
+          toDelegate: "0x2",
+          power: "-10",
+          isCurrent: true,
+        },
+        currentMapping: {
+          from: "0x1",
+          to: "0x2",
+          power: "0",
+        },
+        history: {
+          delegateChangeds: [],
+          tokenTransfers: [],
+        },
+      }),
+    ).toBe("current-delegate-drift-after-mapping-zeroed");
+
+    expect(
+      classifyNegativeDelegate({
+        row: {
+          fromDelegate: "0x1",
+          toDelegate: "0x2",
+          power: "-10",
+          isCurrent: true,
+        },
+        currentMapping: {
+          from: "0x1",
+          to: "0x2",
+          power: "-10",
+        },
+        history: {
+          delegateChangeds: [
+            {
+              fromDelegate: "0x2",
+              toDelegate: "0x2",
+              transactionHash: "0xtx",
+            },
+          ],
+          tokenTransfers: [{ transactionHash: "0xtx" }],
+        },
+      }),
+    ).toBe("negative-mapping-from-tx-local-rolling-mismatch");
+  });
+
+  it("collects tx-local rolling mismatch signals for negative delegate rows", () => {
+    expect(
+      collectNegativeDelegateSignals({
+        row: {
+          fromDelegate: "0x1",
+          toDelegate: "0x2",
+          power: "-10",
+          isCurrent: true,
+        },
+        currentMapping: {
+          from: "0x1",
+          to: "0x2",
+          power: "-10",
+        },
+        history: {
+          delegateChangeds: [
+            {
+              fromDelegate: "0x2",
+              toDelegate: "0x2",
+              transactionHash: "0xtx-1",
+            },
+            {
+              fromDelegate: "0x0",
+              toDelegate: "0x2",
+              transactionHash: "0xtx-1",
+            },
+          ],
+          tokenTransfers: [{ transactionHash: "0xtx-1" }],
+        },
+      }),
+    ).toMatchObject({
+      noopChangesInSameTarget: true,
+      sameTargetDelegateChangeCount: 2,
+      overlappingDelegateChangeCount: 2,
+      mappingPower: -10n,
+      rowPower: -10n,
+    });
   });
 });

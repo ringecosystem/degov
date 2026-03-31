@@ -1986,6 +1986,464 @@ describe("token vote power checkpoints", () => {
     });
   });
 
+  it("lets transfer materialize zero-to-delegate relations even when the same transaction has duplicate noop delegate changes", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+    const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValueOnce({
+        delegator: "0x8afe3f1f3c0e4361cfff451f0a6a67b540177006",
+        fromDelegate: zeroAddress,
+        toDelegate: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+      } as any)
+      .mockReturnValueOnce({
+        delegator: "0x8afe3f1f3c0e4361cfff451f0a6a67b540177006",
+        fromDelegate: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+        toDelegate: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+      } as any)
+      .mockReturnValueOnce({
+        delegator: "0x144a042618fb80931f94a6f7daeba00cd200e549",
+        fromDelegate: zeroAddress,
+        toDelegate: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+      } as any)
+      .mockReturnValueOnce({
+        delegator: "0x144a042618fb80931f94a6f7daeba00cd200e549",
+        fromDelegate: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+        toDelegate: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-dc-8afe-open",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 29,
+      transactionIndex: 1,
+      block: { height: 21709282, timestamp: 1_700_000_000_800 },
+      transactionHash:
+        "0xbf10993cf8cbcef7abfdd8708b9dcb5b91bcaff748139bf602929f77d0580980",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0x73cd8626b3cd47b009e68380720cfe6679a3ec3d",
+      to: "0x8afe3f1f3c0e4361cfff451f0a6a67b540177006",
+      value: 2261028221714870294397n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-8afe-in",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 30,
+      transactionIndex: 1,
+      block: { height: 21709282, timestamp: 1_700_000_000_800 },
+      transactionHash:
+        "0xbf10993cf8cbcef7abfdd8708b9dcb5b91bcaff748139bf602929f77d0580980",
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+        previousVotes: 125715773977914439809358n,
+        newVotes: 127976802199629310103755n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+        previousVotes: 127976802199629310103755n,
+        newVotes: 128368248058829310103755n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-dvc-8afe",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 31,
+      transactionIndex: 1,
+      block: { height: 21709282, timestamp: 1_700_000_000_800 },
+      transactionHash:
+        "0xbf10993cf8cbcef7abfdd8708b9dcb5b91bcaff748139bf602929f77d0580980",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-dc-8afe-noop",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 33,
+      transactionIndex: 1,
+      block: { height: 21709282, timestamp: 1_700_000_000_800 },
+      transactionHash:
+        "0xbf10993cf8cbcef7abfdd8708b9dcb5b91bcaff748139bf602929f77d0580980",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-dc-144a-open",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 34,
+      transactionIndex: 1,
+      block: { height: 21709282, timestamp: 1_700_000_000_800 },
+      transactionHash:
+        "0xbf10993cf8cbcef7abfdd8708b9dcb5b91bcaff748139bf602929f77d0580980",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0x73cd8626b3cd47b009e68380720cfe6679a3ec3d",
+      to: "0x144a042618fb80931f94a6f7daeba00cd200e549",
+      value: 391445859200000000000n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-144a-in",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 35,
+      transactionIndex: 1,
+      block: { height: 21709282, timestamp: 1_700_000_000_800 },
+      transactionHash:
+        "0xbf10993cf8cbcef7abfdd8708b9dcb5b91bcaff748139bf602929f77d0580980",
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-dvc-144a",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 36,
+      transactionIndex: 1,
+      block: { height: 21709282, timestamp: 1_700_000_000_800 },
+      transactionHash:
+        "0xbf10993cf8cbcef7abfdd8708b9dcb5b91bcaff748139bf602929f77d0580980",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-dc-144a-noop",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 38,
+      transactionIndex: 1,
+      block: { height: 21709282, timestamp: 1_700_000_000_800 },
+      transactionHash:
+        "0xbf10993cf8cbcef7abfdd8708b9dcb5b91bcaff748139bf602929f77d0580980",
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0x8afe3f1f3c0e4361cfff451f0a6a67b540177006",
+      ),
+    ).toMatchObject({
+      to: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+      power: 2261028221714870294397n,
+    });
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0x144a042618fb80931f94a6f7daeba00cd200e549",
+      ),
+    ).toMatchObject({
+      to: "0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+      power: 391445859200000000000n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x8afe3f1f3c0e4361cfff451f0a6a67b540177006_0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+      ),
+    ).toMatchObject({
+      power: 2261028221714870294397n,
+      isCurrent: true,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x144a042618fb80931f94a6f7daeba00cd200e549_0x839395e20bbb182fa440d08f850e6c7a8f6f0780",
+      ),
+    ).toMatchObject({
+      power: 391445859200000000000n,
+      isCurrent: true,
+    });
+  });
+
+  it("does not let a zero-to-delegate transaction-local vote delta override the exact transfer-backed relation", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+    const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValueOnce({
+        delegator: "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5",
+        fromDelegate: zeroAddress,
+        toDelegate: "0x983110309620d911731ac0932219af06091b6744",
+      } as any)
+      .mockReturnValueOnce({
+        delegator: "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74",
+        fromDelegate: zeroAddress,
+        toDelegate: "0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-dc-a470-open",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 80,
+      transactionIndex: 1,
+      block: { height: 22148285, timestamp: 1_700_000_000_900 },
+      transactionHash:
+        "0x70ed53d947c70cb98e7a817f9b2533adde3b4fd5f464cda5979cc99c3a5afb92",
+    } as any);
+    await (handler as any).storeDelegateChanged({
+      id: "log-dc-1860-open",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 88,
+      transactionIndex: 1,
+      block: { height: 22148285, timestamp: 1_700_000_000_900 },
+      transactionHash:
+        "0x70ed53d947c70cb98e7a817f9b2533adde3b4fd5f464cda5979cc99c3a5afb92",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0x51050ec063d393217b436747617ad1c2285aeeee",
+      to: "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5",
+      value: 400n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-a470-in",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 82,
+      transactionIndex: 1,
+      block: { height: 22148285, timestamp: 1_700_000_000_900 },
+      transactionHash:
+        "0x70ed53d947c70cb98e7a817f9b2533adde3b4fd5f464cda5979cc99c3a5afb92",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0x51050ec063d393217b436747617ad1c2285aeeee",
+      to: "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74",
+      value: 400n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-1860-in",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 90,
+      transactionIndex: 1,
+      block: { height: 22148285, timestamp: 1_700_000_000_900 },
+      transactionHash:
+        "0x70ed53d947c70cb98e7a817f9b2533adde3b4fd5f464cda5979cc99c3a5afb92",
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: "0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+        previousVotes: 38569978041314116254037n,
+        newVotes: 38169978041314116254037n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0x983110309620d911731ac0932219af06091b6744",
+        previousVotes: 108433568266913874152377n,
+        newVotes: 108833568266913874152377n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-dvc-bdb41",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 83,
+      transactionIndex: 1,
+      block: { height: 22148285, timestamp: 1_700_000_000_900 },
+      transactionHash:
+        "0x70ed53d947c70cb98e7a817f9b2533adde3b4fd5f464cda5979cc99c3a5afb92",
+    } as any);
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-dvc-983",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 84,
+      transactionIndex: 1,
+      block: { height: 22148285, timestamp: 1_700_000_000_900 },
+      transactionHash:
+        "0x70ed53d947c70cb98e7a817f9b2533adde3b4fd5f464cda5979cc99c3a5afb92",
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74",
+      ),
+    ).toMatchObject({
+      to: "0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+      power: 400n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74_0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+      ),
+    ).toMatchObject({
+      power: 400n,
+      isCurrent: true,
+    });
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5",
+      ),
+    ).toMatchObject({
+      to: "0x983110309620d911731ac0932219af06091b6744",
+      power: 400n,
+    });
+  });
+
+  it("does not subtract another delegator's same-tx vote delta from a transfer-backed relation", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+    const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValueOnce({
+        delegator: "0x9de403ef57b032afa295fefc65057365efefd3c3",
+        fromDelegate: zeroAddress,
+        toDelegate: "0x1f3d3a7a9c548be39539b39d7400302753e20591",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-dc-9de4-open",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 397,
+      transactionIndex: 1,
+      block: { height: 21297950, timestamp: 1_700_000_001_000 },
+      transactionHash:
+        "0x632305bd11c1136a2b2953e1fc41ebda1b170eb37eb53fb2f41293ecc6b8625d",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0x73cd8626b3cd47b009e68380720cfe6679a3ec3d",
+      to: "0x9de403ef57b032afa295fefc65057365efefd3c3",
+      value: 15000000000000000000000n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-9de4-in",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 398,
+      transactionIndex: 1,
+      block: { height: 21297950, timestamp: 1_700_000_001_000 },
+      transactionHash:
+        "0x632305bd11c1136a2b2953e1fc41ebda1b170eb37eb53fb2f41293ecc6b8625d",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0x04b05bd584a414cd87796e2c536b4161e5a3ca0a",
+      to: "0x000ee9a6bcec9aadcc883bd52b2c9a75fb098991",
+      value: 519953196347027812164n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-04b05-out",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 401,
+      transactionIndex: 1,
+      block: { height: 21297950, timestamp: 1_700_000_001_000 },
+      transactionHash:
+        "0x632305bd11c1136a2b2953e1fc41ebda1b170eb37eb53fb2f41293ecc6b8625d",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0x9de403ef57b032afa295fefc65057365efefd3c3",
+      to: "0x000ee9a6bcec9aadcc883bd52b2c9a75fb098991",
+      value: 4842414145738195837622n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-9de4-out",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 403,
+      transactionIndex: 1,
+      block: { height: 21297950, timestamp: 1_700_000_001_000 },
+      transactionHash:
+        "0x632305bd11c1136a2b2953e1fc41ebda1b170eb37eb53fb2f41293ecc6b8625d",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0x000ee9a6bcec9aadcc883bd52b2c9a75fb098991",
+      to: "0x53fa6d5428f16e4e8b67ff29b5c95aa53239c653",
+      value: 5300000000000000000000n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-000ee9-out",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 405,
+      transactionIndex: 1,
+      block: { height: 21297950, timestamp: 1_700_000_001_000 },
+      transactionHash:
+        "0x632305bd11c1136a2b2953e1fc41ebda1b170eb37eb53fb2f41293ecc6b8625d",
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: "0x1f3d3a7a9c548be39539b39d7400302753e20591",
+        previousVotes: 5032302606544916775545n,
+        newVotes: 20032302606544916775545n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0x1f3d3a7a9c548be39539b39d7400302753e20591",
+        previousVotes: 20032302606544916775545n,
+        newVotes: 14732302606544916775545n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0xd4a46a9ef66d7352790f131fe49e7cf84ae68b55",
+        previousVotes: 0n,
+        newVotes: 5300000000000000000000n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-dvc-1f3d-plus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 399,
+      transactionIndex: 1,
+      block: { height: 21297950, timestamp: 1_700_000_001_000 },
+      transactionHash:
+        "0x632305bd11c1136a2b2953e1fc41ebda1b170eb37eb53fb2f41293ecc6b8625d",
+    } as any);
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-dvc-1f3d-minus-other-delegator",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 406,
+      transactionIndex: 1,
+      block: { height: 21297950, timestamp: 1_700_000_001_000 },
+      transactionHash:
+        "0x632305bd11c1136a2b2953e1fc41ebda1b170eb37eb53fb2f41293ecc6b8625d",
+    } as any);
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-dvc-d4a46",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 407,
+      transactionIndex: 1,
+      block: { height: 21297950, timestamp: 1_700_000_001_000 },
+      transactionHash:
+        "0x632305bd11c1136a2b2953e1fc41ebda1b170eb37eb53fb2f41293ecc6b8625d",
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0x9de403ef57b032afa295fefc65057365efefd3c3",
+      ),
+    ).toMatchObject({
+      to: "0x1f3d3a7a9c548be39539b39d7400302753e20591",
+      power: 10157585854261804162378n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x9de403ef57b032afa295fefc65057365efefd3c3_0x1f3d3a7a9c548be39539b39d7400302753e20591",
+      ),
+    ).toMatchObject({
+      power: 10157585854261804162378n,
+      isCurrent: true,
+    });
+  });
+
   it("tracks ERC721 transfers as token ids while applying single-vote power deltas", async () => {
     const store = new MemoryStore([
       new DataMetric({
@@ -2123,6 +2581,13 @@ class MemoryStore {
   async findOne(entity: any, options: { where: Record<string, unknown> }) {
     const values = [...(this.records.get(entity.name)?.values() ?? [])];
     return values.find((record) =>
+      Object.entries(options.where).every(([key, value]) => record[key] === value)
+    );
+  }
+
+  async find(entity: any, options: { where: Record<string, unknown> }) {
+    const values = [...(this.records.get(entity.name)?.values() ?? [])];
+    return values.filter((record) =>
       Object.entries(options.where).every(([key, value]) => record[key] === value)
     );
   }
