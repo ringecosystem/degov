@@ -69,6 +69,13 @@ verify-sample delegator delegate='':
 verify-negative-current limit='20':
     node ./scripts/local-verify-query.mjs --negative-current --limit "{{limit}}"
 
+diagnose-address address code='':
+    if [ -n "{{code}}" ]; then \
+      node ./scripts/indexer-accuracy-diagnose.js --address "{{address}}" --code "{{code}}"; \
+    else \
+      node ./scripts/indexer-accuracy-diagnose.js --address "{{address}}"; \
+    fi
+
 reconcile:
     {{yarn}} run build
     node lib/reconcile.js

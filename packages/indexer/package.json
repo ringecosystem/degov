@@ -13,7 +13,8 @@
     "replay:backfill": "./scripts/replay-backfill.sh",
     "test": "jest --runInBand",
     "test:integration": "jest --runInBand --config jest.integration.config.js --runTestsByPath __tests__/chaintool.integration.test.ts __tests__/textplus.integration.test.ts",
-    "audit:accuracy": "node scripts/indexer-accuracy-audit.js"
+    "audit:accuracy": "node scripts/indexer-accuracy-audit.js",
+    "audit:diagnose-address": "node scripts/indexer-accuracy-diagnose.js"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^2.3.3",

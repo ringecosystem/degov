@@ -6,6 +6,7 @@ import {
 import * as itokenerc20 from "../src/abi/itokenerc20";
 import * as itokenerc721 from "../src/abi/itokenerc721";
 import { ChainTool, ClockMode } from "../src/internal/chaintool";
+import { zeroAddress } from "viem";
 import {
   Contributor,
   DataMetric,
@@ -1486,6 +1487,102 @@ describe("token vote power checkpoints", () => {
       )
     ).toMatchObject({
       power: 10000n,
+      isCurrent: true,
+    });
+  });
+
+  it("does not skip a transfer when the same transaction contains another delegator's delegate change", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 569n,
+      }),
+      new Contributor({
+        id: "0x983110309620d911731ac0932219af06091b6744",
+        power: 569n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5_0x983110309620d911731ac0932219af06091b6744",
+        fromDelegate: "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5",
+        toDelegate: "0x983110309620d911731ac0932219af06091b6744",
+        isCurrent: true,
+        power: 569n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5",
+        from: "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5",
+        to: "0x983110309620d911731ac0932219af06091b6744",
+        power: 569n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    jest.spyOn(itokenerc20.events.DelegateChanged, "decode").mockReturnValue({
+      delegator: "0x635ab5225546e2cc3174ef4ec8473e3d5f2b4230",
+      fromDelegate: zeroAddress,
+      toDelegate: "0x480b1a06cb348c1dc673bbfdd74ef19fa1a79a30",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-other-delegate-changed",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 10,
+      transactionIndex: 1,
+      block: {
+        height: 24564859,
+        timestamp: 1_700_000_000_300,
+      },
+      transactionHash:
+        "0xf7a9daeb4fb143f6029704c037b972be84adb71294fbf3b4e90ac07d1c8667e7",
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5",
+      to: "0x635ab5225546e2cc3174ef4ec8473e3d5f2b4230",
+      value: 569n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-out-with-unrelated-rolling",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 11,
+      transactionIndex: 1,
+      block: {
+        height: 24564859,
+        timestamp: 1_700_000_000_300,
+      },
+      transactionHash:
+        "0xf7a9daeb4fb143f6029704c037b972be84adb71294fbf3b4e90ac07d1c8667e7",
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5"
+      )
+    ).toMatchObject({
+      to: "0x983110309620d911731ac0932219af06091b6744",
+      power: 0n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xa47080b9dba577b6c53600163cf6747bdbd8bcc5_0x983110309620d911731ac0932219af06091b6744"
+      )
+    ).toMatchObject({
+      power: 0n,
       isCurrent: true,
     });
   });
