@@ -586,6 +586,11 @@ describe("indexer accuracy audit", () => {
     const issueBodyFile = path.join(tempDir, "issue-body.md");
     const reportUrlFile = path.join(tempDir, "report-url.txt");
     const fetchImpl = jest.fn();
+    let loggedOutput = "";
+    const consoleLogSpy = jest.spyOn(console, "log").mockImplementation((message) => {
+      loggedOutput = String(message ?? "");
+      return undefined;
+    });
 
     fs.writeFileSync(
       reportJsonFile,
@@ -620,23 +625,28 @@ describe("indexer accuracy audit", () => {
     );
     fs.writeFileSync(reportMarkdownFile, "# clean report\n");
 
-    await buildIssueBodyMain(
-      [
-        "--report-json",
-        reportJsonFile,
-        "--report-markdown",
-        reportMarkdownFile,
-        "--issue-body-file",
-        issueBodyFile,
-        "--report-url-file",
-        reportUrlFile,
-        "--run-url",
-        "https://github.com/ringecosystem/degov/actions/runs/23730563489",
-      ],
-      { fetchImpl }
-    );
+    try {
+      await buildIssueBodyMain(
+        [
+          "--report-json",
+          reportJsonFile,
+          "--report-markdown",
+          reportMarkdownFile,
+          "--issue-body-file",
+          issueBodyFile,
+          "--report-url-file",
+          reportUrlFile,
+          "--run-url",
+          "https://github.com/ringecosystem/degov/actions/runs/23730563489",
+        ],
+        { fetchImpl }
+      );
+    } finally {
+      consoleLogSpy.mockRestore();
+    }
 
     expect(fetchImpl).not.toHaveBeenCalled();
+    expect(loggedOutput).toContain('"skippedIssueBody": true');
     expect(fs.readFileSync(issueBodyFile, "utf8")).toBe("");
     expect(fs.readFileSync(reportUrlFile, "utf8")).toBe("");
   });
