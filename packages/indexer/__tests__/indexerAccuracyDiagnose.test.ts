@@ -3,6 +3,8 @@ const {
   parseArgs,
 } = require("../scripts/indexer-accuracy-diagnose");
 
+export {};
+
 describe("indexer accuracy diagnose", () => {
   it("parses required address and known target flags", () => {
     expect(

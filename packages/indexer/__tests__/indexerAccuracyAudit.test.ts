@@ -17,6 +17,8 @@ const {
   uploadMarkdownReport,
 } = require("../scripts/indexer-accuracy-issue-body");
 
+export {};
+
 describe("indexer accuracy audit", () => {
   const target = {
     code: "ens-dao",
