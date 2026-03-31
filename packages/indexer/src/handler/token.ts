@@ -76,6 +76,10 @@ export class TokenHandler {
     string,
     DelegateRolling[] | null
   >();
+  private readonly delegateVotesChangedByTx = new Map<
+    string,
+    DelegateVotesChanged[] | null
+  >();
   private readonly tokenTransferByTx = new Map<string, TokenTransfer[] | null>();
   private readonly delegateMappingByFrom = new Map<
     string,
@@ -229,6 +233,52 @@ export class TokenHandler {
     this.delegateRollingByTx.set(entity.transactionHash, next);
   }
 
+  private async getDelegateVotesChangedByTransactionHash(
+    transactionHash: string,
+  ): Promise<DelegateVotesChanged[]> {
+    if (this.delegateVotesChangedByTx.has(transactionHash)) {
+      return this.delegateVotesChangedByTx.get(transactionHash) ?? [];
+    }
+
+    const storeWithFind = this.ctx.store as typeof this.ctx.store & {
+      find?: (
+        entity: typeof DelegateVotesChanged,
+        options: {
+          where: {
+            transactionHash: string;
+          };
+        },
+      ) => Promise<DelegateVotesChanged[]>;
+    };
+    let value: DelegateVotesChanged[] = [];
+    if (storeWithFind.find) {
+      value =
+        (await storeWithFind.find(DelegateVotesChanged, {
+          where: {
+            transactionHash,
+          },
+        })) ?? [];
+    } else {
+      const singleValue = await this.ctx.store.findOne(DelegateVotesChanged, {
+        where: {
+          transactionHash,
+        },
+      });
+      value = singleValue ? [singleValue] : [];
+    }
+
+    this.delegateVotesChangedByTx.set(transactionHash, value);
+    return value;
+  }
+
+  private rememberDelegateVotesChanged(entity: DelegateVotesChanged) {
+    const current =
+      this.delegateVotesChangedByTx.get(entity.transactionHash) ?? [];
+    const next = current.filter((item) => item.id !== entity.id);
+    next.push(entity);
+    this.delegateVotesChangedByTx.set(entity.transactionHash, next);
+  }
+
   private markDelegateRollingDirty(entity: DelegateRolling) {
     this.dirtyDelegateRollings.set(entity.id, entity);
   }
@@ -297,6 +347,43 @@ export class TokenHandler {
         item.from.toLowerCase() === normalizedDelegator ||
         item.to.toLowerCase() === normalizedDelegator,
     );
+  }
+
+  private transferDeltaForDelegator(
+    transfers: TokenTransfer[],
+    delegator: string,
+  ) {
+    const normalizedDelegator = delegator.toLowerCase();
+    const isErc721 = this.contractStandard() === "erc721";
+    return transfers.reduce((sum, item) => {
+      const value = isErc721 ? 1n : item.value;
+      if (item.to.toLowerCase() === normalizedDelegator) {
+        return sum + value;
+      }
+      if (item.from.toLowerCase() === normalizedDelegator) {
+        return sum - value;
+      }
+      return sum;
+    }, 0n);
+  }
+
+  private hasEarlierVoteDeltaForDelegate(
+    delegateVotesChanges: DelegateVotesChanged[],
+    delegate: string,
+    beforeLogIndex?: number | null,
+  ) {
+    const normalizedDelegate = delegate.toLowerCase();
+    return delegateVotesChanges.some((item) => {
+      const itemDelegate =
+        DegovIndexerHelpers.normalizeAddress(item.delegate) ??
+        item.delegate.toLowerCase();
+      return (
+        itemDelegate === normalizedDelegate &&
+        (beforeLogIndex === undefined || beforeLogIndex === null
+          ? true
+          : (item.logIndex ?? Number.MAX_SAFE_INTEGER) < beforeLogIndex)
+      );
+    });
   }
 
   private isTransferFromCoveredByDelegateChange(
@@ -808,6 +895,7 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+    this.rememberDelegateVotesChanged(entity);
     await this.storeVotePowerCheckpoint(entity, eventLog);
     // store rolling
     await this.updateDelegateRolling(entity);
@@ -908,6 +996,10 @@ export class TokenHandler {
     const tokenTransfers = await this.getTokenTransfersByTransactionHash(
       options.transactionHash,
     );
+    const delegateVotesChanges =
+      await this.getDelegateVotesChangedByTransactionHash(
+        options.transactionHash,
+      );
 
     /*
     // delegate change b to c
@@ -946,15 +1038,21 @@ export class TokenHandler {
       delegateRolling.toNewVotes = options.newVotes;
       delegateRolling.toPreviousVotes = options.previousVotes;
 
-      const zeroToDelegateChangeWithTransfer =
-        this.isZeroAddress(rollingFromDelegate) &&
-        this.hasTransferTouchingDelegator(tokenTransfers, rollingDelegator);
-      if (zeroToDelegateChangeWithTransfer) {
+      const transferTouchesDelegator = this.hasTransferTouchingDelegator(
+        tokenTransfers,
+        rollingDelegator,
+      );
+      const hasEarlierFromSideVoteDelta = this.hasEarlierVoteDeltaForDelegate(
+        delegateVotesChanges,
+        rollingFromDelegate,
+        options.logIndex,
+      );
+      if (transferTouchesDelegator && !hasEarlierFromSideVoteDelta) {
         DegovIndexerHelpers.logVerboseInfo(
           this.ctx.log,
           "token.delegate relation skipped",
           {
-            reason: "delegate-change-covered-by-transfer",
+            reason: "delegate-change-transfer-only-delta",
             delegator: rollingDelegator,
             delegate: options.delegate,
             tx: options.transactionHash,
@@ -979,6 +1077,23 @@ export class TokenHandler {
         rollingDelegator === rollingToDelegate
           ? rollingDelegator
           : rollingToDelegate;
+      if (transferTouchesDelegator) {
+        replaceStoredPowerWith = undefined;
+      }
+    }
+
+    let relationDelta = options.newVotes - options.previousVotes;
+    if (match.side === "to") {
+      const transferTouchesDelegator = this.hasTransferTouchingDelegator(
+        tokenTransfers,
+        rollingDelegator,
+      );
+      if (transferTouchesDelegator) {
+        relationDelta -= this.transferDeltaForDelegator(
+          tokenTransfers,
+          rollingDelegator,
+        );
+      }
     }
 
     const delegate = new Delegate({
@@ -994,7 +1109,7 @@ export class TokenHandler {
       blockNumber: delegateRolling.blockNumber,
       blockTimestamp: delegateRolling.blockTimestamp,
       transactionHash: delegateRolling.transactionHash,
-      power: options.newVotes - options.previousVotes,
+      power: relationDelta,
     });
 
     DegovIndexerHelpers.logVerboseInfo(
@@ -1005,7 +1120,7 @@ export class TokenHandler {
         from: fromDelegate,
         to: toDelegate,
         delegate: options.delegate,
-        delta: options.newVotes - options.previousVotes,
+        delta: relationDelta,
         tx: options.transactionHash,
       },
     );
