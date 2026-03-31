@@ -91,6 +91,10 @@ function sanitizeUploadError(uploadError) {
   return uploadError.replace(/\s+/g, " ").trim();
 }
 
+function reportHasAnomalies(report) {
+  return Number(report?.summary?.totalAnomalies ?? 0) > 0;
+}
+
 function buildIssueBody({
   report,
   reportUrl = "",
@@ -98,6 +102,10 @@ function buildIssueBody({
   uploadError = "",
   maxSummaryTargets = DEFAULT_MAX_SUMMARY_TARGETS,
 }) {
+  if (!reportHasAnomalies(report)) {
+    return "";
+  }
+
   const anomalousTargets = (report.targets ?? []).filter(
     (target) => target.anomalyCount > 0
   );
@@ -219,11 +227,33 @@ async function main(
 ) {
   const options = parseArgs(argv);
   const reportJsonPath = path.resolve(process.cwd(), options.reportJsonFile);
+  const report = JSON.parse(await fs.readFile(reportJsonPath, "utf8"));
+  const hasAnomalies = reportHasAnomalies(report);
+
+  if (!hasAnomalies) {
+    await writeFileIfNeeded(options.issueBodyFile, "");
+    await writeFileIfNeeded(options.reportUrlFile, "");
+
+    console.log(
+      JSON.stringify(
+        {
+          hasAnomalies: false,
+          issueBodyLength: 0,
+          reportUrl: null,
+          skippedIssueBody: true,
+          uploadError: null,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
   const reportMarkdownPath = path.resolve(
     process.cwd(),
     options.reportMarkdownFile
   );
-  const report = JSON.parse(await fs.readFile(reportJsonPath, "utf8"));
   const markdown = await fs.readFile(reportMarkdownPath, "utf8");
   let reportUrl = "";
   let uploadError = "";
@@ -270,6 +300,7 @@ module.exports = {
   formatTargetSummary,
   main,
   parseArgs,
+  reportHasAnomalies,
   uploadMarkdownReport,
 };
 
