@@ -14,6 +14,7 @@ const {
 } = require("../scripts/indexer-accuracy-audit");
 const {
   buildIssueBody,
+  main: buildIssueBodyMain,
   uploadMarkdownReport,
 } = require("../scripts/indexer-accuracy-issue-body");
 
@@ -425,6 +426,45 @@ describe("indexer accuracy audit", () => {
     );
   });
 
+  it("returns no issue body when the report contains no anomalies", () => {
+    const report = {
+      generatedAt: "2026-03-31T00:00:00.000Z",
+      summary: {
+        checkedAccounts: 3,
+        matches: 3,
+        mismatches: 0,
+        voteReadErrors: 0,
+        negativeContributors: 0,
+        negativeDelegates: 0,
+        queryErrors: 0,
+        totalAnomalies: 0,
+      },
+      targets: [
+        {
+          code: "ens-dao",
+          name: "ENS",
+          checkedAccounts: 3,
+          limit: 3,
+          matches: 3,
+          mismatches: [],
+          voteReadErrors: [],
+          negativeContributors: [],
+          negativeDelegates: [],
+          queryErrors: [],
+          anomalyCount: 0,
+        },
+      ],
+    };
+
+    const issueBody = buildIssueBody({
+      report,
+      reportUrl: "https://paste.rs/abc123",
+      runUrl: "https://github.com/ringecosystem/degov/actions/runs/23730563489",
+    });
+
+    expect(issueBody).toBe("");
+  });
+
   it("keeps the GitHub issue body compact when many DAOs have anomalies", () => {
     const targets = Array.from({ length: 12 }, (_value, index) => ({
       code: `dao-${index + 1}`,
@@ -535,5 +575,79 @@ describe("indexer accuracy audit", () => {
       "Upload error: Paste upload failed with HTTP 503 Service Unavailable"
     );
     expect(issueBody).not.toContain("rendered report");
+  });
+
+  it("skips issue-body output and upload when the report has no anomalies", async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "indexer-accuracy-issue-body-")
+    );
+    const reportJsonFile = path.join(tempDir, "report.json");
+    const reportMarkdownFile = path.join(tempDir, "report.md");
+    const issueBodyFile = path.join(tempDir, "issue-body.md");
+    const reportUrlFile = path.join(tempDir, "report-url.txt");
+    const fetchImpl = jest.fn();
+    let loggedOutput = "";
+    const consoleLogSpy = jest.spyOn(console, "log").mockImplementation((message) => {
+      loggedOutput = String(message ?? "");
+      return undefined;
+    });
+
+    fs.writeFileSync(
+      reportJsonFile,
+      JSON.stringify({
+        generatedAt: "2026-03-31T00:00:00.000Z",
+        summary: {
+          checkedAccounts: 3,
+          matches: 3,
+          mismatches: 0,
+          voteReadErrors: 0,
+          negativeContributors: 0,
+          negativeDelegates: 0,
+          queryErrors: 0,
+          totalAnomalies: 0,
+        },
+        targets: [
+          {
+            code: "ens-dao",
+            name: "ENS",
+            checkedAccounts: 3,
+            limit: 3,
+            matches: 3,
+            mismatches: [],
+            voteReadErrors: [],
+            negativeContributors: [],
+            negativeDelegates: [],
+            queryErrors: [],
+            anomalyCount: 0,
+          },
+        ],
+      })
+    );
+    fs.writeFileSync(reportMarkdownFile, "# clean report\n");
+
+    try {
+      await buildIssueBodyMain(
+        [
+          "--report-json",
+          reportJsonFile,
+          "--report-markdown",
+          reportMarkdownFile,
+          "--issue-body-file",
+          issueBodyFile,
+          "--report-url-file",
+          reportUrlFile,
+          "--run-url",
+          "https://github.com/ringecosystem/degov/actions/runs/23730563489",
+        ],
+        { fetchImpl }
+      );
+    } finally {
+      consoleLogSpy.mockRestore();
+    }
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(loggedOutput).toContain('"skippedIssueBody": true');
+    expect(fs.readFileSync(issueBodyFile, "utf8")).toBe("");
+    expect(fs.readFileSync(reportUrlFile, "utf8")).toBe("");
   });
 });
