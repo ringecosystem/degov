@@ -6,6 +6,7 @@ this repository.
 ## Indexer
 
 - [Developer guide](./guides/20260325__indexer_developer_guide.md)
+- [Accuracy diagnosis guide](./guides/20260331__indexer_accuracy_diagnosis.md)
 - [Architecture overview](./architecture/20260325__indexer_architecture.md)
 - [Schema reference](./spec/20260327__indexer_schema_reference.md)
 - [OpenZeppelin governance research](./research/20260325__ohh-28_openzeppelin_governor_indexing_research.md)

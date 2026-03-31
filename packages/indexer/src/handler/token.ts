@@ -832,6 +832,7 @@ export class TokenHandler {
      }
     */
     let fromDelegate, toDelegate;
+    let replaceStoredPowerWith: bigint | undefined;
     if (dvcDelegate === rollingFromDelegate) {
       const isDelegateChangeToAnother =
         rollingDelegator !== rollingFromDelegate &&
@@ -847,6 +848,7 @@ export class TokenHandler {
       ) {
         fromDelegate = rollingDelegator;
         toDelegate = rollingFromDelegate;
+        replaceStoredPowerWith = 0n;
       } else {
         // delegate to other
         fromDelegate = rollingFromDelegate;
@@ -904,7 +906,7 @@ export class TokenHandler {
     });
     this.rememberDelegateRolling(delegateRolling);
     this.markDelegateRollingDirty(delegateRolling);
-    await this.storeDelegate(delegate);
+    await this.storeDelegate(delegate, { replaceStoredPowerWith });
   }
 
   private async storeTokenTransfer(eventLog: EvmLog<EvmFieldSelection>) {
@@ -999,7 +1001,12 @@ export class TokenHandler {
     }
   }
 
-  private async storeDelegate(currentDelegate: Delegate, options?: {}) {
+  private async storeDelegate(
+    currentDelegate: Delegate,
+    options?: {
+      replaceStoredPowerWith?: bigint;
+    },
+  ) {
     if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
       this.ctx.log.warn(
         DegovIndexerHelpers.formatLogLine("token.delegate invalid", {
@@ -1030,9 +1037,19 @@ export class TokenHandler {
     let delegatesCountEffective = 0;
     if (!storedDelegateFromWithTo) {
       currentDelegate.isCurrent = isCurrent;
+      const persistedPower =
+        options?.replaceStoredPowerWith ?? currentDelegate.power;
+      if (options?.replaceStoredPowerWith !== undefined) {
+        currentDelegate.power = persistedPower;
+      }
       await this.ctx.store.insert(currentDelegate);
       this.rememberDelegate(currentDelegate);
-      delegatesCountEffective += 1;
+      if (
+        options?.replaceStoredPowerWith === undefined ||
+        persistedPower !== 0n
+      ) {
+        delegatesCountEffective += 1;
+      }
       newDelegatePowerOfFromTo = currentDelegate.power;
     } else {
       // update delegate
@@ -1042,7 +1059,9 @@ export class TokenHandler {
         previousCurrentMappingPower === 0n &&
         currentDelegate.power > 0n;
 
-      if (reactivatedCurrentRelation) {
+      if (options?.replaceStoredPowerWith !== undefined) {
+        storedDelegateFromWithTo.power = options.replaceStoredPowerWith;
+      } else if (reactivatedCurrentRelation) {
         storedDelegateFromWithTo.power = currentDelegate.power;
       } else {
         storedDelegateFromWithTo.power += currentDelegate.power;

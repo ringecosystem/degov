@@ -59,6 +59,7 @@ without changing runtime behavior.
 | `just smart-start` | `sh ./scripts/smart-start.sh` | Reset Docker services as needed, then build and start the indexer. |
 | `just smart-start-force` | `sh ./scripts/smart-start.sh force` | Force a local reset, rerun codegen, and regenerate migrations before starting. |
 | `just graphql-server` | `sh ./scripts/graphql-server.sh` | Launch the GraphQL server helper script directly. |
+| `just diagnose-address <address> [code]` | `node ./scripts/indexer-accuracy-diagnose.js ...` | Diagnose one delegate address by comparing indexed aggregates and mappings against on-chain votes, balances, and delegate targets. |
 | `just reconcile` | `yarn run build && node lib/reconcile.js` | Rebuild the package and compare indexed proposal data against on-chain truth. |
 | `just replay-backfill` | `yarn run replay:backfill` | Run the bounded replay plus reconciliation flow from OHH-38. |
 | `just test` | `yarn run test` | Run the deterministic Jest suite. |
@@ -123,6 +124,16 @@ just test
 
 This flow is described in more detail in
 [`docs/plans/20260325__degov_projection_replay_reconciliation_rollout.md`](../plans/20260325__degov_projection_replay_reconciliation_rollout.md).
+
+### Diagnose one bad delegate address
+
+```bash
+cd packages/indexer
+just diagnose-address 0x983110309620d911731ac0932219af06091b6744 ens-dao
+```
+
+For the full workflow and output interpretation, see
+[`docs/guides/20260331__indexer_accuracy_diagnosis.md`](./20260331__indexer_accuracy_diagnosis.md).
 
 ## Environment and config inputs
 
