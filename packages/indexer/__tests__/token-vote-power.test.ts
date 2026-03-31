@@ -1060,7 +1060,7 @@ describe("token vote power checkpoints", () => {
     });
   });
 
-  it("tracks current delegate mapping power independently from historical delegate totals", async () => {
+  it("keeps the current delegate relation aligned with delegate mapping even if the stored row drifted", async () => {
     const store = new MemoryStore([
       new DataMetric({
         id: "global",
@@ -1122,7 +1122,7 @@ describe("token vote power checkpoints", () => {
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       )
     ).toMatchObject({
-      power: 110n,
+      power: 60n,
       isCurrent: true,
     });
     expect(
@@ -1813,6 +1813,176 @@ describe("token vote power checkpoints", () => {
     ).toMatchObject({
       to: "0x1f3d3a7a9c548be39539b39d7400302753e20591",
       power: 4300n,
+    });
+  });
+
+  it("keeps the current delegate row synchronized with delegate mapping after transfer updates", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 100n,
+      }),
+      new Contributor({
+        id: "0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+        power: 100n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74_0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+        fromDelegate: "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74",
+        toDelegate: "0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+        isCurrent: true,
+        power: -50n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xstale",
+      }),
+      new DelegateMapping({
+        id: "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74",
+        from: "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74",
+        to: "0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+        power: 100n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74",
+      to: "0x000000000000000000000000000000000000dead",
+      value: 40n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-sync-current-relation",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 41,
+      transactionIndex: 1,
+      block: {
+        height: 24564859,
+        timestamp: 1_700_000_000_600,
+      },
+      transactionHash:
+        "0xf7a9daeb4fb143f6029704c037b972be84adb71294fbf3b4e90ac07d1c8667e7",
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74",
+      ),
+    ).toMatchObject({
+      to: "0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+      power: 60n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x1860207b3ccb2c318a5ee0f20d20e0a80d68bd74_0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+      ),
+    ).toMatchObject({
+      power: 60n,
+      isCurrent: true,
+    });
+    expect(
+      store.findEntity(
+        Contributor,
+        "0xbdb41bff7e828e2dc2d15eb67257455db818f1dc",
+      ),
+    ).toMatchObject({
+      power: 60n,
+    });
+  });
+
+  it("keeps the current delegate row at zero when a full transfer drains the current mapping", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 100n,
+      }),
+      new Contributor({
+        id: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+        power: 100n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d_0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+        fromDelegate: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+        toDelegate: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+        isCurrent: true,
+        power: -25n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xstale",
+      }),
+      new DelegateMapping({
+        id: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+        from: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+        to: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+        power: 100n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+      to: "0x000000000000000000000000000000000000dead",
+      value: 100n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-zero-current-relation",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 42,
+      transactionIndex: 1,
+      block: {
+        height: 13578885,
+        timestamp: 1_700_000_000_700,
+      },
+      transactionHash:
+        "0xbd177d6d9bc80026933e85af18d7b8e17084d68803713c6a621e081a8674b359",
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+      ),
+    ).toMatchObject({
+      to: "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+      power: 0n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d_0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+      ),
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: true,
+    });
+    expect(
+      store.findEntity(
+        Contributor,
+        "0x48dbb9b7b562acf3c38e53deaff4686e24c3d85d",
+      ),
+    ).toMatchObject({
+      power: 0n,
     });
   });
 

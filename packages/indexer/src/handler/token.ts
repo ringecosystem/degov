@@ -1033,7 +1033,6 @@ export class TokenHandler {
       storedFromDelegate?.to?.toLowerCase() === currentDelegate.toDelegate;
     const previousCurrentMappingPower = storedFromDelegate?.power ?? null;
 
-    let newDelegatePowerOfFromTo;
     let delegatesCountEffective = 0;
     if (!storedDelegateFromWithTo) {
       currentDelegate.isCurrent = isCurrent;
@@ -1050,7 +1049,6 @@ export class TokenHandler {
       ) {
         delegatesCountEffective += 1;
       }
-      newDelegatePowerOfFromTo = currentDelegate.power;
     } else {
       // update delegate
       const oldPower = storedDelegateFromWithTo.power;
@@ -1092,7 +1090,6 @@ export class TokenHandler {
       }
       this.rememberDelegate(storedDelegateFromWithTo);
       this.markDelegateDirty(storedDelegateFromWithTo);
-      newDelegatePowerOfFromTo = storedDelegateFromWithTo.power;
     }
     if (
       storedFromDelegate &&
@@ -1111,6 +1108,18 @@ export class TokenHandler {
       });
       this.rememberDelegateMapping(storedFromDelegate);
       this.markDelegateMappingDirty(storedFromDelegate);
+
+      // The current Delegate row is a materialized view of DelegateMapping.
+      // Keep them in sync instead of allowing incremental drift.
+      if (storedDelegateFromWithTo) {
+        storedDelegateFromWithTo.power = storedFromDelegate.power;
+        this.rememberDelegate(storedDelegateFromWithTo);
+        this.markDelegateDirty(storedDelegateFromWithTo);
+      } else {
+        currentDelegate.power = storedFromDelegate.power;
+        this.rememberDelegate(currentDelegate);
+        this.markDelegateDirty(currentDelegate);
+      }
     }
 
     // store contributor
