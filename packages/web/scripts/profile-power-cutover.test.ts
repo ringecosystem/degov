@@ -121,8 +121,11 @@ test("schema cleanup removes the legacy power column in the final phase", () => 
   const dropColumnMigration = getSource(
     "../prisma/migrations/20260401083930_drop_d_user_power/migration.sql"
   );
+  const dUserModelBlock =
+    prismaSchema.match(/model\s+d_user\s*{[^}]*}/s)?.[0] ?? "";
 
-  assert.doesNotMatch(prismaSchema, /\bpower\s+String\?/);
+  assert.match(dUserModelBlock, /model\s+d_user\s*{/);
+  assert.doesNotMatch(dUserModelBlock, /\bpower\s+String\?/);
   assert.match(dropColumnMigration, /ALTER TABLE "d_user"/);
   assert.match(dropColumnMigration, /DROP COLUMN "power"/);
 });
