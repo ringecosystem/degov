@@ -14,9 +14,6 @@ export async function POST(request: NextRequest) {
     const invalidMethods = [];
     for (const payload of payloads) {
       switch (payload.method) {
-        case "sync.user.power": {
-          break;
-        }
         default: {
           invalidMethods.push(payload.method);
         }
