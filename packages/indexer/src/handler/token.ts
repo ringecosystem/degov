@@ -406,6 +406,45 @@ export class TokenHandler {
     });
   }
 
+  private hasIncomingTransferBeforeRolling(
+    transfers: TokenTransfer[],
+    delegator: string,
+    rollingLogIndex?: number | null,
+  ) {
+    const normalizedDelegator = delegator.toLowerCase();
+    return transfers.some((item) => {
+      if (item.to.toLowerCase() !== normalizedDelegator) {
+        return false;
+      }
+      if (rollingLogIndex === undefined || rollingLogIndex === null) {
+        return true;
+      }
+      return (item.logIndex ?? Number.MAX_SAFE_INTEGER) < rollingLogIndex;
+    });
+  }
+
+  private isInitialSelfDelegationRolling(
+    delegateRolling: Pick<
+      DelegateRolling,
+      "delegator" | "fromDelegate" | "toDelegate"
+    >,
+  ) {
+    const delegator =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.delegator) ??
+      delegateRolling.delegator.toLowerCase();
+    const fromDelegate =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.fromDelegate) ??
+      delegateRolling.fromDelegate.toLowerCase();
+    const toDelegate =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.toDelegate) ??
+      delegateRolling.toDelegate.toLowerCase();
+    return (
+      this.isZeroAddress(fromDelegate) &&
+      delegator === toDelegate &&
+      delegator !== zeroAddress
+    );
+  }
+
   private isTransferFromCoveredByDelegateChange(
     delegateRolling: Pick<
       DelegateRolling,
@@ -1103,8 +1142,24 @@ export class TokenHandler {
         rollingFromDelegate,
         options.logIndex,
       );
+      const currentDelegateMapping =
+        await this.getDelegateMappingByFrom(rollingDelegator);
+      const isInitialSelfDelegation = this.isInitialSelfDelegationRolling(
+        delegateRolling,
+      );
+      const needsInitialDelegationMaterialization =
+        this.isZeroAddress(rollingFromDelegate) &&
+        (currentDelegateMapping?.power ?? 0n) === 0n &&
+        this.hasIncomingTransferBeforeRolling(
+          tokenTransfers,
+          rollingDelegator,
+          delegateRolling.logIndex,
+        ) &&
+        !hasEarlierRollingForSameDelegator;
       if (
         transferTouchesDelegator &&
+        !isInitialSelfDelegation &&
+        !needsInitialDelegationMaterialization &&
         !hasEarlierFromSideVoteDelta &&
         !hasEarlierRollingForSameDelegator
       ) {
@@ -1148,8 +1203,24 @@ export class TokenHandler {
         tokenTransfers,
         rollingDelegator,
       );
+      const currentDelegateMapping =
+        await this.getDelegateMappingByFrom(rollingDelegator);
+      const isInitialSelfDelegation = this.isInitialSelfDelegationRolling(
+        delegateRolling,
+      );
+      const needsInitialDelegationMaterialization =
+        this.isZeroAddress(rollingFromDelegate) &&
+        (currentDelegateMapping?.power ?? 0n) === 0n &&
+        this.hasIncomingTransferBeforeRolling(
+          tokenTransfers,
+          rollingDelegator,
+          delegateRolling.logIndex,
+        ) &&
+        !hasEarlierRollingForSameDelegator;
       if (
         transferTouchesDelegator &&
+        !isInitialSelfDelegation &&
+        !needsInitialDelegationMaterialization &&
         !this.hasEarlierVoteDeltaForDelegate(
           delegateVotesChanges,
           rollingFromDelegate,

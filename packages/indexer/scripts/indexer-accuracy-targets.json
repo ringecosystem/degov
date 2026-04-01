@@ -25,5 +25,32 @@
     "governor": "0x52cDD25f7C83c335236Ce209fA1ec8e197E96533",
     "governorToken": "0xdafa555e2785DC8834F4Ea9D1ED88B6049142999",
     "tokenDecimals": 18
+  },
+  {
+    "code": "hai-dao",
+    "name": "HAI",
+    "indexerEndpoint": "https://indexer.degov.ai/hai-dao/graphql",
+    "rpcUrl": "https://optimism-rpc.publicnode.com",
+    "governor": "0xe807f3282f3391d237BA8B9bECb0d8Ea3ba23777",
+    "governorToken": "0xf467C7d5a4A9C4687fFc7986aC6aD5A4c81E1404",
+    "tokenDecimals": 18
+  },
+  {
+    "code": "lisk-dao",
+    "name": "Lisk",
+    "indexerEndpoint": "https://indexer.degov.ai/lisk-dao/graphql",
+    "rpcUrl": "https://rpc.api.lisk.com",
+    "governor": "0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568",
+    "governorToken": "0x2eE6Eca46d2406454708a1C80356a6E63b57D404",
+    "tokenDecimals": 18
+  },
+  {
+    "code": "gmx-dao",
+    "name": "GMX",
+    "indexerEndpoint": "https://indexer.degov.ai/gmx-dao/graphql",
+    "rpcUrl": "https://arbitrum-one-rpc.publicnode.com",
+    "governor": "0x03e8f708e9C85EDCEaa6AD7Cd06824CeB82A7E68",
+    "governorToken": "0x2A29D3a792000750807cc401806d6fd539928481",
+    "tokenDecimals": 18
   }
 ]

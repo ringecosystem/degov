@@ -37,14 +37,14 @@ jobs:
         working-directory: packages/indexer
         run: |
           cat <<'YAML' > indexer-accuracy-audit-config.yml
-          - name: ens-dao
-            indexer: https://indexer.degov.ai/ens-dao/graphql
+          - name: hai-dao
+            indexer: https://indexer.degov.ai/hai-dao/graphql
             limit: 100
-          - name: seamless-dao
-            indexer: https://indexer.degov.ai/seamless-dao/graphql
+          - name: lisk-dao
+            indexer: https://indexer.degov.ai/lisk-dao/graphql
             limit: 100
-          - name: ring-dao
-            indexer: https://indexer.degov.ai/ring-dao/graphql
+          - name: gmx-dao
+            indexer: https://indexer.degov.ai/gmx-dao/graphql
             limit: 100
           YAML
 
