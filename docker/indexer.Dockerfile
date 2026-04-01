@@ -2,6 +2,13 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Install build dependencies for node-gyp
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    libc6-compat
+
 ARG S6_OVERLAY_VERSION=3.2.1.0
 
 ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz /tmp
