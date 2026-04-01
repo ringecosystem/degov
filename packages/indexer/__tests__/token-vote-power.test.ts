@@ -2799,14 +2799,6 @@ describe("token vote power checkpoints", () => {
       block: { height: 100, timestamp: 1_700_000_001_000 },
       transactionHash: txHash,
     } as any);
-    await (handler as any).storeDelegateChanged({
-      id: "log-dc-redelegate",
-      address: "0x8888888888888888888888888888888888888888",
-      logIndex: 3,
-      transactionIndex: 1,
-      block: { height: 100, timestamp: 1_700_000_001_000 },
-      transactionHash: txHash,
-    } as any);
 
     jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
       from: "0xdddddddddddddddddddddddddddddddddddddddd",
@@ -2817,6 +2809,15 @@ describe("token vote power checkpoints", () => {
       id: "log-transfer-in",
       address: "0x8888888888888888888888888888888888888888",
       logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-dc-redelegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 3,
       transactionIndex: 1,
       block: { height: 100, timestamp: 1_700_000_001_000 },
       transactionHash: txHash,
@@ -2858,6 +2859,144 @@ describe("token vote power checkpoints", () => {
     } as any);
     await (handler as any).storeDelegateVotesChanged({
       id: "log-dvc-new-plus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 6,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ),
+    ).toMatchObject({
+      to: "0xcccccccccccccccccccccccccccccccccccccccc",
+      power: 4000n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      ),
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0xcccccccccccccccccccccccccccccccccccccccc",
+      ),
+    ).toMatchObject({
+      power: 4000n,
+      isCurrent: true,
+    });
+    expect(
+      store.findEntity(Contributor, "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+    ).toMatchObject({
+      power: 0n,
+    });
+    expect(
+      store.findEntity(Contributor, "0xcccccccccccccccccccccccccccccccccccccccc"),
+    ).toMatchObject({
+      power: 4000n,
+    });
+  });
+
+  it("keeps the second leg of a transfer-backed chained redelegation when logs are processed in order", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+    const handler = buildTokenHandler(store);
+    const txHash =
+      "0x1111111111111111111111111111111111111111111111111111111111111111";
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValueOnce({
+        delegator: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        fromDelegate: zeroAddress,
+        toDelegate: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      } as any)
+      .mockReturnValueOnce({
+        delegator: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        fromDelegate: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        toDelegate: "0xcccccccccccccccccccccccccccccccccccccccc",
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "ordered-dc-open-old",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0xdddddddddddddddddddddddddddddddddddddddd",
+      to: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      value: 4000n,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "ordered-transfer-in",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "ordered-dc-redelegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 3,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        previousVotes: 0n,
+        newVotes: 4000n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        previousVotes: 4000n,
+        newVotes: 0n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0xcccccccccccccccccccccccccccccccccccccccc",
+        previousVotes: 0n,
+        newVotes: 4000n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "ordered-dvc-old-plus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 4,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+    await (handler as any).storeDelegateVotesChanged({
+      id: "ordered-dvc-old-minus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 5,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+    await (handler as any).storeDelegateVotesChanged({
+      id: "ordered-dvc-new-plus",
       address: "0x8888888888888888888888888888888888888888",
       logIndex: 6,
       transactionIndex: 1,

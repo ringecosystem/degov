@@ -386,12 +386,11 @@ export class TokenHandler {
     });
   }
 
-  private hasLaterRollingFromTarget(
+  private hasEarlierRollingForDelegator(
     delegateRollings: DelegateRolling[],
-    currentRolling: Pick<DelegateRolling, "delegator" | "toDelegate" | "logIndex" | "id">,
+    currentRolling: Pick<DelegateRolling, "delegator" | "logIndex" | "id">,
   ) {
     const normalizedDelegator = currentRolling.delegator.toLowerCase();
-    const normalizedTarget = currentRolling.toDelegate.toLowerCase();
     return delegateRollings.some((item) => {
       if (item.id === currentRolling.id || this.isNoopDelegateRolling(item)) {
         return false;
@@ -399,13 +398,9 @@ export class TokenHandler {
       const delegator =
         DegovIndexerHelpers.normalizeAddress(item.delegator) ??
         item.delegator.toLowerCase();
-      const fromDelegate =
-        DegovIndexerHelpers.normalizeAddress(item.fromDelegate) ??
-        item.fromDelegate.toLowerCase();
       return (
         delegator === normalizedDelegator &&
-        fromDelegate === normalizedTarget &&
-        (item.logIndex ?? Number.MIN_SAFE_INTEGER) >
+        (item.logIndex ?? Number.MIN_SAFE_INTEGER) <
           (currentRolling.logIndex ?? Number.MIN_SAFE_INTEGER)
       );
     });
@@ -963,7 +958,15 @@ export class TokenHandler {
         delegateVotesChanged.transactionHash,
       ),
     ]);
-    const delegateRolling = delegateRollings[0];
+    const delta =
+      BigInt(delegateVotesChanged.newVotes) -
+      BigInt(delegateVotesChanged.previousVotes);
+    const delegateRolling = this.findBestDelegateRollingMatch(
+      delegateRollings,
+      delegateVotesChanged.delegate,
+      delta,
+      eventLog.logIndex,
+    )?.rolling;
 
     const checkpoint = new VotePowerCheckpoint({
       id: eventLog.id,
@@ -979,9 +982,7 @@ export class TokenHandler {
       }),
       previousPower: BigInt(delegateVotesChanged.previousVotes),
       newPower: BigInt(delegateVotesChanged.newVotes),
-      delta:
-        BigInt(delegateVotesChanged.newVotes) -
-        BigInt(delegateVotesChanged.previousVotes),
+      delta,
       cause: classifyVotePowerCheckpointCause({
         hasDelegateChange: delegateRollings.length > 0,
         hasTransfer: tokenTransfer.length > 0,
@@ -1051,7 +1052,7 @@ export class TokenHandler {
       await this.getDelegateVotesChangedByTransactionHash(
         options.transactionHash,
       );
-    const hasLaterChainedRedelegation = this.hasLaterRollingFromTarget(
+    const hasEarlierRollingForSameDelegator = this.hasEarlierRollingForDelegator(
       delegateRollings,
       delegateRolling,
     );
@@ -1105,7 +1106,7 @@ export class TokenHandler {
       if (
         transferTouchesDelegator &&
         !hasEarlierFromSideVoteDelta &&
-        !hasLaterChainedRedelegation
+        !hasEarlierRollingForSameDelegator
       ) {
         DegovIndexerHelpers.logVerboseInfo(
           this.ctx.log,
@@ -1147,7 +1148,10 @@ export class TokenHandler {
         tokenTransfers,
         rollingDelegator,
       );
-      if (transferTouchesDelegator && !hasLaterChainedRedelegation) {
+      if (
+        transferTouchesDelegator &&
+        !hasEarlierRollingForSameDelegator
+      ) {
         relationDelta -= this.transferDeltaForDelegator(
           tokenTransfers,
           rollingDelegator,
