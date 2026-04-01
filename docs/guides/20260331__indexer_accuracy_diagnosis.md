@@ -195,4 +195,11 @@ diagnosis signature is usually:
 - `just verify-sample <delegator> [delegate]`: inspect a local replay result
 - `just verify-negative-current [limit]`: inspect local current negative rows
 - `yarn audit:accuracy`: run the full audit
-- `yarn audit:diagnose-address --address ... --code ...`: raw script entrypoint
+- `yarn run audit:diagnose -- --address ... --code ...`: raw script entrypoint
+
+## Related research
+
+For the consolidated bug-family summary and the fixes that landed across the
+recent ENS / Seamless / Ring investigations, see:
+
+- [`docs/research/20260401__indexer_accuracy_research.md`](../research/20260401__indexer_accuracy_research.md)

@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { DegovDataSource } from "../src/datasource";
+import { DegovDataSource } from "../../src/datasource";
 
 describe("DegovDataSource", () => {
   const startBlockOverride = process.env.DEGOV_INDEXER_START_BLOCK;

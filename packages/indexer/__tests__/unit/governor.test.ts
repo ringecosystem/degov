@@ -1,9 +1,9 @@
 import {
   calculateProposalVoteTimestamp,
   GovernorHandler,
-} from "../src/handler/governor";
-import { ClockMode } from "../src/internal/chaintool";
-import { Proposal, TimelockCall, TimelockOperation } from "../src/model";
+} from "../../src/handler/governor";
+import { ClockMode } from "../../src/internal/chaintool";
+import { Proposal, TimelockCall, TimelockOperation } from "../../src/model";
 
 describe("calculateProposalVoteTimestamp", () => {
   it("derives vote timestamps from block-based proposal timepoints", () => {

@@ -1,4 +1,4 @@
-import { DegovIndexerHelpers } from "../src/internal/helpers";
+import { DegovIndexerHelpers } from "../../src/internal/helpers";
 
 describe("DegovIndexerHelpers", () => {
   const originalVerboseLogs = process.env.DEGOV_INDEXER_VERBOSE_LOGS;

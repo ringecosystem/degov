@@ -1,4 +1,4 @@
-import { ChainTool } from "../src/internal/chaintool";
+import { ChainTool } from "../../src/internal/chaintool";
 
 describe("Chain Tool Test", () => {
   const chainTool = new ChainTool();

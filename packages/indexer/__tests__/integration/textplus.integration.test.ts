@@ -1,4 +1,4 @@
-import { TextPlus } from "../src/internal/textplus";
+import { TextPlus } from "../../src/internal/textplus";
 
 const mockGenerateObject = jest.fn();
 const mockCreateOpenRouter = jest.fn(

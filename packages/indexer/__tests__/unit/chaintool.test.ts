@@ -1,4 +1,4 @@
-import { ChainTool, ClockMode } from "../src/internal/chaintool";
+import { ChainTool, ClockMode } from "../../src/internal/chaintool";
 
 const mockCreatePublicClient = jest.fn();
 const mockHttp = jest.fn((url: string) => ({ url }));

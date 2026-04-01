@@ -5,6 +5,7 @@ default:
 
 yarn := "npx -y yarn@1.22.22"
 
+# Environment
 install:
     {{yarn}} install --ignore-scripts
 
@@ -17,6 +18,7 @@ up:
 down:
     npx sqd down
 
+# Codegen and build
 codegen-abi:
     {{yarn}} run codegen:abi
 
@@ -29,12 +31,20 @@ codegen:
 build:
     {{yarn}} run build
 
+# Database
+db-migrate:
+    {{yarn}} run db:migrate
+
+db-migrate-force:
+    {{yarn}} run db:migrate:force
+
 migrate-db:
-    {{yarn}} run migrate:db
+    just db-migrate
 
 migrate-db-force:
-    {{yarn}} run migrate:db -- --force
+    just db-migrate-force
 
+# Runtime
 process:
     npx sqd process
 
@@ -45,17 +55,18 @@ run:
     npx sqd run .
 
 start:
-    sh ./scripts/start.sh
+    {{yarn}} run dev:start
 
 smart-start:
-    sh ./scripts/smart-start.sh
+    {{yarn}} run dev:smart-start
 
 smart-start-force:
-    sh ./scripts/smart-start.sh force
+    {{yarn}} run dev:smart-start:force
 
 graphql-server:
-    sh ./scripts/graphql-server.sh
+    {{yarn}} run dev:graphql
 
+# Verification and audit
 verify-range config_path start_block end_block force='force':
     sh ./scripts/local-verify-range.sh "{{config_path}}" "{{start_block}}" "{{end_block}}" "{{force}}"
 
@@ -71,20 +82,29 @@ verify-negative-current limit='20':
 
 diagnose-address address code='':
     if [ -n "{{code}}" ]; then \
-      node ./scripts/indexer-accuracy-diagnose.js --address "{{address}}" --code "{{code}}"; \
+      {{yarn}} run audit:diagnose -- --address "{{address}}" --code "{{code}}"; \
     else \
-      node ./scripts/indexer-accuracy-diagnose.js --address "{{address}}"; \
+      {{yarn}} run audit:diagnose -- --address "{{address}}"; \
     fi
 
+audit-accuracy:
+    {{yarn}} run audit:accuracy
+
 reconcile:
-    {{yarn}} run build
-    node lib/reconcile.js
+    {{yarn}} run dev:reconcile
 
 replay-backfill:
-    {{yarn}} run replay:backfill
+    {{yarn}} run dev:replay-backfill
 
+# Tests
 test:
-    {{yarn}} run test
+    {{yarn}} run test:unit
+
+test-unit:
+    {{yarn}} run test:unit
+
+test-accuracy:
+    {{yarn}} run test:accuracy
 
 test-integration:
     {{yarn}} run test:integration

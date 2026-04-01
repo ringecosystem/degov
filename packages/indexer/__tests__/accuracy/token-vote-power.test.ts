@@ -2,10 +2,10 @@ import {
   classifyVotePowerCheckpointCause,
   TokenHandler,
   votePowerTimepointForLog,
-} from "../src/handler/token";
-import * as itokenerc20 from "../src/abi/itokenerc20";
-import * as itokenerc721 from "../src/abi/itokenerc721";
-import { ChainTool, ClockMode } from "../src/internal/chaintool";
+} from "../../src/handler/token";
+import * as itokenerc20 from "../../src/abi/itokenerc20";
+import * as itokenerc721 from "../../src/abi/itokenerc721";
+import { ChainTool, ClockMode } from "../../src/internal/chaintool";
 import { zeroAddress } from "viem";
 import {
   Contributor,
@@ -16,7 +16,7 @@ import {
   DelegateVotesChanged,
   TokenTransfer,
   VotePowerCheckpoint,
-} from "../src/model";
+} from "../../src/model";
 
 describe("token vote power checkpoints", () => {
   afterEach(() => {

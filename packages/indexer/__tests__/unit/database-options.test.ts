@@ -1,4 +1,4 @@
-import { getDatabaseOptions } from "../src/database";
+import { getDatabaseOptions } from "../../src/database";
 
 describe("database options", () => {
   it("keeps hot blocks enabled without overriding the default isolation level", () => {

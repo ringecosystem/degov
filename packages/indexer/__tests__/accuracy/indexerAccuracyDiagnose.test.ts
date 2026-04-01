@@ -3,7 +3,7 @@ const {
   classifyNegativeDelegate,
   collectNegativeDelegateSignals,
   parseArgs,
-} = require("../scripts/indexer-accuracy-diagnose");
+} = require("../../scripts/indexer-accuracy-diagnose");
 
 export {};
 

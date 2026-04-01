@@ -1,9 +1,9 @@
-import { ClockMode } from "../src/internal/chaintool";
+import { ClockMode } from "../../src/internal/chaintool";
 import {
   compareScalarField,
   deriveProjectedProposalState,
   governorStateName,
-} from "../src/internal/reconciliation";
+} from "../../src/internal/reconciliation";
 
 describe("reconciliation helpers", () => {
   it("maps governor state enum values to readable names", () => {
