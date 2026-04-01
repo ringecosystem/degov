@@ -1,6 +1,6 @@
 {
   "name": "@degov/indexer",
-  "version": "0.18.2",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "yarn@1.22.22",
   "scripts": {
