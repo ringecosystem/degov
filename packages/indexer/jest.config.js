@@ -3,7 +3,12 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
   testMatch: ["**/__tests__/**/*.test.ts", "**/src/**/*.test.ts"],
-  testPathIgnorePatterns: ["/node_modules/", "/build/", "/dist/"],
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "/build/",
+    "/dist/",
+    "\\.integration\\.test\\.ts$",
+  ],
 
   transformIgnorePatterns: ["/node_modules/(?!marked)/"],
 

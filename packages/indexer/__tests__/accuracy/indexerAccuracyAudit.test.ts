@@ -11,12 +11,14 @@ const {
   loadTargets,
   parseArgs,
   summarizeAudit,
-} = require("../scripts/indexer-accuracy-audit");
+} = require("../../scripts/indexer-accuracy-audit");
 const {
   buildIssueBody,
   main: buildIssueBodyMain,
   uploadMarkdownReport,
-} = require("../scripts/indexer-accuracy-issue-body");
+} = require("../../scripts/indexer-accuracy-issue-body");
+
+export {};
 
 describe("indexer accuracy audit", () => {
   const target = {

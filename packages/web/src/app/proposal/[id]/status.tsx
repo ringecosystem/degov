@@ -129,12 +129,24 @@ const Status: React.FC<StatusProps> = ({
 
   const hasTimelock = useMemo(() => {
     return (
+      Boolean(data?.timelockAddress) ||
+      Boolean(data?.queueReadyAt) ||
+      Boolean(data?.queueExpiresAt) ||
       govParams?.timeLockDelayInSeconds !== undefined &&
       govParams?.timeLockDelayInSeconds !== null
     );
-  }, [govParams?.timeLockDelayInSeconds]);
+  }, [
+    data?.queueExpiresAt,
+    data?.queueReadyAt,
+    data?.timelockAddress,
+    govParams?.timeLockDelayInSeconds,
+  ]);
 
   const executeEnabledTime = useMemo(() => {
+    if (data?.queueReadyAt) {
+      return BigInt(data.queueReadyAt);
+    }
+
     if (
       !proposalQueuedById?.blockTimestamp ||
       !govParams?.timeLockDelayInSeconds ||
@@ -147,7 +159,11 @@ const Status: React.FC<StatusProps> = ({
       BigInt(proposalQueuedById.blockTimestamp) +
       BigInt(govParams.timeLockDelayInSeconds * 1000)
     );
-  }, [proposalQueuedById?.blockTimestamp, govParams?.timeLockDelayInSeconds]);
+  }, [
+    data?.queueReadyAt,
+    proposalQueuedById?.blockTimestamp,
+    govParams?.timeLockDelayInSeconds,
+  ]);
 
   const stages: ProposalStage[] = useMemo(() => {
     const baseStages: ProposalStage[] = [
@@ -363,8 +379,10 @@ const Status: React.FC<StatusProps> = ({
           {
             key: "expired" as ProposalStageKey,
             title: t("proposalExpired"),
-            timestamp: proposalQueuedById?.blockTimestamp
-              ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
+            timestamp: data?.queueExpiresAt
+              ? formatTimestampToDayTime(data.queueExpiresAt)
+              : proposalQueuedById?.blockTimestamp
+                ? formatTimestampToDayTime(proposalQueuedById?.blockTimestamp)
               : "",
             icon: (
               <StatusQueuedIcon

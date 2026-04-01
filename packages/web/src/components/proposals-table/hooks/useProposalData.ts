@@ -5,7 +5,11 @@ import { useAccount, useReadContracts } from "wagmi";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { DEFAULT_MULTICALL_BATCH_SIZE, DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { proposalService } from "@/services/graphql";
+import {
+  buildGovernanceScope,
+  proposalService,
+  type ProposalWhere,
+} from "@/services/graphql";
 import type { ProposalListItem } from "@/services/graphql/types";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
 
@@ -44,7 +48,9 @@ export function useProposalData(
   } = useInfiniteQuery<ProposalListItem[]>({
     queryKey: [
       "proposals",
+      daoConfig?.code,
       daoConfig?.indexer?.endpoint,
+      daoConfig,
       address,
       support,
       pageSize,
@@ -56,10 +62,13 @@ export function useProposalData(
         offset: 0,
         limit: normalizedInitialPageSize,
       };
-      let whereCondition = {};
+      let whereCondition: ProposalWhere = {
+        ...buildGovernanceScope(daoConfig),
+      };
 
       if (address && !support) {
         whereCondition = {
+          ...buildGovernanceScope(daoConfig),
           proposer_eq: address?.toLowerCase(),
           OR: {
             voters_some: {
@@ -69,6 +78,7 @@ export function useProposalData(
         };
       } else if (address && support) {
         whereCondition = {
+          ...buildGovernanceScope(daoConfig),
           voters_some: {
             voter_eq: address?.toLowerCase(),
             support_eq: support ? parseInt(support) : undefined,

@@ -15,7 +15,7 @@ export enum MetricsId {
   global = "global",
 }
 
-export type ContractName = "governor" | "governorToken";
+export type ContractName = "governor" | "governorToken" | "timeLock";
 
 export interface IndexerProcessorConfig {
   chainId: number;

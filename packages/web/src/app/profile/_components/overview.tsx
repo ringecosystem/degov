@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useAddressVotes } from "@/hooks/useAddressVotes";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, proposalService } from "@/services/graphql";
 
 import { OverviewItem } from "./overview-item";
 
@@ -44,9 +44,12 @@ export const Overview = ({
 
   const daoConfig = useDaoConfig();
   const { data: dataMetrics, isLoading: isMetricsLoading } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint, daoConfig],
     queryFn: () =>
-      proposalService.getProposalMetrics(daoConfig?.indexer?.endpoint ?? ""),
+      proposalService.getProposalMetrics(
+        daoConfig?.indexer?.endpoint ?? "",
+        buildGovernanceScope(daoConfig)
+      ),
     enabled: !!daoConfig?.indexer?.endpoint,
   });
 
@@ -56,12 +59,14 @@ export const Overview = ({
       address,
       daoConfig?.indexer?.endpoint,
       PARTICIPATION_WINDOW,
+      daoConfig,
     ],
     queryFn: () =>
       proposalService.getProposalVoteRate(
         daoConfig?.indexer?.endpoint ?? "",
         address,
-        PARTICIPATION_WINDOW
+        PARTICIPATION_WINDOW,
+        buildGovernanceScope(daoConfig)
       ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
   });

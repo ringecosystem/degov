@@ -23,9 +23,12 @@ export type ProposalItem = {
   blockNumber: string;
   blockTimestamp: string;
   calldatas: string[];
+  chainId?: number | null;
+  daoCode?: string | null;
   description: string;
   id: string;
   proposalId: string;
+  governorAddress?: string | null;
   proposer: string;
   signatures: string[];
   targets: string[];
@@ -37,8 +40,14 @@ export type ProposalItem = {
   voteEndTimestamp: string;
   blockInterval?: string | null;
   clockMode: string;
+  proposalDeadline?: string | null;
+  proposalEta?: string | null;
+  queueReadyAt?: string | null;
+  queueExpiresAt?: string | null;
   quorum: string;
   decimals: string;
+  timelockAddress?: string | null;
+  timelockGracePeriod?: string | null;
   title: string;
   metricsVotesWeightAbstainSum: string;
   metricsVotesWeightAgainstSum: string;
@@ -55,6 +64,8 @@ export type ProposalResponse = {
 
 export type ProposalListItem = {
   blockTimestamp: string;
+  chainId?: number | null;
+  governorAddress?: string | null;
   id: string;
   proposalId: string;
   proposer: string;
@@ -70,6 +81,8 @@ export type ProposalListResponse = {
 };
 
 export type ProposalDescriptionItem = {
+  chainId?: number | null;
+  governorAddress?: string | null;
   proposalId: string;
   description: string;
 };

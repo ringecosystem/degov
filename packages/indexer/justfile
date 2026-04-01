@@ -1,0 +1,110 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default:
+    @just --list
+
+yarn := "npx -y yarn@1.22.22"
+
+# Environment
+install:
+    {{yarn}} install --ignore-scripts
+
+clean:
+    npx sqd clean
+
+up:
+    npx sqd up
+
+down:
+    npx sqd down
+
+# Codegen and build
+codegen-abi:
+    {{yarn}} run codegen:abi
+
+codegen-schema:
+    {{yarn}} run codegen:schema
+
+codegen:
+    {{yarn}} run codegen
+
+build:
+    {{yarn}} run build
+
+# Database
+db-migrate:
+    {{yarn}} run db:migrate
+
+db-migrate-force:
+    {{yarn}} run db:migrate:force
+
+migrate-db:
+    just db-migrate
+
+migrate-db-force:
+    just db-migrate-force
+
+# Runtime
+process:
+    npx sqd process
+
+serve:
+    npx sqd serve
+
+run:
+    npx sqd run .
+
+start:
+    {{yarn}} run dev:start
+
+smart-start:
+    {{yarn}} run dev:smart-start
+
+smart-start-force:
+    {{yarn}} run dev:smart-start:force
+
+graphql-server:
+    {{yarn}} run dev:graphql
+
+# Verification and audit
+verify-range config_path start_block end_block force='force':
+    sh ./scripts/local-verify-range.sh "{{config_path}}" "{{start_block}}" "{{end_block}}" "{{force}}"
+
+verify-sample delegator delegate='':
+    if [ -n "{{delegate}}" ]; then \
+      node ./scripts/local-verify-query.mjs --delegator "{{delegator}}" --delegate "{{delegate}}"; \
+    else \
+      node ./scripts/local-verify-query.mjs --delegator "{{delegator}}"; \
+    fi
+
+verify-negative-current limit='20':
+    node ./scripts/local-verify-query.mjs --negative-current --limit "{{limit}}"
+
+diagnose-address address code='':
+    if [ -n "{{code}}" ]; then \
+      {{yarn}} run audit:diagnose -- --address "{{address}}" --code "{{code}}"; \
+    else \
+      {{yarn}} run audit:diagnose -- --address "{{address}}"; \
+    fi
+
+audit-accuracy:
+    {{yarn}} run audit:accuracy
+
+reconcile:
+    {{yarn}} run dev:reconcile
+
+replay-backfill:
+    {{yarn}} run dev:replay-backfill
+
+# Tests
+test:
+    {{yarn}} run test:unit
+
+test-unit:
+    {{yarn}} run test:unit
+
+test-accuracy:
+    {{yarn}} run test:accuracy
+
+test-integration:
+    {{yarn}} run test:integration

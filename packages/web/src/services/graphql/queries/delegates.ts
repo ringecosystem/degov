@@ -17,6 +17,7 @@ export const GET_DELEGATES = gql`
       blockTimestamp
       fromDelegate
       id
+      isCurrent
       power
       toDelegate
       transactionHash
@@ -24,13 +25,35 @@ export const GET_DELEGATES = gql`
   }
 `;
 
+export const GET_DELEGATES_CONNECTION = gql`
+  query GetDelegatesConnection(
+    $where: DelegateWhereInput
+    $orderBy: [DelegateOrderByInput!]!
+  ) {
+    delegatesConnection(where: $where, orderBy: $orderBy) {
+      totalCount
+    }
+  }
+`;
+
 export const GET_DELEGATE_MAPPINGS = gql`
-  query GetDelegateMappings($where: DelegateMappingWhereInput!) {
-    delegateMappings(where: $where) {
+  query GetDelegateMappings(
+    $limit: Int
+    $offset: Int
+    $orderBy: [DelegateMappingOrderByInput!]
+    $where: DelegateMappingWhereInput!
+  ) {
+    delegateMappings(
+      limit: $limit
+      offset: $offset
+      orderBy: $orderBy
+      where: $where
+    ) {
       blockNumber
       blockTimestamp
       from
       id
+      power
       to
       transactionHash
     }
@@ -39,10 +62,10 @@ export const GET_DELEGATE_MAPPINGS = gql`
 
 export const GET_DELEGATE_MAPPINGS_CONNECTION = gql`
   query GetDelegateMappingsConnection(
-    $where: DelegateWhereInput
-    $orderBy: [DelegateOrderByInput!]!
+    $where: DelegateMappingWhereInput
+    $orderBy: [DelegateMappingOrderByInput!]!
   ) {
-    delegatesConnection(where: $where, orderBy: $orderBy) {
+    delegateMappingsConnection(where: $where, orderBy: $orderBy) {
       totalCount
     }
   }

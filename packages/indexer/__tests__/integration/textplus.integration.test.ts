@@ -1,4 +1,4 @@
-import { TextPlus } from "../src/internal/textplus";
+import { TextPlus } from "../../src/internal/textplus";
 
 const mockGenerateObject = jest.fn();
 const mockCreateOpenRouter = jest.fn(
@@ -86,8 +86,7 @@ describe("TextPlus", () => {
       title: "Retroactive Funding August 2024",
     });
     expect(console.error).toHaveBeenCalledWith(
-      "Error generating title with AI. Falling back to local extraction.",
-      expect.any(Error)
+      expect.stringContaining("textplus.title generation failed")
     );
   });
 });
