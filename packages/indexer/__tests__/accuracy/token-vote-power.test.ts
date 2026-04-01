@@ -611,6 +611,233 @@ describe("token vote power checkpoints", () => {
     ).toBeUndefined();
   });
 
+  it("keeps first self-delegation power when a mint transfer is logged before the delegate change", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+    const handler = buildTokenHandler(store);
+    const account = "0x297bf847dcb01f3e870515628b36eabad491e5e8";
+    const txHash =
+      "0x54e1f8189eaf2f1db1bb8be054d088676ccc45597de198fb141e5001d45dd55d";
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: zeroAddress,
+      to: account,
+      value: 56287540000000000000000n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "hai-transfer-in",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 83,
+      transactionIndex: 7,
+      block: {
+        height: 116466459,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValueOnce({
+        delegator: account,
+        fromDelegate: zeroAddress,
+        toDelegate: account,
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "hai-self-delegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 86,
+      transactionIndex: 7,
+      block: {
+        height: 116466459,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: account,
+        previousVotes: 0n,
+        newVotes: 56287540000000000000000n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: account,
+        previousVotes: 56287540000000000000000n,
+        newVotes: 50000540000000000000000n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "hai-dvc-plus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 87,
+      transactionIndex: 7,
+      block: {
+        height: 116466459,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    expect(store.findEntity(DelegateMapping, account)).toMatchObject({
+      from: account,
+      to: account,
+      power: 56287540000000000000000n,
+    });
+    expect(store.findEntity(Delegate, `${account}_${account}`)).toMatchObject({
+      power: 56287540000000000000000n,
+      isCurrent: true,
+    });
+    expect(store.findEntity(Contributor, account)).toMatchObject({
+      power: 56287540000000000000000n,
+      delegatesCountAll: 1,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(
+      56287540000000000000000n,
+    );
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: account,
+      to: "0x1111111111111111111111111111111111111111",
+      value: 6287000000000000000000n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "hai-transfer-out",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 10,
+      transactionIndex: 1,
+      block: {
+        height: 132281981,
+        timestamp: 1_700_000_000_100,
+      },
+      transactionHash:
+        "0x7bf784bc12bfe94757c370dcc37e012755e5c086ad404592cc8fd14f1c21b110",
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "hai-dvc-minus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 11,
+      transactionIndex: 1,
+      block: {
+        height: 132281981,
+        timestamp: 1_700_000_000_100,
+      },
+      transactionHash:
+        "0x7bf784bc12bfe94757c370dcc37e012755e5c086ad404592cc8fd14f1c21b110",
+    } as any);
+
+    expect(store.findEntity(DelegateMapping, account)).toMatchObject({
+      power: 50000540000000000000000n,
+    });
+    expect(store.findEntity(Delegate, `${account}_${account}`)).toMatchObject({
+      power: 50000540000000000000000n,
+      isCurrent: true,
+    });
+    expect(store.findEntity(Contributor, account)).toMatchObject({
+      power: 50000540000000000000000n,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(
+      50000540000000000000000n,
+    );
+  });
+
+  it("materializes an ENS-style first self-delegation when transfer precedes the delegate change", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+    const handler = buildTokenHandler(store);
+    const account = "0x4e88f436422075c1417357bf957764c127b2cc93";
+    const txHash =
+      "0xba0936d33054615c8c5d914825b7e98ffd3ebb9a768b0077279618e3dab900e8";
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
+      to: account,
+      value: 402598135628414973952n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "ens-transfer-in",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 100,
+      transactionIndex: 5,
+      block: {
+        height: 13578856,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValueOnce({
+        delegator: account,
+        fromDelegate: zeroAddress,
+        toDelegate: account,
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "ens-self-delegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 101,
+      transactionIndex: 5,
+      block: {
+        height: 13578856,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: account,
+        previousVotes: 0n,
+        newVotes: 402598135628414973952n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "ens-dvc-plus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 102,
+      transactionIndex: 5,
+      block: {
+        height: 13578856,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    expect(store.findEntity(DelegateMapping, account)).toMatchObject({
+      from: account,
+      to: account,
+      power: 402598135628414973952n,
+    });
+    expect(store.findEntity(Delegate, `${account}_${account}`)).toMatchObject({
+      power: 402598135628414973952n,
+      isCurrent: true,
+    });
+    expect(store.findEntity(Contributor, account)).toMatchObject({
+      power: 402598135628414973952n,
+      delegatesCountAll: 1,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(
+      402598135628414973952n,
+    );
+  });
+
   it("ignores noop delegate changes that keep the same effective delegate", async () => {
     const store = new MemoryStore([
       new DataMetric({

@@ -406,6 +406,29 @@ export class TokenHandler {
     });
   }
 
+  private isInitialSelfDelegationRolling(
+    delegateRolling: Pick<
+      DelegateRolling,
+      "delegator" | "fromDelegate" | "toDelegate"
+    >,
+  ) {
+    const delegator =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.delegator) ??
+      delegateRolling.delegator.toLowerCase();
+    const fromDelegate =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.fromDelegate) ??
+      delegateRolling.fromDelegate.toLowerCase();
+    const toDelegate =
+      DegovIndexerHelpers.normalizeAddress(delegateRolling.toDelegate) ??
+      delegateRolling.toDelegate.toLowerCase();
+
+    return (
+      this.isZeroAddress(fromDelegate) &&
+      delegator === toDelegate &&
+      delegator !== zeroAddress
+    );
+  }
+
   private isTransferFromCoveredByDelegateChange(
     delegateRolling: Pick<
       DelegateRolling,
@@ -1103,8 +1126,12 @@ export class TokenHandler {
         rollingFromDelegate,
         options.logIndex,
       );
+      const isInitialSelfDelegation = this.isInitialSelfDelegationRolling(
+        delegateRolling,
+      );
       if (
         transferTouchesDelegator &&
+        !isInitialSelfDelegation &&
         !hasEarlierFromSideVoteDelta &&
         !hasEarlierRollingForSameDelegator
       ) {
@@ -1148,8 +1175,12 @@ export class TokenHandler {
         tokenTransfers,
         rollingDelegator,
       );
+      const isInitialSelfDelegation = this.isInitialSelfDelegationRolling(
+        delegateRolling,
+      );
       if (
         transferTouchesDelegator &&
+        !isInitialSelfDelegation &&
         !this.hasEarlierVoteDeltaForDelegate(
           delegateVotesChanges,
           rollingFromDelegate,
