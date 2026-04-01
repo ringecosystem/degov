@@ -3042,6 +3042,147 @@ describe("token vote power checkpoints", () => {
       power: 4000n,
     });
   });
+
+  it("does not subtract same-tx incoming transfer from a redelegation when the old delegate has a vote delta first", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 5970n,
+      }),
+      new Contributor({
+        id: "0x1111111111111111111111111111111111111111",
+        power: 5970n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0x1111111111111111111111111111111111111111",
+        fromDelegate: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        toDelegate: "0x1111111111111111111111111111111111111111",
+        isCurrent: true,
+        power: 5970n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        from: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        to: "0x1111111111111111111111111111111111111111",
+        power: 5970n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+    const handler = buildTokenHandler(store);
+    const txHash =
+      "0x2222222222222222222222222222222222222222222222222222222222222222";
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode")
+      .mockReturnValueOnce({
+        from: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        to: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        value: 823n,
+      } as any)
+      .mockReturnValueOnce({
+        from: "0xcccccccccccccccccccccccccccccccccccccccc",
+        to: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        value: 2058n,
+      } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "redelegate-transfer-1",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 1,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      id: "redelegate-transfer-2",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+
+    jest.spyOn(itokenerc20.events.DelegateChanged, "decode").mockReturnValueOnce({
+      delegator: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      fromDelegate: "0x1111111111111111111111111111111111111111",
+      toDelegate: "0x2222222222222222222222222222222222222222",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "redelegate-change",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 3,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+
+    jest.spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: "0x1111111111111111111111111111111111111111",
+        previousVotes: 14731n,
+        newVotes: 5880n,
+      } as any)
+      .mockReturnValueOnce({
+        delegate: "0x2222222222222222222222222222222222222222",
+        previousVotes: 3155n,
+        newVotes: 12006n,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "redelegate-old-minus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 4,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+    await (handler as any).storeDelegateVotesChanged({
+      id: "redelegate-new-plus",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 5,
+      transactionIndex: 1,
+      block: { height: 100, timestamp: 1_700_000_001_000 },
+      transactionHash: txHash,
+    } as any);
+
+    expect(
+      store.findEntity(
+        DelegateMapping,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ),
+    ).toMatchObject({
+      to: "0x2222222222222222222222222222222222222222",
+      power: 8851n,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0x2222222222222222222222222222222222222222",
+      ),
+    ).toMatchObject({
+      power: 8851n,
+      isCurrent: true,
+    });
+    expect(
+      store.findEntity(
+        Delegate,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0x1111111111111111111111111111111111111111",
+      ),
+    ).toMatchObject({
+      power: 0n,
+      isCurrent: false,
+    });
+  });
 });
 
 class MemoryStore {

@@ -1150,6 +1150,11 @@ export class TokenHandler {
       );
       if (
         transferTouchesDelegator &&
+        !this.hasEarlierVoteDeltaForDelegate(
+          delegateVotesChanges,
+          rollingFromDelegate,
+          options.logIndex,
+        ) &&
         !hasEarlierRollingForSameDelegator
       ) {
         relationDelta -= this.transferDeltaForDelegator(
