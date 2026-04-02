@@ -362,6 +362,43 @@ describe("indexer accuracy audit", () => {
     ]);
   });
 
+  it("loads inline workflow-configured targets without consulting the static targets file", async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "indexer-accuracy-inline-audit-")
+    );
+    const targetsFile = path.join(tempDir, "targets.json");
+    const auditConfigFile = path.join(tempDir, "audit-targets.yml");
+
+    fs.writeFileSync(targetsFile, JSON.stringify([]));
+    fs.writeFileSync(
+      auditConfigFile,
+      [
+        "- code: lazy-summer-dao",
+        "  name: Lazy Summer Protocol",
+        "  indexer: https://indexer.degov.ai/lazy-summer-dao/graphql",
+        "  rpcUrl: https://base-rpc.publicnode.com",
+        '  governor: "0xBE5A4DD68c3526F32B454fE28C9909cA0601e9Fa"',
+        '  governorToken: "0x194f360D130F2393a5E9F3117A6a1B78aBEa1624"',
+        "  limit: 100",
+      ].join("\n")
+    );
+
+    await expect(loadTargets(targetsFile, auditConfigFile)).resolves.toEqual([
+      {
+        code: "lazy-summer-dao",
+        name: "Lazy Summer Protocol",
+        indexer: "https://indexer.degov.ai/lazy-summer-dao/graphql",
+        indexerEndpoint: "https://indexer.degov.ai/lazy-summer-dao/graphql",
+        rpcUrl: "https://base-rpc.publicnode.com",
+        governor: "0xBE5A4DD68c3526F32B454fE28C9909cA0601e9Fa",
+        governorToken: "0x194f360D130F2393a5E9F3117A6a1B78aBEa1624",
+        tokenDecimals: 18,
+        limit: 100,
+        negativeLimit: 100,
+      },
+    ]);
+  });
+
   it("builds a concise GitHub issue body with external report links", () => {
     const report = {
       generatedAt: "2026-03-30T06:00:00.000Z",
