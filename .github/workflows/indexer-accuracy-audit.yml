@@ -37,19 +37,18 @@ jobs:
         working-directory: packages/indexer
         run: |
           cat <<'YAML' > indexer-accuracy-audit-config.yml
-          - name: hai-dao
-            indexer: https://indexer.degov.ai/hai-dao/graphql
+          - code: hai-dao
             limit: 100
-          - name: lisk-dao
-            indexer: https://indexer.degov.ai/lisk-dao/graphql
+          - code: lisk-dao
             limit: 100
-          - name: gmx-dao
-            indexer: https://indexer.degov.ai/gmx-dao/graphql
+          - code: lazy-summer-dao
             limit: 100
           YAML
 
           node scripts/indexer-accuracy-audit.js \
             --audit-config-file indexer-accuracy-audit-config.yml \
+            --limit 100 \
+            --negative-limit 100 \
             --json-file indexer-accuracy-report.json \
             --markdown-file indexer-accuracy-report.md
 
