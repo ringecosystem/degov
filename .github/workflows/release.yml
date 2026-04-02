@@ -39,28 +39,22 @@ jobs:
       - uses: benjlevesque/short-sha@v1.2
       - uses: olegtarasov/get-tag@v2.1
 
-      - name: Prepare docker tags
-        id: prepare-tags
-        shell: bash
-        run: |
-          set -euo pipefail
-          tags="${DOCKER_REGISTRY}/${GITHUB_REPOSITORY}/${{ matrix.image }}:sha-${SHA}"
-
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            tags="${tags}"$'\n'"${DOCKER_REGISTRY}/${GITHUB_REPOSITORY}/${{ matrix.image }}:${GIT_TAG_NAME}"
-          fi
-
-          {
-            echo "tags<<EOF"
-            echo "${tags}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Publish docker image
+      - name: Publish docker image hash
+        id: publish-image-hash
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           file: docker/${{ matrix.image }}.Dockerfile
-          tags: ${{ steps.prepare-tags.outputs.tags }}
+          tags: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:sha-${{ env.SHA }}
+
+      - name: Publish docker image tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          IMAGE_TAG_HASH: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ matrix.image }}
+          IMAGE_DIGEST: ${{ steps.publish-image-hash.outputs.digest }}
+        run: |
+          docker buildx imagetools create \
+            --tag ${IMAGE_TAG_HASH}:${GIT_TAG_NAME} \
+            ${IMAGE_TAG_HASH}@${IMAGE_DIGEST}
