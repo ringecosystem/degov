@@ -51,7 +51,7 @@ const DEFAULT_OPTIONS = {
   limit: 200,
   markdownFile: "",
   negativeLimit: 200,
-  targetsFile: path.resolve(__dirname, "indexer-accuracy-targets.json"),
+  targetsFile: path.resolve(__dirname, "indexer-accuracy-targets.yaml"),
 };
 
 function parseArgs(argv) {
@@ -152,7 +152,132 @@ function normalizeTarget(target) {
   };
 }
 
+async function fetchJson(url, headers = {}) {
+  const response = await fetch(url, {
+    headers: {
+      "user-agent": "degov-indexer-accuracy-audit",
+      accept: "application/json",
+      ...headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Request failed for ${url}: ${response.status} ${response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+async function fetchText(url, headers = {}) {
+  const response = await fetch(url, {
+    headers: {
+      "user-agent": "degov-indexer-accuracy-audit",
+      ...headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Request failed for ${url}: ${response.status} ${response.statusText}`
+    );
+  }
+
+  return response.text();
+}
+
+async function fetchStructured(url, headers = {}) {
+  const raw = await fetchText(url, headers);
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.endsWith(".yaml") || lowerUrl.endsWith(".yml")) {
+    return YAML.parse(raw);
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return YAML.parse(raw);
+  }
+}
+
+function buildTargetFromDaoConfig(config) {
+  const rpcUrl = config.chain?.rpcs?.[0];
+  const governor = config.contracts?.governor;
+  const governorToken = config.contracts?.governorToken?.address;
+  const indexerEndpoint = config.indexer?.endpoint;
+
+  if (!config.code || !rpcUrl || !governor || !governorToken || !indexerEndpoint) {
+    return null;
+  }
+
+  return normalizeTarget({
+    code: config.code,
+    name: config.name ?? config.code,
+    indexerEndpoint,
+    rpcUrl,
+    governor,
+    governorToken,
+    tokenDecimals: config.contracts?.governorToken?.decimals ?? 18,
+  });
+}
+
+async function resolveExtendedTarget(target) {
+  if (!target.extend) {
+    return normalizeTarget({
+      ...target,
+      indexerEndpoint: target.indexerEndpoint ?? target.indexer,
+    });
+  }
+
+  const remoteConfig = await fetchStructured(target.extend);
+  const remoteTarget = buildTargetFromDaoConfig(remoteConfig);
+  if (!remoteTarget) {
+    throw new Error(`Extended target is missing required fields: ${target.extend}`);
+  }
+
+  return normalizeTarget({
+    ...remoteTarget,
+    ...target,
+    indexerEndpoint:
+      target.indexerEndpoint ?? target.indexer ?? remoteTarget.indexerEndpoint,
+  });
+}
+
+function isInlineConfiguredTarget(target) {
+  return Boolean(
+    target &&
+      (target.code || target.name) &&
+      (target.indexerEndpoint || target.indexer) &&
+      target.rpcUrl &&
+      target.governor &&
+      target.governorToken
+  );
+}
+
 function resolveConfiguredTarget(baseTargets, configuredTarget) {
+  if (isInlineConfiguredTarget(configuredTarget)) {
+    const limit = parseOptionalPositiveInt(configuredTarget.limit, "limit");
+    const negativeLimit = parseOptionalPositiveInt(
+      configuredTarget.negativeLimit,
+      "negativeLimit"
+    );
+
+    return {
+      ...normalizeTarget({
+        ...configuredTarget,
+        indexerEndpoint:
+          configuredTarget.indexerEndpoint ?? configuredTarget.indexer,
+      }),
+      ...(limit !== undefined ? { limit } : {}),
+      ...(negativeLimit !== undefined
+        ? { negativeLimit }
+        : limit !== undefined
+          ? { negativeLimit: limit }
+          : {}),
+    };
+  }
+
   const targetCode = configuredTarget.code ?? configuredTarget.name;
   const configuredIndexer =
     configuredTarget.indexerEndpoint ?? configuredTarget.indexer;
@@ -197,17 +322,15 @@ function resolveConfiguredTarget(baseTargets, configuredTarget) {
 }
 
 async function loadTargets(targetsFile, auditConfigFile = "") {
-  const raw = await fs.readFile(targetsFile, "utf8");
-  const targets = parseStructuredFile(raw, targetsFile);
-
-  if (!Array.isArray(targets) || targets.length === 0) {
-    throw new Error("Targets file must contain a non-empty array");
-  }
-
-  const baseTargets = targets.map(normalizeTarget);
-
   if (!auditConfigFile) {
-    return baseTargets;
+    const raw = await fs.readFile(targetsFile, "utf8");
+    const targets = parseStructuredFile(raw, targetsFile);
+
+    if (!Array.isArray(targets) || targets.length === 0) {
+      throw new Error("Targets file must contain a non-empty array");
+    }
+
+    return Promise.all(targets.map((target) => resolveExtendedTarget(target)));
   }
 
   const auditConfigRaw = await fs.readFile(auditConfigFile, "utf8");
@@ -216,6 +339,33 @@ async function loadTargets(targetsFile, auditConfigFile = "") {
   if (!Array.isArray(auditConfig) || auditConfig.length === 0) {
     throw new Error("Audit config file must contain a non-empty array");
   }
+
+  if (
+    auditConfig.every(
+      (configuredTarget) =>
+        isInlineConfiguredTarget(configuredTarget) || configuredTarget.extend
+    )
+  ) {
+    const inlineTargets = await Promise.all(
+      auditConfig.map((configuredTarget) =>
+        resolveExtendedTarget(configuredTarget)
+      )
+    );
+    return inlineTargets.map((configuredTarget) =>
+      resolveConfiguredTarget([], configuredTarget)
+    );
+  }
+
+  const raw = await fs.readFile(targetsFile, "utf8");
+  const targets = parseStructuredFile(raw, targetsFile);
+
+  if (!Array.isArray(targets) || targets.length === 0) {
+    throw new Error("Targets file must contain a non-empty array");
+  }
+
+  const baseTargets = await Promise.all(
+    targets.map((target) => resolveExtendedTarget(target))
+  );
 
   return auditConfig.map((configuredTarget) =>
     resolveConfiguredTarget(baseTargets, configuredTarget)

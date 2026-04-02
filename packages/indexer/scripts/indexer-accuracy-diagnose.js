@@ -24,7 +24,7 @@ const DEFAULT_OPTIONS = {
   rpcUrl: "",
   governor: "",
   governorToken: "",
-  targetsFile: path.resolve(__dirname, "indexer-accuracy-targets.json"),
+  targetsFile: path.resolve(__dirname, "indexer-accuracy-targets.yaml"),
   mappingLimit: 500,
   negativeLimit: 200,
   historyLimit: 12,

@@ -26,7 +26,7 @@ just diagnose-address 0x983110309620d911731ac0932219af06091b6744 ens-dao
 ```
 
 This uses the built-in target config from
-`scripts/indexer-accuracy-targets.json`.
+`scripts/indexer-accuracy-targets.yaml`.
 
 ## Custom target
 
