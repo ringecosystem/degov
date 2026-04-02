@@ -347,6 +347,11 @@ describe("ChainTool", () => {
     }> = [];
 
     jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    jest.spyOn(chainTool, "currentClock").mockResolvedValue({
+      clockMode: ClockMode.BlockNumber,
+      timepoint: 1_500n,
+      timestampMs: 1_500_000n,
+    });
     const executeWithFallbacks = jest
       .spyOn(chainTool as any, "_executeWithFallbacks")
       .mockImplementation(async (_options: any, action: any) => {
@@ -390,6 +395,64 @@ describe("ChainTool", () => {
     ]);
   });
 
+  it("clamps future quorum checkpoints to a safe past timepoint", async () => {
+    const chainTool = new ChainTool();
+    const readContractCalls: Array<{
+      functionName: string;
+      args?: readonly unknown[];
+    }> = [];
+
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.Timestamp);
+    jest.spyOn(chainTool, "currentClock").mockResolvedValue({
+      clockMode: ClockMode.Timestamp,
+      timepoint: 1_000n,
+      timestampMs: 1_000_000n,
+    });
+    jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) =>
+        action({
+          readContract: jest.fn().mockImplementation(async (request) => {
+            readContractCalls.push({
+              functionName: request.functionName,
+              args: request.args,
+            });
+
+            switch (request.functionName) {
+              case "quorum":
+                return 42n;
+              case "decimals":
+                return 18;
+              default:
+                throw new Error(`Unexpected function: ${request.functionName}`);
+            }
+          }),
+        }),
+      );
+
+    await expect(
+      chainTool.quorum({
+        chainId: 8453,
+        contractAddress,
+        governorTokenAddress,
+        governorTokenStandard: "ERC20",
+        timepoint: 1_200n,
+      }),
+    ).resolves.toEqual({
+      clockMode: ClockMode.Timestamp,
+      quorum: 42n,
+      decimals: 18n,
+    });
+
+    expect(readContractCalls).toEqual([
+      { functionName: "quorum", args: [999n] },
+      { functionName: "decimals", args: undefined },
+    ]);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("chaintool.quorum timepoint clamped"),
+    );
+  });
+
   it("treats ERC721 governor tokens as zero-decimal without calling decimals()", async () => {
     const chainTool = new ChainTool();
     const readContractCalls: Array<{
@@ -398,6 +461,11 @@ describe("ChainTool", () => {
     }> = [];
 
     jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
+    jest.spyOn(chainTool, "currentClock").mockResolvedValue({
+      clockMode: ClockMode.BlockNumber,
+      timepoint: 500n,
+      timestampMs: 500_000n,
+    });
     const executeWithFallbacks = jest
       .spyOn(chainTool as any, "_executeWithFallbacks")
       .mockImplementation(async (_options: any, action: any) => {

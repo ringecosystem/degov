@@ -181,6 +181,30 @@ function clockModeFallbackReason(error: unknown): string {
   return "clock-mode-function-unavailable";
 }
 
+function stableCurrentQuorumTimepoint(
+  clockMode: ClockMode,
+  currentTimepoint: bigint
+): bigint {
+  switch (clockMode) {
+    case ClockMode.Timestamp:
+      return currentTimepoint > 60n * 3n ? currentTimepoint - 60n * 3n : 0n;
+    case ClockMode.BlockNumber:
+      return currentTimepoint > 15n ? currentTimepoint - 15n : 0n;
+  }
+}
+
+function stablePastQuorumTimepoint(
+  clockMode: ClockMode,
+  currentTimepoint: bigint
+): bigint {
+  switch (clockMode) {
+    case ClockMode.Timestamp:
+      return currentTimepoint > 0n ? currentTimepoint - 1n : 0n;
+    case ClockMode.BlockNumber:
+      return currentTimepoint > 10n ? currentTimepoint - 10n : 0n;
+  }
+}
+
 // --- CHAINTOOL CLASS ---
 
 export class ChainTool {
@@ -571,8 +595,10 @@ export class ChainTool {
     }
   }
 
-  async currentClock(options: BaseContractOptions): Promise<CurrentClockResult> {
-    const clockMode = await this.clockMode(options);
+  async currentClock(
+    options: BaseContractOptions & { clockMode?: ClockMode }
+  ): Promise<CurrentClockResult> {
+    const clockMode = options.clockMode ?? (await this.clockMode(options));
 
     try {
       const timepoint = BigInt(
@@ -726,19 +752,39 @@ export class ChainTool {
       const clockMode = await this.clockMode(options);
       let timepoint: bigint;
 
-      if (options.timepoint !== undefined) {
-        timepoint = options.timepoint;
+      if (options.timepoint === undefined) {
+        const currentClock = await this.currentClock({
+          ...options,
+          clockMode,
+        });
+        timepoint = stableCurrentQuorumTimepoint(
+          clockMode,
+          currentClock.timepoint,
+        );
       } else {
-        const currentClock = await this.currentClock(options);
-        timepoint = currentClock.timepoint;
+        timepoint = options.timepoint;
 
-        switch (clockMode) {
-          case ClockMode.Timestamp:
-            timepoint = timepoint > 60n * 3n ? timepoint - 60n * 3n : 0n;
-            break;
-          case ClockMode.BlockNumber:
-            timepoint = timepoint > 15n ? timepoint - 15n : 0n;
-            break;
+        const currentClock = await this.currentClock({
+          ...options,
+          clockMode,
+        });
+        if (timepoint >= currentClock.timepoint) {
+          const clampedTimepoint = stablePastQuorumTimepoint(
+            clockMode,
+            currentClock.timepoint,
+          );
+          console.warn(
+            DegovIndexerHelpers.formatLogLine("chaintool.quorum timepoint clamped", {
+              chainId: options.chainId,
+              contract: options.contractAddress,
+              clockMode,
+              requested: timepoint,
+              current: currentClock.timepoint,
+              clamped: clampedTimepoint,
+              reason: "future-checkpoint",
+            })
+          );
+          timepoint = clampedTimepoint;
         }
       }
 
