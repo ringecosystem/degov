@@ -205,6 +205,13 @@ function stablePastQuorumTimepoint(
   }
 }
 
+function quorumCacheKey(
+  options: BaseContractOptions,
+  timepoint?: bigint
+): string {
+  return `${options.chainId}:${options.contractAddress}:${timepoint?.toString() ?? "latest"}`;
+}
+
 // --- CHAINTOOL CLASS ---
 
 export class ChainTool {
@@ -725,7 +732,7 @@ export class ChainTool {
   }
 
   async quorum(options: QueryQuorumOptions): Promise<QuorumResult> {
-    const cacheKey = `${options.chainId}:${options.contractAddress}:${options.timepoint?.toString() ?? "latest"}`;
+    const cacheKey = quorumCacheKey(options, options.timepoint);
     const cachedEntry = this.quorumCache.get(cacheKey);
 
     // 1. Check if a valid, non-expired cache entry exists.
@@ -751,6 +758,23 @@ export class ChainTool {
 
       const clockMode = await this.clockMode(options);
       let timepoint: bigint;
+      let effectiveCacheKey = cacheKey;
+
+      const readQuorum = async (queryTimepoint: bigint): Promise<bigint> => {
+        const quorumResult = await this._executeWithFallbacks(options, (client) =>
+          client.readContract({
+            address: options.contractAddress,
+            abi: ABI_FUNCTION_QUORUM,
+            functionName: "quorum",
+            args: [queryTimepoint],
+          })
+        );
+        if (quorumResult === undefined || quorumResult === null) {
+          throw new Error("Failed to retrieve quorum from contract");
+        }
+
+        return BigInt(quorumResult as any);
+      };
 
       if (options.timepoint === undefined) {
         const currentClock = await this.currentClock({
@@ -763,12 +787,28 @@ export class ChainTool {
         );
       } else {
         timepoint = options.timepoint;
+      }
 
-        const currentClock = await this.currentClock({
-          ...options,
-          clockMode,
-        });
-        if (timepoint >= currentClock.timepoint) {
+      let quorum: bigint;
+
+      if (options.timepoint === undefined) {
+        quorum = await readQuorum(timepoint);
+      } else {
+        try {
+          quorum = await readQuorum(timepoint);
+        } catch (error) {
+          if (!isDeterministicContractCallError(error)) {
+            throw error;
+          }
+
+          const currentClock = await this.currentClock({
+            ...options,
+            clockMode,
+          });
+          if (timepoint < currentClock.timepoint) {
+            throw error;
+          }
+
           const clampedTimepoint = stablePastQuorumTimepoint(
             clockMode,
             currentClock.timepoint,
@@ -785,21 +825,29 @@ export class ChainTool {
             })
           );
           timepoint = clampedTimepoint;
+          effectiveCacheKey = quorumCacheKey(options, timepoint);
+
+          const effectiveCachedEntry = this.quorumCache.get(effectiveCacheKey);
+          if (
+            effectiveCachedEntry &&
+            Date.now() - effectiveCachedEntry.timestamp < QUORUM_CACHE_DURATION_MS
+          ) {
+            DegovIndexerHelpers.logVerbose("chaintool.quorum cache hit", {
+              chainId: options.chainId,
+              contract: options.contractAddress,
+            });
+            return effectiveCachedEntry.result;
+          }
+          if (effectiveCachedEntry) {
+            DegovIndexerHelpers.logVerbose("chaintool.quorum cache stale", {
+              chainId: options.chainId,
+              contract: options.contractAddress,
+            });
+          }
+
+          quorum = await readQuorum(timepoint);
         }
       }
-
-      const quorumResult = await this._executeWithFallbacks(options, (client) =>
-        client.readContract({
-          address: options.contractAddress,
-          abi: ABI_FUNCTION_QUORUM,
-          functionName: "quorum",
-          args: [timepoint],
-        })
-      );
-      if (quorumResult === undefined || quorumResult === null) {
-        throw new Error("Failed to retrieve quorum from contract");
-      }
-      const quorum = BigInt(quorumResult as any);
 
       let decimals: bigint;
       const governorTokenContractStandard = (options.governorTokenStandard ?? "ERC20").toUpperCase();
@@ -831,7 +879,7 @@ export class ChainTool {
       const freshResult: QuorumResult = { clockMode, quorum, decimals };
 
       // Cache the newly fetched result
-      this.quorumCache.set(cacheKey, {
+      this.quorumCache.set(effectiveCacheKey, {
         result: freshResult,
         timestamp: Date.now(),
       });

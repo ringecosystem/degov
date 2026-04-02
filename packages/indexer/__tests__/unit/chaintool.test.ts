@@ -347,7 +347,7 @@ describe("ChainTool", () => {
     }> = [];
 
     jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.BlockNumber);
-    jest.spyOn(chainTool, "currentClock").mockResolvedValue({
+    const currentClockSpy = jest.spyOn(chainTool, "currentClock").mockResolvedValue({
       clockMode: ClockMode.BlockNumber,
       timepoint: 1_500n,
       timestampMs: 1_500_000n,
@@ -389,6 +389,7 @@ describe("ChainTool", () => {
     });
 
     expect(executeWithFallbacks).toHaveBeenCalledTimes(2);
+    expect(currentClockSpy).not.toHaveBeenCalled();
     expect(readContractCalls).toEqual([
       { functionName: "quorum", args: [999n] },
       { functionName: "decimals", args: undefined },
@@ -403,7 +404,7 @@ describe("ChainTool", () => {
     }> = [];
 
     jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.Timestamp);
-    jest.spyOn(chainTool, "currentClock").mockResolvedValue({
+    const currentClockSpy = jest.spyOn(chainTool, "currentClock").mockResolvedValue({
       clockMode: ClockMode.Timestamp,
       timepoint: 1_000n,
       timestampMs: 1_000_000n,
@@ -420,6 +421,11 @@ describe("ChainTool", () => {
 
             switch (request.functionName) {
               case "quorum":
+                if (request.args?.[0] === 1_200n) {
+                  throw new Error(
+                    'The contract function "quorum" reverted.\nDetails: execution reverted',
+                  );
+                }
                 return 42n;
               case "decimals":
                 return 18;
@@ -445,12 +451,52 @@ describe("ChainTool", () => {
     });
 
     expect(readContractCalls).toEqual([
+      { functionName: "quorum", args: [1_200n] },
       { functionName: "quorum", args: [999n] },
       { functionName: "decimals", args: undefined },
     ]);
+    expect(currentClockSpy).toHaveBeenCalledTimes(1);
     expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining("chaintool.quorum timepoint clamped"),
     );
+    expect(
+      (
+        chainTool as unknown as {
+          quorumCache: Map<
+            string,
+            {
+              result: {
+                clockMode: ClockMode;
+                quorum: bigint;
+                decimals: bigint;
+              };
+              timestamp: number;
+            }
+          >;
+        }
+      ).quorumCache.has(`8453:${contractAddress}:1200`),
+    ).toBe(false);
+    expect(
+      (
+        chainTool as unknown as {
+          quorumCache: Map<
+            string,
+            {
+              result: {
+                clockMode: ClockMode;
+                quorum: bigint;
+                decimals: bigint;
+              };
+              timestamp: number;
+            }
+          >;
+        }
+      ).quorumCache.get(`8453:${contractAddress}:999`)?.result,
+    ).toEqual({
+      clockMode: ClockMode.Timestamp,
+      quorum: 42n,
+      decimals: 18n,
+    });
   });
 
   it("treats ERC721 governor tokens as zero-decimal without calling decimals()", async () => {
