@@ -3,11 +3,20 @@ FROM node:22-alpine
 WORKDIR /app
 
 ARG S6_OVERLAY_VERSION=3.2.1.0
+ARG TARGETARCH
 
-ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz /tmp
-RUN tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz
-ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz /tmp
-RUN tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz
+RUN set -eux; \
+  build_arch="${TARGETARCH:-$(uname -m)}"; \
+  case "${build_arch}" in \
+    amd64|x86_64) s6_arch="x86_64" ;; \
+    arm64|aarch64) s6_arch="aarch64" ;; \
+    *) echo "Unsupported architecture: ${build_arch}" >&2; exit 1 ;; \
+  esac; \
+  wget -O /tmp/s6-overlay-noarch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz"; \
+  wget -O /tmp/s6-overlay-${s6_arch}.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${s6_arch}.tar.xz"; \
+  tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz; \
+  tar -C / -Jxpf /tmp/s6-overlay-${s6_arch}.tar.xz; \
+  rm -f /tmp/s6-overlay-noarch.tar.xz /tmp/s6-overlay-${s6_arch}.tar.xz
 
 COPY packages/indexer .
 COPY docker/services.d /etc/services.d
