@@ -21,11 +21,13 @@ RUN set -eux; \
 COPY packages/indexer .
 COPY docker/services.d /etc/services.d
 
-RUN npm i -g @subsquid/cli \
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+  && npm i -g @subsquid/cli \
   && corepack enable \
   && corepack prepare yarn@1.22.22 --activate \
   && yarn install --frozen-lockfile \
   && yarn build \
+  && apk del .build-deps \
   && yarn cache clean \
   && npm cache clean --force
 

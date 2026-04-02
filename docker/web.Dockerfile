@@ -9,7 +9,8 @@ COPY . /code
 ENV DEGOV_CONFIG_PATH=/app/degov.yml
 ENV CI=true
 
-RUN corepack enable pnpm \
+RUN apk add --no-cache python3 make g++ \
+    && corepack enable pnpm \
     && mv /code/packages/web /app \
     && mv /code/degov.yml /app \
     && rm -rf /code \
