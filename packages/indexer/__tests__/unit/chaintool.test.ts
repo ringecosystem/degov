@@ -452,7 +452,7 @@ describe("ChainTool", () => {
 
     expect(readContractCalls).toEqual([
       { functionName: "quorum", args: [1_200n] },
-      { functionName: "quorum", args: [999n] },
+      { functionName: "quorum", args: [820n] },
       { functionName: "decimals", args: undefined },
     ]);
     expect(currentClockSpy).toHaveBeenCalledTimes(1);
@@ -492,11 +492,87 @@ describe("ChainTool", () => {
           >;
         }
       ).quorumCache.get(`8453:${contractAddress}:999`)?.result,
+    ).toBeUndefined();
+    expect(
+      (
+        chainTool as unknown as {
+          quorumCache: Map<
+            string,
+            {
+              result: {
+                clockMode: ClockMode;
+                quorum: bigint;
+                decimals: bigint;
+              };
+              timestamp: number;
+            }
+          >;
+        }
+      ).quorumCache.get(`8453:${contractAddress}:820`)?.result,
     ).toEqual({
       clockMode: ClockMode.Timestamp,
       quorum: 42n,
       decimals: 18n,
     });
+  });
+
+  it("uses stale clamped quorum cache when the retry fetch fails", async () => {
+    const chainTool = new ChainTool();
+    const staleClampedResult = {
+      clockMode: ClockMode.Timestamp,
+      quorum: 42n,
+      decimals: 18n,
+    };
+
+    (
+      chainTool as unknown as {
+        quorumCache: Map<
+          string,
+          { result: typeof staleClampedResult; timestamp: number }
+        >;
+      }
+    ).quorumCache.set(`8453:${contractAddress}:820`, {
+      result: staleClampedResult,
+      timestamp: Date.now() - 31 * 60 * 1000,
+    });
+
+    jest.spyOn(chainTool, "clockMode").mockResolvedValue(ClockMode.Timestamp);
+    jest.spyOn(chainTool, "currentClock").mockResolvedValue({
+      clockMode: ClockMode.Timestamp,
+      timepoint: 1_000n,
+      timestampMs: 1_000_000n,
+    });
+    jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) =>
+        action({
+          readContract: jest.fn().mockImplementation(async (request) => {
+            if (request.functionName === "quorum") {
+              if (request.args?.[0] === 1_200n) {
+                throw new Error(
+                  'The contract function "quorum" reverted.\nDetails: execution reverted',
+                );
+              }
+              throw new Error("RPC unavailable");
+            }
+            throw new Error(`Unexpected function: ${request.functionName}`);
+          }),
+        }),
+      );
+
+    await expect(
+      chainTool.quorum({
+        chainId: 8453,
+        contractAddress,
+        governorTokenAddress,
+        governorTokenStandard: "ERC20",
+        timepoint: 1_200n,
+      }),
+    ).resolves.toEqual(staleClampedResult);
+
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("chaintool.quorum cache used"),
+    );
   });
 
   it("treats ERC721 governor tokens as zero-decimal without calling decimals()", async () => {

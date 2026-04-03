@@ -199,9 +199,9 @@ function stablePastQuorumTimepoint(
 ): bigint {
   switch (clockMode) {
     case ClockMode.Timestamp:
-      return currentTimepoint > 0n ? currentTimepoint - 1n : 0n;
+      return currentTimepoint > 60n * 3n ? currentTimepoint - 60n * 3n : 0n;
     case ClockMode.BlockNumber:
-      return currentTimepoint > 10n ? currentTimepoint - 10n : 0n;
+      return currentTimepoint > 15n ? currentTimepoint - 15n : 0n;
   }
 }
 
@@ -734,6 +734,7 @@ export class ChainTool {
   async quorum(options: QueryQuorumOptions): Promise<QuorumResult> {
     const cacheKey = quorumCacheKey(options, options.timepoint);
     const cachedEntry = this.quorumCache.get(cacheKey);
+    let fallbackCacheEntry = cachedEntry;
 
     // 1. Check if a valid, non-expired cache entry exists.
     if (
@@ -828,6 +829,7 @@ export class ChainTool {
           effectiveCacheKey = quorumCacheKey(options, timepoint);
 
           const effectiveCachedEntry = this.quorumCache.get(effectiveCacheKey);
+          fallbackCacheEntry = effectiveCachedEntry ?? fallbackCacheEntry;
           if (
             effectiveCachedEntry &&
             Date.now() - effectiveCachedEntry.timestamp < QUORUM_CACHE_DURATION_MS
@@ -902,7 +904,7 @@ export class ChainTool {
         })
       );
 
-      if (cachedEntry) {
+      if (fallbackCacheEntry) {
         console.warn(
           DegovIndexerHelpers.formatLogLine("chaintool.quorum cache used", {
             chainId: options.chainId,
@@ -910,7 +912,7 @@ export class ChainTool {
             reason: "fetch-failed",
           })
         );
-        return cachedEntry.result;
+        return fallbackCacheEntry.result;
       }
 
       // If there's no cached entry at all, we must throw the error.
