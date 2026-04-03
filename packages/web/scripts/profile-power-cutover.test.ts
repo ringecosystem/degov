@@ -116,7 +116,21 @@ test("profile overlays keep contributor power and default missing users to zero"
   );
 });
 
-test("route sources no longer read or write d_user.power in scoped paths", () => {
+test("schema cleanup removes the legacy power column in the final phase", () => {
+  const prismaSchema = getSource("../prisma/schema.prisma");
+  const dropColumnMigration = getSource(
+    "../prisma/migrations/20260401083930_drop_d_user_power/migration.sql"
+  );
+  const dUserModelBlock =
+    prismaSchema.match(/model\s+d_user\s*{[^}]*}/s)?.[0] ?? "";
+
+  assert.match(dUserModelBlock, /model\s+d_user\s*{/);
+  assert.doesNotMatch(dUserModelBlock, /\bpower\s+String\?/);
+  assert.match(dropColumnMigration, /ALTER TABLE "d_user"/);
+  assert.match(dropColumnMigration, /DROP COLUMN "power"/);
+});
+
+test("route sources no longer read or write the legacy power column in scoped paths", () => {
   const membersRoute = getSource("../src/app/api/degov/members/route.ts");
   const profilePullRoute = getSource("../src/app/api/profile/pull/route.ts");
   const profileRoute = getSource("../src/app/api/profile/[address]/route.ts");
@@ -136,6 +150,6 @@ test("route sources no longer read or write d_user.power in scoped paths", () =>
   assert.doesNotMatch(loginRoute, /"power"/);
   assert.doesNotMatch(loginRoute, /power:/);
 
-  assert.match(syncRoute, /sync\.user\.power/);
+  assert.doesNotMatch(syncRoute, /sync\.user\.power/);
   assert.doesNotMatch(syncRoute, /update d_user set power/i);
 });
