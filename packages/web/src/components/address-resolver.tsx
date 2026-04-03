@@ -1,7 +1,9 @@
-import { useEnsName } from "wagmi";
+import { useQuery } from "@tanstack/react-query";
 
 import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { ensService } from "@/services/graphql";
 import { formatShortAddress } from "@/utils/address";
+import { QUERY_CONFIGS } from "@/utils/query-config";
 
 import type { Address } from "viem";
 
@@ -21,18 +23,16 @@ export function AddressResolver({
   const { data: profileData } = useProfileQuery(address, { skip: skipFetch });
 
   const profileName = profileData?.data?.name;
+  const normalizedAddress = address.toLowerCase();
 
-  const { data: ensName } = useEnsName({
-    address,
-    chainId: 1,
-    query: {
-      staleTime: 1000 * 60 * 60,
-      gcTime: 1000 * 60 * 60 * 24,
-      // Even when profile fetching is skipped, still try ENS as a lightweight fallback
-      enabled: !profileName,
-    },
+  const { data: ensRecord } = useQuery({
+    queryKey: ["ens-record", normalizedAddress],
+    queryFn: () => ensService.getEnsRecord({ address: normalizedAddress }),
+    enabled: !profileName,
+    ...QUERY_CONFIGS.STATIC,
   });
 
+  const ensName = ensRecord?.name ?? undefined;
   const displayValue =
     profileName ||
     ensName ||

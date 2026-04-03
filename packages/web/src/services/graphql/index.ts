@@ -9,6 +9,7 @@ import * as Queries from "./queries";
 import * as Types from "./types";
 import { resolveGovernanceCounts } from "./types/counts";
 
+import type { EnsRecordInput, EnsRecordResponse } from "./types/ens";
 import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
 
@@ -304,6 +305,27 @@ export const proposalService = {
       }
     );
     return response?.evmAbi;
+  },
+};
+
+export const ensService = {
+  getEnsRecord: async (input: EnsRecordInput) => {
+    const endpoint = degovGraphqlApi();
+    if (!endpoint) {
+      return undefined;
+    }
+
+    try {
+      const response = await request<EnsRecordResponse>(
+        endpoint,
+        Queries.GET_ENS_RECORD,
+        input
+      );
+      return response?.ens ?? undefined;
+    } catch (error) {
+      console.error("Failed to resolve ENS record:", error);
+      return undefined;
+    }
   },
 };
 
