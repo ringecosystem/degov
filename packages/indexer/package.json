@@ -43,7 +43,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@subsquid/cli": "^3.3.3",
+    "@subsquid/cli": "^3.3.5",
     "@subsquid/evm-typegen": "^4.6.0",
     "@subsquid/typeorm-codegen": "^2.1.0",
     "@types/jest": "30.0.0",
@@ -53,5 +53,23 @@
     "ts-jest": "^29.4.6",
     "typescript": "~6.0.2",
     "zx": "^8.8.5"
+  },
+  "resolutions": {
+    "**/anymatch/picomatch": "2.3.2",
+    "**/cli-diff/diff": "8.0.3",
+    "**/filelist/minimatch": "5.1.8",
+    "**/glob": "10.5.0",
+    "**/glob/minimatch": "9.0.7",
+    "**/js-yaml": "4.1.1",
+    "**/jest-util/picomatch": "4.0.4",
+    "**/lodash": "4.18.1",
+    "**/micromatch/picomatch": "2.3.2",
+    "**/@oclif/plugin-autocomplete/@oclif/core/minimatch": "9.0.7",
+    "**/minimatch/brace-expansion": "1.1.13",
+    "**/path-to-regexp": "0.1.13",
+    "**/qs": "6.14.2",
+    "**/test-exclude/minimatch": "3.1.4",
+    "**/tinyglobby/picomatch": "4.0.4",
+    "**/xml2js": "0.5.0"
   }
 }
