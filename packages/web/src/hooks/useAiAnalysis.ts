@@ -16,16 +16,19 @@ interface UseAiAnalysisState {
 interface UseAiAnalysisOptions {
   enabled?: boolean;
   chainId?: number;
+  endpoint?: string;
 }
 
 /**
- * Custom hook to fetch and manage AI analysis data
+ * Custom hook to fetch and manage AI analysis data.
+ * The `endpoint` option must be provided (and `enabled` must be true) for the
+ * query to run; omitting `endpoint` keeps the query disabled.
  */
 export function useAiAnalysis(
   proposalId: string | null,
   options: UseAiAnalysisOptions = {}
 ): UseAiAnalysisState {
-  const { enabled = true, chainId } = options;
+  const { enabled = true, chainId, endpoint } = options;
   const daoConfig = useDaoConfig();
   const resolvedChainId = chainId ?? daoConfig?.chain?.id;
 
@@ -33,22 +36,22 @@ export function useAiAnalysis(
     queryKey: [
       "ai-analysis",
       proposalId,
-      daoConfig?.aiAgent?.endpoint,
+      endpoint,
       resolvedChainId,
     ],
     enabled:
       enabled &&
       !!proposalId &&
-      !!daoConfig?.aiAgent?.endpoint &&
+      !!endpoint &&
       !!resolvedChainId,
     retry: 2,
     queryFn: async () => {
-      if (!proposalId || !daoConfig?.aiAgent?.endpoint) {
+      if (!proposalId || !endpoint) {
         throw new Error("AI analysis endpoint or proposalId is missing");
       }
 
       const result = await getAiAnalysis(
-        daoConfig.aiAgent.endpoint,
+        endpoint,
         proposalId,
         Number(resolvedChainId)
       );
