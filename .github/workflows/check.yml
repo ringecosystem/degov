@@ -56,6 +56,8 @@ jobs:
           mkdir -p schemas
           cd schemas
           curl -LO https://raw.githubusercontent.com/ringecosystem/degov-registry/refs/heads/main/schemas/dao.schema.json
+          # Remove deprecated aiAgent from required list
+          jq '.required = (.required | map(select(. != "aiAgent"))) | del(.properties.aiAgent)' dao.schema.json > dao.schema.tmp && mv dao.schema.tmp dao.schema.json
 
       - name: validate dao
         uses: GrantBirki/json-yaml-validate@v4
