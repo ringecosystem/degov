@@ -603,7 +603,7 @@ describe("token vote power checkpoints", () => {
     ).toMatchObject({
       power: 0n,
       delegatesCountAll: 1,
-      delegatesCountEffective: 1,
+      delegatesCountEffective: 0,
     });
     expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(0n);
     expect(
@@ -1838,6 +1838,115 @@ describe("token vote power checkpoints", () => {
       power: 0n,
       isCurrent: true,
     });
+  });
+
+  it("does not materialize a duplicate self-edge when initial self-delegation is seen before same-tx transfer-in", async () => {
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+    const account = "0xd144d064a7e573e8c77c0d0d2049a243c740882f";
+    const txHash =
+      "0xb2e42c615286384babed2c89ee5e14c38c98b0221b7baeab958babf735435414";
+    const amount = 1143544204434688311296n;
+
+    jest
+      .spyOn(itokenerc20.events.DelegateChanged, "decode")
+      .mockReturnValueOnce({
+        delegator: account,
+        fromDelegate: zeroAddress,
+        toDelegate: account,
+      } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "log-self-delegate-before-transfer",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 99,
+      transactionIndex: 1,
+      block: {
+        height: 13579039,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    expect(store.findEntity(DelegateMapping, account)).toMatchObject({
+      from: account,
+      to: account,
+      power: 0n,
+    });
+    expect(store.findEntity(Delegate, `${account}_${account}`)).toMatchObject({
+      power: 0n,
+      isCurrent: true,
+    });
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
+      from: "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
+      to: account,
+      value: amount,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "log-transfer-after-self-delegate",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 100,
+      transactionIndex: 1,
+      block: {
+        height: 13579039,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    expect(store.findEntity(DelegateMapping, account)).toMatchObject({
+      from: account,
+      to: account,
+      power: 0n,
+    });
+    expect(store.findEntity(Delegate, `${account}_${account}`)).toMatchObject({
+      power: 0n,
+      isCurrent: true,
+    });
+
+    jest
+      .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
+      .mockReturnValueOnce({
+        delegate: account,
+        previousVotes: 0n,
+        newVotes: amount,
+      } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "log-self-delegate-votes-changed",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 101,
+      transactionIndex: 1,
+      block: {
+        height: 13579039,
+        timestamp: 1_700_000_000_000,
+      },
+      transactionHash: txHash,
+    } as any);
+
+    expect(store.findEntity(DelegateMapping, account)).toMatchObject({
+      from: account,
+      to: account,
+      power: amount,
+    });
+    expect(store.findEntity(Delegate, `${account}_${account}`)).toMatchObject({
+      power: amount,
+      isCurrent: true,
+    });
+    expect(store.findEntity(Contributor, account)).toMatchObject({
+      power: amount,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(amount);
   });
 
   it("reactivates a historical relation without carrying forward stale power", async () => {
