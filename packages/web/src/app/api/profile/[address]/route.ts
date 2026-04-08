@@ -1,9 +1,10 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
-import type { AuthPayload, DAvatar, DUser } from "@/types/api";
+import type { DAvatar, DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
+import { resolveAuthPayload } from "../../common/auth";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 import * as graphql from "../../common/graphql";
@@ -97,14 +98,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const headersList = await headers();
-    const encodedPayload = headersList.get("x-degov-auth-payload");
-    const authPayload: AuthPayload = JSON.parse(
-      Buffer.from(encodedPayload!, "base64").toString()
-    );
+    const authPayload = await resolveAuthPayload(headersList);
+    if (!authPayload?.address) {
+      return NextResponse.json(Resp.err("permission denied"), { status: 401 });
+    }
 
     const { pathname } = request.nextUrl;
     const address = pathname.replace("/api/profile/", "").toLowerCase();
-    if (address != authPayload.address) {
+    if (address != authPayload.address.toLowerCase()) {
       return NextResponse.json(Resp.err("permission denied"), { status: 401 });
     }
     const body: ProfileModifyForm = await request.json();
