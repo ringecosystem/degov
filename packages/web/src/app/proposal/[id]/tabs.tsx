@@ -4,7 +4,6 @@ import { useTranslations } from "next-intl";
 import { useState, useMemo } from "react";
 
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import type { ProposalItem } from "@/services/graphql/types";
 
@@ -57,7 +56,6 @@ const contentVariants = {
 export const Tabs = ({ data, isFetching }: TabsProps) => {
   const t = useTranslations("proposalDetail.tabs");
   const [activeTab, setActiveTab] = useState<TabType>("content");
-  const daoConfig = useDaoConfig();
 
   const tabConfig = useMemo(() => {
     const baseTabs = [
@@ -69,18 +67,14 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
         key: "votes" as TabType,
         label: t("votes"),
       },
-    ];
-
-    // Only show AI Review tab if aiAgent is configured
-    if (daoConfig?.aiAgent?.endpoint) {
-      baseTabs.push({
+      {
         key: "ai-review" as TabType,
         label: t("summary"),
-      });
-    }
+      },
+    ];
 
     return baseTabs;
-  }, [daoConfig?.aiAgent?.endpoint, t]);
+  }, [t]);
 
   return (
     <div className="flex flex-col h-full min-h-0">

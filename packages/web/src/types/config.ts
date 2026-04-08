@@ -69,10 +69,6 @@ interface SafeItem {
   link: string;
 }
 
-interface AiAgent {
-  endpoint?: string;
-}
-
 interface AppItem {
   name: string;
   description: string;
@@ -114,7 +110,6 @@ interface Config {
   indexer: Indexer;
   safes?: SafeConfig;
   apps?: AppConfig;
-  aiAgent?: AiAgent;
   editLink?: string;
   analysis?: AnalysisConfig;
 }
