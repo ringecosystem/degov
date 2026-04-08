@@ -37,7 +37,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts prisma.config.ts
 
 # Copy the entire node_modules from builder (includes Prisma client and engines)
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules node_modules
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 USER nextjs
 
