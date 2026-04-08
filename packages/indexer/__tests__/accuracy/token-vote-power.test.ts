@@ -1848,6 +1848,13 @@ describe("token vote power checkpoints", () => {
       }),
     ]);
 
+    const originalInsert = store.insert.bind(store);
+    const insertSpy = jest
+      .spyOn(store, "insert")
+      .mockImplementation(async (entity: any) => {
+        await originalInsert(entity);
+      });
+
     const handler = buildTokenHandler(store);
     const account = "0xd144d064a7e573e8c77c0d0d2049a243c740882f";
     const txHash =
@@ -1883,6 +1890,14 @@ describe("token vote power checkpoints", () => {
       power: 0n,
       isCurrent: true,
     });
+    expect(
+      insertSpy.mock.calls.filter(
+        ([entity]) =>
+          entity instanceof Delegate &&
+          entity.fromDelegate === account &&
+          entity.toDelegate === account
+      )
+    ).toHaveLength(1);
 
     jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValueOnce({
       from: "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
@@ -1911,6 +1926,20 @@ describe("token vote power checkpoints", () => {
       power: 0n,
       isCurrent: true,
     });
+    expect(
+      insertSpy.mock.calls.filter(
+        ([entity]) =>
+          entity instanceof Delegate &&
+          entity.fromDelegate === account &&
+          entity.toDelegate === account
+      )
+    ).toHaveLength(1);
+    expect(store.findEntity(Contributor, account)).toMatchObject({
+      power: 0n,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 0,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(0n);
 
     jest
       .spyOn(itokenerc20.events.DelegateVotesChanged, "decode")
