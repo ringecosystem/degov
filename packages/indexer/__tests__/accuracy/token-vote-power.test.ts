@@ -1978,6 +1978,158 @@ describe("token vote power checkpoints", () => {
     expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(amount);
   });
 
+  it("counts a zero-power current relation as effective only after vote power materializes", async () => {
+    const account = "0x5656565656565656565656565656565656565656";
+    const amount = 42n;
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 0n,
+      }),
+      new Contributor({
+        id: account,
+        power: 0n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 0,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: `${account}_${account}`,
+        fromDelegate: account,
+        toDelegate: account,
+        isCurrent: true,
+        power: 0n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: account,
+        from: account,
+        to: account,
+        power: 0n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    await (handler as any).storeDelegate(
+      new Delegate({
+        chainId: 1,
+        daoCode: "demo",
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+        contractAddress: "0x8888888888888888888888888888888888888888",
+        logIndex: 2,
+        transactionIndex: 1,
+        fromDelegate: account,
+        toDelegate: account,
+        blockNumber: 2n,
+        blockTimestamp: 2n,
+        transactionHash: "0xmaterialize",
+        power: amount,
+        isCurrent: true,
+      }),
+    );
+
+    expect(store.findEntity(DelegateMapping, account)).toMatchObject({
+      from: account,
+      to: account,
+      power: amount,
+    });
+    expect(store.findEntity(Delegate, `${account}_${account}`)).toMatchObject({
+      power: amount,
+      isCurrent: true,
+    });
+    expect(store.findEntity(Contributor, account)).toMatchObject({
+      power: amount,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(amount);
+  });
+
+  it("drops delegatesCountEffective when a current relation loses all materialized power", async () => {
+    const account = "0x7878787878787878787878787878787878787878";
+    const amount = 42n;
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: amount,
+      }),
+      new Contributor({
+        id: account,
+        power: amount,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: `${account}_${account}`,
+        fromDelegate: account,
+        toDelegate: account,
+        isCurrent: true,
+        power: amount,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: account,
+        from: account,
+        to: account,
+        power: amount,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+
+    const handler = buildTokenHandler(store);
+
+    await (handler as any).storeDelegate(
+      new Delegate({
+        chainId: 1,
+        daoCode: "demo",
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+        contractAddress: "0x8888888888888888888888888888888888888888",
+        logIndex: 2,
+        transactionIndex: 1,
+        fromDelegate: account,
+        toDelegate: account,
+        blockNumber: 2n,
+        blockTimestamp: 2n,
+        transactionHash: "0xdematerialize",
+        power: -amount,
+        isCurrent: true,
+      }),
+    );
+
+    expect(store.findEntity(DelegateMapping, account)).toMatchObject({
+      from: account,
+      to: account,
+      power: 0n,
+    });
+    expect(store.findEntity(Delegate, `${account}_${account}`)).toMatchObject({
+      power: 0n,
+      isCurrent: true,
+    });
+    expect(store.findEntity(Contributor, account)).toMatchObject({
+      power: 0n,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 0,
+    });
+    expect(store.findEntity(DataMetric, "global")?.powerSum).toBe(0n);
+  });
+
   it("reactivates a historical relation without carrying forward stale power", async () => {
     const store = new MemoryStore([
       new DataMetric({
