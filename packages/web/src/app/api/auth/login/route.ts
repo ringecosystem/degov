@@ -8,6 +8,10 @@ import { Resp } from "@/types/api";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 import { nonceCache } from "../../common/nonce-cache";
+import {
+  SIWE_NONCE_COOKIE_NAME,
+  verifySiweNonceCookieValue,
+} from "../../common/siwe-nonce";
 import { snowflake } from "../../common/toolkit";
 
 import type { NextRequest } from "next/server";
@@ -40,11 +44,26 @@ export async function POST(request: NextRequest) {
 
     // Validate if nonce is still valid
     const nonce = fields.data.nonce;
-    if (!nonceCache.isValid(nonce)) {
-      return NextResponse.json(
+    const signedNonceCookie = request.cookies.get(SIWE_NONCE_COOKIE_NAME)?.value;
+    const cookieNonce = signedNonceCookie
+      ? await verifySiweNonceCookieValue(signedNonceCookie, jwtSecretKey)
+      : null;
+    const nonceIsValid = cookieNonce === nonce || nonceCache.isValid(nonce);
+
+    if (!nonceIsValid) {
+      const invalidNonceResponse = NextResponse.json(
         Resp.err(`nonce (${nonce}) expired or invalid, please get a new nonce`),
         { status: 400 }
       );
+
+      invalidNonceResponse.cookies.set({
+        name: SIWE_NONCE_COOKIE_NAME,
+        value: "",
+        maxAge: 0,
+        path: "/",
+      });
+
+      return invalidNonceResponse;
     }
 
     // Remove nonce from cache after validation to prevent reuse
@@ -91,7 +110,16 @@ export async function POST(request: NextRequest) {
         where id=${storedUser.id};
       `;
     }
-    return NextResponse.json(Resp.ok({ token }));
+    const response = NextResponse.json(Resp.ok({ token }));
+
+    response.cookies.set({
+      name: SIWE_NONCE_COOKIE_NAME,
+      value: "",
+      maxAge: 0,
+      path: "/",
+    });
+
+    return response;
   } catch (err) {
     console.warn("err", err);
     const message = err instanceof Error ? err.message : "unknown error";

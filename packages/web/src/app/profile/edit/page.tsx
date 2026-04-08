@@ -105,52 +105,57 @@ export default function Edit() {
     },
   });
 
+  const updateProfileWithAuthRetry = useCallback(
+    async (profile: Partial<ProfileData>) => {
+      const response = await updateProfile(profile);
+      if (response.code !== 401) {
+        return response;
+      }
+
+      const authResult = await authenticate();
+      if (!authResult.success) {
+        toast.error(authResult.error || t("messages.updateFailed"));
+        return response;
+      }
+
+      const retryResponse = await updateProfile(profile);
+      if (retryResponse.code === 401) {
+        toast.error(t("messages.updateFailed"));
+      }
+
+      return retryResponse;
+    },
+    [authenticate, t, updateProfile]
+  );
+
   const handleSubmitForm = useCallback(
     async (data: ProfileFormData) => {
       try {
         setIsUpdatingProfile(true);
-        await updateProfile({
+        await updateProfileWithAuthRetry({
           ...profileData?.data,
           ...data,
-        })?.then(async (res) => {
-          if (res.code === 401) {
-            await authenticate();
-            await updateProfile({
-              ...profileData?.data,
-              ...data,
-            });
-          }
-          setIsUpdatingProfile(false);
         });
       } finally {
         setIsUpdatingProfile(false);
       }
     },
-    [updateProfile, profileData, authenticate]
+    [updateProfileWithAuthRetry, profileData]
   );
 
   const handleAvatarChange = useCallback(
     async (base64: string) => {
       try {
         setIsUpdatingAvatar(true);
-        await updateProfile({
+        await updateProfileWithAuthRetry({
           ...profileData?.data,
           avatar: base64,
-        })?.then(async (res) => {
-          if (res.code === 401) {
-            await authenticate();
-            await updateProfile({
-              ...profileData?.data,
-              avatar: base64,
-            });
-          }
-          setIsUpdatingAvatar(false);
         });
       } finally {
         setIsUpdatingAvatar(false);
       }
     },
-    [updateProfile, profileData, authenticate]
+    [updateProfileWithAuthRetry, profileData]
   );
 
   if (isProfileLoading) {

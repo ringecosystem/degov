@@ -4,8 +4,12 @@ import { NextResponse } from "next/server";
 import { Resp } from "@/types/api";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
-
 import { nonceCache } from "../../common/nonce-cache";
+import {
+  SIWE_NONCE_COOKIE_MAX_AGE_SECONDS,
+  SIWE_NONCE_COOKIE_NAME,
+  signSiweNonceCookieValue,
+} from "../../common/siwe-nonce";
 
 // Define a type for the source of the nonce for better type-safety
 type NonceSource = "generated" | "remote";
@@ -68,5 +72,22 @@ export async function POST() {
   nonceCache.set(nonce);
   console.log(`Using nonce from source: ${source} - ${nonce} and is valid: ${nonceCache.isValid(nonce)}`);
 
-  return NextResponse.json(Resp.ok({ nonce, source }));
+  const response = NextResponse.json(Resp.ok({ nonce, source }));
+  const jwtSecretKey = process.env.JWT_SECRET_KEY;
+
+  if (jwtSecretKey) {
+    const signedNonce = await signSiweNonceCookieValue(nonce, jwtSecretKey);
+
+    response.cookies.set({
+      name: SIWE_NONCE_COOKIE_NAME,
+      value: signedNonce,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: SIWE_NONCE_COOKIE_MAX_AGE_SECONDS,
+      path: "/",
+    });
+  }
+
+  return response;
 }
