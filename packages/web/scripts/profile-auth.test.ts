@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 
 import { SignJWT } from "jose";
 
@@ -11,14 +11,32 @@ import {
 } from "../src/app/api/common/siwe-nonce.ts";
 
 const textEncoder = new TextEncoder();
-const originalJwtSecretKey = process.env.JWT_SECRET_KEY;
 
-async function signToken(address: string) {
+async function signToken(address: string, jwtSecretKey: string) {
   return new SignJWT({ address })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("5h")
-    .sign(textEncoder.encode(process.env.JWT_SECRET_KEY!));
+    .sign(textEncoder.encode(jwtSecretKey));
+}
+
+function setJwtSecretForTest(t: TestContext, value: string | undefined) {
+  const previousJwtSecretKey = process.env.JWT_SECRET_KEY;
+  t.after(() => {
+    if (previousJwtSecretKey === undefined) {
+      delete process.env.JWT_SECRET_KEY;
+      return;
+    }
+
+    process.env.JWT_SECRET_KEY = previousJwtSecretKey;
+  });
+
+  if (value === undefined) {
+    delete process.env.JWT_SECRET_KEY;
+    return;
+  }
+
+  process.env.JWT_SECRET_KEY = value;
 }
 
 test("resolveAuthPayload keeps backwards compatibility with x-degov-auth-payload", async () => {
@@ -34,9 +52,9 @@ test("resolveAuthPayload keeps backwards compatibility with x-degov-auth-payload
   assert.deepEqual(resolvedPayload, payload);
 });
 
-test("resolveAuthPayload falls back to bearer tokens for profile updates", async () => {
-  process.env.JWT_SECRET_KEY = "test-secret";
-  const token = await signToken("0xAbCdEf");
+test("resolveAuthPayload falls back to bearer tokens for profile updates", async (t) => {
+  setJwtSecretForTest(t, "test-secret");
+  const token = await signToken("0xAbCdEf", "test-secret");
 
   const resolvedPayload = await resolveAuthPayload(
     new Headers({
@@ -47,10 +65,32 @@ test("resolveAuthPayload falls back to bearer tokens for profile updates", async
   assert.deepEqual(resolvedPayload, { address: "0xabcdef" });
 });
 
-test("resolveAuthPayload returns null when no supported auth header is present", async () => {
-  process.env.JWT_SECRET_KEY = "test-secret";
+test("resolveAuthPayload returns null when no supported auth header is present", async (t) => {
+  setJwtSecretForTest(t, "test-secret");
 
   const resolvedPayload = await resolveAuthPayload(new Headers());
+
+  assert.equal(resolvedPayload, null);
+});
+
+test("resolveAuthPayload returns null for malformed legacy auth payloads", async () => {
+  const resolvedPayload = await resolveAuthPayload(
+    new Headers({
+      "x-degov-auth-payload": "not-base64",
+    })
+  );
+
+  assert.equal(resolvedPayload, null);
+});
+
+test("resolveAuthPayload returns null when bearer auth is configured without a JWT secret", async (t) => {
+  const token = await signToken("0xAbCdEf", "signing-secret");
+  setJwtSecretForTest(t, undefined);
+  const resolvedPayload = await resolveAuthPayload(
+    new Headers({
+      Authorization: `Bearer ${token}`,
+    })
+  );
 
   assert.equal(resolvedPayload, null);
 });
@@ -89,7 +129,7 @@ test("profile route uses the auth helper instead of decoding a missing header di
   assert.doesNotMatch(profileRouteSource, /Buffer\.from\(encodedPayload!/);
 });
 
-test("SIWE auth routes use signed nonce cookies instead of relying only on process-local cache", () => {
+test("SIWE auth routes use a DB-backed nonce store with a signed nonce cookie", () => {
   const nonceRouteSource = readFileSync(
     new URL("../src/app/api/auth/nonce/route.ts", import.meta.url),
     "utf8"
@@ -99,10 +139,13 @@ test("SIWE auth routes use signed nonce cookies instead of relying only on proce
     "utf8"
   );
 
+  assert.match(nonceRouteSource, /storeSiweNonce/);
   assert.match(nonceRouteSource, /signSiweNonceCookieValue/);
   assert.match(nonceRouteSource, /SIWE_NONCE_COOKIE_NAME/);
+  assert.match(loginRouteSource, /consumeSiweNonce/);
   assert.match(loginRouteSource, /verifySiweNonceCookieValue/);
   assert.match(loginRouteSource, /SIWE_NONCE_COOKIE_NAME/);
+  assert.doesNotMatch(loginRouteSource, /nonceCache/);
 });
 
 test("profile edit retries a 401 only after a fresh authentication attempt", () => {
@@ -114,13 +157,4 @@ test("profile edit retries a 401 only after a fresh authentication attempt", () 
   assert.match(profileEditSource, /const authResult = await authenticate\(\)/);
   assert.match(profileEditSource, /if \(!authResult\.success\)/);
   assert.match(profileEditSource, /const retryResponse = await updateProfile\(profile\)/);
-});
-
-process.on("exit", () => {
-  if (originalJwtSecretKey === undefined) {
-    delete process.env.JWT_SECRET_KEY;
-    return;
-  }
-
-  process.env.JWT_SECRET_KEY = originalJwtSecretKey;
 });

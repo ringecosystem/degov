@@ -17,7 +17,11 @@ export async function resolveAuthPayload(
 ): Promise<AuthPayload | null> {
   const encodedPayload = headers.get("x-degov-auth-payload");
   if (encodedPayload) {
-    return decodeEncodedAuthPayload(encodedPayload);
+    try {
+      return decodeEncodedAuthPayload(encodedPayload);
+    } catch {
+      return null;
+    }
   }
 
   const authorizationHeader = headers.get("authorization");
@@ -28,7 +32,7 @@ export async function resolveAuthPayload(
 
   const jwtSecretKey = process.env.JWT_SECRET_KEY;
   if (!jwtSecretKey) {
-    throw new Error("missing JWT_SECRET_KEY");
+    return null;
   }
 
   try {

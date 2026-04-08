@@ -7,11 +7,11 @@ import { Resp } from "@/types/api";
 
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
-import { nonceCache } from "../../common/nonce-cache";
 import {
   SIWE_NONCE_COOKIE_NAME,
   verifySiweNonceCookieValue,
 } from "../../common/siwe-nonce";
+import { consumeSiweNonce } from "../../common/siwe-nonce-store";
 import { snowflake } from "../../common/toolkit";
 
 import type { NextRequest } from "next/server";
@@ -48,7 +48,8 @@ export async function POST(request: NextRequest) {
     const cookieNonce = signedNonceCookie
       ? await verifySiweNonceCookieValue(signedNonceCookie, jwtSecretKey)
       : null;
-    const nonceIsValid = cookieNonce === nonce || nonceCache.isValid(nonce);
+    const nonceIsValid =
+      cookieNonce === nonce && (await consumeSiweNonce(nonce));
 
     if (!nonceIsValid) {
       const invalidNonceResponse = NextResponse.json(
@@ -65,9 +66,6 @@ export async function POST(request: NextRequest) {
 
       return invalidNonceResponse;
     }
-
-    // Remove nonce from cache after validation to prevent reuse
-    nonceCache.remove(nonce);
 
     const address = fields.data.address.toLowerCase();
     const token = await new SignJWT({ address })

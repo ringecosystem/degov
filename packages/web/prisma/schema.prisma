@@ -31,3 +31,9 @@ model d_avatar {
   ctime DateTime  @default(now())
   utime DateTime? @updatedAt
 }
+
+model d_siwe_nonce {
+  nonce      String   @id
+  expires_at DateTime
+  ctime      DateTime @default(now())
+}
