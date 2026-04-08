@@ -11,17 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(Resp.err("invalid payloads"), { status: 400 });
     }
 
-    const invalidMethods = [];
-    for (const payload of payloads) {
-      switch (payload.method) {
-        case "sync.user.power": {
-          break;
-        }
-        default: {
-          invalidMethods.push(payload.method);
-        }
-      }
-    }
+    const invalidMethods = payloads.map((payload) => payload.method);
 
     return NextResponse.json(
       Resp.ok({

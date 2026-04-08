@@ -18,7 +18,6 @@ export type StoredProfileRow = {
   ctime?: string | null;
   utime?: string | null;
   avatar?: string | null;
-  power?: string | null;
 };
 
 const DEFAULT_POWER = "0";
@@ -34,7 +33,7 @@ const getContributorPower = (
 ) => contributorsByAddress.get(address.toLowerCase())?.power ?? DEFAULT_POWER;
 
 export function overlayProfileWithContributorPower<
-  T extends { address: string; power?: string | null },
+  T extends { address: string },
 >(profile: T, contributorsByAddress: ContributorMap): T & { power: string } {
   return {
     ...profile,
@@ -43,7 +42,7 @@ export function overlayProfileWithContributorPower<
 }
 
 export function overlayProfilesWithContributorPower<
-  T extends { address: string; power?: string | null },
+  T extends { address: string },
 >(profiles: T[], contributorsByAddress: ContributorMap): Array<T & { power: string }> {
   return profiles.map((profile) =>
     overlayProfileWithContributorPower(profile, contributorsByAddress)
@@ -51,7 +50,7 @@ export function overlayProfilesWithContributorPower<
 }
 
 export function rankMembersByContributorPower<
-  T extends { address: string; ctime?: string | null; power?: string | null },
+  T extends { address: string; ctime?: string | null },
 >(
   members: T[],
   contributorsByAddress: ContributorMap
