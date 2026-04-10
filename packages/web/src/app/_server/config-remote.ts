@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { headers } from "next/headers";
 
+import { loadConfigYaml } from "@/lib/config-yaml";
 import { getDaoConfigServer } from "@/lib/config";
 import type { Config } from "@/types/config";
 import { degovApiDaoConfigServer } from "@/utils/remote-api";
@@ -26,8 +27,7 @@ export async function getConfigCachedByHost(): Promise<Config> {
         if (!res.ok) throw new Error(`API ${res.status}`);
 
         const yamlText = await res.text();
-        const yaml = await import("js-yaml");
-        const result = yaml.load(yamlText) as Config;
+        const result = loadConfigYaml(yamlText);
 
         return result;
       } catch (err) {

@@ -1,9 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
 
-import yaml from "js-yaml";
 import { unstable_cache } from "next/cache";
 
+import { loadConfigYaml } from "@/lib/config-yaml";
 import type { Config } from "@/types/config";
 
 const defaultConfig = {
@@ -20,7 +20,7 @@ export const getDaoConfigServer = unstable_cache(
         return defaultConfig as Config;
       }
 
-      const config = yaml.load(yamlText) as Config;
+      const config = loadConfigYaml(yamlText);
 
       if (
         config &&

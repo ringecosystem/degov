@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import yaml from "js-yaml";
-
+import { loadConfigYaml } from "@/lib/config-yaml";
 import type { Config } from "@/types/config";
 import {
   isDegovApiConfiguredServer,
@@ -46,7 +45,7 @@ export async function degovConfig(request: NextRequest): Promise<Config> {
     }
 
     const yamlText = await response.text();
-    const yamlData = yaml.load(yamlText) as Config;
+    const yamlData = loadConfigYaml(yamlText);
 
     cachedConfig.set(cacheKey, yamlData);
     return yamlData;
@@ -54,7 +53,7 @@ export async function degovConfig(request: NextRequest): Promise<Config> {
 
   const configPath = path.join(process.cwd(), "public/degov.yml");
   const yamlText = fs.readFileSync(configPath, "utf-8");
-  const config = yaml.load(yamlText) as Config;
+  const config = loadConfigYaml(yamlText);
   cachedConfig.set(cacheKey, config);
   return config;
 }

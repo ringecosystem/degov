@@ -1,6 +1,6 @@
-import yaml from "js-yaml";
 import { useEffect, useState } from "react";
 
+import { loadConfigYaml } from "@/lib/config-yaml";
 import type { Config } from "@/types/config";
 import { processStandardProperties } from "@/utils";
 import { degovApiDaoConfigClient } from "@/utils/remote-api";
@@ -30,7 +30,7 @@ async function fetchConfig(signal?: AbortSignal): Promise<Config> {
   }
 
   const yamlText = await response.text();
-  return yaml.load(yamlText) as Config;
+  return loadConfigYaml(yamlText);
 }
 
 function configsAreEqual(a: Config | null, b: Config | null): boolean {
