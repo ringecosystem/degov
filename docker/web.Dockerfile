@@ -36,9 +36,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts scripts
 COPY --from=builder --chown=nextjs:nodejs /app/prisma prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts prisma.config.ts
 
-# Copy the entire node_modules from builder (includes Prisma client and engines)
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# Prisma generated client (query engine binary)
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+
+# Prisma packages (client, engines, etc.)
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+
+# Prisma CLI — required by entrypoint.sh for 'npx prisma migrate deploy'
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 USER nextjs
 
