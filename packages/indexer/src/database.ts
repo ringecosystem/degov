@@ -6,6 +6,7 @@ import {
 export function getDatabaseOptions(): TypeormDatabaseOptions {
   return {
     supportHotBlocks: true,
+    isolationLevel: "READ COMMITTED",
   };
 }
 
