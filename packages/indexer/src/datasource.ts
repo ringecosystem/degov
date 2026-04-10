@@ -9,6 +9,16 @@ import {
 } from "./types";
 import { DegovIndexerHelpers } from "./internal/helpers";
 
+const HEX_SCALAR_VALUE = /^(\s*[^:#\n][^:\n]*:\s*)(0x[0-9a-fA-F]+)(\s*(?:#.*)?)$/gm;
+
+function quoteHexScalars(yamlText: string): string {
+  return yamlText.replace(
+    HEX_SCALAR_VALUE,
+    (_match, prefix: string, value: string, suffix: string) =>
+      `${prefix}"${value}"${suffix ?? ""}`
+  );
+}
+
 export class DegovDataSource {
   constructor() {}
 
@@ -30,7 +40,7 @@ class DegovConfigDataSource {
   }
 
   private packDataSource(rawDegovConfig: string): IndexerProcessorConfig {
-    const degovConfig = yaml.parse(rawDegovConfig);
+    const degovConfig = yaml.parse(quoteHexScalars(rawDegovConfig));
     const { chain, code, indexer, contracts } = degovConfig;
     const startBlockOverride = this.readIntegerOverride(
       "DEGOV_INDEXER_START_BLOCK"
