@@ -3236,6 +3236,9 @@ describe("token vote power checkpoints", () => {
       }),
     ]);
     const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
 
     jest
       .spyOn(itokenerc20.events.DelegateChanged, "decode")
@@ -3559,6 +3562,9 @@ describe("token vote power checkpoints", () => {
       }),
     ]);
     const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
     const txHash =
       "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
@@ -3697,6 +3703,9 @@ describe("token vote power checkpoints", () => {
       }),
     ]);
     const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
     const txHash =
       "0x1111111111111111111111111111111111111111111111111111111111111111";
 
@@ -3863,6 +3872,9 @@ describe("token vote power checkpoints", () => {
       }),
     ]);
     const handler = buildTokenHandler(store);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
     const txHash =
       "0x2222222222222222222222222222222222222222222222222222222222222222";
 
