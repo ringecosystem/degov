@@ -1,6 +1,14 @@
-FROM node:22-alpine
+FROM node:22-alpine AS base
 
 WORKDIR /app
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+RUN corepack enable \
+  && corepack prepare pnpm@10.32.1 --activate
+
+FROM base AS s6
 
 ARG S6_OVERLAY_VERSION=3.2.1.0
 ARG TARGETARCH
@@ -18,24 +26,44 @@ RUN set -eux; \
   tar -C / -Jxpf /tmp/s6-overlay-${s6_arch}.tar.xz; \
   rm -f /tmp/s6-overlay-noarch.tar.xz /tmp/s6-overlay-${s6_arch}.tar.xz
 
+FROM base AS manifests
+
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/indexer/package.json packages/indexer/package.json
 COPY packages/web/package.json packages/web/package.json
-COPY docker/services.d /etc/services.d
 
-RUN apk add --no-cache --virtual .build-deps python3 make g++ \
-  && npm i -g @subsquid/cli \
-  && corepack enable \
-  && corepack prepare pnpm@10.32.1 --activate \
-  && pnpm install --filter @degov/indexer --frozen-lockfile
+FROM manifests AS builder
+
+RUN apk add --no-cache python3 make g++ \
+  && pnpm install --filter @degov/indexer... --frozen-lockfile
 
 COPY packages/indexer packages/indexer
 
 WORKDIR /app/packages/indexer
 
-RUN pnpm run build \
-  && apk del .build-deps \
-  && pnpm store prune \
-  && npm cache clean --force
+RUN pnpm run build
+
+FROM manifests AS prod-deps
+
+RUN pnpm install --filter @degov/indexer --prod --frozen-lockfile --ignore-scripts \
+  && pnpm store prune
+
+FROM s6 AS runner
+
+COPY docker/services.d /etc/services.d
+
+COPY --from=prod-deps /app/node_modules node_modules
+COPY --from=prod-deps /app/packages/indexer/package.json packages/indexer/package.json
+COPY --from=prod-deps /app/packages/indexer/node_modules packages/indexer/node_modules
+
+COPY --from=builder /app/packages/indexer/lib packages/indexer/lib
+COPY --from=builder /app/packages/indexer/db packages/indexer/db
+COPY --from=builder /app/packages/indexer/scripts/start.sh packages/indexer/scripts/start.sh
+COPY --from=builder /app/packages/indexer/scripts/graphql-server.sh packages/indexer/scripts/graphql-server.sh
+COPY --from=builder /app/packages/indexer/schema.graphql packages/indexer/schema.graphql
+COPY --from=builder /app/packages/indexer/commands.json packages/indexer/commands.json
+COPY --from=builder /app/packages/indexer/squid.yaml packages/indexer/squid.yaml
+
+WORKDIR /app/packages/indexer
 
 ENTRYPOINT ["/init"]

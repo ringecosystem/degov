@@ -8,6 +8,6 @@ WORK_PATH=${BIN_PATH}/../
 
 cd ${WORK_PATH}
 
-npx sqd migration:apply
+pnpm exec sqd migration:apply
 
 node -r dotenv/config lib/main.js
