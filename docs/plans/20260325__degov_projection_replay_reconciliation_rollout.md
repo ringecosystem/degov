@@ -8,7 +8,7 @@ Use a shadow PostgreSQL database or a fresh clone of the production indexer data
 
 ```bash
 cd packages/indexer
-npx -y yarn@1.22.22 replay:backfill
+pnpm replay:backfill
 ```
 
 Environment controls:

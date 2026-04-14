@@ -194,7 +194,7 @@ just verify-negative-current 20
 ### Full audit
 
 ```bash
-yarn run audit:accuracy
+pnpm run audit:accuracy
 ```
 
 Or through `just`:

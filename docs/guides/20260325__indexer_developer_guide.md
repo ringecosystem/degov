@@ -64,7 +64,7 @@ automation and habits do not break.
 ## `justfile` recipes
 
 The package-local `justfile` mirrors the same groups and stays intentionally
-thin. Use `just` for interactive workflows and `yarn run <script>` when you
+thin. Use `just` for interactive workflows and `pnpm run <script>` when you
 need the canonical script name.
 
 ## Common developer flows

@@ -17,13 +17,12 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.32.1
 
       - name: Check build
-        working-directory: packages/web
         run: |
           pnpm install --frozen-lockfile
-          pnpm build
+          pnpm --filter @degov/web build
 
   check-indexer:
     name: Check indexer
@@ -36,14 +35,15 @@ jobs:
         with:
           node-version: 22
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
       - name: Check build
-        working-directory: packages/indexer
         run: |
-          corepack enable
-          corepack prepare yarn@1.22.22 --activate
-          yarn install --frozen-lockfile
-          yarn build
-          yarn test
+          pnpm install --frozen-lockfile
+          pnpm --filter @degov/indexer build
+          pnpm --filter @degov/indexer test
 
   check-config:
     name: Check Config

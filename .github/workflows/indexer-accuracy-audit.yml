@@ -25,12 +25,12 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install Yarn
-        run: npm install -g yarn
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
 
       - name: Install indexer dependencies
-        working-directory: packages/indexer
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Run accuracy audit
         id: audit
