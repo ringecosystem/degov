@@ -1,0 +1,40 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default:
+    @just --list
+
+pnpm := "pnpm"
+
+# Environment
+install:
+    {{pnpm}} install --filter @degov/web... --frozen-lockfile
+
+install-no-scripts:
+    {{pnpm}} install --filter @degov/web... --frozen-lockfile --ignore-scripts
+
+# Database and config
+generate-config:
+    {{pnpm}} run generate:config
+
+prisma-migrate:
+    {{pnpm}} run prisma:migrate
+
+# Runtime
+dev:
+    {{pnpm}} run dev
+
+dev-no-db:
+    {{pnpm}} run dev:no-db
+
+start:
+    {{pnpm}} run start
+
+# Build and verification
+build:
+    {{pnpm}} run build
+
+build-vercel:
+    {{pnpm}} run build:vercel
+
+lint:
+    {{pnpm}} run lint

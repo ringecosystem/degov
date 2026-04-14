@@ -7,16 +7,10 @@ pnpm := "pnpm"
 
 # Environment
 install:
-    {{pnpm}} install --ignore-scripts
+    {{pnpm}} install --filter @degov/indexer... --frozen-lockfile --ignore-scripts
 
 clean:
-    npx sqd clean
-
-up:
-    npx sqd up
-
-down:
-    npx sqd down
+    {{pnpm}} exec sqd clean
 
 # Codegen and build
 codegen-abi:
@@ -38,32 +32,14 @@ db-migrate:
 db-migrate-force:
     {{pnpm}} run db:migrate:force
 
-migrate-db:
-    just db-migrate
-
-migrate-db-force:
-    just db-migrate-force
-
 # Runtime
-process:
-    npx sqd process
-
-serve:
-    npx sqd serve
-
-run:
-    npx sqd run .
-
-start:
-    {{pnpm}} run dev:start
-
-smart-start:
+dev:
     {{pnpm}} run dev:smart-start
 
-smart-start-force:
+dev-force:
     {{pnpm}} run dev:smart-start:force
 
-graphql-server:
+graphql:
     {{pnpm}} run dev:graphql
 
 # Verification and audit
