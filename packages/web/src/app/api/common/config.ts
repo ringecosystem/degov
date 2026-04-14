@@ -18,13 +18,56 @@ function loadLocalConfig(): Config {
   return loadConfigYaml(yamlText);
 }
 
-export async function degovConfig(request: NextRequest): Promise<Config> {
-  const host = getRequestHost(request);
-  if (!host) {
-    throw new Error("Host header is missing in the request.");
+/**
+ * Resolve the canonical public origin for the current request.
+ *
+ * Priority:
+ *  1. Origin header  – set by browsers for same-origin and cross-origin requests
+ *  2. Referer header – fallback when Origin is absent (e.g. navigation)
+ *  3. Host header    – last resort; only reliable when the request comes
+ *                      directly from a browser, NOT from Next.js internal
+ *                      revalidation (which uses the pod IP as Host)
+ *
+ * The returned value is passed as the `Origin` header to the remote config
+ * API so that the backend DegovMiddleware can resolve the DAO code by
+ * matching the public hostname against registered DAO endpoints/domains.
+ */
+function resolveRequestOrigin(request: NextRequest): string | null {
+  const headers = request.headers;
+
+  const origin = headers.get("origin");
+  if (origin) return origin;
+
+  const referer = headers.get("referer");
+  if (referer) {
+    try {
+      const url = new URL(referer);
+      return url.origin; // e.g. "https://demo-blocknumber.degov.ai"
+    } catch {
+      // malformed referer – fall through
+    }
   }
 
-  const cacheKey = host;
+  const host = headers.get("host");
+  if (host) {
+    // Only trust bare host when it looks like a real domain, not a pod IP.
+    // Pod IPs match /^\d+\.\d+\.\d+\.\d+(:\d+)?$/.
+    const isPodIp = /^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(host);
+    if (!isPodIp) {
+      return `https://${host}`;
+    }
+  }
+
+  return null;
+}
+
+export async function degovConfig(request: NextRequest): Promise<Config> {
+  const origin = resolveRequestOrigin(request);
+  if (!origin) {
+    throw new Error("Unable to resolve request origin.");
+  }
+
+  const cacheKey = origin;
 
   // check if the config is already cached
   if (cachedConfig.has(cacheKey)) {
@@ -38,31 +81,25 @@ export async function degovConfig(request: NextRequest): Promise<Config> {
   if (isDegovApiConfiguredServer()) {
     const apiUrl = degovApiDaoConfigServer();
     if (!apiUrl) {
-      return loadLocalConfig();
+      throw new Error("Remote API is not configured properly.");
     }
 
-    try {
-      const response = await fetch(apiUrl, {
-        headers: {
-          "x-degov-site": host,
-        },
-      });
-      if (!response.ok) {
-        console.warn(
-          `[config] Remote config failed (${response.status}), falling back to local. host=${host}`
-        );
-        return loadLocalConfig();
-      }
-
-      const yamlText = await response.text();
-      const yamlData = loadConfigYaml(yamlText);
-
-      cachedConfig.set(cacheKey, yamlData);
-      return yamlData;
-    } catch (err) {
-      console.warn("[config] Remote config fetch error, falling back to local:", err);
-      return loadLocalConfig();
+    const response = await fetch(apiUrl, {
+      headers: {
+        // Pass the real public origin so the backend DegovMiddleware can
+        // resolve the DAO code via Origin matching instead of Host matching.
+        Origin: origin,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`API responded with ${response.status} -> ${apiUrl}`);
     }
+
+    const yamlText = await response.text();
+    const yamlData = loadConfigYaml(yamlText);
+
+    cachedConfig.set(cacheKey, yamlData);
+    return yamlData;
   }
 
   const config = loadLocalConfig();
