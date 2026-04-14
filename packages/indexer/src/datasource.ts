@@ -9,6 +9,17 @@ import {
 } from "./types";
 import { DegovIndexerHelpers } from "./internal/helpers";
 
+const ETH_ADDRESS_SCALAR_VALUE =
+  /^(\s*[^:#\n][^:\n]*:\s*)(0x[0-9a-fA-F]{40})(\s*(?:#.*)?)$/gm;
+
+function quoteAddressScalars(yamlText: string): string {
+  return yamlText.replace(
+    ETH_ADDRESS_SCALAR_VALUE,
+    (_match, prefix: string, value: string, suffix: string) =>
+      `${prefix}"${value}"${suffix ?? ""}`
+  );
+}
+
 export class DegovDataSource {
   constructor() {}
 
@@ -30,7 +41,7 @@ class DegovConfigDataSource {
   }
 
   private packDataSource(rawDegovConfig: string): IndexerProcessorConfig {
-    const degovConfig = yaml.parse(rawDegovConfig);
+    const degovConfig = yaml.parse(quoteAddressScalars(rawDegovConfig));
     const { chain, code, indexer, contracts } = degovConfig;
     const startBlockOverride = this.readIntegerOverride(
       "DEGOV_INDEXER_START_BLOCK"
