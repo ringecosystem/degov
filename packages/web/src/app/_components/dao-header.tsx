@@ -3,7 +3,6 @@ import { TooltipTrigger } from "@radix-ui/react-tooltip";
 import { capitalize } from "lodash-es";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { useTheme } from "next-themes";
 import { Fragment, useMemo, useState } from "react";
 
 import {
@@ -17,6 +16,7 @@ import {
 } from "@/components/icons";
 import { useBotMemberData } from "@/components/members-table/hooks/useBotMemberData";
 import { Tooltip, TooltipContent, TooltipPortal } from "@/components/ui/tooltip";
+import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import { removeNetworkSuffix } from "@/utils/helpers";
@@ -38,7 +38,7 @@ export const DaoHeader = () => {
   const config = useDaoConfig();
   const t = useTranslations("dashboard.header");
   const [showFullDescription, setShowFullDescription] = useState(false);
-  const { theme } = useTheme();
+  const { theme } = useCustomTheme();
   const { data: botMember } = useBotMemberData();
 
   const isCustomBanner = useMemo(() => {
@@ -50,7 +50,8 @@ export const DaoHeader = () => {
       className="lg:grid grid-cols-[1fr_250px] items-end justify-between rounded-[14px] bg-always-dark p-[20px] shadow-card"
       style={{
         backgroundImage:
-          isCustomBanner && (theme === "dark" || theme === "light")
+          isCustomBanner &&
+          (theme === "dark" || theme === "light")
             ? `url(${config?.theme?.banner})`
             : undefined,
         backgroundSize: "cover",

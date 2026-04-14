@@ -1,14 +1,14 @@
 "use client";
 
 import { Palette } from "lucide-react";
-import { useTheme } from "next-themes";
 
 import { Select, SelectContent, SelectTrigger } from "@/components/ui/select";
 import { THEME_COLORS, type ThemeName } from "@/config/theme";
+import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useMounted } from "@/hooks/useMounted";
 
 export function ThemeSelector() {
-  const { theme, setTheme, themes } = useTheme();
+  const { theme, setTheme, themes } = useCustomTheme();
   const mounted = useMounted();
 
   if (!mounted) return null;
