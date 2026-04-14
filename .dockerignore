@@ -4,7 +4,14 @@
 
 .git
 node_modules
+packages/*/node_modules
+packages/web/.next
+packages/indexer/.data
+packages/indexer/lib
+coverage
+.turbo
+.pnpm-store
+*.log
 
 # OS Files
 .DS_Store
-

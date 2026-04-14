@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^2.3.3",
+    "@subsquid/cli": "^3.3.3",
     "@subsquid/evm-abi": "^0.3.1",
     "@subsquid/evm-codec": "^0.3.0",
     "@subsquid/evm-processor": "^1.29.0",
@@ -43,7 +44,6 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@subsquid/cli": "^3.3.3",
     "@subsquid/evm-typegen": "^4.6.0",
     "@subsquid/typeorm-codegen": "^2.1.0",
     "@types/jest": "30.0.0",

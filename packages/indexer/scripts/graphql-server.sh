@@ -8,6 +8,5 @@ WORK_PATH=${BIN_PATH}/../
 
 cd ${WORK_PATH}
 
-npx squid-graphql-server
-
+pnpm exec squid-graphql-server
 
