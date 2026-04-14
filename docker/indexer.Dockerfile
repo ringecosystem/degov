@@ -18,17 +18,24 @@ RUN set -eux; \
   tar -C / -Jxpf /tmp/s6-overlay-${s6_arch}.tar.xz; \
   rm -f /tmp/s6-overlay-noarch.tar.xz /tmp/s6-overlay-${s6_arch}.tar.xz
 
-COPY packages/indexer .
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/indexer/package.json packages/indexer/package.json
+COPY packages/web/package.json packages/web/package.json
 COPY docker/services.d /etc/services.d
 
 RUN apk add --no-cache --virtual .build-deps python3 make g++ \
   && npm i -g @subsquid/cli \
   && corepack enable \
-  && corepack prepare yarn@1.22.22 --activate \
-  && yarn install --frozen-lockfile \
-  && yarn build \
+  && corepack prepare pnpm@10.32.1 --activate \
+  && pnpm install --filter @degov/indexer --frozen-lockfile
+
+COPY packages/indexer packages/indexer
+
+WORKDIR /app/packages/indexer
+
+RUN pnpm run build \
   && apk del .build-deps \
-  && yarn cache clean \
+  && pnpm store prune \
   && npm cache clean --force
 
 ENTRYPOINT ["/init"]

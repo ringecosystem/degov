@@ -10,20 +10,20 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
       - name: Setup NodeJS
         uses: actions/setup-node@v5
         with:
           node-version: 22
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+          cache: pnpm
 
       - name: Check build
-        working-directory: packages/web
         run: |
-          pnpm install --frozen-lockfile
-          pnpm build
+          pnpm install --filter @degov/web... --frozen-lockfile
+          pnpm --filter @degov/web build
 
   check-indexer:
     name: Check indexer
@@ -31,19 +31,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
       - name: Setup NodeJS
         uses: actions/setup-node@v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Check build
-        working-directory: packages/indexer
         run: |
-          corepack enable
-          corepack prepare yarn@1.22.22 --activate
-          yarn install --frozen-lockfile
-          yarn build
-          yarn test
+          pnpm install --filter @degov/indexer... --frozen-lockfile
+          pnpm --filter @degov/indexer build
+          pnpm --filter @degov/indexer test
 
   check-config:
     name: Check Config

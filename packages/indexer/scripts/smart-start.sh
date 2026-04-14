@@ -17,10 +17,10 @@ fi
 docker compose up -d || true
 
 if [ "$1" = "force" ]; then
-  npx sqd codegen
-  npm run migrate:db -- --force
+  pnpm exec sqd codegen
+  pnpm run migrate:db -- --force
 fi
 
-npm run build
+pnpm run build
 
 ${BIN_PATH}/start.sh

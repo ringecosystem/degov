@@ -194,8 +194,8 @@ diagnosis signature is usually:
 - `just verify-range <config> <start> <end>`: replay a small local block range
 - `just verify-sample <delegator> [delegate]`: inspect a local replay result
 - `just verify-negative-current [limit]`: inspect local current negative rows
-- `yarn audit:accuracy`: run the full audit
-- `yarn run audit:diagnose -- --address ... --code ...`: raw script entrypoint
+- `pnpm audit:accuracy`: run the full audit
+- `pnpm run audit:diagnose -- --address ... --code ...`: raw script entrypoint
 
 ## Related research
 

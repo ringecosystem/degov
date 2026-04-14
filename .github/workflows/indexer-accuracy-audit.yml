@@ -20,17 +20,18 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
       - name: Setup NodeJS
         uses: actions/setup-node@v5
         with:
           node-version: 22
-
-      - name: Install Yarn
-        run: npm install -g yarn
+          cache: pnpm
 
       - name: Install indexer dependencies
-        working-directory: packages/indexer
-        run: yarn install --frozen-lockfile
+        run: pnpm install --filter @degov/indexer... --frozen-lockfile
 
       - name: Run accuracy audit
         id: audit

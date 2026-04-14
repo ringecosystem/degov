@@ -24,41 +24,41 @@ GraphQL is served on `http://localhost:4350/graphql`.
 ### Codegen
 
 ```bash
-yarn run codegen:abi
-yarn run codegen:schema
-yarn run codegen
+pnpm run codegen:abi
+pnpm run codegen:schema
+pnpm run codegen
 ```
 
 ### Database
 
 ```bash
-yarn run db:migrate
-yarn run db:migrate:force
+pnpm run db:migrate
+pnpm run db:migrate:force
 ```
 
 ### Runtime
 
 ```bash
-yarn run build
-yarn run dev:start
-yarn run dev:smart-start
-yarn run dev:smart-start:force
-yarn run dev:graphql
+pnpm run build
+pnpm run dev:start
+pnpm run dev:smart-start
+pnpm run dev:smart-start:force
+pnpm run dev:graphql
 ```
 
 ### Tests
 
 ```bash
-yarn run test:unit
-yarn run test:accuracy
-yarn run test:integration
+pnpm run test:unit
+pnpm run test:accuracy
+pnpm run test:integration
 ```
 
 ### Audit
 
 ```bash
-yarn run audit:accuracy
-yarn run audit:diagnose -- --address 0x... --code ens-dao
+pnpm run audit:accuracy
+pnpm run audit:diagnose -- --address 0x... --code ens-dao
 ```
 
 ## Preferred developer entrypoints
