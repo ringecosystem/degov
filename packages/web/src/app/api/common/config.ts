@@ -12,6 +12,12 @@ import type { NextRequest } from "next/server";
 
 const cachedConfig: Map<string, Config> = new Map();
 
+function loadLocalConfig(): Config {
+  const configPath = path.join(process.cwd(), "public/degov.yml");
+  const yamlText = fs.readFileSync(configPath, "utf-8");
+  return loadConfigYaml(yamlText);
+}
+
 export async function degovConfig(request: NextRequest): Promise<Config> {
   const host = getRequestHost(request);
   if (!host) {
@@ -32,28 +38,34 @@ export async function degovConfig(request: NextRequest): Promise<Config> {
   if (isDegovApiConfiguredServer()) {
     const apiUrl = degovApiDaoConfigServer();
     if (!apiUrl) {
-      throw new Error("Remote API is not configured properly.");
+      return loadLocalConfig();
     }
 
-    const response = await fetch(apiUrl, {
-      headers: {
-        "x-degov-site": host,
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`API responded with ${response.status} -> ${apiUrl}`);
+    try {
+      const response = await fetch(apiUrl, {
+        headers: {
+          "x-degov-site": host,
+        },
+      });
+      if (!response.ok) {
+        console.warn(
+          `[config] Remote config failed (${response.status}), falling back to local. host=${host}`
+        );
+        return loadLocalConfig();
+      }
+
+      const yamlText = await response.text();
+      const yamlData = loadConfigYaml(yamlText);
+
+      cachedConfig.set(cacheKey, yamlData);
+      return yamlData;
+    } catch (err) {
+      console.warn("[config] Remote config fetch error, falling back to local:", err);
+      return loadLocalConfig();
     }
-
-    const yamlText = await response.text();
-    const yamlData = loadConfigYaml(yamlText);
-
-    cachedConfig.set(cacheKey, yamlData);
-    return yamlData;
   }
 
-  const configPath = path.join(process.cwd(), "public/degov.yml");
-  const yamlText = fs.readFileSync(configPath, "utf-8");
-  const config = loadConfigYaml(yamlText);
+  const config = loadLocalConfig();
   cachedConfig.set(cacheKey, config);
   return config;
 }
