@@ -2506,6 +2506,10 @@ describe("token vote power checkpoints", () => {
 
     const handler = buildTokenHandler(store);
 
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
     jest.spyOn(itokenerc20.events.DelegateChanged, "decode").mockReturnValue({
       delegator: "0x53fa6d5428f16e4e8b67ff29b5c95aa53239c653",
       fromDelegate: "0xd4a46a9ef66d7352790f131fe49e7cf84ae68b55",
@@ -2943,6 +2947,10 @@ describe("token vote power checkpoints", () => {
       }),
     ]);
     const handler = buildTokenHandler(store);
+
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
 
     jest
       .spyOn(itokenerc20.events.DelegateChanged, "decode")
