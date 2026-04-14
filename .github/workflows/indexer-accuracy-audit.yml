@@ -31,7 +31,7 @@ jobs:
           cache: pnpm
 
       - name: Install indexer dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --filter @degov/indexer... --frozen-lockfile
 
       - name: Run accuracy audit
         id: audit

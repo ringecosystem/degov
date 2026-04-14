@@ -22,7 +22,7 @@ jobs:
 
       - name: Check build
         run: |
-          pnpm install --frozen-lockfile
+          pnpm install --filter @degov/web... --frozen-lockfile
           pnpm --filter @degov/web build
 
   check-indexer:
@@ -43,7 +43,7 @@ jobs:
 
       - name: Check build
         run: |
-          pnpm install --frozen-lockfile
+          pnpm install --filter @degov/indexer... --frozen-lockfile
           pnpm --filter @degov/indexer build
           pnpm --filter @degov/indexer test
 
