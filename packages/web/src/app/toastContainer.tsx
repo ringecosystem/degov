@@ -1,14 +1,15 @@
 "use client";
-import { useTheme } from "next-themes";
 import { ToastContainer as ToastContainerComponent } from "react-toastify";
 
+import { useCustomTheme } from "@/hooks/useCustomTheme";
+
 export function ToastContainer() {
-  const { resolvedTheme } = useTheme();
+  const { isDarkTheme } = useCustomTheme();
 
   return (
     <ToastContainerComponent
       pauseOnFocusLoss={false}
-      theme={resolvedTheme}
+      theme={isDarkTheme ? "dark" : "light"}
       className="w-auto text-[14px] md:w-[380px]"
     />
   );

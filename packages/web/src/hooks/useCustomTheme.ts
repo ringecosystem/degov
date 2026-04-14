@@ -3,7 +3,7 @@
 import { useTheme } from "next-themes";
 
 export function useCustomTheme() {
-  const { theme, setTheme, themes } = useTheme();
+  const { theme, setTheme, themes, resolvedTheme } = useTheme();
 
   const isDarkTheme = (themeName: string | undefined): boolean => {
     if (!themeName) return false;
@@ -15,11 +15,12 @@ export function useCustomTheme() {
     return themeName === "light" || themeName.startsWith("light-");
   };
 
-  const currentIsDark = isDarkTheme(theme);
-  const currentIsLight = isLightTheme(theme);
+  const activeTheme = resolvedTheme ?? theme;
+  const currentIsDark = isDarkTheme(activeTheme);
+  const currentIsLight = isLightTheme(activeTheme);
 
   return {
-    theme,
+    theme: activeTheme,
     setTheme,
     themes,
     isDarkTheme: currentIsDark,
