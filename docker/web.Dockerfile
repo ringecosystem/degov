@@ -43,6 +43,7 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/degov.yml degov.yml
+# Standalone output keeps the workspace layout, including packages/web/server.js.
 COPY --from=builder --chown=nextjs:nodejs /app/packages/web/.next/standalone .
 COPY --from=builder --chown=nextjs:nodejs /app/packages/web/.next/static packages/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/packages/web/public packages/web/public
