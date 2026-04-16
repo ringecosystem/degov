@@ -22,7 +22,7 @@ export class DegovIndexerHelpers {
   static safeJsonStringify(
     value: any,
     replacer: (key: string, value: any) => any = (_, v) => v
-  ): string {
+  ): string | undefined {
     return JSON.stringify(value, (_, v) => {
       if (typeof v === "bigint") {
         return v.toString();
@@ -106,7 +106,11 @@ export class DegovIndexerHelpers {
     if (typeof error === "string") {
       return this.redactUrlsInText(error);
     }
-    return this.redactUrlsInText(this.safeJsonStringify(error));
+    const serializedError = this.safeJsonStringify(error);
+    if (typeof serializedError === "string") {
+      return this.redactUrlsInText(serializedError);
+    }
+    return String(error);
   }
 
   static logVerbose(step: string, fields: Record<string, IndexerLogFieldValue> = {}) {
@@ -158,7 +162,7 @@ export class DegovIndexerHelpers {
     if (typeof logValue === "number" || typeof logValue === "boolean") {
       return String(logValue);
     }
-    return this.safeJsonStringify(logValue);
+    return this.formatJsonLogValue(logValue);
   }
 
   private static redactLogValue(
@@ -200,10 +204,23 @@ export class DegovIndexerHelpers {
   }
 
   private static redactInvalidUrl(value: string): string {
-    const withoutQueryOrFragment = value.split(/[?#]/, 1)[0];
+    const withoutQueryOrFragment = value.trim().split(/[?#]/, 1)[0];
+    const originMatch = withoutQueryOrFragment.match(
+      /^([a-z][a-z\d+\-.]*:\/\/)(?:[^/@\s]+@)?([^/\s]+)(?:\/|$)/i
+    );
+
+    if (originMatch) {
+      return `${originMatch[1]}${originMatch[2]}`;
+    }
+
     return withoutQueryOrFragment.replace(
       /^([a-z][a-z\d+\-.]*:\/\/)[^/@\s]+@/i,
       "$1"
     );
+  }
+
+  private static formatJsonLogValue(value: IndexerLogFieldValue): string {
+    const serializedValue = this.safeJsonStringify(value);
+    return typeof serializedValue === "string" ? serializedValue : String(value);
   }
 }

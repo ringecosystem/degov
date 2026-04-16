@@ -99,6 +99,12 @@ describe("DegovIndexerHelpers", () => {
         selectedRpc: "not a url?apiKey=secret#fragment",
       })
     ).toBe('processor.rpc selected | selectedRpc="not a url"');
+
+    expect(
+      DegovIndexerHelpers.formatLogLine("processor.rpc selected", {
+        selectedRpc: "https://user:password@rpc.example.com/v3/path-api-key %%%",
+      })
+    ).toBe("processor.rpc selected | selectedRpc=https://rpc.example.com");
   });
 
   it("formats errors without leaking object noise", () => {
@@ -109,6 +115,16 @@ describe("DegovIndexerHelpers", () => {
     expect(
       DegovIndexerHelpers.formatError({ code: "E_TIMEOUT", retryable: true })
     ).toBe('{"code":"E_TIMEOUT","retryable":true}');
+  });
+
+  it("formats non-json errors without throwing", () => {
+    expect(DegovIndexerHelpers.formatError(undefined)).toBe("undefined");
+    expect(DegovIndexerHelpers.formatError(() => "failed")).toBe(
+      "() => \"failed\""
+    );
+    expect(DegovIndexerHelpers.formatError(Symbol("failed"))).toBe(
+      "Symbol(failed)"
+    );
   });
 
   it("redacts URLs embedded in error messages", () => {
