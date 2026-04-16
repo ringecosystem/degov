@@ -8,6 +8,10 @@ import { Resp } from "@/types/api";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 import {
+  expectedSiweContextFromConfig,
+  validateSiweContext,
+} from "../../common/siwe-context";
+import {
   SIWE_NONCE_COOKIE_NAME,
   verifySiweNonceCookieValue,
 } from "../../common/siwe-nonce";
@@ -30,11 +34,46 @@ export async function POST(request: NextRequest) {
     }
 
     const { message, signature } = await request.json();
+    const signedNonceCookie = request.cookies.get(SIWE_NONCE_COOKIE_NAME)?.value;
+    const cookieNonce = signedNonceCookie
+      ? await verifySiweNonceCookieValue(signedNonceCookie, jwtSecretKey)
+      : null;
+
+    if (!cookieNonce) {
+      const invalidNonceResponse = NextResponse.json(
+        Resp.err("nonce expired or invalid, please get a new nonce"),
+        { status: 400 }
+      );
+
+      invalidNonceResponse.cookies.set({
+        name: SIWE_NONCE_COOKIE_NAME,
+        value: "",
+        maxAge: 0,
+        path: "/",
+      });
+
+      return invalidNonceResponse;
+    }
+
+    const expectedSiweContext = expectedSiweContextFromConfig(
+      degovConfig,
+      cookieNonce
+    );
 
     let fields;
     try {
       const siweMessage = new SiweMessage(message);
-      fields = await siweMessage.verify({ signature });
+      const verificationTime = new Date();
+      fields = await siweMessage.verify({
+        signature,
+        domain: expectedSiweContext.domain,
+        nonce: expectedSiweContext.nonce,
+        time: verificationTime.toISOString(),
+      });
+      validateSiweContext(fields.data, {
+        ...expectedSiweContext,
+        now: verificationTime,
+      });
 
       // fields = { data: { nonce: "3456789235", address: "0x2376628375284594" } };
     } catch (err) {
@@ -44,12 +83,7 @@ export async function POST(request: NextRequest) {
 
     // Validate if nonce is still valid
     const nonce = fields.data.nonce;
-    const signedNonceCookie = request.cookies.get(SIWE_NONCE_COOKIE_NAME)?.value;
-    const cookieNonce = signedNonceCookie
-      ? await verifySiweNonceCookieValue(signedNonceCookie, jwtSecretKey)
-      : null;
-    const nonceIsValid =
-      cookieNonce === nonce && (await consumeSiweNonce(nonce));
+    const nonceIsValid = await consumeSiweNonce(nonce);
 
     if (!nonceIsValid) {
       const invalidNonceResponse = NextResponse.json(
