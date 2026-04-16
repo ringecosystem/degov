@@ -85,14 +85,14 @@ export class SiweService {
     try {
       const { message, signature, address, nonceSource } = params;
 
-      let localToken: string | undefined;
+      let localAuthenticated = false;
       let remoteToken: string | undefined;
       const errors: string[] = [];
 
       const localResult = await this.loginLocal(message, signature);
       if (localResult.success) {
-        localToken = localResult.token;
-        tokenManager.setToken(localToken!, address);
+        localAuthenticated = true;
+        tokenManager.setToken("authenticated", address);
       } else {
         errors.push(`Local login failed: ${localResult.error}`);
       }
@@ -107,10 +107,9 @@ export class SiweService {
         }
       }
 
-      if (localToken || remoteToken) {
+      if (localAuthenticated || remoteToken) {
         return {
           success: true,
-          token: localToken,
           remoteToken,
           error: errors.length > 0 ? errors.join("; ") : undefined,
         };
@@ -138,12 +137,17 @@ export class SiweService {
       },
       body: JSON.stringify({ message, signature }),
       cache: "no-store",
+      credentials: "same-origin",
     });
 
     const result = await response.json();
 
     if (result?.code === 0 && result?.data?.token) {
       return { success: true, token: result.data.token };
+    }
+
+    if (result?.code === 0 && result?.data?.authenticated) {
+      return { success: true };
     }
 
     return {
@@ -209,6 +213,12 @@ export class SiweService {
   }
 
   async signOut(): Promise<void> {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+    }).catch(() => undefined);
+
     tokenManager.clearAllTokens();
     // Clear persisted react-query cache if present
     try {

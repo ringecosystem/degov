@@ -35,7 +35,7 @@ export const useEnsureAuth = () => {
         };
       }
 
-      if (tokenManager.getToken(address)) {
+      if (tokenManager.isAuthenticated(address)) {
         return { success: true };
       }
 
@@ -59,6 +59,6 @@ export const useEnsureAuth = () => {
     ensureAuth,
     isAuthenticating,
     isConnected,
-    isAuthenticated: !!tokenManager.getToken(address),
+    isAuthenticated: tokenManager.isAuthenticated(address),
   };
 };

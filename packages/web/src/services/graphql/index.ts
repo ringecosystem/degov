@@ -1,5 +1,3 @@
-import { clearToken } from "@/lib/auth/token-manager";
-import { getToken } from "@/lib/auth/token-manager";
 import type { Config } from "@/types/config";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
@@ -475,18 +473,16 @@ export const profileService = {
   },
 
   updateProfile: async (address: string, profile: Partial<ProfileData>) => {
-    const token = getToken(address);
     const response = await fetch(`/api/profile/${address}`, {
       method: "POST",
       body: JSON.stringify(profile),
       cache: "no-store",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
     if (response.status === 401) {
-      clearToken(address);
       return { code: 401, msg: "Unauthorized" } as const;
     }
     const data = await response.json();

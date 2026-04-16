@@ -9,14 +9,16 @@ import { tokenManager } from "@/lib/auth/token-manager";
  */
 export const useAuthStatus = () => {
   const { address } = useAccount();
-  const token = tokenManager.getToken(address);
+  const isAuthenticated = tokenManager.isAuthenticated(address);
   const [mounted, setMounted] = useState(false);
   const prevAddressRef = useRef<string | undefined>(undefined);
 
   const status = useMemo(() => {
     if (!mounted) return "loading" as const;
-    return token ? ("authenticated" as const) : ("unauthenticated" as const);
-  }, [mounted, token]);
+    return isAuthenticated
+      ? ("authenticated" as const)
+      : ("unauthenticated" as const);
+  }, [mounted, isAuthenticated]);
 
   // Mark mounted after first client render
   useEffect(() => {

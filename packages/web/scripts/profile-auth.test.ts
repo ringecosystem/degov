@@ -4,7 +4,10 @@ import test, { type TestContext } from "node:test";
 
 import { SignJWT } from "jose";
 
-import { resolveAuthPayload } from "../src/app/api/common/auth.ts";
+import {
+  AUTH_COOKIE_NAME,
+  resolveAuthPayload,
+} from "../src/app/api/common/auth.ts";
 import {
   signSiweNonceCookieValue,
   verifySiweNonceCookieValue,
@@ -61,6 +64,19 @@ test("resolveAuthPayload falls back to bearer tokens for profile updates", async
       Authorization: `Bearer ${token}`,
     })
   );
+
+  assert.deepEqual(resolvedPayload, { address: "0xabcdef" });
+});
+
+test("resolveAuthPayload verifies auth cookies for profile updates", async (t) => {
+  setJwtSecretForTest(t, "test-secret");
+  const token = await signToken("0xAbCdEf", "test-secret");
+
+  const resolvedPayload = await resolveAuthPayload(new Headers(), {
+    get(name: string) {
+      return name === AUTH_COOKIE_NAME ? { value: token } : undefined;
+    },
+  });
 
   assert.deepEqual(resolvedPayload, { address: "0xabcdef" });
 });
@@ -146,6 +162,42 @@ test("SIWE auth routes use a DB-backed nonce store with a signed nonce cookie", 
   assert.match(loginRouteSource, /verifySiweNonceCookieValue/);
   assert.match(loginRouteSource, /SIWE_NONCE_COOKIE_NAME/);
   assert.doesNotMatch(loginRouteSource, /nonceCache/);
+});
+
+test("login issues the auth token as an HttpOnly secure SameSite cookie", () => {
+  const loginRouteSource = readFileSync(
+    new URL("../src/app/api/auth/login/route.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(loginRouteSource, /AUTH_COOKIE_NAME/);
+  assert.match(loginRouteSource, /value: token/);
+  assert.match(loginRouteSource, /httpOnly: true/);
+  assert.match(loginRouteSource, /secure: true/);
+  assert.match(loginRouteSource, /sameSite: "lax"/);
+  assert.match(loginRouteSource, /Resp\.ok\(\{ authenticated: true \}\)/);
+  assert.doesNotMatch(loginRouteSource, /Resp\.ok\(\{ token \}\)/);
+});
+
+test("client no longer persists auth tokens in localStorage or sends bearer auth to local APIs", () => {
+  const tokenManagerSource = readFileSync(
+    new URL("../src/lib/auth/token-manager.ts", import.meta.url),
+    "utf8"
+  );
+  const graphqlServiceSource = readFileSync(
+    new URL("../src/services/graphql/index.ts", import.meta.url),
+    "utf8"
+  );
+  const siweServiceSource = readFileSync(
+    new URL("../src/lib/auth/siwe-service.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.doesNotMatch(tokenManagerSource, /localStorage/);
+  assert.doesNotMatch(graphqlServiceSource, /Authorization: `Bearer/);
+  assert.match(graphqlServiceSource, /credentials: "same-origin"/);
+  assert.doesNotMatch(siweServiceSource, /setToken\(localResult\.token/);
+  assert.match(siweServiceSource, /\/api\/auth\/logout/);
 });
 
 test("profile edit retries a 401 only after a fresh authentication attempt", () => {

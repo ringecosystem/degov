@@ -5,6 +5,10 @@ import { SiweMessage } from "siwe";
 import type { DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
+import {
+  AUTH_COOKIE_MAX_AGE_SECONDS,
+  AUTH_COOKIE_NAME,
+} from "../../common/auth";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 import {
@@ -108,12 +112,22 @@ export async function POST(request: NextRequest) {
         where id=${storedUser.id};
       `;
     }
-    const response = NextResponse.json(Resp.ok({ token }));
+    const response = NextResponse.json(Resp.ok({ authenticated: true }));
 
     response.cookies.set({
       name: SIWE_NONCE_COOKIE_NAME,
       value: "",
       maxAge: 0,
+      path: "/",
+    });
+
+    response.cookies.set({
+      name: AUTH_COOKIE_NAME,
+      value: token,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
       path: "/",
     });
 
