@@ -55,38 +55,14 @@ export async function POST(request: NextRequest) {
     }
 
     let fields;
-    let attemptedAddress: string | undefined;
     try {
       const siweMessage = new SiweMessage(message);
-      attemptedAddress = siweMessage.address?.toLowerCase();
-
-      const addressRateLimit = checkSiweLoginAddressRequest(attemptedAddress);
-      if (!addressRateLimit.allowed) {
-        logSiweThrottle(
-          "siwe_login_throttled",
-          identity,
-          addressRateLimit,
-          attemptedAddress
-        );
-
-        return NextResponse.json(Resp.err("too many login attempts"), {
-          status: 429,
-          headers: {
-            "Retry-After": String(addressRateLimit.retryAfterSeconds ?? 1),
-          },
-        });
-      }
-
-      const failureBackoff = checkSiweLoginFailureBackoff(
-        identity,
-        attemptedAddress
-      );
+      const failureBackoff = checkSiweLoginFailureBackoff(identity);
       if (!failureBackoff.allowed) {
         logSiweThrottle(
           "siwe_login_throttled",
           identity,
-          failureBackoff,
-          attemptedAddress
+          failureBackoff
         );
 
         return NextResponse.json(Resp.err("too many failed login attempts"), {
@@ -104,8 +80,7 @@ export async function POST(request: NextRequest) {
       console.warn("err", err);
       const failureDecision = recordSiweLoginFailure(
         "invalid_message_or_signature",
-        identity,
-        attemptedAddress
+        identity
       );
       if (!failureDecision.allowed) {
         return NextResponse.json(Resp.err("too many failed login attempts"), {
@@ -117,6 +92,44 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json(Resp.err("invalid message"), { status: 400 });
+    }
+
+    const address = fields.data.address.toLowerCase();
+    const addressRateLimit = checkSiweLoginAddressRequest(address);
+    if (!addressRateLimit.allowed) {
+      logSiweThrottle(
+        "siwe_login_throttled",
+        identity,
+        addressRateLimit,
+        address
+      );
+
+      return NextResponse.json(Resp.err("too many login attempts"), {
+        status: 429,
+        headers: {
+          "Retry-After": String(addressRateLimit.retryAfterSeconds ?? 1),
+        },
+      });
+    }
+
+    const addressFailureBackoff = checkSiweLoginFailureBackoff(
+      identity,
+      address
+    );
+    if (!addressFailureBackoff.allowed) {
+      logSiweThrottle(
+        "siwe_login_throttled",
+        identity,
+        addressFailureBackoff,
+        address
+      );
+
+      return NextResponse.json(Resp.err("too many failed login attempts"), {
+        status: 429,
+        headers: {
+          "Retry-After": String(addressFailureBackoff.retryAfterSeconds ?? 1),
+        },
+      });
     }
 
     // Validate if nonce is still valid
@@ -144,7 +157,7 @@ export async function POST(request: NextRequest) {
       const failureDecision = recordSiweLoginFailure(
         "invalid_nonce",
         identity,
-        attemptedAddress
+        address
       );
       if (!failureDecision.allowed) {
         const backoffResponse = NextResponse.json(
@@ -169,7 +182,6 @@ export async function POST(request: NextRequest) {
       return invalidNonceResponse;
     }
 
-    const address = fields.data.address.toLowerCase();
     resetSiweLoginFailures(identity, address);
 
     const token = await new SignJWT({ address })

@@ -13,6 +13,7 @@ import {
   createSiweRequestIdentity,
   recordSiweLoginFailure,
   resetSiweLoginFailures,
+  SIWE_ABUSE_BUCKET_LIMITS,
   SIWE_LOGIN_FAILURE_BACKOFF,
   SIWE_LOGIN_RATE_LIMIT,
   SIWE_NONCE_RATE_LIMIT,
@@ -168,6 +169,36 @@ test("SIWE auth routes use a DB-backed nonce store with a signed nonce cookie", 
   assert.doesNotMatch(loginRouteSource, /nonceCache/);
 });
 
+test("SIWE login route only uses address controls after signature verification", () => {
+  const loginRouteSource = readFileSync(
+    new URL("../src/app/api/auth/login/route.ts", import.meta.url),
+    "utf8"
+  );
+  const verifyIndex = loginRouteSource.indexOf(
+    "fields = await siweMessage.verify"
+  );
+  const addressIndex = loginRouteSource.indexOf(
+    "const address = fields.data.address.toLowerCase()"
+  );
+  const addressThrottleIndex = loginRouteSource.indexOf(
+    "checkSiweLoginAddressRequest(address)"
+  );
+  const addressFailureIndex = loginRouteSource.indexOf(
+    "checkSiweLoginFailureBackoff(\n      identity,\n      address"
+  );
+  const invalidSignatureFailureIndex = loginRouteSource.indexOf(
+    'recordSiweLoginFailure(\n        "invalid_message_or_signature",\n        identity\n      )'
+  );
+
+  assert.ok(verifyIndex > 0);
+  assert.ok(addressIndex > verifyIndex);
+  assert.ok(addressThrottleIndex > addressIndex);
+  assert.ok(addressFailureIndex > addressIndex);
+  assert.ok(invalidSignatureFailureIndex > 0);
+  assert.doesNotMatch(loginRouteSource, /siweMessage\.address/);
+  assert.doesNotMatch(loginRouteSource, /attemptedAddress/);
+});
+
 test("SIWE nonce store makes nonces short-lived and single-use", () => {
   const nonceStoreSource = readFileSync(
     new URL("../src/app/api/common/siwe-nonce-store.ts", import.meta.url),
@@ -187,7 +218,7 @@ test("SIWE nonce requests are throttled by client identity", () => {
   const store = new SiweAbuseControlStore();
   const identity = createSiweRequestIdentity(
     new Headers({
-      "x-forwarded-for": "203.0.113.10, 10.0.0.1",
+      "x-real-ip": "203.0.113.10",
       "user-agent": "nonce-test-agent",
     })
   );
@@ -211,6 +242,43 @@ test("SIWE nonce requests are throttled by client identity", () => {
       now + SIWE_NONCE_RATE_LIMIT.windowMilliseconds
     ).allowed,
     true
+  );
+});
+
+test("SIWE request identity prefers trusted normalized IP sources", () => {
+  assert.equal(
+    createSiweRequestIdentity(
+      new Headers({
+        "cf-connecting-ip": "192.0.2.44",
+        "x-forwarded-for": "198.51.100.1, 198.51.100.2",
+      })
+    ).ip,
+    "192.0.2.44"
+  );
+  assert.equal(
+    createSiweRequestIdentity(
+      new Headers({
+        "x-real-ip": "[2001:db8::1]:443",
+        "x-forwarded-for": "198.51.100.1",
+      })
+    ).ip,
+    "2001:db8::1"
+  );
+  assert.equal(
+    createSiweRequestIdentity(
+      new Headers({
+        "x-forwarded-for": "spoofed, 198.51.100.10:1234",
+      })
+    ).ip,
+    "198.51.100.10"
+  );
+  assert.equal(
+    createSiweRequestIdentity(
+      new Headers({
+        "x-forwarded-for": "spoofed, also-spoofed",
+      })
+    ).ip,
+    "unknown"
   );
 });
 
@@ -318,6 +386,88 @@ test("SIWE failed login backoff is temporary, resettable, and observable", (t) =
     checkSiweLoginFailureBackoff(identity, address, store, now).allowed,
     true
   );
+});
+
+test("SIWE abuse buckets evict stale entries and enforce caps", (t) => {
+  const rateLimitStore = new SiweAbuseControlStore();
+  const now = Date.parse("2026-04-16T00:00:00.000Z");
+  const previousWarn = console.warn;
+  console.warn = () => {};
+  t.after(() => {
+    console.warn = previousWarn;
+  });
+
+  for (
+    let index = 0;
+    index < SIWE_ABUSE_BUCKET_LIMITS.maxRateLimitBuckets + 10;
+    index += 1
+  ) {
+    checkSiweNonceRequest(
+      {
+        ip: `198.51.100.${index}`,
+        userAgent: `agent-${index}`,
+        userAgentHash: `agent-${index}`,
+      },
+      rateLimitStore,
+      now
+    );
+  }
+
+  assert.equal(
+    rateLimitStore.bucketCounts().rateLimit,
+    SIWE_ABUSE_BUCKET_LIMITS.maxRateLimitBuckets
+  );
+  assert.equal(
+    checkSiweNonceRequest(
+      {
+        ip: "203.0.113.200",
+        userAgent: "fresh-agent",
+        userAgentHash: "fresh-agent",
+      },
+      rateLimitStore,
+      now + SIWE_NONCE_RATE_LIMIT.windowMilliseconds
+    ).allowed,
+    true
+  );
+  assert.equal(rateLimitStore.bucketCounts().rateLimit, 2);
+
+  const failedLoginStore = new SiweAbuseControlStore();
+  for (
+    let index = 0;
+    index < SIWE_ABUSE_BUCKET_LIMITS.maxFailedLoginBuckets + 10;
+    index += 1
+  ) {
+    recordSiweLoginFailure(
+      "invalid_message_or_signature",
+      {
+        ip: `203.0.113.${index}`,
+        userAgent: `failure-agent-${index}`,
+        userAgentHash: `failure-agent-${index}`,
+      },
+      undefined,
+      failedLoginStore,
+      now
+    );
+  }
+
+  assert.equal(
+    failedLoginStore.bucketCounts().failedLogin,
+    SIWE_ABUSE_BUCKET_LIMITS.maxFailedLoginBuckets
+  );
+  assert.equal(
+    checkSiweLoginFailureBackoff(
+      {
+        ip: "192.0.2.200",
+        userAgent: "fresh-failure-agent",
+        userAgentHash: "fresh-failure-agent",
+      },
+      undefined,
+      failedLoginStore,
+      now + SIWE_ABUSE_BUCKET_LIMITS.failureStaleMilliseconds
+    ).allowed,
+    true
+  );
+  assert.equal(failedLoginStore.bucketCounts().failedLogin, 0);
 });
 
 test("profile edit retries a 401 only after a fresh authentication attempt", () => {

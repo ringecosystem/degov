@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 type HeaderReader = {
   get(name: string): string | null;
 };
@@ -22,6 +24,7 @@ type RateLimitBucket = {
 type FailedLoginBucket = {
   failures: number;
   lockedUntil?: number;
+  updatedAt: number;
 };
 
 type RateLimitRule = {
@@ -50,14 +53,24 @@ export const SIWE_LOGIN_FAILURE_BACKOFF = {
   maxLockMilliseconds: 15 * 60_000,
 } as const;
 
+export const SIWE_ABUSE_BUCKET_LIMITS = {
+  maxRateLimitBuckets: 2_000,
+  maxFailedLoginBuckets: 2_000,
+  failureStaleMilliseconds: 30 * 60_000,
+  cleanupIntervalMilliseconds: 60_000,
+} as const;
+
 export class SiweAbuseControlStore {
   private readonly rateLimitBuckets = new Map<string, RateLimitBucket>();
   private readonly failedLoginBuckets = new Map<string, FailedLoginBucket>();
+  private lastCleanupAt = 0;
 
   checkRateLimit(
     rules: RateLimitRule[],
     now = Date.now()
   ): AbuseControlDecision {
+    this.cleanup(now);
+
     for (const rule of rules) {
       const bucket = this.rateLimitBuckets.get(rule.key);
 
@@ -84,6 +97,8 @@ export class SiweAbuseControlStore {
       bucket.count += 1;
     }
 
+    this.enforceRateLimitBucketCap();
+
     return { allowed: true };
   }
 
@@ -91,6 +106,8 @@ export class SiweAbuseControlStore {
     keys: string[],
     now = Date.now()
   ): AbuseControlDecision {
+    this.cleanup(now);
+
     for (const key of keys) {
       const bucket = this.failedLoginBuckets.get(key);
 
@@ -110,11 +127,17 @@ export class SiweAbuseControlStore {
     keys: string[],
     now = Date.now()
   ): FailedLoginBucket | undefined {
+    this.cleanup(now);
+
     let strictestBucket: FailedLoginBucket | undefined;
 
     for (const key of keys) {
-      const bucket = this.failedLoginBuckets.get(key) ?? { failures: 0 };
+      const bucket = this.failedLoginBuckets.get(key) ?? {
+        failures: 0,
+        updatedAt: now,
+      };
       bucket.failures += 1;
+      bucket.updatedAt = now;
 
       if (bucket.failures >= SIWE_LOGIN_FAILURE_BACKOFF.threshold) {
         const lockMilliseconds = Math.min(
@@ -137,6 +160,8 @@ export class SiweAbuseControlStore {
       }
     }
 
+    this.enforceFailedLoginBucketCap();
+
     return strictestBucket;
   }
 
@@ -149,6 +174,73 @@ export class SiweAbuseControlStore {
   clear(): void {
     this.rateLimitBuckets.clear();
     this.failedLoginBuckets.clear();
+    this.lastCleanupAt = 0;
+  }
+
+  bucketCounts(): { rateLimit: number; failedLogin: number } {
+    return {
+      rateLimit: this.rateLimitBuckets.size,
+      failedLogin: this.failedLoginBuckets.size,
+    };
+  }
+
+  private cleanup(now: number): void {
+    if (
+      this.lastCleanupAt &&
+      now - this.lastCleanupAt < SIWE_ABUSE_BUCKET_LIMITS.cleanupIntervalMilliseconds
+    ) {
+      return;
+    }
+
+    this.lastCleanupAt = now;
+
+    for (const [key, bucket] of this.rateLimitBuckets) {
+      if (bucket.resetAt <= now) {
+        this.rateLimitBuckets.delete(key);
+      }
+    }
+
+    for (const [key, bucket] of this.failedLoginBuckets) {
+      const lockIsActive = !!bucket.lockedUntil && bucket.lockedUntil > now;
+      const stale =
+        bucket.updatedAt + SIWE_ABUSE_BUCKET_LIMITS.failureStaleMilliseconds <=
+        now;
+
+      if (!lockIsActive && stale) {
+        this.failedLoginBuckets.delete(key);
+      }
+    }
+
+    this.enforceRateLimitBucketCap();
+    this.enforceFailedLoginBucketCap();
+  }
+
+  private enforceRateLimitBucketCap(): void {
+    while (
+      this.rateLimitBuckets.size >
+      SIWE_ABUSE_BUCKET_LIMITS.maxRateLimitBuckets
+    ) {
+      const oldestKey = this.rateLimitBuckets.keys().next().value;
+      if (!oldestKey) {
+        break;
+      }
+
+      this.rateLimitBuckets.delete(oldestKey);
+    }
+  }
+
+  private enforceFailedLoginBucketCap(): void {
+    while (
+      this.failedLoginBuckets.size >
+      SIWE_ABUSE_BUCKET_LIMITS.maxFailedLoginBuckets
+    ) {
+      const oldestKey = this.failedLoginBuckets.keys().next().value;
+      if (!oldestKey) {
+        break;
+      }
+
+      this.failedLoginBuckets.delete(oldestKey);
+    }
   }
 }
 
@@ -157,11 +249,12 @@ const defaultSiweAbuseControlStore = new SiweAbuseControlStore();
 export function createSiweRequestIdentity(
   headers: HeaderReader
 ): SiweRequestIdentity {
-  const forwardedFor = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const ip =
-    forwardedFor ||
-    headers.get("x-real-ip")?.trim() ||
-    headers.get("cf-connecting-ip")?.trim() ||
+    normalizedSingleIp(headers.get("true-client-ip")) ||
+    normalizedSingleIp(headers.get("cf-connecting-ip")) ||
+    normalizedSingleIp(headers.get("x-real-ip")) ||
+    normalizedSingleIp(headers.get("x-vercel-forwarded-for")) ||
+    normalizedForwardedForIp(headers.get("x-forwarded-for")) ||
     "unknown";
   const userAgent = headers.get("user-agent")?.trim() || "unknown";
 
@@ -336,4 +429,40 @@ function hashIdentityPart(value: string): string {
   }
 
   return (hash >>> 0).toString(36);
+}
+
+function normalizedForwardedForIp(headerValue: string | null): string | null {
+  if (!headerValue) {
+    return null;
+  }
+
+  const candidates = headerValue.split(",").map((part) => part.trim());
+
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const normalizedIp = normalizedSingleIp(candidates[index]);
+    if (normalizedIp) {
+      return normalizedIp;
+    }
+  }
+
+  return null;
+}
+
+function normalizedSingleIp(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  let candidate = value.trim().toLowerCase();
+  if (!candidate) {
+    return null;
+  }
+
+  if (candidate.startsWith("[") && candidate.includes("]")) {
+    candidate = candidate.slice(1, candidate.indexOf("]"));
+  } else if (candidate.includes(":") && candidate.indexOf(":") === candidate.lastIndexOf(":")) {
+    candidate = candidate.split(":")[0] ?? "";
+  }
+
+  return isIP(candidate) ? candidate : null;
 }
