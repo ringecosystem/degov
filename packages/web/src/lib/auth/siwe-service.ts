@@ -12,6 +12,11 @@ export interface SiweAuthConfig {
   version?: string;
 }
 
+export interface AuthStatusResult {
+  authenticated: boolean;
+  address?: string;
+}
+
 export class SiweService {
   private static instance: SiweService;
   private config: SiweAuthConfig;
@@ -69,6 +74,42 @@ export class SiweService {
       chainId,
       nonce,
     });
+  }
+
+  async getAuthStatus(address?: string): Promise<AuthStatusResult> {
+    const response = await fetch("/api/auth/status", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    if (!response.ok) {
+      if (address) {
+        tokenManager.clearToken(address);
+      }
+      return { authenticated: false };
+    }
+
+    const result = await response.json();
+    const sessionAddress =
+      typeof result?.data?.address === "string"
+        ? result.data.address.toLowerCase()
+        : undefined;
+    const requestedAddress = address?.toLowerCase();
+    const authenticated =
+      Boolean(result?.data?.authenticated && sessionAddress) &&
+      (!requestedAddress || sessionAddress === requestedAddress);
+
+    if (authenticated) {
+      tokenManager.setToken("authenticated", sessionAddress);
+      return { authenticated: true, address: sessionAddress };
+    }
+
+    if (address) {
+      tokenManager.clearToken(address);
+    }
+
+    return { authenticated: false };
   }
 
   async verifySignature(params: {

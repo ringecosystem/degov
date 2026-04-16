@@ -1,3 +1,4 @@
+import { clearToken } from "@/lib/auth/token-manager";
 import type { Config } from "@/types/config";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
@@ -483,6 +484,7 @@ export const profileService = {
       },
     });
     if (response.status === 401) {
+      clearToken(address);
       return { code: 401, msg: "Unauthorized" } as const;
     }
     const data = await response.json();

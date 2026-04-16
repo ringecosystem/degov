@@ -8,10 +8,6 @@ class TokenManager {
     return address?.toLowerCase() ?? "";
   }
 
-  getToken(address?: string): string | null {
-    return this.isAuthenticated(address) ? "cookie" : null;
-  }
-
   isAuthenticated(address?: string): boolean {
     return this.authenticatedAddresses.has(this.normalizeAddress(address));
   }
@@ -57,7 +53,6 @@ class TokenManager {
 
 export const tokenManager = new TokenManager();
 
-export const getToken = (address?: string) => tokenManager.getToken(address);
 export const clearToken = (address?: string) =>
   tokenManager.clearToken(address);
 

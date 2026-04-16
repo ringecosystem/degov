@@ -8,6 +8,7 @@ import { Resp } from "@/types/api";
 import {
   AUTH_COOKIE_MAX_AGE_SECONDS,
   AUTH_COOKIE_NAME,
+  authCookieOptions,
 } from "../../common/auth";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
@@ -124,11 +125,8 @@ export async function POST(request: NextRequest) {
     response.cookies.set({
       name: AUTH_COOKIE_NAME,
       value: token,
-      httpOnly: true,
-      sameSite: "lax",
-      secure: true,
       maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
-      path: "/",
+      ...authCookieOptions(request),
     });
 
     return response;

@@ -15,8 +15,30 @@ export const AUTH_COOKIE_MAX_AGE_SECONDS = 5 * 60 * 60;
 
 const textEncoder = new TextEncoder();
 
-function decodeEncodedAuthPayload(encodedPayload: string): AuthPayload {
-  return JSON.parse(Buffer.from(encodedPayload, "base64").toString());
+function isSecureAuthCookieRequest(request?: {
+  headers: HeaderAccessor;
+  nextUrl?: { protocol: string };
+}) {
+  if (process.env.NODE_ENV === "production") {
+    return true;
+  }
+
+  const forwardedProto = request?.headers.get("x-forwarded-proto");
+  const protocol =
+    forwardedProto?.split(",")[0]?.trim() ?? request?.nextUrl?.protocol;
+  return protocol === "https" || protocol === "https:";
+}
+
+export function authCookieOptions(request?: {
+  headers: HeaderAccessor;
+  nextUrl?: { protocol: string };
+}) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: isSecureAuthCookieRequest(request),
+    path: "/",
+  };
 }
 
 async function verifyAuthToken(token: string): Promise<AuthPayload | null> {
@@ -47,15 +69,6 @@ export async function resolveAuthPayload(
   headers: HeaderAccessor,
   cookies?: CookieAccessor
 ): Promise<AuthPayload | null> {
-  const encodedPayload = headers.get("x-degov-auth-payload");
-  if (encodedPayload) {
-    try {
-      return decodeEncodedAuthPayload(encodedPayload);
-    } catch {
-      return null;
-    }
-  }
-
   const cookieToken = cookies?.get(AUTH_COOKIE_NAME)?.value;
   if (cookieToken) {
     const cookiePayload = await verifyAuthToken(cookieToken);

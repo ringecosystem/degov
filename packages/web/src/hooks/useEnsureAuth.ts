@@ -1,9 +1,9 @@
 "use client";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
-import { tokenManager } from "@/lib/auth/token-manager";
+import { siweService } from "@/lib/auth/siwe-service";
 
 import { useSiweAuth } from "./useSiweAuth";
 
@@ -17,6 +17,13 @@ export const useEnsureAuth = () => {
 
   const { openConnectModal } = useConnectModal();
   const { authenticate, isAuthenticating } = useSiweAuth();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    if (!isConnected || !address) {
+      setIsAuthenticated(false);
+    }
+  }, [address, isConnected]);
 
   const ensureAuth = useCallback(async (): Promise<EnsureAuthResult> => {
     try {
@@ -35,11 +42,14 @@ export const useEnsureAuth = () => {
         };
       }
 
-      if (tokenManager.isAuthenticated(address)) {
+      const currentSession = await siweService.getAuthStatus(address);
+      if (currentSession.authenticated) {
+        setIsAuthenticated(true);
         return { success: true };
       }
 
       const authResult = await authenticate();
+      setIsAuthenticated(authResult.success);
 
       return {
         success: authResult.success,
@@ -59,6 +69,6 @@ export const useEnsureAuth = () => {
     ensureAuth,
     isAuthenticating,
     isConnected,
-    isAuthenticated: tokenManager.isAuthenticated(address),
+    isAuthenticated,
   };
 };
