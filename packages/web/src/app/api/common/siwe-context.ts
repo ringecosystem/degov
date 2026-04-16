@@ -51,17 +51,27 @@ export function validateSiweContext(
 
   const now = expectedContext.now ?? new Date();
 
-  if (
-    siweContext.expirationTime &&
-    new Date(siweContext.expirationTime).getTime() <= now.getTime()
-  ) {
-    throw new Error("SIWE message has expired");
+  if (siweContext.expirationTime) {
+    const expirationTimeMs = new Date(siweContext.expirationTime).getTime();
+
+    if (!Number.isFinite(expirationTimeMs)) {
+      throw new Error("SIWE expirationTime is not a valid date");
+    }
+
+    if (expirationTimeMs <= now.getTime()) {
+      throw new Error("SIWE message has expired");
+    }
   }
 
-  if (
-    siweContext.notBefore &&
-    new Date(siweContext.notBefore).getTime() > now.getTime()
-  ) {
-    throw new Error("SIWE message is not yet valid");
+  if (siweContext.notBefore) {
+    const notBeforeMs = new Date(siweContext.notBefore).getTime();
+
+    if (!Number.isFinite(notBeforeMs)) {
+      throw new Error("SIWE notBefore is not a valid date");
+    }
+
+    if (notBeforeMs > now.getTime()) {
+      throw new Error("SIWE message is not yet valid");
+    }
   }
 }

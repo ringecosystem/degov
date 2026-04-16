@@ -95,6 +95,20 @@ test("SIWE context validation rejects expired messages", () => {
   );
 });
 
+test("SIWE context validation rejects invalid expirationTime strings", () => {
+  assert.throws(
+    () =>
+      validateSiweContext(
+        {
+          ...validSiweContext,
+          expirationTime: "not-a-date",
+        },
+        expectedContext()
+      ),
+    /expirationTime is not a valid date/
+  );
+});
+
 test("SIWE context validation rejects messages that are not yet valid", () => {
   assert.throws(
     () =>
@@ -106,6 +120,20 @@ test("SIWE context validation rejects messages that are not yet valid", () => {
         expectedContext()
       ),
     /not yet valid/
+  );
+});
+
+test("SIWE context validation rejects invalid notBefore strings", () => {
+  assert.throws(
+    () =>
+      validateSiweContext(
+        {
+          ...validSiweContext,
+          notBefore: "not-a-date",
+        },
+        expectedContext()
+      ),
+    /notBefore is not a valid date/
   );
 });
 
