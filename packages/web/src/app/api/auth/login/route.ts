@@ -77,7 +77,13 @@ export async function POST(request: NextRequest) {
 
       // fields = { data: { nonce: "3456789235", address: "0x2376628375284594" } };
     } catch (err) {
-      console.warn("err", err);
+      console.warn("siwe_login_invalid_message", {
+        event: "siwe_login_invalid_message",
+        reason: "invalid_message_or_signature",
+        ip: identity.ip,
+        userAgentHash: identity.userAgentHash,
+        errorName: err instanceof Error ? err.name : "UnknownError",
+      });
       const failureDecision = recordSiweLoginFailure(
         "invalid_message_or_signature",
         identity
@@ -235,7 +241,12 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (err) {
-    console.warn("err", err);
+    console.warn("siwe_login_route_error", {
+      event: "siwe_login_route_error",
+      ip: identity.ip,
+      userAgentHash: identity.userAgentHash,
+      errorName: err instanceof Error ? err.name : "UnknownError",
+    });
     const message = err instanceof Error ? err.message : "unknown error";
     return NextResponse.json(Resp.errWithData("logion failed", message), {
       status: 400,

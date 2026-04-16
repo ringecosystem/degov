@@ -202,11 +202,12 @@ export class SiweAbuseControlStore {
 
     for (const [key, bucket] of this.failedLoginBuckets) {
       const lockIsActive = !!bucket.lockedUntil && bucket.lockedUntil > now;
+      const lockExpired = !!bucket.lockedUntil && bucket.lockedUntil <= now;
       const stale =
         bucket.updatedAt + SIWE_ABUSE_BUCKET_LIMITS.failureStaleMilliseconds <=
         now;
 
-      if (!lockIsActive && stale) {
+      if (!lockIsActive && (lockExpired || stale)) {
         this.failedLoginBuckets.delete(key);
       }
     }

@@ -197,6 +197,8 @@ test("SIWE login route only uses address controls after signature verification",
   assert.ok(invalidSignatureFailureIndex > 0);
   assert.doesNotMatch(loginRouteSource, /siweMessage\.address/);
   assert.doesNotMatch(loginRouteSource, /attemptedAddress/);
+  assert.doesNotMatch(loginRouteSource, /console\.warn\("err", err\)/);
+  assert.match(loginRouteSource, /siwe_login_invalid_message/);
 });
 
 test("SIWE nonce store makes nonces short-lived and single-use", () => {
@@ -210,7 +212,8 @@ test("SIWE nonce store makes nonces short-lived and single-use", () => {
   assert.equal(siweNonceIsUsable(expiresAt, now), true);
   assert.equal(siweNonceIsUsable(expiresAt, expiresAt), false);
   assert.match(nonceStoreSource, /delete from d_siwe_nonce/);
-  assert.match(nonceStoreSource, /expires_at > \$\{now\.toISOString\(\)\}/);
+  assert.match(nonceStoreSource, /values \(\$\{nonce\}, \$\{expiresAt\}\)/);
+  assert.match(nonceStoreSource, /expires_at > now\(\)/);
   assert.match(nonceStoreSource, /returning nonce/);
 });
 
@@ -379,6 +382,7 @@ test("SIWE failed login backoff is temporary, resettable, and observable", (t) =
     ).allowed,
     true
   );
+  assert.equal(store.bucketCounts().failedLogin, 0);
 
   recordSiweLoginFailure("invalid_nonce", identity, address, store, now);
   resetSiweLoginFailures(identity, address, store);

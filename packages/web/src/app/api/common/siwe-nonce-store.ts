@@ -7,7 +7,7 @@ export async function storeSiweNonce(nonce: string): Promise<void> {
 
   await sql`
     insert into d_siwe_nonce (nonce, expires_at)
-    values (${nonce}, ${expiresAt.toISOString()})
+    values (${nonce}, ${expiresAt})
     on conflict (nonce) do update
     set expires_at = excluded.expires_at
   `;
@@ -20,11 +20,10 @@ export async function storeSiweNonce(nonce: string): Promise<void> {
 
 export async function consumeSiweNonce(nonce: string): Promise<boolean> {
   const sql = databaseConnection();
-  const now = new Date();
   const [storedNonce] = await sql`
     delete from d_siwe_nonce
     where nonce = ${nonce}
-      and expires_at > ${now.toISOString()}
+      and expires_at > now()
     returning nonce
   `;
 
