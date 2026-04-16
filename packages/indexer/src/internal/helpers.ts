@@ -22,7 +22,7 @@ export class DegovIndexerHelpers {
   static safeJsonStringify(
     value: any,
     replacer: (key: string, value: any) => any = (_, v) => v
-  ): string {
+  ): string | undefined {
     return JSON.stringify(value, (_, v) => {
       if (typeof v === "bigint") {
         return v.toString();
@@ -85,19 +85,32 @@ export class DegovIndexerHelpers {
   ): string {
     const details = Object.entries(fields)
       .filter(([, value]) => value !== undefined && value !== null && value !== "")
-      .map(([key, value]) => `${key}=${this.formatLogValue(value)}`);
+      .map(([key, value]) => `${key}=${this.formatLogValue(key, value)}`);
 
     return details.length > 0 ? `${step} | ${details.join(" ")}` : step;
   }
 
+  static redactUrl(value: string): string {
+    try {
+      const url = new URL(value);
+      return url.origin;
+    } catch {
+      return this.redactInvalidUrl(value);
+    }
+  }
+
   static formatError(error: unknown): string {
     if (error instanceof Error) {
-      return error.message;
+      return this.redactUrlsInText(error.message);
     }
     if (typeof error === "string") {
-      return error;
+      return this.redactUrlsInText(error);
     }
-    return this.safeJsonStringify(error);
+    const serializedError = this.safeJsonStringify(error);
+    if (typeof serializedError === "string") {
+      return this.redactUrlsInText(serializedError);
+    }
+    return String(error);
   }
 
   static logVerbose(step: string, fields: Record<string, IndexerLogFieldValue> = {}) {
@@ -137,16 +150,77 @@ export class DegovIndexerHelpers {
     };
   }
 
-  private static formatLogValue(value: IndexerLogFieldValue): string {
-    if (typeof value === "bigint") {
-      return value.toString();
+  private static formatLogValue(key: string, value: IndexerLogFieldValue): string {
+    const logValue = this.redactLogValue(key, value);
+
+    if (typeof logValue === "bigint") {
+      return logValue.toString();
     }
+    if (typeof logValue === "string") {
+      return /\s/.test(logValue) ? JSON.stringify(logValue) : logValue;
+    }
+    if (typeof logValue === "number" || typeof logValue === "boolean") {
+      return String(logValue);
+    }
+    return this.formatJsonLogValue(logValue);
+  }
+
+  private static redactLogValue(
+    key: string,
+    value: IndexerLogFieldValue
+  ): IndexerLogFieldValue {
     if (typeof value === "string") {
-      return /\s/.test(value) ? JSON.stringify(value) : value;
+      return this.isUrlLogField(key) ? this.redactUrl(value) : value;
     }
-    if (typeof value === "number" || typeof value === "boolean") {
-      return String(value);
+
+    if (typeof value === "bigint") {
+      return value;
     }
-    return this.safeJsonStringify(value);
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.redactLogValue(key, item as IndexerLogFieldValue));
+    }
+
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value).map(([nestedKey, nestedValue]) => [
+          nestedKey,
+          this.redactLogValue(nestedKey, nestedValue as IndexerLogFieldValue),
+        ])
+      );
+    }
+
+    return value;
+  }
+
+  private static isUrlLogField(key: string): boolean {
+    return /(rpc|url|endpoint|configpath)/i.test(key);
+  }
+
+  private static redactUrlsInText(value: string): string {
+    return value.replace(/https?:\/\/[^\s"'<>]+|wss?:\/\/[^\s"'<>]+/gi, (url) =>
+      this.redactUrl(url)
+    );
+  }
+
+  private static redactInvalidUrl(value: string): string {
+    const withoutQueryOrFragment = value.trim().split(/[?#]/, 1)[0];
+    const originMatch = withoutQueryOrFragment.match(
+      /^([a-z][a-z\d+\-.]*:\/\/)(?:[^/@\s]+@)?([^/\s]+)(?:\/|$)/i
+    );
+
+    if (originMatch) {
+      return `${originMatch[1]}${originMatch[2]}`;
+    }
+
+    return withoutQueryOrFragment.replace(
+      /^([a-z][a-z\d+\-.]*:\/\/)[^/@\s]+@/i,
+      "$1"
+    );
+  }
+
+  private static formatJsonLogValue(value: IndexerLogFieldValue): string {
+    const serializedValue = this.safeJsonStringify(value);
+    return typeof serializedValue === "string" ? serializedValue : String(value);
   }
 }
