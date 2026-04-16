@@ -8,6 +8,15 @@ import { Resp } from "@/types/api";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 import {
+  checkSiweLoginAddressRequest,
+  checkSiweLoginFailureBackoff,
+  checkSiweLoginRequest,
+  createSiweRequestIdentity,
+  logSiweThrottle,
+  recordSiweLoginFailure,
+  resetSiweLoginFailures,
+} from "../../common/siwe-abuse-controls";
+import {
   SIWE_NONCE_COOKIE_NAME,
   verifySiweNonceCookieValue,
 } from "../../common/siwe-nonce";
@@ -17,6 +26,8 @@ import { snowflake } from "../../common/toolkit";
 import type { NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
+  const identity = createSiweRequestIdentity(request.headers);
+
   try {
     const degovConfig = await config.degovConfig(request);
     const daocode = degovConfig.code;
@@ -31,14 +42,80 @@ export async function POST(request: NextRequest) {
 
     const { message, signature } = await request.json();
 
+    const loginRateLimit = checkSiweLoginRequest(identity);
+    if (!loginRateLimit.allowed) {
+      logSiweThrottle("siwe_login_throttled", identity, loginRateLimit);
+
+      return NextResponse.json(Resp.err("too many login attempts"), {
+        status: 429,
+        headers: {
+          "Retry-After": String(loginRateLimit.retryAfterSeconds ?? 1),
+        },
+      });
+    }
+
     let fields;
+    let attemptedAddress: string | undefined;
     try {
       const siweMessage = new SiweMessage(message);
+      attemptedAddress = siweMessage.address?.toLowerCase();
+
+      const addressRateLimit = checkSiweLoginAddressRequest(attemptedAddress);
+      if (!addressRateLimit.allowed) {
+        logSiweThrottle(
+          "siwe_login_throttled",
+          identity,
+          addressRateLimit,
+          attemptedAddress
+        );
+
+        return NextResponse.json(Resp.err("too many login attempts"), {
+          status: 429,
+          headers: {
+            "Retry-After": String(addressRateLimit.retryAfterSeconds ?? 1),
+          },
+        });
+      }
+
+      const failureBackoff = checkSiweLoginFailureBackoff(
+        identity,
+        attemptedAddress
+      );
+      if (!failureBackoff.allowed) {
+        logSiweThrottle(
+          "siwe_login_throttled",
+          identity,
+          failureBackoff,
+          attemptedAddress
+        );
+
+        return NextResponse.json(Resp.err("too many failed login attempts"), {
+          status: 429,
+          headers: {
+            "Retry-After": String(failureBackoff.retryAfterSeconds ?? 1),
+          },
+        });
+      }
+
       fields = await siweMessage.verify({ signature });
 
       // fields = { data: { nonce: "3456789235", address: "0x2376628375284594" } };
     } catch (err) {
       console.warn("err", err);
+      const failureDecision = recordSiweLoginFailure(
+        "invalid_message_or_signature",
+        identity,
+        attemptedAddress
+      );
+      if (!failureDecision.allowed) {
+        return NextResponse.json(Resp.err("too many failed login attempts"), {
+          status: 429,
+          headers: {
+            "Retry-After": String(failureDecision.retryAfterSeconds ?? 1),
+          },
+        });
+      }
+
       return NextResponse.json(Resp.err("invalid message"), { status: 400 });
     }
 
@@ -64,10 +141,37 @@ export async function POST(request: NextRequest) {
         path: "/",
       });
 
+      const failureDecision = recordSiweLoginFailure(
+        "invalid_nonce",
+        identity,
+        attemptedAddress
+      );
+      if (!failureDecision.allowed) {
+        const backoffResponse = NextResponse.json(
+          Resp.err("too many failed login attempts"),
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(failureDecision.retryAfterSeconds ?? 1),
+            },
+          }
+        );
+        backoffResponse.cookies.set({
+          name: SIWE_NONCE_COOKIE_NAME,
+          value: "",
+          maxAge: 0,
+          path: "/",
+        });
+
+        return backoffResponse;
+      }
+
       return invalidNonceResponse;
     }
 
     const address = fields.data.address.toLowerCase();
+    resetSiweLoginFailures(identity, address);
+
     const token = await new SignJWT({ address })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()

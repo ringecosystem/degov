@@ -5,22 +5,42 @@ import { Resp } from "@/types/api";
 import { degovGraphqlApi } from "@/utils/remote-api";
 
 import {
+  checkSiweNonceRequest,
+  createSiweRequestIdentity,
+  logSiweThrottle,
+} from "../../common/siwe-abuse-controls";
+import {
   SIWE_NONCE_COOKIE_MAX_AGE_SECONDS,
   SIWE_NONCE_COOKIE_NAME,
   signSiweNonceCookieValue,
 } from "../../common/siwe-nonce";
 import { storeSiweNonce } from "../../common/siwe-nonce-store";
 
+import type { NextRequest } from "next/server";
+
 // Define a type for the source of the nonce for better type-safety
 type NonceSource = "generated" | "remote";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const jwtSecretKey = process.env.JWT_SECRET_KEY;
   if (!jwtSecretKey) {
     return NextResponse.json(
       Resp.err("please contact admin about login issue, missing key"),
       { status: 400 }
     );
+  }
+
+  const identity = createSiweRequestIdentity(request.headers);
+  const nonceRateLimit = checkSiweNonceRequest(identity);
+  if (!nonceRateLimit.allowed) {
+    logSiweThrottle("siwe_nonce_throttled", identity, nonceRateLimit);
+
+    return NextResponse.json(Resp.err("too many nonce requests"), {
+      status: 429,
+      headers: {
+        "Retry-After": String(nonceRateLimit.retryAfterSeconds ?? 1),
+      },
+    });
   }
 
   let nonce = CryptoJS.lib.WordArray.random(32).toString(CryptoJS.enc.Hex);

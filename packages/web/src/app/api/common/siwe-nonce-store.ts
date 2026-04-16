@@ -1,11 +1,9 @@
 import { databaseConnection } from "./database";
-import { SIWE_NONCE_COOKIE_MAX_AGE_SECONDS } from "./siwe-nonce";
-
-const SIWE_NONCE_TTL_MILLISECONDS = SIWE_NONCE_COOKIE_MAX_AGE_SECONDS * 1000;
+import { siweNonceExpiresAt } from "./siwe-nonce";
 
 export async function storeSiweNonce(nonce: string): Promise<void> {
   const sql = databaseConnection();
-  const expiresAt = new Date(Date.now() + SIWE_NONCE_TTL_MILLISECONDS);
+  const expiresAt = siweNonceExpiresAt();
 
   await sql`
     insert into d_siwe_nonce (nonce, expires_at)
@@ -22,10 +20,11 @@ export async function storeSiweNonce(nonce: string): Promise<void> {
 
 export async function consumeSiweNonce(nonce: string): Promise<boolean> {
   const sql = databaseConnection();
+  const now = new Date();
   const [storedNonce] = await sql`
     delete from d_siwe_nonce
     where nonce = ${nonce}
-      and expires_at > now()
+      and expires_at > ${now.toISOString()}
     returning nonce
   `;
 
