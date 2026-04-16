@@ -15,15 +15,62 @@ export interface ExpectedSiweContext {
   now?: Date;
 }
 
-export function expectedSiweContextFromConfig(
-  degovConfig: { siteUrl: string; chain: { id: number } },
+type HeaderReader = Pick<Headers, "get">;
+
+function firstHeaderValue(value: string | null): string | null {
+  return value?.split(",")[0]?.trim() || null;
+}
+
+function isLocalHost(host: string): boolean {
+  const hostname = host.split(":")[0]?.toLowerCase();
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1"
+  );
+}
+
+function resolveSiweRequestOrigin(headers: HeaderReader): URL {
+  const forwardedHost = firstHeaderValue(headers.get("x-forwarded-host"));
+  const host = forwardedHost ?? firstHeaderValue(headers.get("host"));
+
+  if (!host) {
+    throw new Error("Unable to resolve SIWE request host");
+  }
+
+  const origin = headers.get("origin");
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      if (originUrl.host === host) {
+        return originUrl;
+      }
+    } catch {
+      // Fall back to forwarded headers below.
+    }
+  }
+
+  const forwardedProto = firstHeaderValue(headers.get("x-forwarded-proto"));
+  const protocol =
+    forwardedProto === "http" || forwardedProto === "https"
+      ? forwardedProto
+      : isLocalHost(host)
+        ? "http"
+        : "https";
+
+  return new URL(`${protocol}://${host}`);
+}
+
+export function expectedSiweContextFromRequest(
+  degovConfig: { chain: { id: number } },
+  headers: HeaderReader,
   nonce: string
 ): ExpectedSiweContext {
-  const siteUrl = new URL(degovConfig.siteUrl);
+  const requestOrigin = resolveSiweRequestOrigin(headers);
 
   return {
-    domain: siteUrl.host,
-    uri: siteUrl.origin,
+    domain: requestOrigin.host,
+    uri: requestOrigin.origin,
     chainId: degovConfig.chain.id,
     nonce,
   };
@@ -34,11 +81,11 @@ export function validateSiweContext(
   expectedContext: ExpectedSiweContext
 ): void {
   if (siweContext.domain !== expectedContext.domain) {
-    throw new Error("SIWE domain does not match the configured site");
+    throw new Error("SIWE domain does not match the request origin");
   }
 
   if (siweContext.uri !== expectedContext.uri) {
-    throw new Error("SIWE URI does not match the configured site");
+    throw new Error("SIWE URI does not match the request origin");
   }
 
   if (siweContext.chainId !== expectedContext.chainId) {

@@ -3,33 +3,69 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  expectedSiweContextFromConfig,
+  expectedSiweContextFromRequest,
   validateSiweContext,
   type SiweContext,
 } from "../src/app/api/common/siwe-context.ts";
 
 const validConfig = {
-  siteUrl: "https://degov-dev.vercel.app",
   chain: { id: 46 },
 };
 
 const issuedNonce = "nonce-123";
 const now = new Date("2026-04-16T12:00:00.000Z");
 const validSiweContext: SiweContext = {
-  domain: "degov-dev.vercel.app",
-  uri: "https://degov-dev.vercel.app",
+  domain: "preview.degov.example",
+  uri: "https://preview.degov.example",
   chainId: 46,
   nonce: issuedNonce,
   expirationTime: "2026-04-16T12:05:00.000Z",
   notBefore: "2026-04-16T11:55:00.000Z",
 };
 
+function requestHeaders() {
+  return new Headers({
+    host: "internal.example",
+    "x-forwarded-host": "preview.degov.example",
+    "x-forwarded-proto": "https",
+  });
+}
+
 function expectedContext() {
   return {
-    ...expectedSiweContextFromConfig(validConfig, issuedNonce),
+    ...expectedSiweContextFromRequest(
+      validConfig,
+      requestHeaders(),
+      issuedNonce
+    ),
     now,
   };
 }
+
+test("SIWE context expectation derives domain and URI from request Origin when it matches Host", () => {
+  const context = expectedSiweContextFromRequest(
+    validConfig,
+    new Headers({
+      host: "localhost:3000",
+      origin: "http://localhost:3000",
+    }),
+    issuedNonce
+  );
+
+  assert.equal(context.domain, "localhost:3000");
+  assert.equal(context.uri, "http://localhost:3000");
+});
+
+test("SIWE context expectation derives domain and URI from forwarded request headers", () => {
+  const context = expectedSiweContextFromRequest(
+    validConfig,
+    requestHeaders(),
+    issuedNonce
+  );
+
+  assert.equal(context.domain, "preview.degov.example");
+  assert.equal(context.uri, "https://preview.degov.example");
+});
 
 test("SIWE context validation accepts the configured domain, URI, chain and nonce", () => {
   assert.doesNotThrow(() => {
@@ -37,7 +73,7 @@ test("SIWE context validation accepts the configured domain, URI, chain and nonc
   });
 });
 
-test("SIWE context validation rejects a mismatched domain", () => {
+test("SIWE context validation rejects a domain that mismatches the request origin", () => {
   assert.throws(
     () =>
       validateSiweContext(
@@ -48,7 +84,7 @@ test("SIWE context validation rejects a mismatched domain", () => {
   );
 });
 
-test("SIWE context validation rejects a mismatched URI", () => {
+test("SIWE context validation rejects a URI that mismatches the request origin", () => {
   assert.throws(
     () =>
       validateSiweContext(
@@ -147,5 +183,7 @@ test("login route binds SIWE verify to the issued nonce, domain and current time
   assert.match(loginRouteSource, /domain: expectedSiweContext\.domain/);
   assert.match(loginRouteSource, /nonce: expectedSiweContext\.nonce/);
   assert.match(loginRouteSource, /time: verificationTime\.toISOString\(\)/);
+  assert.match(loginRouteSource, /expectedSiweContextFromRequest/);
+  assert.match(loginRouteSource, /request\.headers/);
   assert.match(loginRouteSource, /validateSiweContext\(fields\.data/);
 });

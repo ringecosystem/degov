@@ -8,7 +8,7 @@ import { Resp } from "@/types/api";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 import {
-  expectedSiweContextFromConfig,
+  expectedSiweContextFromRequest,
   validateSiweContext,
 } from "../../common/siwe-context";
 import {
@@ -55,8 +55,9 @@ export async function POST(request: NextRequest) {
       return invalidNonceResponse;
     }
 
-    const expectedSiweContext = expectedSiweContextFromConfig(
+    const expectedSiweContext = expectedSiweContextFromRequest(
       degovConfig,
+      request.headers,
       cookieNonce
     );
 
