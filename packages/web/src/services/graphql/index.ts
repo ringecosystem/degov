@@ -1,6 +1,6 @@
 import { clearToken } from "@/lib/auth/token-manager";
 import type { Config } from "@/types/config";
-import { degovGraphqlApi } from "@/utils/remote-api";
+import { degovEnsGraphqlApi, degovGraphqlApi } from "@/utils/remote-api";
 
 import { request } from "./client";
 import * as Mutations from "./mutations";
@@ -8,6 +8,7 @@ import * as Queries from "./queries";
 import * as Types from "./types";
 import { resolveGovernanceCounts } from "./types/counts";
 
+import type { EnsRecordInput, EnsRecordResponse } from "./types/ens";
 import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
 
@@ -303,6 +304,57 @@ export const proposalService = {
       }
     );
     return response?.evmAbi;
+  },
+};
+
+export const ensService = {
+  getEnsRecord: async (input: EnsRecordInput) => {
+    const remoteRecord = await ensService.getRemoteEnsRecord(input);
+    if (remoteRecord) {
+      return remoteRecord;
+    }
+
+    return ensService.getLocalEnsRecord(input);
+  },
+
+  getRemoteEnsRecord: async (input: EnsRecordInput) => {
+    const endpoint = degovEnsGraphqlApi();
+    if (!endpoint) {
+      return undefined;
+    }
+
+    try {
+      const response = await request<EnsRecordResponse>(
+        endpoint,
+        Queries.GET_ENS_RECORD,
+        input
+      );
+      return response?.ens ?? undefined;
+    } catch (error) {
+      console.warn("Failed to resolve ENS record from DeGov API:", error);
+      return undefined;
+    }
+  },
+
+  getLocalEnsRecord: async (input: EnsRecordInput) => {
+    const params = new URLSearchParams();
+    if (input.address) {
+      params.set("address", input.address);
+    }
+    if (input.name) {
+      params.set("name", input.name);
+    }
+
+    const response = await fetch(`/api/ens?${params.toString()}`);
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const result = (await response.json()) as {
+      code: number;
+      data?: EnsRecordResponse["ens"];
+    };
+    return result.code === 0 ? result.data ?? undefined : undefined;
   },
 };
 

@@ -6,3 +6,4 @@ export * from "./contributors";
 export * from "./counts";
 export * from "./notifications";
 export * from "./treasury";
+export * from "./ens";
