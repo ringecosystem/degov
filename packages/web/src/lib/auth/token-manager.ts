@@ -1,32 +1,22 @@
 "use client";
 
-const TOKEN_KEY_PREFIX = "degov_auth_token";
-const REMOTE_TOKEN_KEY_PREFIX = "degov_remote_auth_token";
-
 class TokenManager {
-  private getTokenKey(address?: string): string {
-    if (!address) return TOKEN_KEY_PREFIX;
-    return `${TOKEN_KEY_PREFIX}_${address.toLowerCase()}`;
+  private authenticatedAddresses = new Set<string>();
+  private remoteTokens = new Map<string, string>();
+
+  private normalizeAddress(address?: string): string {
+    return address?.toLowerCase() ?? "";
   }
 
-  private getRemoteTokenKey(address?: string): string {
-    if (!address) return REMOTE_TOKEN_KEY_PREFIX;
-    return `${REMOTE_TOKEN_KEY_PREFIX}_${address.toLowerCase()}`;
-  }
-
-  getToken(address?: string): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(this.getTokenKey(address));
+  isAuthenticated(address?: string): boolean {
+    return this.authenticatedAddresses.has(this.normalizeAddress(address));
   }
 
   setToken(token: string | null, address?: string): void {
-    if (typeof window === "undefined") return;
-
-    const key = this.getTokenKey(address);
     if (token) {
-      localStorage.setItem(key, token);
+      this.authenticatedAddresses.add(this.normalizeAddress(address));
     } else {
-      localStorage.removeItem(key);
+      this.authenticatedAddresses.delete(this.normalizeAddress(address));
     }
   }
 
@@ -35,18 +25,14 @@ class TokenManager {
   }
 
   getRemoteToken(address?: string): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(this.getRemoteTokenKey(address));
+    return this.remoteTokens.get(this.normalizeAddress(address)) ?? null;
   }
 
   setRemoteToken(token: string | null, address?: string): void {
-    if (typeof window === "undefined") return;
-
-    const key = this.getRemoteTokenKey(address);
     if (token) {
-      localStorage.setItem(key, token);
+      this.remoteTokens.set(this.normalizeAddress(address), token);
     } else {
-      localStorage.removeItem(key);
+      this.remoteTokens.delete(this.normalizeAddress(address));
     }
   }
 
@@ -60,22 +46,13 @@ class TokenManager {
   }
 
   clearAllAddressTokens(): void {
-    if (typeof window === "undefined") return;
-
-    const keys = Object.keys(localStorage);
-    const tokenKeys = keys.filter(
-      (key) =>
-        key.startsWith(TOKEN_KEY_PREFIX) ||
-        key.startsWith(REMOTE_TOKEN_KEY_PREFIX)
-    );
-
-    tokenKeys.forEach((key) => localStorage.removeItem(key));
+    this.authenticatedAddresses.clear();
+    this.remoteTokens.clear();
   }
 }
 
 export const tokenManager = new TokenManager();
 
-export const getToken = (address?: string) => tokenManager.getToken(address);
 export const clearToken = (address?: string) =>
   tokenManager.clearToken(address);
 

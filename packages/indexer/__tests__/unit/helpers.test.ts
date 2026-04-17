@@ -71,6 +71,42 @@ describe("DegovIndexerHelpers", () => {
     );
   });
 
+  it("redacts URL credentials and request data from url-like log fields", () => {
+    expect(
+      DegovIndexerHelpers.redactUrl(
+        "https://user:password@rpc.example.com/path?apiKey=secret#fragment"
+      )
+    ).toBe("https://rpc.example.com");
+
+    expect(
+      DegovIndexerHelpers.formatLogLine("processor.rpc selected", {
+        selectedRpc:
+          "https://user:password@rpc.example.com/path?apiKey=secret#fragment",
+        rpcs: [
+          "wss://rpc-one.example/ws?token=secret",
+          "https://rpc-two.example/v3/key",
+        ],
+        message: "keeps regular strings intact",
+      })
+    ).toBe(
+      'processor.rpc selected | selectedRpc=https://rpc.example.com rpcs=["wss://rpc-one.example","https://rpc-two.example"] message="keeps regular strings intact"'
+    );
+  });
+
+  it("redacts invalid URL log fields without throwing", () => {
+    expect(
+      DegovIndexerHelpers.formatLogLine("processor.rpc selected", {
+        selectedRpc: "not a url?apiKey=secret#fragment",
+      })
+    ).toBe('processor.rpc selected | selectedRpc="not a url"');
+
+    expect(
+      DegovIndexerHelpers.formatLogLine("processor.rpc selected", {
+        selectedRpc: "https://user:password@rpc.example.com/v3/path-api-key %%%",
+      })
+    ).toBe("processor.rpc selected | selectedRpc=https://rpc.example.com");
+  });
+
   it("formats errors without leaking object noise", () => {
     expect(
       DegovIndexerHelpers.formatError(new Error("rpc timeout"))
@@ -79,6 +115,26 @@ describe("DegovIndexerHelpers", () => {
     expect(
       DegovIndexerHelpers.formatError({ code: "E_TIMEOUT", retryable: true })
     ).toBe('{"code":"E_TIMEOUT","retryable":true}');
+  });
+
+  it("formats non-json errors without throwing", () => {
+    expect(DegovIndexerHelpers.formatError(undefined)).toBe("undefined");
+    expect(DegovIndexerHelpers.formatError(() => "failed")).toBe(
+      "() => \"failed\""
+    );
+    expect(DegovIndexerHelpers.formatError(Symbol("failed"))).toBe(
+      "Symbol(failed)"
+    );
+  });
+
+  it("redacts URLs embedded in error messages", () => {
+    expect(
+      DegovIndexerHelpers.formatError(
+        new Error(
+          "request failed for https://user:password@rpc.example.com/path?apiKey=secret#fragment"
+        )
+      )
+    ).toBe("request failed for https://rpc.example.com");
   });
 
   it("keeps verbose logs disabled by default", () => {

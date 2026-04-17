@@ -55,9 +55,7 @@ export const useSiweAuth = () => {
         signMessageAsync,
       });
 
-      if (result.success && result.token) {
-        // set token
-      } else {
+      if (!result.success) {
         setError(new Error(result.error || "Authentication failed"));
       }
 

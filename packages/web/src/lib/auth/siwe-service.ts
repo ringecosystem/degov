@@ -12,6 +12,11 @@ export interface SiweAuthConfig {
   version?: string;
 }
 
+export interface AuthStatusResult {
+  authenticated: boolean;
+  address?: string;
+}
+
 export class SiweService {
   private static instance: SiweService;
   private config: SiweAuthConfig;
@@ -71,6 +76,42 @@ export class SiweService {
     });
   }
 
+  async getAuthStatus(address?: string): Promise<AuthStatusResult> {
+    const response = await fetch("/api/auth/status", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    if (!response.ok) {
+      if (address) {
+        tokenManager.clearToken(address);
+      }
+      return { authenticated: false };
+    }
+
+    const result = await response.json();
+    const sessionAddress =
+      typeof result?.data?.address === "string"
+        ? result.data.address.toLowerCase()
+        : undefined;
+    const requestedAddress = address?.toLowerCase();
+    const authenticated =
+      Boolean(result?.data?.authenticated && sessionAddress) &&
+      (!requestedAddress || sessionAddress === requestedAddress);
+
+    if (authenticated) {
+      tokenManager.setToken("authenticated", sessionAddress);
+      return { authenticated: true, address: sessionAddress };
+    }
+
+    if (address) {
+      tokenManager.clearToken(address);
+    }
+
+    return { authenticated: false };
+  }
+
   async verifySignature(params: {
     message: string;
     signature: `0x${string}`;
@@ -85,14 +126,14 @@ export class SiweService {
     try {
       const { message, signature, address, nonceSource } = params;
 
-      let localToken: string | undefined;
+      let localAuthenticated = false;
       let remoteToken: string | undefined;
       const errors: string[] = [];
 
       const localResult = await this.loginLocal(message, signature);
       if (localResult.success) {
-        localToken = localResult.token;
-        tokenManager.setToken(localToken!, address);
+        localAuthenticated = true;
+        tokenManager.setToken("authenticated", address);
       } else {
         errors.push(`Local login failed: ${localResult.error}`);
       }
@@ -107,10 +148,9 @@ export class SiweService {
         }
       }
 
-      if (localToken || remoteToken) {
+      if (localAuthenticated || remoteToken) {
         return {
           success: true,
-          token: localToken,
           remoteToken,
           error: errors.length > 0 ? errors.join("; ") : undefined,
         };
@@ -138,12 +178,17 @@ export class SiweService {
       },
       body: JSON.stringify({ message, signature }),
       cache: "no-store",
+      credentials: "same-origin",
     });
 
     const result = await response.json();
 
     if (result?.code === 0 && result?.data?.token) {
       return { success: true, token: result.data.token };
+    }
+
+    if (result?.code === 0 && result?.data?.authenticated) {
+      return { success: true };
     }
 
     return {
@@ -209,6 +254,12 @@ export class SiweService {
   }
 
   async signOut(): Promise<void> {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+    }).catch(() => undefined);
+
     tokenManager.clearAllTokens();
     // Clear persisted react-query cache if present
     try {

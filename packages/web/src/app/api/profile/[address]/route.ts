@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const headersList = await headers();
-    const authPayload = await resolveAuthPayload(headersList);
+    const authPayload = await resolveAuthPayload(headersList, request.cookies);
     if (!authPayload?.address) {
       return NextResponse.json(Resp.err("permission denied"), { status: 401 });
     }

@@ -5,6 +5,11 @@ import { SiweMessage } from "siwe";
 import type { DUser } from "@/types/api";
 import { Resp } from "@/types/api";
 
+import {
+  AUTH_COOKIE_MAX_AGE_SECONDS,
+  AUTH_COOKIE_NAME,
+  authCookieOptions,
+} from "../../common/auth";
 import * as config from "../../common/config";
 import { databaseConnection } from "../../common/database";
 import {
@@ -16,6 +21,10 @@ import {
   recordSiweLoginFailure,
   resetSiweLoginFailures,
 } from "../../common/siwe-abuse-controls";
+import {
+  expectedSiweContextFromRequest,
+  validateSiweContext,
+} from "../../common/siwe-context";
 import {
   SIWE_NONCE_COOKIE_NAME,
   verifySiweNonceCookieValue,
@@ -41,6 +50,32 @@ export async function POST(request: NextRequest) {
     }
 
     const { message, signature } = await request.json();
+    const signedNonceCookie = request.cookies.get(SIWE_NONCE_COOKIE_NAME)?.value;
+    const cookieNonce = signedNonceCookie
+      ? await verifySiweNonceCookieValue(signedNonceCookie, jwtSecretKey)
+      : null;
+
+    if (!cookieNonce) {
+      const invalidNonceResponse = NextResponse.json(
+        Resp.err("nonce expired or invalid, please get a new nonce"),
+        { status: 400 }
+      );
+
+      invalidNonceResponse.cookies.set({
+        name: SIWE_NONCE_COOKIE_NAME,
+        value: "",
+        maxAge: 0,
+        path: "/",
+      });
+
+      return invalidNonceResponse;
+    }
+
+    const expectedSiweContext = expectedSiweContextFromRequest(
+      degovConfig,
+      request.headers,
+      cookieNonce
+    );
 
     const loginRateLimit = checkSiweLoginRequest(identity);
     if (!loginRateLimit.allowed) {
@@ -73,7 +108,17 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      fields = await siweMessage.verify({ signature });
+      const verificationTime = new Date();
+      fields = await siweMessage.verify({
+        signature,
+        domain: expectedSiweContext.domain,
+        nonce: expectedSiweContext.nonce,
+        time: verificationTime.toISOString(),
+      });
+      validateSiweContext(fields.data, {
+        ...expectedSiweContext,
+        now: verificationTime,
+      });
 
       // fields = { data: { nonce: "3456789235", address: "0x2376628375284594" } };
     } catch (err) {
@@ -140,12 +185,8 @@ export async function POST(request: NextRequest) {
 
     // Validate if nonce is still valid
     const nonce = fields.data.nonce;
-    const signedNonceCookie = request.cookies.get(SIWE_NONCE_COOKIE_NAME)?.value;
-    const cookieNonce = signedNonceCookie
-      ? await verifySiweNonceCookieValue(signedNonceCookie, jwtSecretKey)
-      : null;
     const nonceIsValid =
-      cookieNonce === nonce && (await consumeSiweNonce(nonce));
+      nonce === expectedSiweContext.nonce && (await consumeSiweNonce(nonce));
 
     if (!nonceIsValid) {
       const invalidNonceResponse = NextResponse.json(
@@ -230,13 +271,20 @@ export async function POST(request: NextRequest) {
         where id=${storedUser.id};
       `;
     }
-    const response = NextResponse.json(Resp.ok({ token }));
+    const response = NextResponse.json(Resp.ok({ authenticated: true }));
 
     response.cookies.set({
       name: SIWE_NONCE_COOKIE_NAME,
       value: "",
       maxAge: 0,
       path: "/",
+    });
+
+    response.cookies.set({
+      name: AUTH_COOKIE_NAME,
+      value: token,
+      maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
+      ...authCookieOptions(request),
     });
 
     return response;
