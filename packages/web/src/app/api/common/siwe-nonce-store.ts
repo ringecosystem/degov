@@ -1,15 +1,13 @@
 import { databaseConnection } from "./database";
-import { SIWE_NONCE_COOKIE_MAX_AGE_SECONDS } from "./siwe-nonce";
-
-const SIWE_NONCE_TTL_MILLISECONDS = SIWE_NONCE_COOKIE_MAX_AGE_SECONDS * 1000;
+import { siweNonceExpiresAt } from "./siwe-nonce";
 
 export async function storeSiweNonce(nonce: string): Promise<void> {
   const sql = databaseConnection();
-  const expiresAt = new Date(Date.now() + SIWE_NONCE_TTL_MILLISECONDS);
+  const expiresAt = siweNonceExpiresAt();
 
   await sql`
     insert into d_siwe_nonce (nonce, expires_at)
-    values (${nonce}, ${expiresAt.toISOString()})
+    values (${nonce}, ${expiresAt})
     on conflict (nonce) do update
     set expires_at = excluded.expires_at
   `;
