@@ -1,17 +1,17 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { isAddress, type Address } from "viem";
-import { usePublicClient } from "wagmi";
-import { mainnet } from "wagmi/chains";
 
 import { DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useAiBotAddress } from "@/hooks/useAiBotAddress";
+import { useBatchEnsRecords } from "@/hooks/useBatchEnsRecords";
 import { useBatchProfiles } from "@/hooks/useBatchProfiles";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { normalizeAddress } from "@/hooks/useProfileQuery";
 import {
   buildGovernanceScope,
   contributorService,
+  ensService,
 } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
@@ -33,7 +33,6 @@ export function useMembersData(
   const { botAddress } = useAiBotAddress();
   const isSearching = searchTerm.trim().length > 0;
   const normalizedInitialPageSize = Math.max(pageSize, initialPageSize);
-  const publicClient = usePublicClient({ chainId: mainnet.id });
   const governanceScope = useMemo(
     () => buildGovernanceScope(daoConfig),
     [daoConfig]
@@ -49,19 +48,21 @@ export function useMembersData(
         return normalizedTerm as Address;
       }
 
-      if (!publicClient || !trimmedTerm.includes(".")) return undefined;
+      if (!trimmedTerm.includes(".")) return undefined;
 
       try {
-        const ensAddress = await publicClient.getEnsAddress({
+        const ensRecord = await ensService.getEnsRecord({
           name: trimmedTerm,
+          daoCode: daoConfig?.code,
         });
+        const ensAddress = ensRecord?.address;
 
         return ensAddress ? (ensAddress.toLowerCase() as Address) : undefined;
       } catch {
         return undefined;
       }
     },
-    [publicClient]
+    [daoConfig]
   );
 
   const membersQuery = useInfiniteQuery({
@@ -190,6 +191,11 @@ export function useMembersData(
       queryKeyPrefix: ["profilePull", "members"],
       enabled: !!normalizedMemberAddresses.length,
     });
+
+  useBatchEnsRecords(normalizedMemberAddresses, {
+    queryKeyPrefix: ["ensRecords", "members"],
+    enabled: !!normalizedMemberAddresses.length,
+  });
 
   const { isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     membersQuery;

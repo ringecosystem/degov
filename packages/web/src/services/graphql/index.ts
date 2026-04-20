@@ -1,6 +1,6 @@
 import { clearToken } from "@/lib/auth/token-manager";
 import type { Config } from "@/types/config";
-import { degovGraphqlApi } from "@/utils/remote-api";
+import { degovEnsGraphqlApi, degovGraphqlApi } from "@/utils/remote-api";
 
 import { request } from "./client";
 import * as Mutations from "./mutations";
@@ -8,6 +8,12 @@ import * as Queries from "./queries";
 import * as Types from "./types";
 import { resolveGovernanceCounts } from "./types/counts";
 
+import type {
+  EnsRecordInput,
+  EnsRecordResponse,
+  EnsRecordsInput,
+  EnsRecordsResponse,
+} from "./types/ens";
 import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
 
@@ -305,6 +311,159 @@ export const proposalService = {
     return response?.evmAbi;
   },
 };
+
+export const ensService = {
+  getEnsRecord: async (input: EnsRecordInput) => {
+    const normalizedInput = normalizeEnsRecordInput(input);
+    if (!normalizedInput) {
+      return undefined;
+    }
+
+    const remoteRecord = await ensService.getRemoteEnsRecord(normalizedInput);
+    if (remoteRecord) {
+      return remoteRecord;
+    }
+
+    return ensService.getLocalEnsRecord(normalizedInput);
+  },
+
+  getEnsRecords: async (input: EnsRecordsInput) => {
+    const normalizedInput = normalizeEnsRecordsInput(input);
+    if (!normalizedInput) {
+      return [];
+    }
+
+    const remoteRecords = await ensService.getRemoteEnsRecords(normalizedInput);
+    if (remoteRecords.length) {
+      return remoteRecords;
+    }
+
+    return ensService.getLocalEnsRecords(normalizedInput);
+  },
+
+  getRemoteEnsRecord: async (input: EnsRecordInput) => {
+    const endpoint = degovEnsGraphqlApi();
+    if (!endpoint) {
+      return undefined;
+    }
+
+    try {
+      const response = await request<EnsRecordResponse>(
+        endpoint,
+        Queries.GET_ENS_RECORD,
+        input
+      );
+      return response?.ens ?? undefined;
+    } catch (error) {
+      console.warn("Failed to resolve ENS record from DeGov API:", error);
+      return undefined;
+    }
+  },
+
+  getRemoteEnsRecords: async (input: EnsRecordsInput) => {
+    const endpoint = degovEnsGraphqlApi();
+    if (!endpoint) {
+      return [];
+    }
+
+    try {
+      const response = await request<EnsRecordsResponse>(
+        endpoint,
+        Queries.GET_ENS_RECORDS,
+        input
+      );
+      return response?.ensRecords ?? [];
+    } catch (error) {
+      console.warn("Failed to resolve ENS records from DeGov API:", error);
+      return [];
+    }
+  },
+
+  getLocalEnsRecord: async (input: EnsRecordInput) => {
+    const params = new URLSearchParams();
+    if (input.address) {
+      params.set("address", input.address);
+    }
+    if (input.name) {
+      params.set("name", input.name);
+    }
+
+    const response = await fetch(`/api/ens?${params.toString()}`);
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const result = (await response.json()) as {
+      code: number;
+      data?: EnsRecordResponse["ens"];
+    };
+    return result.code === 0 ? result.data ?? undefined : undefined;
+  },
+
+  getLocalEnsRecords: async (input: EnsRecordsInput) => {
+    const response = await fetch("/api/ens", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        addresses: input.addresses ?? [],
+        names: input.names ?? [],
+      }),
+    });
+    if (!response.ok) {
+      return [];
+    }
+
+    const result = (await response.json()) as {
+      code: number;
+      data?: EnsRecordsResponse["ensRecords"];
+    };
+    return result.code === 0 ? result.data ?? [] : [];
+  },
+};
+
+function normalizeEnsRecordInput(input: EnsRecordInput) {
+  const address = input.address?.trim().toLowerCase();
+  const name = input.name?.trim().toLowerCase();
+
+  if ((!address && !name) || (address && name)) {
+    return undefined;
+  }
+
+  return {
+    address,
+    name,
+    daoCode: input.daoCode?.trim() || undefined,
+  } satisfies EnsRecordInput;
+}
+
+function normalizeEnsRecordsInput(input: EnsRecordsInput) {
+  const addresses = Array.from(
+    new Set(
+      (input.addresses ?? [])
+        .map((address) => address.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+  const names = Array.from(
+    new Set(
+      (input.names ?? [])
+        .map((name) => name.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  if (!addresses.length && !names.length) {
+    return undefined;
+  }
+
+  return {
+    addresses,
+    names,
+    daoCode: input.daoCode?.trim() || undefined,
+  } satisfies EnsRecordsInput;
+}
 
 export const delegateService = {
   getAllDelegates: async (
