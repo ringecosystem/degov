@@ -14,6 +14,7 @@ type CacheEntry = {
 };
 
 const DEFAULT_ENS_CACHE_TTL_MS = 3 * 60 * 60 * 1000;
+const DEFAULT_ENS_CACHE_MAX_ENTRIES = 1000;
 const ensCache = new Map<string, CacheEntry>();
 
 function ensCacheTTL() {
@@ -42,6 +43,13 @@ function ensCacheTTL() {
   return DEFAULT_ENS_CACHE_TTL_MS;
 }
 
+function ensCacheMaxEntries() {
+  const value = Number(process.env.DEGOV_ENS_CACHE_MAX_ENTRIES);
+  return Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : DEFAULT_ENS_CACHE_MAX_ENTRIES;
+}
+
 function splitRPCs(value?: string) {
   return (value ?? "")
     .split(",")
@@ -53,8 +61,17 @@ function ensRPCURLs(config: Config) {
   const configuredRPCs = splitRPCs(
     process.env.DEGOV_ENS_RPC_URLS || process.env.DEGOV_ENS_RPC_URL
   );
-  const daoRPCs = config.chain?.rpcs ?? [];
+  const daoRPCs =
+    config.chain?.id === mainnet.id ? config.chain?.rpcs ?? [] : [];
   return Array.from(new Set([...configuredRPCs, ...daoRPCs])).filter(Boolean);
+}
+
+function safeRPCLabel(rpcURL: string) {
+  try {
+    return new URL(rpcURL).origin;
+  } catch {
+    return "invalid_rpc_url";
+  }
 }
 
 function getCached(key: string) {
@@ -68,9 +85,24 @@ function setCached(key: string, record: EnsRecord) {
     clearTimeout(existing.timer);
   }
 
+  while (!existing && ensCache.size >= ensCacheMaxEntries()) {
+    const oldestKey = ensCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+
+    const oldest = ensCache.get(oldestKey);
+    if (oldest) {
+      clearTimeout(oldest.timer);
+    }
+    ensCache.delete(oldestKey);
+  }
+
   const timer = setTimeout(() => {
-    ensCache.delete(key);
+    const current = ensCache.get(key);
+    if (current?.timer === timer) {
+      ensCache.delete(key);
+    }
   }, ensCacheTTL());
+  timer.unref?.();
   ensCache.set(key, { record, timer });
 }
 
@@ -84,7 +116,10 @@ async function resolveWithRPC<T>(
       return await resolver(rpcURL);
     } catch (error) {
       lastError = error;
-      console.warn("ens_rpc_resolution_failed", { rpcURL, error });
+      console.warn("ens_rpc_resolution_failed", {
+        rpc: safeRPCLabel(rpcURL),
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
     }
   }
 

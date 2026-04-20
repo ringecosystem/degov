@@ -309,12 +309,17 @@ export const proposalService = {
 
 export const ensService = {
   getEnsRecord: async (input: EnsRecordInput) => {
-    const remoteRecord = await ensService.getRemoteEnsRecord(input);
+    const normalizedInput = normalizeEnsRecordInput(input);
+    if (!normalizedInput) {
+      return undefined;
+    }
+
+    const remoteRecord = await ensService.getRemoteEnsRecord(normalizedInput);
     if (remoteRecord) {
       return remoteRecord;
     }
 
-    return ensService.getLocalEnsRecord(input);
+    return ensService.getLocalEnsRecord(normalizedInput);
   },
 
   getRemoteEnsRecord: async (input: EnsRecordInput) => {
@@ -357,6 +362,21 @@ export const ensService = {
     return result.code === 0 ? result.data ?? undefined : undefined;
   },
 };
+
+function normalizeEnsRecordInput(input: EnsRecordInput) {
+  const address = input.address?.trim().toLowerCase();
+  const name = input.name?.trim().toLowerCase();
+
+  if ((!address && !name) || (address && name)) {
+    return undefined;
+  }
+
+  return {
+    address,
+    name,
+    daoCode: input.daoCode?.trim() || undefined,
+  } satisfies EnsRecordInput;
+}
 
 export const delegateService = {
   getAllDelegates: async (
