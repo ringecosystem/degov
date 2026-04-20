@@ -8,7 +8,12 @@ import * as Queries from "./queries";
 import * as Types from "./types";
 import { resolveGovernanceCounts } from "./types/counts";
 
-import type { EnsRecordInput, EnsRecordResponse } from "./types/ens";
+import type {
+  EnsRecordInput,
+  EnsRecordResponse,
+  EnsRecordsInput,
+  EnsRecordsResponse,
+} from "./types/ens";
 import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
 
@@ -322,6 +327,20 @@ export const ensService = {
     return ensService.getLocalEnsRecord(normalizedInput);
   },
 
+  getEnsRecords: async (input: EnsRecordsInput) => {
+    const normalizedInput = normalizeEnsRecordsInput(input);
+    if (!normalizedInput) {
+      return [];
+    }
+
+    const remoteRecords = await ensService.getRemoteEnsRecords(normalizedInput);
+    if (remoteRecords.length) {
+      return remoteRecords;
+    }
+
+    return ensService.getLocalEnsRecords(normalizedInput);
+  },
+
   getRemoteEnsRecord: async (input: EnsRecordInput) => {
     const endpoint = degovEnsGraphqlApi();
     if (!endpoint) {
@@ -338,6 +357,25 @@ export const ensService = {
     } catch (error) {
       console.warn("Failed to resolve ENS record from DeGov API:", error);
       return undefined;
+    }
+  },
+
+  getRemoteEnsRecords: async (input: EnsRecordsInput) => {
+    const endpoint = degovEnsGraphqlApi();
+    if (!endpoint) {
+      return [];
+    }
+
+    try {
+      const response = await request<EnsRecordsResponse>(
+        endpoint,
+        Queries.GET_ENS_RECORDS,
+        input
+      );
+      return response?.ensRecords ?? [];
+    } catch (error) {
+      console.warn("Failed to resolve ENS records from DeGov API:", error);
+      return [];
     }
   },
 
@@ -361,6 +399,28 @@ export const ensService = {
     };
     return result.code === 0 ? result.data ?? undefined : undefined;
   },
+
+  getLocalEnsRecords: async (input: EnsRecordsInput) => {
+    const response = await fetch("/api/ens", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        addresses: input.addresses ?? [],
+        names: input.names ?? [],
+      }),
+    });
+    if (!response.ok) {
+      return [];
+    }
+
+    const result = (await response.json()) as {
+      code: number;
+      data?: EnsRecordsResponse["ensRecords"];
+    };
+    return result.code === 0 ? result.data ?? [] : [];
+  },
 };
 
 function normalizeEnsRecordInput(input: EnsRecordInput) {
@@ -376,6 +436,33 @@ function normalizeEnsRecordInput(input: EnsRecordInput) {
     name,
     daoCode: input.daoCode?.trim() || undefined,
   } satisfies EnsRecordInput;
+}
+
+function normalizeEnsRecordsInput(input: EnsRecordsInput) {
+  const addresses = Array.from(
+    new Set(
+      (input.addresses ?? [])
+        .map((address) => address.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+  const names = Array.from(
+    new Set(
+      (input.names ?? [])
+        .map((name) => name.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  if (!addresses.length && !names.length) {
+    return undefined;
+  }
+
+  return {
+    addresses,
+    names,
+    daoCode: input.daoCode?.trim() || undefined,
+  } satisfies EnsRecordsInput;
 }
 
 export const delegateService = {

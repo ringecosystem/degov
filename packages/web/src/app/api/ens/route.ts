@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { Resp } from "@/types/api";
 
 import * as config from "../common/config";
-import { resolveEnsRecord } from "../common/ens-cache";
+import { resolveEnsRecord, resolveEnsRecords } from "../common/ens-cache";
 
 import type { NextRequest } from "next/server";
 
@@ -94,6 +94,35 @@ export async function GET(request: NextRequest) {
     const record = await resolveEnsRecord(degovConfig, { address, name });
 
     return NextResponse.json(Resp.ok(record));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ENS lookup failed";
+    return NextResponse.json(Resp.err(message), { status: 400 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const rateLimit = checkEnsRateLimit(request);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(Resp.err("too many ENS lookup requests"), {
+        status: 429,
+        headers: {
+          "Retry-After": String(rateLimit.retryAfterSeconds ?? 1),
+        },
+      });
+    }
+
+    const body = (await request.json()) as {
+      addresses?: string[];
+      names?: string[];
+    };
+    const degovConfig = await config.degovConfig(request);
+    const records = await resolveEnsRecords(degovConfig, {
+      addresses: body.addresses,
+      names: body.names,
+    });
+
+    return NextResponse.json(Resp.ok(records));
   } catch (error) {
     const message = error instanceof Error ? error.message : "ENS lookup failed";
     return NextResponse.json(Resp.err(message), { status: 400 });

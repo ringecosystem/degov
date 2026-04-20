@@ -181,3 +181,30 @@ export async function resolveEnsRecord(
   setCached(cacheKey, record);
   return record;
 }
+
+export async function resolveEnsRecords(
+  config: Config,
+  input: { addresses?: string[] | null; names?: string[] | null }
+): Promise<EnsRecord[]> {
+  const addresses = Array.from(
+    new Set(
+      (input.addresses ?? [])
+        .map((address) => address.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+  const names = Array.from(
+    new Set(
+      (input.names ?? [])
+        .map((name) => name.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const records = await Promise.all([
+    ...addresses.map((address) => resolveEnsRecord(config, { address })),
+    ...names.map((name) => resolveEnsRecord(config, { name })),
+  ]);
+
+  return records;
+}

@@ -8,3 +8,16 @@ export const GET_ENS_RECORD = gql`
     }
   }
 `;
+
+export const GET_ENS_RECORDS = gql`
+  query GetEnsRecords(
+    $addresses: [String!]
+    $names: [String!]
+    $daoCode: String
+  ) {
+    ensRecords(input: { addresses: $addresses, names: $names, daoCode: $daoCode }) {
+      address
+      name
+    }
+  }
+`;
