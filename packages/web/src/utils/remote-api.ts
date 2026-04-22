@@ -25,21 +25,6 @@ export const degovGraphqlApi = (): string | undefined => {
   return `${NEXT_PUBLIC_DEGOV_API}/graphql`;
 };
 
-export const degovEnsGraphqlApi = (): string | undefined => {
-  const configuredApi =
-    typeof window !== "undefined"
-      ? env("NEXT_PUBLIC_DEGOV_ENS_API")
-      : process.env.NEXT_PUBLIC_DEGOV_ENS_API;
-  const fallbackApi =
-    typeof window !== "undefined"
-      ? env("NEXT_PUBLIC_DEGOV_API")
-      : process.env.NEXT_PUBLIC_DEGOV_API;
-  const api = configuredApi || fallbackApi;
-
-  if (!api) return undefined;
-  return api.endsWith("/graphql") ? api : `${api}/graphql`;
-};
-
 export const degovApiDaoConfigServer = (): string | undefined => {
   if (isLocalConfigEnabledServer()) return undefined;
   const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
