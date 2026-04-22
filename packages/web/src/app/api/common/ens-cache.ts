@@ -20,6 +20,13 @@ type EnsRecordGraphQLResponse = {
   errors?: { message?: string }[];
 };
 
+type EnsRecordsGraphQLResponse = {
+  data?: {
+    ensRecords?: EnsRecord[] | null;
+  };
+  errors?: { message?: string }[];
+};
+
 const DEFAULT_ENS_CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 const DEFAULT_ENS_CACHE_MAX_ENTRIES = 1000;
 const ensCache = new Map<string, CacheEntry>();
@@ -27,6 +34,19 @@ const ensCache = new Map<string, CacheEntry>();
 const GET_ENS_RECORD_QUERY = `
   query GetEnsRecord($address: String, $name: String, $daoCode: String) {
     ens(input: { address: $address, name: $name, daoCode: $daoCode }) {
+      address
+      name
+    }
+  }
+`;
+
+const GET_ENS_RECORDS_QUERY = `
+  query GetEnsRecords(
+    $addresses: [String!]
+    $names: [String!]
+    $daoCode: String
+  ) {
+    ensRecords(input: { addresses: $addresses, names: $names, daoCode: $daoCode }) {
       address
       name
     }
@@ -211,6 +231,22 @@ async function resolveEnsRecordWithDegovAPI(
   return data?.ens ?? undefined;
 }
 
+async function resolveEnsRecordsWithDegovAPI(
+  daoCode: string | undefined,
+  input: { addresses?: string[] | null; names?: string[] | null }
+): Promise<EnsRecord[] | undefined> {
+  const data = await requestDegovEns<EnsRecordsGraphQLResponse["data"]>(
+    GET_ENS_RECORDS_QUERY,
+    {
+      addresses: input.addresses ?? [],
+      names: input.names ?? [],
+      daoCode,
+    }
+  );
+
+  return data?.ensRecords ?? undefined;
+}
+
 async function resolveEnsRecordWithRPC(
   config: Config,
   input: { address?: string | null; name?: string | null }
@@ -316,10 +352,72 @@ export async function resolveEnsRecords(
     )
   );
 
-  const records = await Promise.all([
-    ...addresses.map((address) => resolveEnsRecord(config, { address })),
-    ...names.map((name) => resolveEnsRecord(config, { name })),
+  const records: EnsRecord[] = [];
+  const unresolvedAddresses: string[] = [];
+  const unresolvedNames: string[] = [];
+
+  await Promise.all([
+    ...addresses.map(async (address) => {
+      const cacheKey = `name:${address}`;
+      const cached = getCached(cacheKey);
+      if (cached) {
+        records.push(cached);
+        return;
+      }
+
+      try {
+        const rpcRecord = await resolveEnsRecordWithRPC(config, { address });
+        if (rpcRecord !== undefined) {
+          setCached(cacheKey, rpcRecord);
+          records.push(rpcRecord);
+          return;
+        }
+      } catch {
+        // resolveWithRPC logs individual RPC failures; fall back to batched DeGov API.
+      }
+
+      unresolvedAddresses.push(address);
+    }),
+    ...names.map(async (name) => {
+      const cacheKey = `address:${name}`;
+      const cached = getCached(cacheKey);
+      if (cached) {
+        records.push(cached);
+        return;
+      }
+
+      try {
+        const rpcRecord = await resolveEnsRecordWithRPC(config, { name });
+        if (rpcRecord !== undefined) {
+          setCached(cacheKey, rpcRecord);
+          records.push(rpcRecord);
+          return;
+        }
+      } catch {
+        // resolveWithRPC logs individual RPC failures; fall back to batched DeGov API.
+      }
+
+      unresolvedNames.push(name);
+    }),
   ]);
+
+  if (unresolvedAddresses.length || unresolvedNames.length) {
+    const remoteRecords = await resolveEnsRecordsWithDegovAPI(config.code, {
+      addresses: unresolvedAddresses,
+      names: unresolvedNames,
+    });
+    if (remoteRecords?.length) {
+      remoteRecords.forEach((record) => {
+        if (record.address) {
+          setCached(`name:${record.address.toLowerCase()}`, record);
+        }
+        if (record.name) {
+          setCached(`address:${record.name.toLowerCase()}`, record);
+        }
+        records.push(record);
+      });
+    }
+  }
 
   return records;
 }
