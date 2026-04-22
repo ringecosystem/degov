@@ -327,7 +327,7 @@ export async function resolveEnsRecords(
     addresses,
     names,
   });
-  if (remoteRecords) {
+  if (remoteRecords?.length) {
     remoteRecords.forEach((record) => {
       if (record.address) {
         setCached(`name:${record.address.toLowerCase()}`, record);

@@ -22,7 +22,9 @@ export const degovGraphqlApi = (): string | undefined => {
   const NEXT_PUBLIC_DEGOV_API = clientApi || process.env.NEXT_PUBLIC_DEGOV_API;
 
   if (!NEXT_PUBLIC_DEGOV_API) return undefined;
-  return `${NEXT_PUBLIC_DEGOV_API}/graphql`;
+  return NEXT_PUBLIC_DEGOV_API.endsWith("/graphql")
+    ? NEXT_PUBLIC_DEGOV_API
+    : `${NEXT_PUBLIC_DEGOV_API}/graphql`;
 };
 
 export const degovApiDaoConfigServer = (): string | undefined => {
