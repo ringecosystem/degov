@@ -153,8 +153,13 @@ async function resolveWithRPC<T>(
   config: Config,
   resolver: (rpcURL: string) => Promise<T | null>
 ) {
+  const rpcURLs = ensRPCURLs(config);
+  if (!rpcURLs.length) {
+    return undefined;
+  }
+
   let lastError: unknown;
-  for (const rpcURL of ensRPCURLs(config)) {
+  for (const rpcURL of rpcURLs) {
     try {
       return await resolver(rpcURL);
     } catch (error) {
@@ -242,6 +247,46 @@ async function resolveEnsRecordsWithDegovAPI(
   return data?.ensRecords ?? undefined;
 }
 
+async function resolveEnsRecordWithRPC(
+  config: Config,
+  input: { address?: string | null; name?: string | null }
+): Promise<EnsRecord | undefined> {
+  if (input.address) {
+    const checksumAddress = getAddress(input.address);
+    const ensName = await resolveWithRPC(config, async (rpcURL) => {
+      const client = createPublicClient({
+        chain: mainnet,
+        transport: http(rpcURL),
+      });
+      return client.getEnsName({ address: checksumAddress });
+    });
+    if (ensName === undefined) {
+      return undefined;
+    }
+
+    return {
+      address: input.address,
+      name: ensName,
+    };
+  }
+
+  const ensAddress = await resolveWithRPC(config, async (rpcURL) => {
+    const client = createPublicClient({
+      chain: mainnet,
+      transport: http(rpcURL),
+    });
+    return client.getEnsAddress({ name: input.name! });
+  });
+  if (ensAddress === undefined) {
+    return undefined;
+  }
+
+  return {
+    address: ensAddress?.toLowerCase() ?? null,
+    name: input.name,
+  };
+}
+
 export async function resolveEnsRecord(
   config: Config,
   input: { address?: string | null; name?: string | null }
@@ -263,6 +308,19 @@ export async function resolveEnsRecord(
     return cached;
   }
 
+  try {
+    const rpcRecord = await resolveEnsRecordWithRPC(config, {
+      address,
+      name,
+    });
+    if (rpcRecord !== undefined) {
+      setCached(cacheKey, rpcRecord);
+      return rpcRecord;
+    }
+  } catch {
+    // resolveWithRPC logs individual RPC failures; fall back to the DeGov API.
+  }
+
   const remoteRecord = await resolveEnsRecordWithDegovAPI(config.code, {
     address,
     name,
@@ -272,36 +330,7 @@ export async function resolveEnsRecord(
     return remoteRecord;
   }
 
-  let record: EnsRecord;
-  if (address) {
-    const checksumAddress = getAddress(address);
-    const ensName = await resolveWithRPC(config, async (rpcURL) => {
-      const client = createPublicClient({
-        chain: mainnet,
-        transport: http(rpcURL),
-      });
-      return client.getEnsName({ address: checksumAddress });
-    });
-    record = {
-      address,
-      name: ensName,
-    };
-  } else {
-    const ensAddress = await resolveWithRPC(config, async (rpcURL) => {
-      const client = createPublicClient({
-        chain: mainnet,
-        transport: http(rpcURL),
-      });
-      return client.getEnsAddress({ name: name! });
-    });
-    record = {
-      address: ensAddress?.toLowerCase() ?? null,
-      name,
-    };
-  }
-
-  setCached(cacheKey, record);
-  return record;
+  throw new Error("ENS lookup failed");
 }
 
 export async function resolveEnsRecords(
@@ -323,26 +352,72 @@ export async function resolveEnsRecords(
     )
   );
 
-  const remoteRecords = await resolveEnsRecordsWithDegovAPI(config.code, {
-    addresses,
-    names,
-  });
-  if (remoteRecords?.length) {
-    remoteRecords.forEach((record) => {
-      if (record.address) {
-        setCached(`name:${record.address.toLowerCase()}`, record);
-      }
-      if (record.name) {
-        setCached(`address:${record.name.toLowerCase()}`, record);
-      }
-    });
-    return remoteRecords;
-  }
+  const records: EnsRecord[] = [];
+  const unresolvedAddresses: string[] = [];
+  const unresolvedNames: string[] = [];
 
-  const records = await Promise.all([
-    ...addresses.map((address) => resolveEnsRecord(config, { address })),
-    ...names.map((name) => resolveEnsRecord(config, { name })),
+  await Promise.all([
+    ...addresses.map(async (address) => {
+      const cacheKey = `name:${address}`;
+      const cached = getCached(cacheKey);
+      if (cached) {
+        records.push(cached);
+        return;
+      }
+
+      try {
+        const rpcRecord = await resolveEnsRecordWithRPC(config, { address });
+        if (rpcRecord !== undefined) {
+          setCached(cacheKey, rpcRecord);
+          records.push(rpcRecord);
+          return;
+        }
+      } catch {
+        // resolveWithRPC logs individual RPC failures; fall back to batched DeGov API.
+      }
+
+      unresolvedAddresses.push(address);
+    }),
+    ...names.map(async (name) => {
+      const cacheKey = `address:${name}`;
+      const cached = getCached(cacheKey);
+      if (cached) {
+        records.push(cached);
+        return;
+      }
+
+      try {
+        const rpcRecord = await resolveEnsRecordWithRPC(config, { name });
+        if (rpcRecord !== undefined) {
+          setCached(cacheKey, rpcRecord);
+          records.push(rpcRecord);
+          return;
+        }
+      } catch {
+        // resolveWithRPC logs individual RPC failures; fall back to batched DeGov API.
+      }
+
+      unresolvedNames.push(name);
+    }),
   ]);
+
+  if (unresolvedAddresses.length || unresolvedNames.length) {
+    const remoteRecords = await resolveEnsRecordsWithDegovAPI(config.code, {
+      addresses: unresolvedAddresses,
+      names: unresolvedNames,
+    });
+    if (remoteRecords?.length) {
+      remoteRecords.forEach((record) => {
+        if (record.address) {
+          setCached(`name:${record.address.toLowerCase()}`, record);
+        }
+        if (record.name) {
+          setCached(`address:${record.name.toLowerCase()}`, record);
+        }
+        records.push(record);
+      });
+    }
+  }
 
   return records;
 }
