@@ -111,8 +111,6 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `window.__ENV = ${JSON.stringify({
               NEXT_PUBLIC_DEGOV_API: process.env.NEXT_PUBLIC_DEGOV_API ?? "",
-              NEXT_PUBLIC_DEGOV_ENS_API:
-                process.env.NEXT_PUBLIC_DEGOV_ENS_API ?? "",
               NEXT_PUBLIC_DEGOV_DAO: process.env.NEXT_PUBLIC_DEGOV_DAO ?? "",
               NEXT_PUBLIC_LOCAL_CONFIG:
                 process.env.NEXT_PUBLIC_LOCAL_CONFIG ?? "",

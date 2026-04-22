@@ -1,6 +1,6 @@
 import { clearToken } from "@/lib/auth/token-manager";
 import type { Config } from "@/types/config";
-import { degovEnsGraphqlApi, degovGraphqlApi } from "@/utils/remote-api";
+import { degovGraphqlApi } from "@/utils/remote-api";
 
 import { request } from "./client";
 import * as Mutations from "./mutations";
@@ -319,11 +319,6 @@ export const ensService = {
       return undefined;
     }
 
-    const remoteRecord = await ensService.getRemoteEnsRecord(normalizedInput);
-    if (remoteRecord) {
-      return remoteRecord;
-    }
-
     return ensService.getLocalEnsRecord(normalizedInput);
   },
 
@@ -333,50 +328,7 @@ export const ensService = {
       return [];
     }
 
-    const remoteRecords = await ensService.getRemoteEnsRecords(normalizedInput);
-    if (remoteRecords.length) {
-      return remoteRecords;
-    }
-
     return ensService.getLocalEnsRecords(normalizedInput);
-  },
-
-  getRemoteEnsRecord: async (input: EnsRecordInput) => {
-    const endpoint = degovEnsGraphqlApi();
-    if (!endpoint) {
-      return undefined;
-    }
-
-    try {
-      const response = await request<EnsRecordResponse>(
-        endpoint,
-        Queries.GET_ENS_RECORD,
-        input
-      );
-      return response?.ens ?? undefined;
-    } catch (error) {
-      console.warn("Failed to resolve ENS record from DeGov API:", error);
-      return undefined;
-    }
-  },
-
-  getRemoteEnsRecords: async (input: EnsRecordsInput) => {
-    const endpoint = degovEnsGraphqlApi();
-    if (!endpoint) {
-      return [];
-    }
-
-    try {
-      const response = await request<EnsRecordsResponse>(
-        endpoint,
-        Queries.GET_ENS_RECORDS,
-        input
-      );
-      return response?.ensRecords ?? [];
-    } catch (error) {
-      console.warn("Failed to resolve ENS records from DeGov API:", error);
-      return [];
-    }
   },
 
   getLocalEnsRecord: async (input: EnsRecordInput) => {
