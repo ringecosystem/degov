@@ -1,0 +1,96 @@
+dao:
+  name: Movement DAO
+  symbol: MOVE
+  type: modular-governance-system
+
+network:
+  chain: Base
+  chain_id: 8453
+
+entities:
+  foundation:
+    name: Movement Network Foundation
+    address: 0x1bCF4224C14f880a2e093EB4e33584cdcea2D352
+    role: governance-coordination
+
+  labs:
+    name: Movement Labs
+    address: 0x30DF2CD5522AB215FC6b3348fC21d2DBF5860B58
+    role: protocol-research-and-development
+
+  industries:
+    name: Move Industries
+    address: 0x7d077c2337BF0E582BeA01f0d8427796243a99B9
+    role: production-and-ecosystem-scaling
+
+  treasury:
+    name: Movement Treasury Safe
+    address: 0xE25dF57F6cAd807E5208BC5B53eD8048937ACa56
+    role: asset-custody-and-liquidity-management
+
+governance:
+  model: dao-first
+  voting_platform: snapshot
+  snapshot_space: s:movementnetwork.base.eth
+  execution_flow:
+    - proposal
+    - discussion
+    - voting
+    - multisig-execution
+
+  rules:
+    quorum_required: true
+    multisig_threshold: 2_of_3
+    onchain_execution: true
+
+token:
+  name: MOVE
+  total_supply: 10000000000
+  utility:
+    - gas_fees
+    - staking
+    - governance
+    - validator_rewards
+
+  ecosystem_role:
+    m1_layer: community_and_developer_network
+    m2_layer: ethereum_settlement_and_zk_rollup
+
+architecture:
+  layers:
+    - M1: Layer1_experimental_network
+    - M2: Layer2_zk_rollup_on_ethereum
+
+  components:
+    - MoveVM
+    - MoveSDK
+    - Fractal_transpiler
+    - Cross_chain_bridge
+
+security:
+  model: resource_oriented_programming
+  verifier: bytecode_verification
+  properties:
+    - no_asset_duplication
+    - no_unverified_execution
+    - strict_type_safety
+    - deterministic_state_transitions
+
+links:
+  website: https://movementnetwork.xyz
+  docs: https://developer.movementnetwork.xyz
+  github: https://github.com/cshein45/movement-core
+  defi_dashboard: https://defillama.com/chain/movement
+  governance: https://snapshot.org/#/s:movementnetwork.base.eth
+
+vision:
+  statement: >
+    Build a modular, verifiable, and liquidity-native blockchain ecosystem
+    where governance, execution, and assets flow transparently across chains
+    without centralized trust assumptions.
+
+principle:
+  - code_is_law
+  - proof_over_narrative
+  - transparency_by_default
+  - modular_first_architecture
