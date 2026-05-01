@@ -58,7 +58,7 @@
     "dompurify": "^3.4.0",
     "ethers": "^6.13.5",
     "framer-motion": "^12.4.10",
-    "graphql": "^16.10.0",
+    "graphql": "^16.13.2",
     "graphql-request": "^7.2.0",
     "jose": "^6.0.8",
     "js-yaml": "^4.1.1",
