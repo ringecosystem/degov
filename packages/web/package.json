@@ -63,7 +63,7 @@
     "jose": "^6.0.8",
     "js-yaml": "^4.1.1",
     "lodash-es": "^4.18.1",
-    "lucide-react": "^0.475.0",
+    "lucide-react": "^1.14.0",
     "marked": "^15.0.7",
     "next": "16.2.3",
     "next-intl": "4.9.1",
