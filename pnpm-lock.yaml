@@ -230,11 +230,11 @@ importers:
         specifier: ^12.4.10
         version: 12.23.24(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       graphql:
-        specifier: ^16.10.0
-        version: 16.11.0
+        specifier: ^16.13.2
+        version: 16.13.2
       graphql-request:
         specifier: ^7.2.0
-        version: 7.3.1(graphql@16.11.0)
+        version: 7.3.1(graphql@16.13.2)
       jose:
         specifier: ^6.0.8
         version: 6.1.0
@@ -5206,8 +5206,8 @@ packages:
     resolution: {integrity: sha512-1PRqdDPAmViWr4h1GVBT8RoPZfWSGZa7kDzleTilOfVIslsgf+cia3Nl95v1KDmR4iERPaT7WzQ+tN4MJmbg3w==}
     engines: {node: '>= 10.x'}
 
-  graphql@16.11.0:
-    resolution: {integrity: sha512-mS1lbMsxgQj6hge1XZ6p7GPhbrtFwUFYi3wRzXAC/FmYnyXMTvvI3td3rjmQ2u8ewXueaSvRPWaEcgVVOT9Jnw==}
+  graphql@16.13.2:
+    resolution: {integrity: sha512-5bJ+nf/UCpAjHM8i06fl7eLyVC9iuNAjm9qzkiu2ZGhM0VscSvS6WDPfAwkdkBuoXGM9FJSbKl6wylMwP9Ktig==}
     engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
 
   h3@1.15.10:
@@ -7935,10 +7935,12 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   v8-to-istanbul@9.3.0:
@@ -8974,9 +8976,9 @@ snapshots:
     dependencies:
       graphql: 15.10.2
 
-  '@graphql-typed-document-node/core@3.2.0(graphql@16.11.0)':
+  '@graphql-typed-document-node/core@3.2.0(graphql@16.13.2)':
     dependencies:
-      graphql: 16.11.0
+      graphql: 16.13.2
 
   '@hapi/hoek@9.3.0': {}
 
@@ -9529,7 +9531,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
       '@types/debug': 4.1.13
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.3.4
       pony-cause: 2.1.11
       semver: 7.7.4
       uuid: 9.0.1
@@ -14676,10 +14678,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  graphql-request@7.3.1(graphql@16.11.0):
+  graphql-request@7.3.1(graphql@16.13.2):
     dependencies:
-      '@graphql-typed-document-node/core': 3.2.0(graphql@16.11.0)
-      graphql: 16.11.0
+      '@graphql-typed-document-node/core': 3.2.0(graphql@16.13.2)
+      graphql: 16.13.2
 
   graphql-tag@2.12.6(graphql@15.10.2):
     dependencies:
@@ -14692,7 +14694,7 @@ snapshots:
 
   graphql@15.10.2: {}
 
-  graphql@16.11.0: {}
+  graphql@16.13.2: {}
 
   h3@1.15.10:
     dependencies:
