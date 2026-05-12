@@ -46,6 +46,11 @@ export interface CurrentClockResult {
   timestampMs: bigint;
 }
 
+export interface LatestBlockResult {
+  number: bigint;
+  timestampMs: bigint;
+}
+
 export interface HistoricalVotesResult {
   method: "getPastVotes" | "getPriorVotes";
   votes: bigint;
@@ -685,6 +690,20 @@ export class ChainTool {
           ? latestBlock.timestamp
           : (latestBlock.number ?? 0n),
       timestampMs: latestBlock.timestamp * 1000n,
+    };
+  }
+
+  async latestBlock(options: {
+    chainId: number;
+    rpcs?: string[];
+  }): Promise<LatestBlockResult> {
+    const block = await this._executeWithFallbacks(options, (client) =>
+      client.getBlock()
+    );
+
+    return {
+      number: block.number ?? 0n,
+      timestampMs: block.timestamp * 1000n,
     };
   }
 

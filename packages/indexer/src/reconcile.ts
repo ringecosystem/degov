@@ -70,6 +70,9 @@ interface ProposalReconciliationResult {
 
 interface QueryableDataSource {
   query(sql: string, parameters?: unknown[]): Promise<any[]>;
+  transaction?<T>(
+    callback: (entityManager: QueryableDataSource) => Promise<T>
+  ): Promise<T>;
 }
 
 interface OnchainPowerReconcileOptions {
@@ -192,7 +195,8 @@ async function readContributorSnapshot(
 async function readReconcilePower(
   chainTool: ChainTool,
   options: OnchainPowerReconcileOptions,
-  account: string
+  account: string,
+  blockNumber: bigint
 ): Promise<{ value: bigint; source: string; clockMode: ClockMode; timepoint: bigint }> {
   const clockMode = options.clockMode ?? ClockMode.BlockNumber;
   const timepoint = options.timepoint ?? options.blockNumber ?? 0n;
@@ -201,6 +205,7 @@ async function readReconcilePower(
     contractAddress: options.tokenAddress as `0x${string}`,
     rpcs: options.rpcs,
     account: account as `0x${string}`,
+    blockNumber,
   };
 
   if (timepoint > 0n) {
@@ -228,6 +233,25 @@ async function readReconcilePower(
     clockMode,
     timepoint,
   };
+}
+
+async function withTransaction<T>(
+  dataSource: QueryableDataSource,
+  callback: (manager: QueryableDataSource) => Promise<T>
+): Promise<T> {
+  if (dataSource.transaction) {
+    return dataSource.transaction(callback);
+  }
+
+  await dataSource.query("BEGIN");
+  try {
+    const result = await callback(dataSource);
+    await dataSource.query("COMMIT");
+    return result;
+  } catch (error) {
+    await dataSource.query("ROLLBACK");
+    throw error;
+  }
 }
 
 async function upsertReconciledContributor(
@@ -437,53 +461,67 @@ export async function reconcileOnchainPowerState(
   }
 
   const accounts = await loadKnownTokenAccounts(dataSource, options);
-  const blockNumber = options.blockNumber ?? options.timepoint ?? 0n;
-  const blockTimestamp = options.blockTimestamp ?? BigInt(Date.now());
+  const latestBlock =
+    options.blockNumber !== undefined && options.blockTimestamp !== undefined
+      ? {
+          number: options.blockNumber,
+          timestampMs: options.blockTimestamp,
+        }
+      : await chainTool.latestBlock({
+          chainId: options.chainId,
+          rpcs: options.rpcs,
+        });
+  const blockNumber = latestBlock.number;
+  const blockTimestamp = latestBlock.timestampMs;
   let balancesUpdated = 0;
   let powersUpdated = 0;
 
   for (const account of accounts) {
-    const previous = await readContributorSnapshot(dataSource, account);
     const [balance, power] = await Promise.all([
       chainTool.tokenBalance({
         chainId: options.chainId,
         contractAddress: options.tokenAddress as `0x${string}`,
         rpcs: options.rpcs,
         account: account as `0x${string}`,
+        blockNumber,
       }),
-      readReconcilePower(chainTool, options, account),
+      readReconcilePower(chainTool, options, account, blockNumber),
     ]);
 
-    await upsertReconciledContributor(
-      dataSource,
-      options,
-      account,
-      balance,
-      power.value,
-      blockNumber,
-      blockTimestamp,
-      previous.delegatesCountAll,
-      previous.delegatesCountEffective
-    );
-    await storeReconcileCheckpoints(
-      dataSource,
-      options,
-      account,
-      previous.balance,
-      balance,
-      previous.power,
-      power.value,
-      power.source,
-      power.clockMode,
-      power.timepoint,
-      blockNumber,
-      blockTimestamp
-    );
-    await updateReconciledPowerSum(
-      dataSource,
-      options,
-      power.value - previous.power
-    );
+    await withTransaction(dataSource, async (manager) => {
+      const previous = await readContributorSnapshot(manager, account);
+
+      await upsertReconciledContributor(
+        manager,
+        options,
+        account,
+        balance,
+        power.value,
+        blockNumber,
+        blockTimestamp,
+        previous.delegatesCountAll,
+        previous.delegatesCountEffective
+      );
+      await storeReconcileCheckpoints(
+        manager,
+        options,
+        account,
+        previous.balance,
+        balance,
+        previous.power,
+        power.value,
+        power.source,
+        power.clockMode,
+        power.timepoint,
+        blockNumber,
+        blockTimestamp
+      );
+      await updateReconciledPowerSum(
+        manager,
+        options,
+        power.value - previous.power
+      );
+    });
 
     balancesUpdated += 1;
     powersUpdated += 1;
@@ -969,6 +1007,10 @@ async function main() {
     contractAddress: governor.address,
     rpcs: config.rpcs,
   });
+  const latestBlock = await chainTool.latestBlock({
+    chainId: config.chainId,
+    rpcs: config.rpcs,
+  });
   const dataSource = await createDatabaseConnection();
 
   try {
@@ -983,8 +1025,8 @@ async function main() {
         rpcs: config.rpcs,
         clockMode: currentClock.clockMode,
         timepoint: currentClock.timepoint,
-        blockNumber: currentClock.timepoint,
-        blockTimestamp: currentClock.timestampMs,
+        blockNumber: latestBlock.number,
+        blockTimestamp: latestBlock.timestampMs,
       }
     );
     const [projectionRows, coverage] = await Promise.all([

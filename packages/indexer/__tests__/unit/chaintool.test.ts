@@ -808,4 +808,29 @@ describe("ChainTool", () => {
       })
     );
   });
+
+  it("reads latest block metadata for replay-safe reconcile stamps", async () => {
+    const fakeClient = {
+      getBlock: jest.fn(async () => ({
+        number: 123n,
+        timestamp: 456n,
+      })),
+    };
+    const chainTool = new ChainTool();
+    jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) =>
+        action(fakeClient)
+      );
+
+    await expect(
+      chainTool.latestBlock({
+        chainId: 1,
+        rpcs: ["https://rpc.example.invalid"],
+      })
+    ).resolves.toEqual({
+      number: 123n,
+      timestampMs: 456000n,
+    });
+  });
 });

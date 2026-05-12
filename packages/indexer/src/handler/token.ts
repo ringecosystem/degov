@@ -348,26 +348,12 @@ export class TokenHandler {
       if (!isHistoricalVoteUnavailable(error)) {
         throw error;
       }
-      try {
-        return {
-          power: await this.options.chainTool.currentVotes(readOptions),
-          source: "getVotes",
-          clockMode,
-          timepoint,
-        };
-      } catch {
-        return {
-          power: await this.options.chainTool.currentVotes({
-            chainId: readOptions.chainId,
-            contractAddress: readOptions.contractAddress,
-            rpcs: readOptions.rpcs,
-            account: readOptions.account,
-          }),
-          source: "getVotes",
-          clockMode,
-          timepoint,
-        };
-      }
+      return {
+        power: await this.options.chainTool.currentVotes(readOptions),
+        source: "getVotes",
+        clockMode,
+        timepoint,
+      };
     }
   }
 
@@ -491,13 +477,15 @@ export class TokenHandler {
     const delegatee = await this.delegateOfAt(normalizedDelegator, eventLog);
     const previousMapping =
       await this.getDelegateMappingByFrom(normalizedDelegator);
+    const previousDelegate = previousMapping?.to;
+    const previousPower = previousMapping?.power ?? 0n;
 
     if (!delegatee) {
       if (previousMapping) {
         await this.upsertDelegateSnapshot({
           ...this.eventFields(eventLog),
           fromDelegate: normalizedDelegator,
-          toDelegate: previousMapping.to,
+          toDelegate: previousDelegate!,
           blockNumber: BigInt(eventLog.block.height),
           blockTimestamp: BigInt(eventLog.block.timestamp),
           transactionHash: eventLog.transactionHash,
@@ -506,6 +494,14 @@ export class TokenHandler {
       }
       await this.ctx.store.remove(DelegateMapping, normalizedDelegator);
       this.forgetDelegateMapping(normalizedDelegator);
+      await this.applyDelegateCountDeltas(
+        {
+          delegate: previousDelegate,
+          allDelta: previousMapping ? -1 : 0,
+          effectiveDelta: previousPower > 0n ? -1 : 0,
+        },
+        eventLog,
+      );
       return;
     }
 
@@ -514,11 +510,11 @@ export class TokenHandler {
       account: normalizedDelegator as `0x${string}`,
     });
 
-    if (previousMapping && previousMapping.to.toLowerCase() !== delegatee) {
+    if (previousMapping && previousDelegate?.toLowerCase() !== delegatee) {
       await this.upsertDelegateSnapshot({
         ...this.eventFields(eventLog),
         fromDelegate: normalizedDelegator,
-        toDelegate: previousMapping.to,
+        toDelegate: previousDelegate!,
         blockNumber: BigInt(eventLog.block.height),
         blockTimestamp: BigInt(eventLog.block.timestamp),
         transactionHash: eventLog.transactionHash,
@@ -581,6 +577,81 @@ export class TokenHandler {
       await this.ctx.store.insert(delegate);
       this.rememberDelegate(delegate);
     }
+
+    if (!previousMapping) {
+      await this.applyDelegateCountDeltas(
+        {
+          delegate: delegatee,
+          allDelta: 1,
+          effectiveDelta: power > 0n ? 1 : 0,
+        },
+        eventLog,
+      );
+      return;
+    }
+
+    if (previousDelegate?.toLowerCase() === delegatee) {
+      const previousEffective = previousPower > 0n;
+      const currentEffective = power > 0n;
+      await this.applyDelegateCountDeltas(
+        {
+          delegate: delegatee,
+          allDelta: 0,
+          effectiveDelta:
+            previousEffective === currentEffective
+              ? 0
+              : currentEffective
+                ? 1
+                : -1,
+        },
+        eventLog,
+      );
+      return;
+    }
+
+    await this.applyDelegateCountDeltas(
+      {
+        delegate: previousDelegate,
+        allDelta: -1,
+        effectiveDelta: previousPower > 0n ? -1 : 0,
+      },
+      eventLog,
+    );
+    await this.applyDelegateCountDeltas(
+      {
+        delegate: delegatee,
+        allDelta: 1,
+        effectiveDelta: power > 0n ? 1 : 0,
+      },
+      eventLog,
+    );
+  }
+
+  private async applyDelegateCountDeltas(
+    options: {
+      delegate?: string | null;
+      allDelta: number;
+      effectiveDelta: number;
+    },
+    eventLog: EvmLog<EvmFieldSelection>,
+  ) {
+    const delegate = options.delegate ? this.normalizeAddress(options.delegate) : undefined;
+    if (!delegate || this.isZeroAddress(delegate)) {
+      return;
+    }
+
+    const { contributor } = await this.ensureContributor(delegate, eventLog);
+    this.updateContributorScope(contributor, eventLog);
+    contributor.delegatesCountAll = Math.max(
+      0,
+      (contributor.delegatesCountAll ?? 0) + options.allDelta,
+    );
+    contributor.delegatesCountEffective = Math.max(
+      0,
+      (contributor.delegatesCountEffective ?? 0) + options.effectiveDelta,
+    );
+    this.rememberContributor(contributor);
+    this.markContributorDirty(contributor);
   }
 
   private async refreshOnchainTargets(

@@ -401,6 +401,12 @@ describe("token vote power checkpoints", () => {
     expect(
       store.findEntity(Contributor, "0x3333333333333333333333333333333333333333")
     ).toBeUndefined();
+    expect(chainTool.currentVotes).toHaveBeenCalledTimes(1);
+    expect(chainTool.currentVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blockNumber: 10n,
+      })
+    );
   });
 
   it("refreshes delegate change balance, delegate powers, and canonical mapping in onchain mode", async () => {
@@ -464,9 +470,13 @@ describe("token vote power checkpoints", () => {
     });
     expect(store.findEntity(Contributor, oldDelegate)).toMatchObject({
       power: 10n,
+      delegatesCountAll: 0,
+      delegatesCountEffective: 0,
     });
     expect(store.findEntity(Contributor, newDelegate)).toMatchObject({
       power: 45n,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
     });
     expect(store.findEntity(DelegateMapping, delegator)).toMatchObject({
       from: delegator,
@@ -593,7 +603,7 @@ describe("token vote power checkpoints", () => {
 
     const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const queries: Array<{ sql: string; params?: unknown[] }> = [];
-    const dataSource = {
+    const dataSource: any = {
       query: jest.fn(async (sql: string, params?: unknown[]) => {
         queries.push({ sql, params });
         if (sql.includes("known_accounts")) {
@@ -604,8 +614,15 @@ describe("token vote power checkpoints", () => {
         }
         return [];
       }),
+      transaction: jest.fn(async (callback: any): Promise<unknown> =>
+        callback(dataSource)
+      ),
     };
     const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_123_000n,
+    });
     jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
     jest.spyOn(chainTool, "historicalVotes").mockResolvedValue({
       method: "getPastVotes",
@@ -621,8 +638,6 @@ describe("token vote power checkpoints", () => {
         rpcs: ["https://rpc.example.invalid"],
         clockMode: ClockMode.BlockNumber,
         timepoint: 100n,
-        blockNumber: 100n,
-        blockTimestamp: 1_700_000_000_000n,
       })
     ).resolves.toMatchObject({
       powerSource: "onchain",
@@ -634,18 +649,22 @@ describe("token vote power checkpoints", () => {
     expect(chainTool.tokenBalance).toHaveBeenCalledWith(
       expect.objectContaining({
         account,
+        blockNumber: 123n,
       })
     );
     expect(chainTool.historicalVotes).toHaveBeenCalledWith(
       expect.objectContaining({
         account,
         timepoint: 100n,
+        blockNumber: 123n,
       })
     );
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
     expect(
       queries.some(
         (entry) =>
           entry.sql.includes("token_balance_checkpoint") &&
+          entry.params?.includes("123") &&
           entry.params?.includes("reconcile")
       )
     ).toBe(true);
