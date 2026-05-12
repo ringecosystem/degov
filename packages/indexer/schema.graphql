@@ -72,10 +72,33 @@ type VotePowerCheckpoint @entity @index(fields: ["chainId", "governorAddress", "
   previousPower: BigInt!
   newPower: BigInt!
   delta: BigInt!
+  source: String
   cause: String!
   delegator: String # address
   fromDelegate: String # address
   toDelegate: String # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type TokenBalanceCheckpoint
+  @entity
+  @index(fields: ["chainId", "governorAddress", "tokenAddress", "account", "blockNumber"]) {
+  id: ID!
+  chainId: Int
+  daoCode: String
+  governorAddress: String # address
+  tokenAddress: String # address
+  contractAddress: String # address
+  logIndex: Int
+  transactionIndex: Int
+  account: String! # address
+  previousBalance: BigInt!
+  newBalance: BigInt!
+  delta: BigInt!
+  source: String!
+  cause: String!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: String!
@@ -627,6 +650,7 @@ type Contributor @entity @index(fields: ["chainId", "governorAddress", "id"]) {
   lastVoteTimestamp: BigInt
 
   power: BigInt!
+  balance: BigInt
 
   delegatesCountAll: Int!
   delegatesCountEffective: Int!
