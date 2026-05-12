@@ -24,6 +24,7 @@ const {
 export {};
 
 describe("indexer accuracy audit", () => {
+  const originalPowerSource = process.env.DEGOV_INDEXER_POWER_SOURCE;
   const target = {
     code: "ens-dao",
     name: "ENS",
@@ -33,6 +34,18 @@ describe("indexer accuracy audit", () => {
     governor: "0x0000000000000000000000000000000000000002",
     tokenDecimals: 18,
   };
+
+  beforeEach(() => {
+    delete process.env.DEGOV_INDEXER_POWER_SOURCE;
+  });
+
+  afterEach(() => {
+    if (originalPowerSource === undefined) {
+      delete process.env.DEGOV_INDEXER_POWER_SOURCE;
+    } else {
+      process.env.DEGOV_INDEXER_POWER_SOURCE = originalPowerSource;
+    }
+  });
 
   it("collects mismatches, read errors, and negative rows without failing fast", async () => {
     const result = await auditTarget(
@@ -120,6 +133,9 @@ describe("indexer accuracy audit", () => {
   it("renders a markdown report with summary and detail sections", () => {
     const report = {
       generatedAt: "2026-03-30T06:00:00.000Z",
+      options: {
+        powerSource: "onchain",
+      },
       targets: [
         {
           code: "ens-dao",
@@ -169,10 +185,36 @@ describe("indexer accuracy audit", () => {
     const markdown = buildMarkdownReport(report, [target]);
 
     expect(markdown).toContain("## Indexer Accuracy Audit");
+    expect(markdown).toContain("Power source: onchain");
     expect(markdown).toContain("Vote mismatches: 1");
     expect(markdown).toContain("### ENS (`ens-dao`)");
     expect(markdown).toContain("index-higher-with-negative-delegates");
     expect(markdown).toContain("negative-delegate-power");
+  });
+
+  it("includes the current power source in audit results", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    await expect(
+      auditTarget(
+        target,
+        {
+          limit: 1,
+          negativeLimit: 1,
+          concurrency: 1,
+        },
+        {
+          fetchTopContributors: async () => [],
+          fetchLatestPowerCheckpointSources: async () => ({}),
+          fetchNegativeRows: async () => ({
+            contributors: [],
+            delegates: [],
+          }),
+        }
+      )
+    ).resolves.toMatchObject({
+      powerSource: "onchain",
+    });
   });
 
   it("parses CLI flags for report output and strict mode", () => {
@@ -429,6 +471,84 @@ describe("indexer accuracy audit", () => {
 
     expect(calls.map((call) => call.functionName)).toEqual([
       "getPastVotes",
+      "balanceOf",
+    ]);
+  });
+
+  it("uses current getVotes for checkpoints sourced from getVotes even when timepoint is present", async () => {
+    const calls: any[] = [];
+    const client = {
+      readContract: jest.fn(async (request: any) => {
+        calls.push(request);
+        if (request.functionName === "getVotes") {
+          return 123n;
+        }
+        if (request.functionName === "balanceOf") {
+          return 456n;
+        }
+        throw new Error(`unexpected ${request.functionName}`);
+      }),
+    };
+
+    await expect(
+      readCurrentPowerDetail(
+        {
+          governorToken: "0x0000000000000000000000000000000000000001",
+          governor: "0x0000000000000000000000000000000000000002",
+        },
+        "0x0000000000000000000000000000000000000003",
+        { source: "getVotes", timepoint: "100" },
+        client
+      )
+    ).resolves.toEqual({
+      source: "token.getVotes",
+      value: "123",
+      balance: "456",
+    });
+
+    expect(calls.map((call) => call.functionName)).toEqual([
+      "getVotes",
+      "balanceOf",
+    ]);
+  });
+
+  it("falls back to getPriorVotes for historical checkpoint sources when getPastVotes is unavailable", async () => {
+    const calls: any[] = [];
+    const client = {
+      readContract: jest.fn(async (request: any) => {
+        calls.push(request);
+        if (request.functionName === "getPastVotes") {
+          throw new Error("contract function not found");
+        }
+        if (request.functionName === "getPriorVotes") {
+          return 111n;
+        }
+        if (request.functionName === "balanceOf") {
+          return 222n;
+        }
+        throw new Error(`unexpected ${request.functionName}`);
+      }),
+    };
+
+    await expect(
+      readCurrentPowerDetail(
+        {
+          governorToken: "0x0000000000000000000000000000000000000001",
+          governor: "0x0000000000000000000000000000000000000002",
+        },
+        "0x0000000000000000000000000000000000000003",
+        { source: "getPastVotes", timepoint: "100" },
+        client
+      )
+    ).resolves.toEqual({
+      source: "token.getPriorVotes",
+      value: "111",
+      balance: "222",
+    });
+
+    expect(calls.map((call) => call.functionName)).toEqual([
+      "getPastVotes",
+      "getPriorVotes",
       "balanceOf",
     ]);
   });

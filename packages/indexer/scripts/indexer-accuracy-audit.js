@@ -65,6 +65,7 @@ const NEGATIVE_ROWS_QUERY = `
 const ERC20_VOTES_ABI = parseAbi([
   "function getVotes(address) view returns (uint256)",
   "function getPastVotes(address,uint256) view returns (uint256)",
+  "function getPriorVotes(address,uint256) view returns (uint256)",
   "function balanceOf(address) view returns (uint256)",
 ]);
 const GOVERNOR_ABI = parseAbi([
@@ -151,6 +152,29 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+function currentPowerSource() {
+  const value = (process.env.DEGOV_INDEXER_POWER_SOURCE ?? "event")
+    .trim()
+    .toLowerCase();
+  if (value === "event" || value === "onchain") {
+    return value;
+  }
+  throw new Error(
+    `DEGOV_INDEXER_POWER_SOURCE must be one of: event, onchain. Received: ${process.env.DEGOV_INDEXER_POWER_SOURCE}`
+  );
+}
+
+function isMissingContractFunction(error) {
+  const message = String(error?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("contract function not found") ||
+    message.includes("returned no data") ||
+    message.includes("function selector was not recognized") ||
+    message.includes("function does not exist") ||
+    message.includes("selector not found")
+  );
 }
 
 function parseStructuredFile(raw, filePath) {
@@ -552,18 +576,7 @@ async function readCurrentPowerDetail(
 ) {
   let powerDetail;
   try {
-    if (checkpoint.timepoint) {
-      const votes = await client.readContract({
-        address: target.governorToken,
-        abi: ERC20_VOTES_ABI,
-        functionName: "getPastVotes",
-        args: [address, BigInt(checkpoint.timepoint)],
-      });
-      powerDetail = {
-        source: "token.getPastVotes",
-        value: votes.toString(),
-      };
-    } else {
+    if (checkpoint.source === "getVotes" || !checkpoint.timepoint) {
       const votes = await client.readContract({
         address: target.governorToken,
         abi: ERC20_VOTES_ABI,
@@ -575,6 +588,44 @@ async function readCurrentPowerDetail(
         source: "token.getVotes",
         value: votes.toString(),
       };
+    } else if (checkpoint.source === "getPriorVotes") {
+      const votes = await client.readContract({
+        address: target.governorToken,
+        abi: ERC20_VOTES_ABI,
+        functionName: "getPriorVotes",
+        args: [address, BigInt(checkpoint.timepoint)],
+      });
+      powerDetail = {
+        source: "token.getPriorVotes",
+        value: votes.toString(),
+      };
+    } else {
+      try {
+        const votes = await client.readContract({
+          address: target.governorToken,
+          abi: ERC20_VOTES_ABI,
+          functionName: "getPastVotes",
+          args: [address, BigInt(checkpoint.timepoint)],
+        });
+        powerDetail = {
+          source: "token.getPastVotes",
+          value: votes.toString(),
+        };
+      } catch (error) {
+        if (!isMissingContractFunction(error)) {
+          throw error;
+        }
+        const votes = await client.readContract({
+          address: target.governorToken,
+          abi: ERC20_VOTES_ABI,
+          functionName: "getPriorVotes",
+          args: [address, BigInt(checkpoint.timepoint)],
+        });
+        powerDetail = {
+          source: "token.getPriorVotes",
+          value: votes.toString(),
+        };
+      }
     }
   } catch (tokenError) {
     if (!target.governor) {
@@ -683,6 +734,7 @@ function createTargetSkeleton(target, limit) {
   return {
     code: target.code,
     name: target.name,
+    powerSource: currentPowerSource(),
     checkedAccounts: 0,
     limit,
     matches: 0,
@@ -821,6 +873,7 @@ async function runAudit(targets, options, services = {}) {
       concurrency: options.concurrency,
       limit: options.limit,
       negativeLimit: options.negativeLimit,
+      powerSource: currentPowerSource(),
       targetsFile: options.targetsFile,
     },
     targets: targetResults,
@@ -864,6 +917,7 @@ function buildMarkdownReport(report, targetsConfig) {
   lines.push("");
   lines.push("### Summary");
   lines.push("");
+  lines.push(`- Power source: ${report.options?.powerSource ?? "unknown"}`);
   lines.push(
     `- Checked accounts: ${report.summary.checkedAccounts}`
   );
