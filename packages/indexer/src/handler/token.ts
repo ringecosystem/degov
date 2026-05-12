@@ -472,13 +472,20 @@ export class TokenHandler {
   private async refreshOnchainDelegateMapping(
     delegator: string,
     eventLog: EvmLog<EvmFieldSelection>,
+    canonical?: {
+      delegatee?: string;
+      power?: bigint;
+    },
   ) {
     const normalizedDelegator = this.normalizeAddress(delegator);
     if (this.isZeroAddress(normalizedDelegator)) {
       return;
     }
 
-    const delegatee = await this.delegateOfAt(normalizedDelegator, eventLog);
+    const delegatee =
+      canonical && "delegatee" in canonical
+        ? canonical.delegatee
+        : await this.delegateOfAt(normalizedDelegator, eventLog);
     const previousMapping =
       await this.getDelegateMappingByFrom(normalizedDelegator);
     const previousDelegate = previousMapping?.to;
@@ -509,10 +516,12 @@ export class TokenHandler {
       return;
     }
 
-    const power = await this.options.chainTool.tokenBalance({
-      ...this.onchainReadOptions(eventLog),
-      account: normalizedDelegator as `0x${string}`,
-    });
+    const power =
+      canonical?.power ??
+      await this.options.chainTool.tokenBalance({
+        ...this.onchainReadOptions(eventLog),
+        account: normalizedDelegator as `0x${string}`,
+      });
 
     if (previousMapping && previousDelegate?.toLowerCase() !== delegatee) {
       await this.upsertDelegateSnapshot({
@@ -661,8 +670,9 @@ export class TokenHandler {
   private async refreshOnchainTargets(
     targets: OnchainRefreshTarget[],
     eventLog: EvmLog<EvmFieldSelection>,
-  ) {
+  ): Promise<Set<string>> {
     const seen = new Set<string>();
+    const refreshedBalanceAccounts = new Set<string>();
     for (const target of targets) {
       const account = this.normalizeAddress(target.account);
       if (this.isZeroAddress(account)) {
@@ -673,6 +683,7 @@ export class TokenHandler {
         if (!seen.has(key) && this.rememberOnchainRefresh(eventLog, account, "balance")) {
           seen.add(key);
           await this.refreshOnchainBalance({ ...target, account }, eventLog);
+          refreshedBalanceAccounts.add(account);
         }
       }
       if (target.refreshPower) {
@@ -683,6 +694,7 @@ export class TokenHandler {
         }
       }
     }
+    return refreshedBalanceAccounts;
   }
 
   private async getDelegateRollingsByTransactionHash(
@@ -1876,6 +1888,7 @@ export class TokenHandler {
 
     if (this.powerSource === "onchain") {
       const targets: OnchainRefreshTarget[] = [];
+      const delegateByDelegator = new Map<string, string | undefined>();
       if (!this.isZeroAddress(entity.from)) {
         targets.push({
           account: entity.from,
@@ -1884,6 +1897,7 @@ export class TokenHandler {
           cause: "transfer",
         });
         const fromDelegate = await this.delegateOfAt(entity.from, eventLog);
+        delegateByDelegator.set(this.normalizeAddress(entity.from), fromDelegate);
         if (fromDelegate) {
           targets.push({
             account: fromDelegate,
@@ -1901,6 +1915,7 @@ export class TokenHandler {
           cause: "transfer",
         });
         const toDelegate = await this.delegateOfAt(entity.to, eventLog);
+        delegateByDelegator.set(this.normalizeAddress(entity.to), toDelegate);
         if (toDelegate) {
           targets.push({
             account: toDelegate,
@@ -1910,7 +1925,23 @@ export class TokenHandler {
           });
         }
       }
-      await this.refreshOnchainTargets(targets, eventLog);
+      const refreshedBalanceAccounts = await this.refreshOnchainTargets(
+        targets,
+        eventLog,
+      );
+      for (const account of [entity.from, entity.to]) {
+        const normalizedAccount = this.normalizeAddress(account);
+        if (
+          !this.isZeroAddress(normalizedAccount) &&
+          refreshedBalanceAccounts.has(normalizedAccount)
+        ) {
+          const contributor = await this.getContributorById(normalizedAccount);
+          await this.refreshOnchainDelegateMapping(normalizedAccount, eventLog, {
+            delegatee: delegateByDelegator.get(normalizedAccount),
+            power: contributor?.balance ?? 0n,
+          });
+        }
+      }
       return;
     }
 

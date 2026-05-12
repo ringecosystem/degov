@@ -121,7 +121,9 @@ function deriveReconcilePowerTimepoint(
   blockTimestamp: bigint
 ): bigint {
   if (options.timepoint !== undefined) {
-    return options.timepoint;
+    return clockMode === ClockMode.Timestamp
+      ? blockTimestamp / 1000n
+      : options.timepoint;
   }
 
   if (clockMode === ClockMode.Timestamp) {
@@ -1051,7 +1053,6 @@ async function main() {
         tokenAddress: governorToken.address,
         rpcs: config.rpcs,
         clockMode: currentClock.clockMode,
-        timepoint: currentClock.timepoint,
         blockNumber: latestBlock.number,
         blockTimestamp: latestBlock.timestampMs,
       }
