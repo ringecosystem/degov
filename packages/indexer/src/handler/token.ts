@@ -352,9 +352,11 @@ export class TokenHandler {
       if (!isHistoricalVoteUnavailable(error)) {
         throw error;
       }
+      const result =
+        await this.options.chainTool.currentVotesWithSource(readOptions);
       return {
-        power: await this.options.chainTool.currentVotes(readOptions),
-        source: "getVotes",
+        power: result.votes,
+        source: result.method,
         clockMode,
         timepoint,
       };

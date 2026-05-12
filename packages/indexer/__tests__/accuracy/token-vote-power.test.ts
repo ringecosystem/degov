@@ -372,7 +372,7 @@ describe("token vote power checkpoints", () => {
       .spyOn(chainTool, "historicalVotes")
       .mockRejectedValue(new Error("execution reverted: selector not found"));
     jest
-      .spyOn(chainTool, "currentVotes")
+      .spyOn(chainTool, "currentVotesWithSource")
       .mockRejectedValue(new Error("latest read failed"));
 
     const store = new MemoryStore();
@@ -401,8 +401,8 @@ describe("token vote power checkpoints", () => {
     expect(
       store.findEntity(Contributor, "0x3333333333333333333333333333333333333333")
     ).toBeUndefined();
-    expect(chainTool.currentVotes).toHaveBeenCalledTimes(1);
-    expect(chainTool.currentVotes).toHaveBeenCalledWith(
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledTimes(1);
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
       expect.objectContaining({
         blockNumber: 10n,
       })
@@ -417,7 +417,10 @@ describe("token vote power checkpoints", () => {
     jest
       .spyOn(chainTool, "historicalVotes")
       .mockRejectedValue(new Error("COMP::getPriorVotes: not yet determined"));
-    jest.spyOn(chainTool, "currentVotes").mockResolvedValue(25n);
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getCurrentVotes",
+      votes: 25n,
+    });
 
     const store = new MemoryStore();
     const handler = buildTokenHandler(store, "ERC20", chainTool);
@@ -447,7 +450,7 @@ describe("token vote power checkpoints", () => {
         blockNumber: 10n,
       })
     );
-    expect(chainTool.currentVotes).toHaveBeenCalledWith(
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
       expect.objectContaining({
         account: delegate,
         blockNumber: 10n,
@@ -459,7 +462,7 @@ describe("token vote power checkpoints", () => {
     expect(
       (await store.find(VotePowerCheckpoint, { where: { account: delegate } }))[0]
     ).toMatchObject({
-      source: "getVotes",
+      source: "getCurrentVotes",
       timepoint: 10n,
       blockNumber: 10n,
     });
@@ -861,8 +864,8 @@ describe("token vote power checkpoints", () => {
       votes: 11n,
     });
     jest
-      .spyOn(chainTool, "currentVotes")
-      .mockRejectedValue(new Error("currentVotes should not be used"));
+      .spyOn(chainTool, "currentVotesWithSource")
+      .mockRejectedValue(new Error("currentVotesWithSource should not be used"));
 
     await reconcileOnchainPowerState(dataSource as any, chainTool, {
       chainId: 1,
@@ -910,7 +913,10 @@ describe("token vote power checkpoints", () => {
     jest
       .spyOn(chainTool, "historicalVotes")
       .mockRejectedValue(new Error("COMP::getPriorVotes: not yet determined"));
-    jest.spyOn(chainTool, "currentVotes").mockResolvedValue(11n);
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getCurrentVotes",
+      votes: 11n,
+    });
 
     await reconcileOnchainPowerState(dataSource as any, chainTool, {
       chainId: 1,
@@ -928,7 +934,7 @@ describe("token vote power checkpoints", () => {
         blockNumber: 123n,
       })
     );
-    expect(chainTool.currentVotes).toHaveBeenCalledWith(
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
       expect.objectContaining({
         account,
         blockNumber: 123n,

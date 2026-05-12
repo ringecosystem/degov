@@ -56,6 +56,11 @@ export interface HistoricalVotesResult {
   votes: bigint;
 }
 
+export interface CurrentVotesResult {
+  method: "getVotes" | "getCurrentVotes";
+  votes: bigint;
+}
+
 // Added interface for the quorum cache entry
 export interface QuorumCacheEntry {
   result: QuorumResult;
@@ -143,6 +148,16 @@ const ABI_FUNCTION_GET_VOTES: Abi = [
     inputs: [{ internalType: "address", name: "account", type: "address" }],
     name: "getVotes",
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_GET_CURRENT_VOTES: Abi = [
+  {
+    inputs: [{ internalType: "address", name: "account", type: "address" }],
+    name: "getCurrentVotes",
+    outputs: [{ internalType: "uint96", name: "", type: "uint96" }],
     stateMutability: "view",
     type: "function",
   },
@@ -757,15 +772,50 @@ export class ChainTool {
       blockNumber?: bigint;
     }
   ): Promise<bigint> {
-    return BigInt(
+    return (await this.currentVotesWithSource(options)).votes;
+  }
+
+  async currentVotesWithSource(
+    options: BaseContractOptions & {
+      account: `0x${string}`;
+      blockNumber?: bigint;
+    }
+  ): Promise<CurrentVotesResult> {
+    try {
+      const votes = BigInt(
+        await this.readContract<bigint>({
+          ...options,
+          abi: ABI_FUNCTION_GET_VOTES,
+          functionName: "getVotes",
+          args: [options.account],
+          blockNumber: options.blockNumber,
+        })
+      );
+
+      return {
+        method: "getVotes",
+        votes,
+      };
+    } catch (error) {
+      if (!this.isMissingFunctionError(error)) {
+        throw error;
+      }
+    }
+
+    const votes = BigInt(
       await this.readContract<bigint>({
         ...options,
-        abi: ABI_FUNCTION_GET_VOTES,
-        functionName: "getVotes",
+        abi: ABI_FUNCTION_GET_CURRENT_VOTES,
+        functionName: "getCurrentVotes",
         args: [options.account],
         blockNumber: options.blockNumber,
       })
     );
+
+    return {
+      method: "getCurrentVotes",
+      votes,
+    };
   }
 
   async tokenBalance(

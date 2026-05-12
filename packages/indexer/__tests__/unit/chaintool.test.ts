@@ -712,6 +712,36 @@ describe("ChainTool", () => {
     );
   });
 
+  it("uses getCurrentVotes when getVotes is unavailable", async () => {
+    const chainTool = new ChainTool();
+    const readContract = jest.spyOn(chainTool, "readContract");
+
+    readContract
+      .mockRejectedValueOnce(new Error("execution reverted: selector not found"))
+      .mockResolvedValueOnce(88n as never);
+
+    const common = {
+      chainId: 1,
+      contractAddress,
+      account: "0x3333333333333333333333333333333333333333" as const,
+      blockNumber: 456n,
+    };
+
+    await expect(chainTool.currentVotesWithSource(common)).resolves.toEqual({
+      method: "getCurrentVotes",
+      votes: 88n,
+    });
+
+    expect(readContract).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        functionName: "getCurrentVotes",
+        args: [common.account],
+        blockNumber: 456n,
+      })
+    );
+  });
+
   it("forwards blockNumber to readContract calls", async () => {
     const fakeClient = {
       readContract: jest.fn(async () => 123n),

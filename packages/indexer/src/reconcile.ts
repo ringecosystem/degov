@@ -256,9 +256,10 @@ async function readReconcilePower(
     }
   }
 
+  const result = await chainTool.currentVotesWithSource(readOptions);
   return {
-    value: await chainTool.currentVotes(readOptions),
-    source: "getVotes",
+    value: result.votes,
+    source: result.method,
     clockMode,
     timepoint,
   };
