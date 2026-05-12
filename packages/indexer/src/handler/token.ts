@@ -128,6 +128,7 @@ export class TokenHandler {
   private readonly dirtyDelegateMappings = new Map<string, DelegateMapping>();
   private readonly dirtyContributors = new Map<string, Contributor>();
   private readonly dirtyDelegates = new Map<string, Delegate>();
+  private readonly onchainRefreshKeysByTx = new Map<string, Set<string>>();
 
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
@@ -247,6 +248,26 @@ export class TokenHandler {
     cause: string,
   ): string {
     return `${eventLog.id}-${kind}-${account.toLowerCase()}-${cause}`;
+  }
+
+  private onchainRefreshScope(eventLog: EvmLog<EvmFieldSelection>): string {
+    return `${eventLog.block.height}:${eventLog.transactionHash}`;
+  }
+
+  private rememberOnchainRefresh(
+    eventLog: EvmLog<EvmFieldSelection>,
+    account: string,
+    kind: "balance" | "power",
+  ): boolean {
+    const scope = this.onchainRefreshScope(eventLog);
+    const keys = this.onchainRefreshKeysByTx.get(scope) ?? new Set<string>();
+    const key = `${account.toLowerCase()}:${kind}`;
+    if (keys.has(key)) {
+      return false;
+    }
+    keys.add(key);
+    this.onchainRefreshKeysByTx.set(scope, keys);
+    return true;
   }
 
   private async ensureContributor(
@@ -573,15 +594,15 @@ export class TokenHandler {
         continue;
       }
       if (target.refreshBalance) {
-        const key = `${account}:balance:${target.cause}`;
-        if (!seen.has(key)) {
+        const key = `${account}:balance`;
+        if (!seen.has(key) && this.rememberOnchainRefresh(eventLog, account, "balance")) {
           seen.add(key);
           await this.refreshOnchainBalance({ ...target, account }, eventLog);
         }
       }
       if (target.refreshPower) {
-        const key = `${account}:power:${target.cause}`;
-        if (!seen.has(key)) {
+        const key = `${account}:power`;
+        if (!seen.has(key) && this.rememberOnchainRefresh(eventLog, account, "power")) {
           seen.add(key);
           await this.refreshOnchainPower({ ...target, account }, eventLog);
         }
@@ -1102,6 +1123,8 @@ export class TokenHandler {
       await this.ctx.store.save(this.globalDataMetric);
       this.globalDataMetricDirty = false;
     }
+
+    this.onchainRefreshKeysByTx.clear();
   }
 
   private async upsertDelegateSnapshot(

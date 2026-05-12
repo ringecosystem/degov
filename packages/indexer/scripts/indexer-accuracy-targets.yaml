@@ -40,6 +40,8 @@
 - code: lisk-dao
   extend: https://api.degov.ai/dao/config/lisk-dao
   tokenDecimals: 18
+  auditAccounts:
+    - "0xb6f7ab64ab2d769937bba29516e9de1daf813508"
 - code: ring-dao-guild
   extend: https://api.degov.ai/dao/config/ring-dao-guild
   tokenDecimals: 18
