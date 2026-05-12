@@ -37,7 +37,11 @@ function isHistoricalVoteUnavailable(error: unknown): boolean {
     message.includes("returned no data") ||
     message.includes("function selector was not recognized") ||
     message.includes("function does not exist") ||
-    message.includes("selector not found")
+    message.includes("selector not found") ||
+    message.includes("not yet determined") ||
+    message.includes("not yet mined") ||
+    message.includes("future lookup") ||
+    message.includes("erc5805futurelookup")
   );
 }
 

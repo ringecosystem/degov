@@ -409,6 +409,62 @@ describe("token vote power checkpoints", () => {
     );
   });
 
+  it("falls back to block-pinned current votes when historical votes reject the current block", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const delegate = "0x3333333333333333333333333333333333333333";
+    const chainTool = new ChainTool();
+    jest
+      .spyOn(chainTool, "historicalVotes")
+      .mockRejectedValue(new Error("COMP::getPriorVotes: not yet determined"));
+    jest.spyOn(chainTool, "currentVotes").mockResolvedValue(25n);
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.DelegateVotesChanged, "decode").mockReturnValue({
+      delegate,
+      previousVotes: 10n,
+      newVotes: 20n,
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "votes-current-block-fallback",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xvotes",
+    } as any);
+
+    expect(chainTool.historicalVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: delegate,
+        timepoint: 10n,
+        blockNumber: 10n,
+      })
+    );
+    expect(chainTool.currentVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: delegate,
+        blockNumber: 10n,
+      })
+    );
+    expect(store.findEntity(Contributor, delegate)).toMatchObject({
+      power: 25n,
+    });
+    expect(
+      (await store.find(VotePowerCheckpoint, { where: { account: delegate } }))[0]
+    ).toMatchObject({
+      source: "getVotes",
+      timepoint: 10n,
+      blockNumber: 10n,
+    });
+  });
+
   it("refreshes delegate change balance, delegate powers, and canonical mapping in onchain mode", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
 
@@ -675,6 +731,109 @@ describe("token vote power checkpoints", () => {
           entry.params?.includes("reconcile")
       )
     ).toBe(true);
+  });
+
+  it("reconciles timestamp-mode power using the latest block timestamp as the timepoint", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const dataSource: any = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (sql.includes("FROM contributor") && sql.includes("lower(id)")) {
+          return [{ power: "3", balance: "4", delegatesCountAll: 0, delegatesCountEffective: 0 }];
+        }
+        return [];
+      }),
+      transaction: jest.fn(async (callback: any): Promise<unknown> =>
+        callback(dataSource)
+      ),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_123_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest.spyOn(chainTool, "historicalVotes").mockResolvedValue({
+      method: "getPastVotes",
+      votes: 11n,
+    });
+    jest
+      .spyOn(chainTool, "currentVotes")
+      .mockRejectedValue(new Error("currentVotes should not be used"));
+
+    await reconcileOnchainPowerState(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example.invalid"],
+      clockMode: ClockMode.Timestamp,
+    });
+
+    expect(chainTool.historicalVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        timepoint: 1_700_000_123n,
+        blockNumber: 123n,
+      })
+    );
+  });
+
+  it("reconciles with block-pinned current votes when historical votes reject the current block", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const dataSource: any = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (sql.includes("FROM contributor") && sql.includes("lower(id)")) {
+          return [{ power: "3", balance: "4", delegatesCountAll: 0, delegatesCountEffective: 0 }];
+        }
+        return [];
+      }),
+      transaction: jest.fn(async (callback: any): Promise<unknown> =>
+        callback(dataSource)
+      ),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_123_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest
+      .spyOn(chainTool, "historicalVotes")
+      .mockRejectedValue(new Error("COMP::getPriorVotes: not yet determined"));
+    jest.spyOn(chainTool, "currentVotes").mockResolvedValue(11n);
+
+    await reconcileOnchainPowerState(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example.invalid"],
+      clockMode: ClockMode.BlockNumber,
+    });
+
+    expect(chainTool.historicalVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        timepoint: 123n,
+        blockNumber: 123n,
+      })
+    );
+    expect(chainTool.currentVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        blockNumber: 123n,
+      })
+    );
   });
 
   it("clears undelegated mappings instead of attributing power to the zero address", async () => {

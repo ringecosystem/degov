@@ -96,7 +96,7 @@ interface OnchainPowerReconcileResult {
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
-function isMissingVoteFunction(error: unknown): boolean {
+function isHistoricalVoteUnavailable(error: unknown): boolean {
   const message =
     error instanceof Error
       ? error.message.toLowerCase()
@@ -106,8 +106,29 @@ function isMissingVoteFunction(error: unknown): boolean {
     message.includes("returned no data") ||
     message.includes("function selector was not recognized") ||
     message.includes("function does not exist") ||
-    message.includes("selector not found")
+    message.includes("selector not found") ||
+    message.includes("not yet determined") ||
+    message.includes("not yet mined") ||
+    message.includes("future lookup") ||
+    message.includes("erc5805futurelookup")
   );
+}
+
+function deriveReconcilePowerTimepoint(
+  options: OnchainPowerReconcileOptions,
+  clockMode: ClockMode,
+  blockNumber: bigint,
+  blockTimestamp: bigint
+): bigint {
+  if (options.timepoint !== undefined) {
+    return options.timepoint;
+  }
+
+  if (clockMode === ClockMode.Timestamp) {
+    return blockTimestamp / 1000n;
+  }
+
+  return options.blockNumber ?? blockNumber;
 }
 
 async function loadKnownTokenAccounts(
@@ -196,10 +217,16 @@ async function readReconcilePower(
   chainTool: ChainTool,
   options: OnchainPowerReconcileOptions,
   account: string,
-  blockNumber: bigint
+  blockNumber: bigint,
+  blockTimestamp: bigint
 ): Promise<{ value: bigint; source: string; clockMode: ClockMode; timepoint: bigint }> {
   const clockMode = options.clockMode ?? ClockMode.BlockNumber;
-  const timepoint = options.timepoint ?? options.blockNumber ?? 0n;
+  const timepoint = deriveReconcilePowerTimepoint(
+    options,
+    clockMode,
+    blockNumber,
+    blockTimestamp
+  );
   const readOptions = {
     chainId: options.chainId,
     contractAddress: options.tokenAddress as `0x${string}`,
@@ -221,7 +248,7 @@ async function readReconcilePower(
         timepoint,
       };
     } catch (error) {
-      if (!isMissingVoteFunction(error)) {
+      if (!isHistoricalVoteUnavailable(error)) {
         throw error;
       }
     }
@@ -485,7 +512,7 @@ export async function reconcileOnchainPowerState(
         account: account as `0x${string}`,
         blockNumber,
       }),
-      readReconcilePower(chainTool, options, account, blockNumber),
+      readReconcilePower(chainTool, options, account, blockNumber, blockTimestamp),
     ]);
 
     await withTransaction(dataSource, async (manager) => {
