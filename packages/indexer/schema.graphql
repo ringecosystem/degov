@@ -104,6 +104,34 @@ type TokenBalanceCheckpoint
   transactionHash: String!
 }
 
+type OnchainRefreshTask
+  @entity
+  @index(fields: ["chainId", "governorAddress", "tokenAddress", "account"], unique: true)
+  @index(fields: ["status", "nextRunAt"]) {
+  id: ID!
+  chainId: Int!
+  daoCode: String
+  governorAddress: String!
+  tokenAddress: String!
+  account: String!
+  refreshBalance: Boolean!
+  refreshPower: Boolean!
+  reason: String!
+  firstSeenBlockNumber: BigInt!
+  lastSeenBlockNumber: BigInt!
+  lastSeenBlockTimestamp: BigInt!
+  lastSeenTransactionHash: String!
+  status: String!
+  attempts: Int!
+  nextRunAt: BigInt!
+  lockedAt: BigInt
+  lockedBy: String
+  processedAt: BigInt
+  error: String
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
 ### === igovernor
 
 type ProposalCanceled @entity @index(fields: ["chainId", "governorAddress", "proposalId"]) {

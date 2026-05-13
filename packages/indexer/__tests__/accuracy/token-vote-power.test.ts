@@ -15,6 +15,7 @@ import {
   DelegateMapping,
   DelegateRolling,
   DelegateVotesChanged,
+  OnchainRefreshTask,
   TokenBalanceCheckpoint,
   TokenTransfer,
   VotePowerCheckpoint,
@@ -22,9 +23,12 @@ import {
 
 describe("token vote power checkpoints", () => {
   const originalPowerSource = process.env.DEGOV_INDEXER_POWER_SOURCE;
+  const originalEventReads =
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED;
 
   beforeEach(() => {
     delete process.env.DEGOV_INDEXER_POWER_SOURCE;
+    delete process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED;
   });
 
   afterEach(() => {
@@ -33,6 +37,12 @@ describe("token vote power checkpoints", () => {
       delete process.env.DEGOV_INDEXER_POWER_SOURCE;
     } else {
       process.env.DEGOV_INDEXER_POWER_SOURCE = originalPowerSource;
+    }
+    if (originalEventReads === undefined) {
+      delete process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED;
+    } else {
+      process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED =
+        originalEventReads;
     }
   });
 
@@ -204,6 +214,7 @@ describe("token vote power checkpoints", () => {
     );
 
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
     expect((buildTokenHandler(new MemoryStore()) as any).powerSource).toBe(
       "onchain"
     );
@@ -263,8 +274,99 @@ describe("token vote power checkpoints", () => {
     expect(await store.find(TokenBalanceCheckpoint, { where: {} })).toEqual([]);
   });
 
+  it("submits persistent refresh tasks instead of reading current state by default in onchain mode", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const chainTool = new ChainTool();
+    const tokenBalance = jest.spyOn(chainTool, "tokenBalance" as any);
+    const historicalVotes = jest.spyOn(chainTool, "historicalVotes" as any);
+    const currentVotesWithSource = jest.spyOn(
+      chainTool,
+      "currentVotesWithSource" as any,
+    );
+    const delegateOf = jest.spyOn(chainTool, "delegateOf" as any);
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0x1111111111111111111111111111111111111111",
+      to: "0x2222222222222222222222222222222222222222",
+      value: 4n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "transfer-task-mode",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xtransfer-task",
+    } as any);
+
+    expect(tokenBalance).not.toHaveBeenCalled();
+    expect(historicalVotes).not.toHaveBeenCalled();
+    expect(currentVotesWithSource).not.toHaveBeenCalled();
+    expect(delegateOf).not.toHaveBeenCalled();
+    expect(
+      store.findEntity(
+        OnchainRefreshTask,
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
+      ),
+    ).toMatchObject({
+      refreshBalance: true,
+      refreshPower: false,
+      status: "pending",
+      reason: "transfer",
+      lastSeenBlockNumber: 10n,
+      lastSeenTransactionHash: "0xtransfer-task",
+    });
+    expect(
+      store.findEntity(
+        OnchainRefreshTask,
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x2222222222222222222222222222222222222222",
+      ),
+    ).toMatchObject({
+      refreshBalance: true,
+      refreshPower: false,
+      status: "pending",
+    });
+  });
+
+  it("merges balance and power flags into one persistent refresh task for the same account", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store);
+    jest.spyOn(itokenerc20.events.DelegateChanged, "decode").mockReturnValue({
+      delegator: "0x1111111111111111111111111111111111111111",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0x1111111111111111111111111111111111111111",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "delegate-change-task-mode",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 11, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xdelegate-change-task",
+    } as any);
+
+    expect(
+      store.findEntity(
+        OnchainRefreshTask,
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
+      ),
+    ).toMatchObject({
+      refreshBalance: true,
+      refreshPower: true,
+      status: "pending",
+    });
+  });
+
   it("refreshes canonical balances and powers in onchain mode", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const chainTool = new ChainTool();
     jest.spyOn(chainTool, "delegateOf")
@@ -366,6 +468,7 @@ describe("token vote power checkpoints", () => {
 
   it("fails onchain processing when canonical power reads fail", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const chainTool = new ChainTool();
     jest
@@ -411,6 +514,7 @@ describe("token vote power checkpoints", () => {
 
   it("falls back to block-pinned current votes when historical votes reject the current block", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const delegate = "0x3333333333333333333333333333333333333333";
     const chainTool = new ChainTool();
@@ -470,6 +574,7 @@ describe("token vote power checkpoints", () => {
 
   it("falls back to block-pinned current votes when legacy historical votes revert", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const delegate = "0x3333333333333333333333333333333333333333";
     const chainTool = new ChainTool();
@@ -524,6 +629,7 @@ describe("token vote power checkpoints", () => {
 
   it("refreshes delegate change balance, delegate powers, and canonical mapping in onchain mode", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const delegator = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const oldDelegate = "0x1111111111111111111111111111111111111111";
@@ -606,6 +712,7 @@ describe("token vote power checkpoints", () => {
 
   it("removes canonical delegate mappings when delegates returns the zero address in onchain mode", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const delegator = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const oldDelegate = "0x1111111111111111111111111111111111111111";
@@ -651,6 +758,7 @@ describe("token vote power checkpoints", () => {
 
   it("deduplicates onchain refresh writes across token events in the same transaction", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const delegator = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const delegate = "0x1111111111111111111111111111111111111111";
@@ -713,6 +821,7 @@ describe("token vote power checkpoints", () => {
 
   it("updates delegated relation power and effective counts from onchain transfer balances", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const delegator = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const delegate = "0x1111111111111111111111111111111111111111";
@@ -812,6 +921,7 @@ describe("token vote power checkpoints", () => {
 
   it("reconciles stale contributor power and balance in onchain power mode", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const queries: Array<{ sql: string; params?: unknown[] }> = [];
@@ -891,6 +1001,7 @@ describe("token vote power checkpoints", () => {
 
   it("reconciles timestamp-mode power using the latest block timestamp as the timepoint", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const dataSource: any = {
@@ -942,6 +1053,7 @@ describe("token vote power checkpoints", () => {
 
   it("reconciles with block-pinned current votes when historical votes reject the current block", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const dataSource: any = {
@@ -998,6 +1110,7 @@ describe("token vote power checkpoints", () => {
 
   it("reconciles with block-pinned current votes when legacy historical votes revert", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
 
     const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const dataSource: any = {

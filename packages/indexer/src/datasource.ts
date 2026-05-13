@@ -79,6 +79,7 @@ class DegovConfigDataSource {
       capacity: indexer.capacity ?? 30,
       maxBatchCallSize: indexer.maxBatchCallSize ?? 200,
       gateway: indexer.gateway,
+      multicallAddress: chain.contracts?.multicall3?.address,
       startBlock: startBlockOverride ?? indexer.startBlock,
       endBlock: endBlockOverride ?? indexer.endBlock,
       works: [

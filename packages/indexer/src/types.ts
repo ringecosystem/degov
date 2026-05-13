@@ -25,6 +25,7 @@ export interface IndexerProcessorConfig {
   capacity?: number;
   maxBatchCallSize?: number;
   gateway?: string;
+  multicallAddress?: string;
   startBlock: number;
   endBlock?: number;
 

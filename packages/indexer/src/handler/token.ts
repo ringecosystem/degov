@@ -22,6 +22,10 @@ import {
 } from "../types";
 import { DegovIndexerHelpers } from "../internal/helpers";
 import { ChainTool, ClockMode } from "../internal/chaintool";
+import {
+  parseOnchainEventReadsEnabled,
+  upsertOnchainRefreshTask,
+} from "../onchain-refresh/task";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 type PowerSource = "event" | "onchain";
@@ -113,6 +117,7 @@ export function parseIndexerPowerSource(
 
 export class TokenHandler {
   private readonly powerSource: PowerSource;
+  private readonly onchainEventReadsEnabled: boolean;
   private voteClockModePromise?: Promise<ClockMode>;
   private globalDataMetric?: DataMetric;
   private globalDataMetricDirty = false;
@@ -142,6 +147,7 @@ export class TokenHandler {
     private readonly options: TokenhandlerOptions,
   ) {
     this.powerSource = parseIndexerPowerSource();
+    this.onchainEventReadsEnabled = parseOnchainEventReadsEnabled();
   }
 
   private governorAddress(): string {
@@ -676,6 +682,11 @@ export class TokenHandler {
     targets: OnchainRefreshTarget[],
     eventLog: EvmLog<EvmFieldSelection>,
   ): Promise<Set<string>> {
+    if (!this.onchainEventReadsEnabled) {
+      await this.submitOnchainRefreshTasks(targets, eventLog);
+      return new Set<string>();
+    }
+
     const seen = new Set<string>();
     const refreshedBalanceAccounts = new Set<string>();
     for (const target of targets) {
@@ -700,6 +711,53 @@ export class TokenHandler {
       }
     }
     return refreshedBalanceAccounts;
+  }
+
+  private async submitOnchainRefreshTasks(
+    targets: OnchainRefreshTarget[],
+    eventLog: EvmLog<EvmFieldSelection>,
+  ) {
+    const mergedTargets = new Map<string, OnchainRefreshTarget>();
+    for (const target of targets) {
+      const account = this.normalizeAddress(target.account);
+      if (this.isZeroAddress(account)) {
+        continue;
+      }
+      const existing = mergedTargets.get(account);
+      mergedTargets.set(account, {
+        account,
+        refreshBalance:
+          (existing?.refreshBalance ?? false) || target.refreshBalance,
+        refreshPower: (existing?.refreshPower ?? false) || target.refreshPower,
+        cause: existing
+          ? classifyVotePowerCheckpointCause({
+              hasDelegateChange:
+                existing.cause.includes("delegate-change") ||
+                target.cause.includes("delegate-change"),
+              hasTransfer:
+                existing.cause.includes("transfer") ||
+                target.cause.includes("transfer"),
+            }) as OnchainRefreshCause
+          : target.cause,
+      });
+    }
+
+    for (const [account, target] of mergedTargets) {
+      const scope = this.scopeFields();
+      await upsertOnchainRefreshTask(this.ctx.store as any, {
+        chainId: this.options.chainId,
+        daoCode: scope.daoCode,
+        governorAddress: this.governorAddress(),
+        tokenAddress: this.tokenAddress(),
+        account,
+        refreshBalance: target.refreshBalance,
+        refreshPower: target.refreshPower,
+        reason: target.cause,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+      });
+    }
   }
 
   private async getDelegateRollingsByTransactionHash(
@@ -1372,6 +1430,9 @@ export class TokenHandler {
         ],
         eventLog,
       );
+      if (!this.onchainEventReadsEnabled) {
+        return;
+      }
       await this.refreshOnchainDelegateMapping(delegator, eventLog);
       return;
     }
@@ -1901,15 +1962,17 @@ export class TokenHandler {
           refreshPower: false,
           cause: "transfer",
         });
-        const fromDelegate = await this.delegateOfAt(entity.from, eventLog);
-        delegateByDelegator.set(this.normalizeAddress(entity.from), fromDelegate);
-        if (fromDelegate) {
-          targets.push({
-            account: fromDelegate,
-            refreshBalance: false,
-            refreshPower: true,
-            cause: "transfer",
-          });
+        if (this.onchainEventReadsEnabled) {
+          const fromDelegate = await this.delegateOfAt(entity.from, eventLog);
+          delegateByDelegator.set(this.normalizeAddress(entity.from), fromDelegate);
+          if (fromDelegate) {
+            targets.push({
+              account: fromDelegate,
+              refreshBalance: false,
+              refreshPower: true,
+              cause: "transfer",
+            });
+          }
         }
       }
       if (!this.isZeroAddress(entity.to)) {
@@ -1919,21 +1982,26 @@ export class TokenHandler {
           refreshPower: false,
           cause: "transfer",
         });
-        const toDelegate = await this.delegateOfAt(entity.to, eventLog);
-        delegateByDelegator.set(this.normalizeAddress(entity.to), toDelegate);
-        if (toDelegate) {
-          targets.push({
-            account: toDelegate,
-            refreshBalance: false,
-            refreshPower: true,
-            cause: "transfer",
-          });
+        if (this.onchainEventReadsEnabled) {
+          const toDelegate = await this.delegateOfAt(entity.to, eventLog);
+          delegateByDelegator.set(this.normalizeAddress(entity.to), toDelegate);
+          if (toDelegate) {
+            targets.push({
+              account: toDelegate,
+              refreshBalance: false,
+              refreshPower: true,
+              cause: "transfer",
+            });
+          }
         }
       }
       const refreshedBalanceAccounts = await this.refreshOnchainTargets(
         targets,
         eventLog,
       );
+      if (!this.onchainEventReadsEnabled) {
+        return;
+      }
       for (const account of [entity.from, entity.to]) {
         const normalizedAccount = this.normalizeAddress(account);
         if (
