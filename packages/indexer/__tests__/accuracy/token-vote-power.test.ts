@@ -468,6 +468,60 @@ describe("token vote power checkpoints", () => {
     });
   });
 
+  it("falls back to block-pinned current votes when legacy historical votes revert", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const delegate = "0x3333333333333333333333333333333333333333";
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "historicalVotes").mockRejectedValue(
+      new Error(
+        'The contract function "getPriorVotes" reverted with the following reason:\nVM Exception while processing transaction: revert',
+      ),
+    );
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getVotes",
+      votes: 40n,
+    });
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.DelegateVotesChanged, "decode").mockReturnValue({
+      delegate,
+      previousVotes: 10n,
+      newVotes: 20n,
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "votes-legacy-revert-fallback",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xvotes",
+    } as any);
+
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: delegate,
+        blockNumber: 10n,
+      })
+    );
+    expect(store.findEntity(Contributor, delegate)).toMatchObject({
+      power: 40n,
+    });
+    expect(
+      (await store.find(VotePowerCheckpoint, { where: { account: delegate } }))[0]
+    ).toMatchObject({
+      source: "getVotes",
+      timepoint: 10n,
+      blockNumber: 10n,
+    });
+  });
+
   it("refreshes delegate change balance, delegate powers, and canonical mapping in onchain mode", async () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
 
@@ -934,6 +988,57 @@ describe("token vote power checkpoints", () => {
         blockNumber: 123n,
       })
     );
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        blockNumber: 123n,
+      })
+    );
+  });
+
+  it("reconciles with block-pinned current votes when legacy historical votes revert", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const dataSource: any = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (sql.includes("FROM contributor") && sql.includes("lower(id)")) {
+          return [{ power: "3", balance: "4", delegatesCountAll: 0, delegatesCountEffective: 0 }];
+        }
+        return [];
+      }),
+      transaction: jest.fn(async (callback: any): Promise<unknown> =>
+        callback(dataSource)
+      ),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_123_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest.spyOn(chainTool, "historicalVotes").mockRejectedValue(
+      new Error(
+        'The contract function "getPriorVotes" reverted with the following reason:\nVM Exception while processing transaction: revert',
+      ),
+    );
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getVotes",
+      votes: 11n,
+    });
+
+    await reconcileOnchainPowerState(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example.invalid"],
+      clockMode: ClockMode.BlockNumber,
+    });
+
     expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
       expect.objectContaining({
         account,

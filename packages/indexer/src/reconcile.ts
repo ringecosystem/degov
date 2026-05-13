@@ -110,7 +110,10 @@ function isHistoricalVoteUnavailable(error: unknown): boolean {
     message.includes("not yet determined") ||
     message.includes("not yet mined") ||
     message.includes("future lookup") ||
-    message.includes("erc5805futurelookup")
+    message.includes("erc5805futurelookup") ||
+    ((message.includes("getpastvotes") ||
+      message.includes("getpriorvotes")) &&
+      (message.includes("reverted") || message.includes("execution reverted")))
   );
 }
 
