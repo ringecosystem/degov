@@ -1,12 +1,14 @@
 import {
   loadKnownTokenAccounts,
-  OnchainPowerReconcileOptions,
   QueryableDataSource,
-} from "../reconcile";
+} from "./known-accounts";
 import { upsertOnchainRefreshTask } from "./task";
 
-export interface SeedReconcileOnchainRefreshTasksOptions
-  extends OnchainPowerReconcileOptions {
+export interface SeedReconcileOnchainRefreshTasksOptions {
+  chainId: number;
+  daoCode?: string | null;
+  governorAddress: string;
+  tokenAddress: string;
   blockNumber: bigint;
   blockTimestamp: bigint;
   now?: bigint;

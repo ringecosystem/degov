@@ -1,10 +1,13 @@
+import { readFileSync } from "fs";
+import path from "path";
+
 import { ClockMode } from "../../src/internal/chaintool";
 import {
   compareScalarField,
   deriveProjectedProposalState,
   governorStateName,
 } from "../../src/internal/reconciliation";
-import { loadKnownTokenAccounts } from "../../src/reconcile";
+import { loadKnownTokenAccounts } from "../../src/onchain-refresh/known-accounts";
 
 describe("reconciliation helpers", () => {
   it("maps governor state enum values to readable names", () => {
@@ -113,7 +116,7 @@ describe("reconciliation helpers", () => {
     });
   });
 
-  it("loads known accounts from delegate change and vote change tables", async () => {
+  it("loads known accounts from all reconcile seed source tables", async () => {
     const queries: { sql: string; params?: unknown[] }[] = [];
     const dataSource = {
       query: jest.fn(async (sql: string, params?: unknown[]) => {
@@ -132,11 +135,28 @@ describe("reconciliation helpers", () => {
       })
     ).resolves.toEqual(["0x1111111111111111111111111111111111111111"]);
 
+    expect(queries[0].sql).toContain("FROM contributor");
+    expect(queries[0].sql).toContain("FROM delegate_mapping");
+    expect(queries[0].sql).toContain("FROM delegate");
+    expect(queries[0].sql).toContain("FROM token_transfer");
+    expect(queries[0].sql).toContain("FROM token_balance_checkpoint");
+    expect(queries[0].sql).toContain("FROM vote_power_checkpoint");
+    expect(queries[0].sql).toContain("FROM vote_cast");
+    expect(queries[0].sql).toContain("FROM vote_cast_group");
     expect(queries[0].sql).toContain("FROM delegate_changed");
     expect(queries[0].sql).toContain("SELECT delegator AS account");
     expect(queries[0].sql).toContain("SELECT from_delegate AS account");
     expect(queries[0].sql).toContain("SELECT to_delegate AS account");
     expect(queries[0].sql).toContain("FROM delegate_votes_changed");
     expect(queries[0].sql).toContain("SELECT delegate AS account");
+  });
+
+  it("keeps worker reconcile seeding decoupled from reconcile cli imports", () => {
+    const seedSource = readFileSync(
+      path.join(__dirname, "../../src/onchain-refresh/seed.ts"),
+      "utf8",
+    );
+
+    expect(seedSource).not.toContain("../reconcile");
   });
 });
