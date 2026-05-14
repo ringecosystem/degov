@@ -1,4 +1,8 @@
-import { getDatabaseOptions, wrapSerializationRetry } from "../../src/database";
+import {
+  acquireIndexerWriteTransactionLock,
+  getDatabaseOptions,
+  wrapSerializationRetry,
+} from "../../src/database";
 
 describe("database options", () => {
   const hotBlocksEnabled = process.env.DEGOV_INDEXER_HOT_BLOCKS_ENABLED;
@@ -50,5 +54,38 @@ describe("database options", () => {
     await expect((database as any).connect()).resolves.toEqual({});
     await expect((database as any).submit(async () => "ok")).resolves.toBe("ok");
     expect(calls).toEqual(["connect", "submit", "submit"]);
+  });
+
+  it("takes a transaction-scoped advisory lock for database transactions", async () => {
+    const queries: Array<{ sql: string; parameters?: unknown[] }> = [];
+    const transaction = {
+      query: jest.fn(async (sql: string, parameters?: unknown[]) => {
+        queries.push({ sql, parameters });
+        return [];
+      }),
+    };
+    const database = wrapSerializationRetry(
+      {
+        async connect() {
+          return {};
+        },
+        async submit(callback: (manager: unknown) => Promise<string>) {
+          return callback(transaction);
+        },
+      } as any,
+      async () => undefined,
+    );
+
+    await expect((database as any).submit(async () => "ok")).resolves.toBe("ok");
+    expect(queries).toEqual([
+      {
+        sql: "SELECT pg_advisory_xact_lock(hashtext(current_database()), hashtext($1))",
+        parameters: ["degov_indexer_write_transaction"],
+      },
+    ]);
+  });
+
+  it("allows the advisory lock helper to run against non-query test transactions", async () => {
+    await expect(acquireIndexerWriteTransactionLock({})).resolves.toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 import { DataSource } from "typeorm";
 import { Abi, createPublicClient, http } from "viem";
 import { ChainTool, CurrentVotesResult } from "../internal/chaintool";
+import { acquireIndexerWriteTransactionLock } from "../database";
 import { DegovIndexerHelpers } from "../internal/helpers";
 import { seedReconcileOnchainRefreshTasks } from "./seed";
 
@@ -702,10 +703,14 @@ async function withTransaction<T>(
   callback: (manager: QueryableDataSource) => Promise<T>,
 ): Promise<T> {
   if (dataSource.transaction) {
-    return dataSource.transaction(callback);
+    return dataSource.transaction(async (manager) => {
+      await acquireIndexerWriteTransactionLock(manager);
+      return callback(manager);
+    });
   }
   await dataSource.query("BEGIN");
   try {
+    await acquireIndexerWriteTransactionLock(dataSource);
     const result = await callback(dataSource);
     await dataSource.query("COMMIT");
     return result;

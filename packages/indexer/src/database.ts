@@ -23,10 +23,29 @@ export function createDatabase() {
 
 type RetriableDatabase = {
   connect: () => Promise<unknown>;
-  submit?: <T>(tx: unknown) => Promise<T>;
+  submit?: <T>(tx: (transaction: unknown) => Promise<T>) => Promise<T>;
+};
+
+type QueryableTransaction = {
+  query?: (sql: string, parameters?: unknown[]) => Promise<unknown>;
 };
 
 type SleepFn = (ms: number) => Promise<unknown>;
+
+const indexerWriteLockKey = "degov_indexer_write_transaction";
+
+export async function acquireIndexerWriteTransactionLock(
+  transaction: QueryableTransaction | undefined,
+): Promise<void> {
+  if (typeof transaction?.query !== "function") {
+    return;
+  }
+
+  await transaction.query(
+    "SELECT pg_advisory_xact_lock(hashtext(current_database()), hashtext($1))",
+    [indexerWriteLockKey],
+  );
+}
 
 export function wrapSerializationRetry<T extends object>(
   database: T,
@@ -39,10 +58,16 @@ export function wrapSerializationRetry<T extends object>(
 
   if (target.submit) {
     const submit = target.submit.bind(database);
-    target.submit = <TResult>(tx: unknown) =>
+    target.submit = <TResult>(tx: (transaction: unknown) => Promise<TResult>) =>
       retrySerializationFailure(
         "database transaction",
-        () => submit<TResult>(tx),
+        () =>
+          submit<TResult>(async (transaction: unknown) => {
+            await acquireIndexerWriteTransactionLock(
+              transaction as QueryableTransaction,
+            );
+            return tx(transaction);
+          }),
         sleep,
       );
   }
