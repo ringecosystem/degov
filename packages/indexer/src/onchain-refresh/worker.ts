@@ -26,6 +26,7 @@ export interface ProcessOnchainRefreshBatchOptions {
   reconcileSeedChunkSize?: number;
   now?: bigint;
   maxAttempts?: number;
+  lockTtlMs?: number;
 }
 
 interface ClaimedTask {
@@ -176,6 +177,8 @@ async function claimPendingTasks(
   options: ProcessOnchainRefreshBatchOptions,
   now: bigint,
 ): Promise<ClaimedTask[]> {
+  const lockTtlMs = BigInt(options.lockTtlMs ?? 300_000);
+  const staleLockedBefore = now - lockTtlMs;
   return withTransaction(dataSource, async (manager) => {
     const rows = await manager.query(
       `
@@ -193,10 +196,12 @@ async function claimPendingTasks(
         WHERE chain_id = $1
           AND lower(governor_address) = lower($2)
           AND lower(token_address) = lower($3)
-          AND status IN ('pending', 'failed')
-          AND next_run_at <= $4
+          AND (
+            (status IN ('pending', 'failed') AND next_run_at <= $4)
+            OR (status = 'processing' AND locked_at <= $5)
+          )
         ORDER BY last_seen_block_number ASC, updated_at ASC
-        LIMIT $5
+        LIMIT $6
         FOR UPDATE SKIP LOCKED
       `,
       [
@@ -204,6 +209,7 @@ async function claimPendingTasks(
         options.governorAddress,
         options.tokenAddress,
         now.toString(),
+        staleLockedBefore.toString(),
         options.batchSize,
       ],
     );

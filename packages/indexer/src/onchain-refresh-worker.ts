@@ -51,6 +51,7 @@ async function main() {
     "DEGOV_ONCHAIN_REFRESH_MAX_SYNC_LAG_BLOCKS",
     1_000,
   );
+  const lockTtlMs = readIntegerEnv("DEGOV_ONCHAIN_REFRESH_LOCK_TTL_MS", 300_000);
   const seedReconcile =
     parseIndexerPowerSource() === "onchain" &&
     !parseOnchainEventReadsEnabled();
@@ -68,6 +69,7 @@ async function main() {
       concurrency,
       maxBatchesPerPoll,
       maxSyncLagBlocks,
+      lockTtlMs,
       seedReconcile,
       pollIntervalMs,
       rpcCount: rpcs.length,
@@ -89,6 +91,7 @@ async function main() {
           multicallChunkSize,
           concurrency,
           maxSyncLagBlocks,
+          lockTtlMs,
           seedReconcile,
         });
         if ("skipped" in result) {

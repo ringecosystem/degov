@@ -86,6 +86,19 @@ describe("onchain refresh worker", () => {
     );
     expect(updateContributorIndex).toBeGreaterThan(-1);
     expect(markProcessedIndex).toBeGreaterThan(updateContributorIndex);
+    const claimTasks = queries.find((entry) =>
+      entry.sql.includes("FOR UPDATE SKIP LOCKED"),
+    );
+    expect(claimTasks?.sql).toContain("status = 'processing'");
+    expect(claimTasks?.sql).toContain("locked_at <= $5");
+    expect(claimTasks?.params).toEqual([
+      1,
+      "0x9999999999999999999999999999999999999999",
+      "0x8888888888888888888888888888888888888888",
+      "1700000000000",
+      "1699999700000",
+      10,
+    ]);
   });
 
   it("requeues successfully processed tasks when events arrived while locked", async () => {
