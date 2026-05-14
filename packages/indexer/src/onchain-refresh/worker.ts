@@ -19,6 +19,7 @@ export interface ProcessOnchainRefreshBatchOptions {
   batchSize: number;
   multicallChunkSize?: number;
   concurrency?: number;
+  maxSyncLagBlocks?: number;
   now?: bigint;
   maxAttempts?: number;
 }
@@ -60,11 +61,6 @@ export async function processOnchainRefreshBatch(
   options: ProcessOnchainRefreshBatchOptions,
 ) {
   const now = options.now ?? BigInt(Date.now());
-  const tasks = await claimPendingTasks(dataSource, options, now);
-  if (tasks.length === 0) {
-    return { claimed: 0, processed: 0, failed: 0 };
-  }
-
   let latestBlock;
   try {
     latestBlock = await chainTool.latestBlock({
@@ -72,8 +68,29 @@ export async function processOnchainRefreshBatch(
       rpcs: options.rpcs,
     });
   } catch (error) {
-    await Promise.all(tasks.map((task) => markTaskFailed(dataSource, task, options, now, error)));
-    return { claimed: tasks.length, processed: 0, failed: tasks.length };
+    return { claimed: 0, processed: 0, failed: 0 };
+  }
+
+  if (options.maxSyncLagBlocks !== undefined) {
+    const processorHeight = await loadProcessorHeight(dataSource);
+    if (processorHeight === undefined) {
+      return { claimed: 0, processed: 0, failed: 0, skipped: "processor-unready" };
+    }
+    const syncLagBlocks = latestBlock.number - processorHeight;
+    if (syncLagBlocks > BigInt(options.maxSyncLagBlocks)) {
+      return {
+        claimed: 0,
+        processed: 0,
+        failed: 0,
+        skipped: "sync-lag",
+        syncLagBlocks: syncLagBlocks.toString(),
+      };
+    }
+  }
+
+  const tasks = await claimPendingTasks(dataSource, options, now);
+  if (tasks.length === 0) {
+    return { claimed: 0, processed: 0, failed: 0 };
   }
 
   const previousByAccount = await loadPreviousContributors(dataSource, tasks);
@@ -99,6 +116,29 @@ export async function processOnchainRefreshBatch(
     processed: successes.length,
     failed: failures.length,
   };
+}
+
+async function loadProcessorHeight(
+  dataSource: QueryableDataSource,
+): Promise<bigint | undefined> {
+  try {
+    const rows = await dataSource.query(
+      `
+        SELECT height
+        FROM "squid_processor".status
+        WHERE id = 0
+      `,
+    );
+    if (rows.length === 0 || rows[0].height === undefined || rows[0].height === null) {
+      return undefined;
+    }
+    return toBigInt(rows[0].height);
+  } catch (error) {
+    if (isRelationMissingError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 async function claimPendingTasks(
@@ -629,6 +669,17 @@ function toBigInt(value: string | number | bigint | null | undefined): bigint {
     return 0n;
   }
   return typeof value === "bigint" ? value : BigInt(value);
+}
+
+function isRelationMissingError(error: unknown) {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const candidate = error as {
+    code?: unknown;
+    driverError?: { code?: unknown };
+  };
+  return candidate.code === "42P01" || candidate.driverError?.code === "42P01";
 }
 
 function chunk<T>(items: T[], size: number): T[][] {

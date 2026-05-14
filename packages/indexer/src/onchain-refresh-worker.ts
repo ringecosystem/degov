@@ -45,6 +45,10 @@ async function main() {
     "DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL",
     1,
   );
+  const maxSyncLagBlocks = readIntegerEnv(
+    "DEGOV_ONCHAIN_REFRESH_MAX_SYNC_LAG_BLOCKS",
+    1_000,
+  );
   const rpcs = resolveRpcs(config.chainId, config.rpcs);
 
   console.log(
@@ -58,6 +62,7 @@ async function main() {
       multicallChunkSize,
       concurrency,
       maxBatchesPerPoll,
+      maxSyncLagBlocks,
       pollIntervalMs,
       rpcCount: rpcs.length,
     }),
@@ -77,8 +82,11 @@ async function main() {
           batchSize,
           multicallChunkSize,
           concurrency,
+          maxSyncLagBlocks,
         });
-        if (result.claimed > 0) {
+        if ("skipped" in result) {
+          console.log(JSON.stringify({ msg: "onchain refresh skipped", ...result }));
+        } else if (result.claimed > 0) {
           console.log(JSON.stringify({ msg: "onchain refresh batch", ...result }));
         }
         if (result.claimed < batchSize) {

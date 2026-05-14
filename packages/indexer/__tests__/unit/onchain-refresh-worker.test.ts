@@ -138,6 +138,61 @@ describe("onchain refresh worker", () => {
     );
   });
 
+  it("does not claim tasks while the processor is still far behind the chain head", async () => {
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "100" }];
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [
+            {
+              id: "task-1",
+              chainId: 1,
+              governorAddress: "0x9999999999999999999999999999999999999999",
+              tokenAddress: "0x8888888888888888888888888888888888888888",
+              account: "0x1111111111111111111111111111111111111111",
+              refreshBalance: true,
+              refreshPower: true,
+              attempts: 0,
+            },
+          ];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 200n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      maxSyncLagBlocks: 50,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      skipped: "sync-lag",
+      syncLagBlocks: "100",
+    });
+    expect(
+      queries.some((entry) => entry.sql.includes("FOR UPDATE SKIP LOCKED")),
+    ).toBe(false);
+  });
+
   it("reads multiple account states with one latest block lookup and chunked multicall", async () => {
     const queries: { sql: string; params?: unknown[] }[] = [];
     const dataSource = {
