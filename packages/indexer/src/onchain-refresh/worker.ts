@@ -642,7 +642,7 @@ async function markTasksProcessed(
           locked_by = NULL,
           processed_at = CASE
             WHEN pending_after_lock THEN NULL
-            ELSE $1
+            ELSE $1::numeric
           END,
           error = NULL,
           last_seen_block_number = COALESCE(

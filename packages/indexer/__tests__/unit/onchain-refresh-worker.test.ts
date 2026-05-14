@@ -143,6 +143,7 @@ describe("onchain refresh worker", () => {
     );
     expect(markProcessed).toBeDefined();
     expect(markProcessed?.sql).toContain("ELSE 'processed'");
+    expect(markProcessed?.sql).toContain("ELSE $1::numeric");
     expect(markProcessed?.sql).toContain("pending_after_lock = false");
     expect(markProcessed?.sql).toContain(
       "pending_after_lock_block_number = NULL",
