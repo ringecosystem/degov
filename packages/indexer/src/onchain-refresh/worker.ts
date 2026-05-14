@@ -17,6 +17,8 @@ export interface ProcessOnchainRefreshBatchOptions {
   multicallAddress?: string;
   workerId: string;
   batchSize: number;
+  multicallChunkSize?: number;
+  concurrency?: number;
   now?: bigint;
   maxAttempts?: number;
 }
@@ -33,6 +35,25 @@ interface ClaimedTask {
   attempts: number;
 }
 
+interface PreviousContributorState {
+  power: bigint;
+  balance: bigint;
+  delegatesCountAll: number;
+  delegatesCountEffective: number;
+}
+
+interface TaskSuccess {
+  task: ClaimedTask;
+  previous?: PreviousContributorState;
+  balance: bigint;
+  power: CurrentVotesResult;
+}
+
+interface TaskFailure {
+  task: ClaimedTask;
+  error: unknown;
+}
+
 export async function processOnchainRefreshBatch(
   dataSource: QueryableDataSource,
   chainTool: ChainTool,
@@ -40,23 +61,43 @@ export async function processOnchainRefreshBatch(
 ) {
   const now = options.now ?? BigInt(Date.now());
   const tasks = await claimPendingTasks(dataSource, options, now);
-  let processed = 0;
-  let failed = 0;
-
-  for (const task of tasks) {
-    try {
-      await processTask(dataSource, chainTool, options, task, now);
-      processed += 1;
-    } catch (error) {
-      failed += 1;
-      await markTaskFailed(dataSource, task, options, now, error);
-    }
+  if (tasks.length === 0) {
+    return { claimed: 0, processed: 0, failed: 0 };
   }
+
+  let latestBlock;
+  try {
+    latestBlock = await chainTool.latestBlock({
+      chainId: options.chainId,
+      rpcs: options.rpcs,
+    });
+  } catch (error) {
+    await Promise.all(tasks.map((task) => markTaskFailed(dataSource, task, options, now, error)));
+    return { claimed: tasks.length, processed: 0, failed: tasks.length };
+  }
+
+  const previousByAccount = await loadPreviousContributors(dataSource, tasks);
+  const results = await readBatchState(chainTool, options, tasks, previousByAccount, {
+    blockNumber: latestBlock.number,
+  });
+  const successes = results.filter((item): item is TaskSuccess => "balance" in item);
+  const failures = results.filter((item): item is TaskFailure => "error" in item);
+
+  if (successes.length > 0) {
+    await withTransaction(dataSource, async (manager) => {
+      await upsertContributors(manager, options, successes, latestBlock.number, latestBlock.timestampMs);
+      await insertBalanceCheckpoints(manager, options, successes, latestBlock.number, latestBlock.timestampMs);
+      await insertPowerCheckpoints(manager, options, successes, latestBlock.number, latestBlock.timestampMs);
+      await updatePowerMetric(manager, options, successes);
+      await markTasksProcessed(manager, successes.map((item) => item.task), now);
+    });
+  }
+  await Promise.all(failures.map((item) => markTaskFailed(dataSource, item.task, options, now, item.error)));
 
   return {
     claimed: tasks.length,
-    processed,
-    failed,
+    processed: successes.length,
+    failed: failures.length,
   };
 }
 
@@ -118,87 +159,72 @@ async function claimPendingTasks(
   });
 }
 
-async function processTask(
+async function loadPreviousContributors(
   dataSource: QueryableDataSource,
+  tasks: ClaimedTask[],
+): Promise<Map<string, PreviousContributorState>> {
+  const accounts = tasks.map((task) => task.account.toLowerCase());
+  const rows = await dataSource.query(
+    `
+      SELECT id, power, balance, delegates_count_all AS "delegatesCountAll", delegates_count_effective AS "delegatesCountEffective"
+      FROM contributor
+      WHERE lower(id) = ANY($1::text[])
+    `,
+    [accounts],
+  );
+  return new Map(
+    rows.map((row) => [
+      String(row.id).toLowerCase(),
+      {
+        power: toBigInt(row.power),
+        balance: toBigInt(row.balance),
+        delegatesCountAll: Number(row.delegatesCountAll ?? 0),
+        delegatesCountEffective: Number(row.delegatesCountEffective ?? 0),
+      },
+    ]),
+  );
+}
+
+async function readBatchState(
   chainTool: ChainTool,
   options: ProcessOnchainRefreshBatchOptions,
-  task: ClaimedTask,
-  now: bigint,
-) {
-  const latestBlock = await chainTool.latestBlock({
-    chainId: options.chainId,
-    rpcs: options.rpcs,
-  });
-  const [previous] = await dataSource.query(
-    `
-      SELECT power, balance, delegates_count_all AS "delegatesCountAll", delegates_count_effective AS "delegatesCountEffective"
-      FROM contributor
-      WHERE lower(id) = lower($1)
-      LIMIT 1
-    `,
-    [task.account],
-  );
-  const previousPower = toBigInt(previous?.power);
-  const previousBalance = toBigInt(previous?.balance);
-  const blockNumber = latestBlock.number;
-  const blockTimestamp = latestBlock.timestampMs;
-  const state = await readTaskState(chainTool, options, task, {
-    previousBalance,
-    previousPower,
-    blockNumber,
-  });
-  const balance = state.balance;
-  const powerResult = state.power;
+  tasks: ClaimedTask[],
+  previousByAccount: Map<string, PreviousContributorState>,
+  context: {
+    blockNumber: bigint;
+  },
+): Promise<Array<TaskSuccess | TaskFailure>> {
+  if (options.multicallAddress && options.rpcs.length > 0) {
+    return readBatchStateWithMulticall(options, tasks, previousByAccount, context);
+  }
 
-  await withTransaction(dataSource, async (manager) => {
-    await upsertContributor(manager, options, task, balance, powerResult.votes, blockNumber, blockTimestamp, previous);
-    if (task.refreshBalance) {
-      await insertBalanceCheckpoint(manager, options, task, previousBalance, balance, blockNumber, blockTimestamp);
-    }
-    if (task.refreshPower) {
-      await insertPowerCheckpoint(manager, options, task, previousPower, powerResult, blockNumber, blockTimestamp);
-    }
-    await manager.query(
-      `
-        UPDATE onchain_refresh_task
-        SET status = 'processed',
-            locked_at = NULL,
-            locked_by = NULL,
-            processed_at = $1,
-            error = NULL,
-            updated_at = $1
-        WHERE id = $2
-      `,
-      [now.toString(), task.id],
-    );
-  });
+  return mapWithConcurrency(
+    tasks,
+    options.concurrency ?? 1,
+    async (task) => {
+      try {
+        const previous = previousByAccount.get(task.account.toLowerCase());
+        return {
+          task,
+          previous,
+          ...(await readTaskState(chainTool, options, task, previous, context)),
+        };
+      } catch (error) {
+        return { task, error };
+      }
+    },
+  );
 }
 
 async function readTaskState(
   chainTool: ChainTool,
   options: ProcessOnchainRefreshBatchOptions,
   task: ClaimedTask,
-  context: {
-    previousBalance: bigint;
-    previousPower: bigint;
-    blockNumber: bigint;
-  },
+  previous: PreviousContributorState | undefined,
+  context: { blockNumber: bigint },
 ): Promise<{ balance: bigint; power: CurrentVotesResult }> {
-  if (options.multicallAddress && options.rpcs.length > 0) {
-    try {
-      return await readTaskStateWithMulticall(options, task, context);
-    } catch (error) {
-      console.warn(
-        DegovIndexerHelpers.formatLogLine("onchain-refresh.multicall fallback", {
-          chainId: options.chainId,
-          token: options.tokenAddress,
-          task: task.id,
-          error: DegovIndexerHelpers.formatError(error),
-        }),
-      );
-    }
-  }
-
+  const previousBalance = previous?.balance ?? 0n;
+  const previousPower = previous?.power ?? 0n;
   const [balance, power] = await Promise.all([
     task.refreshBalance
       ? chainTool.tokenBalance({
@@ -208,7 +234,7 @@ async function readTaskState(
           account: task.account as `0x${string}`,
           blockNumber: context.blockNumber,
         })
-      : Promise.resolve(context.previousBalance),
+      : Promise.resolve(previousBalance),
     task.refreshPower
       ? chainTool.currentVotesWithSource({
           chainId: options.chainId,
@@ -219,67 +245,100 @@ async function readTaskState(
         })
       : Promise.resolve({
           method: "getVotes",
-          votes: context.previousPower,
+          votes: previousPower,
         } satisfies CurrentVotesResult),
   ]);
   return { balance, power };
 }
 
-async function readTaskStateWithMulticall(
+async function readBatchStateWithMulticall(
   options: ProcessOnchainRefreshBatchOptions,
-  task: ClaimedTask,
-  context: {
-    previousBalance: bigint;
-    previousPower: bigint;
-    blockNumber: bigint;
-  },
-): Promise<{ balance: bigint; power: CurrentVotesResult }> {
+  tasks: ClaimedTask[],
+  previousByAccount: Map<string, PreviousContributorState>,
+  context: { blockNumber: bigint },
+): Promise<Array<TaskSuccess | TaskFailure>> {
+  const chunks = chunk(tasks, options.multicallChunkSize ?? 100);
+  const results = await mapWithConcurrency(
+    chunks,
+    options.concurrency ?? 1,
+    (items) => readTaskStateChunkWithMulticall(options, items, previousByAccount, context),
+  );
+  return results.flat();
+}
+
+async function readTaskStateChunkWithMulticall(
+  options: ProcessOnchainRefreshBatchOptions,
+  tasks: ClaimedTask[],
+  previousByAccount: Map<string, PreviousContributorState>,
+  context: { blockNumber: bigint },
+): Promise<Array<TaskSuccess | TaskFailure>> {
   const client = createPublicClient({
     transport: http(options.rpcs[0]),
   });
   const contracts: any[] = [];
-  const indexes: { balance?: number; power?: number } = {};
-  if (task.refreshBalance) {
-    indexes.balance = contracts.push({
-      address: options.tokenAddress as `0x${string}`,
-      abi: ABI_FUNCTION_BALANCE_OF,
-      functionName: "balanceOf",
-      args: [task.account as `0x${string}`],
-    }) - 1;
-  }
-  if (task.refreshPower) {
-    indexes.power = contracts.push({
-      address: options.tokenAddress as `0x${string}`,
-      abi: ABI_FUNCTION_GET_VOTES,
-      functionName: "getVotes",
-      args: [task.account as `0x${string}`],
-    }) - 1;
+  const indexes = new Map<string, { balance?: number; power?: number }>();
+  for (const task of tasks) {
+    const taskIndexes: { balance?: number; power?: number } = {};
+    if (task.refreshBalance) {
+      taskIndexes.balance = contracts.push({
+        address: options.tokenAddress as `0x${string}`,
+        abi: ABI_FUNCTION_BALANCE_OF,
+        functionName: "balanceOf",
+        args: [task.account as `0x${string}`],
+      }) - 1;
+    }
+    if (task.refreshPower) {
+      taskIndexes.power = contracts.push({
+        address: options.tokenAddress as `0x${string}`,
+        abi: ABI_FUNCTION_GET_VOTES,
+        functionName: "getVotes",
+        args: [task.account as `0x${string}`],
+      }) - 1;
+    }
+    indexes.set(task.id, taskIndexes);
   }
 
-  const results = await (client as any).multicall({
-    allowFailure: true,
-    blockNumber: context.blockNumber,
-    multicallAddress: options.multicallAddress as `0x${string}`,
-    contracts,
+  let results: any[];
+  try {
+    results = await (client as any).multicall({
+      allowFailure: true,
+      blockNumber: context.blockNumber,
+      multicallAddress: options.multicallAddress as `0x${string}`,
+      contracts,
+    });
+  } catch (error) {
+    return tasks.map((task) => ({ task, error }));
+  }
+
+  return tasks.map((task) => {
+    try {
+      const previous = previousByAccount.get(task.account.toLowerCase());
+      const previousBalance = previous?.balance ?? 0n;
+      const previousPower = previous?.power ?? 0n;
+      const taskIndexes = indexes.get(task.id) ?? {};
+      const balanceResult =
+        taskIndexes.balance === undefined ? undefined : results[taskIndexes.balance];
+      const powerResult =
+        taskIndexes.power === undefined ? undefined : results[taskIndexes.power];
+      return {
+        task,
+        previous,
+        balance:
+          balanceResult === undefined
+            ? previousBalance
+            : BigInt(readMulticallValue(balanceResult)),
+        power:
+          powerResult === undefined
+            ? { method: "getVotes", votes: previousPower }
+            : {
+                method: "getVotes",
+                votes: BigInt(readMulticallValue(powerResult)),
+              },
+      };
+    } catch (error) {
+      return { task, error };
+    }
   });
-
-  const balanceResult =
-    indexes.balance === undefined ? undefined : results[indexes.balance];
-  const powerResult =
-    indexes.power === undefined ? undefined : results[indexes.power];
-  return {
-    balance:
-      balanceResult === undefined
-        ? context.previousBalance
-        : BigInt(readMulticallValue(balanceResult)),
-    power:
-      powerResult === undefined
-        ? { method: "getVotes", votes: context.previousPower }
-        : {
-            method: "getVotes",
-            votes: BigInt(readMulticallValue(powerResult)),
-          },
-  };
 }
 
 function readMulticallValue(result: any) {
@@ -309,16 +368,35 @@ const ABI_FUNCTION_BALANCE_OF: Abi = [
   },
 ];
 
-async function upsertContributor(
+async function upsertContributors(
   dataSource: QueryableDataSource,
   options: ProcessOnchainRefreshBatchOptions,
-  task: ClaimedTask,
-  balance: bigint,
-  power: bigint,
+  items: TaskSuccess[],
   blockNumber: bigint,
   blockTimestamp: bigint,
-  previous: any,
 ) {
+  if (items.length === 0) {
+    return;
+  }
+  const params: unknown[] = [];
+  const values = items.map((item, index) => {
+    const offset = index * 12;
+    params.push(
+      item.task.account,
+      options.chainId,
+      item.task.daoCode ?? options.daoCode ?? null,
+      options.governorAddress,
+      options.tokenAddress,
+      blockNumber.toString(),
+      blockTimestamp.toString(),
+      "onchain-refresh",
+      item.power.votes.toString(),
+      item.balance.toString(),
+      item.previous?.delegatesCountAll ?? 0,
+      item.previous?.delegatesCountEffective ?? 0,
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12})`;
+  });
   await dataSource.query(
     `
       INSERT INTO contributor (
@@ -326,7 +404,7 @@ async function upsertContributor(
         block_number, block_timestamp, transaction_hash, power, balance,
         delegates_count_all, delegates_count_effective
       )
-      VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ${values.join(", ")}
       ON CONFLICT (id) DO UPDATE SET
         chain_id = EXCLUDED.chain_id,
         dao_code = EXCLUDED.dao_code,
@@ -339,32 +417,43 @@ async function upsertContributor(
         power = EXCLUDED.power,
         balance = EXCLUDED.balance
     `,
-    [
-      task.account,
-      options.chainId,
-      task.daoCode ?? options.daoCode ?? null,
-      options.governorAddress,
-      options.tokenAddress,
-      blockNumber.toString(),
-      blockTimestamp.toString(),
-      "onchain-refresh",
-      power.toString(),
-      balance.toString(),
-      Number(previous?.delegatesCountAll ?? 0),
-      Number(previous?.delegatesCountEffective ?? 0),
-    ],
+    params,
   );
 }
 
-async function insertBalanceCheckpoint(
+async function insertBalanceCheckpoints(
   dataSource: QueryableDataSource,
   options: ProcessOnchainRefreshBatchOptions,
-  task: ClaimedTask,
-  previousBalance: bigint,
-  newBalance: bigint,
+  items: TaskSuccess[],
   blockNumber: bigint,
   blockTimestamp: bigint,
 ) {
+  const checkpointItems = items.filter((item) => item.task.refreshBalance);
+  if (checkpointItems.length === 0) {
+    return;
+  }
+  const params: unknown[] = [];
+  const values = checkpointItems.map((item, index) => {
+    const offset = index * 14;
+    const previousBalance = item.previous?.balance ?? 0n;
+    params.push(
+      `onchain-refresh-balance-${item.task.account}-${blockNumber.toString()}`,
+      options.chainId,
+      item.task.daoCode ?? options.daoCode ?? null,
+      options.governorAddress,
+      options.tokenAddress,
+      item.task.account,
+      previousBalance.toString(),
+      item.balance.toString(),
+      (item.balance - previousBalance).toString(),
+      "balanceOf",
+      "onchain-refresh",
+      blockNumber.toString(),
+      blockTimestamp.toString(),
+      "onchain-refresh",
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14})`;
+  });
   await dataSource.query(
     `
       INSERT INTO token_balance_checkpoint (
@@ -372,37 +461,48 @@ async function insertBalanceCheckpoint(
         account, previous_balance, new_balance, delta, source, cause,
         block_number, block_timestamp, transaction_hash
       )
-      VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ${values.join(", ")}
       ON CONFLICT (id) DO NOTHING
     `,
-    [
-      `onchain-refresh-balance-${task.account}-${blockNumber.toString()}`,
+    params,
+  );
+}
+
+async function insertPowerCheckpoints(
+  dataSource: QueryableDataSource,
+  options: ProcessOnchainRefreshBatchOptions,
+  items: TaskSuccess[],
+  blockNumber: bigint,
+  blockTimestamp: bigint,
+) {
+  const checkpointItems = items.filter((item) => item.task.refreshPower);
+  if (checkpointItems.length === 0) {
+    return;
+  }
+  const params: unknown[] = [];
+  const values = checkpointItems.map((item, index) => {
+    const offset = index * 16;
+    const previousPower = item.previous?.power ?? 0n;
+    params.push(
+      `onchain-refresh-power-${item.task.account}-${blockNumber.toString()}`,
       options.chainId,
-      task.daoCode ?? options.daoCode ?? null,
+      item.task.daoCode ?? options.daoCode ?? null,
       options.governorAddress,
       options.tokenAddress,
-      task.account,
-      previousBalance.toString(),
-      newBalance.toString(),
-      (newBalance - previousBalance).toString(),
-      "balanceOf",
+      item.task.account,
+      "blocknumber",
+      blockNumber.toString(),
+      previousPower.toString(),
+      item.power.votes.toString(),
+      (item.power.votes - previousPower).toString(),
+      item.power.method,
       "onchain-refresh",
       blockNumber.toString(),
       blockTimestamp.toString(),
       "onchain-refresh",
-    ],
-  );
-}
-
-async function insertPowerCheckpoint(
-  dataSource: QueryableDataSource,
-  options: ProcessOnchainRefreshBatchOptions,
-  task: ClaimedTask,
-  previousPower: bigint,
-  result: CurrentVotesResult,
-  blockNumber: bigint,
-  blockTimestamp: bigint,
-) {
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16})`;
+  });
   await dataSource.query(
     `
       INSERT INTO vote_power_checkpoint (
@@ -410,27 +510,69 @@ async function insertPowerCheckpoint(
         account, clock_mode, timepoint, previous_power, new_power, delta, source, cause,
         block_number, block_timestamp, transaction_hash
       )
-      VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      VALUES ${values.join(", ")}
       ON CONFLICT (id) DO NOTHING
     `,
+    params,
+  );
+}
+
+async function updatePowerMetric(
+  dataSource: QueryableDataSource,
+  options: ProcessOnchainRefreshBatchOptions,
+  items: TaskSuccess[],
+) {
+  const delta = items
+    .filter((item) => item.task.refreshPower)
+    .reduce((sum, item) => {
+      const previousPower = item.previous?.power ?? 0n;
+      return sum + item.power.votes - previousPower;
+    }, 0n);
+  if (delta === 0n) {
+    return;
+  }
+  await dataSource.query(
+    `
+      INSERT INTO data_metric (
+        id, chain_id, dao_code, governor_address, token_address, contract_address, power_sum
+      )
+      VALUES ($1, $2, $3, $4, $5, $5, $6)
+      ON CONFLICT (id) DO UPDATE SET
+        chain_id = EXCLUDED.chain_id,
+        dao_code = EXCLUDED.dao_code,
+        governor_address = EXCLUDED.governor_address,
+        token_address = EXCLUDED.token_address,
+        contract_address = EXCLUDED.contract_address,
+        power_sum = COALESCE(data_metric.power_sum, 0) + EXCLUDED.power_sum
+    `,
     [
-      `onchain-refresh-power-${task.account}-${blockNumber.toString()}`,
+      "global",
       options.chainId,
-      task.daoCode ?? options.daoCode ?? null,
+      options.daoCode ?? items[0]?.task.daoCode ?? null,
       options.governorAddress,
       options.tokenAddress,
-      task.account,
-      "blocknumber",
-      blockNumber.toString(),
-      previousPower.toString(),
-      result.votes.toString(),
-      (result.votes - previousPower).toString(),
-      result.method,
-      "onchain-refresh",
-      blockNumber.toString(),
-      blockTimestamp.toString(),
-      "onchain-refresh",
+      delta.toString(),
     ],
+  );
+}
+
+async function markTasksProcessed(
+  dataSource: QueryableDataSource,
+  tasks: ClaimedTask[],
+  now: bigint,
+) {
+  await dataSource.query(
+    `
+      UPDATE onchain_refresh_task
+      SET status = 'processed',
+          locked_at = NULL,
+          locked_by = NULL,
+          processed_at = $1,
+          error = NULL,
+          updated_at = $1
+      WHERE id = ANY($2)
+    `,
+    [now.toString(), tasks.map((task) => task.id)],
   );
 }
 
@@ -487,6 +629,33 @@ function toBigInt(value: string | number | bigint | null | undefined): bigint {
     return 0n;
   }
   return typeof value === "bigint" ? value : BigInt(value);
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  const normalizedSize = Math.max(1, size);
+  for (let index = 0; index < items.length; index += normalizedSize) {
+    chunks.push(items.slice(index, index + normalizedSize));
+  }
+  return chunks;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  callback: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await callback(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export async function createOnchainRefreshDataSource(): Promise<DataSource> {

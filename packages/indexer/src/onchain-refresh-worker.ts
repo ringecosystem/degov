@@ -36,6 +36,15 @@ async function main() {
     10_000,
   );
   const batchSize = readIntegerEnv("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE", 100);
+  const multicallChunkSize = readIntegerEnv(
+    "DEGOV_ONCHAIN_REFRESH_MULTICALL_CHUNK_SIZE",
+    100,
+  );
+  const concurrency = readIntegerEnv("DEGOV_ONCHAIN_REFRESH_CONCURRENCY", 1);
+  const maxBatchesPerPoll = readIntegerEnv(
+    "DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL",
+    1,
+  );
   const rpcs = resolveRpcs(config.chainId, config.rpcs);
 
   console.log(
@@ -46,6 +55,9 @@ async function main() {
       governorAddress: governor.address,
       tokenAddress: governorToken.address,
       batchSize,
+      multicallChunkSize,
+      concurrency,
+      maxBatchesPerPoll,
       pollIntervalMs,
       rpcCount: rpcs.length,
     }),
@@ -53,18 +65,25 @@ async function main() {
 
   while (true) {
     try {
-      const result = await processOnchainRefreshBatch(dataSource, chainTool, {
-        chainId: config.chainId,
-        daoCode: work.daoCode,
-        governorAddress: governor.address,
-        tokenAddress: governorToken.address,
-        rpcs,
-        multicallAddress: config.multicallAddress,
-        workerId,
-        batchSize,
-      });
-      if (result.claimed > 0) {
-        console.log(JSON.stringify({ msg: "onchain refresh batch", ...result }));
+      for (let index = 0; index < maxBatchesPerPoll; index += 1) {
+        const result = await processOnchainRefreshBatch(dataSource, chainTool, {
+          chainId: config.chainId,
+          daoCode: work.daoCode,
+          governorAddress: governor.address,
+          tokenAddress: governorToken.address,
+          rpcs,
+          multicallAddress: config.multicallAddress,
+          workerId,
+          batchSize,
+          multicallChunkSize,
+          concurrency,
+        });
+        if (result.claimed > 0) {
+          console.log(JSON.stringify({ msg: "onchain refresh batch", ...result }));
+        }
+        if (result.claimed < batchSize) {
+          break;
+        }
       }
     } catch (error) {
       console.error("onchain refresh worker batch failed", error);

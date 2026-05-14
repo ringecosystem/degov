@@ -1394,19 +1394,6 @@ export class TokenHandler {
     await this.ctx.store.insert(entity);
 
     if (this.powerSource === "onchain") {
-      const delegateRolling = new DelegateRolling({
-        id: eventLog.id,
-        ...this.eventFields(eventLog),
-        delegator,
-        fromDelegate,
-        toDelegate,
-        blockNumber: BigInt(eventLog.block.height),
-        blockTimestamp: BigInt(eventLog.block.timestamp),
-        transactionHash: eventLog.transactionHash,
-      });
-      await this.ctx.store.insert(delegateRolling);
-      this.rememberDelegateRolling(delegateRolling);
-
       await this.refreshOnchainTargets(
         [
           {
@@ -1430,11 +1417,23 @@ export class TokenHandler {
         ],
         eventLog,
       );
-      if (!this.onchainEventReadsEnabled) {
+      if (this.onchainEventReadsEnabled) {
+        const delegateRolling = new DelegateRolling({
+          id: eventLog.id,
+          ...this.eventFields(eventLog),
+          delegator,
+          fromDelegate,
+          toDelegate,
+          blockNumber: BigInt(eventLog.block.height),
+          blockTimestamp: BigInt(eventLog.block.timestamp),
+          transactionHash: eventLog.transactionHash,
+        });
+        await this.ctx.store.insert(delegateRolling);
+        this.rememberDelegateRolling(delegateRolling);
+
+        await this.refreshOnchainDelegateMapping(delegator, eventLog);
         return;
       }
-      await this.refreshOnchainDelegateMapping(delegator, eventLog);
-      return;
     }
 
     // update delegators count all
@@ -1616,6 +1615,7 @@ export class TokenHandler {
         ],
         eventLog,
       );
+      await this.updateDelegateRolling(entity);
       return;
     }
     await this.storeVotePowerCheckpoint(entity, eventLog);
@@ -2000,22 +2000,24 @@ export class TokenHandler {
         eventLog,
       );
       if (!this.onchainEventReadsEnabled) {
+        // Continue into the event-derived relation update below. Only the
+        // contributor balance/power reads are deferred to the refresh worker.
+      } else {
+        for (const account of [entity.from, entity.to]) {
+          const normalizedAccount = this.normalizeAddress(account);
+          if (
+            !this.isZeroAddress(normalizedAccount) &&
+            refreshedBalanceAccounts.has(normalizedAccount)
+          ) {
+            const contributor = await this.getContributorById(normalizedAccount);
+            await this.refreshOnchainDelegateMapping(normalizedAccount, eventLog, {
+              delegatee: delegateByDelegator.get(normalizedAccount),
+              power: contributor?.balance ?? 0n,
+            });
+          }
+        }
         return;
       }
-      for (const account of [entity.from, entity.to]) {
-        const normalizedAccount = this.normalizeAddress(account);
-        if (
-          !this.isZeroAddress(normalizedAccount) &&
-          refreshedBalanceAccounts.has(normalizedAccount)
-        ) {
-          const contributor = await this.getContributorById(normalizedAccount);
-          await this.refreshOnchainDelegateMapping(normalizedAccount, eventLog, {
-            delegatee: delegateByDelegator.get(normalizedAccount),
-            power: contributor?.balance ?? 0n,
-          });
-        }
-      }
-      return;
     }
 
     const delegateRollings = await this.getDelegateRollingsByTransactionHash(
@@ -2080,6 +2082,7 @@ export class TokenHandler {
     currentDelegate: Delegate,
     options?: {
       replaceStoredPowerWith?: bigint;
+      updateContributorPower?: boolean;
     },
   ) {
     if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
@@ -2197,10 +2200,14 @@ export class TokenHandler {
 
     const finalRelationPower =
       storedDelegateFromWithTo?.power ?? currentDelegate.power;
+    const updateContributorPower =
+      options?.updateContributorPower ?? this.powerSource === "event";
     const contributorPowerDelta =
-      synchronizedCurrentRelation && currentDelegate.power === 0n
-        ? finalRelationPower - previousRelationPower
-        : currentDelegate.power;
+      updateContributorPower
+        ? synchronizedCurrentRelation && currentDelegate.power === 0n
+          ? finalRelationPower - previousRelationPower
+          : currentDelegate.power
+        : 0n;
 
     // store contributor
     const contributor = new Contributor({
@@ -2240,8 +2247,10 @@ export class TokenHandler {
       logIndex: currentDelegate.logIndex,
       transactionIndex: currentDelegate.transactionIndex,
     });
-    dm.powerSum = (dm.powerSum ?? 0n) + contributorPowerDelta;
-    this.globalDataMetricDirty = true;
+    if (updateContributorPower) {
+      dm.powerSum = (dm.powerSum ?? 0n) + contributorPowerDelta;
+      this.globalDataMetricDirty = true;
+    }
   }
 
   private async storeContributor(contributor: Contributor) {

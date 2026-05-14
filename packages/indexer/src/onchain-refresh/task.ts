@@ -74,7 +74,7 @@ export function parseDebounceMs(
   value = process.env.DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS,
 ) {
   if (!value) {
-    return 60_000n;
+    return 120_000n;
   }
   const parsed = BigInt(value);
   if (parsed < 0n) {
