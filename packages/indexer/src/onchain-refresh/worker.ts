@@ -604,11 +604,33 @@ async function markTasksProcessed(
   await dataSource.query(
     `
       UPDATE onchain_refresh_task
-      SET status = 'processed',
+      SET status = CASE
+            WHEN pending_after_lock THEN 'pending'
+            ELSE 'processed'
+          END,
           locked_at = NULL,
           locked_by = NULL,
-          processed_at = $1,
+          processed_at = CASE
+            WHEN pending_after_lock THEN NULL
+            ELSE $1
+          END,
           error = NULL,
+          last_seen_block_number = COALESCE(
+            pending_after_lock_block_number,
+            last_seen_block_number
+          ),
+          last_seen_block_timestamp = COALESCE(
+            pending_after_lock_block_timestamp,
+            last_seen_block_timestamp
+          ),
+          last_seen_transaction_hash = COALESCE(
+            pending_after_lock_transaction_hash,
+            last_seen_transaction_hash
+          ),
+          pending_after_lock = false,
+          pending_after_lock_block_number = NULL,
+          pending_after_lock_block_timestamp = NULL,
+          pending_after_lock_transaction_hash = NULL,
           updated_at = $1
       WHERE id = ANY($2)
     `,

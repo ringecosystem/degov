@@ -33,12 +33,7 @@ export interface OnchainRefreshTaskInput extends OnchainRefreshTaskScope {
 }
 
 export interface OnchainRefreshTaskStore {
-  findOne?: (
-    entity: typeof OnchainRefreshTask,
-    options: { where: { id: string } },
-  ) => Promise<OnchainRefreshTask | undefined>;
-  insert: (entity: OnchainRefreshTask) => Promise<void>;
-  save?: (entity: OnchainRefreshTask) => Promise<void>;
+  query?: (sql: string, params?: unknown[]) => Promise<any[]>;
 }
 
 export function onchainRefreshTaskId(options: {
@@ -101,34 +96,218 @@ export async function upsertOnchainRefreshTask(
   const now = input.now ?? BigInt(Date.now());
   const debounceMs = input.debounceMs ?? parseDebounceMs();
   const nextRunAt = now + debounceMs;
-  const existing = store.findOne
-    ? await store.findOne(OnchainRefreshTask, { where: { id } })
-    : undefined;
+  const query = onchainRefreshTaskQuery(store);
+  const [row] = await query(
+    `
+      INSERT INTO onchain_refresh_task (
+        id,
+        chain_id,
+        dao_code,
+        governor_address,
+        token_address,
+        account,
+        refresh_balance,
+        refresh_power,
+        reason,
+        first_seen_block_number,
+        last_seen_block_number,
+        last_seen_block_timestamp,
+        last_seen_transaction_hash,
+        status,
+        attempts,
+        next_run_at,
+        pending_after_lock,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $10,
+        $11,
+        $12,
+        'pending',
+        0,
+        $13,
+        false,
+        $14,
+        $14
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        dao_code = COALESCE(EXCLUDED.dao_code, onchain_refresh_task.dao_code),
+        refresh_balance = onchain_refresh_task.refresh_balance OR EXCLUDED.refresh_balance,
+        refresh_power = onchain_refresh_task.refresh_power OR EXCLUDED.refresh_power,
+        reason = (
+          SELECT string_agg(reason_item, '+' ORDER BY reason_item)
+          FROM (
+            SELECT DISTINCT btrim(reason_item) AS reason_item
+            FROM unnest(string_to_array(onchain_refresh_task.reason || '+' || EXCLUDED.reason, '+')) AS reason_item
+            WHERE btrim(reason_item) <> ''
+          ) merged_reasons
+        ),
+        last_seen_block_number = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.last_seen_block_number
+          ELSE EXCLUDED.last_seen_block_number
+        END,
+        last_seen_block_timestamp = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.last_seen_block_timestamp
+          ELSE EXCLUDED.last_seen_block_timestamp
+        END,
+        last_seen_transaction_hash = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.last_seen_transaction_hash
+          ELSE EXCLUDED.last_seen_transaction_hash
+        END,
+        status = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.status
+          ELSE 'pending'
+        END,
+        next_run_at = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.next_run_at
+          ELSE EXCLUDED.next_run_at
+        END,
+        locked_at = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.locked_at
+          ELSE NULL
+        END,
+        locked_by = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.locked_by
+          ELSE NULL
+        END,
+        processed_at = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.processed_at
+          ELSE NULL
+        END,
+        error = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.error
+          ELSE NULL
+        END,
+        pending_after_lock = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN true
+          ELSE false
+        END,
+        pending_after_lock_block_number = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN GREATEST(
+            COALESCE(onchain_refresh_task.pending_after_lock_block_number, 0),
+            EXCLUDED.last_seen_block_number
+          )
+          ELSE NULL
+        END,
+        pending_after_lock_block_timestamp = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN CASE
+            WHEN onchain_refresh_task.pending_after_lock_block_number IS NULL
+              OR EXCLUDED.last_seen_block_number >= onchain_refresh_task.pending_after_lock_block_number
+            THEN EXCLUDED.last_seen_block_timestamp
+            ELSE onchain_refresh_task.pending_after_lock_block_timestamp
+          END
+          ELSE NULL
+        END,
+        pending_after_lock_transaction_hash = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN CASE
+            WHEN onchain_refresh_task.pending_after_lock_block_number IS NULL
+              OR EXCLUDED.last_seen_block_number >= onchain_refresh_task.pending_after_lock_block_number
+            THEN EXCLUDED.last_seen_transaction_hash
+            ELSE onchain_refresh_task.pending_after_lock_transaction_hash
+          END
+          ELSE NULL
+        END,
+        updated_at = EXCLUDED.updated_at
+      RETURNING
+        id,
+        chain_id AS "chainId",
+        dao_code AS "daoCode",
+        governor_address AS "governorAddress",
+        token_address AS "tokenAddress",
+        account,
+        refresh_balance AS "refreshBalance",
+        refresh_power AS "refreshPower",
+        reason,
+        first_seen_block_number AS "firstSeenBlockNumber",
+        last_seen_block_number AS "lastSeenBlockNumber",
+        last_seen_block_timestamp AS "lastSeenBlockTimestamp",
+        last_seen_transaction_hash AS "lastSeenTransactionHash",
+        status,
+        attempts,
+        next_run_at AS "nextRunAt",
+        locked_at AS "lockedAt",
+        locked_by AS "lockedBy",
+        processed_at AS "processedAt",
+        error,
+        pending_after_lock AS "pendingAfterLock",
+        pending_after_lock_block_number AS "pendingAfterLockBlockNumber",
+        pending_after_lock_block_timestamp AS "pendingAfterLockBlockTimestamp",
+        pending_after_lock_transaction_hash AS "pendingAfterLockTransactionHash",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    `,
+    [
+      id,
+      input.chainId,
+      input.daoCode ?? null,
+      governorAddress,
+      tokenAddress,
+      account,
+      input.refreshBalance,
+      input.refreshPower,
+      input.reason,
+      input.blockNumber.toString(),
+      input.blockTimestamp.toString(),
+      input.transactionHash,
+      nextRunAt.toString(),
+      now.toString(),
+    ],
+  );
 
-  if (existing) {
-    existing.daoCode = input.daoCode ?? existing.daoCode;
-    existing.refreshBalance = existing.refreshBalance || input.refreshBalance;
-    existing.refreshPower = existing.refreshPower || input.refreshPower;
-    existing.reason = mergeReasons(existing.reason, input.reason);
-    existing.lastSeenBlockNumber = input.blockNumber;
-    existing.lastSeenBlockTimestamp = input.blockTimestamp;
-    existing.lastSeenTransactionHash = input.transactionHash;
-    existing.status = "pending";
-    existing.nextRunAt = nextRunAt;
-    existing.lockedAt = undefined;
-    existing.lockedBy = undefined;
-    existing.processedAt = undefined;
-    existing.error = undefined;
-    existing.updatedAt = now;
-    if (store.save) {
-      await store.save(existing);
-    } else {
-      await store.insert(existing);
-    }
-    return existing;
+  if (row) {
+    return new OnchainRefreshTask({
+      ...row,
+      firstSeenBlockNumber: toBigInt(row.firstSeenBlockNumber),
+      lastSeenBlockNumber: toBigInt(row.lastSeenBlockNumber),
+      lastSeenBlockTimestamp: toBigInt(row.lastSeenBlockTimestamp),
+      nextRunAt: toBigInt(row.nextRunAt),
+      lockedAt: toOptionalBigInt(row.lockedAt),
+      processedAt: toOptionalBigInt(row.processedAt),
+      pendingAfterLockBlockNumber: toOptionalBigInt(row.pendingAfterLockBlockNumber),
+      pendingAfterLockBlockTimestamp: toOptionalBigInt(row.pendingAfterLockBlockTimestamp),
+      createdAt: toBigInt(row.createdAt),
+      updatedAt: toBigInt(row.updatedAt),
+    });
   }
 
-  const task = new OnchainRefreshTask({
+  return new OnchainRefreshTask({
     id,
     chainId: input.chainId,
     daoCode: input.daoCode,
@@ -145,27 +324,39 @@ export async function upsertOnchainRefreshTask(
     status: "pending",
     attempts: 0,
     nextRunAt,
+    pendingAfterLock: false,
     createdAt: now,
     updatedAt: now,
   });
-  await store.insert(task);
-  return task;
 }
 
 function normalizeAddress(value: string) {
   return DegovIndexerHelpers.normalizeAddress(value) ?? value.toLowerCase();
 }
 
-function mergeReasons(current: string, next: string) {
-  if (current === next) {
-    return current;
+function onchainRefreshTaskQuery(store: OnchainRefreshTaskStore) {
+  if (store.query) {
+    return store.query.bind(store);
   }
-  const reasons = new Set(
-    current
-      .split("+")
-      .concat(next.split("+"))
-      .map((item) => item.trim())
-      .filter(Boolean),
-  );
-  return [...reasons].sort().join("+");
+
+  const storeWithManager = store as OnchainRefreshTaskStore & {
+    em?: () => { query: (sql: string, params?: unknown[]) => Promise<any[]> };
+  };
+  if (typeof storeWithManager.em === "function") {
+    return (sql: string, params?: unknown[]) =>
+      storeWithManager.em?.().query(sql, params) ?? Promise.resolve([]);
+  }
+
+  throw new Error("OnchainRefreshTaskStore must expose query()");
+}
+
+function toBigInt(value: string | number | bigint) {
+  return typeof value === "bigint" ? value : BigInt(value);
+}
+
+function toOptionalBigInt(value: string | number | bigint | null | undefined) {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  return toBigInt(value);
 }

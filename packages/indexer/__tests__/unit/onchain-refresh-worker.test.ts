@@ -82,10 +82,78 @@ describe("onchain refresh worker", () => {
       entry.sql.includes("INSERT INTO contributor"),
     );
     const markProcessedIndex = queries.findIndex((entry) =>
-      entry.sql.includes("status = 'processed'"),
+      entry.sql.includes("ELSE 'processed'"),
     );
     expect(updateContributorIndex).toBeGreaterThan(-1);
     expect(markProcessedIndex).toBeGreaterThan(updateContributorIndex);
+  });
+
+  it("requeues successfully processed tasks when events arrived while locked", async () => {
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [
+            {
+              id: "task-1",
+              chainId: 1,
+              daoCode: "demo",
+              governorAddress: "0x9999999999999999999999999999999999999999",
+              tokenAddress: "0x8888888888888888888888888888888888888888",
+              account: "0x1111111111111111111111111111111111111111",
+              refreshBalance: true,
+              refreshPower: true,
+              attempts: 0,
+            },
+          ];
+        }
+        if (sql.includes("FROM contributor")) {
+          return [{ power: "3", balance: "2" }];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_000_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getVotes",
+      votes: 7n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({ claimed: 1, processed: 1, failed: 0 });
+    const markProcessed = queries.find((entry) =>
+      entry.sql.includes("WHEN pending_after_lock THEN 'pending'"),
+    );
+    expect(markProcessed).toBeDefined();
+    expect(markProcessed?.sql).toContain("ELSE 'processed'");
+    expect(markProcessed?.sql).toContain("pending_after_lock = false");
+    expect(markProcessed?.sql).toContain(
+      "pending_after_lock_block_number = NULL",
+    );
+    expect(markProcessed?.sql).toContain(
+      "last_seen_block_number = COALESCE(",
+    );
+    expect(markProcessed?.params).toEqual([
+      "1700000000000",
+      ["task-1"],
+    ]);
   });
 
   it("keeps failed tasks retryable instead of marking them processed", async () => {
@@ -131,7 +199,7 @@ describe("onchain refresh worker", () => {
 
     expect(result).toEqual({ claimed: 1, processed: 0, failed: 1 });
     expect(
-      queries.some((entry) => entry.sql.includes("status = 'processed'")),
+      queries.some((entry) => entry.sql.includes("ELSE 'processed'")),
     ).toBe(false);
     expect(queries.some((entry) => entry.sql.includes("status = 'pending'"))).toBe(
       true,
@@ -377,7 +445,7 @@ describe("onchain refresh worker", () => {
     expect(
       queries.some(
         (entry) =>
-          entry.sql.includes("status = 'processed'") &&
+          entry.sql.includes("ELSE 'processed'") &&
           Array.isArray(entry.params?.[1]) &&
           entry.params[1].includes("task-1"),
       ),

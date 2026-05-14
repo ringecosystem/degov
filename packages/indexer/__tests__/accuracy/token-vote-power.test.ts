@@ -4987,6 +4987,15 @@ class MemoryStore {
     this.upsert(entity);
   }
 
+  async query(sql: string, params?: unknown[]) {
+    if (!sql.includes("INSERT INTO onchain_refresh_task") || !params) {
+      return [];
+    }
+    const task = this.upsertOnchainRefreshTaskRecord(params);
+    this.upsert(task);
+    return [task];
+  }
+
   async remove(entity: any, id: string) {
     this.records.get(entity.name)?.delete(id);
   }
@@ -5001,6 +5010,83 @@ class MemoryStore {
     bucket.set(entity.id, entity);
     this.records.set(name, bucket);
   }
+
+  private upsertOnchainRefreshTaskRecord(params: unknown[]) {
+    const [
+      id,
+      chainId,
+      daoCode,
+      governorAddress,
+      tokenAddress,
+      account,
+      refreshBalance,
+      refreshPower,
+      reason,
+      blockNumber,
+      blockTimestamp,
+      transactionHash,
+      nextRunAt,
+      now,
+    ] = params;
+    const existing = this.findEntity(OnchainRefreshTask, id as string);
+    if (!existing) {
+      return new OnchainRefreshTask({
+        id: id as string,
+        chainId: chainId as number,
+        daoCode: daoCode as string | null,
+        governorAddress: governorAddress as string,
+        tokenAddress: tokenAddress as string,
+        account: account as string,
+        refreshBalance: refreshBalance as boolean,
+        refreshPower: refreshPower as boolean,
+        reason: reason as string,
+        firstSeenBlockNumber: BigInt(blockNumber as string),
+        lastSeenBlockNumber: BigInt(blockNumber as string),
+        lastSeenBlockTimestamp: BigInt(blockTimestamp as string),
+        lastSeenTransactionHash: transactionHash as string,
+        status: "pending",
+        attempts: 0,
+        nextRunAt: BigInt(nextRunAt as string),
+        pendingAfterLock: false,
+        createdAt: BigInt(now as string),
+        updatedAt: BigInt(now as string),
+      });
+    }
+
+    const locked = existing.status === "processing" || existing.lockedAt != null;
+    existing.daoCode = daoCode ?? existing.daoCode;
+    existing.refreshBalance = existing.refreshBalance || refreshBalance;
+    existing.refreshPower = existing.refreshPower || refreshPower;
+    existing.reason = mergeReasons(existing.reason, reason as string);
+    if (locked) {
+      existing.pendingAfterLock = true;
+      existing.pendingAfterLockBlockNumber = BigInt(blockNumber as string);
+      existing.pendingAfterLockBlockTimestamp = BigInt(blockTimestamp as string);
+      existing.pendingAfterLockTransactionHash = transactionHash;
+    } else {
+      existing.lastSeenBlockNumber = BigInt(blockNumber as string);
+      existing.lastSeenBlockTimestamp = BigInt(blockTimestamp as string);
+      existing.lastSeenTransactionHash = transactionHash;
+      existing.status = "pending";
+      existing.nextRunAt = BigInt(nextRunAt as string);
+      existing.lockedAt = undefined;
+      existing.lockedBy = undefined;
+      existing.processedAt = undefined;
+      existing.error = undefined;
+      existing.pendingAfterLock = false;
+      existing.pendingAfterLockBlockNumber = undefined;
+      existing.pendingAfterLockBlockTimestamp = undefined;
+      existing.pendingAfterLockTransactionHash = undefined;
+    }
+    existing.updatedAt = BigInt(now as string);
+    return existing;
+  }
+}
+
+function mergeReasons(current: string, next: string) {
+  return [...new Set(`${current}+${next}`.split("+").filter(Boolean))]
+    .sort()
+    .join("+");
 }
 
 function buildTokenHandler(
