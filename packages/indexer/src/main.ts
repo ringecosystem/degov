@@ -8,6 +8,10 @@ import { ChainTool } from "./internal/chaintool";
 import { DegovIndexerHelpers } from "./internal/helpers";
 import { TextPlus } from "./internal/textplus";
 import { createDatabase } from "./database";
+import {
+  isPostgresSerializationFailure,
+  serializationRetryDelayMs,
+} from "./internal/retry";
 
 type BatchHandler = GovernorHandler | TokenHandler | TimelockHandler;
 
@@ -23,7 +27,28 @@ async function main() {
     throw new Error("DEGOV_CONFIG_PATH not set");
   }
   const config = await DegovDataSource.fromDegovConfigPath(degovConfigPath);
-  await runProcessorEvm(config);
+  let serializationFailureCount = 0;
+  for (;;) {
+    try {
+      await runProcessorEvm(config);
+      return;
+    } catch (error) {
+      if (!isPostgresSerializationFailure(error)) {
+        throw error;
+      }
+
+      serializationFailureCount += 1;
+      const delayMs = serializationRetryDelayMs(serializationFailureCount);
+      console.warn(
+        DegovIndexerHelpers.formatLogLine("processor serialization retry", {
+          attempt: serializationFailureCount,
+          delayMs,
+          error: DegovIndexerHelpers.formatError(error),
+        }),
+      );
+      await sleep(delayMs);
+    }
+  }
 }
 
 async function runProcessorEvm(config: IndexerProcessorConfig) {
@@ -104,7 +129,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   const chainTool = new ChainTool();
   const textPlus = new TextPlus();
 
-  processor.run(
+  await processor.run(
     createDatabase(),
     async (ctx) => {
       const batchHandlers = new Map<string, BatchHandler>();
@@ -279,6 +304,10 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
       }
     },
   );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 main()
