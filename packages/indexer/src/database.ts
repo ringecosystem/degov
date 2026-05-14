@@ -10,7 +10,10 @@ import {
 
 export function getDatabaseOptions(): TypeormDatabaseOptions {
   return {
-    supportHotBlocks: true,
+    supportHotBlocks: parseBooleanEnv(
+      process.env.DEGOV_INDEXER_HOT_BLOCKS_ENABLED,
+      false,
+    ),
   };
 }
 
@@ -69,4 +72,25 @@ async function retrySerializationFailure<T>(
       await sleep(delayMs);
     }
   }
+}
+
+function parseBooleanEnv(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  if (value === undefined || value === "") {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  throw new Error(
+    `DEGOV_INDEXER_HOT_BLOCKS_ENABLED must be a boolean. Received: ${value}`,
+  );
 }
