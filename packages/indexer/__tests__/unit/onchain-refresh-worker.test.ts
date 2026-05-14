@@ -17,6 +17,8 @@ describe("onchain refresh worker", () => {
   });
 
   it("updates contributor state before marking locked tasks processed", async () => {
+    const governorAddress = "0xAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa";
+    const tokenAddress = "0xBbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBb";
     const queries: { sql: string; params?: unknown[] }[] = [];
     const dataSource = {
       transaction: async (callback: any) => callback(dataSource),
@@ -28,8 +30,8 @@ describe("onchain refresh worker", () => {
               id: "task-1",
               chainId: 1,
               daoCode: "demo",
-              governorAddress: "0x9999999999999999999999999999999999999999",
-              tokenAddress: "0x8888888888888888888888888888888888888888",
+              governorAddress: governorAddress.toLowerCase(),
+              tokenAddress: tokenAddress.toLowerCase(),
               account: "0x1111111111111111111111111111111111111111",
               refreshBalance: true,
               refreshPower: true,
@@ -57,8 +59,8 @@ describe("onchain refresh worker", () => {
     const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
       chainId: 1,
       daoCode: "demo",
-      governorAddress: "0x9999999999999999999999999999999999999999",
-      tokenAddress: "0x8888888888888888888888888888888888888888",
+      governorAddress,
+      tokenAddress,
       rpcs: ["https://rpc.example"],
       workerId: "worker-1",
       batchSize: 10,
@@ -81,6 +83,10 @@ describe("onchain refresh worker", () => {
     const updateContributorIndex = queries.findIndex((entry) =>
       entry.sql.includes("INSERT INTO contributor"),
     );
+    const contributorInsert = queries[updateContributorIndex];
+    expect(contributorInsert.params).toEqual(
+      expect.arrayContaining([governorAddress.toLowerCase(), tokenAddress.toLowerCase()]),
+    );
     const markProcessedIndex = queries.findIndex((entry) =>
       entry.sql.includes("ELSE 'processed'"),
     );
@@ -93,8 +99,8 @@ describe("onchain refresh worker", () => {
     expect(claimTasks?.sql).toContain("locked_at <= $5");
     expect(claimTasks?.params).toEqual([
       1,
-      "0x9999999999999999999999999999999999999999",
-      "0x8888888888888888888888888888888888888888",
+      governorAddress,
+      tokenAddress,
       "1700000000000",
       "1699999700000",
       10,

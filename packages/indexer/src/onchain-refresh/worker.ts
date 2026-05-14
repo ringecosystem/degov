@@ -454,6 +454,8 @@ async function upsertContributors(
   if (items.length === 0) {
     return;
   }
+  const governorAddress = normalizeAddress(options.governorAddress);
+  const tokenAddress = normalizeAddress(options.tokenAddress);
   const params: unknown[] = [];
   const values = items.map((item, index) => {
     const offset = index * 12;
@@ -461,8 +463,8 @@ async function upsertContributors(
       item.task.account,
       options.chainId,
       item.task.daoCode ?? options.daoCode ?? null,
-      options.governorAddress,
-      options.tokenAddress,
+      governorAddress,
+      tokenAddress,
       blockNumber.toString(),
       blockTimestamp.toString(),
       "onchain-refresh",
@@ -508,6 +510,8 @@ async function insertBalanceCheckpoints(
   if (checkpointItems.length === 0) {
     return;
   }
+  const governorAddress = normalizeAddress(options.governorAddress);
+  const tokenAddress = normalizeAddress(options.tokenAddress);
   const params: unknown[] = [];
   const values = checkpointItems.map((item, index) => {
     const offset = index * 14;
@@ -516,8 +520,8 @@ async function insertBalanceCheckpoints(
       `onchain-refresh-balance-${item.task.account}-${blockNumber.toString()}`,
       options.chainId,
       item.task.daoCode ?? options.daoCode ?? null,
-      options.governorAddress,
-      options.tokenAddress,
+      governorAddress,
+      tokenAddress,
       item.task.account,
       previousBalance.toString(),
       item.balance.toString(),
@@ -555,6 +559,8 @@ async function insertPowerCheckpoints(
   if (checkpointItems.length === 0) {
     return;
   }
+  const governorAddress = normalizeAddress(options.governorAddress);
+  const tokenAddress = normalizeAddress(options.tokenAddress);
   const params: unknown[] = [];
   const values = checkpointItems.map((item, index) => {
     const offset = index * 16;
@@ -563,8 +569,8 @@ async function insertPowerCheckpoints(
       `onchain-refresh-power-${item.task.account}-${blockNumber.toString()}`,
       options.chainId,
       item.task.daoCode ?? options.daoCode ?? null,
-      options.governorAddress,
-      options.tokenAddress,
+      governorAddress,
+      tokenAddress,
       item.task.account,
       "blocknumber",
       blockNumber.toString(),
@@ -607,6 +613,8 @@ async function updatePowerMetric(
   if (delta === 0n) {
     return;
   }
+  const governorAddress = normalizeAddress(options.governorAddress);
+  const tokenAddress = normalizeAddress(options.tokenAddress);
   await dataSource.query(
     `
       INSERT INTO data_metric (
@@ -625,8 +633,8 @@ async function updatePowerMetric(
       "global",
       options.chainId,
       options.daoCode ?? items[0]?.task.daoCode ?? null,
-      options.governorAddress,
-      options.tokenAddress,
+      governorAddress,
+      tokenAddress,
       delta.toString(),
     ],
   );
@@ -731,6 +739,10 @@ function toBigInt(value: string | number | bigint | null | undefined): bigint {
     return 0n;
   }
   return typeof value === "bigint" ? value : BigInt(value);
+}
+
+function normalizeAddress(value: string) {
+  return DegovIndexerHelpers.normalizeAddress(value) ?? value.toLowerCase();
 }
 
 function isRelationMissingError(error: unknown) {
