@@ -68,14 +68,14 @@ interface ProposalReconciliationResult {
   voteSamples: VotePowerSampleResult[];
 }
 
-interface QueryableDataSource {
+export interface QueryableDataSource {
   query(sql: string, parameters?: unknown[]): Promise<any[]>;
   transaction?<T>(
     callback: (entityManager: QueryableDataSource) => Promise<T>
   ): Promise<T>;
 }
 
-interface OnchainPowerReconcileOptions {
+export interface OnchainPowerReconcileOptions {
   chainId: number;
   daoCode?: string | null;
   governorAddress: string;
@@ -136,7 +136,7 @@ function deriveReconcilePowerTimepoint(
   return options.blockNumber ?? blockNumber;
 }
 
-async function loadKnownTokenAccounts(
+export async function loadKnownTokenAccounts(
   dataSource: QueryableDataSource,
   options: OnchainPowerReconcileOptions
 ): Promise<string[]> {
@@ -175,6 +175,26 @@ async function loadKnownTokenAccounts(
         UNION
         SELECT voter AS account
         FROM vote_cast_group
+        WHERE chain_id = $1
+          AND lower(governor_address) = lower($2)
+        UNION
+        SELECT delegator AS account
+        FROM delegate_changed
+        WHERE chain_id = $1
+          AND lower(governor_address) = lower($2)
+        UNION
+        SELECT from_delegate AS account
+        FROM delegate_changed
+        WHERE chain_id = $1
+          AND lower(governor_address) = lower($2)
+        UNION
+        SELECT to_delegate AS account
+        FROM delegate_changed
+        WHERE chain_id = $1
+          AND lower(governor_address) = lower($2)
+        UNION
+        SELECT delegate AS account
+        FROM delegate_votes_changed
         WHERE chain_id = $1
           AND lower(governor_address) = lower($2)
       )

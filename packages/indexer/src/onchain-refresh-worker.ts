@@ -1,9 +1,11 @@
 import { DegovDataSource } from "./datasource";
+import { parseIndexerPowerSource } from "./handler/token";
 import { ChainTool } from "./internal/chaintool";
 import {
   createOnchainRefreshDataSource,
   processOnchainRefreshBatch,
 } from "./onchain-refresh/worker";
+import { parseOnchainEventReadsEnabled } from "./onchain-refresh/task";
 
 async function main() {
   const degovConfigPath = process.env.DEGOV_CONFIG_PATH;
@@ -49,6 +51,9 @@ async function main() {
     "DEGOV_ONCHAIN_REFRESH_MAX_SYNC_LAG_BLOCKS",
     1_000,
   );
+  const seedReconcile =
+    parseIndexerPowerSource() === "onchain" &&
+    !parseOnchainEventReadsEnabled();
   const rpcs = resolveRpcs(config.chainId, config.rpcs);
 
   console.log(
@@ -63,6 +68,7 @@ async function main() {
       concurrency,
       maxBatchesPerPoll,
       maxSyncLagBlocks,
+      seedReconcile,
       pollIntervalMs,
       rpcCount: rpcs.length,
     }),
@@ -83,6 +89,7 @@ async function main() {
           multicallChunkSize,
           concurrency,
           maxSyncLagBlocks,
+          seedReconcile,
         });
         if ("skipped" in result) {
           console.log(JSON.stringify({ msg: "onchain refresh skipped", ...result }));

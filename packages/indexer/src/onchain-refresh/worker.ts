@@ -2,6 +2,7 @@ import { DataSource } from "typeorm";
 import { Abi, createPublicClient, http } from "viem";
 import { ChainTool, CurrentVotesResult } from "../internal/chaintool";
 import { DegovIndexerHelpers } from "../internal/helpers";
+import { seedReconcileOnchainRefreshTasks } from "./seed";
 
 export interface QueryableDataSource {
   query: (sql: string, params?: unknown[]) => Promise<any[]>;
@@ -20,6 +21,8 @@ export interface ProcessOnchainRefreshBatchOptions {
   multicallChunkSize?: number;
   concurrency?: number;
   maxSyncLagBlocks?: number;
+  seedReconcile?: boolean;
+  reconcileSeedChunkSize?: number;
   now?: bigint;
   maxAttempts?: number;
 }
@@ -71,12 +74,16 @@ export async function processOnchainRefreshBatch(
     return { claimed: 0, processed: 0, failed: 0 };
   }
 
+  let processorHeight: bigint | undefined;
   if (options.maxSyncLagBlocks !== undefined) {
-    const processorHeight = await loadProcessorHeight(dataSource);
+    processorHeight = await loadProcessorHeight(dataSource);
     if (processorHeight === undefined) {
       return { claimed: 0, processed: 0, failed: 0, skipped: "processor-unready" };
     }
-    const syncLagBlocks = latestBlock.number - processorHeight;
+  }
+
+  if (options.maxSyncLagBlocks !== undefined) {
+    const syncLagBlocks = latestBlock.number - processorHeight!;
     if (syncLagBlocks > BigInt(options.maxSyncLagBlocks)) {
       return {
         claimed: 0,
@@ -88,9 +95,30 @@ export async function processOnchainRefreshBatch(
     }
   }
 
+  const seedResult =
+    options.seedReconcile &&
+    options.maxSyncLagBlocks !== undefined &&
+    processorHeight !== undefined
+      ? await seedReconcileOnchainRefreshTasks(dataSource, {
+          chainId: options.chainId,
+          daoCode: options.daoCode,
+          governorAddress: options.governorAddress,
+          tokenAddress: options.tokenAddress,
+          blockNumber: processorHeight,
+          blockTimestamp: latestBlock.timestampMs,
+          now,
+          chunkSize: options.reconcileSeedChunkSize,
+        })
+      : undefined;
+
   const tasks = await claimPendingTasks(dataSource, options, now);
   if (tasks.length === 0) {
-    return { claimed: 0, processed: 0, failed: 0 };
+    return {
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      ...(seedResult ? { seeded: seedResult.seeded } : {}),
+    };
   }
 
   const previousByAccount = await loadPreviousContributors(dataSource, tasks);
@@ -115,6 +143,7 @@ export async function processOnchainRefreshBatch(
     claimed: tasks.length,
     processed: successes.length,
     failed: failures.length,
+    ...(seedResult ? { seeded: seedResult.seeded } : {}),
   };
 }
 

@@ -246,6 +246,7 @@ describe("onchain refresh worker", () => {
       workerId: "worker-1",
       batchSize: 10,
       maxSyncLagBlocks: 50,
+      seedReconcile: true,
       now: 1_700_000_000_000n,
     });
 
@@ -259,6 +260,83 @@ describe("onchain refresh worker", () => {
     expect(
       queries.some((entry) => entry.sql.includes("FOR UPDATE SKIP LOCKED")),
     ).toBe(false);
+    expect(
+      queries.some((entry) => entry.sql.includes("INSERT INTO onchain_refresh_task")),
+    ).toBe(false);
+  });
+
+  it("seeds reconcile tasks after the processor lag guard passes", async () => {
+    const account = "0x1111111111111111111111111111111111111111";
+    const alreadySeeded = "0x2222222222222222222222222222222222222222";
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "120" }];
+        }
+        if (sql.includes("known_accounts")) {
+          return [{ account }, { account: alreadySeeded }];
+        }
+        if (
+          sql.includes("SELECT lower(account) AS account") &&
+          sql.includes("FROM onchain_refresh_task")
+        ) {
+          return [{ account: alreadySeeded }];
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_000_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance");
+    jest.spyOn(chainTool, "currentVotesWithSource");
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      maxSyncLagBlocks: 5,
+      seedReconcile: true,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      seeded: 1,
+    });
+    expect(chainTool.tokenBalance).not.toHaveBeenCalled();
+    expect(chainTool.currentVotesWithSource).not.toHaveBeenCalled();
+    const taskInsert = queries.find((entry) =>
+      entry.sql.includes("INSERT INTO onchain_refresh_task"),
+    );
+    expect(taskInsert?.params).toEqual(
+      expect.arrayContaining([
+        account,
+        true,
+        true,
+        "reconcile",
+        "120",
+        "1700000000000",
+        "reconcile",
+      ]),
+    );
+    expect(
+      queries.some((entry) => entry.sql.includes("FOR UPDATE SKIP LOCKED")),
+    ).toBe(true);
   });
 
   it("reads multiple account states with one latest block lookup and chunked multicall", async () => {

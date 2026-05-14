@@ -33,33 +33,7 @@ describe("onchain delegation relations", () => {
     process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
     process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "false";
     const store = createMemoryStore();
-    const handler = new TokenHandler(
-      {
-        store: store as any,
-        log: {
-          warn: jest.fn(),
-          info: jest.fn(),
-          debug: jest.fn(),
-        },
-      } as any,
-      {
-        chainId: 1135,
-        rpcs: ["https://rpc.example"],
-        work: {
-          daoCode: "lisk-dao",
-          contracts: [
-            { name: "governor", address: governorAddress },
-            { name: "governorToken", address: tokenAddress, standard: "erc20" },
-          ],
-        },
-        indexContract: {
-          name: "governorToken",
-          address: tokenAddress,
-          standard: "erc20",
-        },
-        chainTool: new ChainTool(),
-      },
-    );
+    const handler = createTokenHandler(store);
 
     await handler.handle(delegateChangedLog({
       id: "delegate-change-1",
@@ -122,7 +96,82 @@ describe("onchain delegation relations", () => {
       }),
     ]);
   });
+
+  it("skips historical onchain refresh tasks while keeping delegate relations", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "false";
+    const store = createMemoryStore();
+    const handler = createTokenHandler(store, false);
+
+    await handler.handle(delegateChangedLog({
+      id: "historical-delegate-change-1",
+      delegator,
+      fromDelegate: zeroAddress,
+      toDelegate: delegatee,
+      logIndex: 1,
+    }) as any);
+    await handler.handle(delegateVotesChangedLog({
+      id: "historical-delegate-votes-1",
+      delegate: delegatee,
+      previousVotes: 0n,
+      newVotes: 100n,
+      logIndex: 2,
+    }) as any);
+    await handler.flush();
+
+    expect(store.entities(OnchainRefreshTask)).toHaveLength(0);
+    expect(store.entities(DelegateChanged)).toHaveLength(1);
+    expect(store.entities(DelegateVotesChanged)).toHaveLength(1);
+    expect(store.entities(DelegateMapping)).toEqual([
+      expect.objectContaining({
+        id: delegator,
+        from: delegator,
+        to: delegatee,
+        power: 100n,
+      }),
+    ]);
+    expect(store.entities(Delegate)).toEqual([
+      expect.objectContaining({
+        id: `${delegator}_${delegatee}`,
+        fromDelegate: delegator,
+        toDelegate: delegatee,
+        power: 100n,
+        isCurrent: true,
+      }),
+    ]);
+  });
 });
+
+function createTokenHandler(store: ReturnType<typeof createMemoryStore>, isHead?: boolean) {
+  return new TokenHandler(
+    {
+      store: store as any,
+      isHead,
+      log: {
+        warn: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+      },
+    } as any,
+    {
+      chainId: 1135,
+      rpcs: ["https://rpc.example"],
+      work: {
+        daoCode: "lisk-dao",
+        contracts: [
+          { name: "governor", address: governorAddress },
+          { name: "governorToken", address: tokenAddress, standard: "erc20" },
+        ],
+      },
+      indexContract: {
+        name: "governorToken",
+        address: tokenAddress,
+        standard: "erc20",
+      },
+      chainTool: new ChainTool(),
+    },
+  );
+}
 
 function restoreEnv(name: string, value: string | undefined) {
   if (value === undefined) {

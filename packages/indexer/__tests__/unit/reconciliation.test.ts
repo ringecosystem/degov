@@ -4,6 +4,7 @@ import {
   deriveProjectedProposalState,
   governorStateName,
 } from "../../src/internal/reconciliation";
+import { loadKnownTokenAccounts } from "../../src/reconcile";
 
 describe("reconciliation helpers", () => {
   it("maps governor state enum values to readable names", () => {
@@ -110,5 +111,32 @@ describe("reconciliation helpers", () => {
       matches: true,
       details: undefined,
     });
+  });
+
+  it("loads known accounts from delegate change and vote change tables", async () => {
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        return [
+          { account: "0x1111111111111111111111111111111111111111" },
+        ];
+      }),
+    };
+
+    await expect(
+      loadKnownTokenAccounts(dataSource, {
+        chainId: 1,
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+      })
+    ).resolves.toEqual(["0x1111111111111111111111111111111111111111"]);
+
+    expect(queries[0].sql).toContain("FROM delegate_changed");
+    expect(queries[0].sql).toContain("SELECT delegator AS account");
+    expect(queries[0].sql).toContain("SELECT from_delegate AS account");
+    expect(queries[0].sql).toContain("SELECT to_delegate AS account");
+    expect(queries[0].sql).toContain("FROM delegate_votes_changed");
+    expect(queries[0].sql).toContain("SELECT delegate AS account");
   });
 });

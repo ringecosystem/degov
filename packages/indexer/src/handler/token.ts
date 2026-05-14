@@ -683,6 +683,9 @@ export class TokenHandler {
     eventLog: EvmLog<EvmFieldSelection>,
   ): Promise<Set<string>> {
     if (!this.onchainEventReadsEnabled) {
+      if (this.powerSource === "onchain" && this.ctx.isHead === false) {
+        return new Set<string>();
+      }
       await this.submitOnchainRefreshTasks(targets, eventLog);
       return new Set<string>();
     }
