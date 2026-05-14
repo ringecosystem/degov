@@ -295,6 +295,7 @@ describe("onchain refresh worker", () => {
         }
         if (
           sql.includes("SELECT lower(account) AS account") &&
+          sql.includes("WHERE id = ANY($1::text[])") &&
           sql.includes("FROM onchain_refresh_task")
         ) {
           return [{ account: alreadySeeded }];
@@ -351,6 +352,15 @@ describe("onchain refresh worker", () => {
     expect(
       queries.some((entry) => entry.sql.includes("FOR UPDATE SKIP LOCKED")),
     ).toBe(true);
+    const seededLookup = queries.find((entry) =>
+      entry.sql.includes("WHERE id = ANY($1::text[])"),
+    );
+    expect(seededLookup?.params).toEqual([
+      [
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x2222222222222222222222222222222222222222",
+      ],
+    ]);
   });
 
   it("reads multiple account states with one latest block lookup and chunked multicall", async () => {

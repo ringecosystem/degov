@@ -2,7 +2,7 @@ import {
   loadKnownTokenAccounts,
   QueryableDataSource,
 } from "./known-accounts";
-import { upsertOnchainRefreshTask } from "./task";
+import { onchainRefreshTaskId, upsertOnchainRefreshTask } from "./task";
 
 export interface SeedReconcileOnchainRefreshTasksOptions {
   chainId: number;
@@ -75,10 +75,7 @@ async function loadReconcileSeededAccounts(
     `
       SELECT lower(account) AS account
       FROM onchain_refresh_task
-      WHERE chain_id = $1
-        AND lower(governor_address) = lower($2)
-        AND lower(token_address) = lower($3)
-        AND lower(account) = ANY($4::text[])
+      WHERE id = ANY($1::text[])
         AND EXISTS (
           SELECT 1
           FROM unnest(string_to_array(reason, '+')) AS reason_item
@@ -86,10 +83,14 @@ async function loadReconcileSeededAccounts(
         )
     `,
     [
-      options.chainId,
-      options.governorAddress,
-      options.tokenAddress,
-      accounts.map((account) => account.toLowerCase()),
+      accounts.map((account) =>
+        onchainRefreshTaskId({
+          chainId: options.chainId,
+          governorAddress: options.governorAddress,
+          tokenAddress: options.tokenAddress,
+          account,
+        }),
+      ),
     ],
   );
 
