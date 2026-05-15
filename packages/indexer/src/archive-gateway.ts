@@ -1,6 +1,7 @@
 import { DataSource } from "typeorm";
 
 const defaultFallbackRpcBlocks = 10_000;
+const defaultArchiveProbeBlocks = 10_000;
 
 type ArchiveGatewayFetch = (
   input: string,
@@ -45,6 +46,48 @@ export async function shouldUseArchiveGateway(options: {
       body: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+export async function findArchiveGatewayEndBlock(options: {
+  gateway: string;
+  nextBlock: number;
+  configuredEndBlock?: number;
+  maxBlocks?: number;
+  fetchFn?: ArchiveGatewayFetch;
+}): Promise<number> {
+  const maxBlocks = Math.max(1, options.maxBlocks ?? defaultArchiveProbeBlocks);
+  const maxEndBlock =
+    options.configuredEndBlock === undefined
+      ? options.nextBlock + maxBlocks - 1
+      : Math.min(options.configuredEndBlock, options.nextBlock + maxBlocks - 1);
+
+  const endDecision = await shouldUseArchiveGateway({
+    gateway: options.gateway,
+    nextBlock: maxEndBlock,
+    fetchFn: options.fetchFn,
+  });
+  if (endDecision.useGateway) {
+    return maxEndBlock;
+  }
+
+  let low = options.nextBlock;
+  let high = maxEndBlock;
+  while (low + 1 < high) {
+    const mid = Math.floor((low + high) / 2);
+    const decision = await shouldUseArchiveGateway({
+      gateway: options.gateway,
+      nextBlock: mid,
+      fetchFn: options.fetchFn,
+    });
+
+    if (decision.useGateway) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
 }
 
 export async function readProcessorNextBlock(

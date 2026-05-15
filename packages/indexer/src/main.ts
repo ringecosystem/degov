@@ -10,6 +10,7 @@ import { TextPlus } from "./internal/textplus";
 import { createDatabase } from "./database";
 import {
   fallbackRpcEndBlock,
+  findArchiveGatewayEndBlock,
   readProcessorNextBlock,
   shouldUseArchiveGateway,
 } from "./archive-gateway";
@@ -119,10 +120,16 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
     });
 
     if (archiveDecision.useGateway) {
+      processorEndBlock = await findArchiveGatewayEndBlock({
+        gateway: config.gateway,
+        nextBlock,
+        configuredEndBlock: config.endBlock,
+      });
       processor.setGateway(config.gateway);
       console.log(
         DegovIndexerHelpers.formatLogLine("processor.archive selected", {
           nextBlock,
+          archiveEndBlock: processorEndBlock,
           probeUrl: archiveDecision.probeUrl,
           status: archiveDecision.status,
         }),

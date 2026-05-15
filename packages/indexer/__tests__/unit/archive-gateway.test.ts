@@ -1,5 +1,6 @@
 import {
   fallbackRpcEndBlock,
+  findArchiveGatewayEndBlock,
   shouldUseArchiveGateway,
 } from "../../src/archive-gateway";
 
@@ -34,5 +35,25 @@ describe("archive gateway selection", () => {
         configuredEndBlock: 13644710,
       }),
     ).toBe(13644710);
+  });
+
+  it("limits archive processing before the first unavailable block", async () => {
+    const fetchFn = jest.fn(async (input: string) => {
+      const block = Number(input.match(/\/(\d+)\/worker$/)?.[1]);
+      return {
+        ok: block < 13692460,
+        status: block < 13692460 ? 200 : 503,
+        text: async () => "not ready",
+      };
+    });
+
+    const endBlock = await findArchiveGatewayEndBlock({
+      gateway: "https://v2.archive.subsquid.io/network/ethereum-mainnet",
+      nextBlock: 13685540,
+      maxBlocks: 10_000,
+      fetchFn,
+    });
+
+    expect(endBlock).toBe(13692459);
   });
 });
