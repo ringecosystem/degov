@@ -226,7 +226,7 @@ describe("onchain refresh worker", () => {
     );
   });
 
-  it("does not claim tasks while the processor is still far behind the chain head", async () => {
+  it("does not claim tasks while the processor is still far behind the chain head without reconcile seeding", async () => {
     const queries: { sql: string; params?: unknown[] }[] = [];
     const dataSource = {
       transaction: async (callback: any) => callback(dataSource),
@@ -266,7 +266,7 @@ describe("onchain refresh worker", () => {
       workerId: "worker-1",
       batchSize: 10,
       maxSyncLagBlocks: 50,
-      seedReconcile: true,
+      seedReconcile: false,
       now: 1_700_000_000_000n,
     });
 
@@ -283,6 +283,105 @@ describe("onchain refresh worker", () => {
     expect(
       queries.some((entry) => entry.sql.includes("INSERT INTO onchain_refresh_task")),
     ).toBe(false);
+  });
+
+  it("seeds and claims only reconcile tasks while the processor is still far behind the chain head", async () => {
+    const account = "0x1111111111111111111111111111111111111111";
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "100" }];
+        }
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (
+          sql.includes("SELECT lower(account) AS account") &&
+          sql.includes("WHERE id = ANY($1::text[])") &&
+          sql.includes("FROM onchain_refresh_task")
+        ) {
+          return [];
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          expect(sql).toContain("btrim(reason_item) = 'reconcile'");
+          return [
+            {
+              id: "task-1",
+              chainId: 1,
+              daoCode: "demo",
+              governorAddress: "0x9999999999999999999999999999999999999999",
+              tokenAddress: "0x8888888888888888888888888888888888888888",
+              account,
+              refreshBalance: true,
+              refreshPower: true,
+              attempts: 0,
+            },
+          ];
+        }
+        if (sql.includes("FROM contributor")) {
+          return [
+            {
+              id: account,
+              power: "0",
+              balance: "0",
+              delegatesCountAll: 0,
+              delegatesCountEffective: 0,
+            },
+          ];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 200n,
+      timestampMs: 1_700_000_000_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getVotes",
+      votes: 7n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      maxSyncLagBlocks: 50,
+      seedReconcile: true,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 1,
+      processed: 1,
+      failed: 0,
+      seeded: 1,
+      syncLagBlocks: "100",
+      claimMode: "reconcile-only",
+    });
+    expect(
+      queries.some((entry) => entry.sql.includes("INSERT INTO onchain_refresh_task")),
+    ).toBe(true);
+    expect(chainTool.tokenBalance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        blockNumber: 200n,
+      }),
+    );
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        blockNumber: 200n,
+      }),
+    );
   });
 
   it("seeds reconcile tasks after the processor lag guard passes", async () => {

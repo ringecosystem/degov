@@ -77,24 +77,14 @@ export async function processOnchainRefreshBatch(
   }
 
   let processorHeight: bigint | undefined;
+  let syncLagBlocks: bigint | undefined;
+  let reconcileOnly = false;
   if (options.maxSyncLagBlocks !== undefined) {
     processorHeight = await loadProcessorHeight(dataSource);
     if (processorHeight === undefined) {
       return { claimed: 0, processed: 0, failed: 0, skipped: "processor-unready" };
     }
-  }
-
-  if (options.maxSyncLagBlocks !== undefined) {
-    const syncLagBlocks = latestBlock.number - processorHeight!;
-    if (syncLagBlocks > BigInt(options.maxSyncLagBlocks)) {
-      return {
-        claimed: 0,
-        processed: 0,
-        failed: 0,
-        skipped: "sync-lag",
-        syncLagBlocks: syncLagBlocks.toString(),
-      };
-    }
+    syncLagBlocks = latestBlock.number - processorHeight;
   }
 
   const seedResult =
@@ -113,13 +103,38 @@ export async function processOnchainRefreshBatch(
         })
       : undefined;
 
-  const tasks = await claimPendingTasks(dataSource, options, now);
+  if (
+    options.maxSyncLagBlocks !== undefined &&
+    syncLagBlocks !== undefined &&
+    syncLagBlocks > BigInt(options.maxSyncLagBlocks)
+  ) {
+    if (!options.seedReconcile) {
+      return {
+        claimed: 0,
+        processed: 0,
+        failed: 0,
+        skipped: "sync-lag",
+        syncLagBlocks: syncLagBlocks.toString(),
+      };
+    }
+    reconcileOnly = true;
+  }
+
+  const reconcileOnlyFields = reconcileOnly && syncLagBlocks !== undefined
+    ? {
+        syncLagBlocks: syncLagBlocks.toString(),
+        claimMode: "reconcile-only",
+      }
+    : {};
+
+  const tasks = await claimPendingTasks(dataSource, options, now, reconcileOnly);
   if (tasks.length === 0) {
     return {
       claimed: 0,
       processed: 0,
       failed: 0,
       ...(seedResult ? { seeded: seedResult.seeded } : {}),
+      ...reconcileOnlyFields,
     };
   }
 
@@ -146,6 +161,7 @@ export async function processOnchainRefreshBatch(
     processed: successes.length,
     failed: failures.length,
     ...(seedResult ? { seeded: seedResult.seeded } : {}),
+    ...reconcileOnlyFields,
   };
 }
 
@@ -176,9 +192,18 @@ async function claimPendingTasks(
   dataSource: QueryableDataSource,
   options: ProcessOnchainRefreshBatchOptions,
   now: bigint,
+  reconcileOnly = false,
 ): Promise<ClaimedTask[]> {
   const lockTtlMs = BigInt(options.lockTtlMs ?? 300_000);
   const staleLockedBefore = now - lockTtlMs;
+  const reconcileOnlyCondition = reconcileOnly
+    ? `
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(string_to_array(reason, '+')) AS reason_item
+            WHERE btrim(reason_item) = 'reconcile'
+          )`
+    : "";
   return withTransaction(dataSource, async (manager) => {
     const rows = await manager.query(
       `
@@ -200,6 +225,7 @@ async function claimPendingTasks(
             (status IN ('pending', 'failed') AND next_run_at <= $4)
             OR (status = 'processing' AND locked_at <= $5)
           )
+          ${reconcileOnlyCondition}
         ORDER BY last_seen_block_number ASC, updated_at ASC
         LIMIT $6
         FOR UPDATE SKIP LOCKED
