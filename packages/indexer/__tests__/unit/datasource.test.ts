@@ -6,6 +6,7 @@ import { DegovDataSource } from "../../src/datasource";
 describe("DegovDataSource", () => {
   const startBlockOverride = process.env.DEGOV_INDEXER_START_BLOCK;
   const endBlockOverride = process.env.DEGOV_INDEXER_END_BLOCK;
+  const gatewayOverride = process.env.DEGOV_INDEXER_GATEWAY;
 
   afterEach(() => {
     if (startBlockOverride === undefined) {
@@ -18,6 +19,12 @@ describe("DegovDataSource", () => {
       delete process.env.DEGOV_INDEXER_END_BLOCK;
     } else {
       process.env.DEGOV_INDEXER_END_BLOCK = endBlockOverride;
+    }
+
+    if (gatewayOverride === undefined) {
+      delete process.env.DEGOV_INDEXER_GATEWAY;
+    } else {
+      process.env.DEGOV_INDEXER_GATEWAY = gatewayOverride;
     }
   });
 
@@ -100,6 +107,40 @@ contracts:
 
       expect(config.startBlock).toBe(100);
       expect(config.endBlock).toBe(200);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows disabling the configured gateway from the environment", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "degov-datasource-"));
+    const configPath = join(tempDir, "degov.yml");
+
+    process.env.DEGOV_INDEXER_GATEWAY = "";
+
+    try {
+      await writeFile(
+        configPath,
+        `
+code: demo
+chain:
+  id: 1
+  rpcs:
+    - https://ethereum-rpc.publicnode.com
+indexer:
+  startBlock: 1
+  gateway: https://v2.archive.subsquid.io/network/ethereum-mainnet
+contracts:
+  governor: "0x1111111111111111111111111111111111111111"
+  governorToken:
+    address: "0x2222222222222222222222222222222222222222"
+    standard: ERC20
+`
+      );
+
+      const config = await DegovDataSource.fromDegovConfigPath(configPath);
+
+      expect(config.gateway).toBeUndefined();
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
