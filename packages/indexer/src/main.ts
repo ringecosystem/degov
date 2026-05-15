@@ -9,6 +9,11 @@ import { DegovIndexerHelpers } from "./internal/helpers";
 import { TextPlus } from "./internal/textplus";
 import { createDatabase } from "./database";
 import {
+  fallbackRpcEndBlock,
+  readProcessorNextBlock,
+  shouldUseArchiveGateway,
+} from "./archive-gateway";
+import {
   isPostgresSerializationFailure,
   serializationRetryDelayMs,
 } from "./internal/retry";
@@ -104,13 +109,45 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
       maxBatchCallSize: config.maxBatchCallSize ?? 200,
     });
 
+  let processorEndBlock = config.endBlock;
+
   if (config.gateway) {
-    processor.setGateway(config.gateway);
+    const nextBlock = await readProcessorNextBlock(config.startBlock);
+    const archiveDecision = await shouldUseArchiveGateway({
+      gateway: config.gateway,
+      nextBlock,
+    });
+
+    if (archiveDecision.useGateway) {
+      processor.setGateway(config.gateway);
+      console.log(
+        DegovIndexerHelpers.formatLogLine("processor.archive selected", {
+          nextBlock,
+          probeUrl: archiveDecision.probeUrl,
+          status: archiveDecision.status,
+        }),
+      );
+    } else {
+      processorEndBlock = fallbackRpcEndBlock({
+        nextBlock,
+        configuredEndBlock: config.endBlock,
+      });
+      console.warn(
+        DegovIndexerHelpers.formatLogLine("processor.archive skipped", {
+          nextBlock,
+          fallbackEndBlock: processorEndBlock,
+          probeUrl: archiveDecision.probeUrl,
+          status: archiveDecision.status,
+          reason: archiveDecision.reason,
+          body: archiveDecision.body,
+        }),
+      );
+    }
   }
   processor.setFinalityConfirmation(config.finalityConfirmation ?? 50);
 
   config.works.forEach((work) => {
-    const range = { from: config.startBlock, to: config.endBlock };
+    const range = { from: config.startBlock, to: processorEndBlock };
     const address = work.contracts.map((item) => item.address);
     processor.addLog({
       range,
