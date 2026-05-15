@@ -49,7 +49,6 @@ class DegovConfigDataSource {
     const endBlockOverride = this.readIntegerOverride(
       "DEGOV_INDEXER_END_BLOCK"
     );
-    const gatewayOverride = this.readGatewayOverride();
     let rpcs = chain.rpcs ?? [];
     if (indexer.rpc) {
       rpcs = [indexer.rpc, ...rpcs];
@@ -79,8 +78,7 @@ class DegovConfigDataSource {
       finalityConfirmation: indexer.finalityConfirmation ?? 50,
       capacity: indexer.capacity ?? 30,
       maxBatchCallSize: indexer.maxBatchCallSize ?? 200,
-      gateway:
-        gatewayOverride === null ? undefined : gatewayOverride ?? indexer.gateway,
+      gateway: indexer.gateway,
       multicallAddress: chain.contracts?.multicall3?.address,
       startBlock: startBlockOverride ?? indexer.startBlock,
       endBlock: endBlockOverride ?? indexer.endBlock,
@@ -111,19 +109,6 @@ class DegovConfigDataSource {
     }
 
     return parsed;
-  }
-
-  private readGatewayOverride(): string | null | undefined {
-    if (!Object.hasOwn(process.env, "DEGOV_INDEXER_GATEWAY")) {
-      return undefined;
-    }
-
-    const value = process.env.DEGOV_INDEXER_GATEWAY?.trim();
-    if (!value || value === "false" || value === "none") {
-      return null;
-    }
-
-    return value;
   }
 
   private async readDegovConfigRaw(): Promise<string> {
