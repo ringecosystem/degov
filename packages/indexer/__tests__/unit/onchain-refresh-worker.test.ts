@@ -443,17 +443,20 @@ describe("onchain refresh worker", () => {
     const taskInsert = queries.find((entry) =>
       entry.sql.includes("INSERT INTO onchain_refresh_task"),
     );
-    expect(taskInsert?.params).toEqual(
-      expect.arrayContaining([
-        account,
-        true,
-        true,
-        "reconcile",
-        "120",
-        "1700000000000",
-        "reconcile",
-      ]),
-    );
+    expect(taskInsert?.sql).toContain("FROM unnest($8::text[], $9::text[])");
+    expect(taskInsert?.params).toEqual([
+      1,
+      "demo",
+      "0x9999999999999999999999999999999999999999",
+      "0x8888888888888888888888888888888888888888",
+      "120",
+      "1700000000000",
+      "1700000000000",
+      [
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
+      ],
+      [account],
+    ]);
     expect(
       queries.some((entry) => entry.sql.includes("FOR UPDATE SKIP LOCKED")),
     ).toBe(true);

@@ -2,7 +2,7 @@ import {
   loadKnownTokenAccounts,
   QueryableDataSource,
 } from "./known-accounts";
-import { onchainRefreshTaskId, upsertOnchainRefreshTask } from "./task";
+import { onchainRefreshTaskId } from "./task";
 
 export interface SeedReconcileOnchainRefreshTasksOptions {
   chainId: number;
@@ -31,27 +31,12 @@ export async function seedReconcileOnchainRefreshTasks(
     );
     alreadySeeded += seededAccounts.size;
 
-    for (const account of accountChunk) {
-      if (seededAccounts.has(account.toLowerCase())) {
-        continue;
-      }
-
-      await upsertOnchainRefreshTask(dataSource, {
-        chainId: options.chainId,
-        daoCode: options.daoCode,
-        governorAddress: options.governorAddress,
-        tokenAddress: options.tokenAddress,
-        account,
-        refreshBalance: true,
-        refreshPower: true,
-        reason: "reconcile",
-        blockNumber: options.blockNumber,
-        blockTimestamp: options.blockTimestamp,
-        transactionHash: "reconcile",
-        now: options.now,
-        debounceMs: 0n,
-      });
-      seeded += 1;
+    const accountsToSeed = accountChunk.filter(
+      (account) => !seededAccounts.has(account.toLowerCase()),
+    );
+    if (accountsToSeed.length > 0) {
+      await upsertReconcileOnchainRefreshTasks(dataSource, options, accountsToSeed);
+      seeded += accountsToSeed.length;
     }
   }
 
@@ -60,6 +45,187 @@ export async function seedReconcileOnchainRefreshTasks(
     alreadySeeded,
     seeded,
   };
+}
+
+async function upsertReconcileOnchainRefreshTasks(
+  dataSource: QueryableDataSource,
+  options: SeedReconcileOnchainRefreshTasksOptions,
+  accounts: string[],
+) {
+  const now = options.now ?? BigInt(Date.now());
+  const governorAddress = options.governorAddress.toLowerCase();
+  const tokenAddress = options.tokenAddress.toLowerCase();
+  const normalizedAccounts = accounts.map((account) => account.toLowerCase());
+  const ids = normalizedAccounts.map((account) =>
+    onchainRefreshTaskId({
+      chainId: options.chainId,
+      governorAddress,
+      tokenAddress,
+      account,
+    }),
+  );
+
+  await dataSource.query(
+    `
+      INSERT INTO onchain_refresh_task (
+        id,
+        chain_id,
+        dao_code,
+        governor_address,
+        token_address,
+        account,
+        refresh_balance,
+        refresh_power,
+        reason,
+        first_seen_block_number,
+        last_seen_block_number,
+        last_seen_block_timestamp,
+        last_seen_transaction_hash,
+        status,
+        attempts,
+        next_run_at,
+        pending_after_lock,
+        created_at,
+        updated_at
+      )
+      SELECT
+        input.id,
+        $1,
+        $2,
+        $3,
+        $4,
+        input.account,
+        true,
+        true,
+        'reconcile',
+        $5,
+        $5,
+        $6,
+        'reconcile',
+        'pending',
+        0,
+        $7,
+        false,
+        $7,
+        $7
+      FROM unnest($8::text[], $9::text[]) AS input(id, account)
+      ON CONFLICT (id) DO UPDATE SET
+        dao_code = COALESCE(EXCLUDED.dao_code, onchain_refresh_task.dao_code),
+        refresh_balance = onchain_refresh_task.refresh_balance OR EXCLUDED.refresh_balance,
+        refresh_power = onchain_refresh_task.refresh_power OR EXCLUDED.refresh_power,
+        reason = (
+          SELECT string_agg(reason_item, '+' ORDER BY reason_item)
+          FROM (
+            SELECT DISTINCT btrim(reason_item) AS reason_item
+            FROM unnest(string_to_array(onchain_refresh_task.reason || '+' || EXCLUDED.reason, '+')) AS reason_item
+            WHERE btrim(reason_item) <> ''
+          ) merged_reasons
+        ),
+        last_seen_block_number = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.last_seen_block_number
+          ELSE EXCLUDED.last_seen_block_number
+        END,
+        last_seen_block_timestamp = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.last_seen_block_timestamp
+          ELSE EXCLUDED.last_seen_block_timestamp
+        END,
+        last_seen_transaction_hash = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.last_seen_transaction_hash
+          ELSE EXCLUDED.last_seen_transaction_hash
+        END,
+        status = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.status
+          ELSE 'pending'
+        END,
+        next_run_at = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.next_run_at
+          ELSE EXCLUDED.next_run_at
+        END,
+        locked_at = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.locked_at
+          ELSE NULL
+        END,
+        locked_by = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.locked_by
+          ELSE NULL
+        END,
+        processed_at = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.processed_at
+          ELSE NULL
+        END,
+        error = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN onchain_refresh_task.error
+          ELSE NULL
+        END,
+        pending_after_lock = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN true
+          ELSE false
+        END,
+        pending_after_lock_block_number = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN GREATEST(
+            COALESCE(onchain_refresh_task.pending_after_lock_block_number, 0),
+            EXCLUDED.last_seen_block_number
+          )
+          ELSE NULL
+        END,
+        pending_after_lock_block_timestamp = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN CASE
+            WHEN onchain_refresh_task.pending_after_lock_block_number IS NULL
+              OR EXCLUDED.last_seen_block_number >= onchain_refresh_task.pending_after_lock_block_number
+            THEN EXCLUDED.last_seen_block_timestamp
+            ELSE onchain_refresh_task.pending_after_lock_block_timestamp
+          END
+          ELSE NULL
+        END,
+        pending_after_lock_transaction_hash = CASE
+          WHEN onchain_refresh_task.status = 'processing'
+            OR onchain_refresh_task.locked_at IS NOT NULL
+          THEN CASE
+            WHEN onchain_refresh_task.pending_after_lock_block_number IS NULL
+              OR EXCLUDED.last_seen_block_number >= onchain_refresh_task.pending_after_lock_block_number
+            THEN EXCLUDED.last_seen_transaction_hash
+            ELSE onchain_refresh_task.pending_after_lock_transaction_hash
+          END
+          ELSE NULL
+        END,
+        updated_at = EXCLUDED.updated_at
+    `,
+    [
+      options.chainId,
+      options.daoCode ?? null,
+      governorAddress,
+      tokenAddress,
+      options.blockNumber.toString(),
+      options.blockTimestamp.toString(),
+      now.toString(),
+      ids,
+      normalizedAccounts,
+    ],
+  );
 }
 
 async function loadReconcileSeededAccounts(
