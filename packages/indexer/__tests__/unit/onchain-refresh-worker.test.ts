@@ -299,9 +299,8 @@ describe("onchain refresh worker", () => {
           return [{ account }];
         }
         if (
-          sql.includes("SELECT lower(account) AS account") &&
-          sql.includes("WHERE id = ANY($1::text[])") &&
-          sql.includes("FROM onchain_refresh_task")
+          sql.includes("latest_activity") &&
+          sql.includes("onchain_refresh_task")
         ) {
           return [];
         }
@@ -399,9 +398,8 @@ describe("onchain refresh worker", () => {
           return [{ account }, { account: alreadySeeded }];
         }
         if (
-          sql.includes("SELECT lower(account) AS account") &&
-          sql.includes("WHERE id = ANY($1::text[])") &&
-          sql.includes("FROM onchain_refresh_task")
+          sql.includes("latest_activity") &&
+          sql.includes("onchain_refresh_task")
         ) {
           return [{ account: alreadySeeded }];
         }
@@ -461,14 +459,159 @@ describe("onchain refresh worker", () => {
       queries.some((entry) => entry.sql.includes("FOR UPDATE SKIP LOCKED")),
     ).toBe(true);
     const seededLookup = queries.find((entry) =>
-      entry.sql.includes("WHERE id = ANY($1::text[])"),
+      entry.sql.includes("latest_activity"),
     );
+    expect(seededLookup?.sql).toContain("latest_activity");
+    expect(seededLookup?.sql).toContain("delegate_votes_changed");
+    expect(seededLookup?.sql).toContain("token_transfer");
+    expect(seededLookup?.sql).toContain("task.last_seen_block_number");
     expect(seededLookup?.params).toEqual([
       [
         "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
         "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x2222222222222222222222222222222222222222",
       ],
+      [
+        "0x1111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222",
+      ],
+      1,
+      "0x9999999999999999999999999999999999999999",
     ]);
+  });
+
+  it("re-seeds a processed reconcile task when later indexed activity exists", async () => {
+    const staleAccount = "0x1111111111111111111111111111111111111111";
+    const upToDateAccount = "0x2222222222222222222222222222222222222222";
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "250" }];
+        }
+        if (sql.includes("known_accounts")) {
+          return [{ account: staleAccount }, { account: upToDateAccount }];
+        }
+        if (
+          sql.includes("latest_activity") &&
+          sql.includes("onchain_refresh_task")
+        ) {
+          return [{ account: upToDateAccount }];
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 252n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      maxSyncLagBlocks: 5,
+      seedReconcile: true,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      seeded: 1,
+    });
+    const seededLookup = queries.find((entry) =>
+      entry.sql.includes("latest_activity"),
+    );
+    expect(seededLookup?.sql).toContain(
+      "COALESCE(latest_activity.block_number, 0) <= task.last_seen_block_number",
+    );
+    expect(seededLookup?.sql).toContain(
+      "task.status IN ('pending', 'processing')",
+    );
+    const taskInsert = queries.find((entry) =>
+      entry.sql.includes("INSERT INTO onchain_refresh_task"),
+    );
+    expect(taskInsert?.params).toEqual([
+      1,
+      "demo",
+      "0x9999999999999999999999999999999999999999",
+      "0x8888888888888888888888888888888888888888",
+      "250",
+      "1700000000000",
+      "1700000000000",
+      [
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
+      ],
+      [staleAccount],
+    ]);
+  });
+
+  it("does not duplicate a reconcile task that is still pending or processing", async () => {
+    const account = "0x1111111111111111111111111111111111111111";
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "250" }];
+        }
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (
+          sql.includes("latest_activity") &&
+          sql.includes("onchain_refresh_task")
+        ) {
+          return [{ account }];
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 252n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      maxSyncLagBlocks: 5,
+      seedReconcile: true,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      seeded: 0,
+    });
+    expect(
+      queries.some((entry) =>
+        entry.sql.includes("INSERT INTO onchain_refresh_task"),
+      ),
+    ).toBe(false);
   });
 
   it("reads multiple account states with one latest block lookup and chunked multicall", async () => {

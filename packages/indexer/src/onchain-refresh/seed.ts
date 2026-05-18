@@ -239,12 +239,62 @@ async function loadReconcileSeededAccounts(
 
   const rows = await dataSource.query(
     `
-      SELECT lower(account) AS account
-      FROM onchain_refresh_task
-      WHERE id = ANY($1::text[])
+      WITH input_accounts AS (
+        SELECT *
+        FROM unnest($1::text[], $2::text[]) AS input(id, account)
+      ),
+      latest_activity AS (
+        SELECT account, MAX(block_number) AS block_number
+        FROM (
+          SELECT lower(delegate) AS account, block_number
+          FROM delegate_votes_changed
+          WHERE chain_id = $3
+            AND lower(governor_address) = lower($4)
+            AND lower(delegate) = ANY($2::text[])
+          UNION ALL
+          SELECT lower(delegator) AS account, block_number
+          FROM delegate_changed
+          WHERE chain_id = $3
+            AND lower(governor_address) = lower($4)
+            AND lower(delegator) = ANY($2::text[])
+          UNION ALL
+          SELECT lower(from_delegate) AS account, block_number
+          FROM delegate_changed
+          WHERE chain_id = $3
+            AND lower(governor_address) = lower($4)
+            AND lower(from_delegate) = ANY($2::text[])
+          UNION ALL
+          SELECT lower(to_delegate) AS account, block_number
+          FROM delegate_changed
+          WHERE chain_id = $3
+            AND lower(governor_address) = lower($4)
+            AND lower(to_delegate) = ANY($2::text[])
+          UNION ALL
+          SELECT lower("from") AS account, block_number
+          FROM token_transfer
+          WHERE chain_id = $3
+            AND lower(governor_address) = lower($4)
+            AND lower("from") = ANY($2::text[])
+          UNION ALL
+          SELECT lower("to") AS account, block_number
+          FROM token_transfer
+          WHERE chain_id = $3
+            AND lower(governor_address) = lower($4)
+            AND lower("to") = ANY($2::text[])
+        ) account_activity
+        GROUP BY account
+      )
+      SELECT lower(input_accounts.account) AS account
+      FROM input_accounts
+      JOIN onchain_refresh_task task ON task.id = input_accounts.id
+      LEFT JOIN latest_activity ON latest_activity.account = lower(input_accounts.account)
+      WHERE (
+          task.status IN ('pending', 'processing')
+          OR COALESCE(latest_activity.block_number, 0) <= task.last_seen_block_number
+        )
         AND EXISTS (
           SELECT 1
-          FROM unnest(string_to_array(reason, '+')) AS reason_item
+          FROM unnest(string_to_array(task.reason, '+')) AS reason_item
           WHERE btrim(reason_item) = 'reconcile'
         )
     `,
@@ -257,6 +307,9 @@ async function loadReconcileSeededAccounts(
           account,
         }),
       ),
+      accounts.map((account) => account.toLowerCase()),
+      options.chainId,
+      options.governorAddress,
     ],
   );
 
