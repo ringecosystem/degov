@@ -25,6 +25,7 @@ export interface ProcessOnchainRefreshBatchOptions {
   seedReconcile?: boolean;
   reconcileSeedChunkSize?: number;
   reconcileSeedBatchSize?: number;
+  reconcileSeedStartAfterAccount?: string;
   now?: bigint;
   maxAttempts?: number;
   lockTtlMs?: number;
@@ -129,7 +130,8 @@ export async function processOnchainRefreshBatch(
       blockTimestamp: latestBlock.timestampMs,
       now,
       chunkSize: options.reconcileSeedChunkSize,
-      maxAccountsToSeed: options.reconcileSeedBatchSize,
+      maxAccountsToScan: options.reconcileSeedBatchSize,
+      startAfterAccount: options.reconcileSeedStartAfterAccount,
     });
     tasks = await claimPendingTasks(dataSource, options, now, reconcileOnly);
   }
@@ -142,6 +144,11 @@ export async function processOnchainRefreshBatch(
       ...(seedResult ? { seeded: seedResult.seeded } : {}),
       ...(seedResult
         ? { seedLimitReached: seedResult.seedLimitReached }
+        : {}),
+      ...(seedResult ? { accountsKnown: seedResult.accountsKnown } : {}),
+      ...(seedResult ? { accountsScanned: seedResult.accountsScanned } : {}),
+      ...(seedResult?.nextStartAfterAccount
+        ? { nextStartAfterAccount: seedResult.nextStartAfterAccount }
         : {}),
       ...reconcileOnlyFields,
     };
@@ -172,6 +179,11 @@ export async function processOnchainRefreshBatch(
     ...(seedResult ? { seeded: seedResult.seeded } : {}),
     ...(seedResult
       ? { seedLimitReached: seedResult.seedLimitReached }
+      : {}),
+    ...(seedResult ? { accountsKnown: seedResult.accountsKnown } : {}),
+    ...(seedResult ? { accountsScanned: seedResult.accountsScanned } : {}),
+    ...(seedResult?.nextStartAfterAccount
+      ? { nextStartAfterAccount: seedResult.nextStartAfterAccount }
       : {}),
     ...reconcileOnlyFields,
   };

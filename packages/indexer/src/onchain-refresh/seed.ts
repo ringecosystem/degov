@@ -13,7 +13,8 @@ export interface SeedReconcileOnchainRefreshTasksOptions {
   blockTimestamp: bigint;
   now?: bigint;
   chunkSize?: number;
-  maxAccountsToSeed?: number;
+  maxAccountsToScan?: number;
+  startAfterAccount?: string;
 }
 
 export async function seedReconcileOnchainRefreshTasks(
@@ -23,16 +24,17 @@ export async function seedReconcileOnchainRefreshTasks(
   const accounts = await loadKnownTokenAccounts(dataSource, options);
   let alreadySeeded = 0;
   let seeded = 0;
-  let seedLimitReached = false;
-  const maxAccountsToSeed = options.maxAccountsToSeed;
+  const accountsKnown = accounts.length;
+  const maxAccountsToScan = options.maxAccountsToScan;
+  const startIndex = findSeedStartIndex(accounts, options.startAfterAccount);
+  const scanLimit = maxAccountsToScan ?? accounts.length;
+  const accountsToScan = accounts.slice(startIndex, startIndex + scanLimit);
+  const accountsScanned = accountsToScan.length;
+  const nextStartAfterAccount = accountsToScan[accountsToScan.length - 1];
+  const seedLimitReached = startIndex + accountsScanned < accounts.length;
 
-  const accountChunks = chunk(accounts, options.chunkSize ?? 500);
+  const accountChunks = chunk(accountsToScan, options.chunkSize ?? 500);
   for (let index = 0; index < accountChunks.length; index += 1) {
-    if (maxAccountsToSeed !== undefined && seeded >= maxAccountsToSeed) {
-      seedLimitReached = true;
-      break;
-    }
-
     const accountChunk = accountChunks[index];
     const seededAccounts = await loadReconcileSeededAccounts(
       dataSource,
@@ -44,34 +46,35 @@ export async function seedReconcileOnchainRefreshTasks(
     const accountsToSeed = accountChunk.filter(
       (account) => !seededAccounts.has(account.toLowerCase()),
     );
-    const remaining =
-      maxAccountsToSeed === undefined
-        ? accountsToSeed.length
-        : Math.max(0, maxAccountsToSeed - seeded);
-    const boundedAccountsToSeed = accountsToSeed.slice(0, remaining);
-    if (boundedAccountsToSeed.length < accountsToSeed.length) {
-      seedLimitReached = true;
-    }
-    if (boundedAccountsToSeed.length > 0) {
+    if (accountsToSeed.length > 0) {
       await upsertReconcileOnchainRefreshTasks(
         dataSource,
         options,
-        boundedAccountsToSeed,
+        accountsToSeed,
       );
-      seeded += boundedAccountsToSeed.length;
-    }
-    if (maxAccountsToSeed !== undefined && seeded >= maxAccountsToSeed) {
-      seedLimitReached = true;
-      break;
+      seeded += accountsToSeed.length;
     }
   }
 
   return {
-    accountsKnown: accounts.length,
+    accountsKnown,
+    accountsScanned,
     alreadySeeded,
     seeded,
     seedLimitReached,
+    nextStartAfterAccount,
   };
+}
+
+function findSeedStartIndex(accounts: string[], startAfterAccount?: string) {
+  if (!startAfterAccount) {
+    return 0;
+  }
+  const normalizedStartAfterAccount = startAfterAccount.toLowerCase();
+  const index = accounts.findIndex(
+    (account) => account.toLowerCase() > normalizedStartAfterAccount,
+  );
+  return index === -1 ? 0 : index;
 }
 
 async function upsertReconcileOnchainRefreshTasks(

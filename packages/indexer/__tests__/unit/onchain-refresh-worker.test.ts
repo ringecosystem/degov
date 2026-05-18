@@ -369,6 +369,9 @@ describe("onchain refresh worker", () => {
       failed: 0,
       seeded: 1,
       seedLimitReached: false,
+      accountsKnown: 1,
+      accountsScanned: 1,
+      nextStartAfterAccount: account,
       syncLagBlocks: "100",
       claimMode: "reconcile-only",
     });
@@ -528,6 +531,9 @@ describe("onchain refresh worker", () => {
       failed: 0,
       seeded: 1,
       seedLimitReached: true,
+      accountsKnown: 2,
+      accountsScanned: 1,
+      nextStartAfterAccount: account,
     });
     expect(chainTool.tokenBalance).not.toHaveBeenCalled();
     expect(chainTool.currentVotesWithSource).not.toHaveBeenCalled();
@@ -562,15 +568,154 @@ describe("onchain refresh worker", () => {
     expect(seededLookup?.params).toEqual([
       [
         "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
-        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x2222222222222222222222222222222222222222",
       ],
       [
         "0x1111111111111111111111111111111111111111",
-        "0x2222222222222222222222222222222222222222",
       ],
       1,
       "0x9999999999999999999999999999999999999999",
     ]);
+  });
+
+  it("limits reconcile seed scanning even when scanned accounts are already seeded", async () => {
+    const accounts = [
+      "0x1111111111111111111111111111111111111111",
+      "0x2222222222222222222222222222222222222222",
+      "0x3333333333333333333333333333333333333333",
+    ];
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "120" }];
+        }
+        if (sql.includes("known_accounts")) {
+          return accounts.map((account) => ({ account }));
+        }
+        if (
+          sql.includes("latest_activity") &&
+          sql.includes("onchain_refresh_task")
+        ) {
+          return accounts.slice(0, 2).map((account) => ({ account }));
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      reconcileSeedBatchSize: 2,
+      maxSyncLagBlocks: 5,
+      seedReconcile: true,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      seeded: 0,
+      seedLimitReached: true,
+      accountsKnown: 3,
+      accountsScanned: 2,
+      nextStartAfterAccount: accounts[1],
+    });
+    const seededLookups = queries.filter((entry) =>
+      entry.sql.includes("latest_activity"),
+    );
+    expect(seededLookups).toHaveLength(1);
+    expect(seededLookups[0].params?.[1]).toEqual(accounts.slice(0, 2));
+    expect(
+      queries.some((entry) =>
+        entry.sql.includes("INSERT INTO onchain_refresh_task"),
+      ),
+    ).toBe(false);
+  });
+
+  it("continues reconcile seed scanning after the provided cursor", async () => {
+    const accounts = [
+      "0x1111111111111111111111111111111111111111",
+      "0x2222222222222222222222222222222222222222",
+      "0x3333333333333333333333333333333333333333",
+    ];
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "120" }];
+        }
+        if (sql.includes("known_accounts")) {
+          return accounts.map((account) => ({ account }));
+        }
+        if (
+          sql.includes("latest_activity") &&
+          sql.includes("onchain_refresh_task")
+        ) {
+          return [{ account: accounts[1] }];
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      reconcileSeedBatchSize: 2,
+      reconcileSeedStartAfterAccount: accounts[0],
+      maxSyncLagBlocks: 5,
+      seedReconcile: true,
+      now: 1_700_000_000_000n,
+    } as any);
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      seeded: 1,
+      seedLimitReached: false,
+      accountsKnown: 3,
+      accountsScanned: 2,
+      nextStartAfterAccount: accounts[2],
+    });
+    const seededLookup = queries.find((entry) =>
+      entry.sql.includes("latest_activity"),
+    );
+    expect(seededLookup?.params?.[1]).toEqual(accounts.slice(1));
+    const taskInsert = queries.find((entry) =>
+      entry.sql.includes("INSERT INTO onchain_refresh_task"),
+    );
+    expect(taskInsert?.params?.[8]).toEqual([accounts[2]]);
   });
 
   it("re-seeds a processed reconcile task when later indexed activity exists", async () => {
@@ -624,6 +769,9 @@ describe("onchain refresh worker", () => {
       failed: 0,
       seeded: 1,
       seedLimitReached: false,
+      accountsKnown: 2,
+      accountsScanned: 2,
+      nextStartAfterAccount: upToDateAccount,
     });
     const seededLookup = queries.find((entry) =>
       entry.sql.includes("latest_activity"),
@@ -702,6 +850,9 @@ describe("onchain refresh worker", () => {
       failed: 0,
       seeded: 0,
       seedLimitReached: false,
+      accountsKnown: 1,
+      accountsScanned: 1,
+      nextStartAfterAccount: account,
     });
     expect(
       queries.some((entry) =>

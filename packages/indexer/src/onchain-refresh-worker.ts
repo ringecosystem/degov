@@ -60,6 +60,7 @@ async function main() {
     parseIndexerPowerSource() === "onchain" &&
     !parseOnchainEventReadsEnabled();
   const rpcs = resolveRpcs(config.chainId, config.rpcs);
+  let reconcileSeedStartAfterAccount: string | undefined;
 
   console.log(
     JSON.stringify({
@@ -99,10 +100,16 @@ async function main() {
           maxSyncLagBlocks,
           lockTtlMs,
           seedReconcile,
+          reconcileSeedStartAfterAccount,
         });
+        if ("accountsScanned" in result) {
+          reconcileSeedStartAfterAccount = result.seedLimitReached
+            ? result.nextStartAfterAccount
+            : undefined;
+        }
         if ("skipped" in result) {
           console.log(JSON.stringify({ msg: "onchain refresh skipped", ...result }));
-        } else if (result.claimed > 0) {
+        } else if (result.claimed > 0 || "accountsScanned" in result) {
           console.log(JSON.stringify({ msg: "onchain refresh batch", ...result }));
         }
         if (result.claimed < batchSize) {
