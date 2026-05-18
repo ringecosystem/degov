@@ -24,6 +24,7 @@ export interface ProcessOnchainRefreshBatchOptions {
   maxSyncLagBlocks?: number;
   seedReconcile?: boolean;
   reconcileSeedChunkSize?: number;
+  reconcileSeedBatchSize?: number;
   now?: bigint;
   maxAttempts?: number;
   lockTtlMs?: number;
@@ -87,22 +88,6 @@ export async function processOnchainRefreshBatch(
     syncLagBlocks = latestBlock.number - processorHeight;
   }
 
-  const seedResult =
-    options.seedReconcile &&
-    options.maxSyncLagBlocks !== undefined &&
-    processorHeight !== undefined
-      ? await seedReconcileOnchainRefreshTasks(dataSource, {
-          chainId: options.chainId,
-          daoCode: options.daoCode,
-          governorAddress: options.governorAddress,
-          tokenAddress: options.tokenAddress,
-          blockNumber: processorHeight,
-          blockTimestamp: latestBlock.timestampMs,
-          now,
-          chunkSize: options.reconcileSeedChunkSize,
-        })
-      : undefined;
-
   if (
     options.maxSyncLagBlocks !== undefined &&
     syncLagBlocks !== undefined &&
@@ -127,13 +112,37 @@ export async function processOnchainRefreshBatch(
       }
     : {};
 
-  const tasks = await claimPendingTasks(dataSource, options, now, reconcileOnly);
+  let seedResult;
+  let tasks = await claimPendingTasks(dataSource, options, now, reconcileOnly);
+  if (
+    tasks.length === 0 &&
+    options.seedReconcile &&
+    options.maxSyncLagBlocks !== undefined &&
+    processorHeight !== undefined
+  ) {
+    seedResult = await seedReconcileOnchainRefreshTasks(dataSource, {
+      chainId: options.chainId,
+      daoCode: options.daoCode,
+      governorAddress: options.governorAddress,
+      tokenAddress: options.tokenAddress,
+      blockNumber: processorHeight,
+      blockTimestamp: latestBlock.timestampMs,
+      now,
+      chunkSize: options.reconcileSeedChunkSize,
+      maxAccountsToSeed: options.reconcileSeedBatchSize,
+    });
+    tasks = await claimPendingTasks(dataSource, options, now, reconcileOnly);
+  }
+
   if (tasks.length === 0) {
     return {
       claimed: 0,
       processed: 0,
       failed: 0,
       ...(seedResult ? { seeded: seedResult.seeded } : {}),
+      ...(seedResult
+        ? { seedLimitReached: seedResult.seedLimitReached }
+        : {}),
       ...reconcileOnlyFields,
     };
   }
@@ -161,6 +170,9 @@ export async function processOnchainRefreshBatch(
     processed: successes.length,
     failed: failures.length,
     ...(seedResult ? { seeded: seedResult.seeded } : {}),
+    ...(seedResult
+      ? { seedLimitReached: seedResult.seedLimitReached }
+      : {}),
     ...reconcileOnlyFields,
   };
 }

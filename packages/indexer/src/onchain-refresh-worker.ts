@@ -38,6 +38,10 @@ async function main() {
     10_000,
   );
   const batchSize = readIntegerEnv("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE", 100);
+  const reconcileSeedBatchSize = readIntegerEnv(
+    "DEGOV_ONCHAIN_REFRESH_RECONCILE_SEED_BATCH_SIZE",
+    batchSize,
+  );
   const multicallChunkSize = readIntegerEnv(
     "DEGOV_ONCHAIN_REFRESH_MULTICALL_CHUNK_SIZE",
     100,
@@ -65,6 +69,7 @@ async function main() {
       governorAddress: governor.address,
       tokenAddress: governorToken.address,
       batchSize,
+      reconcileSeedBatchSize,
       multicallChunkSize,
       concurrency,
       maxBatchesPerPoll,
@@ -88,6 +93,7 @@ async function main() {
           multicallAddress: config.multicallAddress,
           workerId,
           batchSize,
+          reconcileSeedBatchSize,
           multicallChunkSize,
           concurrency,
           maxSyncLagBlocks,

@@ -13,6 +13,7 @@ export interface SeedReconcileOnchainRefreshTasksOptions {
   blockTimestamp: bigint;
   now?: bigint;
   chunkSize?: number;
+  maxAccountsToSeed?: number;
 }
 
 export async function seedReconcileOnchainRefreshTasks(
@@ -22,8 +23,17 @@ export async function seedReconcileOnchainRefreshTasks(
   const accounts = await loadKnownTokenAccounts(dataSource, options);
   let alreadySeeded = 0;
   let seeded = 0;
+  let seedLimitReached = false;
+  const maxAccountsToSeed = options.maxAccountsToSeed;
 
-  for (const accountChunk of chunk(accounts, options.chunkSize ?? 500)) {
+  const accountChunks = chunk(accounts, options.chunkSize ?? 500);
+  for (let index = 0; index < accountChunks.length; index += 1) {
+    if (maxAccountsToSeed !== undefined && seeded >= maxAccountsToSeed) {
+      seedLimitReached = true;
+      break;
+    }
+
+    const accountChunk = accountChunks[index];
     const seededAccounts = await loadReconcileSeededAccounts(
       dataSource,
       options,
@@ -34,9 +44,25 @@ export async function seedReconcileOnchainRefreshTasks(
     const accountsToSeed = accountChunk.filter(
       (account) => !seededAccounts.has(account.toLowerCase()),
     );
-    if (accountsToSeed.length > 0) {
-      await upsertReconcileOnchainRefreshTasks(dataSource, options, accountsToSeed);
-      seeded += accountsToSeed.length;
+    const remaining =
+      maxAccountsToSeed === undefined
+        ? accountsToSeed.length
+        : Math.max(0, maxAccountsToSeed - seeded);
+    const boundedAccountsToSeed = accountsToSeed.slice(0, remaining);
+    if (boundedAccountsToSeed.length < accountsToSeed.length) {
+      seedLimitReached = true;
+    }
+    if (boundedAccountsToSeed.length > 0) {
+      await upsertReconcileOnchainRefreshTasks(
+        dataSource,
+        options,
+        boundedAccountsToSeed,
+      );
+      seeded += boundedAccountsToSeed.length;
+    }
+    if (maxAccountsToSeed !== undefined && seeded >= maxAccountsToSeed) {
+      seedLimitReached = true;
+      break;
     }
   }
 
@@ -44,6 +70,7 @@ export async function seedReconcileOnchainRefreshTasks(
     accountsKnown: accounts.length,
     alreadySeeded,
     seeded,
+    seedLimitReached,
   };
 }
 
