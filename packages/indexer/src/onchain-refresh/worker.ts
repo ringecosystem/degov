@@ -436,6 +436,15 @@ async function readTaskStateChunkWithMulticall(
     return tasks.map((task) => ({ task, error }));
   }
 
+  const currentVotesResults = await readCurrentVotesFallbacksWithMulticall(
+    client,
+    options,
+    tasks,
+    indexes,
+    results,
+    context,
+  );
+
   return tasks.map((task) => {
     try {
       const previous = previousByAccount.get(task.account.toLowerCase());
@@ -453,18 +462,85 @@ async function readTaskStateChunkWithMulticall(
           balanceResult === undefined
             ? previousBalance
             : BigInt(readMulticallValue(balanceResult)),
-        power:
-          powerResult === undefined
-            ? { method: "getVotes", votes: previousPower }
-            : {
-                method: "getVotes",
-                votes: BigInt(readMulticallValue(powerResult)),
-              },
+        power: readPowerMulticallResult(
+          previousPower,
+          powerResult,
+          currentVotesResults.get(task.id),
+        ),
       };
     } catch (error) {
       return { task, error };
     }
   });
+}
+
+function readPowerMulticallResult(
+  previousPower: bigint,
+  powerResult: any,
+  currentVotesResult: any,
+): CurrentVotesResult {
+  if (powerResult === undefined) {
+    return { method: "getVotes", votes: previousPower };
+  }
+  if (powerResult.status === "success") {
+    return {
+      method: "getVotes",
+      votes: BigInt(readMulticallValue(powerResult)),
+    };
+  }
+  return {
+    method: "getCurrentVotes",
+    votes: BigInt(readMulticallValue(currentVotesResult ?? powerResult)),
+  };
+}
+
+async function readCurrentVotesFallbacksWithMulticall(
+  client: ReturnType<typeof createPublicClient>,
+  options: ProcessOnchainRefreshBatchOptions,
+  tasks: ClaimedTask[],
+  indexes: Map<string, { balance?: number; power?: number }>,
+  results: any[],
+  context: { blockNumber: bigint },
+) {
+  const fallbackTasks = tasks.filter((task) => {
+    const powerIndex = indexes.get(task.id)?.power;
+    if (powerIndex === undefined) {
+      return false;
+    }
+    return results[powerIndex]?.status !== "success";
+  });
+  if (fallbackTasks.length === 0) {
+    return new Map<string, any>();
+  }
+
+  const contracts = fallbackTasks.map((task) => ({
+    address: options.tokenAddress as `0x${string}`,
+    abi: ABI_FUNCTION_GET_CURRENT_VOTES,
+    functionName: "getCurrentVotes",
+    args: [task.account as `0x${string}`],
+  }));
+
+  try {
+    const fallbackResults = await (client as any).multicall({
+      allowFailure: true,
+      blockNumber: context.blockNumber,
+      multicallAddress: options.multicallAddress as `0x${string}`,
+      contracts,
+    });
+    return new Map(
+      fallbackTasks.map((task, index) => [task.id, fallbackResults[index]]),
+    );
+  } catch (error) {
+    return new Map(
+      fallbackTasks.map((task) => [
+        task.id,
+        {
+          status: "failure",
+          error,
+        },
+      ]),
+    );
+  }
 }
 
 function readMulticallValue(result: any) {
@@ -479,6 +555,16 @@ const ABI_FUNCTION_GET_VOTES: Abi = [
     inputs: [{ internalType: "address", name: "account", type: "address" }],
     name: "getVotes",
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_GET_CURRENT_VOTES: Abi = [
+  {
+    inputs: [{ internalType: "address", name: "account", type: "address" }],
+    name: "getCurrentVotes",
+    outputs: [{ internalType: "uint96", name: "", type: "uint96" }],
     stateMutability: "view",
     type: "function",
   },
