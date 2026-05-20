@@ -711,4 +711,156 @@ describe("ChainTool", () => {
       })
     );
   });
+
+  it("uses getCurrentVotes when getVotes is unavailable", async () => {
+    const chainTool = new ChainTool();
+    const readContract = jest.spyOn(chainTool, "readContract");
+
+    readContract
+      .mockRejectedValueOnce(new Error("execution reverted: selector not found"))
+      .mockResolvedValueOnce(88n as never);
+
+    const common = {
+      chainId: 1,
+      contractAddress,
+      account: "0x3333333333333333333333333333333333333333" as const,
+      blockNumber: 456n,
+    };
+
+    await expect(chainTool.currentVotesWithSource(common)).resolves.toEqual({
+      method: "getCurrentVotes",
+      votes: 88n,
+    });
+
+    expect(readContract).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        functionName: "getCurrentVotes",
+        args: [common.account],
+        blockNumber: 456n,
+      })
+    );
+  });
+
+  it("forwards blockNumber to readContract calls", async () => {
+    const fakeClient = {
+      readContract: jest.fn(async () => 123n),
+    };
+    const chainTool = new ChainTool();
+    jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) =>
+        action(fakeClient)
+      );
+
+    await chainTool.readContract({
+      chainId: 1,
+      contractAddress,
+      abi: [],
+      functionName: "balanceOf",
+      args: ["0x3333333333333333333333333333333333333333"],
+      blockNumber: 456n,
+    });
+
+    expect(fakeClient.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: contractAddress,
+        functionName: "balanceOf",
+        blockNumber: 456n,
+      })
+    );
+  });
+
+  it("reads token balances, current votes, delegates, and historical votes at a block", async () => {
+    const chainTool = new ChainTool();
+    const readContract = jest.spyOn(chainTool, "readContract");
+
+    readContract
+      .mockResolvedValueOnce(10n as never)
+      .mockResolvedValueOnce(20n as never)
+      .mockResolvedValueOnce(
+        "0x4444444444444444444444444444444444444444" as never
+      )
+      .mockResolvedValueOnce(30n as never);
+
+    const common = {
+      chainId: 1,
+      contractAddress,
+      account: "0x3333333333333333333333333333333333333333" as const,
+      blockNumber: 456n,
+    };
+
+    await expect(chainTool.tokenBalance(common)).resolves.toBe(10n);
+    await expect(chainTool.currentVotes(common)).resolves.toBe(20n);
+    await expect(chainTool.delegateOf(common)).resolves.toBe(
+      "0x4444444444444444444444444444444444444444"
+    );
+    await expect(
+      chainTool.historicalVotes({
+        ...common,
+        timepoint: 123n,
+      })
+    ).resolves.toEqual({
+      method: "getPastVotes",
+      votes: 30n,
+    });
+
+    expect(readContract).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        functionName: "balanceOf",
+        args: [common.account],
+        blockNumber: 456n,
+      })
+    );
+    expect(readContract).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        functionName: "getVotes",
+        args: [common.account],
+        blockNumber: 456n,
+      })
+    );
+    expect(readContract).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        functionName: "delegates",
+        args: [common.account],
+        blockNumber: 456n,
+      })
+    );
+    expect(readContract).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        functionName: "getPastVotes",
+        args: [common.account, 123n],
+        blockNumber: 456n,
+      })
+    );
+  });
+
+  it("reads latest block metadata for replay-safe reconcile stamps", async () => {
+    const fakeClient = {
+      getBlock: jest.fn(async () => ({
+        number: 123n,
+        timestamp: 456n,
+      })),
+    };
+    const chainTool = new ChainTool();
+    jest
+      .spyOn(chainTool as any, "_executeWithFallbacks")
+      .mockImplementation(async (_options: any, action: any) =>
+        action(fakeClient)
+      );
+
+    await expect(
+      chainTool.latestBlock({
+        chainId: 1,
+        rpcs: ["https://rpc.example.invalid"],
+      })
+    ).resolves.toEqual({
+      number: 123n,
+      timestampMs: 456000n,
+    });
+  });
 });

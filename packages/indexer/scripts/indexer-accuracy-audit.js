@@ -13,8 +13,36 @@ const TOP_CONTRIBUTORS_QUERY = `
     contributors(limit: $limit, offset: $offset, orderBy: [power_DESC]) {
       id
       power
+      balance
       delegatesCountAll
       lastVoteTimestamp
+    }
+  }
+`;
+
+const AUDIT_CONTRIBUTORS_QUERY = `
+  query AuditContributors($ids: [String!]!) {
+    contributors(where: { id_in: $ids }) {
+      id
+      power
+      balance
+      delegatesCountAll
+      lastVoteTimestamp
+    }
+  }
+`;
+
+const LATEST_POWER_CHECKPOINTS_QUERY = `
+  query LatestPowerCheckpoints($accounts: [String!]!, $limit: Int!) {
+    votePowerCheckpoints(
+      limit: $limit
+      orderBy: [blockNumber_DESC, logIndex_DESC]
+      where: { account_in: $accounts }
+    ) {
+      account
+      source
+      timepoint
+      blockNumber
     }
   }
 `;
@@ -36,6 +64,9 @@ const NEGATIVE_ROWS_QUERY = `
 
 const ERC20_VOTES_ABI = parseAbi([
   "function getVotes(address) view returns (uint256)",
+  "function getPastVotes(address,uint256) view returns (uint256)",
+  "function getPriorVotes(address,uint256) view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
 ]);
 const GOVERNOR_ABI = parseAbi([
   "function CLOCK_MODE() view returns (string)",
@@ -121,6 +152,29 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+function currentPowerSource() {
+  const value = (process.env.DEGOV_INDEXER_POWER_SOURCE ?? "event")
+    .trim()
+    .toLowerCase();
+  if (value === "event" || value === "onchain") {
+    return value;
+  }
+  throw new Error(
+    `DEGOV_INDEXER_POWER_SOURCE must be one of: event, onchain. Received: ${process.env.DEGOV_INDEXER_POWER_SOURCE}`
+  );
+}
+
+function isMissingContractFunction(error) {
+  const message = String(error?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("contract function not found") ||
+    message.includes("returned no data") ||
+    message.includes("function selector was not recognized") ||
+    message.includes("function does not exist") ||
+    message.includes("selector not found")
+  );
 }
 
 function parseStructuredFile(raw, filePath) {
@@ -409,7 +463,65 @@ async function fetchTopContributors(target, limit) {
     { limit, offset: 0 }
   );
 
-  return data.contributors ?? [];
+  const contributors = [...(data.contributors ?? [])];
+  const auditAccounts = (target.auditAccounts ?? [])
+    .map((account) => String(account).toLowerCase())
+    .filter(Boolean);
+
+  if (auditAccounts.length > 0) {
+    const auditData = await graphqlRequest(
+      target.indexerEndpoint,
+      AUDIT_CONTRIBUTORS_QUERY,
+      { ids: auditAccounts }
+    );
+    const byId = new Map(contributors.map((entry) => [entry.id.toLowerCase(), entry]));
+    for (const entry of auditData.contributors ?? []) {
+      byId.set(entry.id.toLowerCase(), entry);
+    }
+    for (const account of auditAccounts) {
+      if (!byId.has(account)) {
+        byId.set(account, {
+          id: account,
+          power: "0",
+          balance: null,
+          auditMissing: true,
+        });
+      }
+    }
+    return [...byId.values()];
+  }
+
+  return contributors;
+}
+
+async function fetchLatestPowerCheckpointSources(target, accounts) {
+  const normalizedAccounts = [...new Set(accounts.map((account) => account.toLowerCase()))];
+  if (normalizedAccounts.length === 0) {
+    return {};
+  }
+
+  const data = await graphqlRequest(
+    target.indexerEndpoint,
+    LATEST_POWER_CHECKPOINTS_QUERY,
+    {
+      accounts: normalizedAccounts,
+      limit: normalizedAccounts.length * 4,
+    }
+  );
+  const checkpoints = {};
+  for (const checkpoint of data.votePowerCheckpoints ?? []) {
+    const account = checkpoint.account.toLowerCase();
+    if (checkpoints[account]) {
+      continue;
+    }
+    checkpoints[account] = {
+      source: checkpoint.source ?? "unknown",
+      timepoint: checkpoint.timepoint,
+      blockNumber: checkpoint.blockNumber,
+    };
+  }
+
+  return checkpoints;
 }
 
 async function fetchNegativeRows(target, limit) {
@@ -456,19 +568,65 @@ async function readClockMode(client, target) {
   return "blocknumber";
 }
 
-async function readCurrentVotes(target, address, client = createClient(target)) {
+async function readCurrentPowerDetail(
+  target,
+  address,
+  checkpoint = {},
+  client = createClient(target)
+) {
+  let powerDetail;
   try {
-    const votes = await client.readContract({
-      address: target.governorToken,
-      abi: ERC20_VOTES_ABI,
-      functionName: "getVotes",
-      args: [address],
-    });
+    if (checkpoint.source === "getVotes" || !checkpoint.timepoint) {
+      const votes = await client.readContract({
+        address: target.governorToken,
+        abi: ERC20_VOTES_ABI,
+        functionName: "getVotes",
+        args: [address],
+      });
 
-    return {
-      source: "token.getVotes",
-      value: votes.toString(),
-    };
+      powerDetail = {
+        source: "token.getVotes",
+        value: votes.toString(),
+      };
+    } else if (checkpoint.source === "getPriorVotes") {
+      const votes = await client.readContract({
+        address: target.governorToken,
+        abi: ERC20_VOTES_ABI,
+        functionName: "getPriorVotes",
+        args: [address, BigInt(checkpoint.timepoint)],
+      });
+      powerDetail = {
+        source: "token.getPriorVotes",
+        value: votes.toString(),
+      };
+    } else {
+      try {
+        const votes = await client.readContract({
+          address: target.governorToken,
+          abi: ERC20_VOTES_ABI,
+          functionName: "getPastVotes",
+          args: [address, BigInt(checkpoint.timepoint)],
+        });
+        powerDetail = {
+          source: "token.getPastVotes",
+          value: votes.toString(),
+        };
+      } catch (error) {
+        if (!isMissingContractFunction(error)) {
+          throw error;
+        }
+        const votes = await client.readContract({
+          address: target.governorToken,
+          abi: ERC20_VOTES_ABI,
+          functionName: "getPriorVotes",
+          args: [address, BigInt(checkpoint.timepoint)],
+        });
+        powerDetail = {
+          source: "token.getPriorVotes",
+          value: votes.toString(),
+        };
+      }
+    }
   } catch (tokenError) {
     if (!target.governor) {
       throw tokenError;
@@ -495,11 +653,27 @@ async function readCurrentVotes(target, address, client = createClient(target)) 
       args: [address, timepoint],
     });
 
-    return {
+    powerDetail = {
       source: "governor.getVotes",
       value: votes.toString(),
     };
   }
+
+  const balance = await client.readContract({
+    address: target.governorToken,
+    abi: ERC20_VOTES_ABI,
+    functionName: "balanceOf",
+    args: [address],
+  });
+
+  return {
+    ...powerDetail,
+    balance: balance.toString(),
+  };
+}
+
+async function readCurrentVotes(target, address, client = createClient(target)) {
+  return readCurrentPowerDetail(target, address, {}, client);
 }
 
 function compactAmount(rawValue, decimals = 18) {
@@ -560,6 +734,7 @@ function createTargetSkeleton(target, limit) {
   return {
     code: target.code,
     name: target.name,
+    powerSource: currentPowerSource(),
     checkedAccounts: 0,
     limit,
     matches: 0,
@@ -574,8 +749,11 @@ function createTargetSkeleton(target, limit) {
 async function auditTarget(target, options, services = {}) {
   const fetchContributors =
     services.fetchTopContributors ?? fetchTopContributors;
+  const fetchCheckpointSources =
+    services.fetchLatestPowerCheckpointSources ?? fetchLatestPowerCheckpointSources;
   const fetchNegatives = services.fetchNegativeRows ?? fetchNegativeRows;
-  const readVotes = services.readCurrentVotes ?? readCurrentVotes;
+  const readVotes =
+    services.readPowerDetail ?? services.readCurrentVotes ?? readCurrentPowerDetail;
   const contributorLimit = target.limit ?? options.limit;
   const negativeLimit =
     target.negativeLimit ?? target.limit ?? options.negativeLimit;
@@ -597,6 +775,10 @@ async function auditTarget(target, options, services = {}) {
 
   const contributors = contributorsResult.value;
   result.checkedAccounts = contributors.length;
+  const latestCheckpointSources = await fetchCheckpointSources(
+    target,
+    contributors.map((entry) => entry.id)
+  );
 
   if (negativesResult.status === "fulfilled") {
     result.negativeContributors = negativesResult.value.contributors.map(
@@ -627,7 +809,8 @@ async function auditTarget(target, options, services = {}) {
 
   await runWithConcurrency(contributors, options.concurrency, async (entry) => {
     try {
-      const detail = await readVotes(decoratedTarget, entry.id);
+      const checkpoint = latestCheckpointSources[entry.id.toLowerCase()];
+      const detail = await readVotes(decoratedTarget, entry.id, checkpoint);
 
       if (detail.value === entry.power) {
         result.matches += 1;
@@ -637,8 +820,11 @@ async function auditTarget(target, options, services = {}) {
       result.mismatches.push({
         address: entry.id,
         contributorPower: entry.power,
+        contributorBalance: entry.balance,
         detailPower: detail.value,
+        detailBalance: detail.balance,
         detailSource: detail.source,
+        latestCheckpointSource: checkpoint?.source,
         delta: (BigInt(entry.power) - BigInt(detail.value)).toString(),
         hint: reasonHintForMismatch(
           decoratedTarget,
@@ -687,6 +873,7 @@ async function runAudit(targets, options, services = {}) {
       concurrency: options.concurrency,
       limit: options.limit,
       negativeLimit: options.negativeLimit,
+      powerSource: currentPowerSource(),
       targetsFile: options.targetsFile,
     },
     targets: targetResults,
@@ -730,6 +917,7 @@ function buildMarkdownReport(report, targetsConfig) {
   lines.push("");
   lines.push("### Summary");
   lines.push("");
+  lines.push(`- Power source: ${report.options?.powerSource ?? "unknown"}`);
   lines.push(
     `- Checked accounts: ${report.summary.checkedAccounts}`
   );
@@ -784,7 +972,7 @@ function buildMarkdownReport(report, targetsConfig) {
           `  - ${mismatch.address}: index ${compactAmount(
             mismatch.contributorPower,
             decimals
-          )}, chain ${compactAmount(mismatch.detailPower, decimals)}, delta ${compactDelta(
+          )}, chain ${compactAmount(mismatch.detailPower, decimals)}, balance ${mismatch.contributorBalance ?? "unknown"} -> ${mismatch.detailBalance ?? "unknown"}, source ${mismatch.latestCheckpointSource ?? mismatch.detailSource}, delta ${compactDelta(
             mismatch.contributorPower,
             mismatch.detailPower,
             decimals
@@ -886,11 +1074,13 @@ module.exports = {
   buildMarkdownReport,
   compactAmount,
   compactDelta,
+  fetchLatestPowerCheckpointSources,
   fetchNegativeRows,
   fetchTopContributors,
   finalizeTargetResult,
   loadTargets,
   parseArgs,
+  readCurrentPowerDetail,
   readCurrentVotes,
   reasonHintForMismatch,
   runAudit,

@@ -1,15 +1,18 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const YAML = require("yaml");
 
 const {
   auditTarget,
   buildMarkdownReport,
   compactAmount,
+  fetchLatestPowerCheckpointSources,
   fetchNegativeRows,
   fetchTopContributors,
   loadTargets,
   parseArgs,
+  readCurrentPowerDetail,
   summarizeAudit,
 } = require("../../scripts/indexer-accuracy-audit");
 const {
@@ -21,6 +24,7 @@ const {
 export {};
 
 describe("indexer accuracy audit", () => {
+  const originalPowerSource = process.env.DEGOV_INDEXER_POWER_SOURCE;
   const target = {
     code: "ens-dao",
     name: "ENS",
@@ -30,6 +34,18 @@ describe("indexer accuracy audit", () => {
     governor: "0x0000000000000000000000000000000000000002",
     tokenDecimals: 18,
   };
+
+  beforeEach(() => {
+    delete process.env.DEGOV_INDEXER_POWER_SOURCE;
+  });
+
+  afterEach(() => {
+    if (originalPowerSource === undefined) {
+      delete process.env.DEGOV_INDEXER_POWER_SOURCE;
+    } else {
+      process.env.DEGOV_INDEXER_POWER_SOURCE = originalPowerSource;
+    }
+  });
 
   it("collects mismatches, read errors, and negative rows without failing fast", async () => {
     const result = await auditTarget(
@@ -41,10 +57,15 @@ describe("indexer accuracy audit", () => {
       },
       {
         fetchTopContributors: async () => [
-          { id: "0x1", power: "100" },
-          { id: "0x2", power: "200" },
-          { id: "0x3", power: "300" },
+          { id: "0x1", power: "100", balance: "10" },
+          { id: "0x2", power: "200", balance: "20" },
+          { id: "0x3", power: "300", balance: "30" },
         ],
+        fetchLatestPowerCheckpointSources: async () => ({
+          "0x1": { source: "getPastVotes", timepoint: "100" },
+          "0x2": { source: "getPastVotes", timepoint: "100" },
+          "0x3": { source: "getVotes", timepoint: "101" },
+        }),
         fetchNegativeRows: async () => ({
           contributors: [{ id: "0xdead", power: "-1" }],
           delegates: [
@@ -58,10 +79,10 @@ describe("indexer accuracy audit", () => {
         }),
         readCurrentVotes: async (_configuredTarget: any, address: string) => {
           if (address === "0x1") {
-            return { source: "token.getVotes", value: "100" };
+            return { source: "token.getPastVotes", value: "100", balance: "10" };
           }
           if (address === "0x2") {
-            return { source: "token.getVotes", value: "20" };
+            return { source: "token.getPastVotes", value: "20", balance: "25" };
           }
           throw new Error("rpc timeout");
         },
@@ -74,8 +95,11 @@ describe("indexer accuracy audit", () => {
       {
         address: "0x2",
         contributorPower: "200",
+        contributorBalance: "20",
         detailPower: "20",
-        detailSource: "token.getVotes",
+        detailBalance: "25",
+        detailSource: "token.getPastVotes",
+        latestCheckpointSource: "getPastVotes",
         delta: "180",
         hint: "index-higher-with-negative-delegates",
       },
@@ -109,6 +133,9 @@ describe("indexer accuracy audit", () => {
   it("renders a markdown report with summary and detail sections", () => {
     const report = {
       generatedAt: "2026-03-30T06:00:00.000Z",
+      options: {
+        powerSource: "onchain",
+      },
       targets: [
         {
           code: "ens-dao",
@@ -158,10 +185,36 @@ describe("indexer accuracy audit", () => {
     const markdown = buildMarkdownReport(report, [target]);
 
     expect(markdown).toContain("## Indexer Accuracy Audit");
+    expect(markdown).toContain("Power source: onchain");
     expect(markdown).toContain("Vote mismatches: 1");
     expect(markdown).toContain("### ENS (`ens-dao`)");
     expect(markdown).toContain("index-higher-with-negative-delegates");
     expect(markdown).toContain("negative-delegate-power");
+  });
+
+  it("includes the current power source in audit results", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    await expect(
+      auditTarget(
+        target,
+        {
+          limit: 1,
+          negativeLimit: 1,
+          concurrency: 1,
+        },
+        {
+          fetchTopContributors: async () => [],
+          fetchLatestPowerCheckpointSources: async () => ({}),
+          fetchNegativeRows: async () => ({
+            contributors: [],
+            delegates: [],
+          }),
+        }
+      )
+    ).resolves.toMatchObject({
+      powerSource: "onchain",
+    });
   });
 
   it("parses CLI flags for report output and strict mode", () => {
@@ -205,9 +258,19 @@ describe("indexer accuracy audit", () => {
         json: async () => ({
           data: {
             contributors: [
-              { id: "0x1", power: "100" },
-              { id: "0x2", power: "90" },
-              { id: "0x3", power: "80" },
+              { id: "0x1", power: "100", balance: "10" },
+              { id: "0x2", power: "90", balance: "9" },
+              { id: "0x3", power: "80", balance: "8" },
+            ],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            contributors: [
+              { id: "0xaudit", power: "70", balance: "7" },
             ],
           },
         }),
@@ -218,19 +281,24 @@ describe("indexer accuracy audit", () => {
       fetchTopContributors(
         {
           indexerEndpoint: "https://indexer.example/graphql",
+          auditAccounts: ["0xaudit"],
         },
         3
       )
     ).resolves.toEqual([
-      { id: "0x1", power: "100" },
-      { id: "0x2", power: "90" },
-      { id: "0x3", power: "80" },
+      { id: "0x1", power: "100", balance: "10" },
+      { id: "0x2", power: "90", balance: "9" },
+      { id: "0x3", power: "80", balance: "8" },
+      { id: "0xaudit", power: "70", balance: "7" },
     ]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).variables).toEqual({
       limit: 3,
       offset: 0,
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).variables).toEqual({
+      ids: ["0xaudit"],
     });
 
     global.fetch = originalFetch;
@@ -316,6 +384,187 @@ describe("indexer accuracy audit", () => {
     });
 
     global.fetch = originalFetch;
+  });
+
+  it("queries latest checkpoint source metadata for audited contributors", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: {
+          votePowerCheckpoints: [
+            {
+              account: "0x1",
+              source: "getPastVotes",
+              timepoint: "100",
+              blockNumber: "200",
+            },
+            {
+              account: "0x1",
+              source: "event",
+              timepoint: "90",
+              blockNumber: "190",
+            },
+            {
+              account: "0x2",
+              source: "getVotes",
+              timepoint: "101",
+              blockNumber: "201",
+            },
+          ],
+        },
+      }),
+    });
+    global.fetch = fetchMock;
+
+    await expect(
+      fetchLatestPowerCheckpointSources(
+        { indexerEndpoint: "https://indexer.example/graphql" },
+        ["0x1", "0x2"]
+      )
+    ).resolves.toEqual({
+      "0x1": {
+        source: "getPastVotes",
+        timepoint: "100",
+        blockNumber: "200",
+      },
+      "0x2": {
+        source: "getVotes",
+        timepoint: "101",
+        blockNumber: "201",
+      },
+    });
+
+    global.fetch = originalFetch;
+  });
+
+  it("reads historical power and current token balance for audit detail", async () => {
+    const calls: any[] = [];
+    const client = {
+      readContract: jest.fn(async (request: any) => {
+        calls.push(request);
+        if (request.functionName === "getPastVotes") {
+          return 123n;
+        }
+        if (request.functionName === "balanceOf") {
+          return 456n;
+        }
+        throw new Error(`unexpected ${request.functionName}`);
+      }),
+    };
+
+    await expect(
+      readCurrentPowerDetail(
+        {
+          governorToken: "0x0000000000000000000000000000000000000001",
+          governor: "0x0000000000000000000000000000000000000002",
+        },
+        "0x0000000000000000000000000000000000000003",
+        { timepoint: "100" },
+        client
+      )
+    ).resolves.toEqual({
+      source: "token.getPastVotes",
+      value: "123",
+      balance: "456",
+    });
+
+    expect(calls.map((call) => call.functionName)).toEqual([
+      "getPastVotes",
+      "balanceOf",
+    ]);
+  });
+
+  it("uses current getVotes for checkpoints sourced from getVotes even when timepoint is present", async () => {
+    const calls: any[] = [];
+    const client = {
+      readContract: jest.fn(async (request: any) => {
+        calls.push(request);
+        if (request.functionName === "getVotes") {
+          return 123n;
+        }
+        if (request.functionName === "balanceOf") {
+          return 456n;
+        }
+        throw new Error(`unexpected ${request.functionName}`);
+      }),
+    };
+
+    await expect(
+      readCurrentPowerDetail(
+        {
+          governorToken: "0x0000000000000000000000000000000000000001",
+          governor: "0x0000000000000000000000000000000000000002",
+        },
+        "0x0000000000000000000000000000000000000003",
+        { source: "getVotes", timepoint: "100" },
+        client
+      )
+    ).resolves.toEqual({
+      source: "token.getVotes",
+      value: "123",
+      balance: "456",
+    });
+
+    expect(calls.map((call) => call.functionName)).toEqual([
+      "getVotes",
+      "balanceOf",
+    ]);
+  });
+
+  it("falls back to getPriorVotes for historical checkpoint sources when getPastVotes is unavailable", async () => {
+    const calls: any[] = [];
+    const client = {
+      readContract: jest.fn(async (request: any) => {
+        calls.push(request);
+        if (request.functionName === "getPastVotes") {
+          throw new Error("contract function not found");
+        }
+        if (request.functionName === "getPriorVotes") {
+          return 111n;
+        }
+        if (request.functionName === "balanceOf") {
+          return 222n;
+        }
+        throw new Error(`unexpected ${request.functionName}`);
+      }),
+    };
+
+    await expect(
+      readCurrentPowerDetail(
+        {
+          governorToken: "0x0000000000000000000000000000000000000001",
+          governor: "0x0000000000000000000000000000000000000002",
+        },
+        "0x0000000000000000000000000000000000000003",
+        { source: "getPastVotes", timepoint: "100" },
+        client
+      )
+    ).resolves.toEqual({
+      source: "token.getPriorVotes",
+      value: "111",
+      balance: "222",
+    });
+
+    expect(calls.map((call) => call.functionName)).toEqual([
+      "getPastVotes",
+      "getPriorVotes",
+      "balanceOf",
+    ]);
+  });
+
+  it("keeps the Lisk issue account in the static audit target", async () => {
+    const targets = YAML.parse(
+      fs.readFileSync(
+        path.resolve(__dirname, "../../scripts/indexer-accuracy-targets.yaml"),
+        "utf8"
+      )
+    );
+    const liskTarget = targets.find((entry: any) => entry.code === "lisk-dao");
+
+    expect(liskTarget?.auditAccounts).toContain(
+      "0xb6f7ab64ab2d769937bba29516e9de1daf813508"
+    );
   });
 
   it("loads workflow-configured targets with per-indexer caps", async () => {

@@ -6,6 +6,7 @@ import {
 import * as itokenerc20 from "../../src/abi/itokenerc20";
 import * as itokenerc721 from "../../src/abi/itokenerc721";
 import { ChainTool, ClockMode } from "../../src/internal/chaintool";
+import { reconcileOnchainPowerState } from "../../src/reconcile";
 import { zeroAddress } from "viem";
 import {
   Contributor,
@@ -14,13 +15,35 @@ import {
   DelegateMapping,
   DelegateRolling,
   DelegateVotesChanged,
+  OnchainRefreshTask,
+  TokenBalanceCheckpoint,
   TokenTransfer,
   VotePowerCheckpoint,
 } from "../../src/model";
 
 describe("token vote power checkpoints", () => {
+  const originalPowerSource = process.env.DEGOV_INDEXER_POWER_SOURCE;
+  const originalEventReads =
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED;
+
+  beforeEach(() => {
+    delete process.env.DEGOV_INDEXER_POWER_SOURCE;
+    delete process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED;
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
+    if (originalPowerSource === undefined) {
+      delete process.env.DEGOV_INDEXER_POWER_SOURCE;
+    } else {
+      process.env.DEGOV_INDEXER_POWER_SOURCE = originalPowerSource;
+    }
+    if (originalEventReads === undefined) {
+      delete process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED;
+    } else {
+      process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED =
+        originalEventReads;
+    }
   });
 
   it("uses proposal-compatible block timepoints for blocknumber mode", () => {
@@ -183,6 +206,958 @@ describe("token vote power checkpoints", () => {
       blockNumber: 123n,
       transactionHash: "0xdeadbeef",
     });
+  });
+
+  it("defaults to event power source and rejects invalid values", () => {
+    expect((buildTokenHandler(new MemoryStore()) as any).powerSource).toBe(
+      "event"
+    );
+
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+    expect((buildTokenHandler(new MemoryStore()) as any).powerSource).toBe(
+      "onchain"
+    );
+
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "invalid";
+    expect(() => buildTokenHandler(new MemoryStore())).toThrow(
+      "DEGOV_INDEXER_POWER_SOURCE must be one of: event, onchain"
+    );
+  });
+
+  it("keeps event mode on the delta path without reading balances", async () => {
+    const chainTool = new ChainTool();
+    const tokenBalance = jest.spyOn(chainTool, "tokenBalance" as any);
+    const store = new MemoryStore([
+      new DelegateMapping({
+        id: "0x1111111111111111111111111111111111111111",
+        from: "0x1111111111111111111111111111111111111111",
+        to: "0x3333333333333333333333333333333333333333",
+        power: 10n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Contributor({
+        id: "0x3333333333333333333333333333333333333333",
+        power: 10n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0x1111111111111111111111111111111111111111",
+      to: "0x2222222222222222222222222222222222222222",
+      value: 4n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "transfer-event-mode",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xtransfer",
+    } as any);
+
+    expect(tokenBalance).not.toHaveBeenCalled();
+    expect(
+      store.findEntity(Contributor, "0x3333333333333333333333333333333333333333")
+    ).toMatchObject({
+      balance: undefined,
+    });
+    expect(await store.find(TokenBalanceCheckpoint, { where: {} })).toEqual([]);
+  });
+
+  it("submits persistent refresh tasks instead of reading current state by default in onchain mode", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const chainTool = new ChainTool();
+    const tokenBalance = jest.spyOn(chainTool, "tokenBalance" as any);
+    const historicalVotes = jest.spyOn(chainTool, "historicalVotes" as any);
+    const currentVotesWithSource = jest.spyOn(
+      chainTool,
+      "currentVotesWithSource" as any,
+    );
+    const delegateOf = jest.spyOn(chainTool, "delegateOf" as any);
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0x1111111111111111111111111111111111111111",
+      to: "0x2222222222222222222222222222222222222222",
+      value: 4n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "transfer-task-mode",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xtransfer-task",
+    } as any);
+
+    expect(tokenBalance).not.toHaveBeenCalled();
+    expect(historicalVotes).not.toHaveBeenCalled();
+    expect(currentVotesWithSource).not.toHaveBeenCalled();
+    expect(delegateOf).not.toHaveBeenCalled();
+    expect(
+      store.findEntity(
+        OnchainRefreshTask,
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
+      ),
+    ).toMatchObject({
+      refreshBalance: true,
+      refreshPower: false,
+      status: "pending",
+      reason: "transfer",
+      lastSeenBlockNumber: 10n,
+      lastSeenTransactionHash: "0xtransfer-task",
+    });
+    expect(
+      store.findEntity(
+        OnchainRefreshTask,
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x2222222222222222222222222222222222222222",
+      ),
+    ).toMatchObject({
+      refreshBalance: true,
+      refreshPower: false,
+      status: "pending",
+    });
+  });
+
+  it("merges balance and power flags into one persistent refresh task for the same account", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store);
+    jest.spyOn(itokenerc20.events.DelegateChanged, "decode").mockReturnValue({
+      delegator: "0x1111111111111111111111111111111111111111",
+      fromDelegate: "0x0000000000000000000000000000000000000000",
+      toDelegate: "0x1111111111111111111111111111111111111111",
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "delegate-change-task-mode",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 11, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xdelegate-change-task",
+    } as any);
+
+    expect(
+      store.findEntity(
+        OnchainRefreshTask,
+        "1:0x9999999999999999999999999999999999999999:0x8888888888888888888888888888888888888888:0x1111111111111111111111111111111111111111",
+      ),
+    ).toMatchObject({
+      refreshBalance: true,
+      refreshPower: true,
+      status: "pending",
+    });
+  });
+
+  it("refreshes canonical balances and powers in onchain mode", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "delegateOf")
+      .mockResolvedValueOnce("0x3333333333333333333333333333333333333333")
+      .mockResolvedValueOnce("0x4444444444444444444444444444444444444444");
+    jest.spyOn(chainTool, "tokenBalance")
+      .mockResolvedValueOnce(5n)
+      .mockResolvedValueOnce(9n);
+    jest.spyOn(chainTool, "historicalVotes")
+      .mockResolvedValueOnce({ method: "getPastVotes", votes: 70n })
+      .mockResolvedValueOnce({ method: "getPastVotes", votes: 30n });
+    const currentVotes = jest.spyOn(chainTool, "currentVotes");
+
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 10n,
+      }),
+      new Contributor({
+        id: "0x3333333333333333333333333333333333333333",
+        power: 10n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: "0x1111111111111111111111111111111111111111",
+      to: "0x2222222222222222222222222222222222222222",
+      value: 4n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "transfer-onchain-mode",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xtransfer",
+    } as any);
+
+    expect(currentVotes).not.toHaveBeenCalled();
+    expect(
+      store.findEntity(Contributor, "0x1111111111111111111111111111111111111111")
+    ).toMatchObject({
+      balance: 5n,
+      power: 0n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x2222222222222222222222222222222222222222")
+    ).toMatchObject({
+      balance: 9n,
+      power: 0n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x3333333333333333333333333333333333333333")
+    ).toMatchObject({
+      power: 70n,
+    });
+    expect(
+      store.findEntity(Contributor, "0x4444444444444444444444444444444444444444")
+    ).toMatchObject({
+      power: 30n,
+    });
+    expect(store.findEntity(DataMetric, "global")).toMatchObject({
+      powerSum: 100n,
+    });
+
+    const balanceCheckpoints = await store.find(TokenBalanceCheckpoint, {
+      where: {},
+    });
+    expect(balanceCheckpoints).toHaveLength(2);
+    expect(balanceCheckpoints[0]).toMatchObject({
+      account: "0x1111111111111111111111111111111111111111",
+      previousBalance: 0n,
+      newBalance: 5n,
+      delta: 5n,
+      source: "balanceOf",
+      cause: "transfer",
+      blockNumber: 10n,
+    });
+    expect(balanceCheckpoints[1]).toMatchObject({
+      account: "0x2222222222222222222222222222222222222222",
+      previousBalance: 0n,
+      newBalance: 9n,
+      delta: 9n,
+      source: "balanceOf",
+      cause: "transfer",
+      blockNumber: 10n,
+    });
+  });
+
+  it("fails onchain processing when canonical power reads fail", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const chainTool = new ChainTool();
+    jest
+      .spyOn(chainTool, "historicalVotes")
+      .mockRejectedValue(new Error("execution reverted: selector not found"));
+    jest
+      .spyOn(chainTool, "currentVotesWithSource")
+      .mockRejectedValue(new Error("latest read failed"));
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.DelegateVotesChanged, "decode").mockReturnValue({
+      delegate: "0x3333333333333333333333333333333333333333",
+      previousVotes: 10n,
+      newVotes: 20n,
+    } as any);
+
+    await expect(
+      (handler as any).storeDelegateVotesChanged({
+        id: "votes-onchain-fail",
+        address: "0x8888888888888888888888888888888888888888",
+        logIndex: 2,
+        transactionIndex: 1,
+        block: { height: 10, timestamp: 1_700_000_000_000 },
+        transactionHash: "0xvotes",
+      } as any)
+    ).rejects.toThrow("latest read failed");
+
+    expect(
+      store.findEntity(Contributor, "0x3333333333333333333333333333333333333333")
+    ).toBeUndefined();
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledTimes(1);
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blockNumber: 10n,
+      })
+    );
+  });
+
+  it("falls back to block-pinned current votes when historical votes reject the current block", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const delegate = "0x3333333333333333333333333333333333333333";
+    const chainTool = new ChainTool();
+    jest
+      .spyOn(chainTool, "historicalVotes")
+      .mockRejectedValue(new Error("COMP::getPriorVotes: not yet determined"));
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getCurrentVotes",
+      votes: 25n,
+    });
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.DelegateVotesChanged, "decode").mockReturnValue({
+      delegate,
+      previousVotes: 10n,
+      newVotes: 20n,
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "votes-current-block-fallback",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xvotes",
+    } as any);
+
+    expect(chainTool.historicalVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: delegate,
+        timepoint: 10n,
+        blockNumber: 10n,
+      })
+    );
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: delegate,
+        blockNumber: 10n,
+      })
+    );
+    expect(store.findEntity(Contributor, delegate)).toMatchObject({
+      power: 25n,
+    });
+    expect(
+      (await store.find(VotePowerCheckpoint, { where: { account: delegate } }))[0]
+    ).toMatchObject({
+      source: "getCurrentVotes",
+      timepoint: 10n,
+      blockNumber: 10n,
+    });
+  });
+
+  it("falls back to block-pinned current votes when legacy historical votes revert", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const delegate = "0x3333333333333333333333333333333333333333";
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "historicalVotes").mockRejectedValue(
+      new Error(
+        'The contract function "getPriorVotes" reverted with the following reason:\nVM Exception while processing transaction: revert',
+      ),
+    );
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getVotes",
+      votes: 40n,
+    });
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.DelegateVotesChanged, "decode").mockReturnValue({
+      delegate,
+      previousVotes: 10n,
+      newVotes: 20n,
+    } as any);
+
+    await (handler as any).storeDelegateVotesChanged({
+      id: "votes-legacy-revert-fallback",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xvotes",
+    } as any);
+
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: delegate,
+        blockNumber: 10n,
+      })
+    );
+    expect(store.findEntity(Contributor, delegate)).toMatchObject({
+      power: 40n,
+    });
+    expect(
+      (await store.find(VotePowerCheckpoint, { where: { account: delegate } }))[0]
+    ).toMatchObject({
+      source: "getVotes",
+      timepoint: 10n,
+      blockNumber: 10n,
+    });
+  });
+
+  it("refreshes delegate change balance, delegate powers, and canonical mapping in onchain mode", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const delegator = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const oldDelegate = "0x1111111111111111111111111111111111111111";
+    const newDelegate = "0x2222222222222222222222222222222222222222";
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "tokenBalance")
+      .mockResolvedValueOnce(55n)
+      .mockResolvedValueOnce(55n);
+    jest.spyOn(chainTool, "historicalVotes")
+      .mockResolvedValueOnce({ method: "getPastVotes", votes: 10n })
+      .mockResolvedValueOnce({ method: "getPastVotes", votes: 45n });
+    jest.spyOn(chainTool, "delegateOf").mockResolvedValue(newDelegate);
+
+    const store = new MemoryStore([
+      new DelegateMapping({
+        id: delegator,
+        from: delegator,
+        to: oldDelegate,
+        power: 12n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Contributor({
+        id: oldDelegate,
+        power: 12n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.DelegateChanged, "decode").mockReturnValue({
+      delegator,
+      fromDelegate: oldDelegate,
+      toDelegate: newDelegate,
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "delegate-change-onchain",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xdelegatechange",
+    } as any);
+
+    expect(store.findEntity(Contributor, delegator)).toMatchObject({
+      balance: 55n,
+      power: 0n,
+    });
+    expect(store.findEntity(Contributor, oldDelegate)).toMatchObject({
+      power: 10n,
+      delegatesCountAll: 0,
+      delegatesCountEffective: 0,
+    });
+    expect(store.findEntity(Contributor, newDelegate)).toMatchObject({
+      power: 45n,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 1,
+    });
+    expect(store.findEntity(DelegateMapping, delegator)).toMatchObject({
+      from: delegator,
+      to: newDelegate,
+      power: 55n,
+    });
+    expect(
+      store.findEntity(Delegate, `${delegator}_${newDelegate}`)
+    ).toMatchObject({
+      isCurrent: true,
+      power: 55n,
+    });
+  });
+
+  it("removes canonical delegate mappings when delegates returns the zero address in onchain mode", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const delegator = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const oldDelegate = "0x1111111111111111111111111111111111111111";
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(0n);
+    jest.spyOn(chainTool, "historicalVotes")
+      .mockResolvedValueOnce({ method: "getPastVotes", votes: 0n });
+    jest.spyOn(chainTool, "delegateOf").mockResolvedValue(zeroAddress);
+
+    const store = new MemoryStore([
+      new DelegateMapping({
+        id: delegator,
+        from: delegator,
+        to: oldDelegate,
+        power: 12n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.DelegateChanged, "decode").mockReturnValue({
+      delegator,
+      fromDelegate: oldDelegate,
+      toDelegate: zeroAddress,
+    } as any);
+
+    await (handler as any).storeDelegateChanged({
+      id: "delegate-change-remove-onchain",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xdelegatechange",
+    } as any);
+
+    expect(store.findEntity(DelegateMapping, delegator)).toBeUndefined();
+  });
+
+  it("deduplicates onchain refresh writes across token events in the same transaction", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const delegator = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const delegate = "0x1111111111111111111111111111111111111111";
+    const recipient = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "tokenBalance")
+      .mockResolvedValueOnce(10n)
+      .mockResolvedValueOnce(10n)
+      .mockResolvedValueOnce(1n);
+    jest.spyOn(chainTool, "historicalVotes")
+      .mockResolvedValueOnce({ method: "getPastVotes", votes: 10n });
+    jest.spyOn(chainTool, "delegateOf")
+      .mockResolvedValueOnce(delegate)
+      .mockResolvedValueOnce(delegate)
+      .mockResolvedValueOnce(zeroAddress);
+
+    const store = new MemoryStore();
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.DelegateChanged, "decode").mockReturnValue({
+      delegator,
+      fromDelegate: zeroAddress,
+      toDelegate: delegate,
+    } as any);
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: delegator,
+      to: recipient,
+      value: 1n,
+    } as any);
+
+    const baseLog = {
+      address: "0x8888888888888888888888888888888888888888",
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xsametx",
+    };
+    await (handler as any).storeDelegateChanged({
+      ...baseLog,
+      id: "same-tx-delegate-change",
+      logIndex: 1,
+    } as any);
+    await (handler as any).storeTokenTransfer({
+      ...baseLog,
+      id: "same-tx-transfer",
+      logIndex: 2,
+    } as any);
+
+    const balanceCheckpoints = await store.find(TokenBalanceCheckpoint, {
+      where: { account: delegator },
+    });
+    const powerCheckpoints = await store.find(VotePowerCheckpoint, {
+      where: { account: delegate },
+    });
+    expect(balanceCheckpoints).toHaveLength(1);
+    expect(powerCheckpoints).toHaveLength(1);
+  });
+
+  it("updates delegated relation power and effective counts from onchain transfer balances", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const delegator = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const delegate = "0x1111111111111111111111111111111111111111";
+    const recipient = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "delegateOf")
+      .mockResolvedValueOnce(delegate)
+      .mockResolvedValueOnce(zeroAddress)
+      .mockResolvedValueOnce(delegate)
+      .mockResolvedValueOnce(zeroAddress);
+    jest.spyOn(chainTool, "tokenBalance")
+      .mockResolvedValueOnce(0n)
+      .mockResolvedValueOnce(10n)
+      .mockResolvedValueOnce(0n);
+    jest.spyOn(chainTool, "historicalVotes")
+      .mockResolvedValueOnce({ method: "getPastVotes", votes: 0n });
+
+    const store = new MemoryStore([
+      new DataMetric({
+        id: "global",
+        powerSum: 5n,
+      }),
+      new Contributor({
+        id: delegator,
+        balance: 5n,
+        power: 0n,
+        delegatesCountAll: 0,
+        delegatesCountEffective: 0,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Contributor({
+        id: delegate,
+        power: 5n,
+        delegatesCountAll: 1,
+        delegatesCountEffective: 1,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new DelegateMapping({
+        id: delegator,
+        from: delegator,
+        to: delegate,
+        power: 5n,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+      new Delegate({
+        id: `${delegator}_${delegate}`,
+        fromDelegate: delegator,
+        toDelegate: delegate,
+        power: 5n,
+        isCurrent: true,
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        transactionHash: "0xseed",
+      }),
+    ]);
+    const handler = buildTokenHandler(store, "ERC20", chainTool);
+    jest
+      .spyOn(handler as any, "voteClockMode")
+      .mockResolvedValue(ClockMode.BlockNumber);
+
+    jest.spyOn(itokenerc20.events.Transfer, "decode").mockReturnValue({
+      from: delegator,
+      to: recipient,
+      value: 10n,
+    } as any);
+
+    await (handler as any).storeTokenTransfer({
+      id: "transfer-onchain-delegated-power",
+      address: "0x8888888888888888888888888888888888888888",
+      logIndex: 2,
+      transactionIndex: 1,
+      block: { height: 10, timestamp: 1_700_000_000_000 },
+      transactionHash: "0xtransfer",
+    } as any);
+
+    expect(store.findEntity(DelegateMapping, delegator)).toMatchObject({
+      from: delegator,
+      to: delegate,
+      power: 0n,
+    });
+    expect(store.findEntity(Delegate, `${delegator}_${delegate}`)).toMatchObject({
+      isCurrent: true,
+      power: 0n,
+    });
+    expect(store.findEntity(Contributor, delegate)).toMatchObject({
+      power: 0n,
+      delegatesCountAll: 1,
+      delegatesCountEffective: 0,
+    });
+  });
+
+  it("reconciles stale contributor power and balance in onchain power mode", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const queries: Array<{ sql: string; params?: unknown[] }> = [];
+    const dataSource: any = {
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (sql.includes("FROM contributor") && sql.includes("lower(id)")) {
+          return [{ power: "3", balance: "4", delegatesCountAll: 0, delegatesCountEffective: 0 }];
+        }
+        return [];
+      }),
+      transaction: jest.fn(async (callback: any): Promise<unknown> =>
+        callback(dataSource)
+      ),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_123_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest.spyOn(chainTool, "historicalVotes").mockResolvedValue({
+      method: "getPastVotes",
+      votes: 11n,
+    });
+
+    await expect(
+      reconcileOnchainPowerState(dataSource as any, chainTool, {
+        chainId: 1,
+        daoCode: "demo",
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+        rpcs: ["https://rpc.example.invalid"],
+        clockMode: ClockMode.BlockNumber,
+        timepoint: 100n,
+      })
+    ).resolves.toMatchObject({
+      powerSource: "onchain",
+      accountsChecked: 1,
+      balancesUpdated: 1,
+      powersUpdated: 1,
+    });
+
+    expect(chainTool.tokenBalance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        blockNumber: 123n,
+      })
+    );
+    expect(chainTool.historicalVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        timepoint: 100n,
+        blockNumber: 123n,
+      })
+    );
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(
+      queries.some(
+        (entry) =>
+          entry.sql.includes("token_balance_checkpoint") &&
+          entry.params?.includes("123") &&
+          entry.params?.includes("reconcile")
+      )
+    ).toBe(true);
+    expect(
+      queries.some(
+        (entry) =>
+          entry.sql.includes("vote_power_checkpoint") &&
+          entry.params?.includes("reconcile")
+      )
+    ).toBe(true);
+  });
+
+  it("reconciles timestamp-mode power using the latest block timestamp as the timepoint", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const dataSource: any = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (sql.includes("FROM contributor") && sql.includes("lower(id)")) {
+          return [{ power: "3", balance: "4", delegatesCountAll: 0, delegatesCountEffective: 0 }];
+        }
+        return [];
+      }),
+      transaction: jest.fn(async (callback: any): Promise<unknown> =>
+        callback(dataSource)
+      ),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_123_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest.spyOn(chainTool, "historicalVotes").mockResolvedValue({
+      method: "getPastVotes",
+      votes: 11n,
+    });
+    jest
+      .spyOn(chainTool, "currentVotesWithSource")
+      .mockRejectedValue(new Error("currentVotesWithSource should not be used"));
+
+    await reconcileOnchainPowerState(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example.invalid"],
+      clockMode: ClockMode.Timestamp,
+      timepoint: 999n,
+    });
+
+    expect(chainTool.historicalVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        timepoint: 1_700_000_123n,
+        blockNumber: 123n,
+      })
+    );
+  });
+
+  it("reconciles with block-pinned current votes when historical votes reject the current block", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const dataSource: any = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (sql.includes("FROM contributor") && sql.includes("lower(id)")) {
+          return [{ power: "3", balance: "4", delegatesCountAll: 0, delegatesCountEffective: 0 }];
+        }
+        return [];
+      }),
+      transaction: jest.fn(async (callback: any): Promise<unknown> =>
+        callback(dataSource)
+      ),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_123_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest
+      .spyOn(chainTool, "historicalVotes")
+      .mockRejectedValue(new Error("COMP::getPriorVotes: not yet determined"));
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getCurrentVotes",
+      votes: 11n,
+    });
+
+    await reconcileOnchainPowerState(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example.invalid"],
+      clockMode: ClockMode.BlockNumber,
+    });
+
+    expect(chainTool.historicalVotes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        timepoint: 123n,
+        blockNumber: 123n,
+      })
+    );
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        blockNumber: 123n,
+      })
+    );
+  });
+
+  it("reconciles with block-pinned current votes when legacy historical votes revert", async () => {
+    process.env.DEGOV_INDEXER_POWER_SOURCE = "onchain";
+    process.env.DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED = "true";
+
+    const account = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const dataSource: any = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("known_accounts")) {
+          return [{ account }];
+        }
+        if (sql.includes("FROM contributor") && sql.includes("lower(id)")) {
+          return [{ power: "3", balance: "4", delegatesCountAll: 0, delegatesCountEffective: 0 }];
+        }
+        return [];
+      }),
+      transaction: jest.fn(async (callback: any): Promise<unknown> =>
+        callback(dataSource)
+      ),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 123n,
+      timestampMs: 1_700_000_123_000n,
+    });
+    jest.spyOn(chainTool, "tokenBalance").mockResolvedValue(9n);
+    jest.spyOn(chainTool, "historicalVotes").mockRejectedValue(
+      new Error(
+        'The contract function "getPriorVotes" reverted with the following reason:\nVM Exception while processing transaction: revert',
+      ),
+    );
+    jest.spyOn(chainTool, "currentVotesWithSource").mockResolvedValue({
+      method: "getVotes",
+      votes: 11n,
+    });
+
+    await reconcileOnchainPowerState(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example.invalid"],
+      clockMode: ClockMode.BlockNumber,
+    });
+
+    expect(chainTool.currentVotesWithSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account,
+        blockNumber: 123n,
+      })
+    );
   });
 
   it("clears undelegated mappings instead of attributing power to the zero address", async () => {
@@ -4012,6 +4987,15 @@ class MemoryStore {
     this.upsert(entity);
   }
 
+  async query(sql: string, params?: unknown[]) {
+    if (!sql.includes("INSERT INTO onchain_refresh_task") || !params) {
+      return [];
+    }
+    const task = this.upsertOnchainRefreshTaskRecord(params);
+    this.upsert(task);
+    return [task];
+  }
+
   async remove(entity: any, id: string) {
     this.records.get(entity.name)?.delete(id);
   }
@@ -4026,9 +5010,90 @@ class MemoryStore {
     bucket.set(entity.id, entity);
     this.records.set(name, bucket);
   }
+
+  private upsertOnchainRefreshTaskRecord(params: unknown[]) {
+    const [
+      id,
+      chainId,
+      daoCode,
+      governorAddress,
+      tokenAddress,
+      account,
+      refreshBalance,
+      refreshPower,
+      reason,
+      blockNumber,
+      blockTimestamp,
+      transactionHash,
+      nextRunAt,
+      now,
+    ] = params;
+    const existing = this.findEntity(OnchainRefreshTask, id as string);
+    if (!existing) {
+      return new OnchainRefreshTask({
+        id: id as string,
+        chainId: chainId as number,
+        daoCode: daoCode as string | null,
+        governorAddress: governorAddress as string,
+        tokenAddress: tokenAddress as string,
+        account: account as string,
+        refreshBalance: refreshBalance as boolean,
+        refreshPower: refreshPower as boolean,
+        reason: reason as string,
+        firstSeenBlockNumber: BigInt(blockNumber as string),
+        lastSeenBlockNumber: BigInt(blockNumber as string),
+        lastSeenBlockTimestamp: BigInt(blockTimestamp as string),
+        lastSeenTransactionHash: transactionHash as string,
+        status: "pending",
+        attempts: 0,
+        nextRunAt: BigInt(nextRunAt as string),
+        pendingAfterLock: false,
+        createdAt: BigInt(now as string),
+        updatedAt: BigInt(now as string),
+      });
+    }
+
+    const locked = existing.status === "processing" || existing.lockedAt != null;
+    existing.daoCode = daoCode ?? existing.daoCode;
+    existing.refreshBalance = existing.refreshBalance || refreshBalance;
+    existing.refreshPower = existing.refreshPower || refreshPower;
+    existing.reason = mergeReasons(existing.reason, reason as string);
+    if (locked) {
+      existing.pendingAfterLock = true;
+      existing.pendingAfterLockBlockNumber = BigInt(blockNumber as string);
+      existing.pendingAfterLockBlockTimestamp = BigInt(blockTimestamp as string);
+      existing.pendingAfterLockTransactionHash = transactionHash;
+    } else {
+      existing.lastSeenBlockNumber = BigInt(blockNumber as string);
+      existing.lastSeenBlockTimestamp = BigInt(blockTimestamp as string);
+      existing.lastSeenTransactionHash = transactionHash;
+      existing.status = "pending";
+      existing.nextRunAt = BigInt(nextRunAt as string);
+      existing.lockedAt = undefined;
+      existing.lockedBy = undefined;
+      existing.processedAt = undefined;
+      existing.error = undefined;
+      existing.pendingAfterLock = false;
+      existing.pendingAfterLockBlockNumber = undefined;
+      existing.pendingAfterLockBlockTimestamp = undefined;
+      existing.pendingAfterLockTransactionHash = undefined;
+    }
+    existing.updatedAt = BigInt(now as string);
+    return existing;
+  }
 }
 
-function buildTokenHandler(store: MemoryStore, standard: "ERC20" | "ERC721" = "ERC20") {
+function mergeReasons(current: string, next: string) {
+  return [...new Set(`${current}+${next}`.split("+").filter(Boolean))]
+    .sort()
+    .join("+");
+}
+
+function buildTokenHandler(
+  store: MemoryStore,
+  standard: "ERC20" | "ERC721" = "ERC20",
+  chainTool: ChainTool = new ChainTool()
+) {
   return new TokenHandler(
     {
       store,
@@ -4060,7 +5125,7 @@ function buildTokenHandler(store: MemoryStore, standard: "ERC20" | "ERC721" = "E
         address: "0x8888888888888888888888888888888888888888",
         standard,
       },
-      chainTool: new ChainTool(),
+      chainTool,
     }
   );
 }

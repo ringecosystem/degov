@@ -17,6 +17,14 @@ import {
   ProjectedProposalState,
   ReconciliationCheck,
 } from "./internal/reconciliation";
+import { parseIndexerPowerSource } from "./handler/token";
+import {
+  loadKnownTokenAccounts,
+  QueryableDataSource,
+} from "./onchain-refresh/known-accounts";
+
+export { loadKnownTokenAccounts };
+export type { QueryableDataSource };
 
 interface ReconcileCliOptions {
   configPath: string;
@@ -65,6 +73,441 @@ interface ProposalReconciliationResult {
   onChainState: string;
   checks: ReconciliationCheck<string>[];
   voteSamples: VotePowerSampleResult[];
+}
+
+export interface OnchainPowerReconcileOptions {
+  chainId: number;
+  daoCode?: string | null;
+  governorAddress: string;
+  tokenAddress: string;
+  rpcs?: string[];
+  clockMode?: ClockMode;
+  timepoint?: bigint;
+  blockNumber?: bigint;
+  blockTimestamp?: bigint;
+}
+
+interface OnchainPowerReconcileResult {
+  powerSource: "event" | "onchain";
+  accountsChecked: number;
+  balancesUpdated: number;
+  powersUpdated: number;
+}
+
+function isHistoricalVoteUnavailable(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
+  return (
+    message.includes("contract function not found") ||
+    message.includes("returned no data") ||
+    message.includes("function selector was not recognized") ||
+    message.includes("function does not exist") ||
+    message.includes("selector not found") ||
+    message.includes("not yet determined") ||
+    message.includes("not yet mined") ||
+    message.includes("future lookup") ||
+    message.includes("erc5805futurelookup") ||
+    ((message.includes("getpastvotes") ||
+      message.includes("getpriorvotes")) &&
+      (message.includes("reverted") || message.includes("execution reverted")))
+  );
+}
+
+function deriveReconcilePowerTimepoint(
+  options: OnchainPowerReconcileOptions,
+  clockMode: ClockMode,
+  blockNumber: bigint,
+  blockTimestamp: bigint
+): bigint {
+  if (options.timepoint !== undefined) {
+    return clockMode === ClockMode.Timestamp
+      ? blockTimestamp / 1000n
+      : options.timepoint;
+  }
+
+  if (clockMode === ClockMode.Timestamp) {
+    return blockTimestamp / 1000n;
+  }
+
+  return options.blockNumber ?? blockNumber;
+}
+
+async function readContributorSnapshot(
+  dataSource: QueryableDataSource,
+  account: string
+) {
+  const [row] = await dataSource.query(
+    `
+      SELECT
+        power,
+        balance,
+        delegates_count_all AS "delegatesCountAll",
+        delegates_count_effective AS "delegatesCountEffective"
+      FROM contributor
+      WHERE lower(id) = lower($1)
+      LIMIT 1
+    `,
+    [account]
+  );
+
+  return {
+    power: toBigInt(row?.power),
+    balance: toBigInt(row?.balance),
+    delegatesCountAll: Number(row?.delegatesCountAll ?? 0),
+    delegatesCountEffective: Number(row?.delegatesCountEffective ?? 0),
+  };
+}
+
+async function readReconcilePower(
+  chainTool: ChainTool,
+  options: OnchainPowerReconcileOptions,
+  account: string,
+  blockNumber: bigint,
+  blockTimestamp: bigint
+): Promise<{ value: bigint; source: string; clockMode: ClockMode; timepoint: bigint }> {
+  const clockMode = options.clockMode ?? ClockMode.BlockNumber;
+  const timepoint = deriveReconcilePowerTimepoint(
+    options,
+    clockMode,
+    blockNumber,
+    blockTimestamp
+  );
+  const readOptions = {
+    chainId: options.chainId,
+    contractAddress: options.tokenAddress as `0x${string}`,
+    rpcs: options.rpcs,
+    account: account as `0x${string}`,
+    blockNumber,
+  };
+
+  if (timepoint > 0n) {
+    try {
+      const result = await chainTool.historicalVotes({
+        ...readOptions,
+        timepoint,
+      });
+      return {
+        value: result.votes,
+        source: result.method,
+        clockMode,
+        timepoint,
+      };
+    } catch (error) {
+      if (!isHistoricalVoteUnavailable(error)) {
+        throw error;
+      }
+    }
+  }
+
+  const result = await chainTool.currentVotesWithSource(readOptions);
+  return {
+    value: result.votes,
+    source: result.method,
+    clockMode,
+    timepoint,
+  };
+}
+
+async function withTransaction<T>(
+  dataSource: QueryableDataSource,
+  callback: (manager: QueryableDataSource) => Promise<T>
+): Promise<T> {
+  if (dataSource.transaction) {
+    return dataSource.transaction(callback);
+  }
+
+  await dataSource.query("BEGIN");
+  try {
+    const result = await callback(dataSource);
+    await dataSource.query("COMMIT");
+    return result;
+  } catch (error) {
+    await dataSource.query("ROLLBACK");
+    throw error;
+  }
+}
+
+async function upsertReconciledContributor(
+  dataSource: QueryableDataSource,
+  options: OnchainPowerReconcileOptions,
+  account: string,
+  balance: bigint,
+  power: bigint,
+  blockNumber: bigint,
+  blockTimestamp: bigint,
+  delegatesCountAll: number,
+  delegatesCountEffective: number
+) {
+  await dataSource.query(
+    `
+      INSERT INTO contributor (
+        id,
+        chain_id,
+        dao_code,
+        governor_address,
+        token_address,
+        contract_address,
+        block_number,
+        block_timestamp,
+        transaction_hash,
+        power,
+        balance,
+        delegates_count_all,
+        delegates_count_effective
+      )
+      VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT (id) DO UPDATE SET
+        chain_id = EXCLUDED.chain_id,
+        dao_code = EXCLUDED.dao_code,
+        governor_address = EXCLUDED.governor_address,
+        token_address = EXCLUDED.token_address,
+        contract_address = EXCLUDED.contract_address,
+        block_number = EXCLUDED.block_number,
+        block_timestamp = EXCLUDED.block_timestamp,
+        transaction_hash = EXCLUDED.transaction_hash,
+        power = EXCLUDED.power,
+        balance = EXCLUDED.balance
+    `,
+    [
+      account,
+      options.chainId,
+      options.daoCode ?? null,
+      options.governorAddress,
+      options.tokenAddress,
+      blockNumber.toString(),
+      blockTimestamp.toString(),
+      "reconcile",
+      power.toString(),
+      balance.toString(),
+      delegatesCountAll,
+      delegatesCountEffective,
+    ]
+  );
+}
+
+async function storeReconcileCheckpoints(
+  dataSource: QueryableDataSource,
+  options: OnchainPowerReconcileOptions,
+  account: string,
+  previousBalance: bigint,
+  newBalance: bigint,
+  previousPower: bigint,
+  newPower: bigint,
+  powerSource: string,
+  clockMode: ClockMode,
+  timepoint: bigint,
+  blockNumber: bigint,
+  blockTimestamp: bigint
+) {
+  await dataSource.query(
+    `
+      INSERT INTO token_balance_checkpoint (
+        id,
+        chain_id,
+        dao_code,
+        governor_address,
+        token_address,
+        contract_address,
+        account,
+        previous_balance,
+        new_balance,
+        delta,
+        source,
+        cause,
+        block_number,
+        block_timestamp,
+        transaction_hash
+      )
+      VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [
+      `reconcile-balance-${account}-${blockNumber.toString()}`,
+      options.chainId,
+      options.daoCode ?? null,
+      options.governorAddress,
+      options.tokenAddress,
+      account,
+      previousBalance.toString(),
+      newBalance.toString(),
+      (newBalance - previousBalance).toString(),
+      "balanceOf",
+      "reconcile",
+      blockNumber.toString(),
+      blockTimestamp.toString(),
+      "reconcile",
+    ]
+  );
+
+  await dataSource.query(
+    `
+      INSERT INTO vote_power_checkpoint (
+        id,
+        chain_id,
+        dao_code,
+        governor_address,
+        token_address,
+        contract_address,
+        account,
+        clock_mode,
+        timepoint,
+        previous_power,
+        new_power,
+        delta,
+        source,
+        cause,
+        block_number,
+        block_timestamp,
+        transaction_hash
+      )
+      VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [
+      `reconcile-power-${account}-${blockNumber.toString()}`,
+      options.chainId,
+      options.daoCode ?? null,
+      options.governorAddress,
+      options.tokenAddress,
+      account,
+      clockMode,
+      timepoint.toString(),
+      previousPower.toString(),
+      newPower.toString(),
+      (newPower - previousPower).toString(),
+      powerSource,
+      "reconcile",
+      blockNumber.toString(),
+      blockTimestamp.toString(),
+      "reconcile",
+    ]
+  );
+}
+
+async function updateReconciledPowerSum(
+  dataSource: QueryableDataSource,
+  options: OnchainPowerReconcileOptions,
+  delta: bigint
+) {
+  await dataSource.query(
+    `
+      INSERT INTO data_metric (
+        id,
+        chain_id,
+        dao_code,
+        governor_address,
+        token_address,
+        power_sum
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (id) DO UPDATE SET
+        chain_id = EXCLUDED.chain_id,
+        dao_code = EXCLUDED.dao_code,
+        governor_address = EXCLUDED.governor_address,
+        token_address = EXCLUDED.token_address,
+        power_sum = COALESCE(data_metric.power_sum, 0) + EXCLUDED.power_sum
+    `,
+    [
+      "global",
+      options.chainId,
+      options.daoCode ?? null,
+      options.governorAddress,
+      options.tokenAddress,
+      delta.toString(),
+    ]
+  );
+}
+
+export async function reconcileOnchainPowerState(
+  dataSource: QueryableDataSource,
+  chainTool: ChainTool,
+  options: OnchainPowerReconcileOptions
+): Promise<OnchainPowerReconcileResult> {
+  const powerSource = parseIndexerPowerSource();
+  if (powerSource === "event") {
+    return {
+      powerSource,
+      accountsChecked: 0,
+      balancesUpdated: 0,
+      powersUpdated: 0,
+    };
+  }
+
+  const accounts = await loadKnownTokenAccounts(dataSource, options);
+  const latestBlock =
+    options.blockNumber !== undefined && options.blockTimestamp !== undefined
+      ? {
+          number: options.blockNumber,
+          timestampMs: options.blockTimestamp,
+        }
+      : await chainTool.latestBlock({
+          chainId: options.chainId,
+          rpcs: options.rpcs,
+        });
+  const blockNumber = latestBlock.number;
+  const blockTimestamp = latestBlock.timestampMs;
+  let balancesUpdated = 0;
+  let powersUpdated = 0;
+
+  for (const account of accounts) {
+    const [balance, power] = await Promise.all([
+      chainTool.tokenBalance({
+        chainId: options.chainId,
+        contractAddress: options.tokenAddress as `0x${string}`,
+        rpcs: options.rpcs,
+        account: account as `0x${string}`,
+        blockNumber,
+      }),
+      readReconcilePower(chainTool, options, account, blockNumber, blockTimestamp),
+    ]);
+
+    await withTransaction(dataSource, async (manager) => {
+      const previous = await readContributorSnapshot(manager, account);
+
+      await upsertReconciledContributor(
+        manager,
+        options,
+        account,
+        balance,
+        power.value,
+        blockNumber,
+        blockTimestamp,
+        previous.delegatesCountAll,
+        previous.delegatesCountEffective
+      );
+      await storeReconcileCheckpoints(
+        manager,
+        options,
+        account,
+        previous.balance,
+        balance,
+        previous.power,
+        power.value,
+        power.source,
+        power.clockMode,
+        power.timepoint,
+        blockNumber,
+        blockTimestamp
+      );
+      await updateReconciledPowerSum(
+        manager,
+        options,
+        power.value - previous.power
+      );
+    });
+
+    balancesUpdated += 1;
+    powersUpdated += 1;
+  }
+
+  return {
+    powerSource,
+    accountsChecked: accounts.length,
+    balancesUpdated,
+    powersUpdated,
+  };
 }
 
 function parseArgs(argv: string[]): ReconcileCliOptions {
@@ -136,10 +579,6 @@ function toBigInt(value: string | number | bigint | null | undefined): bigint {
   }
 
   return BigInt(value);
-}
-
-function normalizeAddress(value: string | null | undefined): string | undefined {
-  return value ? value.toLowerCase() : undefined;
 }
 
 async function createDatabaseConnection(): Promise<DataSource> {
@@ -539,9 +978,27 @@ async function main() {
     contractAddress: governor.address,
     rpcs: config.rpcs,
   });
+  const latestBlock = await chainTool.latestBlock({
+    chainId: config.chainId,
+    rpcs: config.rpcs,
+  });
   const dataSource = await createDatabaseConnection();
 
   try {
+    const tokenBackfill = await reconcileOnchainPowerState(
+      dataSource,
+      chainTool,
+      {
+        chainId: config.chainId,
+        daoCode: work.daoCode,
+        governorAddress: governor.address,
+        tokenAddress: governorToken.address,
+        rpcs: config.rpcs,
+        clockMode: currentClock.clockMode,
+        blockNumber: latestBlock.number,
+        blockTimestamp: latestBlock.timestampMs,
+      }
+    );
     const [projectionRows, coverage] = await Promise.all([
       loadProjectionRows(
         dataSource,
@@ -591,6 +1048,7 @@ async function main() {
       governorTokenAddress: governorToken.address,
       governorTokenStandard: governorToken.standard ?? "ERC20",
       currentClock,
+      tokenBackfill,
       coverage,
       summary,
       proposals,
@@ -603,6 +1061,7 @@ async function main() {
       JSON.stringify(
         {
           outputPath: options.outputPath,
+          tokenBackfill,
           ...summary,
         },
         null,
@@ -619,7 +1078,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

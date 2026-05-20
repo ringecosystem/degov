@@ -10,6 +10,7 @@ import {
   DelegateMapping,
   DelegateRolling,
   DelegateVotesChanged,
+  TokenBalanceCheckpoint,
   TokenTransfer,
   VotePowerCheckpoint,
 } from "../model";
@@ -21,8 +22,35 @@ import {
 } from "../types";
 import { DegovIndexerHelpers } from "../internal/helpers";
 import { ChainTool, ClockMode } from "../internal/chaintool";
+import {
+  parseOnchainEventReadsEnabled,
+  upsertOnchainRefreshTask,
+} from "../onchain-refresh/task";
 
 const zeroAddress = "0x0000000000000000000000000000000000000000";
+type PowerSource = "event" | "onchain";
+type OnchainRefreshCause = "transfer" | "delegate-change" | "delegate-votes-changed" | "reconcile";
+
+function isHistoricalVoteUnavailable(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
+  return (
+    message.includes("contract function not found") ||
+    message.includes("returned no data") ||
+    message.includes("function selector was not recognized") ||
+    message.includes("function does not exist") ||
+    message.includes("selector not found") ||
+    message.includes("not yet determined") ||
+    message.includes("not yet mined") ||
+    message.includes("future lookup") ||
+    message.includes("erc5805futurelookup") ||
+    ((message.includes("getpastvotes") ||
+      message.includes("getpriorvotes")) &&
+      (message.includes("reverted") || message.includes("execution reverted")))
+  );
+}
 
 export interface TokenhandlerOptions {
   chainId: number;
@@ -30,6 +58,13 @@ export interface TokenhandlerOptions {
   work: IndexerWork;
   indexContract: IndexerContract;
   chainTool: ChainTool;
+}
+
+interface OnchainRefreshTarget {
+  account: string;
+  refreshBalance: boolean;
+  refreshPower: boolean;
+  cause: OnchainRefreshCause;
 }
 
 interface TokenScopeFields {
@@ -68,7 +103,21 @@ export function classifyVotePowerCheckpointCause(options: {
   return "delegate-votes-changed";
 }
 
+export function parseIndexerPowerSource(
+  value = process.env.DEGOV_INDEXER_POWER_SOURCE,
+): PowerSource {
+  const normalized = (value ?? "event").trim().toLowerCase();
+  if (normalized === "event" || normalized === "onchain") {
+    return normalized;
+  }
+  throw new Error(
+    `DEGOV_INDEXER_POWER_SOURCE must be one of: event, onchain. Received: ${value}`,
+  );
+}
+
 export class TokenHandler {
+  private readonly powerSource: PowerSource;
+  private readonly onchainEventReadsEnabled: boolean;
   private voteClockModePromise?: Promise<ClockMode>;
   private globalDataMetric?: DataMetric;
   private globalDataMetricDirty = false;
@@ -91,11 +140,15 @@ export class TokenHandler {
   private readonly dirtyDelegateMappings = new Map<string, DelegateMapping>();
   private readonly dirtyContributors = new Map<string, Contributor>();
   private readonly dirtyDelegates = new Map<string, Delegate>();
+  private readonly onchainRefreshKeysByTx = new Map<string, Set<string>>();
 
   constructor(
     private readonly ctx: DataHandlerContext<Store, EvmFieldSelection>,
     private readonly options: TokenhandlerOptions,
-  ) {}
+  ) {
+    this.powerSource = parseIndexerPowerSource();
+    this.onchainEventReadsEnabled = parseOnchainEventReadsEnabled();
+  }
 
   private governorAddress(): string {
     const governorAddress = DegovIndexerHelpers.findContractAddress(
@@ -186,6 +239,528 @@ export class TokenHandler {
 
   private isZeroAddress(address?: string | null) {
     return (address ?? "").toLowerCase() === zeroAddress;
+  }
+
+  private normalizeAddress(address: string): string {
+    return DegovIndexerHelpers.normalizeAddress(address) ?? address.toLowerCase();
+  }
+
+  private onchainReadOptions(eventLog: EvmLog<EvmFieldSelection>) {
+    return {
+      chainId: this.options.chainId,
+      contractAddress: this.tokenAddress() as `0x${string}`,
+      rpcs: this.options.rpcs,
+      blockNumber: BigInt(eventLog.block.height),
+    };
+  }
+
+  private checkpointId(
+    eventLog: EvmLog<EvmFieldSelection>,
+    kind: "balance" | "power",
+    account: string,
+    cause: string,
+  ): string {
+    return `${eventLog.id}-${kind}-${account.toLowerCase()}-${cause}`;
+  }
+
+  private onchainRefreshScope(eventLog: EvmLog<EvmFieldSelection>): string {
+    return `${eventLog.block.height}:${eventLog.transactionHash}`;
+  }
+
+  private rememberOnchainRefresh(
+    eventLog: EvmLog<EvmFieldSelection>,
+    account: string,
+    kind: "balance" | "power",
+  ): boolean {
+    const scope = this.onchainRefreshScope(eventLog);
+    const keys = this.onchainRefreshKeysByTx.get(scope) ?? new Set<string>();
+    const key = `${account.toLowerCase()}:${kind}`;
+    if (keys.has(key)) {
+      return false;
+    }
+    keys.add(key);
+    this.onchainRefreshKeysByTx.set(scope, keys);
+    return true;
+  }
+
+  private async ensureContributor(
+    account: string,
+    eventLog: EvmLog<EvmFieldSelection>,
+  ): Promise<{ contributor: Contributor; isNew: boolean }> {
+    const id = this.normalizeAddress(account);
+    const storedContributor = await this.getContributorById(id);
+    if (storedContributor) {
+      return {
+        contributor: storedContributor,
+        isNew: false,
+      };
+    }
+
+    const contributor = new Contributor({
+      id,
+      ...this.eventFields(eventLog),
+      blockNumber: BigInt(eventLog.block.height),
+      blockTimestamp: BigInt(eventLog.block.timestamp),
+      transactionHash: eventLog.transactionHash,
+      power: 0n,
+      delegatesCountAll: 0,
+      delegatesCountEffective: 0,
+    });
+    await this.ctx.store.insert(contributor);
+    this.rememberContributor(contributor);
+    await this.increaseMetricsContributorCount(contributor);
+    return {
+      contributor,
+      isNew: true,
+    };
+  }
+
+  private updateContributorScope(
+    contributor: Contributor,
+    eventLog: EvmLog<EvmFieldSelection>,
+  ) {
+    contributor.blockNumber = BigInt(eventLog.block.height);
+    contributor.blockTimestamp = BigInt(eventLog.block.timestamp);
+    contributor.transactionHash = eventLog.transactionHash;
+    this.applyScopeFields(contributor, this.eventFields(eventLog));
+  }
+
+  private async readOnchainPower(
+    account: string,
+    eventLog: EvmLog<EvmFieldSelection>,
+  ): Promise<{
+    power: bigint;
+    source: string;
+    clockMode: ClockMode;
+    timepoint: bigint;
+  }> {
+    const normalizedAccount = this.normalizeAddress(account) as `0x${string}`;
+    const clockMode = await this.voteClockMode();
+    const timepoint = votePowerTimepointForLog({
+      clockMode,
+      blockHeight: eventLog.block.height,
+      blockTimestampMs: eventLog.block.timestamp,
+    });
+    const readOptions = {
+      ...this.onchainReadOptions(eventLog),
+      account: normalizedAccount,
+    };
+
+    try {
+      const result = await this.options.chainTool.historicalVotes({
+        ...readOptions,
+        timepoint,
+      });
+      return {
+        power: result.votes,
+        source: result.method,
+        clockMode,
+        timepoint,
+      };
+    } catch (error) {
+      if (!isHistoricalVoteUnavailable(error)) {
+        throw error;
+      }
+      const result =
+        await this.options.chainTool.currentVotesWithSource(readOptions);
+      return {
+        power: result.votes,
+        source: result.method,
+        clockMode,
+        timepoint,
+      };
+    }
+  }
+
+  private async refreshOnchainBalance(
+    target: OnchainRefreshTarget,
+    eventLog: EvmLog<EvmFieldSelection>,
+  ) {
+    if (!target.refreshBalance || this.isZeroAddress(target.account)) {
+      return;
+    }
+
+    const account = this.normalizeAddress(target.account);
+    const storedContributor = await this.getContributorById(account);
+    const previousBalance = storedContributor?.balance ?? 0n;
+    const newBalance = await this.options.chainTool.tokenBalance({
+      ...this.onchainReadOptions(eventLog),
+      account: account as `0x${string}`,
+    });
+    const delta = newBalance - previousBalance;
+    const { contributor } = storedContributor
+      ? { contributor: storedContributor }
+      : await this.ensureContributor(account, eventLog);
+
+    this.updateContributorScope(contributor, eventLog);
+    contributor.balance = newBalance;
+    this.rememberContributor(contributor);
+    this.markContributorDirty(contributor);
+
+    await this.ctx.store.insert(
+      new TokenBalanceCheckpoint({
+        id: this.checkpointId(eventLog, "balance", account, target.cause),
+        ...this.eventFields(eventLog),
+        account,
+        previousBalance,
+        newBalance,
+        delta,
+        source: "balanceOf",
+        cause: target.cause,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+      }),
+    );
+  }
+
+  private async refreshOnchainPower(
+    target: OnchainRefreshTarget,
+    eventLog: EvmLog<EvmFieldSelection>,
+  ) {
+    if (!target.refreshPower || this.isZeroAddress(target.account)) {
+      return;
+    }
+
+    const account = this.normalizeAddress(target.account);
+    const storedContributor = await this.getContributorById(account);
+    const previousPower = storedContributor?.power ?? 0n;
+    const { power, source, clockMode, timepoint } = await this.readOnchainPower(
+      account,
+      eventLog,
+    );
+    const delta = power - previousPower;
+    const { contributor } = storedContributor
+      ? { contributor: storedContributor }
+      : await this.ensureContributor(account, eventLog);
+
+    this.updateContributorScope(contributor, eventLog);
+    contributor.power = power;
+    this.rememberContributor(contributor);
+    this.markContributorDirty(contributor);
+
+    const dm = await this.getGlobalDataMetric(this.eventFields(eventLog));
+    this.applyScopeFields(dm, this.eventFields(eventLog));
+    dm.powerSum = (dm.powerSum ?? 0n) + delta;
+    this.globalDataMetricDirty = true;
+
+    await this.ctx.store.insert(
+      new VotePowerCheckpoint({
+        id: this.checkpointId(eventLog, "power", account, target.cause),
+        ...this.eventFields(eventLog),
+        account,
+        clockMode,
+        timepoint,
+        previousPower,
+        newPower: power,
+        delta,
+        source,
+        cause: target.cause,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+      }),
+    );
+  }
+
+  private async delegateOfAt(
+    account: string,
+    eventLog: EvmLog<EvmFieldSelection>,
+  ): Promise<string | undefined> {
+    if (this.isZeroAddress(account)) {
+      return undefined;
+    }
+
+    const delegate = this.normalizeAddress(
+      await this.options.chainTool.delegateOf({
+        ...this.onchainReadOptions(eventLog),
+        account: this.normalizeAddress(account) as `0x${string}`,
+      }),
+    );
+    return this.isZeroAddress(delegate) ? undefined : delegate;
+  }
+
+  private async refreshOnchainDelegateMapping(
+    delegator: string,
+    eventLog: EvmLog<EvmFieldSelection>,
+    canonical?: {
+      delegatee?: string;
+      power?: bigint;
+    },
+  ) {
+    const normalizedDelegator = this.normalizeAddress(delegator);
+    if (this.isZeroAddress(normalizedDelegator)) {
+      return;
+    }
+
+    const delegatee =
+      canonical && "delegatee" in canonical
+        ? canonical.delegatee
+        : await this.delegateOfAt(normalizedDelegator, eventLog);
+    const previousMapping =
+      await this.getDelegateMappingByFrom(normalizedDelegator);
+    const previousDelegate = previousMapping?.to;
+    const previousPower = previousMapping?.power ?? 0n;
+
+    if (!delegatee) {
+      if (previousMapping) {
+        await this.upsertDelegateSnapshot({
+          ...this.eventFields(eventLog),
+          fromDelegate: normalizedDelegator,
+          toDelegate: previousDelegate!,
+          blockNumber: BigInt(eventLog.block.height),
+          blockTimestamp: BigInt(eventLog.block.timestamp),
+          transactionHash: eventLog.transactionHash,
+          isCurrent: false,
+        });
+      }
+      await this.ctx.store.remove(DelegateMapping, normalizedDelegator);
+      this.forgetDelegateMapping(normalizedDelegator);
+      await this.applyDelegateCountDeltas(
+        {
+          delegate: previousDelegate,
+          allDelta: previousMapping ? -1 : 0,
+          effectiveDelta: previousPower > 0n ? -1 : 0,
+        },
+        eventLog,
+      );
+      return;
+    }
+
+    const power =
+      canonical?.power ??
+      await this.options.chainTool.tokenBalance({
+        ...this.onchainReadOptions(eventLog),
+        account: normalizedDelegator as `0x${string}`,
+      });
+
+    if (previousMapping && previousDelegate?.toLowerCase() !== delegatee) {
+      await this.upsertDelegateSnapshot({
+        ...this.eventFields(eventLog),
+        fromDelegate: normalizedDelegator,
+        toDelegate: previousDelegate!,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+        isCurrent: false,
+      });
+    }
+
+    const mapping =
+      previousMapping ??
+      new DelegateMapping({
+        id: normalizedDelegator,
+        from: normalizedDelegator,
+        to: delegatee,
+        power,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+      });
+    this.applyScopeFields(mapping, this.eventFields(eventLog));
+    mapping.from = normalizedDelegator;
+    mapping.to = delegatee;
+    mapping.power = power;
+    mapping.blockNumber = BigInt(eventLog.block.height);
+    mapping.blockTimestamp = BigInt(eventLog.block.timestamp);
+    mapping.transactionHash = eventLog.transactionHash;
+
+    if (previousMapping) {
+      this.rememberDelegateMapping(mapping);
+      this.markDelegateMappingDirty(mapping);
+    } else {
+      await this.ctx.store.insert(mapping);
+      this.rememberDelegateMapping(mapping);
+    }
+
+    const delegateId = `${normalizedDelegator}_${delegatee}`;
+    const delegate =
+      (await this.getDelegateById(delegateId)) ??
+      new Delegate({
+        id: delegateId,
+        fromDelegate: normalizedDelegator,
+        toDelegate: delegatee,
+        power,
+        isCurrent: true,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+      });
+    this.applyScopeFields(delegate, this.eventFields(eventLog));
+    delegate.fromDelegate = normalizedDelegator;
+    delegate.toDelegate = delegatee;
+    delegate.power = power;
+    delegate.isCurrent = true;
+    delegate.blockNumber = BigInt(eventLog.block.height);
+    delegate.blockTimestamp = BigInt(eventLog.block.timestamp);
+    delegate.transactionHash = eventLog.transactionHash;
+    if (await this.getDelegateById(delegateId)) {
+      this.rememberDelegate(delegate);
+      this.markDelegateDirty(delegate);
+    } else {
+      await this.ctx.store.insert(delegate);
+      this.rememberDelegate(delegate);
+    }
+
+    if (!previousMapping) {
+      await this.applyDelegateCountDeltas(
+        {
+          delegate: delegatee,
+          allDelta: 1,
+          effectiveDelta: power > 0n ? 1 : 0,
+        },
+        eventLog,
+      );
+      return;
+    }
+
+    if (previousDelegate?.toLowerCase() === delegatee) {
+      const previousEffective = previousPower > 0n;
+      const currentEffective = power > 0n;
+      await this.applyDelegateCountDeltas(
+        {
+          delegate: delegatee,
+          allDelta: 0,
+          effectiveDelta:
+            previousEffective === currentEffective
+              ? 0
+              : currentEffective
+                ? 1
+                : -1,
+        },
+        eventLog,
+      );
+      return;
+    }
+
+    await this.applyDelegateCountDeltas(
+      {
+        delegate: previousDelegate,
+        allDelta: -1,
+        effectiveDelta: previousPower > 0n ? -1 : 0,
+      },
+      eventLog,
+    );
+    await this.applyDelegateCountDeltas(
+      {
+        delegate: delegatee,
+        allDelta: 1,
+        effectiveDelta: power > 0n ? 1 : 0,
+      },
+      eventLog,
+    );
+  }
+
+  private async applyDelegateCountDeltas(
+    options: {
+      delegate?: string | null;
+      allDelta: number;
+      effectiveDelta: number;
+    },
+    eventLog: EvmLog<EvmFieldSelection>,
+  ) {
+    const delegate = options.delegate ? this.normalizeAddress(options.delegate) : undefined;
+    if (!delegate || this.isZeroAddress(delegate)) {
+      return;
+    }
+
+    const { contributor } = await this.ensureContributor(delegate, eventLog);
+    this.updateContributorScope(contributor, eventLog);
+    contributor.delegatesCountAll = Math.max(
+      0,
+      (contributor.delegatesCountAll ?? 0) + options.allDelta,
+    );
+    contributor.delegatesCountEffective = Math.max(
+      0,
+      (contributor.delegatesCountEffective ?? 0) + options.effectiveDelta,
+    );
+    this.rememberContributor(contributor);
+    this.markContributorDirty(contributor);
+  }
+
+  private async refreshOnchainTargets(
+    targets: OnchainRefreshTarget[],
+    eventLog: EvmLog<EvmFieldSelection>,
+  ): Promise<Set<string>> {
+    if (!this.onchainEventReadsEnabled) {
+      if (this.powerSource === "onchain" && this.ctx.isHead === false) {
+        return new Set<string>();
+      }
+      await this.submitOnchainRefreshTasks(targets, eventLog);
+      return new Set<string>();
+    }
+
+    const seen = new Set<string>();
+    const refreshedBalanceAccounts = new Set<string>();
+    for (const target of targets) {
+      const account = this.normalizeAddress(target.account);
+      if (this.isZeroAddress(account)) {
+        continue;
+      }
+      if (target.refreshBalance) {
+        const key = `${account}:balance`;
+        if (!seen.has(key) && this.rememberOnchainRefresh(eventLog, account, "balance")) {
+          seen.add(key);
+          await this.refreshOnchainBalance({ ...target, account }, eventLog);
+          refreshedBalanceAccounts.add(account);
+        }
+      }
+      if (target.refreshPower) {
+        const key = `${account}:power`;
+        if (!seen.has(key) && this.rememberOnchainRefresh(eventLog, account, "power")) {
+          seen.add(key);
+          await this.refreshOnchainPower({ ...target, account }, eventLog);
+        }
+      }
+    }
+    return refreshedBalanceAccounts;
+  }
+
+  private async submitOnchainRefreshTasks(
+    targets: OnchainRefreshTarget[],
+    eventLog: EvmLog<EvmFieldSelection>,
+  ) {
+    const mergedTargets = new Map<string, OnchainRefreshTarget>();
+    for (const target of targets) {
+      const account = this.normalizeAddress(target.account);
+      if (this.isZeroAddress(account)) {
+        continue;
+      }
+      const existing = mergedTargets.get(account);
+      mergedTargets.set(account, {
+        account,
+        refreshBalance:
+          (existing?.refreshBalance ?? false) || target.refreshBalance,
+        refreshPower: (existing?.refreshPower ?? false) || target.refreshPower,
+        cause: existing
+          ? classifyVotePowerCheckpointCause({
+              hasDelegateChange:
+                existing.cause.includes("delegate-change") ||
+                target.cause.includes("delegate-change"),
+              hasTransfer:
+                existing.cause.includes("transfer") ||
+                target.cause.includes("transfer"),
+            }) as OnchainRefreshCause
+          : target.cause,
+      });
+    }
+
+    for (const [account, target] of mergedTargets) {
+      const scope = this.scopeFields();
+      await upsertOnchainRefreshTask(this.ctx.store as any, {
+        chainId: this.options.chainId,
+        daoCode: scope.daoCode,
+        governorAddress: this.governorAddress(),
+        tokenAddress: this.tokenAddress(),
+        account,
+        refreshBalance: target.refreshBalance,
+        refreshPower: target.refreshPower,
+        reason: target.cause,
+        blockNumber: BigInt(eventLog.block.height),
+        blockTimestamp: BigInt(eventLog.block.timestamp),
+        transactionHash: eventLog.transactionHash,
+      });
+    }
   }
 
   private async getDelegateRollingsByTransactionHash(
@@ -701,6 +1276,8 @@ export class TokenHandler {
       await this.ctx.store.save(this.globalDataMetric);
       this.globalDataMetricDirty = false;
     }
+
+    this.onchainRefreshKeysByTx.clear();
   }
 
   private async upsertDelegateSnapshot(
@@ -818,6 +1395,49 @@ export class TokenHandler {
       transactionHash: eventLog.transactionHash,
     });
     await this.ctx.store.insert(entity);
+
+    if (this.powerSource === "onchain") {
+      await this.refreshOnchainTargets(
+        [
+          {
+            account: delegator,
+            refreshBalance: true,
+            refreshPower: false,
+            cause: "delegate-change",
+          },
+          {
+            account: fromDelegate,
+            refreshBalance: false,
+            refreshPower: true,
+            cause: "delegate-change",
+          },
+          {
+            account: toDelegate,
+            refreshBalance: false,
+            refreshPower: true,
+            cause: "delegate-change",
+          },
+        ],
+        eventLog,
+      );
+      if (this.onchainEventReadsEnabled) {
+        const delegateRolling = new DelegateRolling({
+          id: eventLog.id,
+          ...this.eventFields(eventLog),
+          delegator,
+          fromDelegate,
+          toDelegate,
+          blockNumber: BigInt(eventLog.block.height),
+          blockTimestamp: BigInt(eventLog.block.timestamp),
+          transactionHash: eventLog.transactionHash,
+        });
+        await this.ctx.store.insert(delegateRolling);
+        this.rememberDelegateRolling(delegateRolling);
+
+        await this.refreshOnchainDelegateMapping(delegator, eventLog);
+        return;
+      }
+    }
 
     // update delegators count all
     // First, check if delegator had previous delegation
@@ -986,6 +1606,21 @@ export class TokenHandler {
     });
     await this.ctx.store.insert(entity);
     this.rememberDelegateVotesChanged(entity);
+    if (this.powerSource === "onchain") {
+      await this.refreshOnchainTargets(
+        [
+          {
+            account: delegate,
+            refreshBalance: false,
+            refreshPower: true,
+            cause: "delegate-votes-changed",
+          },
+        ],
+        eventLog,
+      );
+      await this.updateDelegateRolling(entity);
+      return;
+    }
     await this.storeVotePowerCheckpoint(entity, eventLog);
     // store rolling
     await this.updateDelegateRolling(entity);
@@ -1029,6 +1664,7 @@ export class TokenHandler {
       previousPower: BigInt(delegateVotesChanged.previousVotes),
       newPower: BigInt(delegateVotesChanged.newVotes),
       delta,
+      source: "event",
       cause: classifyVotePowerCheckpointCause({
         hasDelegateChange: delegateRollings.length > 0,
         hasTransfer: tokenTransfer.length > 0,
@@ -1319,6 +1955,74 @@ export class TokenHandler {
     await this.ctx.store.insert(entity);
     this.rememberTokenTransfer(entity);
 
+    if (this.powerSource === "onchain") {
+      const targets: OnchainRefreshTarget[] = [];
+      const delegateByDelegator = new Map<string, string | undefined>();
+      if (!this.isZeroAddress(entity.from)) {
+        targets.push({
+          account: entity.from,
+          refreshBalance: true,
+          refreshPower: false,
+          cause: "transfer",
+        });
+        if (this.onchainEventReadsEnabled) {
+          const fromDelegate = await this.delegateOfAt(entity.from, eventLog);
+          delegateByDelegator.set(this.normalizeAddress(entity.from), fromDelegate);
+          if (fromDelegate) {
+            targets.push({
+              account: fromDelegate,
+              refreshBalance: false,
+              refreshPower: true,
+              cause: "transfer",
+            });
+          }
+        }
+      }
+      if (!this.isZeroAddress(entity.to)) {
+        targets.push({
+          account: entity.to,
+          refreshBalance: true,
+          refreshPower: false,
+          cause: "transfer",
+        });
+        if (this.onchainEventReadsEnabled) {
+          const toDelegate = await this.delegateOfAt(entity.to, eventLog);
+          delegateByDelegator.set(this.normalizeAddress(entity.to), toDelegate);
+          if (toDelegate) {
+            targets.push({
+              account: toDelegate,
+              refreshBalance: false,
+              refreshPower: true,
+              cause: "transfer",
+            });
+          }
+        }
+      }
+      const refreshedBalanceAccounts = await this.refreshOnchainTargets(
+        targets,
+        eventLog,
+      );
+      if (!this.onchainEventReadsEnabled) {
+        // Continue into the event-derived relation update below. Only the
+        // contributor balance/power reads are deferred to the refresh worker.
+      } else {
+        for (const account of [entity.from, entity.to]) {
+          const normalizedAccount = this.normalizeAddress(account);
+          if (
+            !this.isZeroAddress(normalizedAccount) &&
+            refreshedBalanceAccounts.has(normalizedAccount)
+          ) {
+            const contributor = await this.getContributorById(normalizedAccount);
+            await this.refreshOnchainDelegateMapping(normalizedAccount, eventLog, {
+              delegatee: delegateByDelegator.get(normalizedAccount),
+              power: contributor?.balance ?? 0n,
+            });
+          }
+        }
+        return;
+      }
+    }
+
     const delegateRollings = await this.getDelegateRollingsByTransactionHash(
       entity.transactionHash,
     );
@@ -1381,6 +2085,7 @@ export class TokenHandler {
     currentDelegate: Delegate,
     options?: {
       replaceStoredPowerWith?: bigint;
+      updateContributorPower?: boolean;
     },
   ) {
     if (!currentDelegate.fromDelegate || !currentDelegate.toDelegate) {
@@ -1498,10 +2203,14 @@ export class TokenHandler {
 
     const finalRelationPower =
       storedDelegateFromWithTo?.power ?? currentDelegate.power;
+    const updateContributorPower =
+      options?.updateContributorPower ?? this.powerSource === "event";
     const contributorPowerDelta =
-      synchronizedCurrentRelation && currentDelegate.power === 0n
-        ? finalRelationPower - previousRelationPower
-        : currentDelegate.power;
+      updateContributorPower
+        ? synchronizedCurrentRelation && currentDelegate.power === 0n
+          ? finalRelationPower - previousRelationPower
+          : currentDelegate.power
+        : 0n;
 
     // store contributor
     const contributor = new Contributor({
@@ -1541,8 +2250,10 @@ export class TokenHandler {
       logIndex: currentDelegate.logIndex,
       transactionIndex: currentDelegate.transactionIndex,
     });
-    dm.powerSum = (dm.powerSum ?? 0n) + contributorPowerDelta;
-    this.globalDataMetricDirty = true;
+    if (updateContributorPower) {
+      dm.powerSum = (dm.powerSum ?? 0n) + contributorPowerDelta;
+      this.globalDataMetricDirty = true;
+    }
   }
 
   private async storeContributor(contributor: Contributor) {

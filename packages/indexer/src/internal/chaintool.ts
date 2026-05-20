@@ -24,6 +24,7 @@ export interface ReadContractOptions extends BaseContractOptions {
   abi: Abi;
   functionName: string;
   args?: readonly unknown[];
+  blockNumber?: bigint;
 }
 
 export interface QueryQuorumOptions extends BaseContractOptions {
@@ -45,8 +46,18 @@ export interface CurrentClockResult {
   timestampMs: bigint;
 }
 
+export interface LatestBlockResult {
+  number: bigint;
+  timestampMs: bigint;
+}
+
 export interface HistoricalVotesResult {
   method: "getPastVotes" | "getPriorVotes";
+  votes: bigint;
+}
+
+export interface CurrentVotesResult {
+  method: "getVotes" | "getCurrentVotes";
   votes: bigint;
 }
 
@@ -127,6 +138,46 @@ const ABI_FUNCTION_GET_PRIOR_VOTES: Abi = [
     ],
     name: "getPriorVotes",
     outputs: [{ internalType: "uint96", name: "", type: "uint96" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_GET_VOTES: Abi = [
+  {
+    inputs: [{ internalType: "address", name: "account", type: "address" }],
+    name: "getVotes",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_GET_CURRENT_VOTES: Abi = [
+  {
+    inputs: [{ internalType: "address", name: "account", type: "address" }],
+    name: "getCurrentVotes",
+    outputs: [{ internalType: "uint96", name: "", type: "uint96" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_BALANCE_OF: Abi = [
+  {
+    inputs: [{ internalType: "address", name: "account", type: "address" }],
+    name: "balanceOf",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+const ABI_FUNCTION_DELEGATES: Abi = [
+  {
+    inputs: [{ internalType: "address", name: "account", type: "address" }],
+    name: "delegates",
+    outputs: [{ internalType: "address", name: "", type: "address" }],
     stateMutability: "view",
     type: "function",
   },
@@ -583,6 +634,7 @@ export class ChainTool {
         abi: options.abi,
         functionName: options.functionName as never,
         args: options.args as never,
+        blockNumber: options.blockNumber,
       })
     );
 
@@ -656,10 +708,25 @@ export class ChainTool {
     };
   }
 
+  async latestBlock(options: {
+    chainId: number;
+    rpcs?: string[];
+  }): Promise<LatestBlockResult> {
+    const block = await this._executeWithFallbacks(options, (client) =>
+      client.getBlock()
+    );
+
+    return {
+      number: block.number ?? 0n,
+      timestampMs: block.timestamp * 1000n,
+    };
+  }
+
   async historicalVotes(
     options: BaseContractOptions & {
       account: `0x${string}`;
       timepoint: bigint;
+      blockNumber?: bigint;
     }
   ): Promise<HistoricalVotesResult> {
     try {
@@ -669,6 +736,7 @@ export class ChainTool {
           abi: ABI_FUNCTION_GET_PAST_VOTES,
           functionName: "getPastVotes",
           args: [options.account, options.timepoint],
+          blockNumber: options.blockNumber,
         })
       );
 
@@ -688,6 +756,7 @@ export class ChainTool {
         abi: ABI_FUNCTION_GET_PRIOR_VOTES,
         functionName: "getPriorVotes",
         args: [options.account, options.timepoint],
+        blockNumber: options.blockNumber,
       })
     );
 
@@ -695,6 +764,90 @@ export class ChainTool {
       method: "getPriorVotes",
       votes,
     };
+  }
+
+  async currentVotes(
+    options: BaseContractOptions & {
+      account: `0x${string}`;
+      blockNumber?: bigint;
+    }
+  ): Promise<bigint> {
+    return (await this.currentVotesWithSource(options)).votes;
+  }
+
+  async currentVotesWithSource(
+    options: BaseContractOptions & {
+      account: `0x${string}`;
+      blockNumber?: bigint;
+    }
+  ): Promise<CurrentVotesResult> {
+    try {
+      const votes = BigInt(
+        await this.readContract<bigint>({
+          ...options,
+          abi: ABI_FUNCTION_GET_VOTES,
+          functionName: "getVotes",
+          args: [options.account],
+          blockNumber: options.blockNumber,
+        })
+      );
+
+      return {
+        method: "getVotes",
+        votes,
+      };
+    } catch (error) {
+      if (!this.isMissingFunctionError(error)) {
+        throw error;
+      }
+    }
+
+    const votes = BigInt(
+      await this.readContract<bigint>({
+        ...options,
+        abi: ABI_FUNCTION_GET_CURRENT_VOTES,
+        functionName: "getCurrentVotes",
+        args: [options.account],
+        blockNumber: options.blockNumber,
+      })
+    );
+
+    return {
+      method: "getCurrentVotes",
+      votes,
+    };
+  }
+
+  async tokenBalance(
+    options: BaseContractOptions & {
+      account: `0x${string}`;
+      blockNumber?: bigint;
+    }
+  ): Promise<bigint> {
+    return BigInt(
+      await this.readContract<bigint>({
+        ...options,
+        abi: ABI_FUNCTION_BALANCE_OF,
+        functionName: "balanceOf",
+        args: [options.account],
+        blockNumber: options.blockNumber,
+      })
+    );
+  }
+
+  async delegateOf(
+    options: BaseContractOptions & {
+      account: `0x${string}`;
+      blockNumber?: bigint;
+    }
+  ): Promise<`0x${string}`> {
+    return (await this.readContract<`0x${string}`>({
+      ...options,
+      abi: ABI_FUNCTION_DELEGATES,
+      functionName: "delegates",
+      args: [options.account],
+      blockNumber: options.blockNumber,
+    })) as `0x${string}`;
   }
 
   async timepointToTimestampMs(options: {

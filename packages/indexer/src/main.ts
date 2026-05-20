@@ -8,6 +8,16 @@ import { ChainTool } from "./internal/chaintool";
 import { DegovIndexerHelpers } from "./internal/helpers";
 import { TextPlus } from "./internal/textplus";
 import { createDatabase } from "./database";
+import {
+  fallbackRpcEndBlock,
+  findArchiveGatewayEndBlock,
+  readProcessorNextBlock,
+  shouldUseArchiveGateway,
+} from "./archive-gateway";
+import {
+  isPostgresSerializationFailure,
+  serializationRetryDelayMs,
+} from "./internal/retry";
 
 type BatchHandler = GovernorHandler | TokenHandler | TimelockHandler;
 
@@ -23,7 +33,28 @@ async function main() {
     throw new Error("DEGOV_CONFIG_PATH not set");
   }
   const config = await DegovDataSource.fromDegovConfigPath(degovConfigPath);
-  await runProcessorEvm(config);
+  let serializationFailureCount = 0;
+  for (;;) {
+    try {
+      await runProcessorEvm(config);
+      return;
+    } catch (error) {
+      if (!isPostgresSerializationFailure(error)) {
+        throw error;
+      }
+
+      serializationFailureCount += 1;
+      const delayMs = serializationRetryDelayMs(serializationFailureCount);
+      console.warn(
+        DegovIndexerHelpers.formatLogLine("processor serialization retry", {
+          attempt: serializationFailureCount,
+          delayMs,
+          error: DegovIndexerHelpers.formatError(error),
+        }),
+      );
+      await sleep(delayMs);
+    }
+  }
 }
 
 async function runProcessorEvm(config: IndexerProcessorConfig) {
@@ -79,13 +110,51 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
       maxBatchCallSize: config.maxBatchCallSize ?? 200,
     });
 
+  let processorEndBlock = config.endBlock;
+
   if (config.gateway) {
-    processor.setGateway(config.gateway);
+    const nextBlock = await readProcessorNextBlock(config.startBlock);
+    const archiveDecision = await shouldUseArchiveGateway({
+      gateway: config.gateway,
+      nextBlock,
+    });
+
+    if (archiveDecision.useGateway) {
+      processorEndBlock = await findArchiveGatewayEndBlock({
+        gateway: config.gateway,
+        nextBlock,
+        configuredEndBlock: config.endBlock,
+      });
+      processor.setGateway(config.gateway);
+      console.log(
+        DegovIndexerHelpers.formatLogLine("processor.archive selected", {
+          nextBlock,
+          archiveEndBlock: processorEndBlock,
+          probeUrl: archiveDecision.probeUrl,
+          status: archiveDecision.status,
+        }),
+      );
+    } else {
+      processorEndBlock = fallbackRpcEndBlock({
+        nextBlock,
+        configuredEndBlock: config.endBlock,
+      });
+      console.warn(
+        DegovIndexerHelpers.formatLogLine("processor.archive skipped", {
+          nextBlock,
+          fallbackEndBlock: processorEndBlock,
+          probeUrl: archiveDecision.probeUrl,
+          status: archiveDecision.status,
+          reason: archiveDecision.reason,
+          body: archiveDecision.body,
+        }),
+      );
+    }
   }
   processor.setFinalityConfirmation(config.finalityConfirmation ?? 50);
 
   config.works.forEach((work) => {
-    const range = { from: config.startBlock, to: config.endBlock };
+    const range = { from: config.startBlock, to: processorEndBlock };
     const address = work.contracts.map((item) => item.address);
     processor.addLog({
       range,
@@ -104,7 +173,7 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
   const chainTool = new ChainTool();
   const textPlus = new TextPlus();
 
-  processor.run(
+  await processor.run(
     createDatabase(),
     async (ctx) => {
       const batchHandlers = new Map<string, BatchHandler>();
@@ -279,6 +348,10 @@ async function runProcessorEvm(config: IndexerProcessorConfig) {
       }
     },
   );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 main()
