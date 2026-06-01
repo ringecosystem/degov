@@ -1,5 +1,9 @@
 # DeGov Indexer Developer Guide
 
+> Historical reference: the SQD/Subsquid runtime described here has been
+> removed. Keep this guide only as behavioral context for the future
+> Datalens-native indexer.
+
 This guide explains how to work with `packages/indexer` after the recent
 indexing, reconciliation, and accuracy-debugging work.
 

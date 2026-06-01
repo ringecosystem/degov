@@ -18,7 +18,6 @@ jobs:
     strategy:
       matrix:
         image:
-          - indexer
           - web
     steps:
       - uses: actions/checkout@v5
