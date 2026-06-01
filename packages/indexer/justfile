@@ -16,7 +16,7 @@ test:
     {{pnpm}} run test
 
 test-unit:
-    {{pnpm}} run test
+    {{pnpm}} run test-unit
 
 test-accuracy:
     {{pnpm}} run test

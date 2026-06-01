@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "node ./scripts/placeholder.mjs",
-    "test": "node ./scripts/placeholder.mjs"
+    "test": "node ./scripts/placeholder.mjs",
+    "test-unit": "node ./scripts/placeholder.mjs"
   }
 }
