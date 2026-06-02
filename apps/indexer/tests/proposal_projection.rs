@@ -333,6 +333,34 @@ fn test_project_proposal_events_rejects_conflicting_duplicate_log_id() {
 }
 
 #[test]
+fn test_project_proposal_events_rejects_duplicate_log_id_with_conflicting_metadata() {
+    let mut duplicate = log(10, 0, 1);
+    duplicate.transaction_hash = "0xdifferent".to_owned();
+
+    let err = project_proposal_events(
+        &context(),
+        vec![
+            ProposalProjectionEvent {
+                log: log(10, 0, 1),
+                event: proposal_created("42", "# Title\nBody"),
+            },
+            ProposalProjectionEvent {
+                log: duplicate,
+                event: proposal_created("42", "# Title\nBody"),
+            },
+        ],
+    )
+    .expect_err("conflicting duplicate log metadata is rejected");
+
+    assert_eq!(
+        err,
+        ProposalProjectionError::ConflictingDuplicateLog {
+            log_id: "evm:1:10:0xtx10:0:1".to_owned(),
+        }
+    );
+}
+
+#[test]
 fn test_project_proposal_created_rejects_action_length_mismatch() {
     let err = project_proposal_events(
         &context(),

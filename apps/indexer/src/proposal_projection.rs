@@ -371,7 +371,7 @@ pub fn project_proposal_events(
 
     for event in events {
         if let Some(stored) = deduped.get(&event.log.id) {
-            if stored.event != event.event {
+            if stored != &event {
                 return Err(ProposalProjectionError::ConflictingDuplicateLog {
                     log_id: event.log.id,
                 });
