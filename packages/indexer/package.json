@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "node ./scripts/placeholder.mjs",
-    "test": "node ./scripts/placeholder.mjs",
+    "check:rust-conventions": "node ./scripts/check-rust-conventions.mjs",
+    "test": "pnpm run check:rust-conventions && node ./scripts/check-rust-conventions.test.mjs && node ./scripts/placeholder.mjs",
     "test-unit": "node ./scripts/placeholder.mjs"
   }
 }
