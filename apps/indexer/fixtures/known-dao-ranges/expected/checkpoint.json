@@ -1,0 +1,9 @@
+{
+  "dao_code": "demo-dao",
+  "chain_id": 1,
+  "stream_id": "datalens-native-fixture",
+  "data_source_version": "fixture-v1",
+  "processed_height": 10009,
+  "next_block": 10010,
+  "target_height": 10009
+}

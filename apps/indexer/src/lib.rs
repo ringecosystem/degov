@@ -5,6 +5,7 @@ pub mod dao_event;
 pub mod datalens;
 pub mod error;
 pub mod evm_log;
+pub mod fixtures;
 pub mod planner;
 pub mod power_reconcile;
 pub mod proposal_metadata;
@@ -42,6 +43,12 @@ pub use datalens::{
 };
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use evm_log::{EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows};
+pub use fixtures::{
+    DatalensFixture, DatalensFixtureCheckpointExpectation, DatalensFixtureContracts,
+    DatalensFixtureDaoRange, DatalensFixtureDuplicateReplayExpectation, DatalensFixtureError,
+    DatalensFixtureExpectedEvent, DatalensFixtureLogSource, DatalensFixturePage,
+    DatalensFixtureTokenStandard, load_datalens_fixture,
+};
 pub use planner::{
     DaoContractAddresses, DaoLogQueryPlan, DaoLogSource, DatalensLogPage, DatalensLogQueryReader,
     fetch_dao_log_pages, plan_dao_log_queries,

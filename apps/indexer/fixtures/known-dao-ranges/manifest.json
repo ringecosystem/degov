@@ -1,0 +1,121 @@
+{
+  "name": "known-dao-ranges",
+  "description": "Deterministic raw Datalens-native EVM log rows for known DeGov DAO range coverage.",
+  "dao_ranges": [
+    {
+      "label": "small-demo-lifecycle",
+      "dao_code": "demo-dao",
+      "chain_id": 1,
+      "chain": "ethereum",
+      "contracts": {
+        "governor": "0x1111111111111111111111111111111111111111",
+        "governor_token": "0x2222222222222222222222222222222222222222",
+        "timelock": "0x3333333333333333333333333333333333333333"
+      },
+      "from_block": 10000,
+      "to_block": 10004,
+      "why_chosen": "Small proposal lifecycle range for local development and checkpoint assertions."
+    },
+    {
+      "label": "ens-lisk-token-erc20-shape",
+      "dao_code": "ens-lisk-representative",
+      "chain_id": 1,
+      "chain": "ethereum",
+      "contracts": {
+        "governor": "0x1111111111111111111111111111111111111111",
+        "governor_token": "0x2222222222222222222222222222222222222222",
+        "timelock": "0x3333333333333333333333333333333333333333"
+      },
+      "from_block": 20000,
+      "to_block": 20002,
+      "why_chosen": "Representative ERC20 delegation and transfer shapes used by ENS/Lisk-style token governance."
+    },
+    {
+      "label": "lisk-erc721-shape",
+      "dao_code": "lisk-representative",
+      "chain_id": 1,
+      "chain": "ethereum",
+      "contracts": {
+        "governor": "0x1111111111111111111111111111111111111111",
+        "governor_token": "0x4444444444444444444444444444444444444444",
+        "timelock": "0x3333333333333333333333333333333333333333"
+      },
+      "from_block": 30000,
+      "to_block": 30000,
+      "why_chosen": "ERC721-shaped transfer coverage without requiring live public RPC access."
+    },
+    {
+      "label": "timelock-heavy",
+      "dao_code": "timelock-heavy",
+      "chain_id": 1,
+      "chain": "ethereum",
+      "contracts": {
+        "governor": "0x1111111111111111111111111111111111111111",
+        "governor_token": "0x2222222222222222222222222222222222222222",
+        "timelock": "0x3333333333333333333333333333333333333333"
+      },
+      "from_block": 40000,
+      "to_block": 40006,
+      "why_chosen": "Dense timelock scheduling, role, execution, delay, cancel, and revoke coverage."
+    }
+  ],
+  "pages": [
+    {
+      "label": "demo-governor",
+      "dao_code": "demo-dao",
+      "chain_id": 1,
+      "source": "governor",
+      "from_block": 10000,
+      "to_block": 10004,
+      "rows_path": "raw-logs/demo-governor.json"
+    },
+    {
+      "label": "ens-lisk-token-erc20",
+      "dao_code": "ens-lisk-representative",
+      "chain_id": 1,
+      "source": "governor_token",
+      "token_standard": "erc20",
+      "from_block": 20000,
+      "to_block": 20002,
+      "rows_path": "raw-logs/ens-lisk-token-erc20.json"
+    },
+    {
+      "label": "lisk-token-erc721",
+      "dao_code": "lisk-representative",
+      "chain_id": 1,
+      "source": "governor_token",
+      "token_standard": "erc721",
+      "from_block": 30000,
+      "to_block": 30000,
+      "rows_path": "raw-logs/lisk-token-erc721.json"
+    },
+    {
+      "label": "timelock-heavy",
+      "dao_code": "timelock-heavy",
+      "chain_id": 1,
+      "source": "timelock",
+      "from_block": 40000,
+      "to_block": 40006,
+      "rows_path": "raw-logs/timelock-heavy.json"
+    }
+  ],
+  "duplicate_replay_rows_path": "raw-logs/duplicate-replay.json",
+  "expected_decoded_events_path": "expected/decoded-events.json",
+  "expected_checkpoint": {
+    "dao_code": "demo-dao",
+    "chain_id": 1,
+    "stream_id": "datalens-native-fixture",
+    "data_source_version": "fixture-v1",
+    "processed_height": 10009,
+    "next_block": 10010,
+    "target_height": 10009
+  },
+  "expected_duplicate_replay": {
+    "unique_log_count": 16,
+    "replayed_log_count": 18,
+    "duplicate_log_ids": [
+      "evm:1:10000:0x00000000000000000000000000000000000000000000000000000000000f4240:0:0",
+      "evm:1:40000:0x00000000000000000000000000000000000000000000000000000000003d0900:0:0"
+    ]
+  }
+}

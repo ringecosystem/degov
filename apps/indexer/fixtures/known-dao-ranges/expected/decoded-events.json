@@ -1,0 +1,103 @@
+[
+  {
+    "table": "proposal_created",
+    "event": "ProposalCreated",
+    "dao_code": "demo-dao",
+    "block_number": "10000",
+    "proposal_id": "9001"
+  },
+  {
+    "table": "vote_cast",
+    "event": "VoteCast",
+    "dao_code": "demo-dao",
+    "block_number": "10001",
+    "proposal_id": "9001"
+  },
+  {
+    "table": "proposal_queued",
+    "event": "ProposalQueued",
+    "dao_code": "demo-dao",
+    "block_number": "10002",
+    "proposal_id": "9001"
+  },
+  {
+    "table": "proposal_deadline_extensions",
+    "event": "ProposalExtended",
+    "dao_code": "demo-dao",
+    "block_number": "10003",
+    "proposal_id": "9001"
+  },
+  {
+    "table": "proposal_executed",
+    "event": "ProposalExecuted",
+    "dao_code": "demo-dao",
+    "block_number": "10004",
+    "proposal_id": "9001"
+  },
+  {
+    "table": "delegate_changed",
+    "event": "DelegateChanged",
+    "dao_code": "ens-lisk-representative",
+    "block_number": "20000"
+  },
+  {
+    "table": "delegate_votes_changed",
+    "event": "DelegateVotesChanged",
+    "dao_code": "ens-lisk-representative",
+    "block_number": "20001"
+  },
+  {
+    "table": "token_transfers",
+    "event": "Transfer(ERC20)",
+    "dao_code": "ens-lisk-representative",
+    "block_number": "20002"
+  },
+  {
+    "table": "token_transfers",
+    "event": "Transfer(ERC721)",
+    "dao_code": "lisk-representative",
+    "block_number": "30000"
+  },
+  {
+    "table": "timelock_operations",
+    "event": "CallScheduled",
+    "dao_code": "timelock-heavy",
+    "block_number": "40000"
+  },
+  {
+    "table": "timelock_operation_hints",
+    "event": "CallSalt",
+    "dao_code": "timelock-heavy",
+    "block_number": "40001"
+  },
+  {
+    "table": "timelock_role_events",
+    "event": "RoleGranted",
+    "dao_code": "timelock-heavy",
+    "block_number": "40002"
+  },
+  {
+    "table": "timelock_calls",
+    "event": "CallExecuted",
+    "dao_code": "timelock-heavy",
+    "block_number": "40003"
+  },
+  {
+    "table": "timelock_min_delay_changes",
+    "event": "MinDelayChange",
+    "dao_code": "timelock-heavy",
+    "block_number": "40004"
+  },
+  {
+    "table": "timelock_operations",
+    "event": "Cancelled",
+    "dao_code": "timelock-heavy",
+    "block_number": "40005"
+  },
+  {
+    "table": "timelock_role_events",
+    "event": "RoleRevoked",
+    "dao_code": "timelock-heavy",
+    "block_number": "40006"
+  }
+]
