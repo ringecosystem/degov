@@ -120,6 +120,8 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     assert_table_count(&database.pool, "vote_cast", 1).await?;
     assert_table_count(&database.pool, "delegate_changed", 1).await?;
     assert_table_count(&database.pool, "token_transfer", 1).await?;
+    assert_table_count(&database.pool, "vote_power_checkpoint", 1).await?;
+    assert_token_projection_state(&database.pool).await?;
     assert_table_count(&database.pool, "timelock_operation", 1).await?;
     assert_checkpoint(&database.pool).await?;
 
@@ -332,6 +334,85 @@ async fn assert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
     assert_eq!(row.get::<i64, _>(0), 3);
     assert_eq!(row.get::<i64, _>(1), 2);
     assert_eq!(row.get::<i64, _>(2), 2);
+
+    Ok(())
+}
+
+async fn assert_token_projection_state(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let mapping = sqlx::query(
+        r#"SELECT "from", "to", power::TEXT AS power
+           FROM delegate_mapping
+           WHERE id = $1"#,
+    )
+    .bind(DELEGATOR)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(mapping.get::<String, _>("from"), DELEGATOR);
+    assert_eq!(mapping.get::<String, _>("to"), DELEGATE);
+    assert_eq!(mapping.get::<String, _>("power"), "75");
+
+    let delegate = sqlx::query(
+        "SELECT from_delegate, to_delegate, power::TEXT AS power, is_current
+         FROM delegate
+         WHERE id = $1",
+    )
+    .bind(format!("{DELEGATOR}_{DELEGATE}"))
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(delegate.get::<String, _>("from_delegate"), DELEGATOR);
+    assert_eq!(delegate.get::<String, _>("to_delegate"), DELEGATE);
+    assert_eq!(delegate.get::<String, _>("power"), "75");
+    assert!(delegate.get::<bool, _>("is_current"));
+
+    let contributor = sqlx::query(
+        "SELECT power::TEXT AS power, balance::TEXT AS balance,
+                delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE id = $1",
+    )
+    .bind(DELEGATE)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(contributor.get::<String, _>("power"), "0");
+    assert_eq!(contributor.get::<Option<String>, _>("balance"), None);
+    assert_eq!(contributor.get::<i32, _>("delegates_count_all"), 1);
+    assert_eq!(contributor.get::<i32, _>("delegates_count_effective"), 1);
+
+    let checkpoint = sqlx::query(
+        "SELECT account, clock_mode, timepoint::TEXT AS timepoint,
+                previous_power::TEXT AS previous_power, new_power::TEXT AS new_power,
+                delta::TEXT AS delta, source, cause, delegator, from_delegate, to_delegate
+         FROM vote_power_checkpoint",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(checkpoint.get::<String, _>("account"), DELEGATE);
+    assert_eq!(checkpoint.get::<String, _>("clock_mode"), "blocknumber");
+    assert_eq!(checkpoint.get::<String, _>("timepoint"), "2");
+    assert_eq!(checkpoint.get::<String, _>("previous_power"), "0");
+    assert_eq!(checkpoint.get::<String, _>("new_power"), "100");
+    assert_eq!(checkpoint.get::<String, _>("delta"), "100");
+    assert_eq!(checkpoint.get::<String, _>("source"), "event");
+    assert_eq!(
+        checkpoint.get::<String, _>("cause"),
+        "delegate-change+transfer"
+    );
+    assert_eq!(
+        checkpoint.get::<Option<String>, _>("delegator"),
+        Some(DELEGATOR.to_owned())
+    );
+    assert_eq!(
+        checkpoint.get::<Option<String>, _>("from_delegate"),
+        Some(ZERO_ADDRESS.to_owned())
+    );
+    assert_eq!(
+        checkpoint.get::<Option<String>, _>("to_delegate"),
+        Some(DELEGATE.to_owned())
+    );
 
     Ok(())
 }
