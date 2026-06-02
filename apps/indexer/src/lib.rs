@@ -93,7 +93,8 @@ pub use timelock_projection::{
     TimelockEventCommon, TimelockMinDelayChangeWrite, TimelockOperationHintWrite,
     TimelockOperationWrite, TimelockProjectionBatch, TimelockProjectionContext,
     TimelockProjectionError, TimelockProjectionEvent, TimelockProjectionRepository,
-    TimelockRepositoryWriteError, TimelockRoleEventWrite, project_timelock_events,
+    TimelockProposalActionLink, TimelockProposalLinkContext, TimelockRepositoryWriteError,
+    TimelockRoleEventWrite, project_timelock_events, project_timelock_events_with_proposal_links,
 };
 pub use token_projection::{
     ContributorWrite, DataMetricTokenDelta, DelegateChangedWrite, DelegateMappingWrite,

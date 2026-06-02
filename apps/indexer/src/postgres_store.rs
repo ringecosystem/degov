@@ -3,16 +3,18 @@ use std::{fmt, future::Future};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
 use crate::{
-    CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite, DelegateChangedWrite,
-    DelegateRollingWrite, DelegateVotesChangedWrite, GovernanceTokenStandard, IndexerCheckpoint,
-    IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
+    CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite, DecodedTimelockEvent,
+    DelegateChangedWrite, DelegateRollingWrite, DelegateVotesChangedWrite, GovernanceTokenStandard,
+    IndexerCheckpoint, IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
     IndexerRunnerTransaction, PowerReconcileCandidate, ProposalActionWrite, ProposalCreatedWrite,
     ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
     ProposalProjectionBatch, ProposalQueuedWrite, ProposalStateEpochWrite, ProposalVoteTotalWrite,
     ProposalWrite, TimelockCallWrite, TimelockMinDelayChangeWrite, TimelockOperationHintWrite,
-    TimelockOperationWrite, TimelockProjectionBatch, TimelockRoleEventWrite, TokenEventCommon,
-    TokenProjectionBatch, TokenProjectionOperation, TokenTransferWrite, VoteCastGroupWrite,
-    VoteCastWithParamsWrite, VoteCastWrite, VoteProjectionBatch,
+    TimelockOperationWrite, TimelockProjectionBatch, TimelockProjectionContext,
+    TimelockProjectionEvent, TimelockProposalActionLink, TimelockProposalLinkContext,
+    TimelockRoleEventWrite, TokenEventCommon, TokenProjectionBatch, TokenProjectionOperation,
+    TokenTransferWrite, VoteCastGroupWrite, VoteCastWithParamsWrite, VoteCastWrite,
+    VoteProjectionBatch,
 };
 
 #[derive(Clone)]
@@ -53,6 +55,17 @@ impl IndexerRunnerStore for PostgresIndexerRunnerStore {
             transaction: Some(transaction),
             checkpoint_repository: self.checkpoint_repository.clone(),
         })
+    }
+
+    fn timelock_proposal_link_context(
+        &mut self,
+        context: &TimelockProjectionContext,
+        events: &[TimelockProjectionEvent],
+        proposal: Option<&ProposalProjectionBatch>,
+    ) -> Result<TimelockProposalLinkContext, Self::Error> {
+        block_on_runtime(read_timelock_proposal_link_context(
+            &self.pool, context, events, proposal,
+        ))
     }
 }
 
@@ -360,6 +373,152 @@ async fn write_timelock_batch(
     for row in &batch.timelock_operation_hints {
         insert_timelock_operation_hint(transaction, row).await?;
     }
+
+    Ok(())
+}
+
+async fn read_timelock_proposal_link_context(
+    pool: &PgPool,
+    context: &TimelockProjectionContext,
+    events: &[TimelockProjectionEvent],
+    proposal: Option<&ProposalProjectionBatch>,
+) -> Result<TimelockProposalLinkContext, PostgresIndexerRunnerStoreError> {
+    let mut links = TimelockProposalLinkContext::default();
+    let governor_address = normalize_identifier(&context.governor_address);
+
+    for input in events {
+        let DecodedTimelockEvent::CallScheduled(event) = &input.event else {
+            continue;
+        };
+        let Ok(action_index) = event.index.parse::<i32>() else {
+            continue;
+        };
+        let row = sqlx::query(
+            "SELECT p.chain_id, p.governor_address, p.id AS proposal_ref,
+                    p.proposal_id AS raw_proposal_id,
+                    pq.transaction_hash AS queue_transaction_hash,
+                    pe.transaction_hash AS execution_transaction_hash,
+                    pq.eta_seconds::TEXT AS queue_eta,
+                    pa.id AS proposal_action_id,
+                    pa.action_index AS proposal_action_index,
+                    pa.target, pa.value, pa.calldata
+             FROM proposal_queued pq
+             JOIN proposal p
+               ON p.chain_id IS NOT DISTINCT FROM pq.chain_id
+              AND p.governor_address IS NOT DISTINCT FROM pq.governor_address
+              AND p.proposal_id = pq.proposal_id
+             JOIN proposal_action pa ON pa.proposal_ref = p.id
+             LEFT JOIN proposal_executed pe
+               ON pe.chain_id IS NOT DISTINCT FROM p.chain_id
+              AND pe.governor_address IS NOT DISTINCT FROM p.governor_address
+              AND pe.proposal_id = p.proposal_id
+             WHERE pq.chain_id IS NOT DISTINCT FROM $1
+               AND pq.governor_address IS NOT DISTINCT FROM $2
+               AND pq.transaction_hash = $3
+               AND pa.action_index = $4
+               AND pa.target = $5
+               AND pa.value = $6
+               AND pa.calldata = $7
+             ORDER BY p.id, pa.id
+             LIMIT 1",
+        )
+        .bind(input.log.chain_id)
+        .bind(&governor_address)
+        .bind(normalize_identifier(&input.log.transaction_hash))
+        .bind(action_index)
+        .bind(normalize_identifier(&event.target))
+        .bind(&event.value)
+        .bind(normalize_identifier(&event.data))
+        .fetch_optional(pool)
+        .await?;
+
+        let Some(row) = row else { continue };
+        insert_link_from_row(&mut links, row)?;
+    }
+
+    if let Some(proposal) = proposal {
+        for input in events {
+            let DecodedTimelockEvent::CallScheduled(event) = &input.event else {
+                continue;
+            };
+            let Ok(action_index) = event.index.parse::<i32>() else {
+                continue;
+            };
+            let queue_transaction_hash = normalize_identifier(&input.log.transaction_hash);
+            for queued in proposal.proposal_queued.iter().filter(|queued| {
+                queued.common.chain_id == input.log.chain_id
+                    && normalize_identifier(&queued.common.governor_address) == governor_address
+                    && normalize_identifier(&queued.common.transaction_hash)
+                        == queue_transaction_hash
+            }) {
+                let row = sqlx::query(
+                    "SELECT p.chain_id, p.governor_address, p.id AS proposal_ref,
+                            p.proposal_id AS raw_proposal_id,
+                            $3::TEXT AS queue_transaction_hash,
+                            pe.transaction_hash AS execution_transaction_hash,
+                            $4::TEXT AS queue_eta,
+                            pa.id AS proposal_action_id,
+                            pa.action_index AS proposal_action_index,
+                            pa.target, pa.value, pa.calldata
+                     FROM proposal p
+                     JOIN proposal_action pa ON pa.proposal_ref = p.id
+                     LEFT JOIN proposal_executed pe
+                       ON pe.chain_id IS NOT DISTINCT FROM p.chain_id
+                      AND pe.governor_address IS NOT DISTINCT FROM p.governor_address
+                      AND pe.proposal_id = p.proposal_id
+                     WHERE p.chain_id IS NOT DISTINCT FROM $1
+                       AND p.governor_address IS NOT DISTINCT FROM $2
+                       AND p.proposal_id = $5
+                       AND pa.action_index = $6
+                       AND pa.target = $7
+                       AND pa.value = $8
+                       AND pa.calldata = $9
+                     ORDER BY p.id, pa.id
+                     LIMIT 1",
+                )
+                .bind(input.log.chain_id)
+                .bind(&governor_address)
+                .bind(&queue_transaction_hash)
+                .bind(&queued.eta_seconds)
+                .bind(&queued.proposal_id)
+                .bind(action_index)
+                .bind(normalize_identifier(&event.target))
+                .bind(&event.value)
+                .bind(normalize_identifier(&event.data))
+                .fetch_optional(pool)
+                .await?;
+
+                let Some(row) = row else { continue };
+                insert_link_from_row(&mut links, row)?;
+            }
+        }
+    }
+
+    Ok(links)
+}
+
+fn insert_link_from_row(
+    links: &mut TimelockProposalLinkContext,
+    row: sqlx::postgres::PgRow,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let proposal_action_index = row.get::<i32, _>("proposal_action_index");
+    let proposal_action_index = usize::try_from(proposal_action_index).map_err(|_| {
+        PostgresIndexerRunnerStoreError::new("proposal_action_index cannot be negative")
+    })?;
+    links.insert_action_link(TimelockProposalActionLink {
+        chain_id: row.get("chain_id"),
+        governor_address: row.get("governor_address"),
+        proposal_ref: row.get("proposal_ref"),
+        raw_proposal_id: row.get("raw_proposal_id"),
+        queue_transaction_hash: row.get("queue_transaction_hash"),
+        execution_transaction_hash: row.get("execution_transaction_hash"),
+        queue_eta: row.get("queue_eta"),
+        proposal_action_id: row.get("proposal_action_id"),
+        proposal_action_index,
+        target: row.get("target"),
+        value: row.get("value"),
+        calldata: row.get("calldata"),
+    });
 
     Ok(())
 }
@@ -2195,9 +2354,33 @@ async fn upsert_timelock_operation(
             $25::NUMERIC(78, 0), $26, $27::NUMERIC(78, 0), $28::NUMERIC(78, 0), $29
          )
          ON CONFLICT (id) DO UPDATE
-         SET predecessor = COALESCE(EXCLUDED.predecessor, timelock_operation.predecessor),
+         SET proposal_ref = COALESCE(timelock_operation.proposal_ref, EXCLUDED.proposal_ref),
+             proposal_id = COALESCE(timelock_operation.proposal_id, EXCLUDED.proposal_id),
+             predecessor = COALESCE(EXCLUDED.predecessor, timelock_operation.predecessor),
              salt = COALESCE(EXCLUDED.salt, timelock_operation.salt),
-             state = EXCLUDED.state,
+             state = CASE
+                 WHEN CASE EXCLUDED.state
+                         WHEN 'Cancelled' THEN 4
+                         WHEN 'Done' THEN 3
+                         WHEN 'Executed' THEN 3
+                         WHEN 'Ready' THEN 2
+                         WHEN 'Waiting' THEN 1
+                         WHEN 'Queued' THEN 1
+                         WHEN 'Unset' THEN 0
+                         ELSE 0
+                      END >= CASE timelock_operation.state
+                         WHEN 'Cancelled' THEN 4
+                         WHEN 'Done' THEN 3
+                         WHEN 'Executed' THEN 3
+                         WHEN 'Ready' THEN 2
+                         WHEN 'Waiting' THEN 1
+                         WHEN 'Queued' THEN 1
+                         WHEN 'Unset' THEN 0
+                         ELSE 0
+                      END
+                 THEN EXCLUDED.state
+                 ELSE timelock_operation.state
+             END,
              call_count = COALESCE(EXCLUDED.call_count, timelock_operation.call_count),
              executed_call_count = COALESCE(EXCLUDED.executed_call_count, timelock_operation.executed_call_count),
              delay_seconds = COALESCE(EXCLUDED.delay_seconds, timelock_operation.delay_seconds),
@@ -2274,12 +2457,30 @@ async fn upsert_timelock_call(
             $23::NUMERIC(78, 0), $24, $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27
          )
          ON CONFLICT (id) DO UPDATE
-         SET target = EXCLUDED.target,
+         SET proposal_ref = COALESCE(timelock_call.proposal_ref, EXCLUDED.proposal_ref),
+             proposal_id = COALESCE(timelock_call.proposal_id, EXCLUDED.proposal_id),
+             proposal_action_id = COALESCE(timelock_call.proposal_action_id, EXCLUDED.proposal_action_id),
+             proposal_action_index = COALESCE(timelock_call.proposal_action_index, EXCLUDED.proposal_action_index),
+             target = EXCLUDED.target,
              value = EXCLUDED.value,
              data = EXCLUDED.data,
              predecessor = COALESCE(EXCLUDED.predecessor, timelock_call.predecessor),
              delay_seconds = COALESCE(EXCLUDED.delay_seconds, timelock_call.delay_seconds),
-             state = EXCLUDED.state,
+             state = CASE
+                 WHEN CASE EXCLUDED.state
+                         WHEN 'Done' THEN 2
+                         WHEN 'Executed' THEN 2
+                         WHEN 'Scheduled' THEN 1
+                         ELSE 0
+                      END >= CASE timelock_call.state
+                         WHEN 'Done' THEN 2
+                         WHEN 'Executed' THEN 2
+                         WHEN 'Scheduled' THEN 1
+                         ELSE 0
+                      END
+                 THEN EXCLUDED.state
+                 ELSE timelock_call.state
+             END,
              scheduled_block_number = COALESCE(EXCLUDED.scheduled_block_number, timelock_call.scheduled_block_number),
              scheduled_block_timestamp = COALESCE(EXCLUDED.scheduled_block_timestamp, timelock_call.scheduled_block_timestamp),
              scheduled_transaction_hash = COALESCE(EXCLUDED.scheduled_transaction_hash, timelock_call.scheduled_transaction_hash),
@@ -2470,6 +2671,10 @@ fn required_numeric<'a>(
     value
         .as_deref()
         .ok_or_else(|| PostgresIndexerRunnerStoreError::new(format!("{field} is required")))
+}
+
+fn normalize_identifier(value: &str) -> String {
+    value.to_ascii_lowercase()
 }
 
 #[derive(Clone, Debug)]
