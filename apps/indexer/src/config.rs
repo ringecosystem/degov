@@ -7,7 +7,7 @@ use figment::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::ConfigError;
+use crate::{ConfigError, DaoContractAddresses};
 
 pub const DEFAULT_DATALENS_TIMEOUT_SECONDS: u64 = 60;
 pub const DEFAULT_DATALENS_FINALITY: DatalensFinality = DatalensFinality::DurableOnly;
@@ -141,6 +141,7 @@ pub struct DatalensConfig {
     pub chain: ChainIdentityConfig,
     pub dataset: DatasetKeyConfig,
     pub query_limits: QueryLimitConfig,
+    pub dao_contracts: Option<DaoContractAddresses>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -157,6 +158,9 @@ struct RawDatalensConfig {
     datalens_dataset_name: String,
     datalens_query_block_range_limit: u32,
     datalens_query_row_limit: u32,
+    datalens_governor_address: Option<String>,
+    datalens_governor_token_address: Option<String>,
+    datalens_timelock_address: Option<String>,
 }
 
 impl Default for RawDatalensConfig {
@@ -174,6 +178,9 @@ impl Default for RawDatalensConfig {
             datalens_dataset_name: DEFAULT_DATALENS_DATASET_NAME.to_owned(),
             datalens_query_block_range_limit: DEFAULT_DATALENS_QUERY_BLOCK_RANGE_LIMIT,
             datalens_query_row_limit: DEFAULT_DATALENS_QUERY_ROW_LIMIT,
+            datalens_governor_address: None,
+            datalens_governor_token_address: None,
+            datalens_timelock_address: None,
         }
     }
 }
@@ -195,6 +202,9 @@ impl DatalensConfig {
                     "DATALENS_DATASET_NAME",
                     "DATALENS_QUERY_BLOCK_RANGE_LIMIT",
                     "DATALENS_QUERY_ROW_LIMIT",
+                    "DATALENS_GOVERNOR_ADDRESS",
+                    "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                    "DATALENS_TIMELOCK_ADDRESS",
                 ]))
                 .extract()
                 .map_err(|error| ConfigError::Load(error.to_string()))?;
@@ -259,6 +269,11 @@ impl TryFrom<RawDatalensConfig> for DatalensConfig {
                 block_range_limit: raw.datalens_query_block_range_limit,
                 row_limit: raw.datalens_query_row_limit,
             },
+            dao_contracts: dao_contract_addresses(
+                raw.datalens_governor_address,
+                raw.datalens_governor_token_address,
+                raw.datalens_timelock_address,
+            )?,
         })
     }
 }
@@ -276,6 +291,47 @@ fn non_empty(field: &'static str, value: String) -> Result<String, ConfigError> 
         return Err(ConfigError::MissingRequired { field });
     }
     Ok(value)
+}
+
+fn optional_non_empty(
+    field: &'static str,
+    value: Option<String>,
+) -> Result<Option<String>, ConfigError> {
+    value.map(|value| non_empty(field, value)).transpose()
+}
+
+fn dao_contract_addresses(
+    governor: Option<String>,
+    governor_token: Option<String>,
+    timelock: Option<String>,
+) -> Result<Option<DaoContractAddresses>, ConfigError> {
+    let governor = optional_non_empty("DATALENS_GOVERNOR_ADDRESS", governor)?;
+    let governor_token = optional_non_empty("DATALENS_GOVERNOR_TOKEN_ADDRESS", governor_token)?;
+    let timelock = optional_non_empty("DATALENS_TIMELOCK_ADDRESS", timelock)?;
+
+    Ok(match (governor, governor_token, timelock) {
+        (Some(governor), Some(governor_token), Some(timelock)) => Some(DaoContractAddresses {
+            governor,
+            governor_token,
+            timelock,
+        }),
+        (None, None, None) => None,
+        (None, _, _) => {
+            return Err(ConfigError::MissingRequired {
+                field: "DATALENS_GOVERNOR_ADDRESS",
+            });
+        }
+        (_, None, _) => {
+            return Err(ConfigError::MissingRequired {
+                field: "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+            });
+        }
+        (_, _, None) => {
+            return Err(ConfigError::MissingRequired {
+                field: "DATALENS_TIMELOCK_ADDRESS",
+            });
+        }
+    })
 }
 
 #[cfg(test)]
@@ -301,6 +357,18 @@ mod tests {
                 ("DATALENS_DATASET_NAME", Some("logs")),
                 ("DATALENS_QUERY_BLOCK_RANGE_LIMIT", Some("500")),
                 ("DATALENS_QUERY_ROW_LIMIT", Some("250")),
+                (
+                    "DATALENS_GOVERNOR_ADDRESS",
+                    Some("0x1111111111111111111111111111111111111111"),
+                ),
+                (
+                    "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                    Some("0x2222222222222222222222222222222222222222"),
+                ),
+                (
+                    "DATALENS_TIMELOCK_ADDRESS",
+                    Some("0x3333333333333333333333333333333333333333"),
+                ),
             ],
             || {
                 let config = DatalensConfig::from_env().expect("load config");
@@ -318,6 +386,22 @@ mod tests {
                 assert_eq!(config.dataset.key(), "evm.logs");
                 assert_eq!(config.query_limits.block_range_limit, 500);
                 assert_eq!(config.query_limits.row_limit, 250);
+                assert_eq!(
+                    config.dao_contracts.as_ref().expect("contracts").governor,
+                    "0x1111111111111111111111111111111111111111"
+                );
+                assert_eq!(
+                    config
+                        .dao_contracts
+                        .as_ref()
+                        .expect("contracts")
+                        .governor_token,
+                    "0x2222222222222222222222222222222222222222"
+                );
+                assert_eq!(
+                    config.dao_contracts.as_ref().expect("contracts").timelock,
+                    "0x3333333333333333333333333333333333333333"
+                );
 
                 let sdk_config = config.sdk_config();
                 assert_eq!(

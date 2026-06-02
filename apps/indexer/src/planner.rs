@@ -1,0 +1,424 @@
+use datalens_sdk::native::{
+    ChainFamilyInput, ChainFamilyKindInput, ChainIdentityInput, DatasetKeyInput,
+    EvmLogsSelectorInput, NetworkIdInput, QueryInput, QueryRangeInput, QueryRangeKindInput,
+    QuerySelectorInput, SelectorKindInput,
+};
+
+use crate::{DatalensConfig, DatalensError};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DaoContractAddresses {
+    pub governor: String,
+    pub governor_token: String,
+    pub timelock: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DaoLogSource {
+    Governor,
+    GovernorToken,
+    Timelock,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DaoLogQueryPlan {
+    pub source: DaoLogSource,
+    pub from_block: i32,
+    pub to_block: i32,
+    pub input: QueryInput,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DatalensLogPage {
+    pub plan: DaoLogQueryPlan,
+    pub rows: serde_json::Value,
+}
+
+pub trait DatalensLogQueryReader {
+    fn query_logs(&mut self, input: QueryInput) -> Result<serde_json::Value, DatalensError>;
+}
+
+pub fn plan_dao_log_queries(
+    config: &DatalensConfig,
+    addresses: &DaoContractAddresses,
+    from_block: i64,
+    to_block: i64,
+) -> Result<Vec<DaoLogQueryPlan>, DatalensError> {
+    if from_block < 0 || to_block < 0 || from_block > to_block {
+        return Err(DatalensError::Query(format!(
+            "invalid Datalens log block range {from_block}..={to_block}"
+        )));
+    }
+
+    let mut plans = Vec::new();
+    let mut next_chunk_start = from_block;
+    let chunk_limit = i64::from(config.query_limits.block_range_limit);
+
+    while next_chunk_start <= to_block {
+        let chunk_end = next_chunk_start
+            .checked_add(chunk_limit - 1)
+            .ok_or_else(|| DatalensError::Query("Datalens log range overflowed".to_owned()))?
+            .min(to_block);
+        let range_start = i32::try_from(next_chunk_start).map_err(|_| {
+            DatalensError::Query("Datalens log range start exceeds SDK limit".to_owned())
+        })?;
+        let range_end = i32::try_from(chunk_end).map_err(|_| {
+            DatalensError::Query("Datalens log range end exceeds SDK limit".to_owned())
+        })?;
+
+        plans.push(query_plan(
+            config,
+            DaoLogSource::Governor,
+            &addresses.governor,
+            GOVERNOR_TOPIC0_FILTERS,
+            range_start,
+            range_end,
+        ));
+        plans.push(query_plan(
+            config,
+            DaoLogSource::GovernorToken,
+            &addresses.governor_token,
+            GOVERNOR_TOKEN_TOPIC0_FILTERS,
+            range_start,
+            range_end,
+        ));
+        plans.push(query_plan(
+            config,
+            DaoLogSource::Timelock,
+            &addresses.timelock,
+            TIMELOCK_TOPIC0_FILTERS,
+            range_start,
+            range_end,
+        ));
+
+        if chunk_end == to_block {
+            break;
+        }
+        next_chunk_start = chunk_end + 1;
+    }
+
+    Ok(plans)
+}
+
+pub fn fetch_dao_log_pages(
+    reader: &mut impl DatalensLogQueryReader,
+    plans: &[DaoLogQueryPlan],
+    max_attempts: u32,
+) -> Result<Vec<DatalensLogPage>, DatalensError> {
+    if max_attempts == 0 {
+        return Err(DatalensError::Query(
+            "Datalens log query attempts must be greater than zero".to_owned(),
+        ));
+    }
+
+    let mut pages = Vec::new();
+    for plan in plans {
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match reader.query_logs(plan.input.clone()) {
+                Ok(rows) => {
+                    pages.push(DatalensLogPage {
+                        plan: plan.clone(),
+                        rows,
+                    });
+                    break;
+                }
+                Err(_) if attempt < max_attempts => continue,
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    Ok(pages)
+}
+
+fn query_plan(
+    config: &DatalensConfig,
+    source: DaoLogSource,
+    address: &str,
+    topic0_filters: &[&str],
+    from_block: i32,
+    to_block: i32,
+) -> DaoLogQueryPlan {
+    DaoLogQueryPlan {
+        source,
+        from_block,
+        to_block,
+        input: QueryInput {
+            chain: ChainIdentityInput {
+                family: ChainFamilyInput {
+                    kind: ChainFamilyKindInput::Evm,
+                    other: None,
+                },
+                configured_name: config.chain.configured_name.clone(),
+                network_id: config.chain.network_id.map(|numeric| NetworkIdInput {
+                    numeric: Some(numeric),
+                    textual: None,
+                }),
+            },
+            dataset_key: DatasetKeyInput {
+                family: config.dataset.family.clone(),
+                name: config.dataset.name.clone(),
+            },
+            selector: QuerySelectorInput {
+                kind: SelectorKindInput::EvmLogs,
+                evm_logs: Some(EvmLogsSelectorInput {
+                    addresses: vec![address.to_owned()],
+                    topics: vec![
+                        topic0_filters
+                            .iter()
+                            .map(|topic| topic.to_string())
+                            .collect(),
+                    ],
+                }),
+                other: None,
+            },
+            range: QueryRangeInput {
+                kind: QueryRangeKindInput::Block,
+                start: from_block,
+                end: to_block,
+            },
+            finality: Some(config.finality.as_datalens_value().to_owned()),
+            fields: None,
+        },
+    }
+}
+
+const GOVERNOR_TOPIC0_FILTERS: &[&str] = &[
+    "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0",
+    "0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892",
+    "0x712ae1383f79ac853f8d882153778e0260ef8f03b504e2866e0593e04d2b291f",
+    "0x789cf55be980739dad1d0699b93b58e806b51c9d96619bfa8fe0a28abaa7b30c",
+    "0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4",
+];
+
+const GOVERNOR_TOKEN_TOPIC0_FILTERS: &[&str] = &[
+    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+    "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f",
+    "0xdec2bacdd2f05b59de34da9b523dff8be42e5e38e818c82fdb0bae774387a724",
+];
+
+const TIMELOCK_TOPIC0_FILTERS: &[&str] = &[
+    "0x4cf4410cc57040e44862ef0f45f3dd5a5e02db8eb8add648d4b0e236f1d07dca",
+    "0xc2617efa69bab66782fa219543714338489c4e9e178271560a91b82c3f612b58",
+    "0x655f26a212795d26b28ccb86af4802b348fd16a33005ca486bc005aa19070e4a",
+    "0x11c24f4ead16507c69ac467fbd5e4eed5fb5c699626d2cc6d66421df253886d5",
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        ChainFamily, ChainIdentityConfig, DatalensFinality, DatasetKeyConfig, QueryLimitConfig,
+        SecretString,
+    };
+    use datalens_sdk::native::{QueryRangeKindInput, SelectorKindInput};
+    use std::{collections::VecDeque, time::Duration};
+
+    #[test]
+    fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelock() {
+        let config = config(1_000, DatalensFinality::DurableOnly);
+        let plans = plan_dao_log_queries(&config, &addresses(), 100, 199).expect("plans");
+
+        assert_eq!(plans.len(), 3);
+        assert_query(
+            &plans[0],
+            DaoLogSource::Governor,
+            "0x1111111111111111111111111111111111111111",
+            &[
+                "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0",
+                "0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892",
+                "0x712ae1383f79ac853f8d882153778e0260ef8f03b504e2866e0593e04d2b291f",
+                "0x789cf55be980739dad1d0699b93b58e806b51c9d96619bfa8fe0a28abaa7b30c",
+                "0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4",
+            ],
+            100,
+            199,
+            "durable_only",
+        );
+        assert_query(
+            &plans[1],
+            DaoLogSource::GovernorToken,
+            "0x2222222222222222222222222222222222222222",
+            &[
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f",
+                "0xdec2bacdd2f05b59de34da9b523dff8be42e5e38e818c82fdb0bae774387a724",
+            ],
+            100,
+            199,
+            "durable_only",
+        );
+        assert_query(
+            &plans[2],
+            DaoLogSource::Timelock,
+            "0x3333333333333333333333333333333333333333",
+            &[
+                "0x4cf4410cc57040e44862ef0f45f3dd5a5e02db8eb8add648d4b0e236f1d07dca",
+                "0xc2617efa69bab66782fa219543714338489c4e9e178271560a91b82c3f612b58",
+                "0x655f26a212795d26b28ccb86af4802b348fd16a33005ca486bc005aa19070e4a",
+                "0x11c24f4ead16507c69ac467fbd5e4eed5fb5c699626d2cc6d66421df253886d5",
+            ],
+            100,
+            199,
+            "durable_only",
+        );
+    }
+
+    #[test]
+    fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
+        let config = config(50, DatalensFinality::DurableOnly);
+        let plans = plan_dao_log_queries(&config, &addresses(), 100, 220).expect("plans");
+        let ranges = plans
+            .iter()
+            .filter(|plan| plan.source == DaoLogSource::Governor)
+            .map(|plan| (plan.from_block, plan.to_block))
+            .collect::<Vec<_>>();
+
+        assert_eq!(ranges, vec![(100, 149), (150, 199), (200, 220)]);
+    }
+
+    #[test]
+    fn test_plan_dao_log_queries_uses_configured_finality() {
+        let config = config(1_000, DatalensFinality::IncludePending);
+        let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
+
+        assert_eq!(plans[0].input.finality.as_deref(), Some("include_pending"));
+    }
+
+    #[test]
+    fn test_fetch_dao_log_pages_treats_empty_rows_as_successful_page() {
+        let config = config(1_000, DatalensFinality::DurableOnly);
+        let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
+        let mut reader = MockLogReader::new(vec![Ok(serde_json::json!([]))]);
+
+        let pages = fetch_dao_log_pages(&mut reader, &plans[..1], 3).expect("pages");
+
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].plan, plans[0]);
+        assert_eq!(pages[0].rows, serde_json::json!([]));
+        assert_eq!(reader.calls.len(), 1);
+    }
+
+    #[test]
+    fn test_fetch_dao_log_pages_retries_errors_before_returning_page() {
+        let config = config(1_000, DatalensFinality::DurableOnly);
+        let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
+        let mut reader = MockLogReader::new(vec![
+            Err(DatalensError::Query("provider timeout".to_owned())),
+            Ok(serde_json::json!([{ "blockNumber": 100 }])),
+        ]);
+
+        let pages = fetch_dao_log_pages(&mut reader, &plans[..1], 3).expect("pages");
+
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].rows, serde_json::json!([{ "blockNumber": 100 }]));
+        assert_eq!(reader.calls.len(), 2);
+        assert_eq!(reader.calls[0], reader.calls[1]);
+    }
+
+    #[test]
+    fn test_fetch_dao_log_pages_stops_without_later_pages_when_retries_are_exhausted() {
+        let config = config(1_000, DatalensFinality::DurableOnly);
+        let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
+        let mut reader = MockLogReader::new(vec![
+            Err(DatalensError::Query("rate limited".to_owned())),
+            Err(DatalensError::Query("rate limited".to_owned())),
+            Ok(serde_json::json!([])),
+        ]);
+
+        let error = fetch_dao_log_pages(&mut reader, &plans[..2], 2).expect_err("query error");
+
+        assert!(error.to_string().contains("rate limited"));
+        assert_eq!(reader.calls.len(), 2);
+        assert_eq!(reader.calls[0], reader.calls[1]);
+    }
+
+    fn assert_query(
+        plan: &DaoLogQueryPlan,
+        source: DaoLogSource,
+        address: &str,
+        topic0_values: &[&str],
+        from_block: i32,
+        to_block: i32,
+        finality: &str,
+    ) {
+        assert_eq!(plan.source, source);
+        assert_eq!(plan.from_block, from_block);
+        assert_eq!(plan.to_block, to_block);
+        assert_eq!(plan.input.chain.configured_name, "ethereum");
+        assert_eq!(plan.input.dataset_key.family, "evm");
+        assert_eq!(plan.input.dataset_key.name, "logs");
+        assert_eq!(plan.input.selector.kind, SelectorKindInput::EvmLogs);
+        assert_eq!(plan.input.range.kind, QueryRangeKindInput::Block);
+        assert_eq!(plan.input.range.start, from_block);
+        assert_eq!(plan.input.range.end, to_block);
+        assert_eq!(plan.input.finality.as_deref(), Some(finality));
+
+        let evm_logs = plan.input.selector.evm_logs.as_ref().expect("evm logs");
+        assert_eq!(evm_logs.addresses, vec![address.to_owned()]);
+        assert_eq!(
+            evm_logs.topics,
+            vec![
+                topic0_values
+                    .iter()
+                    .map(|topic| topic.to_string())
+                    .collect::<Vec<_>>()
+            ]
+        );
+    }
+
+    fn config(block_range_limit: u32, finality: DatalensFinality) -> DatalensConfig {
+        DatalensConfig {
+            endpoint: "https://datalens.ringdao.com".to_owned(),
+            application: "degov-live".to_owned(),
+            bearer_token: SecretString::new("redacted"),
+            timeout: Duration::from_secs(60),
+            finality,
+            chain: ChainIdentityConfig {
+                family: ChainFamily::Evm,
+                configured_name: "ethereum".to_owned(),
+                network_id: Some(1),
+            },
+            dataset: DatasetKeyConfig {
+                family: "evm".to_owned(),
+                name: "logs".to_owned(),
+            },
+            query_limits: QueryLimitConfig {
+                block_range_limit,
+                row_limit: 500,
+            },
+            dao_contracts: None,
+        }
+    }
+
+    fn addresses() -> DaoContractAddresses {
+        DaoContractAddresses {
+            governor: "0x1111111111111111111111111111111111111111".to_owned(),
+            governor_token: "0x2222222222222222222222222222222222222222".to_owned(),
+            timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+        }
+    }
+
+    struct MockLogReader {
+        calls: Vec<QueryInput>,
+        results: VecDeque<Result<serde_json::Value, DatalensError>>,
+    }
+
+    impl MockLogReader {
+        fn new(results: Vec<Result<serde_json::Value, DatalensError>>) -> Self {
+            Self {
+                calls: Vec::new(),
+                results: results.into(),
+            }
+        }
+    }
+
+    impl DatalensLogQueryReader for MockLogReader {
+        fn query_logs(&mut self, input: QueryInput) -> Result<serde_json::Value, DatalensError> {
+            self.calls.push(input);
+            self.results.pop_front().expect("mock result")
+        }
+    }
+}
