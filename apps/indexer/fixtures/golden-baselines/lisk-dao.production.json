@@ -1,0 +1,64 @@
+{
+  "capturedAt": "2026-06-02T00:00:00Z",
+  "source": {
+    "graphqlEndpoint": "https://indexer.degov.ai/lisk-dao/graphql",
+    "daoConfigEndpoint": "https://api.degov.ai/dao/config/lisk-dao"
+  },
+  "scope": {
+    "daoCode": "lisk-dao",
+    "chainId": 1135,
+    "startBlock": 568752,
+    "governor": "0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568",
+    "token": {
+      "address": "0x2eE6Eca46d2406454708a1C80356a6E63b57D404",
+      "standard": "ERC20"
+    },
+    "timelock": "0x2294A7f24187B84995A2A28112f82f07BE1BceAD"
+  },
+  "counts": {
+    "proposals": 13,
+    "proposalCreateds": 13,
+    "voteCasts": 3769,
+    "delegateChangeds": 75019,
+    "delegateVotesChangeds": 73111,
+    "tokenTransfers": 115512,
+    "contributors": 14521,
+    "delegates": 10855,
+    "delegateMappings": 7819,
+    "proposalQueueds": 10,
+    "proposalExecuteds": 10,
+    "proposalCanceleds": 0,
+    "timelockOperations": 10,
+    "timelockCalls": 10,
+    "timelockRoleEvents": 5,
+    "timelockMinDelayChanges": 1,
+    "votePowerCheckpoints": 23391,
+    "tokenBalanceCheckpoints": 23395,
+    "onchainRefreshTasks": 14521,
+    "dataMetricsConnectionTotalCount": 3783
+  },
+  "samples": {
+    "latestProposal": {
+      "proposalId": "0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878",
+      "title": "Test proposal #2: a new voting platform",
+      "blockNumber": "29809768",
+      "metricsVotesCount": 29,
+      "votesWeightForSum": "24819779210729035642588685",
+      "votesWeightAgainstSum": "2050000000000000000",
+      "votesWeightAbstainSum": "6015704942503143288166275"
+    },
+    "topContributor": {
+      "id": "0x439042a964a76cc3decffd4135a3d3d99d26fbb1",
+      "account": "0x439042a964a76cc3decffd4135a3d3d99d26fbb1",
+      "power": "10426623796682949597252996"
+    }
+  },
+  "queryShapes": {
+    "proposalTotal": "query { proposalsConnection(orderBy: [id_ASC]) { totalCount } }",
+    "dataMetricTotal": "query { dataMetricsConnection(orderBy: id_ASC) { totalCount } }",
+    "globalDataMetric": "query { dataMetrics(where: { id_eq: \"global\", chainId_eq: 1135, governorAddress_eq: \"0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568\", daoCode_eq: \"lisk-dao\" }) { proposalsCount votesCount powerSum memberCount } }",
+    "latestProposal": "query { proposals(orderBy: [blockTimestamp_DESC_NULLS_LAST], limit: 1) { proposalId title blockNumber metricsVotesCount metricsVotesWeightForSum metricsVotesWeightAgainstSum metricsVotesWeightAbstainSum } }",
+    "topContributor": "query { contributors(orderBy: [power_DESC], limit: 1) { id power } }",
+    "delegateTotals": "query { delegatesConnection(orderBy: [id_ASC]) { totalCount } delegateMappingsConnection(orderBy: [id_ASC]) { totalCount } }"
+  }
+}
