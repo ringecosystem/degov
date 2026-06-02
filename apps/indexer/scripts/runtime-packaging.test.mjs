@@ -34,6 +34,31 @@ assert.match(packageConfig.scripts["indexer:migrate"], /degov-datalens-indexer .
 
 assert.match(composeYaml, /^\s+indexer:/m, "compose must define an indexer service");
 assert.match(composeYaml, /^\s+onchain-worker:/m, "compose must define an onchain worker service");
+assert.match(
+  composeYaml,
+  /^\s+indexer-graphql:/m,
+  "compose must define a GraphQL service",
+);
+assert.match(
+  composeYaml,
+  /^\s+command: graphql/m,
+  "compose GraphQL service must run the graphql entrypoint",
+);
+assert.match(
+  composeYaml,
+  /\$\{DEGOV_INDEXER_PORT:-4350\}:4350/,
+  "compose GraphQL service must expose the GraphQL port",
+);
+assert.match(
+  composeYaml,
+  /DEGOV_INDEXER_GRAPHQL_ENDPOINT: \$\{DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT:-http:\/\/0\.0\.0\.0:4350\/graphql\}/,
+  "compose GraphQL service must bind on the GraphQL path",
+);
+assert.match(
+  composeYaml,
+  /DEGOV_INDEXER_GRAPHQL_ENDPOINT: \$\{DEGOV_INDEXER_GRAPHQL_INTERNAL_ENDPOINT:-http:\/\/indexer-graphql:4350\/graphql\}/,
+  "compose web service must use the local GraphQL service endpoint",
+);
 assert.match(composeYaml, /DATALENS_ENDPOINT/, "compose must pass Datalens environment");
 assert.match(
   composeYaml,
@@ -62,8 +87,16 @@ assert.doesNotMatch(
 );
 
 assert.match(envExample, /DATALENS_ENDPOINT=/);
+assert.match(envExample, /DATALENS_CHAINS_JSON=\[/);
 assert.match(envExample, /DEGOV_INDEXER_DATABASE_URL=/);
-assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_ENDPOINT=/);
+assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_ENDPOINT=http:\/\/127\.0\.0\.1:4350\/graphql/);
+assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT=http:\/\/0\.0\.0\.0:4350\/graphql/);
+assert.match(
+  envExample,
+  /DEGOV_INDEXER_GRAPHQL_INTERNAL_ENDPOINT=http:\/\/indexer-graphql:4350\/graphql/,
+);
+assert.match(envExample, /DEGOV_ONCHAIN_REFRESH_RPC_URL=/);
+assert.match(envExample, /DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED=false/);
 assert.doesNotMatch(
   envExample,
   /^DEGOV_INDEXER_DB_NAME=/m,

@@ -40,6 +40,11 @@ assert.equal(contract.datalens.applicationEnv, "DATALENS_APPLICATION");
 assert.equal(contract.datalens.application, "degov-staging");
 assert.equal(contract.datalens.dataset.family, "evm");
 assert.equal(contract.datalens.dataset.name, "logs");
+assert.equal(contract.graphql.endpointEnv, "DEGOV_INDEXER_GRAPHQL_ENDPOINT");
+assert.equal(contract.graphql.bindEndpoint, "http://0.0.0.0:4350/graphql");
+assert.equal(contract.graphql.port, 4350);
+assert.equal(contract.graphql.path, "/graphql");
+assert.match(contract.graphql.routePolicy, /without removing existing DAO hostnames/i);
 
 assert.ok(contract.daos.length >= 1, "staging contract must include selected DAOs");
 
@@ -65,6 +70,10 @@ for (const dao of contract.daos) {
   assert.equal(dao.env.DEGOV_INDEXER_DAO_CODE, dao.code);
   assert.equal(dao.env.DEGOV_INDEXER_START_BLOCK, dao.startBlock);
   assert.equal(dao.env.DEGOV_INDEXER_TARGET_HEIGHT, dao.targetHeight);
+  assert.equal(
+    dao.env.DEGOV_INDEXER_GRAPHQL_ENDPOINT,
+    contract.graphql.bindEndpoint,
+  );
   assert.ok(
     dao.env.DEGOV_INDEXER_TARGET_HEIGHT >= dao.env.DEGOV_INDEXER_START_BLOCK,
   );
@@ -74,6 +83,15 @@ for (const dao of contract.daos) {
   assert.equal(dao.env.DATALENS_CHAIN_FAMILY, "evm");
   assert.ok(dao.env.DATALENS_CHAIN_NAME);
   assert.ok(Number.isInteger(dao.env.DATALENS_CHAIN_ID));
+  assert.equal(typeof dao.env.DATALENS_CHAINS_JSON, "string");
+  const chains = JSON.parse(dao.env.DATALENS_CHAINS_JSON);
+  assert.ok(chains.length >= 1, `${dao.code} must include structured chains`);
+  assert.ok(
+    chains.some((chain) =>
+      chain.contracts?.some((contract) => contract.daoCode === dao.code),
+    ),
+    `${dao.code} must appear in DATALENS_CHAINS_JSON`,
+  );
   assert.match(dao.env.DATALENS_GOVERNOR_ADDRESS, /^0x[0-9a-fA-F]{40}$/);
   assert.match(dao.env.DATALENS_GOVERNOR_TOKEN_ADDRESS, /^0x[0-9a-fA-F]{40}$/);
   assert.match(dao.env.DATALENS_GOVERNOR_TOKEN_STANDARD, /^ERC(20|721)$/);
@@ -92,6 +110,20 @@ assert.deepEqual(contract.requiredRuntimeChecks, [
   "pod-readiness",
   "graphql-availability",
 ]);
+assert.equal(contract.onchainRefreshWorker.rpcUrlEnv, "DEGOV_ONCHAIN_REFRESH_RPC_URL");
+assert.equal(
+  contract.onchainRefreshWorker.env.DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED,
+  "false",
+);
+assert.equal(contract.onchainRefreshWorker.env.DEGOV_ONCHAIN_REFRESH_RPC_URL, "");
+assert.equal(
+  contract.onchainRefreshWorker.env.DEGOV_ONCHAIN_REFRESH_CURRENT_POWER_METHOD,
+  "getVotes",
+);
+assert.equal(
+  contract.sharedSecretKeys.includes("DEGOV_ONCHAIN_REFRESH_RPC_URL"),
+  true,
+);
 assert.deepEqual(contract.futureRuntimeChecks, [
   "db-checkpoint-progress",
   "worker-task-status",

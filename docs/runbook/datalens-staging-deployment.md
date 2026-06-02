@@ -27,6 +27,10 @@ name, image tag, and GraphQL route separate from production. Do not share a
 production DB, production GraphQL route, or production web config with a
 Datalens migration validation pod.
 
+The Datalens GraphQL route is additive during validation. Do not remove or
+repoint existing DAO hostnames/endpoints until the new indexer DB reset,
+indexing workload, GraphQL service, and web reads have been validated together.
+
 ## Required environment
 
 Each DAO indexer deployment must receive:
@@ -38,8 +42,13 @@ Each DAO indexer deployment must receive:
 - `DATALENS_APPLICATION`: `degov-staging` for staging validation.
 - `DATALENS_CHAIN_FAMILY`, `DATALENS_CHAIN_NAME`, and `DATALENS_CHAIN_ID`.
 - `DATALENS_DATASET_FAMILY` and `DATALENS_DATASET_NAME`.
+- `DATALENS_CHAINS_JSON` when running structured multi-chain or multi-contract
+  indexing. Keep the legacy single-contract envs during transition only when a
+  single selected DAO still needs them.
 - `DATALENS_GOVERNOR_ADDRESS`, `DATALENS_GOVERNOR_TOKEN_ADDRESS`,
   `DATALENS_GOVERNOR_TOKEN_STANDARD`, and `DATALENS_TIMELOCK_ADDRESS`.
+- `DEGOV_INDEXER_GRAPHQL_ENDPOINT`: bind endpoint for the `graphql` entrypoint,
+  including port and `/graphql` path.
 
 Run `migrate` against the fresh DB before starting `run`. Start `graphql` only
 after the DB schema exists and the staging web route points at the staging
@@ -70,7 +79,10 @@ retried, and surfaced in diagnostics. The staging contract records this as
 `onchainRefreshWorker.enabled=false`.
 
 When the worker is enabled later, deploy it as a separate workload using the
-`worker` entrypoint and monitor `onchainRefreshBacklog` plus
+`worker` entrypoint. Provide `DEGOV_ONCHAIN_REFRESH_RPC_URL` from secrets and
+keep `DEGOV_ONCHAIN_REFRESH_CURRENT_POWER_METHOD=getVotes` unless a DAO
+requires `getCurrentVotes`. Power refresh must come from onchain RPC reads, not
+log-derived fallback mode. Monitor `onchainRefreshBacklog` plus
 `onchainRefreshErrors`.
 
 ## Rollout checks

@@ -7,8 +7,8 @@ use degov_datalens_indexer::{
     DatalensNativeClient, DatalensRuntimeContractSet, EvmRpcChainTool, IndexerCheckpointIdentity,
     IndexerRunner, IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshWorker,
     OnchainRefreshWorkerConfig, PostgresIndexerRunnerStore, ProposalProjectionContext,
-    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
-    graphql, verify_datalens_service,
+    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext, graphql,
+    verify_datalens_service,
 };
 use sqlx::{Executor, postgres::PgPoolOptions};
 use tokio::task;
