@@ -130,6 +130,25 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    insert_checkpoint(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
+    let datalens = FakeDatalensServer::start(vec![], vec![], vec![]);
+
+    run_indexer_all_contract_sets_command(&database.database_url, &datalens.endpoint).await?;
+
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
+    assert_checkpoint_scope(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
+    assert_checkpoint_scope(&database.pool, SECOND_CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
+    assert_checkpoint_row_count(&database.pool, 2).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 async fn run_indexer_command(
     database_url: &str,
     datalens_endpoint: &str,
@@ -181,6 +200,91 @@ async fn run_indexer_command(
     if !status.success() {
         return Err(format!(
             "indexer run failed with status {status}\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+async fn run_indexer_all_contract_sets_command(
+    database_url: &str,
+    datalens_endpoint: &str,
+) -> Result<(), Box<dyn Error>> {
+    let chains_json = json!([
+        {
+            "chainId": 1,
+            "networkName": "ethereum",
+            "contracts": [
+                {
+                    "daoCode": "demo-dao",
+                    "chainId": 1,
+                    "networkName": "ethereum",
+                    "governor": GOVERNOR,
+                    "governorToken": TOKEN,
+                    "tokenStandard": "ERC20",
+                    "timelock": TIMELOCK,
+                    "startBlock": 1
+                },
+                {
+                    "daoCode": "demo-dao",
+                    "chainId": 1,
+                    "networkName": "ethereum",
+                    "governor": SECOND_GOVERNOR,
+                    "governorToken": SECOND_TOKEN,
+                    "tokenStandard": "ERC20",
+                    "timelock": SECOND_TIMELOCK,
+                    "startBlock": 1
+                }
+            ]
+        }
+    ])
+    .to_string();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_degov-datalens-indexer"))
+        .arg("run")
+        .env("DEGOV_INDEXER_DATABASE_URL", database_url)
+        .env("DEGOV_INDEXER_CONTRACT_SET_MODE", "all")
+        .env("DEGOV_INDEXER_TARGET_HEIGHT", "2")
+        .env("DEGOV_INDEXER_RUN_ONCE", "true")
+        .env("DATALENS_ENDPOINT", datalens_endpoint)
+        .env("DATALENS_APPLICATION", "degov-test")
+        .env("DATALENS_TOKEN", "unit-test-redacted-value")
+        .env("DATALENS_FINALITY", "durable_only")
+        .env("DATALENS_CHAIN_FAMILY", "evm")
+        .env("DATALENS_CHAIN_NAME", "ethereum")
+        .env("DATALENS_CHAIN_ID", "1")
+        .env("DATALENS_DATASET_FAMILY", "evm")
+        .env("DATALENS_DATASET_NAME", "logs")
+        .env("DATALENS_QUERY_BLOCK_RANGE_LIMIT", "10")
+        .env("DATALENS_CHAINS_JSON", chains_json)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let status = timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(status) = child.try_wait()? {
+                return Ok::<_, std::io::Error>(status);
+            }
+            sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await;
+
+    let status = match status {
+        Ok(status) => status?,
+        Err(_) => {
+            let _ = child.kill();
+            return Err("indexer all-mode run command timed out".into());
+        }
+    };
+    let output = child.wait_with_output()?;
+
+    if !status.success() {
+        return Err(format!(
+            "indexer all-mode run failed with status {status}\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         )
@@ -336,6 +440,73 @@ async fn assert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
     assert_eq!(row.get::<i64, _>(0), 3);
     assert_eq!(row.get::<i64, _>(1), 2);
     assert_eq!(row.get::<i64, _>(2), 2);
+
+    Ok(())
+}
+
+async fn insert_checkpoint(
+    pool: &PgPool,
+    contract_set_id: &str,
+    next_block: i64,
+    processed_height: Option<i64>,
+    target_height: Option<i64>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO degov_indexer_checkpoint (
+            dao_code,
+            chain_id,
+            contract_set_id,
+            stream_id,
+            data_source_version,
+            next_block,
+            processed_height,
+            target_height
+        ) VALUES ('demo-dao', 1, $1, 'datalens-native', 'datalens-v1', $2, $3, $4)",
+    )
+    .bind(contract_set_id)
+    .bind(next_block)
+    .bind(processed_height)
+    .bind(target_height)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn assert_checkpoint_scope(
+    pool: &PgPool,
+    contract_set_id: &str,
+    next_block: i64,
+    processed_height: Option<i64>,
+    target_height: Option<i64>,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT next_block::BIGINT, processed_height::BIGINT, target_height::BIGINT
+         FROM degov_indexer_checkpoint
+         WHERE dao_code = 'demo-dao'
+           AND chain_id = 1
+           AND contract_set_id = $1
+           AND stream_id = 'datalens-native'
+           AND data_source_version = 'datalens-v1'",
+    )
+    .bind(contract_set_id)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<i64, _>(0), next_block);
+    assert_eq!(row.get::<Option<i64>, _>(1), processed_height);
+    assert_eq!(row.get::<Option<i64>, _>(2), target_height);
+
+    Ok(())
+}
+
+async fn assert_checkpoint_row_count(pool: &PgPool, expected: i64) -> Result<(), sqlx::Error> {
+    let count: i64 = sqlx::query("SELECT count(*)::BIGINT FROM degov_indexer_checkpoint")
+        .fetch_one(pool)
+        .await?
+        .get(0);
+
+    assert_eq!(count, expected);
 
     Ok(())
 }
@@ -624,6 +795,10 @@ const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
 const TOKEN: &str = "0x2222222222222222222222222222222222222222";
 const TIMELOCK: &str = "0x3333333333333333333333333333333333333333";
 const CONTRACT_SET_ID: &str = "dao=demo-dao|chain=1|datalens_chain=ethereum|dataset=evm.logs|governor=0x1111111111111111111111111111111111111111|token=0x2222222222222222222222222222222222222222|token_standard=erc20|timelock=0x3333333333333333333333333333333333333333";
+const SECOND_GOVERNOR: &str = "0x4444444444444444444444444444444444444444";
+const SECOND_TOKEN: &str = "0x5555555555555555555555555555555555555555";
+const SECOND_TIMELOCK: &str = "0x6666666666666666666666666666666666666666";
+const SECOND_CONTRACT_SET_ID: &str = "dao=demo-dao|chain=1|datalens_chain=ethereum|dataset=evm.logs|governor=0x4444444444444444444444444444444444444444|token=0x5555555555555555555555555555555555555555|token_standard=erc20|timelock=0x6666666666666666666666666666666666666666";
 const PROPOSER: &str = "0x0000000000000000000000000000000000000a01";
 const TARGET: &str = "0x0000000000000000000000000000000000000a02";
 const VOTER: &str = "0x0000000000000000000000000000000000000b01";

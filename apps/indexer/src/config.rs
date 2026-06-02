@@ -143,6 +143,15 @@ impl DatalensContractSetConfig {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DatalensRuntimeContractSet {
+    pub dao_code: String,
+    pub contract: DatalensContractSetConfig,
+    pub config: DatalensConfig,
+    pub contract_set_id: String,
+    pub addresses: DaoContractAddresses,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DatasetKeyConfig {
     pub family: String,
@@ -309,6 +318,48 @@ impl DatalensConfig {
         config
     }
 
+    pub fn configured_contract_sets(
+        &self,
+        dao_filter: Option<&str>,
+    ) -> Result<Vec<DatalensRuntimeContractSet>, ConfigError> {
+        let total_contract_sets = self
+            .chains
+            .iter()
+            .map(|chain| chain.contracts.len())
+            .sum::<usize>();
+        let mut configured = Vec::new();
+
+        for contract in self.chains.iter().flat_map(|chain| chain.contracts.iter()) {
+            let dao_code = match (contract.dao_code.as_deref(), dao_filter) {
+                (Some(dao_code), Some(filter)) if dao_code != filter => continue,
+                (Some(dao_code), _) => dao_code.to_owned(),
+                (None, Some(filter)) if total_contract_sets == 1 => filter.to_owned(),
+                (None, Some(_)) => continue,
+                (None, None) => {
+                    return Err(ConfigError::InvalidField {
+                        field: "DATALENS_CHAINS_JSON".to_owned(),
+                        reason: "contract set daoCode is required for all contract set mode"
+                            .to_owned(),
+                    });
+                }
+            };
+
+            configured.push(self.runtime_contract_set(&dao_code, contract));
+        }
+
+        if configured.is_empty() {
+            let reason = dao_filter
+                .map(|dao_code| format!("no contract set configured for {dao_code}"))
+                .unwrap_or_else(|| "no contract sets configured".to_owned());
+            return Err(ConfigError::InvalidField {
+                field: "DEGOV_INDEXER_DAO_CODE".to_owned(),
+                reason,
+            });
+        }
+
+        Ok(configured)
+    }
+
     pub fn contract_set_scope_id(
         &self,
         dao_code: &str,
@@ -334,6 +385,24 @@ impl DatalensConfig {
         .map(|(key, value)| format!("{key}={value}"))
         .collect::<Vec<_>>()
         .join("|")
+    }
+
+    fn runtime_contract_set(
+        &self,
+        dao_code: &str,
+        contract: &DatalensContractSetConfig,
+    ) -> DatalensRuntimeContractSet {
+        let contract_set_id = self.contract_set_scope_id(dao_code, contract);
+        let addresses = contract.addresses();
+        let config = self.for_contract_set(contract);
+
+        DatalensRuntimeContractSet {
+            dao_code: dao_code.to_owned(),
+            contract: contract.clone(),
+            config,
+            contract_set_id,
+            addresses,
+        }
     }
 }
 
@@ -921,6 +990,180 @@ mod tests {
                 let selected = config.select_contract_set("lisk-dao").expect("select lisk");
                 assert_eq!(selected.chain_id, 1135);
                 assert_eq!(selected.start_block, 568752);
+            },
+        );
+    }
+
+    #[test]
+    fn test_configured_contract_sets_returns_stable_config_order() {
+        with_datalens_env(
+            &[
+                ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com")),
+                ("DATALENS_APPLICATION", Some("degov-live")),
+                ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+                (
+                    "DATALENS_CHAINS_JSON",
+                    Some(
+                        r#"[
+                            {
+                                "chainId": 1135,
+                                "networkName": "lisk",
+                                "contracts": [
+                                    {
+                                        "daoCode": "lisk-dao",
+                                        "chainId": 1135,
+                                        "networkName": "lisk",
+                                        "governor": "0x1111111111111111111111111111111111111111",
+                                        "governorToken": "0x2222222222222222222222222222222222222222",
+                                        "tokenStandard": "ERC20",
+                                        "timelock": "0x3333333333333333333333333333333333333333",
+                                        "startBlock": 568752
+                                    },
+                                    {
+                                        "daoCode": "demo-dao",
+                                        "chainId": 1135,
+                                        "networkName": "lisk",
+                                        "governor": "0x4444444444444444444444444444444444444444",
+                                        "governorToken": "0x5555555555555555555555555555555555555555",
+                                        "tokenStandard": "ERC721",
+                                        "timelock": "0x6666666666666666666666666666666666666666",
+                                        "startBlock": 700000
+                                    }
+                                ]
+                            },
+                            {
+                                "chainId": 1,
+                                "networkName": "ethereum",
+                                "contracts": [
+                                    {
+                                        "daoCode": "ens-dao",
+                                        "chainId": 1,
+                                        "networkName": "ethereum",
+                                        "governor": "0x7777777777777777777777777777777777777777",
+                                        "governorToken": "0x8888888888888888888888888888888888888888",
+                                        "tokenStandard": "ERC20",
+                                        "timelock": "0x9999999999999999999999999999999999999999",
+                                        "startBlock": 100
+                                    }
+                                ]
+                            }
+                        ]"#,
+                    ),
+                ),
+            ],
+            || {
+                let config = DatalensConfig::from_env().expect("load config");
+                let configured = config
+                    .configured_contract_sets(None)
+                    .expect("configured contract sets");
+
+                assert_eq!(configured.len(), 3);
+                assert_eq!(configured[0].dao_code, "lisk-dao");
+                assert_eq!(configured[1].dao_code, "demo-dao");
+                assert_eq!(configured[2].dao_code, "ens-dao");
+                assert_eq!(configured[0].config.chain.configured_name, "lisk");
+                assert_eq!(configured[2].config.chain.network_id, Some(1));
+            },
+        );
+    }
+
+    #[test]
+    fn test_configured_contract_sets_filters_by_dao_code() {
+        with_datalens_env(
+            &[
+                ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com")),
+                ("DATALENS_APPLICATION", Some("degov-live")),
+                ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+                (
+                    "DATALENS_CHAINS_JSON",
+                    Some(
+                        r#"[
+                            {
+                                "chainId": 1135,
+                                "networkName": "lisk",
+                                "contracts": [
+                                    {
+                                        "daoCode": "shared-dao",
+                                        "chainId": 1135,
+                                        "networkName": "lisk",
+                                        "governor": "0x1111111111111111111111111111111111111111",
+                                        "governorToken": "0x2222222222222222222222222222222222222222",
+                                        "tokenStandard": "ERC20",
+                                        "timelock": "0x3333333333333333333333333333333333333333",
+                                        "startBlock": 568752
+                                    }
+                                ]
+                            },
+                            {
+                                "chainId": 1,
+                                "networkName": "ethereum",
+                                "contracts": [
+                                    {
+                                        "daoCode": "other-dao",
+                                        "chainId": 1,
+                                        "networkName": "ethereum",
+                                        "governor": "0x4444444444444444444444444444444444444444",
+                                        "governorToken": "0x5555555555555555555555555555555555555555",
+                                        "tokenStandard": "ERC20",
+                                        "timelock": "0x6666666666666666666666666666666666666666",
+                                        "startBlock": 100
+                                    }
+                                ]
+                            }
+                        ]"#,
+                    ),
+                ),
+            ],
+            || {
+                let config = DatalensConfig::from_env().expect("load config");
+                let configured = config
+                    .configured_contract_sets(Some("shared-dao"))
+                    .expect("configured contract sets");
+
+                assert_eq!(configured.len(), 1);
+                assert_eq!(configured[0].dao_code, "shared-dao");
+                assert_eq!(configured[0].contract.chain_id, 1135);
+            },
+        );
+    }
+
+    #[test]
+    fn test_configured_contract_sets_preserves_legacy_single_contract_env_behavior() {
+        with_datalens_env(
+            &[
+                ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com/")),
+                ("DATALENS_APPLICATION", Some("degov-live")),
+                ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+                ("DATALENS_CHAIN_NAME", Some("ethereum")),
+                ("DATALENS_CHAIN_ID", Some("1")),
+                ("DEGOV_INDEXER_DAO_CODE", Some("legacy-dao")),
+                ("DEGOV_INDEXER_START_BLOCK", Some("568752")),
+                (
+                    "DATALENS_GOVERNOR_ADDRESS",
+                    Some("0x1111111111111111111111111111111111111111"),
+                ),
+                (
+                    "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                    Some("0x2222222222222222222222222222222222222222"),
+                ),
+                ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("ERC20")),
+                (
+                    "DATALENS_TIMELOCK_ADDRESS",
+                    Some("0x3333333333333333333333333333333333333333"),
+                ),
+            ],
+            || {
+                let config = DatalensConfig::from_env().expect("load config");
+                let selected = config
+                    .select_contract_set("legacy-dao")
+                    .expect("select legacy contract set");
+                let configured = config
+                    .configured_contract_sets(Some("legacy-dao"))
+                    .expect("configured contract sets");
+
+                assert_eq!(configured.len(), 1);
+                assert_eq!(configured[0].dao_code, "legacy-dao");
+                assert_eq!(configured[0].contract, selected);
             },
         );
     }

@@ -30,7 +30,8 @@ pub use checkpoint::{
 };
 pub use config::{
     ChainFamily, ChainIdentityConfig, DatalensChainConfig, DatalensConfig,
-    DatalensContractSetConfig, DatalensFinality, DatasetKeyConfig, QueryLimitConfig, SecretString,
+    DatalensContractSetConfig, DatalensFinality, DatalensRuntimeContractSet, DatasetKeyConfig,
+    QueryLimitConfig, SecretString,
 };
 pub use dao_event::{
     CallExecutedEvent, CallSaltEvent, CallScheduledEvent, DaoEventDecodeError, DecodedDaoEvent,

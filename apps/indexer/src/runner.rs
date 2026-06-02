@@ -195,6 +195,20 @@ where
             .store
             .read_or_create_checkpoint(&self.options.checkpoint_identity, self.options.start_block)
             .map_err(to_checkpoint_error)?;
+        let checkpoint_choice = if checkpoint.next_block > self.options.start_block {
+            "resume"
+        } else {
+            "start"
+        };
+        info!(
+            "Datalens indexer checkpoint selected dao_code={} chain_id={} contract_set_id={} start_block={} next_block={} checkpoint_choice={}",
+            self.options.checkpoint_identity.dao_code,
+            self.options.checkpoint_identity.chain_id,
+            self.options.checkpoint_identity.contract_set_id,
+            self.options.start_block,
+            checkpoint.next_block,
+            checkpoint_choice
+        );
 
         loop {
             if self
@@ -421,20 +435,20 @@ fn page_rows(rows: serde_json::Value) -> Result<Vec<serde_json::Value>, IndexerR
         serde_json::Value::Array(rows) => Ok(rows),
         serde_json::Value::Object(mut object) => {
             let Some(rows) = object.remove("rows") else {
-                return Err(invalid_rows_payload_error(serde_json::Value::Object(object)));
+                return Err(invalid_rows_payload_error(serde_json::Value::Object(
+                    object,
+                )));
             };
 
             match rows {
                 serde_json::Value::Array(rows) => Ok(rows),
-                serde_json::Value::Object(mut rows_object) => {
-                    match rows_object.remove("rows") {
-                        Some(serde_json::Value::Array(rows)) => Ok(rows),
-                        Some(other) => Err(invalid_rows_payload_error(other)),
-                        None => Err(invalid_rows_payload_error(serde_json::Value::Object(
-                            rows_object,
-                        ))),
-                    }
-                }
+                serde_json::Value::Object(mut rows_object) => match rows_object.remove("rows") {
+                    Some(serde_json::Value::Array(rows)) => Ok(rows),
+                    Some(other) => Err(invalid_rows_payload_error(other)),
+                    None => Err(invalid_rows_payload_error(serde_json::Value::Object(
+                        rows_object,
+                    ))),
+                },
                 other => Err(invalid_rows_payload_error(other)),
             }
         }
