@@ -12,6 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Prepare Vercel root directory
+        run: |
+          mkdir -p packages
+          cp -a apps/web packages/web
+
       - uses: darwinia-network/devops/actions/smart-vercel@main
         name: Deploy degov
         with:

@@ -153,7 +153,7 @@ not remain in active staging or production runs as silently skipped workloads.
 
 ## Test coverage
 
-`packages/indexer/scripts/compatibility-preflight.test.mjs` covers:
+`apps/indexer/scripts/compatibility-preflight.test.mjs` covers:
 
 - rejecting ERC20 registry entries whose observed transfer shape is ERC721;
 - rejecting governors whose required `proposalSnapshot` method reverts;

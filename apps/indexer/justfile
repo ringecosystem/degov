@@ -1,0 +1,28 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default:
+    @just --list
+
+# Environment
+install:
+    cargo fetch --locked
+
+build:
+    cargo build --locked
+
+test:
+    node ./scripts/check-rust-conventions.mjs
+    node ./scripts/check-postgres-schema.mjs
+    cargo test --locked
+    node ./scripts/check-rust-conventions.test.mjs
+    node ./scripts/compatibility-preflight.test.mjs
+    node ./scripts/smoke-postgres-init.test.mjs
+
+test-unit:
+    cargo test --locked
+
+test-accuracy:
+    @just test
+
+test-integration:
+    @just test

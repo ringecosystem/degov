@@ -55,7 +55,7 @@ that introduces the deviation and must explain the operational tradeoff.
 
 ## Rust workspace shape
 
-The indexer should be introduced under `packages/indexer` as a Rust workspace or
+The indexer should be introduced under `apps/indexer` as a Rust workspace or
 crate set. The workspace should keep clear boundaries between:
 
 - Datalens client traits and SDK adapters.

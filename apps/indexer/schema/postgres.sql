@@ -4,7 +4,7 @@
 -- - This file is the canonical fresh index initialization schema.
 -- - The Rust Datalens indexer applies this schema to a clean Postgres database.
 -- - GraphQL/API-visible table compatibility is tracked against
---   packages/indexer/reference/schema.graphql.
+--   apps/indexer/reference/schema.graphql.
 -- - No historical in-place migration is supported from removed SQD/Subsquid
 --   v3/v4 index databases. Operators must reset or recreate the Postgres index
 --   database and run from the configured Datalens start block.

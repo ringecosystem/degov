@@ -19,9 +19,7 @@ importers:
 
   .: {}
 
-  packages/indexer: {}
-
-  packages/web:
+  apps/web:
     dependencies:
       '@akashrajpurohit/snowflake-id':
         specifier: ^2

@@ -10,7 +10,7 @@ This flow is designed for the additive migration introduced around `OHH-32` and 
 Use a shadow PostgreSQL database or a fresh clone of the production indexer database. The replay flow intentionally targets a bounded end block so the run is repeatable and produces a stable reconciliation artifact.
 
 ```bash
-cd packages/indexer
+cd apps/indexer
 pnpm replay:backfill
 ```
 
@@ -63,5 +63,5 @@ Any non-zero mismatch count causes `reconcile` to exit non-zero.
 - Replay/backfill completed against the target config and bounded end block.
 - Reconciliation JSON archived with zero field mismatches and zero sampled vote mismatches.
 - Coverage counts show the expected additive tables are populated for the target DAO scope.
-- Regression tests pass in `packages/indexer`.
+- Regression tests pass in `apps/indexer`.
 - Downstream smoke checks confirm proposal detail pages still render proposal timing, quorum, timelock timing, and vote power correctly after query cutover.

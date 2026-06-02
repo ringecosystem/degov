@@ -4,7 +4,7 @@
 > model and remains a compatibility target for future Datalens-native work.
 
 This document explains what each entity in
-`packages/indexer/reference/schema.graphql` represents, how it is populated, and which
+`apps/indexer/reference/schema.graphql` represents, how it is populated, and which
 query shape it is intended to support.
 
 ## How to read the schema
