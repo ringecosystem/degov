@@ -1,5 +1,0 @@
-#!/command/execlineb -P
-#
-
-s6-envdir /var/run/s6/container_environment
-/bin/sh -f /app/packages/indexer/scripts/graphql-server.sh

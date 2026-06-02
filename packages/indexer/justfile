@@ -9,78 +9,17 @@ pnpm := "pnpm"
 install:
     {{pnpm}} install --filter @degov/indexer... --frozen-lockfile --ignore-scripts
 
-clean:
-    {{pnpm}} exec sqd clean
-
-# Codegen and build
-codegen-abi:
-    {{pnpm}} run codegen:abi
-
-codegen-schema:
-    {{pnpm}} run codegen:schema
-
-codegen:
-    {{pnpm}} run codegen
-
 build:
     {{pnpm}} run build
 
-# Database
-db-migrate:
-    {{pnpm}} run db:migrate
-
-db-migrate-force:
-    {{pnpm}} run db:migrate:force
-
-# Runtime
-dev:
-    {{pnpm}} run dev:smart-start
-
-dev-force:
-    {{pnpm}} run dev:smart-start:force
-
-graphql:
-    {{pnpm}} run dev:graphql
-
-# Verification and audit
-verify-range config_path start_block end_block force='force':
-    sh ./scripts/local-verify-range.sh "{{config_path}}" "{{start_block}}" "{{end_block}}" "{{force}}"
-
-verify-sample delegator delegate='':
-    if [ -n "{{delegate}}" ]; then \
-      node ./scripts/local-verify-query.mjs --delegator "{{delegator}}" --delegate "{{delegate}}"; \
-    else \
-      node ./scripts/local-verify-query.mjs --delegator "{{delegator}}"; \
-    fi
-
-verify-negative-current limit='20':
-    node ./scripts/local-verify-query.mjs --negative-current --limit "{{limit}}"
-
-diagnose-address address code='':
-    if [ -n "{{code}}" ]; then \
-      {{pnpm}} run audit:diagnose -- --address "{{address}}" --code "{{code}}"; \
-    else \
-      {{pnpm}} run audit:diagnose -- --address "{{address}}"; \
-    fi
-
-audit-accuracy:
-    {{pnpm}} run audit:accuracy
-
-reconcile:
-    {{pnpm}} run dev:reconcile
-
-replay-backfill:
-    {{pnpm}} run dev:replay-backfill
-
-# Tests
 test:
-    {{pnpm}} run test:unit
+    {{pnpm}} run test
 
 test-unit:
-    {{pnpm}} run test:unit
+    {{pnpm}} run test-unit
 
 test-accuracy:
-    {{pnpm}} run test:accuracy
+    {{pnpm}} run test
 
 test-integration:
-    {{pnpm}} run test:integration
+    {{pnpm}} run test

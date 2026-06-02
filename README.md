@@ -48,8 +48,11 @@ DeGov.AI is an open-source, on-chain governance platform built for DAOs in the E
 
    This starts:
    - PostgreSQL (port 5432)
-   - Indexer (port 4350)
    - Web application (port 3000)
+
+   The local SQD-based indexer service has been removed while the Datalens-native
+   indexer is prepared. The web app still reads the configured indexer endpoint
+   from `degov.yml`.
 
 5. **Access the application**
 

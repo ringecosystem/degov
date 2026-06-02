@@ -1,7 +1,10 @@
 # DeGov Indexer Schema Reference
 
+> Historical reference: this schema documents the previous GraphQL-visible data
+> model and remains a compatibility target for future Datalens-native work.
+
 This document explains what each entity in
-`packages/indexer/schema.graphql` represents, how it is populated, and which
+`packages/indexer/reference/schema.graphql` represents, how it is populated, and which
 query shape it is intended to support.
 
 ## How to read the schema

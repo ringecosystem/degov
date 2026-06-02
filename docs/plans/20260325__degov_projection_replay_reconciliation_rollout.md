@@ -1,5 +1,8 @@
 # DeGov Projection Replay, Reconciliation, and Rollout
 
+> Historical reference: the SQD/Subsquid replay and backfill commands described
+> here have been removed with the old indexer runtime.
+
 This flow is designed for the additive migration introduced around `OHH-32` and the downstream field adoption in `OHH-37`.
 
 ## Replay / backfill workflow

@@ -1,5 +1,9 @@
 # DeGov Indexer Architecture
 
+> Historical reference: the SQD/Subsquid runtime described here has been
+> removed. Keep this architecture only as behavioral context for the future
+> Datalens-native indexer.
+
 This document describes the current `packages/indexer` implementation on top of
 the integrated OHH-32 to OHH-38 branch.
 

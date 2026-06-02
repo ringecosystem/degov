@@ -1,31 +1,3 @@
----
-x-indexer-environment: &indexer-environment
-  DB_HOST: postgres
-  DB_NAME: indexer
-  DB_USER: postgres
-  DB_PASS: ${DEGOV_DB_PASSWORD:-postgres}
-  DB_PORT: 5432
-  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-  OPENROUTER_DEFAULT_MODEL: ${OPENROUTER_DEFAULT_MODEL:-}
-  CHAIN_RPC_1: ${CHAIN_RPC_1:-}
-  CHAIN_RPC_46: ${CHAIN_RPC_46:-}
-  DEGOV_CONFIG_PATH: /app/degov.yml
-  DEGOV_INDEXER_POWER_SOURCE: ${DEGOV_INDEXER_POWER_SOURCE:-event}
-  DEGOV_INDEXER_PROCESSOR_RESTART_DELAY_SECONDS: ${DEGOV_INDEXER_PROCESSOR_RESTART_DELAY_SECONDS:-30}
-  DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED: ${DEGOV_INDEXER_ONCHAIN_EVENT_READS_ENABLED:-false}
-  DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED: ${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED:-true}
-  DEGOV_ONCHAIN_REFRESH_BATCH_SIZE: ${DEGOV_ONCHAIN_REFRESH_BATCH_SIZE:-100}
-  DEGOV_ONCHAIN_REFRESH_RECONCILE_SEED_BATCH_SIZE: ${DEGOV_ONCHAIN_REFRESH_RECONCILE_SEED_BATCH_SIZE:-100}
-  DEGOV_ONCHAIN_REFRESH_MULTICALL_CHUNK_SIZE: ${DEGOV_ONCHAIN_REFRESH_MULTICALL_CHUNK_SIZE:-100}
-  DEGOV_ONCHAIN_REFRESH_CONCURRENCY: ${DEGOV_ONCHAIN_REFRESH_CONCURRENCY:-1}
-  DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL: ${DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL:-1}
-  DEGOV_ONCHAIN_REFRESH_MAX_SYNC_LAG_BLOCKS: ${DEGOV_ONCHAIN_REFRESH_MAX_SYNC_LAG_BLOCKS:-1000}
-  DEGOV_ONCHAIN_REFRESH_POLL_INTERVAL_MS: ${DEGOV_ONCHAIN_REFRESH_POLL_INTERVAL_MS:-10000}
-  DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS: ${DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS:-120000}
-  DEGOV_ONCHAIN_REFRESH_LOCK_TTL_MS: ${DEGOV_ONCHAIN_REFRESH_LOCK_TTL_MS:-300000}
-  DEGOV_INDEXER_START_BLOCK: ${DEGOV_INDEXER_START_BLOCK:-}
-  DEGOV_INDEXER_END_BLOCK: ${DEGOV_INDEXER_END_BLOCK:-}
-
 services:
   postgres:
     image: postgres:17-alpine
@@ -38,34 +10,6 @@ services:
       - ./init-scripts/postgres:/docker-entrypoint-initdb.d
     ports:
       - "${DEGOV_DB_PORT:-5432}:5432"
-
-  indexer:
-    image: degov-indexer
-    depends_on:
-      - postgres
-    build:
-      context: .
-      dockerfile: docker/indexer.Dockerfile
-    ports:
-      - "${DEGOV_INDEXER_PORT:-4350}:4350"
-    volumes:
-      - ./degov.yml:/app/degov.yml
-    environment:
-      <<: *indexer-environment
-      GQL_PORT: 4350
-      # CHAIN_RPC_10: ${CHAIN_RPC_10}
-      # CHAIN_RPC_...: ${CHAIN_RPC_...}
-
-  onchain-refresh-worker:
-    image: degov-indexer
-    depends_on:
-      - postgres
-      - indexer
-    entrypoint: ["node", "lib/onchain-refresh-worker.js"]
-    volumes:
-      - ./degov.yml:/app/degov.yml
-    environment:
-      <<: *indexer-environment
 
   web:
     image: degov-web

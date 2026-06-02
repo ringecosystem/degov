@@ -5,6 +5,10 @@ this repository.
 
 ## Indexer
 
+The checked-in SQD/Subsquid indexer runtime has been removed while DeGov moves
+to a Datalens-native indexer. The documents below describe historical behavior
+or API/data-model reference material unless a newer document says otherwise.
+
 - [Developer guide](./guides/20260325__indexer_developer_guide.md)
 - [Accuracy diagnosis guide](./guides/20260331__indexer_accuracy_diagnosis.md)
 - [Accuracy research summary](./research/20260401__indexer_accuracy_research.md)
