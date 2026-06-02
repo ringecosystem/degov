@@ -469,7 +469,18 @@ async fn upsert_proposal(
     transaction: &mut Transaction<'_, Postgres>,
     row: &ProposalWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    relink_existing_proposal_to_raw_id(transaction, row).await?;
+    if !row.proposer.is_empty() {
+        relink_existing_proposal_to_raw_id(transaction, row).await?;
+    }
+
+    let proposal_ref = resolve_proposal_ref(
+        transaction,
+        row.chain_id,
+        &row.governor_address,
+        &row.proposal_id,
+        &row.id,
+    )
+    .await?;
 
     sqlx::query(
         "INSERT INTO proposal (
@@ -528,7 +539,7 @@ async fn upsert_proposal(
              quorum = EXCLUDED.quorum,
              decimals = EXCLUDED.decimals",
     )
-    .bind(&row.id)
+    .bind(&proposal_ref)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
@@ -569,6 +580,55 @@ async fn upsert_proposal(
     .await?;
 
     Ok(())
+}
+
+async fn resolve_proposal_ref(
+    transaction: &mut Transaction<'_, Postgres>,
+    chain_id: i32,
+    governor_address: &str,
+    proposal_id: &str,
+    fallback: &str,
+) -> Result<String, PostgresIndexerRunnerStoreError> {
+    if let Some(row) = sqlx::query("SELECT id FROM proposal WHERE id = $1")
+        .bind(fallback)
+        .fetch_optional(&mut **transaction)
+        .await?
+    {
+        return Ok(row.get::<String, _>("id"));
+    }
+
+    let proposal_id =
+        proposal_lookup_id_from_ref(chain_id, governor_address, fallback).unwrap_or(proposal_id);
+    let row = sqlx::query(
+        "SELECT id
+         FROM proposal
+         WHERE chain_id IS NOT DISTINCT FROM $1
+           AND governor_address IS NOT DISTINCT FROM $2
+           AND proposal_id = $3
+         LIMIT 1",
+    )
+    .bind(chain_id)
+    .bind(governor_address)
+    .bind(proposal_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+
+    Ok(row
+        .map(|row| row.get::<String, _>("id"))
+        .unwrap_or_else(|| fallback.to_owned()))
+}
+
+fn proposal_lookup_id_from_ref<'a>(
+    chain_id: i32,
+    governor_address: &str,
+    proposal_ref: &'a str,
+) -> Option<&'a str> {
+    let prefix = format!(
+        "proposal:{chain_id}:{}:",
+        governor_address.to_ascii_lowercase()
+    );
+
+    proposal_ref.strip_prefix(&prefix)
 }
 
 async fn relink_existing_proposal_to_raw_id(
@@ -614,6 +674,15 @@ async fn insert_proposal_action(
     transaction: &mut Transaction<'_, Postgres>,
     row: &ProposalActionWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let proposal_ref = resolve_proposal_ref(
+        transaction,
+        row.chain_id,
+        &row.governor_address,
+        &row.proposal_id,
+        &row.proposal_ref,
+    )
+    .await?;
+
     sqlx::query(
         "INSERT INTO proposal_action (
             id, chain_id, dao_code, governor_address, contract_address, log_index,
@@ -636,8 +705,8 @@ async fn insert_proposal_action(
         row.transaction_index,
         "proposal_action.transaction_index",
     )?)
-    .bind(&row.proposal_id)
-    .bind(&row.proposal_ref)
+    .bind(&proposal_ref)
+    .bind(&proposal_ref)
     .bind(usize_to_i32(
         row.action_index,
         "proposal_action.action_index",
@@ -662,6 +731,15 @@ async fn insert_proposal_state_epoch(
     transaction: &mut Transaction<'_, Postgres>,
     row: &ProposalStateEpochWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let proposal_ref = resolve_proposal_ref(
+        transaction,
+        row.chain_id,
+        &row.governor_address,
+        &row.proposal_id,
+        &row.proposal_ref,
+    )
+    .await?;
+
     sqlx::query(
         "INSERT INTO proposal_state_epoch (
             id, chain_id, dao_code, governor_address, contract_address, log_index,
@@ -686,8 +764,8 @@ async fn insert_proposal_state_epoch(
         row.transaction_index,
         "proposal_state_epoch.transaction_index",
     )?)
-    .bind(&row.proposal_id)
-    .bind(&row.proposal_ref)
+    .bind(&proposal_ref)
+    .bind(&proposal_ref)
     .bind(&row.state)
     .bind(row.start_timepoint.as_deref())
     .bind(row.end_timepoint.as_deref())
@@ -706,6 +784,15 @@ async fn insert_proposal_deadline_extension(
     transaction: &mut Transaction<'_, Postgres>,
     row: &ProposalDeadlineExtensionWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let proposal_ref = resolve_proposal_ref(
+        transaction,
+        row.chain_id,
+        &row.governor_address,
+        &row.proposal_id,
+        &row.proposal_ref,
+    )
+    .await?;
+
     sqlx::query(
         "INSERT INTO proposal_deadline_extension (
             id, chain_id, dao_code, governor_address, contract_address, log_index,
@@ -731,8 +818,8 @@ async fn insert_proposal_deadline_extension(
         row.transaction_index,
         "proposal_deadline_extension.transaction_index",
     )?)
-    .bind(&row.proposal_id)
-    .bind(&row.proposal_ref)
+    .bind(&proposal_ref)
+    .bind(&proposal_ref)
     .bind(row.previous_deadline.as_deref())
     .bind(&row.new_deadline)
     .bind(&row.block_number)

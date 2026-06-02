@@ -264,6 +264,122 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_keeps_raw_proposal_id_when_lifecycle_stub_arrives_later()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let context = proposal_projection_context();
+    let raw_batch = project_proposal_events(
+        &context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log("evm:1:2:0xtx25:5:6", 2, 5, 6),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "43".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Proposal title\n\nProposal body".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("raw projection failed: {error:?}"))?;
+    let lifecycle_batch = project_proposal_events(
+        &context,
+        vec![
+            ProposalProjectionEvent {
+                log: normalized_log("evm:1:3:0xtx31:1:2", 3, 1, 2),
+                event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                    proposal_id: "43".to_owned(),
+                    eta_seconds: "1234".to_owned(),
+                }),
+            },
+            ProposalProjectionEvent {
+                log: normalized_log("evm:1:4:0xtx43:3:4", 4, 3, 4),
+                event: DecodedGovernorEvent::ProposalExtended(ProposalExtendedEvent {
+                    proposal_id: "43".to_owned(),
+                    extended_deadline: "250".to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("lifecycle projection failed: {error:?}"))?;
+
+    {
+        let mut transaction = store
+            .begin_transaction()
+            .map_err(|error| format!("begin raw transaction failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(raw_batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply raw batch failed: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("commit raw transaction failed: {error}"))?;
+    }
+    {
+        let mut transaction = store
+            .begin_transaction()
+            .map_err(|error| format!("begin lifecycle transaction failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(lifecycle_batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply lifecycle batch failed: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("commit lifecycle transaction failed: {error}"))?;
+    }
+
+    let raw_ref = "evm:1:2:0xtx25:5:6";
+    let placeholder_ref = format!("proposal:1:{}:43", GOVERNOR.to_ascii_lowercase());
+    let proposal = sqlx::query(
+        "SELECT id, proposal_eta::TEXT AS proposal_eta,
+                proposal_deadline::TEXT AS proposal_deadline
+         FROM proposal",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(proposal.get::<String, _>("id"), raw_ref);
+    assert_ne!(proposal.get::<String, _>("id"), placeholder_ref);
+    assert_eq!(proposal.get::<String, _>("proposal_eta"), "1234");
+    assert_eq!(proposal.get::<String, _>("proposal_deadline"), "250");
+
+    let action = sqlx::query("SELECT proposal_id, proposal_ref FROM proposal_action")
+        .fetch_one(&database.pool)
+        .await?;
+    assert_eq!(action.get::<String, _>("proposal_id"), raw_ref);
+    assert_eq!(action.get::<String, _>("proposal_ref"), raw_ref);
+
+    let state = sqlx::query(
+        "SELECT proposal_id, proposal_ref
+         FROM proposal_state_epoch
+         WHERE state = 'Queued'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(state.get::<String, _>("proposal_id"), raw_ref);
+    assert_eq!(state.get::<String, _>("proposal_ref"), raw_ref);
+
+    let extension =
+        sqlx::query("SELECT proposal_id, proposal_ref FROM proposal_deadline_extension")
+            .fetch_one(&database.pool)
+            .await?;
+    assert_eq!(extension.get::<String, _>("proposal_id"), raw_ref);
+    assert_eq!(extension.get::<String, _>("proposal_ref"), raw_ref);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 async fn run_indexer_command(
     database_url: &str,
     datalens_endpoint: &str,
