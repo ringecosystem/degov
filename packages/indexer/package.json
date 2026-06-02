@@ -3,11 +3,11 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "build": "node ./scripts/placeholder.mjs",
+    "build": "cargo build --manifest-path Cargo.toml",
     "check:rust-conventions": "node ./scripts/check-rust-conventions.mjs",
     "check:postgres-schema": "node ./scripts/check-postgres-schema.mjs",
     "smoke:postgres-init": "node ./scripts/smoke-postgres-init.mjs",
-    "test": "pnpm run check:rust-conventions && pnpm run check:postgres-schema && node ./scripts/check-rust-conventions.test.mjs && node ./scripts/compatibility-preflight.test.mjs && node ./scripts/smoke-postgres-init.test.mjs && node ./scripts/placeholder.mjs",
-    "test-unit": "node ./scripts/placeholder.mjs"
+    "test": "pnpm run check:rust-conventions && pnpm run check:postgres-schema && cargo test --manifest-path Cargo.toml && node ./scripts/check-rust-conventions.test.mjs && node ./scripts/compatibility-preflight.test.mjs && node ./scripts/smoke-postgres-init.test.mjs",
+    "test-unit": "cargo test --manifest-path Cargo.toml"
   }
 }

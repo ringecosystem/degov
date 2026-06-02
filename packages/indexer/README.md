@@ -9,9 +9,12 @@ the old processor architecture.
 
 ## Current boundary
 
-The package intentionally has no indexer runtime right now. Its `build` and
-`test` scripts are placeholders so workspace commands can continue to run while
-the Datalens implementation is introduced in follow-up work.
+The package now contains the initial Rust configuration and Datalens client
+boundary for the upcoming runtime. It validates the deployed Datalens service
+base endpoint, application identity, bearer token, timeout, finality mode, chain
+identity, dataset key, and query limits at startup. The bearer token is loaded
+from environment or secret-backed configuration and is redacted by config
+formatting.
 
 ## PostgreSQL schema ownership
 
