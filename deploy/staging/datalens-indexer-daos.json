@@ -1,0 +1,67 @@
+{
+  "environment": "staging",
+  "image": {
+    "repository": "ghcr.io/ringecosystem/degov/indexer",
+    "tagTemplate": "sha-<git-sha>"
+  },
+  "entrypoints": {
+    "migrate": ["migrate"],
+    "indexer": ["run"],
+    "graphql": ["graphql"],
+    "onchainRefreshWorker": ["worker"]
+  },
+  "datalens": {
+    "endpointEnv": "DATALENS_ENDPOINT",
+    "tokenEnv": "DATALENS_TOKEN",
+    "applicationEnv": "DATALENS_APPLICATION",
+    "application": "degov-staging",
+    "dataset": {
+      "family": "evm",
+      "name": "logs"
+    }
+  },
+  "database": {
+    "urlEnv": "DEGOV_INDEXER_DATABASE_URL",
+    "freshDatabasePrefix": "degov_datalens_migration_"
+  },
+  "onchainRefreshWorker": {
+    "enabled": false,
+    "enableWhen": "Enable only after checkpoint/status integration can prove refresh tasks are created, processed, retried, and surfaced in diagnostics."
+  },
+  "daos": [
+    {
+      "code": "degov-demo-dao",
+      "databaseName": "degov_datalens_migration_degov_demo_dao",
+      "registryConfigPath": "degov.yml",
+      "graphqlPath": "/degov-demo-dao/graphql",
+      "startBlock": 5873342,
+      "env": {
+        "DATALENS_APPLICATION": "degov-staging",
+        "DATALENS_FINALITY": "durable_only",
+        "DATALENS_CHAIN_FAMILY": "evm",
+        "DATALENS_CHAIN_NAME": "darwinia",
+        "DATALENS_CHAIN_ID": 46,
+        "DATALENS_DATASET_FAMILY": "evm",
+        "DATALENS_DATASET_NAME": "logs",
+        "DATALENS_QUERY_BLOCK_RANGE_LIMIT": 1000,
+        "DATALENS_QUERY_ROW_LIMIT": 1000,
+        "DATALENS_GOVERNOR_ADDRESS": "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517",
+        "DATALENS_GOVERNOR_TOKEN_ADDRESS": "0xbC9f58566810F7e853e1eef1b9957ac82F9971df",
+        "DATALENS_GOVERNOR_TOKEN_STANDARD": "ERC20",
+        "DATALENS_TIMELOCK_ADDRESS": "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
+      }
+    }
+  ],
+  "sharedSecretKeys": [
+    "DATALENS_ENDPOINT",
+    "DATALENS_TOKEN",
+    "DEGOV_INDEXER_DATABASE_URL"
+  ],
+  "requiredRuntimeChecks": [
+    "pod-readiness",
+    "db-checkpoint-progress",
+    "graphql-availability",
+    "worker-task-status",
+    "page-sync-percentage"
+  ]
+}

@@ -1,0 +1,136 @@
+# Datalens Staging Deployment Runbook
+
+> Purpose: define the staging deployment path for selected DAOs running the
+> Datalens-native DeGov indexer.
+>
+> Read this when: preparing or reviewing GitOps changes for the HBX-244 manual
+> migration wave.
+>
+> This does not define production rollout policy; use
+> `docs/runbook/datalens-dao-migration.md` before promotion.
+
+## Deployment contract
+
+Use `deploy/staging/datalens-indexer-daos.json` as the source-controlled
+staging contract. It pins the Datalens-native image repository,
+`degov-datalens-indexer` entrypoints, selected DAO env, fresh migration DB
+names, and worker state.
+
+The release workflow publishes the indexer image as:
+
+```text
+ghcr.io/ringecosystem/degov/indexer:sha-<git-sha>
+```
+
+Deploy one workload set per selected DAO. Keep staging namespace, database
+name, image tag, and GraphQL route separate from production. Do not share a
+production DB, production GraphQL route, or production web config with a
+Datalens migration validation pod.
+
+## Required environment
+
+Each DAO indexer deployment must receive:
+
+- `DEGOV_INDEXER_DATABASE_URL`: points to a fresh DB whose name starts with
+  `degov_datalens_migration_`.
+- `DATALENS_ENDPOINT`: Datalens service base URL, not `/native/graphql`.
+- `DATALENS_TOKEN`: application bearer token from GitOps-managed secrets.
+- `DATALENS_APPLICATION`: `degov-staging` for staging validation.
+- `DATALENS_CHAIN_FAMILY`, `DATALENS_CHAIN_NAME`, and `DATALENS_CHAIN_ID`.
+- `DATALENS_DATASET_FAMILY` and `DATALENS_DATASET_NAME`.
+- `DATALENS_GOVERNOR_ADDRESS`, `DATALENS_GOVERNOR_TOKEN_ADDRESS`,
+  `DATALENS_GOVERNOR_TOKEN_STANDARD`, and `DATALENS_TIMELOCK_ADDRESS`.
+
+Run `migrate` against the fresh DB before starting `run`. Start `graphql` only
+after the DB schema exists and the staging web route points at the staging
+GraphQL endpoint.
+
+## Datalens dependency gate
+
+Confirm these Datalens server dependencies before rollout:
+
+- endpoint responds to the native GraphQL readiness smoke check;
+- chain config includes the selected chain id/name and EVM log dataset;
+- S3/cache backing the queried dataset is healthy for the selected range;
+- application auth accepts the `degov-staging` token;
+- query limits are compatible with the chunk size configured in the DAO env.
+
+Use the runtime smoke check with a token loaded from secret management:
+
+```bash
+pnpm run indexer:smoke-datalens
+```
+
+## Worker state
+
+Keep `DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED=false` in staging GitOps until
+checkpoint/status integration proves refresh tasks are created, processed,
+retried, and surfaced in diagnostics. The staging contract records this as
+`onchainRefreshWorker.enabled=false`.
+
+When the worker is enabled later, deploy it as a separate workload using the
+`worker` entrypoint and monitor `onchainRefreshBacklog` plus
+`onchainRefreshErrors`.
+
+## Rollout checks
+
+Use the repo scripts for database and GraphQL checks. Kubernetes commands must
+target the staging cluster and namespace; in Helixbox workspaces use
+`kubectl --kubeconfig=avault/.kube/<cluster>.config`.
+
+```bash
+kubectl --kubeconfig=avault/.kube/<cluster>.config \
+  -n <staging-namespace> rollout status deploy/<dao>-degov-datalens-indexer
+
+kubectl --kubeconfig=avault/.kube/<cluster>.config \
+  -n <staging-namespace> logs deploy/<dao>-degov-datalens-indexer --since=10m
+```
+
+Look for DAO, chain, dataset, chunk range, processed height, task backlog, and
+projection error fields in logs. Any projection error should include enough
+context to identify the DAO, stream, block range, and failing projection.
+
+Check DB checkpoint progress and sync percentage:
+
+```bash
+pnpm run audit:reconcile -- \
+  --database-url "$DEGOV_INDEXER_DATABASE_URL" \
+  --json
+```
+
+The JSON output includes `processedHeight`, `targetHeight`, `lagBlocks`,
+`syncPercent`, `reconcileBacklog`, `reconcileErrors`,
+`onchainRefreshBacklog`, and `onchainRefreshErrors`.
+
+Check GraphQL availability:
+
+```bash
+curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
+  -H 'content-type: application/json' \
+  --data '{"query":"query { dataMetrics(limit: 1) { proposalsCount } }"}'
+```
+
+For DAOs with Tally coverage, run the Tally/onchain comparison after indexing
+reaches the intended target height:
+
+```bash
+pnpm run audit:tally-onchain -- \
+  --targets-file apps/indexer/scripts/indexer-accuracy-targets.json \
+  --database-url "$DEGOV_INDEXER_DATABASE_URL" \
+  --json-file reports/tally-onchain-e2e.json \
+  --markdown-file reports/tally-onchain-e2e.md
+```
+
+## Rollback
+
+Rollback does not require an in-place DB migration because staging uses fresh
+Datalens migration databases.
+
+1. Revert the staging GitOps image tag to the previous known-good image.
+2. Restore the previous env/config secret set for the selected DAO.
+3. Repoint the staging web GraphQL endpoint to the previous staging endpoint.
+4. Keep or set `DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED=false`.
+5. Leave the failed `degov_datalens_migration_*` DB intact for inspection, or
+   delete it only after the validation notes have been captured.
+6. Re-run pod readiness and GraphQL availability checks against the restored
+   deployment.

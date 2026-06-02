@@ -37,9 +37,19 @@ export function parseArgs(argv) {
 }
 
 export function buildHumanSummary(status) {
+  const syncRows = status.checkpoints
+    .filter(
+      (checkpoint) =>
+        checkpoint.syncPercent !== null && checkpoint.syncPercent !== undefined,
+    )
+    .map(
+      (checkpoint) =>
+        `${checkpoint.daoCode}/${checkpoint.streamId}=${checkpoint.syncPercent}%`,
+    );
   return [
     "Datalens reconcile diagnostics",
     `checkpoint rows: ${status.checkpoints.length}`,
+    `checkpoint sync: ${syncRows.length ? syncRows.join(", ") : "unknown"}`,
     `checkpoint stalls: ${status.checkpointStalls.length}`,
     `checkpoint errors: ${status.checkpointErrors.length}`,
     `reconcile backlog: ${JSON.stringify(status.reconcileBacklog)}`,

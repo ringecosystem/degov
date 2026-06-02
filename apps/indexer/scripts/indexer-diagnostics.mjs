@@ -105,6 +105,7 @@ export function summarizeCheckpointRows(rows, options = {}) {
       targetHeight === null || processedHeight === null
         ? null
         : (BigInt(targetHeight) - BigInt(processedHeight)).toString();
+    const syncPercent = calculateSyncPercent(processedHeight, targetHeight);
     const stalled =
       ageMinutes !== null &&
       ageMinutes >= stallMinutes &&
@@ -122,6 +123,7 @@ export function summarizeCheckpointRows(rows, options = {}) {
         processedHeight === null ? null : String(processedHeight),
       targetHeight: targetHeight === null ? null : String(targetHeight),
       lagBlocks,
+      syncPercent,
       updatedAt,
       ageMinutes,
       stalled,
@@ -135,6 +137,29 @@ export function summarizeCheckpointRows(rows, options = {}) {
           : "checkpoint-ok",
     };
   });
+}
+
+export function calculateSyncPercent(processedHeight, targetHeight) {
+  if (
+    processedHeight === null ||
+    processedHeight === undefined ||
+    targetHeight === null ||
+    targetHeight === undefined
+  ) {
+    return null;
+  }
+
+  const processed = BigInt(processedHeight);
+  const target = BigInt(targetHeight);
+  if (target <= 0n) {
+    return processed >= target ? 100 : null;
+  }
+  if (processed >= target) {
+    return 100;
+  }
+
+  const roundedBasisPoints = (processed * 10_000n + target / 2n) / target;
+  return Number(roundedBasisPoints) / 100;
 }
 
 export function summarizeStatusTables({
