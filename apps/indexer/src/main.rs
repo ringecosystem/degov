@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, future};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Run => run_indexer().await,
-        Command::Worker => run_worker(),
+        Command::Worker => run_worker().await,
         Command::Migrate => migrate().await,
         Command::Graphql => graphql(),
         Command::SmokeDatalens => smoke_datalens(),
@@ -70,20 +70,35 @@ async fn run_indexer() -> anyhow::Result<()> {
     );
     log::info!("Datalens server is an external dependency; DeGov runs as an application consumer");
 
-    Ok(())
+    wait_for_service_shutdown("Datalens indexer runtime").await
 }
 
-fn run_worker() -> anyhow::Result<()> {
+async fn run_worker() -> anyhow::Result<()> {
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
-    let enabled =
-        env::var("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED").unwrap_or_else(|_| "true".to_owned());
+    let enabled = env::var("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED")
+        .map(|value| onchain_refresh_worker_enabled(&value))
+        .unwrap_or(Ok(true))?;
+
+    if !enabled {
+        log::info!(
+            "onchain refresh worker is disabled by DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED; keeping service alive"
+        );
+        return wait_for_service_shutdown("disabled onchain refresh worker").await;
+    }
 
     log::info!(
         "onchain refresh worker packaging is ready enabled={} database_url_configured={}",
         enabled,
         !database_url.is_empty()
     );
+    log::info!("onchain refresh worker runtime will process refresh tasks in a follow-up package");
 
+    wait_for_service_shutdown("onchain refresh worker").await
+}
+
+async fn wait_for_service_shutdown(service_name: &str) -> anyhow::Result<()> {
+    log::info!("{service_name} service is running; stop the process to shut it down");
+    future::pending::<()>().await;
     Ok(())
 }
 
@@ -95,9 +110,11 @@ async fn migrate() -> anyhow::Result<()> {
         .await
         .context("connect to DeGov indexer Postgres")?;
 
-    pool.execute(POSTGRES_SCHEMA_SQL)
-        .await
-        .context("apply Datalens-native DeGov indexer schema")?;
+    for statement in postgres_schema_statements(POSTGRES_SCHEMA_SQL) {
+        pool.execute(statement).await.with_context(|| {
+            format!("apply Datalens-native DeGov indexer schema statement: {statement}")
+        })?;
+    }
 
     log::info!("Datalens-native DeGov indexer schema applied");
 
@@ -137,4 +154,167 @@ fn required_env(name: &'static str) -> anyhow::Result<String> {
     }
 
     Ok(value)
+}
+
+fn onchain_refresh_worker_enabled(value: &str) -> anyhow::Result<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" => Ok(true),
+        "false" | "0" | "no" => Ok(false),
+        _ => anyhow::bail!(
+            "DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED must be one of true, false, 1, 0, yes, or no"
+        ),
+    }
+}
+
+fn postgres_schema_statements(sql: &str) -> Vec<&str> {
+    let mut statements = Vec::new();
+    let mut statement_start = 0;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
+    let mut dollar_quote_tag: Option<&str> = None;
+    let mut chars = sql.char_indices().peekable();
+
+    while let Some((index, character)) = chars.next() {
+        let rest = &sql[index..];
+
+        if let Some(tag) = dollar_quote_tag {
+            if rest.starts_with(tag) {
+                dollar_quote_tag = None;
+                for _ in 1..tag.chars().count() {
+                    chars.next();
+                }
+            }
+            continue;
+        }
+
+        if in_line_comment {
+            if character == '\n' {
+                in_line_comment = false;
+            }
+            continue;
+        }
+
+        if in_block_comment {
+            if rest.starts_with("*/") {
+                in_block_comment = false;
+                chars.next();
+            }
+            continue;
+        }
+
+        if in_single_quote {
+            if character == '\'' {
+                if matches!(chars.peek(), Some((_, '\''))) {
+                    chars.next();
+                } else {
+                    in_single_quote = false;
+                }
+            }
+            continue;
+        }
+
+        if in_double_quote {
+            if character == '"' {
+                in_double_quote = false;
+            }
+            continue;
+        }
+
+        if rest.starts_with("--") {
+            in_line_comment = true;
+            chars.next();
+            continue;
+        }
+
+        if rest.starts_with("/*") {
+            in_block_comment = true;
+            chars.next();
+            continue;
+        }
+
+        if character == '\'' {
+            in_single_quote = true;
+            continue;
+        }
+
+        if character == '"' {
+            in_double_quote = true;
+            continue;
+        }
+
+        if character == '$' {
+            if let Some(tag_end) = rest[1..].find('$') {
+                let tag = &rest[..=tag_end + 1];
+
+                if tag[1..tag.len() - 1]
+                    .chars()
+                    .all(|tag_char| tag_char == '_' || tag_char.is_ascii_alphanumeric())
+                {
+                    dollar_quote_tag = Some(tag);
+                    for _ in 1..tag.chars().count() {
+                        chars.next();
+                    }
+                }
+            }
+            continue;
+        }
+
+        if character == ';' {
+            let statement = sql[statement_start..index].trim();
+
+            if !statement.is_empty() {
+                statements.push(statement);
+            }
+
+            statement_start = index + character.len_utf8();
+        }
+    }
+
+    let statement = sql[statement_start..].trim();
+
+    if !statement.is_empty() {
+        statements.push(statement);
+    }
+
+    statements
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_postgres_schema_statements_splits_schema_into_individual_statements() {
+        let statements = postgres_schema_statements(
+            "CREATE TABLE one (id INTEGER);\n\n-- comment with ;\nCREATE INDEX one_id_idx ON one (id);\n",
+        );
+
+        assert_eq!(
+            statements,
+            vec![
+                "CREATE TABLE one (id INTEGER)",
+                "-- comment with ;\nCREATE INDEX one_id_idx ON one (id)"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_onchain_refresh_worker_enabled_accepts_disabled_values() {
+        assert!(!onchain_refresh_worker_enabled("false").expect("false parses"));
+        assert!(!onchain_refresh_worker_enabled("0").expect("0 parses"));
+        assert!(!onchain_refresh_worker_enabled("no").expect("no parses"));
+    }
+
+    #[test]
+    fn test_onchain_refresh_worker_enabled_rejects_ambiguous_values() {
+        let error = onchain_refresh_worker_enabled("disabled").expect_err("disabled is invalid");
+
+        assert!(
+            error
+                .to_string()
+                .contains("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED")
+        );
+    }
 }

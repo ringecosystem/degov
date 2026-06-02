@@ -22,7 +22,7 @@ services:
       dockerfile: docker/indexer.Dockerfile
     command: migrate
     environment:
-      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/${DEGOV_INDEXER_DB_NAME:-indexer}
+      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
 
   indexer:
     image: degov-indexer
@@ -35,7 +35,7 @@ services:
       dockerfile: docker/indexer.Dockerfile
     command: run
     environment:
-      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/${DEGOV_INDEXER_DB_NAME:-indexer}
+      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
       DATALENS_ENDPOINT: ${DATALENS_ENDPOINT:-}
       DATALENS_APPLICATION: ${DATALENS_APPLICATION:-}
       DATALENS_TOKEN: ${DATALENS_TOKEN:-}
@@ -64,7 +64,7 @@ services:
       dockerfile: docker/indexer.Dockerfile
     command: worker
     environment:
-      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/${DEGOV_INDEXER_DB_NAME:-indexer}
+      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
       DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED: ${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED:-true}
       DEGOV_ONCHAIN_REFRESH_BATCH_SIZE: ${DEGOV_ONCHAIN_REFRESH_BATCH_SIZE:-100}
       DEGOV_ONCHAIN_REFRESH_RECONCILE_SEED_BATCH_SIZE: ${DEGOV_ONCHAIN_REFRESH_RECONCILE_SEED_BATCH_SIZE:-100}

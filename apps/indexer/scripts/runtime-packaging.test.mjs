@@ -42,6 +42,16 @@ assert.match(
 );
 assert.doesNotMatch(
   composeYaml,
+  /DEGOV_INDEXER_DB_NAME/,
+  "compose must not expose an indexer DB override unless init creates the same DB",
+);
+assert.match(
+  composeYaml,
+  /DEGOV_INDEXER_DATABASE_URL: postgresql:\/\/postgres:\$\{DEGOV_DB_PASSWORD:-postgres\}@postgres\/indexer/,
+  "compose must point the indexer at the DB created by postgres init",
+);
+assert.doesNotMatch(
+  composeYaml,
   /\b(npx\s+sqd|sqd\s+serve|squid-processor|processor:start)\b/i,
   "compose must not start removed SQD processor commands",
 );
@@ -49,5 +59,15 @@ assert.doesNotMatch(
 assert.match(envExample, /DATALENS_ENDPOINT=/);
 assert.match(envExample, /DEGOV_INDEXER_DATABASE_URL=/);
 assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_ENDPOINT=/);
+assert.doesNotMatch(
+  envExample,
+  /^DEGOV_INDEXER_DB_NAME=/m,
+  ".env.example must not advertise an indexer DB override not honored by postgres init",
+);
+assert.doesNotMatch(
+  envExample,
+  /^DEGOV_INDEXER_GRAPHQL_ENDPOINT=https?:\/\/indexer\.next\.degov\.ai/m,
+  ".env.example must not default local runtime packaging to the remote hosted indexer",
+);
 
 console.log("Runtime packaging check passed");
