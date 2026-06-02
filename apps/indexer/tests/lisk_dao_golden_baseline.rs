@@ -1,4 +1,5 @@
 use std::{
+    collections::{BTreeMap, BTreeSet},
     env,
     error::Error,
     sync::atomic::{AtomicU64, Ordering},
@@ -23,6 +24,7 @@ struct Baseline {
     scope: BaselineScope,
     counts: BaselineCounts,
     samples: BaselineSamples,
+    query_shapes: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,6 +93,17 @@ struct LatestProposalSample {
     votes_weight_for_sum: String,
     votes_weight_against_sum: String,
     votes_weight_abstain_sum: String,
+    voter: ProposalVoterSample,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProposalVoterSample {
+    voter: String,
+    support: i32,
+    weight: String,
+    reason: String,
+    params: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -191,6 +204,7 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
         baseline.samples.top_contributor.account,
         baseline.samples.top_contributor.id
     );
+    assert_query_shape_names(&baseline);
 
     let database = TestDatabase::connect(&baseline).await?;
 
@@ -296,12 +310,19 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
     .await?;
 
     let schema = graphql::build_schema(database.pool.clone());
+    let latest = &baseline.samples.latest_proposal;
+    let top_contributor = &baseline.samples.top_contributor;
     let response = schema
         .execute(
             Request::new(
                 r#"
-                query GoldenBaseline($metricWhere: DataMetricWhereInput) {
+                query GoldenBaseline(
+                  $metricWhere: DataMetricWhereInput,
+                  $proposalWhere: ProposalWhereInput,
+                  $votedProposalWhere: ProposalWhereInput
+                ) {
                   proposalsConnection(orderBy: [id_ASC]) { totalCount }
+                  contributorsConnection(orderBy: id_ASC) { totalCount }
                   dataMetricsConnection(orderBy: id_ASC) { totalCount }
                   dataMetrics(where: $metricWhere) {
                     proposalsCount
@@ -322,6 +343,22 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
                     id
                     power
                   }
+                  proposalWithVoters: proposals(where: $proposalWhere, limit: 1) {
+                    proposalId
+                    voters(orderBy: [blockTimestamp_ASC_NULLS_LAST], limit: 1) {
+                      voter
+                      support
+                      weight
+                      reason
+                      params
+                    }
+                  }
+                  proposalsByVoter: proposals(where: $votedProposalWhere, limit: 1) {
+                    proposalId
+                  }
+                  proposalQueueds(orderBy: [id_ASC]) { proposalId etaSeconds }
+                  proposalExecuteds(orderBy: [id_ASC]) { proposalId }
+                  proposalCanceleds(orderBy: [id_ASC]) { proposalId }
                   delegatesConnection(orderBy: [id_ASC]) { totalCount }
                   delegateMappingsConnection(orderBy: [id_ASC]) { totalCount }
                 }
@@ -333,7 +370,23 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
                     "chainId_eq": baseline.scope.chain_id,
                     "governorAddress_eq": baseline.scope.governor,
                     "daoCode_eq": baseline.scope.dao_code
-                }
+                },
+                "proposalWhere": {
+                    "proposalId_eq": latest.proposal_id,
+                    "chainId_eq": baseline.scope.chain_id,
+                    "governorAddress_eq": baseline.scope.governor,
+                    "daoCode_eq": baseline.scope.dao_code
+                },
+                "votedProposalWhere": {
+                    "proposalId_eq": latest.proposal_id,
+                    "chainId_eq": baseline.scope.chain_id,
+                    "governorAddress_eq": baseline.scope.governor,
+                    "daoCode_eq": baseline.scope.dao_code,
+                    "voters_some": {
+                        "voter_eq": latest.voter.voter,
+                        "support_eq": latest.voter.support
+                    }
+                },
             }))),
         )
         .await;
@@ -345,8 +398,6 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
     );
 
     let data = response.data.into_json()?;
-    let latest = &baseline.samples.latest_proposal;
-    let top_contributor = &baseline.samples.top_contributor;
 
     assert_eq!(
         data["proposalsConnection"]["totalCount"],
@@ -394,6 +445,50 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
     assert_eq!(data["contributors"][0]["id"], top_contributor.id);
     assert_eq!(data["contributors"][0]["power"], top_contributor.power);
     assert_eq!(
+        data["contributorsConnection"]["totalCount"],
+        baseline.counts.contributors
+    );
+    assert_eq!(
+        data["proposalWithVoters"][0]["proposalId"],
+        latest.proposal_id
+    );
+    assert_eq!(
+        data["proposalWithVoters"][0]["voters"][0]["voter"],
+        latest.voter.voter
+    );
+    assert_eq!(
+        data["proposalWithVoters"][0]["voters"][0]["support"],
+        latest.voter.support
+    );
+    assert_eq!(
+        data["proposalWithVoters"][0]["voters"][0]["weight"],
+        latest.voter.weight
+    );
+    assert_eq!(
+        data["proposalWithVoters"][0]["voters"][0]["reason"],
+        latest.voter.reason
+    );
+    assert_eq!(
+        data["proposalWithVoters"][0]["voters"][0]["params"],
+        json!(latest.voter.params)
+    );
+    assert_eq!(
+        data["proposalsByVoter"][0]["proposalId"],
+        latest.proposal_id
+    );
+    assert_eq!(
+        data["proposalQueueds"].as_array().map(Vec::len),
+        Some(baseline.counts.proposal_queueds as usize)
+    );
+    assert_eq!(
+        data["proposalExecuteds"].as_array().map(Vec::len),
+        Some(baseline.counts.proposal_executeds as usize)
+    );
+    assert_eq!(
+        data["proposalCanceleds"].as_array().map(Vec::len),
+        Some(baseline.counts.proposal_canceleds as usize)
+    );
+    assert_eq!(
         data["delegatesConnection"]["totalCount"],
         baseline.counts.delegates
     );
@@ -402,7 +497,55 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
         baseline.counts.delegate_mappings
     );
 
+    assert_query_shapes_execute(&schema, &baseline).await?;
+
     database.cleanup().await?;
+
+    Ok(())
+}
+
+fn assert_query_shape_names(baseline: &Baseline) {
+    let expected = BTreeSet::from([
+        "proposalTotal",
+        "contributorsTotal",
+        "dataMetricTotal",
+        "globalDataMetric",
+        "latestProposal",
+        "topContributor",
+        "proposalVoters",
+        "proposalsByVoter",
+        "proposalEvents",
+        "delegateTotals",
+    ]);
+    let actual = baseline
+        .query_shapes
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(actual, expected, "unexpected fixture queryShapes keys");
+}
+
+async fn assert_query_shapes_execute(
+    schema: &async_graphql::Schema<
+        graphql::QueryRoot,
+        async_graphql::EmptyMutation,
+        async_graphql::EmptySubscription,
+    >,
+    baseline: &Baseline,
+) -> Result<(), Box<dyn Error>> {
+    for (name, query) in &baseline.query_shapes {
+        let response = schema.execute(Request::new(query.clone())).await;
+        assert!(
+            response.errors.is_empty(),
+            "fixture queryShapes.{name} failed: {:?}",
+            response.errors
+        );
+        assert!(
+            !response.data.into_json()?.is_null(),
+            "fixture queryShapes.{name} returned null data"
+        );
+    }
 
     Ok(())
 }
@@ -581,6 +724,7 @@ async fn seed_proposals(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::
 }
 
 async fn seed_votes(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::Error> {
+    let latest = &baseline.samples.latest_proposal;
     sqlx::query(
         r#"
         INSERT INTO vote_cast (
@@ -612,6 +756,47 @@ async fn seed_votes(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::Erro
     .bind(baseline.scope.start_block)
     .bind(&baseline.samples.latest_proposal.votes_weight_for_sum)
     .bind(baseline.counts.vote_casts)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO vote_cast_group (
+          id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
+          proposal_id, type, voter, ref_proposal_id, support, weight, reason, params,
+          block_number, block_timestamp, transaction_hash
+        ) VALUES (
+          'vote-cast-group:latest-proposal-voter',
+          $1,
+          $2,
+          $3,
+          $3,
+          0,
+          0,
+          format('proposal:%s:%s:%s', $1::int, lower($3), 0),
+          'vote-cast',
+          $4,
+          $5,
+          $6,
+          $7::numeric,
+          $8,
+          $9,
+          $10::numeric,
+          $10::numeric,
+          '0xvotecastgrouplatest'
+        )
+        "#,
+    )
+    .bind(baseline.scope.chain_id)
+    .bind(&baseline.scope.dao_code)
+    .bind(&baseline.scope.governor)
+    .bind(&latest.voter.voter)
+    .bind(&latest.proposal_id)
+    .bind(latest.voter.support)
+    .bind(&latest.voter.weight)
+    .bind(&latest.voter.reason)
+    .bind(&latest.voter.params)
+    .bind(&latest.block_number)
     .execute(pool)
     .await?;
 
