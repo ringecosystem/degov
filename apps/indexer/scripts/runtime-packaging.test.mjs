@@ -37,6 +37,11 @@ assert.match(composeYaml, /^\s+onchain-worker:/m, "compose must define an onchai
 assert.match(composeYaml, /DATALENS_ENDPOINT/, "compose must pass Datalens environment");
 assert.match(
   composeYaml,
+  /DATALENS_CHAINS_JSON/,
+  "compose must pass structured Datalens chain configuration",
+);
+assert.match(
+  composeYaml,
   /DEGOV_INDEXER_DATABASE_URL/,
   "compose must pass the indexer database URL",
 );

@@ -54,7 +54,7 @@ fn init_logging() -> anyhow::Result<()> {
 }
 
 async fn smoke_datalens() -> anyhow::Result<()> {
-    let config = DatalensConfig::from_env().context("load Datalens configuration")?;
+    let config = DatalensConfig::from_env_for_readiness().context("load Datalens configuration")?;
     verify_datalens(&config).await
 }
 

@@ -250,32 +250,11 @@ impl Default for RawDatalensConfig {
 
 impl DatalensConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
-        let raw: RawDatalensConfig =
-            Figment::from(Serialized::defaults(RawDatalensConfig::default()))
-                .merge(Env::raw().only(&[
-                    "DATALENS_ENDPOINT",
-                    "DATALENS_APPLICATION",
-                    "DATALENS_TOKEN",
-                    "DATALENS_TIMEOUT_SECONDS",
-                    "DATALENS_FINALITY",
-                    "DATALENS_CHAIN_FAMILY",
-                    "DATALENS_CHAIN_NAME",
-                    "DATALENS_CHAIN_ID",
-                    "DATALENS_DATASET_FAMILY",
-                    "DATALENS_DATASET_NAME",
-                    "DATALENS_QUERY_BLOCK_RANGE_LIMIT",
-                    "DATALENS_GOVERNOR_ADDRESS",
-                    "DATALENS_GOVERNOR_TOKEN_ADDRESS",
-                    "DATALENS_GOVERNOR_TOKEN_STANDARD",
-                    "DATALENS_TIMELOCK_ADDRESS",
-                    "DATALENS_CHAINS_JSON",
-                    "DEGOV_INDEXER_DAO_CODE",
-                    "DEGOV_INDEXER_START_BLOCK",
-                ]))
-                .extract()
-                .map_err(|error| ConfigError::Load(error.to_string()))?;
+        Self::from_raw(load_raw_from_env()?, DatalensConfigMode::Runtime)
+    }
 
-        Self::try_from(raw)
+    pub fn from_env_for_readiness() -> Result<Self, ConfigError> {
+        Self::from_raw(load_raw_from_env()?, DatalensConfigMode::Readiness)
     }
 
     pub fn sdk_config(&self) -> ClientConfig {
@@ -335,6 +314,18 @@ impl TryFrom<RawDatalensConfig> for DatalensConfig {
     type Error = ConfigError;
 
     fn try_from(raw: RawDatalensConfig) -> Result<Self, Self::Error> {
+        Self::from_raw(raw, DatalensConfigMode::Runtime)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DatalensConfigMode {
+    Runtime,
+    Readiness,
+}
+
+impl DatalensConfig {
+    fn from_raw(raw: RawDatalensConfig, mode: DatalensConfigMode) -> Result<Self, ConfigError> {
         let endpoint = required("DATALENS_ENDPOINT", raw.datalens_endpoint)?
             .trim_end_matches('/')
             .to_owned();
@@ -358,19 +349,40 @@ impl TryFrom<RawDatalensConfig> for DatalensConfig {
             configured_name: non_empty("DATALENS_CHAIN_NAME", raw.datalens_chain_name)?,
             network_id: raw.datalens_chain_id,
         };
-        let dao_contracts = dao_contract_addresses(
-            raw.datalens_governor_address,
-            raw.datalens_governor_token_address,
-            raw.datalens_governor_token_standard,
-            raw.datalens_timelock_address,
-        )?;
-        let chains = datalens_chains(
-            raw.datalens_chains_json,
-            &chain,
-            dao_contracts.as_ref(),
-            raw.degov_indexer_dao_code,
-            raw.degov_indexer_start_block,
-        )?;
+        let has_structured_chains = raw
+            .datalens_chains_json
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false);
+        let (dao_contracts, chains) = match mode {
+            DatalensConfigMode::Readiness => (None, Vec::new()),
+            DatalensConfigMode::Runtime if has_structured_chains => (
+                None,
+                datalens_chains(
+                    raw.datalens_chains_json,
+                    &chain,
+                    None,
+                    raw.degov_indexer_dao_code,
+                    raw.degov_indexer_start_block,
+                )?,
+            ),
+            DatalensConfigMode::Runtime => {
+                let dao_contracts = dao_contract_addresses(
+                    raw.datalens_governor_address,
+                    raw.datalens_governor_token_address,
+                    raw.datalens_governor_token_standard,
+                    raw.datalens_timelock_address,
+                )?;
+                let chains = datalens_chains(
+                    raw.datalens_chains_json,
+                    &chain,
+                    dao_contracts.as_ref(),
+                    raw.degov_indexer_dao_code,
+                    raw.degov_indexer_start_block,
+                )?;
+                (dao_contracts, chains)
+            }
+        };
 
         Ok(Self {
             endpoint,
@@ -390,6 +402,32 @@ impl TryFrom<RawDatalensConfig> for DatalensConfig {
             chains,
         })
     }
+}
+
+fn load_raw_from_env() -> Result<RawDatalensConfig, ConfigError> {
+    Figment::from(Serialized::defaults(RawDatalensConfig::default()))
+        .merge(Env::raw().only(&[
+            "DATALENS_ENDPOINT",
+            "DATALENS_APPLICATION",
+            "DATALENS_TOKEN",
+            "DATALENS_TIMEOUT_SECONDS",
+            "DATALENS_FINALITY",
+            "DATALENS_CHAIN_FAMILY",
+            "DATALENS_CHAIN_NAME",
+            "DATALENS_CHAIN_ID",
+            "DATALENS_DATASET_FAMILY",
+            "DATALENS_DATASET_NAME",
+            "DATALENS_QUERY_BLOCK_RANGE_LIMIT",
+            "DATALENS_GOVERNOR_ADDRESS",
+            "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+            "DATALENS_GOVERNOR_TOKEN_STANDARD",
+            "DATALENS_TIMELOCK_ADDRESS",
+            "DATALENS_CHAINS_JSON",
+            "DEGOV_INDEXER_DAO_CODE",
+            "DEGOV_INDEXER_START_BLOCK",
+        ]))
+        .extract()
+        .map_err(|error| ConfigError::Load(error.to_string()))
 }
 
 fn required(field: &'static str, value: Option<String>) -> Result<String, ConfigError> {
@@ -850,6 +888,54 @@ mod tests {
     }
 
     #[test]
+    fn test_from_env_json_config_ignores_blank_legacy_contract_envs() {
+        with_datalens_env(
+            &[
+                ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com")),
+                ("DATALENS_APPLICATION", Some("degov-live")),
+                ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+                ("DATALENS_GOVERNOR_ADDRESS", Some("")),
+                ("DATALENS_GOVERNOR_TOKEN_ADDRESS", Some("")),
+                ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("")),
+                ("DATALENS_TIMELOCK_ADDRESS", Some("")),
+                (
+                    "DATALENS_CHAINS_JSON",
+                    Some(
+                        r#"[
+                            {
+                                "chainId": 1135,
+                                "networkName": "lisk",
+                                "contracts": [
+                                    {
+                                        "daoCode": "lisk-dao",
+                                        "chainId": 1135,
+                                        "networkName": "lisk",
+                                        "governor": "0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568",
+                                        "governorToken": "0x2eE6Eca46d2406454708a1C80356a6E63b57D404",
+                                        "tokenStandard": "ERC20",
+                                        "timelock": "0x2294A7f24187B84995A2A28112f82f07BE1BceAD",
+                                        "startBlock": 568752
+                                    }
+                                ]
+                            }
+                        ]"#,
+                    ),
+                ),
+            ],
+            || {
+                let config = DatalensConfig::from_env().expect("load json config");
+
+                assert_eq!(config.dao_contracts, None);
+                assert_eq!(config.chains.len(), 1);
+                assert_eq!(
+                    config.chains[0].contracts[0].dao_code.as_deref(),
+                    Some("lisk-dao")
+                );
+            },
+        );
+    }
+
+    #[test]
     fn test_from_env_rejects_multi_chain_contract_missing_start_block() {
         with_datalens_env(
             &[
@@ -887,6 +973,38 @@ mod tests {
                         .to_string()
                         .contains("DATALENS_CHAINS_JSON[0].contracts[0].startBlock")
                 );
+            },
+        );
+    }
+
+    #[test]
+    fn test_from_env_for_readiness_ignores_runtime_only_legacy_contract_fields() {
+        with_datalens_env(
+            &[
+                ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com")),
+                ("DATALENS_APPLICATION", Some("degov-live")),
+                ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+                (
+                    "DATALENS_GOVERNOR_ADDRESS",
+                    Some("0x1111111111111111111111111111111111111111"),
+                ),
+                (
+                    "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                    Some("0x2222222222222222222222222222222222222222"),
+                ),
+                ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("ERC20")),
+                (
+                    "DATALENS_TIMELOCK_ADDRESS",
+                    Some("0x3333333333333333333333333333333333333333"),
+                ),
+                ("DEGOV_INDEXER_START_BLOCK", None),
+            ],
+            || {
+                let config = DatalensConfig::from_env_for_readiness().expect("load config");
+
+                assert_eq!(config.endpoint, "https://datalens.ringdao.com");
+                assert_eq!(config.chains, Vec::new());
+                assert_eq!(config.dao_contracts, None);
             },
         );
     }
