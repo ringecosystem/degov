@@ -1,6 +1,13 @@
 use async_graphql::{
     ComplexObject, Context, EmptyMutation, EmptySubscription, Enum, InputObject, Object,
     Result as GraphqlResult, Schema, SimpleObject,
+    http::{GraphQLPlaygroundConfig, playground_source},
+};
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::{
+    Router,
+    response::{Html, IntoResponse},
+    routing::get,
 };
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder};
 
@@ -15,6 +22,23 @@ pub fn build_schema(pool: PgPool) -> IndexerGraphqlSchema {
     Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
         .data(GraphqlState { pool })
         .finish()
+}
+
+pub fn build_router(schema: IndexerGraphqlSchema) -> Router {
+    Router::new()
+        .route("/graphql", get(graphql_playground).post(graphql_handler))
+        .with_state(schema)
+}
+
+async fn graphql_handler(
+    axum::extract::State(schema): axum::extract::State<IndexerGraphqlSchema>,
+    request: GraphQLRequest,
+) -> GraphQLResponse {
+    schema.execute(request.into_inner()).await.into()
+}
+
+async fn graphql_playground() -> impl IntoResponse {
+    Html(playground_source(GraphQLPlaygroundConfig::new("/graphql")))
 }
 
 #[derive(Default)]
@@ -37,7 +61,7 @@ impl QueryRoot {
     async fn proposal_canceleds(
         &self,
         ctx: &Context<'_>,
-        where_: Option<ProposalEventWhereInput>,
+        where_: Option<ProposalCanceledWhereInput>,
         order_by: Option<Vec<EventOrderByInput>>,
         offset: Option<i32>,
         limit: Option<i32>,
@@ -56,7 +80,7 @@ impl QueryRoot {
     async fn proposal_executeds(
         &self,
         ctx: &Context<'_>,
-        where_: Option<ProposalEventWhereInput>,
+        where_: Option<ProposalExecutedWhereInput>,
         order_by: Option<Vec<EventOrderByInput>>,
         offset: Option<i32>,
         limit: Option<i32>,
@@ -75,7 +99,7 @@ impl QueryRoot {
     async fn proposal_queueds(
         &self,
         ctx: &Context<'_>,
-        where_: Option<ProposalEventWhereInput>,
+        where_: Option<ProposalQueuedWhereInput>,
         order_by: Option<Vec<EventOrderByInput>>,
         offset: Option<i32>,
         limit: Option<i32>,
@@ -212,7 +236,9 @@ impl QueryRoot {
         &self,
         ctx: &Context<'_>,
         where_: Option<ProposalWhereInput>,
+        order_by: Option<Vec<ProposalOrderByInput>>,
     ) -> GraphqlResult<Connection> {
+        let _ = order_by;
         Ok(Connection {
             total_count: count_proposals(pool(ctx)?, where_.as_ref()).await?,
         })
@@ -222,7 +248,9 @@ impl QueryRoot {
         &self,
         ctx: &Context<'_>,
         where_: Option<ContributorWhereInput>,
+        order_by: Option<Vec<ContributorOrderByInput>>,
     ) -> GraphqlResult<Connection> {
+        let _ = order_by;
         Ok(Connection {
             total_count: count_contributors(pool(ctx)?, where_.as_ref()).await?,
         })
@@ -232,7 +260,9 @@ impl QueryRoot {
         &self,
         ctx: &Context<'_>,
         where_: Option<DelegateWhereInput>,
+        order_by: Option<Vec<DelegateOrderByInput>>,
     ) -> GraphqlResult<Connection> {
+        let _ = order_by;
         Ok(Connection {
             total_count: count_delegates(pool(ctx)?, where_.as_ref()).await?,
         })
@@ -242,7 +272,9 @@ impl QueryRoot {
         &self,
         ctx: &Context<'_>,
         where_: Option<DelegateMappingWhereInput>,
+        order_by: Option<Vec<DelegateMappingOrderByInput>>,
     ) -> GraphqlResult<Connection> {
+        let _ = order_by;
         Ok(Connection {
             total_count: count_delegate_mappings(pool(ctx)?, where_.as_ref()).await?,
         })
@@ -308,9 +340,24 @@ impl Proposal {
             FROM vote_cast_group
             "#,
         );
-        query.push(" WHERE ");
-        let mut has_condition = false;
-        push_column_eq(&mut query, &mut has_condition, "", "proposal_id", &self.id);
+        query
+            .push(" WHERE (proposal_id = ")
+            .push_bind(&self.id)
+            .push(" OR (ref_proposal_id = ")
+            .push_bind(&self.proposal_id);
+        if let Some(chain_id) = self.chain_id {
+            query.push(" AND chain_id = ").push_bind(chain_id);
+        }
+        if let Some(governor_address) = &self.governor_address {
+            query
+                .push(" AND governor_address = ")
+                .push_bind(governor_address);
+        }
+        if let Some(dao_code) = &self.dao_code {
+            query.push(" AND dao_code = ").push_bind(dao_code);
+        }
+        query.push("))");
+        let mut has_condition = true;
         push_vote_cast_group_where(&mut query, &mut has_condition, where_.as_ref());
         push_vote_cast_group_order(&mut query, order_by.as_deref());
         push_page(&mut query, offset, limit);
@@ -483,13 +530,36 @@ pub struct VoteCastGroupWhereInput {
     or: Option<Vec<VoteCastGroupWhereInput>>,
 }
 
-#[derive(Clone, Debug, Default, InputObject)]
-#[graphql(rename_fields = "camelCase")]
-pub struct ProposalEventWhereInput {
-    #[graphql(flatten)]
-    scope: ScopeWhereInput,
-    #[graphql(name = "proposalId_eq")]
-    proposal_id_eq: Option<String>,
+macro_rules! proposal_event_where_input {
+    ($name:ident, $graphql_name:literal) => {
+        #[derive(Clone, Debug, Default, InputObject)]
+        #[graphql(name = $graphql_name, rename_fields = "camelCase")]
+        pub struct $name {
+            #[graphql(flatten)]
+            scope: ScopeWhereInput,
+            #[graphql(name = "proposalId_eq")]
+            proposal_id_eq: Option<String>,
+        }
+
+        impl ProposalEventWhere for $name {
+            fn scope(&self) -> &ScopeWhereInput {
+                &self.scope
+            }
+
+            fn proposal_id_eq(&self) -> Option<&String> {
+                self.proposal_id_eq.as_ref()
+            }
+        }
+    };
+}
+
+proposal_event_where_input!(ProposalCanceledWhereInput, "ProposalCanceledWhereInput");
+proposal_event_where_input!(ProposalExecutedWhereInput, "ProposalExecutedWhereInput");
+proposal_event_where_input!(ProposalQueuedWhereInput, "ProposalQueuedWhereInput");
+
+trait ProposalEventWhere {
+    fn scope(&self) -> &ScopeWhereInput;
+    fn proposal_id_eq(&self) -> Option<&String>;
 }
 
 #[derive(Clone, Debug, Default, InputObject)]
@@ -654,7 +724,7 @@ async fn count_proposals(pool: &PgPool, where_: Option<&ProposalWhereInput>) -> 
 async fn query_events<T>(
     pool: &PgPool,
     table: &'static str,
-    where_: Option<&ProposalEventWhereInput>,
+    where_: Option<&impl ProposalEventWhere>,
     order_by: Option<&[EventOrderByInput]>,
     offset: Option<i32>,
     limit: Option<i32>,
@@ -858,13 +928,13 @@ fn push_vote_cast_group_filters<'a>(
 
 fn push_event_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
-    where_: Option<&'a ProposalEventWhereInput>,
+    where_: Option<&'a impl ProposalEventWhere>,
 ) {
     if let Some(where_) = where_ {
         query.push(" WHERE ");
         let mut has_condition = false;
-        push_scope_filters(query, &mut has_condition, &where_.scope, "");
-        if let Some(proposal_id) = &where_.proposal_id_eq {
+        push_scope_filters(query, &mut has_condition, where_.scope(), "");
+        if let Some(proposal_id) = where_.proposal_id_eq() {
             push_column_eq(query, &mut has_condition, "", "proposal_id", proposal_id);
         }
         if !has_condition {

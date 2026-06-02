@@ -4,11 +4,15 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use std::time::Duration;
+
 use async_graphql::Request;
 use degov_datalens_indexer::graphql;
+use reqwest::Client;
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
+use tokio::time::timeout;
 
 const SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -96,7 +100,13 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
 
     let request = Request::new(
         r#"
-            query Compatibility($where: ProposalWhereInput, $voter: String) {
+            query Compatibility(
+              $where: ProposalWhereInput
+              $voter: String
+              $canceledWhere: ProposalCanceledWhereInput
+              $executedWhere: ProposalExecutedWhereInput
+              $queuedWhere: ProposalQueuedWhereInput
+            ) {
               proposals(where: $where, orderBy: [blockTimestamp_DESC_NULLS_LAST], limit: 5) {
                 id
                 proposalId
@@ -123,9 +133,9 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                   transactionHash
                 }
               }
-              proposalCanceleds(where: { proposalId_eq: "101" }) { proposalId blockTimestamp }
-              proposalExecuteds(where: { proposalId_eq: "101" }) { proposalId blockTimestamp }
-              proposalQueueds(where: { proposalId_eq: "101" }) { proposalId etaSeconds }
+              proposalCanceleds(where: $canceledWhere) { proposalId blockTimestamp }
+              proposalExecuteds(where: $executedWhere) { proposalId blockTimestamp }
+              proposalQueueds(where: $queuedWhere) { proposalId etaSeconds }
               dataMetrics(where: { id_eq: "metric:lisk-dao" }) {
                 proposalsCount
                 votesCount
@@ -151,10 +161,10 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 power
               }
               squidStatus { height finalizedHeight hash finalizedHash }
-              proposalsConnection(where: $where) { totalCount }
-              contributorsConnection { totalCount }
-              delegatesConnection { totalCount }
-              delegateMappingsConnection { totalCount }
+              proposalsConnection(where: $where, orderBy: id_ASC) { totalCount }
+              contributorsConnection(orderBy: id_ASC) { totalCount }
+              delegatesConnection(where: { fromDelegate_eq: "0xdelegator" }, orderBy: [id_ASC]) { totalCount }
+              delegateMappingsConnection(where: { from_eq: "0xdelegator" }, orderBy: [id_ASC]) { totalCount }
             }
             "#,
     )
@@ -165,6 +175,9 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 "description_containsInsensitive": "launch",
                 "voters_some": { "support_eq": 1 }
             },
+            "canceledWhere": { "proposalId_eq": "101" },
+            "executedWhere": { "proposalId_eq": "101" },
+            "queuedWhere": { "proposalId_eq": "101" },
             "voter": "0xvoter1"
     })));
     let response = schema.execute(request).await;
@@ -179,6 +192,8 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     assert_eq!(data["proposals"][0]["proposalId"], "101");
     assert_eq!(data["proposals"][0]["blockTimestamp"], "1700000100");
     assert_eq!(data["proposals"][0]["metricsVotesWeightForSum"], "100");
+    // PR #768 changes proposal id/FK semantics; keep this nested voter assertion
+    // in the revalidation set after that branch lands.
     assert_eq!(data["proposals"][0]["voters"][0]["voter"], "0xvoter1");
     assert_eq!(data["proposals"][0]["voters"][0]["weight"], "100");
     assert_eq!(data["proposalQueueds"][0]["etaSeconds"], "1700000200");
@@ -193,6 +208,82 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     assert_eq!(data["delegatesConnection"]["totalCount"], 1);
     assert_eq!(data["delegateMappingsConnection"]["totalCount"], 1);
 
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_accepts_current_web_event_where_type_names()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(
+            Request::new(
+                r#"
+                query EventWhereTypes(
+                  $canceledWhere: ProposalCanceledWhereInput
+                  $executedWhere: ProposalExecutedWhereInput
+                  $queuedWhere: ProposalQueuedWhereInput
+                ) {
+                  proposalCanceleds(where: $canceledWhere) { proposalId }
+                  proposalExecuteds(where: $executedWhere) { proposalId }
+                  proposalQueueds(where: $queuedWhere) { proposalId etaSeconds }
+                }
+                "#,
+            )
+            .variables(async_graphql::Variables::from_json(json!({
+                "canceledWhere": { "proposalId_eq": "101" },
+                "executedWhere": { "proposalId_eq": "101" },
+                "queuedWhere": { "proposalId_eq": "101" }
+            }))),
+        )
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["proposalCanceleds"][0]["proposalId"], "101");
+    assert_eq!(data["proposalExecuteds"][0]["proposalId"], "101");
+    assert_eq!(data["proposalQueueds"][0]["etaSeconds"], "1700000200");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_endpoint_serves_post_requests() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let app = graphql::build_router(schema);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let endpoint = format!("http://{}/graphql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response: serde_json::Value = timeout(
+        Duration::from_secs(5),
+        Client::new()
+            .post(endpoint)
+            .json(&json!({
+                "query": "query { squidStatus { height finalizedHeight hash finalizedHash } }"
+            }))
+            .send(),
+    )
+    .await??
+    .json()
+    .await?;
+
+    assert_eq!(response["data"]["squidStatus"]["height"], 900);
+    assert_eq!(response["data"]["squidStatus"]["finalizedHeight"], 900);
+
+    server.abort();
     database.cleanup().await?;
 
     Ok(())

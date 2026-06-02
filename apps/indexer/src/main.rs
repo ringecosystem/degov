@@ -1,21 +1,13 @@
 use std::{env, future, net::SocketAddr, time::Duration};
 
 use anyhow::Context;
-use async_graphql::http::{GraphQLPlaygroundConfig, playground_source};
-use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::{
-    Router,
-    response::{Html, IntoResponse},
-    routing::get,
-};
 use clap::{Parser, Subcommand};
 use degov_datalens_indexer::{
     BatchReadPlanConfig, ChainContracts, ChainReadMethod, DaoEventDecoder, DatalensConfig,
-    DatalensNativeClient, EvmRpcChainTool, IndexerCheckpointIdentity, IndexerGraphqlSchema,
-    IndexerRunner, IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshWorker,
-    OnchainRefreshWorkerConfig, PostgresIndexerRunnerStore, ProposalProjectionContext,
-    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext, graphql,
-    verify_datalens_service,
+    DatalensNativeClient, EvmRpcChainTool, IndexerCheckpointIdentity, IndexerRunner,
+    IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
+    PostgresIndexerRunnerStore, ProposalProjectionContext, TimelockProjectionContext,
+    TokenProjectionContext, VoteProjectionContext, graphql, verify_datalens_service,
 };
 use sqlx::{Executor, postgres::PgPoolOptions};
 use tokio::task;
@@ -242,10 +234,7 @@ async fn run_graphql() -> anyhow::Result<()> {
         .connect(&database_url)
         .await
         .context("connect to DeGov indexer Postgres")?;
-    let schema = graphql::build_schema(pool);
-    let app = Router::new()
-        .route("/graphql", get(graphql_playground).post(graphql_handler))
-        .with_state(schema);
+    let app = graphql::build_router(graphql::build_schema(pool));
     let listener = tokio::net::TcpListener::bind(bind_address)
         .await
         .with_context(|| format!("bind DeGov indexer GraphQL endpoint {bind_address}"))?;
@@ -259,17 +248,6 @@ async fn run_graphql() -> anyhow::Result<()> {
     axum::serve(listener, app)
         .await
         .context("serve DeGov indexer GraphQL endpoint")
-}
-
-async fn graphql_handler(
-    axum::extract::State(schema): axum::extract::State<IndexerGraphqlSchema>,
-    request: GraphQLRequest,
-) -> GraphQLResponse {
-    schema.execute(request.into_inner()).await.into()
-}
-
-async fn graphql_playground() -> impl IntoResponse {
-    Html(playground_source(GraphQLPlaygroundConfig::new("/graphql")))
 }
 
 fn parse_bind_address(endpoint: &str) -> anyhow::Result<SocketAddr> {
