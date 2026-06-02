@@ -4,7 +4,8 @@ use crate::{
     BatchReadPlanConfig, CallExecutedEvent, CallScheduledEvent, ChainContracts,
     ChainReadExecutionReport, ChainReadMethod, ChainReadPlan, ChainReadPlanBuilder,
     ChainReadReason, ChainReadValue, DecodedTimelockEvent, NormalizedEvmLog, ParameterChangeEvent,
-    ProposalProjectionBatch, RoleAccountEvent, RoleAdminChangedEvent,
+    ProposalActionWrite, ProposalProjectionBatch, ProposalQueuedWrite, ProposalWrite,
+    RoleAccountEvent, RoleAdminChangedEvent,
 };
 
 pub const TIMELOCK_POSTGRES_ADAPTER_GAP: &str = "Timelock projection write models and repository boundary are implemented; the concrete Postgres adapter is intentionally deferred.";
@@ -59,14 +60,20 @@ struct TimelockProposalActionKey {
 
 impl TimelockProposalLinkContext {
     pub fn from_proposal_batch(batch: &ProposalProjectionBatch) -> Self {
-        let proposals = batch
-            .proposals
-            .iter()
+        Self::from_proposal_rows(batch.proposals.iter(), batch.proposal_actions.iter())
+    }
+
+    pub fn from_proposal_rows<'a>(
+        proposals: impl IntoIterator<Item = &'a ProposalWrite>,
+        proposal_actions: impl IntoIterator<Item = &'a ProposalActionWrite>,
+    ) -> Self {
+        let proposals = proposals
+            .into_iter()
             .map(|proposal| (proposal.id.as_str(), proposal))
             .collect::<BTreeMap<_, _>>();
         let mut context = Self::default();
 
-        for action in &batch.proposal_actions {
+        for action in proposal_actions {
             let Some(proposal) = proposals.get(action.proposal_ref.as_str()) else {
                 continue;
             };
@@ -90,13 +97,86 @@ impl TimelockProposalLinkContext {
                 value: action.value.clone(),
                 calldata: normalize_identifier(&action.calldata),
             };
-            context
-                .action_lookup
-                .insert(link.key(), context.proposal_actions.len());
-            context.proposal_actions.push(link);
+            context.insert_action_link(link);
         }
 
         context
+    }
+
+    pub fn from_queued_proposal_rows<'a>(
+        proposal_queued: impl IntoIterator<Item = &'a ProposalQueuedWrite>,
+        proposals: impl IntoIterator<Item = &'a ProposalWrite>,
+        proposal_actions: impl IntoIterator<Item = &'a ProposalActionWrite>,
+    ) -> Self {
+        let proposals = proposals
+            .into_iter()
+            .map(|proposal| {
+                (
+                    (
+                        proposal.chain_id,
+                        normalize_identifier(&proposal.governor_address),
+                        proposal.proposal_id.as_str(),
+                    ),
+                    proposal,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut actions_by_proposal_ref: BTreeMap<&str, Vec<&ProposalActionWrite>> =
+            BTreeMap::new();
+        for action in proposal_actions {
+            actions_by_proposal_ref
+                .entry(action.proposal_ref.as_str())
+                .or_default()
+                .push(action);
+        }
+        let mut context = Self::default();
+
+        for queued in proposal_queued {
+            let key = (
+                queued.common.chain_id,
+                normalize_identifier(&queued.common.governor_address),
+                queued.proposal_id.as_str(),
+            );
+            let Some(proposal) = proposals.get(&key) else {
+                continue;
+            };
+            let Some(actions) = actions_by_proposal_ref.get(proposal.id.as_str()) else {
+                continue;
+            };
+            for action in actions {
+                context.insert_action_link(TimelockProposalActionLink {
+                    chain_id: action.chain_id,
+                    governor_address: normalize_identifier(&action.governor_address),
+                    proposal_ref: action.proposal_ref.clone(),
+                    raw_proposal_id: proposal.proposal_id.clone(),
+                    queue_transaction_hash: normalize_identifier(&queued.common.transaction_hash),
+                    execution_transaction_hash: proposal
+                        .executed_transaction_hash
+                        .as_deref()
+                        .map(normalize_identifier),
+                    queue_eta: Some(queued.eta_seconds.clone()),
+                    proposal_action_id: action.id.clone(),
+                    proposal_action_index: action.action_index,
+                    target: normalize_identifier(&action.target),
+                    value: action.value.clone(),
+                    calldata: normalize_identifier(&action.calldata),
+                });
+            }
+        }
+
+        context
+    }
+
+    pub fn insert_action_link(&mut self, link: TimelockProposalActionLink) {
+        self.action_lookup
+            .insert(link.key(), self.proposal_actions.len());
+        self.proposal_actions.push(link);
+    }
+
+    pub fn extend(&mut self, other: Self) {
+        for link in other.proposal_actions {
+            self.insert_action_link(link);
+        }
     }
 
     fn scheduled_call_link(

@@ -344,6 +344,10 @@ impl InMemoryProposalProjectionRepository {
     pub fn proposals(&self) -> &BTreeMap<String, ProposalWrite> {
         &self.proposals
     }
+
+    pub fn proposal_actions(&self) -> &BTreeMap<String, ProposalActionWrite> {
+        &self.proposal_actions
+    }
 }
 
 impl ProposalProjectionRepository for InMemoryProposalProjectionRepository {

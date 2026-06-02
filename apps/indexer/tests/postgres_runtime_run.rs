@@ -13,10 +13,12 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    BatchReadPlanConfig, ChainContracts, DecodedGovernorEvent, IndexerProjectionBatch,
-    IndexerRunnerStore, IndexerRunnerTransaction, NormalizedEvmLog, PostgresIndexerRunnerStore,
-    ProposalCreatedEvent, ProposalExtendedEvent, ProposalProjectionContext,
-    ProposalProjectionEvent, ProposalQueuedEvent, project_proposal_events,
+    BatchReadPlanConfig, CallScheduledEvent, ChainContracts, DecodedGovernorEvent,
+    DecodedTimelockEvent, IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction,
+    NormalizedEvmLog, PostgresIndexerRunnerStore, ProposalCreatedEvent, ProposalExtendedEvent,
+    ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
+    TimelockProjectionContext, TimelockProjectionEvent, TimelockProposalLinkContext,
+    project_proposal_events, project_timelock_events, project_timelock_events_with_proposal_links,
 };
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
@@ -237,6 +239,106 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
     assert_eq!(action.get::<String, _>("proposal_ref"), raw_ref);
 
     database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_backfills_timelock_proposal_links_on_conflict() -> Result<(), Box<dyn Error>>
+{
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let proposal_batch = project_proposal_events(
+        &proposal_projection_context(),
+        vec![
+            ProposalProjectionEvent {
+                log: normalized_log("evm:1:2:0xtx20:0:0", 2, 0, 0),
+                event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                    proposal_id: "42".to_owned(),
+                    proposer: PROPOSER.to_owned(),
+                    targets: vec![TARGET.to_owned()],
+                    values: vec!["1".to_owned()],
+                    signatures: vec!["upgrade()".to_owned()],
+                    calldatas: vec!["0x1234".to_owned()],
+                    vote_start: "100".to_owned(),
+                    vote_end: "200".to_owned(),
+                    description: "Proposal title\n\nProposal body".to_owned(),
+                }),
+            },
+            ProposalProjectionEvent {
+                log: normalized_log("evm:1:4:0xtx40:0:0", 4, 0, 0),
+                event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                    proposal_id: "42".to_owned(),
+                    eta_seconds: "1234".to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+    let scheduled = TimelockProjectionEvent {
+        log: timelock_normalized_log("evm:1:4:0xtx40:0:1", 4, 0, 1),
+        event: DecodedTimelockEvent::CallScheduled(CallScheduledEvent {
+            id: OPERATION_ID.to_owned(),
+            index: "0".to_owned(),
+            target: TARGET.to_owned(),
+            value: "1".to_owned(),
+            data: "0x1234".to_owned(),
+            predecessor: ZERO_OPERATION_ID.to_owned(),
+            delay: "60".to_owned(),
+        }),
+    };
+    let unlinked_timelock_batch =
+        project_timelock_events(&timelock_projection_context(), vec![scheduled.clone()])
+            .map_err(|error| format!("unlinked timelock projection failed: {error:?}"))?;
+    let proposal_links = TimelockProposalLinkContext::from_proposal_batch(&proposal_batch);
+    let linked_timelock_batch = project_timelock_events_with_proposal_links(
+        &timelock_projection_context(),
+        &proposal_links,
+        vec![scheduled],
+    )
+    .map_err(|error| format!("linked timelock projection failed: {error:?}"))?;
+
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(proposal_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            timelock: Some(unlinked_timelock_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            timelock: Some(linked_timelock_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    assert_timelock_projection_state(&database.pool).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+fn apply_projection_batch(
+    store: &mut PostgresIndexerRunnerStore,
+    batch: IndexerProjectionBatch,
+) -> Result<(), Box<dyn Error>> {
+    let mut transaction = store
+        .begin_transaction()
+        .map_err(|error| format!("begin transaction failed: {error}"))?;
+    transaction
+        .apply_projection_batch(&batch)
+        .map_err(|error| format!("apply batch failed: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("commit transaction failed: {error}"))?;
 
     Ok(())
 }
@@ -818,6 +920,23 @@ fn proposal_projection_context() -> ProposalProjectionContext {
     }
 }
 
+fn timelock_projection_context() -> TimelockProjectionContext {
+    TimelockProjectionContext {
+        dao_code: "demo-dao".to_owned(),
+        governor_address: GOVERNOR.to_owned(),
+        timelock_address: TIMELOCK.to_owned(),
+        contracts: ChainContracts {
+            governor: GOVERNOR.to_owned(),
+            governor_token: TOKEN.to_owned(),
+            timelock: TIMELOCK.to_owned(),
+        },
+        read_plan_config: BatchReadPlanConfig {
+            max_concurrency: 4,
+            multicall_batch_size: 10,
+        },
+    }
+}
+
 fn normalized_log(
     id: &str,
     block_number: u64,
@@ -839,6 +958,17 @@ fn normalized_log(
         removed: false,
         raw_payload: json!({ "block_number": block_number }),
     }
+}
+
+fn timelock_normalized_log(
+    id: &str,
+    block_number: u64,
+    transaction_index: u64,
+    log_index: u64,
+) -> NormalizedEvmLog {
+    let mut log = normalized_log(id, block_number, transaction_index, log_index);
+    log.address = TIMELOCK.to_owned();
+    log
 }
 
 fn uint(value: u64) -> Token {
@@ -872,6 +1002,8 @@ const DELEGATE: &str = "0x0000000000000000000000000000000000000c02";
 const RECEIVER: &str = "0x0000000000000000000000000000000000000c03";
 const ZERO_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
 const OPERATION_ID: &str = "0x0101010101010101010101010101010101010101010101010101010101010101";
+const ZERO_OPERATION_ID: &str =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
 const PROPOSAL_CREATED: &str = "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0";
 const PROPOSAL_QUEUED: &str = "0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892";
 const VOTE_CAST: &str = "0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4";

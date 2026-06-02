@@ -10,9 +10,10 @@ use degov_datalens_indexer::{
     InMemoryProposalProjectionRepository, InMemoryTimelockProjectionRepository,
     InMemoryTokenProjectionRepository, InMemoryVoteProjectionRepository, IndexerCheckpoint,
     IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts,
-    IndexerRunnerOptions, IndexerRunnerStore, IndexerRunnerTransaction, ProposalProjectionContext,
-    ProposalProjectionRepository, QueryLimitConfig, SecretString, TimelockProjectionContext,
-    TimelockProjectionRepository, TokenProjectionContext, TokenProjectionRepository,
+    IndexerRunnerOptions, IndexerRunnerStore, IndexerRunnerTransaction, ProposalProjectionBatch,
+    ProposalProjectionContext, ProposalProjectionRepository, QueryLimitConfig, SecretString,
+    TimelockProjectionContext, TimelockProjectionEvent, TimelockProjectionRepository,
+    TimelockProposalLinkContext, TokenProjectionContext, TokenProjectionRepository,
     VoteProjectionContext, VoteProjectionRepository,
 };
 use ethabi::{Token, encode};
@@ -93,6 +94,62 @@ fn test_native_runner_does_not_advance_checkpoint_when_raw_decode_fails() {
     assert_eq!(runner.store().checkpoint.processed_height, None);
     assert_eq!(runner.store().commit_count, 0);
     assert_eq!(runner.store().vote_repository.data_metric().votes_count, 0);
+}
+
+#[test]
+fn test_native_runner_links_timelock_to_proposal_actions_from_previous_range() {
+    let mut options = options();
+    options.datalens_config.query_limits.block_range_limit = 2;
+    let mut runner = native_runner_with_options(
+        vec![
+            vec![proposal_created_row()],
+            vec![],
+            vec![],
+            vec![proposal_queued_row()],
+            vec![],
+            vec![call_scheduled_row()],
+        ],
+        CapturingStore::new(identity(), 1),
+        options,
+    );
+
+    runner.run_to_target(4).expect("runner succeeds");
+
+    let proposal = runner
+        .store()
+        .proposal_repository
+        .proposals()
+        .values()
+        .next()
+        .expect("proposal");
+    let operation = runner
+        .store()
+        .timelock_repository
+        .timelock_operations()
+        .values()
+        .next()
+        .expect("timelock operation");
+    assert_eq!(
+        operation.proposal_ref.as_deref(),
+        Some(proposal.id.as_str())
+    );
+    assert_eq!(operation.proposal_id.as_deref(), Some(proposal.id.as_str()));
+
+    let call = runner
+        .store()
+        .timelock_repository
+        .timelock_calls()
+        .values()
+        .next()
+        .expect("timelock call");
+    assert_eq!(call.proposal_ref.as_deref(), Some(proposal.id.as_str()));
+    assert_eq!(call.proposal_id.as_deref(), Some(proposal.id.as_str()));
+    assert_eq!(
+        call.proposal_action_id.as_deref(),
+        Some(format!("{}:action:0", proposal.id).as_str())
+    );
+    assert_eq!(call.proposal_action_index, Some(0));
+    assert_eq!(runner.store().commit_count, 2);
 }
 
 fn assert_projected_domains(store: &CapturingStore) {
@@ -209,8 +266,16 @@ fn assert_onchain_refresh_plans(store: &CapturingStore) {
 type NativeRunner = IndexerRunner<ScriptedReader, CapturingStore, DaoEventDecoder>;
 
 fn native_runner(pages: Vec<Vec<Value>>, store: CapturingStore) -> NativeRunner {
+    native_runner_with_options(pages, store, options())
+}
+
+fn native_runner_with_options(
+    pages: Vec<Vec<Value>>,
+    store: CapturingStore,
+    options: IndexerRunnerOptions,
+) -> NativeRunner {
     IndexerRunner::new(
-        options(),
+        options,
         contexts(),
         ScriptedReader {
             rows: VecDeque::from(pages),
@@ -289,6 +354,26 @@ impl IndexerRunnerStore for CapturingStore {
             token_repository: None,
             timelock_repository: None,
         })
+    }
+
+    fn timelock_proposal_link_context(
+        &mut self,
+        _context: &TimelockProjectionContext,
+        _events: &[TimelockProjectionEvent],
+        proposal: Option<&ProposalProjectionBatch>,
+    ) -> Result<TimelockProposalLinkContext, Self::Error> {
+        let mut links = TimelockProposalLinkContext::from_proposal_rows(
+            self.proposal_repository.proposals().values(),
+            self.proposal_repository.proposal_actions().values(),
+        );
+        if let Some(proposal) = proposal {
+            links.extend(TimelockProposalLinkContext::from_queued_proposal_rows(
+                proposal.proposal_queued.iter(),
+                self.proposal_repository.proposals().values(),
+                self.proposal_repository.proposal_actions().values(),
+            ));
+        }
+        Ok(links)
     }
 }
 
