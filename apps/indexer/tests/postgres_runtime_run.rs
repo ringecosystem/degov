@@ -13,10 +13,10 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    BatchReadPlanConfig, CallScheduledEvent, ChainContracts, DecodedGovernorEvent,
-    DecodedTimelockEvent, IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction,
-    NormalizedEvmLog, PostgresIndexerRunnerStore, ProposalCreatedEvent, ProposalExtendedEvent,
-    ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
+    BatchReadPlanConfig, CallExecutedEvent, CallScheduledEvent, ChainContracts,
+    DecodedGovernorEvent, DecodedTimelockEvent, IndexerProjectionBatch, IndexerRunnerStore,
+    IndexerRunnerTransaction, NormalizedEvmLog, PostgresIndexerRunnerStore, ProposalCreatedEvent,
+    ProposalExtendedEvent, ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
     TimelockProjectionContext, TimelockProjectionEvent, TimelockProposalLinkContext,
     project_proposal_events, project_timelock_events, project_timelock_events_with_proposal_links,
 };
@@ -290,6 +290,20 @@ async fn test_postgres_backfills_timelock_proposal_links_on_conflict() -> Result
     let unlinked_timelock_batch =
         project_timelock_events(&timelock_projection_context(), vec![scheduled.clone()])
             .map_err(|error| format!("unlinked timelock projection failed: {error:?}"))?;
+    let executed_timelock_batch = project_timelock_events(
+        &timelock_projection_context(),
+        vec![TimelockProjectionEvent {
+            log: timelock_normalized_log("evm:1:5:0xtx50:0:0", 5, 0, 0),
+            event: DecodedTimelockEvent::CallExecuted(CallExecutedEvent {
+                id: OPERATION_ID.to_owned(),
+                index: "0".to_owned(),
+                target: TARGET.to_owned(),
+                value: "1".to_owned(),
+                data: "0x1234".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("executed timelock projection failed: {error:?}"))?;
     let proposal_links = TimelockProposalLinkContext::from_proposal_batch(&proposal_batch);
     let linked_timelock_batch = project_timelock_events_with_proposal_links(
         &timelock_projection_context(),
@@ -309,6 +323,13 @@ async fn test_postgres_backfills_timelock_proposal_links_on_conflict() -> Result
         &mut store,
         IndexerProjectionBatch {
             timelock: Some(unlinked_timelock_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            timelock: Some(executed_timelock_batch),
             ..IndexerProjectionBatch::default()
         },
     )?;
