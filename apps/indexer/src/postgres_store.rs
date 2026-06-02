@@ -1063,7 +1063,7 @@ async fn upsert_vote_cast_group(
             reason, params, block_number, block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7,
+            $1, $2, $3, $4, $5, $6, $7, $8,
             COALESCE(
               (
                 SELECT proposal.id

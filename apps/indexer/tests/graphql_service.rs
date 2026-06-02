@@ -145,7 +145,7 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 memberCount
               }
               dataMetricsConnection(where: { votesCount_eq: 1 }, orderBy: id_ASC) { totalCount }
-              contributors(where: { OR: [{ id_eq: "0xvoter1" }, { power_lt: "50" }] }, orderBy: [power_DESC]) {
+              contributors(where: { OR: [{ id_eq: "0xvoter1" }, { power_lt: 50 }] }, orderBy: [power_DESC]) {
                 id
                 power
                 lastVoteTimestamp
@@ -610,13 +610,27 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         ) VALUES
           ('global', $1, 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 2, 2),
           ('0000000800-proposal', $1, 1135, 'lisk-dao', '0xgovernor', 0, 0, 0, 0, 0, 0, 150, 2, 1),
-          ('0000000805-vote', $1, 1135, 'lisk-dao', '0xgovernor', 1, 0, 1, 100, 0, 0, 150, 2, 0);
+          ('0000000805-vote', $1, 1135, 'lisk-dao', '0xgovernor', 1, 0, 1, 100, 0, 0, 150, 2, 0)
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
         UPDATE data_metric
         SET contract_address = '0xgovernor', log_index = 1, transaction_index = 0
-        WHERE contract_set_id = $1 AND id = '0000000800-proposal';
+        WHERE contract_set_id = $1 AND id = '0000000800-proposal'
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
         UPDATE data_metric
         SET contract_address = '0xgovernor', log_index = 3, transaction_index = 0
-        WHERE contract_set_id = $1 AND id = '0000000805-vote';
+        WHERE contract_set_id = $1 AND id = '0000000805-vote'
         "#,
     )
     .bind(CONTRACT_SET_ID)

@@ -967,6 +967,7 @@ fn lifecycle_stub(common: &ProposalEventCommon, proposal_ref: &str, state: &str)
     let clock_mode = "blocknumber".to_owned();
 
     ProposalWrite {
+        contract_set_id: common.contract_set_id.clone(),
         id: proposal_ref.to_owned(),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),

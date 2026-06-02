@@ -630,6 +630,7 @@ fn context() -> TimelockProjectionContext {
 
 fn proposal_context() -> ProposalProjectionContext {
     ProposalProjectionContext {
+        contract_set_id: "dao=unit-dao|chain=1|governor=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|token=0x1111111111111111111111111111111111111111".to_owned(),
         dao_code: "unit-dao".to_owned(),
         governor_address: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
         contracts: ChainContracts {

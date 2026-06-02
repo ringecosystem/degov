@@ -810,12 +810,11 @@ async fn seed_votes(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::Erro
           $5,
           $6,
           $7,
-          $8,
-          $9::numeric,
+          $8::numeric,
+          $9,
           $10,
-          $11,
-          $12::numeric,
-          $12::numeric,
+          $11::numeric,
+          $11::numeric,
           '0xvotecastgrouplatest'
         )
         "#,
@@ -1024,17 +1023,16 @@ async fn seed_token_projection_rows(pool: &PgPool, baseline: &Baseline) -> Resul
     sqlx::query(
         r#"
         INSERT INTO token_balance_checkpoint (
-          id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address, log_index,
+          id, chain_id, dao_code, governor_address, token_address, contract_address, log_index,
           transaction_index, account, previous_balance, new_balance, delta, source, cause,
           block_number, block_timestamp, transaction_hash
         )
-        SELECT format('token-balance-checkpoint:%s', i), $1, $2, $3, $4, $5, $5, i, 0,
+        SELECT format('token-balance-checkpoint:%s', i), $1, $2, $3, $4, $4, i, 0,
           format('0xbalance%040s', i), i, i + 1, 1, 'token-transfer', 'transfer',
-          $6 + i, $6 + i, format('0xtokenbalancecheckpoint%042s', i)
-        FROM generate_series(0, $7::int - 1) AS i
+          $5 + i, $5 + i, format('0xtokenbalancecheckpoint%042s', i)
+        FROM generate_series(0, $6::int - 1) AS i
         "#,
     )
-    .bind(&contract_set_id)
     .bind(baseline.scope.chain_id)
     .bind(&baseline.scope.dao_code)
     .bind(&baseline.scope.governor)
