@@ -54,11 +54,12 @@ pub enum CheckpointError {
     InvalidBlockHeight,
 
     #[error(
-        "checkpoint row is missing for DAO {dao_code}, chain {chain_id}, stream {stream_id}, data source {data_source_version}"
+        "checkpoint row is missing for DAO {dao_code}, chain {chain_id}, contract set {contract_set_id}, stream {stream_id}, data source {data_source_version}"
     )]
     MissingCheckpoint {
         dao_code: String,
         chain_id: i32,
+        contract_set_id: String,
         stream_id: String,
         data_source_version: String,
     },

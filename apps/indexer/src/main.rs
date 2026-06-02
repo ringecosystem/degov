@@ -65,7 +65,9 @@ async fn run_indexer() -> anyhow::Result<()> {
     let contract_set = config
         .select_contract_set(&runtime.dao_code)
         .context("select Datalens indexer contract set")?;
+    let contract_set_id = config.contract_set_scope_id(&runtime.dao_code, &contract_set);
     let runtime = runtime.with_start_block(contract_set.start_block)?;
+    let runtime = runtime.with_contract_set_scope(contract_set_id);
     let config = config.for_contract_set(&contract_set);
     let contracts = contract_set.addresses();
 
@@ -263,6 +265,7 @@ struct IndexerRuntimeConfig {
     dao_code: String,
     start_block: i64,
     target_height: i64,
+    checkpoint_contract_set_id: String,
     checkpoint_stream_id: String,
     data_source_version: String,
     query_max_attempts: u32,
@@ -298,6 +301,7 @@ impl IndexerRuntimeConfig {
             dao_code,
             start_block: 0,
             target_height,
+            checkpoint_contract_set_id: String::new(),
             checkpoint_stream_id: optional_env("DEGOV_INDEXER_STREAM_ID")?
                 .unwrap_or_else(|| "datalens-native".to_owned()),
             data_source_version: optional_env("DEGOV_INDEXER_DATA_SOURCE_VERSION")?
@@ -325,6 +329,11 @@ impl IndexerRuntimeConfig {
         Ok(self)
     }
 
+    fn with_contract_set_scope(mut self, contract_set_id: String) -> Self {
+        self.checkpoint_contract_set_id = contract_set_id;
+        self
+    }
+
     fn options(
         &self,
         config: &DatalensConfig,
@@ -341,6 +350,7 @@ impl IndexerRuntimeConfig {
             checkpoint_identity: IndexerCheckpointIdentity {
                 dao_code: self.dao_code.clone(),
                 chain_id,
+                contract_set_id: self.checkpoint_contract_set_id.clone(),
                 stream_id: self.checkpoint_stream_id.clone(),
                 data_source_version: self.data_source_version.clone(),
             },

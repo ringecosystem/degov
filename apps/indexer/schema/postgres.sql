@@ -15,6 +15,7 @@
 CREATE TABLE IF NOT EXISTS degov_indexer_checkpoint (
   dao_code TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
+  contract_set_id TEXT NOT NULL,
   stream_id TEXT NOT NULL,
   data_source_version TEXT NOT NULL,
   next_block NUMERIC(78, 0) NOT NULL,
@@ -24,11 +25,11 @@ CREATE TABLE IF NOT EXISTS degov_indexer_checkpoint (
   last_error TEXT,
   lock_owner TEXT,
   locked_at TIMESTAMPTZ,
-  PRIMARY KEY (dao_code, chain_id, stream_id, data_source_version)
+  PRIMARY KEY (dao_code, chain_id, contract_set_id, stream_id, data_source_version)
 );
 
 CREATE INDEX IF NOT EXISTS degov_indexer_checkpoint_processed_height_idx
-  ON degov_indexer_checkpoint (chain_id, dao_code, processed_height);
+  ON degov_indexer_checkpoint (chain_id, dao_code, contract_set_id, processed_height);
 
 -- Temporary compatibility bridge for existing sync-lag/synced-percentage
 -- consumers that still read SQD's built-in squidStatus field.
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS degov_indexer_reconcile_task (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT degov_indexer_reconcile_task_unique_subject UNIQUE NULLS NOT DISTINCT (
     chain_id,
+    dao_code,
     governor_address,
     task_type,
     subject_id
@@ -213,6 +215,7 @@ CREATE TABLE IF NOT EXISTS onchain_refresh_task (
   updated_at NUMERIC(78, 0) NOT NULL,
   CONSTRAINT onchain_refresh_task_account_unique UNIQUE NULLS NOT DISTINCT (
     chain_id,
+    dao_code,
     governor_address,
     token_address,
     account

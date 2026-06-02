@@ -455,6 +455,7 @@ fn identity() -> IndexerCheckpointIdentity {
     IndexerCheckpointIdentity {
         dao_code: "demo-dao".to_owned(),
         chain_id: 1,
+        contract_set_id: "demo-scope".to_owned(),
         stream_id: "datalens-native".to_owned(),
         data_source_version: "test".to_owned(),
     }

@@ -125,6 +125,8 @@ impl fmt::Display for PostgresIndexerRunnerStoreError {
     }
 }
 
+impl std::error::Error for PostgresIndexerRunnerStoreError {}
+
 impl From<sqlx::Error> for PostgresIndexerRunnerStoreError {
     fn from(error: sqlx::Error) -> Self {
         Self::new(format!("Postgres runner store error: {error}"))
@@ -859,8 +861,8 @@ async fn upsert_contributor_vote_signal(
             delegates_count_effective
          )
          VALUES (
-            $1, $2, $3, $4, NULL, $5, $6, $7, $8::NUMERIC(78, 0), $9::NUMERIC(78, 0), $10,
-            $8::NUMERIC(78, 0), $9::NUMERIC(78, 0), 0::NUMERIC(78, 0), NULL, 0, 0
+            $1, $2, $3, $4, $5, $6, $7, $8, $9::NUMERIC(78, 0), $10::NUMERIC(78, 0), $11,
+            $9::NUMERIC(78, 0), $10::NUMERIC(78, 0), 0::NUMERIC(78, 0), NULL, 0, 0
          )
          ON CONFLICT (id) DO UPDATE
          SET last_vote_block_number = GREATEST(
@@ -873,10 +875,17 @@ async fn upsert_contributor_vote_signal(
              ),
              transaction_hash = EXCLUDED.transaction_hash",
     )
-    .bind(&row.voter)
+    .bind(contributor_ref(
+        row.chain_id,
+        &row.dao_code,
+        &row.governor_address,
+        &row.token_address,
+        &row.voter,
+    ))
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
+    .bind(&row.token_address)
     .bind(&row.contract_address)
     .bind(u64_to_i32(
         row.log_index,
@@ -1256,7 +1265,7 @@ async fn apply_delegate_changed_operation(
     if !is_zero_address(to_delegate) {
         ensure_contributor(transaction, to_delegate, common).await?;
     }
-    let previous_mapping = read_delegate_mapping(transaction, delegator).await?;
+    let previous_mapping = read_delegate_mapping(transaction, common, delegator).await?;
     let is_noop = previous_mapping
         .as_ref()
         .is_some_and(|mapping| mapping.to == to_delegate && from_delegate == to_delegate);
@@ -1287,7 +1296,7 @@ async fn apply_delegate_changed_operation(
         )
         .await?;
         sqlx::query("DELETE FROM delegate_mapping WHERE id = $1")
-            .bind(delegator)
+            .bind(delegate_mapping_ref(common, delegator))
             .execute(&mut **transaction)
             .await?;
     }
@@ -1372,7 +1381,7 @@ async fn apply_transfer_operation(
     standard: GovernanceTokenStandard,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let value = transfer_units(value, standard);
-    if let Some(mapping) = read_delegate_mapping(transaction, from).await? {
+    if let Some(mapping) = read_delegate_mapping(transaction, common, from).await? {
         apply_delegate_delta(
             transaction,
             common,
@@ -1382,7 +1391,7 @@ async fn apply_transfer_operation(
         )
         .await?;
     }
-    if let Some(mapping) = read_delegate_mapping(transaction, to).await? {
+    if let Some(mapping) = read_delegate_mapping(transaction, common, to).await? {
         apply_delegate_delta(transaction, common, &mapping.from, &mapping.to, &value).await?;
     }
 
@@ -1400,7 +1409,7 @@ async fn apply_delegate_delta(
         return Ok(());
     }
 
-    let previous_mapping_power = read_delegate_mapping(transaction, from_delegate)
+    let previous_mapping_power = read_delegate_mapping(transaction, common, from_delegate)
         .await?
         .filter(|mapping| mapping.to == to_delegate)
         .map(|mapping| mapping.power)
@@ -1416,7 +1425,7 @@ async fn apply_delegate_delta(
                block_timestamp = $11::NUMERIC(78, 0), transaction_hash = $12
            WHERE id = $1 AND "to" = $13"#,
     )
-    .bind(from_delegate)
+    .bind(delegate_mapping_ref(common, from_delegate))
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1474,7 +1483,7 @@ async fn upsert_delegate_snapshot(
     if is_zero_address(to_delegate) {
         return Ok(());
     }
-    let id = delegate_ref(from_delegate, to_delegate);
+    let id = delegate_ref(common, from_delegate, to_delegate);
     if is_current && !is_nonzero_decimal(power) {
         sqlx::query("DELETE FROM delegate WHERE id = $1")
             .bind(&id)
@@ -1566,7 +1575,7 @@ async fn upsert_delegate_mapping(
              block_timestamp = EXCLUDED.block_timestamp,
              transaction_hash = EXCLUDED.transaction_hash"#,
     )
-    .bind(from)
+    .bind(delegate_mapping_ref(common, from))
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1614,7 +1623,13 @@ async fn apply_delegate_count_delta(
              delegates_count_effective = GREATEST(delegates_count_effective + $13, 0)
          WHERE id = $1",
     )
-    .bind(delegate)
+    .bind(contributor_ref(
+        common.chain_id,
+        &common.dao_code,
+        &common.governor_address,
+        &common.token_address,
+        delegate,
+    ))
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1662,7 +1677,13 @@ async fn ensure_contributor(
          )
          ON CONFLICT (id) DO NOTHING",
     )
-    .bind(account)
+    .bind(contributor_ref(
+        common.chain_id,
+        &common.dao_code,
+        &common.governor_address,
+        &common.token_address,
+        account,
+    ))
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1723,8 +1744,8 @@ async fn upsert_onchain_refresh_task(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let status = &row.status;
     let task_id = format!(
-        "{}:{}:{}:{}",
-        status.chain_id, status.governor, status.governor_token, status.account
+        "{}:{}:{}:{}:{}",
+        status.dao_code, status.chain_id, status.governor, status.governor_token, status.account
     );
     let reason = if status.reason.is_empty() {
         "token-activity".to_owned()
@@ -2148,6 +2169,7 @@ struct DelegateRollingMatch {
 
 async fn read_delegate_mapping(
     transaction: &mut Transaction<'_, Postgres>,
+    common: &TokenEventCommon,
     from: &str,
 ) -> Result<Option<DelegateMappingSnapshot>, PostgresIndexerRunnerStoreError> {
     let row = sqlx::query(
@@ -2155,7 +2177,7 @@ async fn read_delegate_mapping(
            FROM delegate_mapping
            WHERE id = $1"#,
     )
-    .bind(from)
+    .bind(delegate_mapping_ref(common, from))
     .fetch_optional(&mut **transaction)
     .await?;
 
@@ -2298,8 +2320,59 @@ fn transfer_units(value: &str, standard: GovernanceTokenStandard) -> String {
     }
 }
 
-fn delegate_ref(from_delegate: &str, to_delegate: &str) -> String {
-    format!("{from_delegate}_{to_delegate}")
+fn contributor_ref(
+    chain_id: i32,
+    dao_code: &str,
+    governor_address: &str,
+    token_address: &str,
+    account: &str,
+) -> String {
+    scoped_account_ref(chain_id, dao_code, governor_address, token_address, account)
+}
+
+fn delegate_mapping_ref(common: &TokenEventCommon, from: &str) -> String {
+    scoped_account_ref(
+        common.chain_id,
+        &common.dao_code,
+        &common.governor_address,
+        &common.token_address,
+        from,
+    )
+}
+
+fn delegate_ref(common: &TokenEventCommon, from_delegate: &str, to_delegate: &str) -> String {
+    format!(
+        "{}_{}",
+        scoped_account_ref(
+            common.chain_id,
+            &common.dao_code,
+            &common.governor_address,
+            &common.token_address,
+            from_delegate,
+        ),
+        normalize_scope_value(to_delegate)
+    )
+}
+
+fn scoped_account_ref(
+    chain_id: i32,
+    dao_code: &str,
+    governor_address: &str,
+    token_address: &str,
+    account: &str,
+) -> String {
+    format!(
+        "{}:{}:{}:{}:{}",
+        normalize_scope_value(dao_code),
+        chain_id,
+        normalize_scope_value(governor_address),
+        normalize_scope_value(token_address),
+        normalize_scope_value(account)
+    )
+}
+
+fn normalize_scope_value(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
 }
 
 fn is_zero_address(value: &str) -> bool {

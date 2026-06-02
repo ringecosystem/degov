@@ -6,6 +6,7 @@ use crate::CheckpointError;
 pub struct IndexerCheckpointIdentity {
     pub dao_code: String,
     pub chain_id: i32,
+    pub contract_set_id: String,
     pub stream_id: String,
     pub data_source_version: String,
 }
@@ -51,16 +52,19 @@ impl CheckpointRepository {
             "INSERT INTO degov_indexer_checkpoint (
                 dao_code,
                 chain_id,
+                contract_set_id,
                 stream_id,
                 data_source_version,
                 next_block,
                 updated_at
              )
-             VALUES ($1, $2, $3, $4, $5::NUMERIC(78, 0), now())
-             ON CONFLICT (dao_code, chain_id, stream_id, data_source_version) DO NOTHING",
+             VALUES ($1, $2, $3, $4, $5, $6::NUMERIC(78, 0), now())
+             ON CONFLICT (dao_code, chain_id, contract_set_id, stream_id, data_source_version)
+             DO NOTHING",
         )
         .bind(&identity.dao_code)
         .bind(identity.chain_id)
+        .bind(&identity.contract_set_id)
         .bind(&identity.stream_id)
         .bind(&identity.data_source_version)
         .bind(start_block)
@@ -78,6 +82,7 @@ impl CheckpointRepository {
             "SELECT
                 dao_code,
                 chain_id,
+                contract_set_id,
                 stream_id,
                 data_source_version,
                 next_block::BIGINT AS next_block,
@@ -90,11 +95,13 @@ impl CheckpointRepository {
              FROM degov_indexer_checkpoint
              WHERE dao_code = $1
                AND chain_id = $2
-               AND stream_id = $3
-               AND data_source_version = $4",
+               AND contract_set_id = $3
+               AND stream_id = $4
+               AND data_source_version = $5",
         )
         .bind(&identity.dao_code)
         .bind(identity.chain_id)
+        .bind(&identity.contract_set_id)
         .bind(&identity.stream_id)
         .bind(&identity.data_source_version)
         .fetch_optional(&self.pool)
@@ -113,11 +120,13 @@ impl CheckpointRepository {
              FROM degov_indexer_checkpoint
              WHERE dao_code = $1
                AND chain_id = $2
-               AND stream_id = $3
-               AND data_source_version = $4",
+               AND contract_set_id = $3
+               AND stream_id = $4
+               AND data_source_version = $5",
         )
         .bind(&identity.dao_code)
         .bind(identity.chain_id)
+        .bind(&identity.contract_set_id)
         .bind(&identity.stream_id)
         .bind(&identity.data_source_version)
         .fetch_optional(&self.pool)
@@ -143,29 +152,31 @@ impl CheckpointRepository {
         let result = sqlx::query(
             "UPDATE degov_indexer_checkpoint
              SET processed_height = GREATEST(
-                   COALESCE(processed_height, $5::NUMERIC(78, 0)),
-                   $5::NUMERIC(78, 0)
+                   COALESCE(processed_height, $6::NUMERIC(78, 0)),
+                   $6::NUMERIC(78, 0)
                  ),
                  next_block = GREATEST(
                    next_block,
-                   ($5 + 1)::NUMERIC(78, 0)
+                   ($6 + 1)::NUMERIC(78, 0)
                  ),
                  target_height = CASE
-                   WHEN $6::BIGINT IS NULL THEN target_height
+                   WHEN $7::BIGINT IS NULL THEN target_height
                    ELSE GREATEST(
-                     COALESCE(target_height, $6::NUMERIC(78, 0)),
-                     $6::NUMERIC(78, 0)
+                     COALESCE(target_height, $7::NUMERIC(78, 0)),
+                     $7::NUMERIC(78, 0)
                    )
                  END,
                  last_error = NULL,
                  updated_at = now()
              WHERE dao_code = $1
                AND chain_id = $2
-               AND stream_id = $3
-               AND data_source_version = $4",
+               AND contract_set_id = $3
+               AND stream_id = $4
+               AND data_source_version = $5",
         )
         .bind(&identity.dao_code)
         .bind(identity.chain_id)
+        .bind(&identity.contract_set_id)
         .bind(&identity.stream_id)
         .bind(&identity.data_source_version)
         .bind(processed_height)
@@ -227,6 +238,7 @@ fn checkpoint_from_row(row: &sqlx::postgres::PgRow) -> Result<IndexerCheckpoint,
         identity: IndexerCheckpointIdentity {
             dao_code: row.try_get("dao_code")?,
             chain_id: row.try_get("chain_id")?,
+            contract_set_id: row.try_get("contract_set_id")?,
             stream_id: row.try_get("stream_id")?,
             data_source_version: row.try_get("data_source_version")?,
         },
@@ -244,6 +256,7 @@ fn missing_checkpoint(identity: &IndexerCheckpointIdentity) -> CheckpointError {
     CheckpointError::MissingCheckpoint {
         dao_code: identity.dao_code.clone(),
         chain_id: identity.chain_id,
+        contract_set_id: identity.contract_set_id.clone(),
         stream_id: identity.stream_id.clone(),
         data_source_version: identity.data_source_version.clone(),
     }
@@ -258,6 +271,7 @@ mod tests {
             identity: IndexerCheckpointIdentity {
                 dao_code: "demo-dao".to_owned(),
                 chain_id: 1,
+                contract_set_id: "demo-scope".to_owned(),
                 stream_id: "governor-and-token-logs".to_owned(),
                 data_source_version: "datalens-v1".to_owned(),
             },

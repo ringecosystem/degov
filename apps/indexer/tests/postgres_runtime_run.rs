@@ -325,9 +325,11 @@ async fn assert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
          FROM degov_indexer_checkpoint
          WHERE dao_code = 'demo-dao'
            AND chain_id = 1
+           AND contract_set_id = $1
            AND stream_id = 'datalens-native'
            AND data_source_version = 'datalens-v1'",
     )
+    .bind(CONTRACT_SET_ID)
     .fetch_one(pool)
     .await?;
 
@@ -342,8 +344,14 @@ async fn assert_token_projection_state(pool: &PgPool) -> Result<(), sqlx::Error>
     let mapping = sqlx::query(
         r#"SELECT "from", "to", power::TEXT AS power
            FROM delegate_mapping
-           WHERE id = $1"#,
+           WHERE chain_id = 1
+             AND dao_code = 'demo-dao'
+             AND governor_address = $1
+             AND token_address = $2
+             AND "from" = $3"#,
     )
+    .bind(GOVERNOR)
+    .bind(TOKEN)
     .bind(DELEGATOR)
     .fetch_one(pool)
     .await?;
@@ -355,9 +363,17 @@ async fn assert_token_projection_state(pool: &PgPool) -> Result<(), sqlx::Error>
     let delegate = sqlx::query(
         "SELECT from_delegate, to_delegate, power::TEXT AS power, is_current
          FROM delegate
-         WHERE id = $1",
+         WHERE chain_id = 1
+           AND dao_code = 'demo-dao'
+           AND governor_address = $1
+           AND token_address = $2
+           AND from_delegate = $3
+           AND to_delegate = $4",
     )
-    .bind(format!("{DELEGATOR}_{DELEGATE}"))
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(DELEGATOR)
+    .bind(DELEGATE)
     .fetch_one(pool)
     .await?;
 
@@ -370,9 +386,15 @@ async fn assert_token_projection_state(pool: &PgPool) -> Result<(), sqlx::Error>
         "SELECT power::TEXT AS power, balance::TEXT AS balance,
                 delegates_count_all, delegates_count_effective
          FROM contributor
-         WHERE id = $1",
+         WHERE chain_id = 1
+           AND dao_code = 'demo-dao'
+           AND governor_address = $1
+           AND token_address = $2
+           AND id LIKE $3",
     )
-    .bind(DELEGATE)
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(format!("%:{DELEGATE}"))
     .fetch_one(pool)
     .await?;
 
@@ -601,6 +623,7 @@ fn topic_uint(value: u64) -> String {
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
 const TOKEN: &str = "0x2222222222222222222222222222222222222222";
 const TIMELOCK: &str = "0x3333333333333333333333333333333333333333";
+const CONTRACT_SET_ID: &str = "dao=demo-dao|chain=1|datalens_chain=ethereum|dataset=evm.logs|governor=0x1111111111111111111111111111111111111111|token=0x2222222222222222222222222222222222222222|token_standard=erc20|timelock=0x3333333333333333333333333333333333333333";
 const PROPOSER: &str = "0x0000000000000000000000000000000000000a01";
 const TARGET: &str = "0x0000000000000000000000000000000000000a02";
 const VOTER: &str = "0x0000000000000000000000000000000000000b01";

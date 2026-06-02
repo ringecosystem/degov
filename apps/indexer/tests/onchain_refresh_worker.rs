@@ -316,6 +316,85 @@ async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<()
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contributor()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor_with_scope(
+        &database.pool,
+        scoped_contributor_id("demo-dao", 46, GOVERNOR, TOKEN, ACCOUNT_ONE),
+        46,
+        "demo-dao",
+        GOVERNOR,
+        TOKEN,
+        ACCOUNT_ONE,
+        "3",
+        Some("4"),
+    )
+    .await?;
+    seed_contributor_with_scope(
+        &database.pool,
+        scoped_contributor_id("other-dao", 46, GOVERNOR, TOKEN, ACCOUNT_ONE),
+        46,
+        "other-dao",
+        GOVERNOR,
+        TOKEN,
+        ACCOUNT_ONE,
+        "31",
+        Some("41"),
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        true,
+        true,
+    )
+    .await?;
+
+    let reader = MockOnchainRefreshReader::new([(
+        "task-one",
+        OnchainRefreshReadValue {
+            task_id: "task-one".to_owned(),
+            balance: Some("17".to_owned()),
+            power: Some("11".to_owned()),
+        },
+    )]);
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            max_attempts: 3,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.completed, 1);
+    assert_eq!(
+        contributor_values_by_scope(&database.pool, "demo-dao", ACCOUNT_ONE).await?,
+        ("11".to_owned(), Some("17".to_owned()))
+    );
+    assert_eq!(
+        contributor_values_by_scope(&database.pool, "other-dao", ACCOUNT_ONE).await?,
+        ("31".to_owned(), Some("41".to_owned()))
+    );
+    assert_table_count(&database.pool, "contributor", 2).await?;
+    assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
+    assert_balance_checkpoint(&database.pool, ACCOUNT_ONE, "4", "17", "13").await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 struct MockOnchainRefreshReader {
     values: BTreeMap<String, OnchainRefreshReadValue>,
@@ -366,6 +445,31 @@ async fn seed_contributor(
     power: &str,
     balance: Option<&str>,
 ) -> Result<(), sqlx::Error> {
+    seed_contributor_with_scope(
+        pool,
+        scoped_contributor_id("demo-dao", 46, GOVERNOR, TOKEN, account),
+        46,
+        "demo-dao",
+        GOVERNOR,
+        TOKEN,
+        account,
+        power,
+        balance,
+    )
+    .await
+}
+
+async fn seed_contributor_with_scope(
+    pool: &PgPool,
+    id: String,
+    chain_id: i32,
+    dao_code: &str,
+    governor: &str,
+    token: &str,
+    account: &str,
+    power: &str,
+    balance: Option<&str>,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO contributor (
             id, chain_id, dao_code, governor_address, token_address, contract_address,
@@ -373,13 +477,16 @@ async fn seed_contributor(
             power, balance, delegates_count_all, delegates_count_effective
          )
          VALUES (
-            $1, 46, 'demo-dao', $2, $3, $3, 0, 0, 10::NUMERIC(78, 0),
-            1000::NUMERIC(78, 0), '0xseed', $4::NUMERIC(78, 0), $5::NUMERIC(78, 0), 0, 0
+            $1, $2, $3, $4, $5, $5, 0, 0, 10::NUMERIC(78, 0),
+            1000::NUMERIC(78, 0), $6, $7::NUMERIC(78, 0), $8::NUMERIC(78, 0), 0, 0
          )",
     )
+    .bind(id)
+    .bind(chain_id)
+    .bind(dao_code)
+    .bind(governor)
+    .bind(token)
     .bind(account)
-    .bind(GOVERNOR)
-    .bind(TOKEN)
     .bind(power)
     .bind(balance)
     .execute(pool)
@@ -485,7 +592,36 @@ async fn contributor_values(
          FROM contributor
          WHERE id = $1",
     )
-    .bind(account)
+    .bind(scoped_contributor_id(
+        "demo-dao", 46, GOVERNOR, TOKEN, account,
+    ))
+    .fetch_one(pool)
+    .await?;
+
+    Ok((
+        row.get::<String, _>("power"),
+        row.get::<Option<String>, _>("balance"),
+    ))
+}
+
+async fn contributor_values_by_scope(
+    pool: &PgPool,
+    dao_code: &str,
+    account: &str,
+) -> Result<(String, Option<String>), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT power::TEXT AS power, balance::TEXT AS balance
+         FROM contributor
+         WHERE dao_code = $1
+           AND chain_id = 46
+           AND governor_address = $2
+           AND token_address = $3
+           AND id LIKE $4",
+    )
+    .bind(dao_code)
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(format!("%:{account}"))
     .fetch_one(pool)
     .await?;
 
@@ -651,6 +787,16 @@ fn unique_schema_name() -> String {
         millis,
         sequence
     )
+}
+
+fn scoped_contributor_id(
+    dao_code: &str,
+    chain_id: i32,
+    governor: &str,
+    token: &str,
+    account: &str,
+) -> String {
+    format!("{dao_code}:{chain_id}:{governor}:{token}:{account}")
 }
 
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";

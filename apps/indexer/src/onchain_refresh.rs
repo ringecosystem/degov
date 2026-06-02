@@ -261,7 +261,7 @@ where
 
         let mut transaction = self.pool.begin().await?;
 
-        let previous = read_contributor_refresh_values(&mut transaction, &task.account).await?;
+        let previous = read_contributor_refresh_values(&mut transaction, task).await?;
         upsert_contributor_refresh(&mut transaction, task, value).await?;
         insert_refresh_checkpoints(&mut transaction, task, value, previous).await?;
         refresh_data_metric(&mut transaction, task).await?;
@@ -624,7 +624,7 @@ async fn upsert_contributor_refresh(
              power = CASE WHEN $9 THEN EXCLUDED.power ELSE contributor.power END,
              balance = CASE WHEN $11 THEN EXCLUDED.balance ELSE contributor.balance END",
     )
-    .bind(&task.account)
+    .bind(contributor_ref(task))
     .bind(task.chain_id)
     .bind(&task.dao_code)
     .bind(&task.governor_address)
@@ -650,14 +650,14 @@ struct ContributorRefreshValues {
 
 async fn read_contributor_refresh_values(
     transaction: &mut Transaction<'_, Postgres>,
-    account: &str,
+    task: &OnchainRefreshTask,
 ) -> Result<ContributorRefreshValues, sqlx::Error> {
     let row = sqlx::query(
         "SELECT power::TEXT AS power, balance::TEXT AS balance
          FROM contributor
          WHERE id = $1",
     )
-    .bind(account)
+    .bind(contributor_ref(task))
     .fetch_optional(&mut **transaction)
     .await?;
 
@@ -845,6 +845,17 @@ fn onchain_refresh_checkpoint_scope(task: &OnchainRefreshTask) -> String {
         task.token_address,
         task.account,
         task.last_seen_block_number,
+    )
+}
+
+fn contributor_ref(task: &OnchainRefreshTask) -> String {
+    format!(
+        "{}:{}:{}:{}:{}",
+        normalize_identifier(task.dao_code.as_deref().unwrap_or_default()),
+        task.chain_id,
+        normalize_identifier(&task.governor_address),
+        normalize_identifier(&task.token_address),
+        normalize_identifier(&task.account)
     )
 }
 

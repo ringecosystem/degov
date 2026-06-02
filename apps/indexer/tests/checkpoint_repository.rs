@@ -6,7 +6,12 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    CheckpointRepository, IndexerCheckpointIdentity, plan_next_checkpoint_range,
+    BatchReadPlanConfig, ChainContracts, ChainReadMethod, ChainReadPlanBuilder,
+    CheckpointRepository, DelegateChangedWrite, GovernanceTokenStandard, IndexerCheckpointIdentity,
+    IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction,
+    PostgresIndexerRunnerStore, PowerFreshnessState, PowerReconcileContext, PowerReconcileMetrics,
+    PowerReconcilePlan, TokenEventCommon, TokenProjectionBatch, TokenProjectionOperation,
+    TokenTransferWrite, plan_next_checkpoint_range,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -114,8 +119,16 @@ fn identity() -> IndexerCheckpointIdentity {
     IndexerCheckpointIdentity {
         dao_code: "demo-dao".to_owned(),
         chain_id: 1,
+        contract_set_id: "demo-scope".to_owned(),
         stream_id: "governor-and-token-logs".to_owned(),
         data_source_version: "datalens-v1".to_owned(),
+    }
+}
+
+fn identity_with_scope(contract_set_id: &str) -> IndexerCheckpointIdentity {
+    IndexerCheckpointIdentity {
+        contract_set_id: contract_set_id.to_owned(),
+        ..identity()
     }
 }
 
@@ -220,6 +233,133 @@ async fn test_checkpoint_restart_resumes_from_committed_next_block() -> Result<(
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_checkpoint_contract_set_scope_keeps_same_chain_stream_rows_distinct()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let repository = CheckpointRepository::new(database.pool.clone());
+    let first = identity_with_scope("dao=demo-dao|chain=1|governor=0x1111|token=0x2222");
+    let second = identity_with_scope("dao=demo-dao|chain=1|governor=0x3333|token=0x4444");
+
+    repository.read_or_create(&first, 100).await?;
+    repository.read_or_create(&second, 900).await?;
+
+    let mut transaction = database.pool.begin().await?;
+    repository
+        .advance_after_projection(&mut transaction, &first, 109, Some(120))
+        .await?;
+    transaction.commit().await?;
+
+    let first_checkpoint = repository.read_or_create(&first, 100).await?;
+    let second_checkpoint = repository.read_or_create(&second, 900).await?;
+    let row_count: i64 = sqlx::query(
+        "SELECT count(*)::BIGINT
+         FROM degov_indexer_checkpoint
+         WHERE dao_code = $1
+           AND chain_id = $2
+           AND stream_id = $3
+           AND data_source_version = $4",
+    )
+    .bind(&first.dao_code)
+    .bind(first.chain_id)
+    .bind(&first.stream_id)
+    .bind(&first.data_source_version)
+    .fetch_one(&database.pool)
+    .await?
+    .get(0);
+
+    assert_eq!(row_count, 2);
+    assert_eq!(first_checkpoint.next_block, 110);
+    assert_eq!(first_checkpoint.processed_height, Some(109));
+    assert_eq!(second_checkpoint.next_block, 900);
+    assert_eq!(second_checkpoint.processed_height, None);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_checkpoint_schema_primary_key_includes_contract_set_scope()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let columns = sqlx::query(
+        "SELECT a.attname
+         FROM pg_index i
+         JOIN pg_class c ON c.oid = i.indrelid
+         JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
+         WHERE c.relname = 'degov_indexer_checkpoint'
+           AND i.indisprimary
+         ORDER BY array_position(i.indkey, a.attnum)",
+    )
+    .fetch_all(&database.pool)
+    .await?
+    .into_iter()
+    .map(|row| row.get::<String, _>("attname"))
+    .collect::<Vec<_>>();
+
+    assert_eq!(
+        columns,
+        vec![
+            "dao_code",
+            "chain_id",
+            "contract_set_id",
+            "stream_id",
+            "data_source_version",
+        ]
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_state_keeps_overlapping_delegate_accounts_distinct()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+
+    write_token_batch(&mut store, "demo-dao", GOVERNOR_ONE, TOKEN_ONE, 1).await?;
+    write_token_batch(&mut store, "other-dao", GOVERNOR_TWO, TOKEN_TWO, 10).await?;
+
+    let contributor_count: i64 = sqlx::query(
+        "SELECT count(*)::BIGINT
+         FROM contributor",
+    )
+    .fetch_one(&database.pool)
+    .await?
+    .get(0);
+    let delegate_count: i64 = sqlx::query(
+        "SELECT count(*)::BIGINT
+         FROM delegate
+         WHERE from_delegate = $1 AND to_delegate = $2",
+    )
+    .bind(DELEGATOR)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?
+    .get(0);
+    let mapping_count: i64 = sqlx::query(
+        r#"SELECT count(*)::BIGINT
+           FROM delegate_mapping
+           WHERE "from" = $1 AND "to" = $2"#,
+    )
+    .bind(DELEGATOR)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?
+    .get(0);
+
+    assert_eq!(contributor_count, 2);
+    assert_eq!(delegate_count, 2);
+    assert_eq!(mapping_count, 2);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_checkpoint_duplicate_range_replay_is_idempotent() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let repository = CheckpointRepository::new(database.pool.clone());
@@ -284,3 +424,113 @@ async fn assert_legacy_processor_status_is_empty(pool: &PgPool) -> Result<(), sq
 
     Ok(())
 }
+
+async fn write_token_batch(
+    store: &mut PostgresIndexerRunnerStore,
+    dao_code: &str,
+    governor: &str,
+    token: &str,
+    block_number: u64,
+) -> Result<(), Box<dyn Error>> {
+    let common = TokenEventCommon {
+        chain_id: 1,
+        dao_code: dao_code.to_owned(),
+        governor_address: governor.to_owned(),
+        token_address: token.to_owned(),
+        contract_address: token.to_owned(),
+        log_index: block_number,
+        transaction_index: 0,
+        block_number: block_number.to_string(),
+        block_timestamp: Some((block_number * 1000).to_string()),
+        transaction_hash: format!("0xtx{block_number}"),
+    };
+    let delegate_changed_id = format!("{dao_code}-delegate-changed");
+    let transfer_id = format!("{dao_code}-transfer");
+    let token = TokenProjectionBatch {
+        event_order: Vec::new(),
+        delegate_changed: vec![DelegateChangedWrite {
+            id: delegate_changed_id.clone(),
+            common: common.clone(),
+            delegator: DELEGATOR.to_owned(),
+            from_delegate: ZERO_ADDRESS.to_owned(),
+            to_delegate: DELEGATE.to_owned(),
+        }],
+        delegate_votes_changed: Vec::new(),
+        token_transfers: vec![TokenTransferWrite {
+            id: transfer_id.clone(),
+            common: common.clone(),
+            from: ZERO_ADDRESS.to_owned(),
+            to: DELEGATOR.to_owned(),
+            value: "75".to_owned(),
+            standard: "erc20".to_owned(),
+        }],
+        delegate_rollings: Vec::new(),
+        operations: vec![
+            TokenProjectionOperation::DelegateChanged {
+                id: delegate_changed_id,
+                common: common.clone(),
+                delegator: DELEGATOR.to_owned(),
+                from_delegate: ZERO_ADDRESS.to_owned(),
+                to_delegate: DELEGATE.to_owned(),
+            },
+            TokenProjectionOperation::Transfer {
+                id: transfer_id,
+                common,
+                from: ZERO_ADDRESS.to_owned(),
+                to: DELEGATOR.to_owned(),
+                value: "75".to_owned(),
+                standard: GovernanceTokenStandard::Erc20,
+            },
+        ],
+        reconcile_plan: empty_reconcile_plan(dao_code, governor, token),
+    };
+    let batch = IndexerProjectionBatch {
+        proposal: None,
+        vote: None,
+        token: Some(token),
+        timelock: None,
+    };
+
+    let mut transaction = store.begin_transaction()?;
+    transaction.apply_projection_batch(&batch)?;
+    transaction.commit()?;
+
+    Ok(())
+}
+
+fn empty_reconcile_plan(dao_code: &str, governor: &str, token: &str) -> PowerReconcilePlan {
+    let contracts = ChainContracts {
+        governor: governor.to_owned(),
+        governor_token: token.to_owned(),
+        timelock: TIMELOCK.to_owned(),
+    };
+    let context = PowerReconcileContext {
+        dao_code: dao_code.to_owned(),
+        chain_id: 1,
+        contracts: contracts.clone(),
+        from_block: 0,
+        to_block: 0,
+        target_height: None,
+        read_plan_config: BatchReadPlanConfig::default().validated(),
+        current_power_method: ChainReadMethod::GetVotes,
+    };
+    let chain_read_plan =
+        ChainReadPlanBuilder::new(1, contracts, BatchReadPlanConfig::default().validated()).build();
+
+    PowerReconcilePlan {
+        context,
+        candidates: Vec::new(),
+        chain_read_plan,
+        freshness_state: PowerFreshnessState::Fresh,
+        metrics: PowerReconcileMetrics::default(),
+    }
+}
+
+const GOVERNOR_ONE: &str = "0x1111111111111111111111111111111111111111";
+const GOVERNOR_TWO: &str = "0x3333333333333333333333333333333333333333";
+const TOKEN_ONE: &str = "0x2222222222222222222222222222222222222222";
+const TOKEN_TWO: &str = "0x4444444444444444444444444444444444444444";
+const TIMELOCK: &str = "0x5555555555555555555555555555555555555555";
+const DELEGATOR: &str = "0x0000000000000000000000000000000000000001";
+const DELEGATE: &str = "0x0000000000000000000000000000000000000002";
+const ZERO_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
