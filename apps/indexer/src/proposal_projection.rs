@@ -1,11 +1,9 @@
 use std::collections::BTreeMap;
 
-use sha3::{Digest, Keccak256};
-
 use crate::{
     BatchReadPlanConfig, ChainContracts, ChainReadExecutionReport, ChainReadMethod, ChainReadPlan,
     ChainReadPlanBuilder, ChainReadReason, ChainReadValue, DecodedGovernorEvent, NormalizedEvmLog,
-    ProposalCreatedEvent, ProposalExtendedEvent, ProposalQueuedEvent,
+    ProposalCreatedEvent, ProposalExtendedEvent, ProposalQueuedEvent, derive_proposal_metadata,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -711,7 +709,7 @@ fn proposal_id_write(log_id: &str, common: ProposalEventCommon) -> ProposalIdWri
 }
 
 fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> ProposalWrite {
-    let (title, description_body) = split_description(&event.description);
+    let metadata = derive_proposal_metadata(&event.description);
 
     ProposalWrite {
         id: proposal_ref(
@@ -737,10 +735,10 @@ fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> 
         calldatas: event.calldatas.clone(),
         vote_start: event.vote_start.clone(),
         vote_end: event.vote_end.clone(),
-        description: event.description.clone(),
-        title,
-        description_body,
-        description_hash: description_hash(&event.description),
+        description: metadata.description,
+        title: metadata.title,
+        description_body: metadata.description_body,
+        description_hash: metadata.description_hash,
         proposal_snapshot: Some(event.vote_start.clone()),
         proposal_deadline: Some(event.vote_end.clone()),
         block_number: common.block_number.clone(),
@@ -863,6 +861,8 @@ fn deadline_extension_write(
 }
 
 fn lifecycle_stub(common: &ProposalEventCommon, state: &str) -> ProposalWrite {
+    let metadata = derive_proposal_metadata("");
+
     ProposalWrite {
         id: proposal_ref(
             &common.governor_address,
@@ -883,10 +883,10 @@ fn lifecycle_stub(common: &ProposalEventCommon, state: &str) -> ProposalWrite {
         calldatas: Vec::new(),
         vote_start: "0".to_owned(),
         vote_end: "0".to_owned(),
-        description: String::new(),
-        title: String::new(),
-        description_body: String::new(),
-        description_hash: description_hash(""),
+        description: metadata.description,
+        title: metadata.title,
+        description_body: metadata.description_body,
+        description_hash: metadata.description_hash,
         proposal_snapshot: None,
         proposal_deadline: None,
         block_number: common.block_number.clone(),
@@ -1075,30 +1075,6 @@ fn proposal_ref(governor_address: &str, proposal_id: &str, chain_id: i32) -> Str
         "proposal:{chain_id}:{}:{proposal_id}",
         normalize_identifier(governor_address)
     )
-}
-
-fn split_description(description: &str) -> (String, String) {
-    let trimmed = description.trim();
-    if let Some(rest) = trimmed.strip_prefix("# ") {
-        let mut parts = rest.splitn(2, '\n');
-        let title = parts.next().unwrap_or_default().trim().to_owned();
-        let body = parts.next().unwrap_or_default().trim().to_owned();
-        return (title, body);
-    }
-
-    let mut lines = trimmed.lines();
-    let title = lines
-        .next()
-        .unwrap_or_default()
-        .trim_start_matches('#')
-        .trim();
-    let body = lines.collect::<Vec<_>>().join("\n").trim().to_owned();
-    (title.to_owned(), body)
-}
-
-fn description_hash(description: &str) -> String {
-    let hash = Keccak256::digest(description.as_bytes());
-    format!("0x{}", hex::encode(hash))
 }
 
 fn normalize_identifier(value: &str) -> String {
