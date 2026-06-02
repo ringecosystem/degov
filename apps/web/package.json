@@ -94,7 +94,7 @@
     "@tanstack/eslint-plugin-query": "^5.91.0",
     "@types/crypto-js": "^4.2.2",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^20",
+    "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
