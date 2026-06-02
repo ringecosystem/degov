@@ -71,15 +71,11 @@ must be read from deployment secrets or local untracked environment variables.
 Do not hardcode the token in code, issue text, logs, committed config, examples,
 or docs.
 
-The operational reference for the live token is the GitOps secret at:
-
-```text
-/code/helixbox/avault/gitops-helixbox/secrets/helixbox-nue/creds-datalens.yaml
-```
-
-Use lines 16-20 of that file as the deployment reference. The DeGov repository
-should only refer to the secret location and environment variable names, not the
-secret value.
+The operational reference for the live token is the GitOps-managed Datalens
+credentials secret for the `helixbox-nue` environment. Use the `degov-live`
+application token entry from that secret as the deployment reference. The DeGov
+repository should only refer to the secret name, application token entry, and
+environment variable names, not the secret value.
 
 Recommended indexer environment variables:
 
