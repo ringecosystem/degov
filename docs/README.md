@@ -10,6 +10,7 @@ to a Datalens-native indexer. The documents below describe historical behavior
 or API/data-model reference material unless a newer document says otherwise.
 
 - [Datalens Rust technical conventions][datalens-rust-conventions]
+- [Datalens PostgreSQL schema ownership][datalens-postgres-schema]
 - [Developer guide](./guides/20260325__indexer_developer_guide.md)
 - [Accuracy diagnosis guide](./guides/20260331__indexer_accuracy_diagnosis.md)
 - [Datalens DAO migration runbook](./runbook/datalens-dao-migration.md)
@@ -25,3 +26,4 @@ or API/data-model reference material unless a newer document says otherwise.
 - [Projection replay, reconciliation, and rollout](./plans/20260325__degov_projection_replay_reconciliation_rollout.md)
 
 [datalens-rust-conventions]: ./spec/datalens-rust-technical-conventions.md
+[datalens-postgres-schema]: ../packages/indexer/README.md#postgresql-schema-ownership
