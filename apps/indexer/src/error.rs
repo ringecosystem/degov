@@ -34,10 +34,35 @@ pub enum DatalensError {
 }
 
 #[derive(Debug, Error)]
+pub enum CheckpointError {
+    #[error("checkpoint range limit must be greater than zero")]
+    InvalidRangeLimit,
+
+    #[error("checkpoint block height must be greater than or equal to zero")]
+    InvalidBlockHeight,
+
+    #[error(
+        "checkpoint row is missing for DAO {dao_code}, chain {chain_id}, stream {stream_id}, data source {data_source_version}"
+    )]
+    MissingCheckpoint {
+        dao_code: String,
+        chain_id: i32,
+        stream_id: String,
+        data_source_version: String,
+    },
+
+    #[error("checkpoint database error: {0}")]
+    Database(#[from] sqlx::Error),
+}
+
+#[derive(Debug, Error)]
 pub enum IndexerError {
     #[error("configuration error: {0}")]
     Config(#[from] ConfigError),
 
     #[error("Datalens client error: {0}")]
     Datalens(#[from] DatalensError),
+
+    #[error("checkpoint error: {0}")]
+    Checkpoint(#[from] CheckpointError),
 }

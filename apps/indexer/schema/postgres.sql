@@ -13,17 +13,31 @@
 -- precision without floating-point coercion.
 
 CREATE TABLE IF NOT EXISTS degov_indexer_checkpoint (
-  id TEXT PRIMARY KEY DEFAULT 'default',
+  dao_code TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
-  dao_code TEXT,
-  governor_address TEXT NOT NULL,
-  start_block_number NUMERIC(78, 0) NOT NULL,
-  next_block_number NUMERIC(78, 0) NOT NULL,
-  last_block_number NUMERIC(78, 0),
-  last_block_timestamp NUMERIC(78, 0),
-  last_transaction_hash TEXT,
+  stream_id TEXT NOT NULL,
+  data_source_version TEXT NOT NULL,
+  next_block NUMERIC(78, 0) NOT NULL,
+  processed_height NUMERIC(78, 0),
+  target_height NUMERIC(78, 0),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT degov_indexer_checkpoint_singleton CHECK (id = 'default')
+  last_error TEXT,
+  lock_owner TEXT,
+  locked_at TIMESTAMPTZ,
+  PRIMARY KEY (dao_code, chain_id, stream_id, data_source_version)
+);
+
+CREATE INDEX IF NOT EXISTS degov_indexer_checkpoint_processed_height_idx
+  ON degov_indexer_checkpoint (chain_id, dao_code, processed_height);
+
+-- Temporary compatibility bridge for existing sync-lag/synced-percentage
+-- consumers that still read SQD's built-in squidStatus field.
+CREATE SCHEMA IF NOT EXISTS squid_processor;
+
+CREATE TABLE IF NOT EXISTS squid_processor.status (
+  id INTEGER PRIMARY KEY DEFAULT 0,
+  height NUMERIC(78, 0) NOT NULL DEFAULT 0,
+  hash TEXT
 );
 
 CREATE TABLE IF NOT EXISTS degov_indexer_reconcile_task (

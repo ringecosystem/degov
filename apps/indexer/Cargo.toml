@@ -12,9 +12,11 @@ datalens-sdk = { git = "https://github.com/ringecosystem/datalens", rev = "17442
 figment = { version = "0.10.19", features = ["env"] }
 log = "0.4.30"
 serde = { version = "1.0.228", features = ["derive"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres"] }
 thiserror = "2.0.17"
 tracing-log = "0.2.0"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["ansi", "env-filter", "fmt"] }
 
 [dev-dependencies]
 temp-env = "0.3.6"
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "sync"] }
