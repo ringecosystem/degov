@@ -118,6 +118,7 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     assert_table_count(&database.pool, "proposal_created", 1).await?;
     assert_table_count(&database.pool, "proposal", 1).await?;
     assert_table_count(&database.pool, "vote_cast", 1).await?;
+    assert_proposal_projection_parity_state(&database.pool).await?;
     assert_table_count(&database.pool, "delegate_changed", 1).await?;
     assert_table_count(&database.pool, "token_transfer", 1).await?;
     assert_table_count(&database.pool, "vote_power_checkpoint", 1).await?;
@@ -334,6 +335,61 @@ async fn assert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
     assert_eq!(row.get::<i64, _>(0), 3);
     assert_eq!(row.get::<i64, _>(1), 2);
     assert_eq!(row.get::<i64, _>(2), 2);
+
+    Ok(())
+}
+
+async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let proposal = sqlx::query(
+        "SELECT id, proposal_id, block_timestamp::TEXT AS block_timestamp,
+                vote_start_timestamp::TEXT AS vote_start_timestamp,
+                vote_end_timestamp::TEXT AS vote_end_timestamp,
+                proposal_eta::TEXT AS proposal_eta, clock_mode, quorum::TEXT AS quorum,
+                decimals::TEXT AS decimals
+         FROM proposal",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let proposal_ref = "evm:1:2:0xtx20:0:0";
+    assert_eq!(proposal.get::<String, _>("id"), proposal_ref);
+    assert_eq!(proposal.get::<String, _>("proposal_id"), "42");
+    assert_eq!(
+        proposal.get::<String, _>("block_timestamp"),
+        "1700000002000"
+    );
+    assert_eq!(proposal.get::<String, _>("vote_start_timestamp"), "100");
+    assert_eq!(proposal.get::<String, _>("vote_end_timestamp"), "200");
+    assert_eq!(proposal.get::<String, _>("proposal_eta"), "1234");
+    assert_eq!(proposal.get::<String, _>("clock_mode"), "blocknumber");
+    assert_eq!(proposal.get::<String, _>("quorum"), "0");
+    assert_eq!(proposal.get::<String, _>("decimals"), "0");
+
+    let action = sqlx::query("SELECT proposal_id, proposal_ref FROM proposal_action")
+        .fetch_one(pool)
+        .await?;
+    assert_eq!(action.get::<String, _>("proposal_id"), proposal_ref);
+    assert_eq!(action.get::<String, _>("proposal_ref"), proposal_ref);
+
+    let active = sqlx::query(
+        "SELECT proposal_id, proposal_ref, start_timepoint::TEXT AS start_timepoint,
+                end_timepoint::TEXT AS end_timepoint, start_block_number::TEXT AS start_block_number
+         FROM proposal_state_epoch
+         WHERE state = 'Active'",
+    )
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(active.get::<String, _>("proposal_id"), proposal_ref);
+    assert_eq!(active.get::<String, _>("proposal_ref"), proposal_ref);
+    assert_eq!(active.get::<String, _>("start_timepoint"), "100");
+    assert_eq!(active.get::<String, _>("end_timepoint"), "200");
+    assert_eq!(active.get::<Option<String>, _>("start_block_number"), None);
+
+    let vote_group = sqlx::query("SELECT proposal_id, ref_proposal_id FROM vote_cast_group")
+        .fetch_one(pool)
+        .await?;
+    assert_eq!(vote_group.get::<String, _>("proposal_id"), proposal_ref);
+    assert_eq!(vote_group.get::<String, _>("ref_proposal_id"), "42");
 
     Ok(())
 }

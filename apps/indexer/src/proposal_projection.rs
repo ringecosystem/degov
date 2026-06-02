@@ -64,6 +64,26 @@ impl ProposalProjectionBatch {
         });
 
         for result in results {
+            if result.key.method == ChainReadMethod::ClockMode {
+                if let Some(value) = chain_read_clock_mode(&result.value) {
+                    for proposal in &mut self.proposals {
+                        proposal.clock_mode = value.clone();
+                        proposal.vote_start_timestamp =
+                            timepoint_timestamp(&proposal.vote_start, &proposal.clock_mode);
+                        proposal.vote_end_timestamp =
+                            timepoint_timestamp(&proposal.vote_end, &proposal.clock_mode);
+                    }
+                }
+                continue;
+            }
+            if result.key.method == ChainReadMethod::Decimals {
+                if let Some(value) = chain_read_scalar(&result.value) {
+                    for proposal in &mut self.proposals {
+                        proposal.decimals = value.clone();
+                    }
+                }
+                continue;
+            }
             let Some(proposal_id) = result.key.args.first() else {
                 continue;
             };
@@ -72,9 +92,16 @@ impl ProposalProjectionBatch {
                 normalize_identifier(&result.key.contract_address),
                 normalize_identifier(proposal_id),
             );
-            let Some(index) = proposal_indexes.get(&key).copied() else {
-                continue;
-            };
+            let index = proposal_indexes.get(&key).copied().or_else(|| {
+                if result.key.method == ChainReadMethod::Quorum {
+                    self.proposals.iter().position(|proposal| {
+                        proposal.proposal_snapshot.as_deref() == Some(proposal_id)
+                    })
+                } else {
+                    None
+                }
+            });
+            let Some(index) = index else { continue };
             let proposal = &mut self.proposals[index];
             match result.key.method {
                 ChainReadMethod::ProposalSnapshot => {
@@ -90,6 +117,11 @@ impl ProposalProjectionBatch {
                 ChainReadMethod::State => {
                     if let Some(value) = chain_read_state(&result.value) {
                         proposal.current_state = Some(value);
+                    }
+                }
+                ChainReadMethod::Quorum => {
+                    if let Some(value) = chain_read_scalar(&result.value) {
+                        proposal.quorum = value;
                     }
                 }
                 _ => {}
@@ -157,6 +189,7 @@ pub struct ProposalIdWrite {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProposalEventCommon {
+    pub log_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -186,6 +219,8 @@ pub struct ProposalWrite {
     pub calldatas: Vec<String>,
     pub vote_start: String,
     pub vote_end: String,
+    pub vote_start_timestamp: String,
+    pub vote_end_timestamp: String,
     pub description: String,
     pub title: String,
     pub description_body: String,
@@ -197,6 +232,11 @@ pub struct ProposalWrite {
     pub transaction_hash: String,
     pub current_state: Option<String>,
     pub proposal_eta: Option<String>,
+    pub queue_ready_at: Option<String>,
+    pub queue_expires_at: Option<String>,
+    pub clock_mode: String,
+    pub quorum: String,
+    pub decimals: String,
     pub queued_block_number: Option<String>,
     pub queued_block_timestamp: Option<String>,
     pub queued_transaction_hash: Option<String>,
@@ -232,6 +272,7 @@ pub struct ProposalActionWrite {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ProposalStateWriteKind {
     Pending,
+    Active,
     Queued,
     Executed,
     Canceled,
@@ -344,6 +385,23 @@ impl ProposalProjectionRepository for InMemoryProposalProjectionRepository {
             |row| row.id.clone(),
         );
         for proposal in &batch.proposals {
+            if let Some(existing_id) = self
+                .proposals
+                .iter()
+                .find(|(id, stored)| {
+                    id.as_str() != proposal.id
+                        && stored.chain_id == proposal.chain_id
+                        && stored.governor_address == proposal.governor_address
+                        && stored.proposal_id == proposal.proposal_id
+                })
+                .map(|(id, _)| id.clone())
+            {
+                if let Some(mut existing) = self.proposals.remove(&existing_id) {
+                    existing.merge(proposal);
+                    self.proposals.insert(proposal.id.clone(), existing);
+                }
+                continue;
+            }
             self.proposals
                 .entry(proposal.id.clone())
                 .and_modify(|stored| stored.merge(proposal))
@@ -389,6 +447,7 @@ pub fn project_proposal_events(
     let mut proposal_actions = BTreeMap::new();
     let mut proposal_state_epochs = BTreeMap::new();
     let mut proposal_deadline_extensions = BTreeMap::new();
+    let mut proposal_refs = BTreeMap::new();
 
     let mut ordered = deduped.into_values().collect::<Vec<_>>();
     ordered.sort_by_key(|event| {
@@ -420,18 +479,49 @@ pub fn project_proposal_events(
                 proposal_created.insert(row.id.clone(), row);
 
                 let proposal = proposal_write(common.clone(), event);
+                proposal_refs.insert(proposal_lookup_key(&common), proposal.id.clone());
                 for action in proposal_action_writes(&common, &proposal, event) {
                     proposal_actions.insert(action.id.clone(), action);
                 }
-                proposal_state_epochs.insert(
-                    state_epoch_id(&proposal.id, ProposalStateWriteKind::Pending, &input.log),
-                    state_epoch_write(
-                        &common,
-                        &proposal.id,
-                        ProposalStateWriteKind::Pending,
-                        "Pending",
-                        Some(event.vote_start.clone()),
-                    ),
+                let pending = state_epoch_write(
+                    &common,
+                    &proposal.id,
+                    ProposalStateWriteKind::Pending,
+                    "Pending",
+                    Some(event.vote_start.clone()),
+                )
+                .with_end_timepoint(Some(event.vote_start.clone()))
+                .with_end_block_timestamp(proposal.vote_start_timestamp.clone());
+                proposal_state_epochs.insert(pending.id.clone(), pending);
+                let active = state_epoch_write(
+                    &common,
+                    &proposal.id,
+                    ProposalStateWriteKind::Active,
+                    "Active",
+                    Some(event.vote_start.clone()),
+                )
+                .without_start_block_number()
+                .with_start_block_timestamp(proposal.vote_start_timestamp.clone())
+                .with_end_timepoint(Some(event.vote_end.clone()))
+                .with_end_block_timestamp(proposal.vote_end_timestamp.clone());
+                proposal_state_epochs.insert(active.id.clone(), active);
+                builder.add_optional_enrichment_read(
+                    context.contracts.governor.clone(),
+                    ChainReadMethod::ClockMode,
+                    vec![],
+                    crate::BlockReadMode::Fresh,
+                );
+                builder.add_optional_enrichment_read(
+                    context.contracts.governor.clone(),
+                    ChainReadMethod::Quorum,
+                    vec![event.vote_start.clone()],
+                    crate::BlockReadMode::Fresh,
+                );
+                builder.add_optional_enrichment_read(
+                    context.contracts.governor_token.clone(),
+                    ChainReadMethod::Decimals,
+                    vec![],
+                    crate::BlockReadMode::Fresh,
                 );
                 proposals
                     .entry(proposal.id.clone())
@@ -440,50 +530,33 @@ pub fn project_proposal_events(
             }
             DecodedGovernorEvent::ProposalQueued(event) => {
                 let common = common(context, &governor_address, &input.log, &event.proposal_id);
+                let proposal_ref = proposal_entity_ref(&proposal_refs, &common);
                 let row = proposal_queued_write(&input.log.id, common.clone(), event);
                 proposal_queued.insert(row.id.clone(), row);
                 proposal_state_epochs.insert(
-                    state_epoch_id(
-                        &proposal_ref(
-                            &common.governor_address,
-                            &common.proposal_id,
-                            common.chain_id,
-                        ),
-                        ProposalStateWriteKind::Queued,
-                        &input.log,
-                    ),
+                    state_epoch_id(&proposal_ref, ProposalStateWriteKind::Queued, &input.log),
                     state_epoch_write(
                         &common,
-                        &proposal_ref(
-                            &common.governor_address,
-                            &common.proposal_id,
-                            common.chain_id,
-                        ),
+                        &proposal_ref,
                         ProposalStateWriteKind::Queued,
                         "Queued",
                         Some(event.eta_seconds.clone()),
                     ),
                 );
                 proposals
-                    .entry(proposal_ref(
-                        &common.governor_address,
-                        &common.proposal_id,
-                        common.chain_id,
-                    ))
+                    .entry(proposal_ref.clone())
                     .and_modify(|proposal: &mut ProposalWrite| {
                         proposal.current_state = Some("Queued".to_owned());
                         proposal.proposal_eta = Some(event.eta_seconds.clone());
+                        proposal.queue_ready_at = seconds_to_millis(&event.eta_seconds);
                         proposal.queued_block_number = Some(common.block_number.clone());
                         proposal.queued_block_timestamp = common.block_timestamp.clone();
                         proposal.queued_transaction_hash = Some(common.transaction_hash.clone());
                     })
-                    .or_insert_with(|| lifecycle_stub(&common, "Queued"));
-                if let Some(proposal) = proposals.get_mut(&proposal_ref(
-                    &common.governor_address,
-                    &common.proposal_id,
-                    common.chain_id,
-                )) {
+                    .or_insert_with(|| lifecycle_stub(&common, &proposal_ref, "Queued"));
+                if let Some(proposal) = proposals.get_mut(&proposal_ref) {
                     proposal.proposal_eta = Some(event.eta_seconds.clone());
+                    proposal.queue_ready_at = seconds_to_millis(&event.eta_seconds);
                     proposal.queued_block_number = Some(common.block_number.clone());
                     proposal.queued_block_timestamp = common.block_timestamp.clone();
                     proposal.queued_transaction_hash = Some(common.transaction_hash.clone());
@@ -493,23 +566,20 @@ pub fn project_proposal_events(
                 let common = common(context, &governor_address, &input.log, &event.proposal_id);
                 let row = proposal_extended_write(&input.log.id, common.clone(), event);
                 proposal_extended.insert(row.id.clone(), row);
-                let proposal_ref = proposal_ref(
-                    &common.governor_address,
-                    &common.proposal_id,
-                    common.chain_id,
-                );
+                let proposal_ref = proposal_entity_ref(&proposal_refs, &common);
                 let previous_deadline = proposals
                     .get(&proposal_ref)
                     .and_then(|proposal: &ProposalWrite| proposal.proposal_deadline.clone());
-                let extension = deadline_extension_write(&common, event, previous_deadline);
+                let extension =
+                    deadline_extension_write(&common, &proposal_ref, event, previous_deadline);
                 proposal_deadline_extensions.insert(extension.id.clone(), extension);
                 proposals
-                    .entry(proposal_ref)
+                    .entry(proposal_ref.clone())
                     .and_modify(|proposal: &mut ProposalWrite| {
                         proposal.proposal_deadline = Some(event.extended_deadline.clone());
                     })
                     .or_insert_with(|| {
-                        let mut proposal = lifecycle_stub(&common, "Pending");
+                        let mut proposal = lifecycle_stub(&common, &proposal_ref, "Pending");
                         proposal.proposal_deadline = Some(event.extended_deadline.clone());
                         proposal
                     });
@@ -522,6 +592,7 @@ pub fn project_proposal_events(
                     &mut proposals,
                     &mut proposal_state_epochs,
                     &common,
+                    &proposal_entity_ref(&proposal_refs, &common),
                     &input.log,
                     ProposalStateWriteKind::Executed,
                     "Executed",
@@ -535,6 +606,7 @@ pub fn project_proposal_events(
                     &mut proposals,
                     &mut proposal_state_epochs,
                     &common,
+                    &proposal_entity_ref(&proposal_refs, &common),
                     &input.log,
                     ProposalStateWriteKind::Canceled,
                     "Canceled",
@@ -550,7 +622,7 @@ pub fn project_proposal_events(
             row.start_block_number
                 .as_deref()
                 .and_then(|value| value.parse::<u64>().ok())
-                .unwrap_or_default(),
+                .unwrap_or(u64::MAX),
             row.transaction_index,
             row.log_index,
             row.kind,
@@ -576,21 +648,17 @@ fn write_terminal_state(
     proposals: &mut BTreeMap<String, ProposalWrite>,
     proposal_state_epochs: &mut BTreeMap<String, ProposalStateEpochWrite>,
     common: &ProposalEventCommon,
+    proposal_ref: &str,
     log: &NormalizedEvmLog,
     kind: ProposalStateWriteKind,
     state: &str,
 ) {
-    let proposal_ref = proposal_ref(
-        &common.governor_address,
-        &common.proposal_id,
-        common.chain_id,
-    );
     proposal_state_epochs.insert(
-        state_epoch_id(&proposal_ref, kind, log),
-        state_epoch_write(common, &proposal_ref, kind, state, None),
+        state_epoch_id(proposal_ref, kind, log),
+        state_epoch_write(common, proposal_ref, kind, state, None),
     );
     proposals
-        .entry(proposal_ref)
+        .entry(proposal_ref.to_owned())
         .and_modify(|proposal| {
             proposal.current_state = Some(state.to_owned());
             match kind {
@@ -608,7 +676,7 @@ fn write_terminal_state(
             }
         })
         .or_insert_with(|| {
-            let mut proposal = lifecycle_stub(common, state);
+            let mut proposal = lifecycle_stub(common, proposal_ref, state);
             match kind {
                 ProposalStateWriteKind::Executed => {
                     proposal.executed_block_number = Some(common.block_number.clone());
@@ -634,6 +702,7 @@ fn common(
 ) -> ProposalEventCommon {
     ProposalEventCommon {
         chain_id: log.chain_id,
+        log_id: log.id.clone(),
         dao_code: context.dao_code.clone(),
         governor_address: governor_address.to_owned(),
         contract_address: normalize_identifier(&log.address),
@@ -643,7 +712,7 @@ fn common(
         block_number: log.block_number.to_string(),
         block_timestamp: log
             .block_timestamp_ms
-            .map(|timestamp| (timestamp / 1_000).to_string()),
+            .map(|timestamp| timestamp.to_string()),
         transaction_hash: normalize_identifier(&log.transaction_hash),
     }
 }
@@ -710,13 +779,10 @@ fn proposal_id_write(log_id: &str, common: ProposalEventCommon) -> ProposalIdWri
 
 fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> ProposalWrite {
     let metadata = derive_proposal_metadata(&event.description);
+    let clock_mode = infer_clock_mode(&event.vote_start, &event.vote_end);
 
     ProposalWrite {
-        id: proposal_ref(
-            &common.governor_address,
-            &event.proposal_id,
-            common.chain_id,
-        ),
+        id: common_id(&common),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -735,6 +801,8 @@ fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> 
         calldatas: event.calldatas.clone(),
         vote_start: event.vote_start.clone(),
         vote_end: event.vote_end.clone(),
+        vote_start_timestamp: timepoint_timestamp(&event.vote_start, &clock_mode),
+        vote_end_timestamp: timepoint_timestamp(&event.vote_end, &clock_mode),
         description: metadata.description,
         title: metadata.title,
         description_body: metadata.description_body,
@@ -745,7 +813,12 @@ fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> 
         block_timestamp: common.block_timestamp.clone(),
         transaction_hash: common.transaction_hash.clone(),
         current_state: Some("Pending".to_owned()),
-        proposal_eta: None,
+        proposal_eta: Some("0".to_owned()),
+        queue_ready_at: None,
+        queue_expires_at: None,
+        clock_mode,
+        quorum: "0".to_owned(),
+        decimals: "0".to_owned(),
         queued_block_number: None,
         queued_block_timestamp: None,
         queued_transaction_hash: None,
@@ -780,7 +853,7 @@ fn proposal_action_writes(
                 log_index: common.log_index,
                 transaction_index: common.transaction_index,
                 proposal_ref: proposal.id.clone(),
-                proposal_id: common.proposal_id.clone(),
+                proposal_id: proposal.id.clone(),
                 action_index,
                 target: normalize_identifier(target),
                 value: value.clone(),
@@ -802,12 +875,7 @@ fn state_epoch_write(
     start_timepoint: Option<String>,
 ) -> ProposalStateEpochWrite {
     ProposalStateEpochWrite {
-        id: format!(
-            "{proposal_ref}:state:{}:{}:{}",
-            state.to_ascii_lowercase(),
-            common.block_number,
-            common.log_index
-        ),
+        id: state_epoch_write_id(proposal_ref, kind, &common.log_id),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -815,7 +883,7 @@ fn state_epoch_write(
         log_index: common.log_index,
         transaction_index: common.transaction_index,
         proposal_ref: proposal_ref.to_owned(),
-        proposal_id: common.proposal_id.clone(),
+        proposal_id: proposal_ref.to_owned(),
         kind,
         state: state.to_owned(),
         start_timepoint,
@@ -830,15 +898,10 @@ fn state_epoch_write(
 
 fn deadline_extension_write(
     common: &ProposalEventCommon,
+    proposal_ref: &str,
     event: &ProposalExtendedEvent,
     previous_deadline: Option<String>,
 ) -> ProposalDeadlineExtensionWrite {
-    let proposal_ref = proposal_ref(
-        &common.governor_address,
-        &common.proposal_id,
-        common.chain_id,
-    );
-
     ProposalDeadlineExtensionWrite {
         id: format!(
             "{}:deadline-extension:{}:{}:{}",
@@ -850,8 +913,8 @@ fn deadline_extension_write(
         contract_address: common.contract_address.clone(),
         log_index: common.log_index,
         transaction_index: common.transaction_index,
-        proposal_ref,
-        proposal_id: common.proposal_id.clone(),
+        proposal_ref: proposal_ref.to_owned(),
+        proposal_id: proposal_ref.to_owned(),
         previous_deadline,
         new_deadline: event.extended_deadline.clone(),
         block_number: common.block_number.clone(),
@@ -860,15 +923,12 @@ fn deadline_extension_write(
     }
 }
 
-fn lifecycle_stub(common: &ProposalEventCommon, state: &str) -> ProposalWrite {
+fn lifecycle_stub(common: &ProposalEventCommon, proposal_ref: &str, state: &str) -> ProposalWrite {
     let metadata = derive_proposal_metadata("");
+    let clock_mode = "blocknumber".to_owned();
 
     ProposalWrite {
-        id: proposal_ref(
-            &common.governor_address,
-            &common.proposal_id,
-            common.chain_id,
-        ),
+        id: proposal_ref.to_owned(),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -883,6 +943,8 @@ fn lifecycle_stub(common: &ProposalEventCommon, state: &str) -> ProposalWrite {
         calldatas: Vec::new(),
         vote_start: "0".to_owned(),
         vote_end: "0".to_owned(),
+        vote_start_timestamp: "0".to_owned(),
+        vote_end_timestamp: "0".to_owned(),
         description: metadata.description,
         title: metadata.title,
         description_body: metadata.description_body,
@@ -894,6 +956,11 @@ fn lifecycle_stub(common: &ProposalEventCommon, state: &str) -> ProposalWrite {
         transaction_hash: common.transaction_hash.clone(),
         current_state: Some(state.to_owned()),
         proposal_eta: None,
+        queue_ready_at: None,
+        queue_expires_at: None,
+        clock_mode,
+        quorum: "0".to_owned(),
+        decimals: "0".to_owned(),
         queued_block_number: None,
         queued_block_timestamp: None,
         queued_transaction_hash: None,
@@ -914,6 +981,17 @@ impl ProposalWrite {
             merged.proposal_snapshot = self.proposal_snapshot.clone().or(merged.proposal_snapshot);
             merged.proposal_deadline = self.proposal_deadline.clone().or(merged.proposal_deadline);
             merged.proposal_eta = self.proposal_eta.clone().or(merged.proposal_eta);
+            merged.queue_ready_at = self.queue_ready_at.clone().or(merged.queue_ready_at);
+            merged.queue_expires_at = self.queue_expires_at.clone().or(merged.queue_expires_at);
+            if merged.clock_mode == "blocknumber" && self.clock_mode != "blocknumber" {
+                merged.clock_mode = self.clock_mode.clone();
+            }
+            if merged.quorum == "0" {
+                merged.quorum = self.quorum.clone();
+            }
+            if merged.decimals == "0" {
+                merged.decimals = self.decimals.clone();
+            }
             merged.queued_block_number = self
                 .queued_block_number
                 .clone()
@@ -962,6 +1040,20 @@ impl ProposalWrite {
                 .clone()
                 .or(self.proposal_deadline.clone());
             self.proposal_eta = next.proposal_eta.clone().or(self.proposal_eta.clone());
+            self.queue_ready_at = next.queue_ready_at.clone().or(self.queue_ready_at.clone());
+            self.queue_expires_at = next
+                .queue_expires_at
+                .clone()
+                .or(self.queue_expires_at.clone());
+            if self.clock_mode == "blocknumber" && next.clock_mode != "blocknumber" {
+                self.clock_mode = next.clock_mode.clone();
+            }
+            if self.quorum == "0" {
+                self.quorum = next.quorum.clone();
+            }
+            if self.decimals == "0" {
+                self.decimals = next.decimals.clone();
+            }
             self.queued_block_number = next
                 .queued_block_number
                 .clone()
@@ -1035,6 +1127,56 @@ fn validate_action_lengths(event: &ProposalCreatedEvent) -> Result<(), ProposalP
     })
 }
 
+impl ProposalStateEpochWrite {
+    fn with_end_timepoint(mut self, end_timepoint: Option<String>) -> Self {
+        self.end_timepoint = end_timepoint;
+        self
+    }
+
+    fn without_start_block_number(mut self) -> Self {
+        self.start_block_number = None;
+        self
+    }
+
+    fn with_start_block_timestamp(mut self, start_block_timestamp: String) -> Self {
+        self.start_block_timestamp = Some(start_block_timestamp);
+        self
+    }
+
+    fn with_end_block_timestamp(mut self, end_block_timestamp: String) -> Self {
+        self.end_block_timestamp = Some(end_block_timestamp);
+        self
+    }
+}
+
+fn common_id(common: &ProposalEventCommon) -> String {
+    common.log_id.clone()
+}
+
+fn proposal_lookup_key(common: &ProposalEventCommon) -> (i32, String, String) {
+    (
+        common.chain_id,
+        common.governor_address.clone(),
+        common.proposal_id.clone(),
+    )
+}
+
+fn proposal_entity_ref(
+    proposal_refs: &BTreeMap<(i32, String, String), String>,
+    common: &ProposalEventCommon,
+) -> String {
+    proposal_refs
+        .get(&proposal_lookup_key(common))
+        .cloned()
+        .unwrap_or_else(|| {
+            proposal_ref(
+                &common.governor_address,
+                &common.proposal_id,
+                common.chain_id,
+            )
+        })
+}
+
 fn proposal_id(event: &DecodedGovernorEvent) -> Option<&str> {
     match event {
         DecodedGovernorEvent::ProposalCreated(event) => Some(&event.proposal_id),
@@ -1051,23 +1193,72 @@ fn state_epoch_id(
     kind: ProposalStateWriteKind,
     log: &NormalizedEvmLog,
 ) -> String {
-    format!(
-        "{proposal_ref}:state:{}:{}:{}",
-        kind.as_str().to_ascii_lowercase(),
-        log.block_number,
-        log.log_index
-    )
+    state_epoch_write_id(proposal_ref, kind, &log.id)
+}
+
+fn state_epoch_write_id(
+    proposal_ref: &str,
+    kind: ProposalStateWriteKind,
+    event_log_id: &str,
+) -> String {
+    match kind {
+        ProposalStateWriteKind::Pending | ProposalStateWriteKind::Active => {
+            format!(
+                "{proposal_ref}:state:{}",
+                kind.as_str().to_ascii_lowercase()
+            )
+        }
+        ProposalStateWriteKind::Queued
+        | ProposalStateWriteKind::Executed
+        | ProposalStateWriteKind::Canceled => {
+            format!(
+                "{proposal_ref}:state:{}:{event_log_id}",
+                kind.as_str().to_ascii_lowercase()
+            )
+        }
+    }
 }
 
 impl ProposalStateWriteKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "Pending",
+            Self::Active => "Active",
             Self::Queued => "Queued",
             Self::Executed => "Executed",
             Self::Canceled => "Canceled",
         }
     }
+}
+
+fn infer_clock_mode(vote_start: &str, vote_end: &str) -> String {
+    if is_unix_seconds_timepoint(vote_start) || is_unix_seconds_timepoint(vote_end) {
+        "timestamp".to_owned()
+    } else {
+        "blocknumber".to_owned()
+    }
+}
+
+fn is_unix_seconds_timepoint(value: &str) -> bool {
+    value
+        .parse::<u64>()
+        .map(|value| value >= 1_000_000_000)
+        .unwrap_or(false)
+}
+
+fn timepoint_timestamp(timepoint: &str, clock_mode: &str) -> String {
+    if clock_mode == "timestamp" {
+        seconds_to_millis(timepoint).unwrap_or_else(|| timepoint.to_owned())
+    } else {
+        timepoint.to_owned()
+    }
+}
+
+fn seconds_to_millis(seconds: &str) -> Option<String> {
+    seconds
+        .parse::<u128>()
+        .ok()
+        .map(|seconds| (seconds * 1_000).to_string())
 }
 
 fn proposal_ref(governor_address: &str, proposal_id: &str, chain_id: i32) -> String {
@@ -1085,6 +1276,17 @@ fn chain_read_scalar(value: &ChainReadValue) -> Option<String> {
     match value {
         ChainReadValue::Integer(value) | ChainReadValue::String(value) => Some(value.clone()),
         _ => None,
+    }
+}
+
+fn chain_read_clock_mode(value: &ChainReadValue) -> Option<String> {
+    let value = chain_read_scalar(value)?;
+    if value.contains("timestamp") {
+        Some("timestamp".to_owned())
+    } else if value.contains("blocknumber") {
+        Some("blocknumber".to_owned())
+    } else {
+        Some(value)
     }
 }
 

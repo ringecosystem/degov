@@ -469,20 +469,24 @@ async fn upsert_proposal(
     transaction: &mut Transaction<'_, Postgres>,
     row: &ProposalWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    relink_existing_proposal_to_raw_id(transaction, row).await?;
+
     sqlx::query(
         "INSERT INTO proposal (
             id, chain_id, dao_code, governor_address, contract_address, log_index,
             transaction_index, proposal_id, proposer, targets, values, signatures, calldatas,
             vote_start, vote_end, description, block_number, block_timestamp, transaction_hash,
             title, vote_start_timestamp, vote_end_timestamp, description_hash, proposal_snapshot,
-            proposal_deadline, proposal_eta, clock_mode, quorum, decimals
+            proposal_deadline, proposal_eta, queue_ready_at, queue_expires_at, clock_mode, quorum,
+            decimals
          )
          VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
             $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16, $17::NUMERIC(78, 0),
-            $18::NUMERIC(78, 0), $19, $20, $14::NUMERIC(78, 0), $15::NUMERIC(78, 0),
-            $21, $22::NUMERIC(78, 0), $23::NUMERIC(78, 0), $24::NUMERIC(78, 0),
-            'blocknumber', 0::NUMERIC(78, 0), 0::NUMERIC(78, 0)
+            $18::NUMERIC(78, 0), $19, $20, $21::NUMERIC(78, 0), $22::NUMERIC(78, 0),
+            $23, $24::NUMERIC(78, 0), $25::NUMERIC(78, 0), $26::NUMERIC(78, 0),
+            $27::NUMERIC(78, 0), $28::NUMERIC(78, 0), $29, $30::NUMERIC(78, 0),
+            $31::NUMERIC(78, 0)
          )
          ON CONFLICT (id) DO UPDATE
          SET proposer = CASE WHEN EXCLUDED.proposer = '' THEN proposal.proposer ELSE EXCLUDED.proposer END,
@@ -497,7 +501,12 @@ async fn upsert_proposal(
              description_hash = COALESCE(EXCLUDED.description_hash, proposal.description_hash),
              proposal_snapshot = COALESCE(EXCLUDED.proposal_snapshot, proposal.proposal_snapshot),
              proposal_deadline = COALESCE(EXCLUDED.proposal_deadline, proposal.proposal_deadline),
-             proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta)",
+             proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta),
+             queue_ready_at = COALESCE(EXCLUDED.queue_ready_at, proposal.queue_ready_at),
+             queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
+             clock_mode = EXCLUDED.clock_mode,
+             quorum = EXCLUDED.quorum,
+             decimals = EXCLUDED.decimals",
     )
     .bind(&row.id)
     .bind(row.chain_id)
@@ -525,10 +534,39 @@ async fn upsert_proposal(
     )?)
     .bind(&row.transaction_hash)
     .bind(&row.title)
+    .bind(&row.vote_start_timestamp)
+    .bind(&row.vote_end_timestamp)
     .bind(&row.description_hash)
     .bind(row.proposal_snapshot.as_deref())
     .bind(row.proposal_deadline.as_deref())
     .bind(row.proposal_eta.as_deref())
+    .bind(row.queue_ready_at.as_deref())
+    .bind(row.queue_expires_at.as_deref())
+    .bind(&row.clock_mode)
+    .bind(&row.quorum)
+    .bind(&row.decimals)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn relink_existing_proposal_to_raw_id(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "UPDATE proposal
+         SET id = $1
+         WHERE chain_id IS NOT DISTINCT FROM $2
+           AND governor_address IS NOT DISTINCT FROM $3
+           AND proposal_id = $4
+           AND id <> $1",
+    )
+    .bind(&row.id)
+    .bind(row.chain_id)
+    .bind(&row.governor_address)
+    .bind(&row.proposal_id)
     .execute(&mut **transaction)
     .await?;
 
@@ -773,7 +811,19 @@ async fn upsert_vote_cast_group(
             reason, params, block_number, block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $1, $2, $3, $4, $5, $6, $7,
+            COALESCE(
+              (
+                SELECT proposal.id
+                FROM proposal
+                WHERE proposal.chain_id IS NOT DISTINCT FROM $2
+                  AND proposal.governor_address IS NOT DISTINCT FROM $4
+                  AND proposal.proposal_id = $11
+                LIMIT 1
+              ),
+              $8
+            ),
+            $9, $10, $11, $12,
             $13::NUMERIC(78, 0), $14, $15, $16::NUMERIC(78, 0), $17::NUMERIC(78, 0), $18
          )
          ON CONFLICT (id) DO UPDATE
