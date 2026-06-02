@@ -49,6 +49,11 @@ pub fn plan_dao_log_queries(
             "invalid Datalens log block range {from_block}..={to_block}"
         )));
     }
+    if config.query_limits.block_range_limit == 0 {
+        return Err(DatalensError::Query(
+            "Datalens log block range limit must be greater than zero".to_owned(),
+        ));
+    }
 
     let mut plans = Vec::new();
     let mut next_chunk_start = from_block;
@@ -301,6 +306,19 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(ranges, vec![(100, 149), (150, 199), (200, 220)]);
+    }
+
+    #[test]
+    fn test_plan_dao_log_queries_rejects_zero_chunk_limit() {
+        let config = config(0, DatalensFinality::DurableOnly);
+
+        let error = plan_dao_log_queries(&config, &addresses(), 100, 220).expect_err("limit error");
+
+        assert!(
+            error
+                .to_string()
+                .contains("block range limit must be greater than zero")
+        );
     }
 
     #[test]
