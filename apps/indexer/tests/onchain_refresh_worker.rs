@@ -160,6 +160,10 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_completed_task(&database.pool, "task-one", 1).await?;
     assert_completed_task(&database.pool, "task-two", 2).await?;
     assert_data_metric(&database.pool, "16", 2, 7).await?;
+    assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
+    assert_power_checkpoint(&database.pool, ACCOUNT_TWO, "0", "5", "5").await?;
+    assert_balance_checkpoint(&database.pool, ACCOUNT_ONE, "4", "17", "13").await?;
+    assert_table_count(&database.pool, "token_balance_checkpoint", 1).await?;
 
     database.cleanup().await?;
 
@@ -232,6 +236,80 @@ async fn test_onchain_refresh_worker_marks_claimed_tasks_failed_when_reader_fail
     assert_eq!(row.get::<Option<String>, _>("processed_at"), None);
     assert!(row.get::<String, _>("next_run_at").parse::<i64>()? > 0);
     assert_data_metric(&database.pool, "7", 1, 7).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task_with_scope(
+        &database.pool,
+        "task-one",
+        46,
+        "demo-dao",
+        GOVERNOR,
+        TOKEN,
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        true,
+        true,
+    )
+    .await?;
+    seed_task_with_scope(
+        &database.pool,
+        "task-two",
+        46,
+        "other-dao",
+        GOVERNOR_TWO,
+        TOKEN_TWO,
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        true,
+        true,
+    )
+    .await?;
+
+    let reader = MockOnchainRefreshReader::new([
+        (
+            "task-one",
+            OnchainRefreshReadValue {
+                task_id: "task-one".to_owned(),
+                balance: Some("17".to_owned()),
+                power: Some("11".to_owned()),
+            },
+        ),
+        (
+            "task-two",
+            OnchainRefreshReadValue {
+                task_id: "task-two".to_owned(),
+                balance: Some("23".to_owned()),
+                power: Some("19".to_owned()),
+            },
+        ),
+    ]);
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            max_attempts: 3,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.completed, 2);
+    assert_scoped_checkpoint_count(&database.pool, "vote_power_checkpoint", ACCOUNT_ONE, 2).await?;
+    assert_scoped_checkpoint_count(&database.pool, "token_balance_checkpoint", ACCOUNT_ONE, 2)
+        .await?;
 
     database.cleanup().await?;
 
@@ -339,6 +417,35 @@ async fn seed_task(
     refresh_balance: bool,
     refresh_power: bool,
 ) -> Result<(), sqlx::Error> {
+    seed_task_with_scope(
+        pool,
+        task_id,
+        46,
+        "demo-dao",
+        GOVERNOR,
+        TOKEN,
+        account,
+        status,
+        attempts,
+        refresh_balance,
+        refresh_power,
+    )
+    .await
+}
+
+async fn seed_task_with_scope(
+    pool: &PgPool,
+    task_id: &str,
+    chain_id: i32,
+    dao_code: &str,
+    governor: &str,
+    token: &str,
+    account: &str,
+    status: &str,
+    attempts: i32,
+    refresh_balance: bool,
+    refresh_power: bool,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO onchain_refresh_task (
             id, chain_id, dao_code, governor_address, token_address, account,
@@ -347,15 +454,17 @@ async fn seed_task(
             status, attempts, next_run_at, pending_after_lock, created_at, updated_at
          )
          VALUES (
-            $1, 46, 'demo-dao', $2, $3, $4, $5, $6, 'token-activity',
+            $1, $2, $3, $4, $5, $6, $7, $8, 'token-activity',
             10::NUMERIC(78, 0), 12::NUMERIC(78, 0), 12000::NUMERIC(78, 0),
-            '0xtask', $7, $8, 0::NUMERIC(78, 0), false, 10000::NUMERIC(78, 0),
+            '0xtask', $9, $10, 0::NUMERIC(78, 0), false, 10000::NUMERIC(78, 0),
             10000::NUMERIC(78, 0)
          )",
     )
     .bind(task_id)
-    .bind(GOVERNOR)
-    .bind(TOKEN)
+    .bind(chain_id)
+    .bind(dao_code)
+    .bind(governor)
+    .bind(token)
     .bind(account)
     .bind(refresh_balance)
     .bind(refresh_power)
@@ -438,6 +547,97 @@ async fn assert_data_metric(
     Ok(())
 }
 
+async fn assert_power_checkpoint(
+    pool: &PgPool,
+    account: &str,
+    previous_power: &str,
+    new_power: &str,
+    delta: &str,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT previous_power::TEXT AS previous_power, new_power::TEXT AS new_power,
+                delta::TEXT AS delta, source, cause, block_number::TEXT AS block_number,
+                block_timestamp::TEXT AS block_timestamp, transaction_hash
+         FROM vote_power_checkpoint
+         WHERE account = $1",
+    )
+    .bind(account)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("previous_power"), previous_power);
+    assert_eq!(row.get::<String, _>("new_power"), new_power);
+    assert_eq!(row.get::<String, _>("delta"), delta);
+    assert_eq!(row.get::<String, _>("source"), "getVotes");
+    assert_eq!(row.get::<String, _>("cause"), "onchain-refresh");
+    assert_eq!(row.get::<String, _>("block_number"), "12");
+    assert_eq!(row.get::<String, _>("block_timestamp"), "12000");
+    assert_eq!(row.get::<String, _>("transaction_hash"), "onchain-refresh");
+
+    Ok(())
+}
+
+async fn assert_balance_checkpoint(
+    pool: &PgPool,
+    account: &str,
+    previous_balance: &str,
+    new_balance: &str,
+    delta: &str,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT previous_balance::TEXT AS previous_balance,
+                new_balance::TEXT AS new_balance, delta::TEXT AS delta, source, cause,
+                block_number::TEXT AS block_number, block_timestamp::TEXT AS block_timestamp,
+                transaction_hash
+         FROM token_balance_checkpoint
+         WHERE account = $1",
+    )
+    .bind(account)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("previous_balance"), previous_balance);
+    assert_eq!(row.get::<String, _>("new_balance"), new_balance);
+    assert_eq!(row.get::<String, _>("delta"), delta);
+    assert_eq!(row.get::<String, _>("source"), "balanceOf");
+    assert_eq!(row.get::<String, _>("cause"), "onchain-refresh");
+    assert_eq!(row.get::<String, _>("block_number"), "12");
+    assert_eq!(row.get::<String, _>("block_timestamp"), "12000");
+    assert_eq!(row.get::<String, _>("transaction_hash"), "onchain-refresh");
+
+    Ok(())
+}
+
+async fn assert_table_count(pool: &PgPool, table: &str, expected: i64) -> Result<(), sqlx::Error> {
+    let count: i64 = sqlx::query(&format!("SELECT count(*)::BIGINT FROM {table}"))
+        .fetch_one(pool)
+        .await?
+        .get(0);
+
+    assert_eq!(count, expected);
+
+    Ok(())
+}
+
+async fn assert_scoped_checkpoint_count(
+    pool: &PgPool,
+    table: &str,
+    account: &str,
+    expected: i64,
+) -> Result<(), sqlx::Error> {
+    let count: i64 = sqlx::query(&format!(
+        "SELECT count(*)::BIGINT FROM {table} WHERE account = $1"
+    ))
+    .bind(account)
+    .fetch_one(pool)
+    .await?
+    .get(0);
+
+    assert_eq!(count, expected);
+
+    Ok(())
+}
+
 fn unique_schema_name() -> String {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -454,6 +654,8 @@ fn unique_schema_name() -> String {
 }
 
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
+const GOVERNOR_TWO: &str = "0x3333333333333333333333333333333333333333";
 const TOKEN: &str = "0x2222222222222222222222222222222222222222";
+const TOKEN_TWO: &str = "0x4444444444444444444444444444444444444444";
 const ACCOUNT_ONE: &str = "0x0000000000000000000000000000000000000001";
 const ACCOUNT_TWO: &str = "0x0000000000000000000000000000000000000002";

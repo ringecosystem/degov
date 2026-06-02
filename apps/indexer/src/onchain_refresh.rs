@@ -261,7 +261,9 @@ where
 
         let mut transaction = self.pool.begin().await?;
 
+        let previous = read_contributor_refresh_values(&mut transaction, &task.account).await?;
         upsert_contributor_refresh(&mut transaction, task, value).await?;
+        insert_refresh_checkpoints(&mut transaction, task, value, previous).await?;
         refresh_data_metric(&mut transaction, task).await?;
         complete_task(&mut transaction, &task.id, now_ms).await?;
 
@@ -640,6 +642,109 @@ async fn upsert_contributor_refresh(
     Ok(())
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct ContributorRefreshValues {
+    power: Option<String>,
+    balance: Option<String>,
+}
+
+async fn read_contributor_refresh_values(
+    transaction: &mut Transaction<'_, Postgres>,
+    account: &str,
+) -> Result<ContributorRefreshValues, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT power::TEXT AS power, balance::TEXT AS balance
+         FROM contributor
+         WHERE id = $1",
+    )
+    .bind(account)
+    .fetch_optional(&mut **transaction)
+    .await?;
+
+    Ok(row
+        .map(|row| ContributorRefreshValues {
+            power: row.get("power"),
+            balance: row.get("balance"),
+        })
+        .unwrap_or_default())
+}
+
+async fn insert_refresh_checkpoints(
+    transaction: &mut Transaction<'_, Postgres>,
+    task: &OnchainRefreshTask,
+    value: &OnchainRefreshReadValue,
+    previous: ContributorRefreshValues,
+) -> Result<(), sqlx::Error> {
+    if task.refresh_balance {
+        let previous_balance = previous.balance.as_deref().unwrap_or("0");
+        let new_balance = value.balance.as_deref().unwrap_or("0");
+        sqlx::query(
+            "INSERT INTO token_balance_checkpoint (
+                id, chain_id, dao_code, governor_address, token_address, contract_address,
+                account, previous_balance, new_balance, delta, source, cause, block_number,
+                block_timestamp, transaction_hash
+             )
+             VALUES (
+                $1, $2, $3, $4, $5, $5, $6, $7::NUMERIC(78, 0), $8::NUMERIC(78, 0),
+                ($8::NUMERIC(78, 0) - $7::NUMERIC(78, 0)), 'balanceOf', 'onchain-refresh',
+                $9::NUMERIC(78, 0), $10::NUMERIC(78, 0), 'onchain-refresh'
+             )
+             ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(format!(
+            "onchain-refresh-balance-{}",
+            onchain_refresh_checkpoint_scope(task)
+        ))
+        .bind(task.chain_id)
+        .bind(&task.dao_code)
+        .bind(&task.governor_address)
+        .bind(&task.token_address)
+        .bind(&task.account)
+        .bind(previous_balance)
+        .bind(new_balance)
+        .bind(&task.last_seen_block_number)
+        .bind(&task.last_seen_block_timestamp)
+        .execute(&mut **transaction)
+        .await?;
+    }
+
+    if task.refresh_power {
+        let previous_power = previous.power.as_deref().unwrap_or("0");
+        let new_power = value.power.as_deref().unwrap_or("0");
+        sqlx::query(
+            "INSERT INTO vote_power_checkpoint (
+                id, chain_id, dao_code, governor_address, token_address, contract_address,
+                account, clock_mode, timepoint, previous_power, new_power, delta, source, cause,
+                block_number, block_timestamp, transaction_hash
+             )
+             VALUES (
+                $1, $2, $3, $4, $5, $5, $6, 'blocknumber', $7::NUMERIC(78, 0),
+                $8::NUMERIC(78, 0), $9::NUMERIC(78, 0),
+                ($9::NUMERIC(78, 0) - $8::NUMERIC(78, 0)), 'getVotes', 'onchain-refresh',
+                $7::NUMERIC(78, 0), $10::NUMERIC(78, 0), 'onchain-refresh'
+             )
+             ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(format!(
+            "onchain-refresh-power-{}",
+            onchain_refresh_checkpoint_scope(task)
+        ))
+        .bind(task.chain_id)
+        .bind(&task.dao_code)
+        .bind(&task.governor_address)
+        .bind(&task.token_address)
+        .bind(&task.account)
+        .bind(&task.last_seen_block_number)
+        .bind(previous_power)
+        .bind(new_power)
+        .bind(&task.last_seen_block_timestamp)
+        .execute(&mut **transaction)
+        .await?;
+    }
+
+    Ok(())
+}
+
 async fn refresh_data_metric(
     transaction: &mut Transaction<'_, Postgres>,
     task: &OnchainRefreshTask,
@@ -728,6 +833,18 @@ fn data_metric_id(chain_id: i32, governor_address: &str, dao_code: Option<&str>)
     format!(
         "{chain_id}:{governor_address}:{}",
         dao_code.unwrap_or_default()
+    )
+}
+
+fn onchain_refresh_checkpoint_scope(task: &OnchainRefreshTask) -> String {
+    format!(
+        "{}:{}:{}:{}:{}:{}",
+        task.chain_id,
+        task.dao_code.as_deref().unwrap_or_default(),
+        task.governor_address,
+        task.token_address,
+        task.account,
+        task.last_seen_block_number,
     )
 }
 
