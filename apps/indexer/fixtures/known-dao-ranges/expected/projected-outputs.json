@@ -189,6 +189,30 @@
         "to_delegate": "0x0000000000000000000000000000000000003003"
       }
     ],
+    "delegate_mappings": [
+      {
+        "from": "0x0000000000000000000000000000000000003001",
+        "id": "0x0000000000000000000000000000000000003001",
+        "power": "0",
+        "to": "0x0000000000000000000000000000000000003003"
+      }
+    ],
+    "delegates": [],
+    "contributors": [
+      {
+        "balance": null,
+        "delegates_count_all": 1,
+        "delegates_count_effective": 0,
+        "id": "0x0000000000000000000000000000000000003003",
+        "last_vote_block_number": null,
+        "last_vote_timestamp": null,
+        "power": "0"
+      }
+    ],
+    "data_metric_delta": {
+      "member_count": 1,
+      "power_sum": "0"
+    },
     "delegate_votes_changed": [
       {
         "delegate": "0x0000000000000000000000000000000000003003",
@@ -219,9 +243,16 @@
     ]
   },
   "token_erc721": {
+    "contributors": [],
+    "data_metric_delta": {
+      "member_count": 0,
+      "power_sum": "0"
+    },
     "delegate_changed": [],
+    "delegate_mappings": [],
     "delegate_rollings": [],
     "delegate_votes_changed": [],
+    "delegates": [],
     "event_order": [
       "evm:1:30000:0x00000000000000000000000000000000000000000000000000000000002dc6c0:0:0"
     ],

@@ -1,8 +1,9 @@
 use degov_datalens_indexer::{
     BatchReadPlanConfig, ChainContracts, ChainReadMethod, DecodedDaoEvent, DecodedGovernorEvent,
-    DecodedTimelockEvent, DecodedTokenEvent, GovernanceTokenStandard, NormalizedEvmLog,
-    ProposalProjectionContext, ProposalProjectionEvent, TimelockProjectionContext,
-    TimelockProjectionEvent, TokenProjectionContext, TokenProjectionEvent, VoteProjectionContext,
+    DecodedTimelockEvent, DecodedTokenEvent, GovernanceTokenStandard,
+    InMemoryTokenProjectionRepository, NormalizedEvmLog, ProposalProjectionContext,
+    ProposalProjectionEvent, TimelockProjectionContext, TimelockProjectionEvent,
+    TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository, VoteProjectionContext,
     VoteProjectionEvent, load_datalens_fixture, normalize_evm_log_rows, project_proposal_events,
     project_timelock_events, project_token_events, project_vote_events,
 };
@@ -110,6 +111,15 @@ fn test_known_dao_range_fixture_expected_snapshot_documents_output_tables() {
             .iter()
             .any(|event| event.table == "timelock_operations")
     );
+
+    let projected = load_datalens_fixture("known-dao-ranges")
+        .expect("fixture loads")
+        .expected_projected_outputs()
+        .expect("expected projected outputs");
+    assert!(projected["token_erc20"]["delegate_mappings"].is_array());
+    assert!(projected["token_erc20"]["delegates"].is_array());
+    assert!(projected["token_erc20"]["contributors"].is_array());
+    assert!(projected["token_erc20"]["data_metric_delta"].is_object());
 }
 
 #[test]
@@ -530,6 +540,11 @@ fn token_events(events: &[DecodedFixtureEvent], dao_code: &str) -> Vec<TokenProj
 }
 
 fn token_projection_snapshot(batch: degov_datalens_indexer::TokenProjectionBatch) -> Value {
+    let mut repository = InMemoryTokenProjectionRepository::default();
+    repository
+        .apply(&batch)
+        .expect("token projection repository applies fixture batch");
+
     json!({
         "event_order": batch.event_order,
         "delegate_changed": batch.delegate_changed.iter().map(|row| json!({
@@ -557,6 +572,32 @@ fn token_projection_snapshot(batch: degov_datalens_indexer::TokenProjectionBatch
             "from_delegate": row.from_delegate,
             "to_delegate": row.to_delegate,
         })).collect::<Vec<_>>(),
+        "delegate_mappings": repository.delegate_mappings().values().map(|row| json!({
+            "id": row.id,
+            "from": row.from,
+            "to": row.to,
+            "power": row.power,
+        })).collect::<Vec<_>>(),
+        "delegates": repository.delegates().values().map(|row| json!({
+            "id": row.id,
+            "from_delegate": row.from_delegate,
+            "to_delegate": row.to_delegate,
+            "is_current": row.is_current,
+            "power": row.power,
+        })).collect::<Vec<_>>(),
+        "contributors": repository.contributors().values().map(|row| json!({
+            "id": row.id,
+            "last_vote_block_number": row.last_vote_block_number,
+            "last_vote_timestamp": row.last_vote_timestamp,
+            "power": row.power,
+            "balance": row.balance,
+            "delegates_count_all": row.delegates_count_all,
+            "delegates_count_effective": row.delegates_count_effective,
+        })).collect::<Vec<_>>(),
+        "data_metric_delta": {
+            "power_sum": repository.data_metric().power_sum,
+            "member_count": repository.data_metric().member_count,
+        },
         "reconcile_metrics": {
             "candidate_count": batch.reconcile_plan.metrics.candidate_count,
             "deduped_count": batch.reconcile_plan.metrics.deduped_count,

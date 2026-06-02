@@ -1,0 +1,406 @@
+{
+  "report": "v4-parity-audit",
+  "fixture": "known-dao-ranges",
+  "limitation": "Live v4 comparison is not required locally; this audit compares deterministic Datalens fixture outputs against fixture-backed v4 business-result snapshots for selected demo, ENS/Lisk, and timelock ranges.",
+  "scopes": [
+    "Proposal rows/actions/state epochs/deadline extensions/governance parameter checkpoints",
+    "VoteCast/VoteCastWithParams/VoteCastGroup and proposal/global vote metrics",
+    "DelegateChanged, DelegateVotesChanged, TokenTransfer, DelegateRolling, DelegateMapping, Delegate, Contributor rows",
+    "TimelockOperation, TimelockCall, role/min-delay rows and proposal bindings",
+    "OnchainRefreshTask creation and known-account discovery",
+    "DataMetric proposal/vote/power/member counts"
+  ],
+  "v4_snapshot": {
+    "source": "fixture-backed-current-v4-business-results",
+    "tables": [
+      {
+        "table": "Proposal",
+        "scope": "proposal rows",
+        "row_count": 1,
+        "sha256": "4626d2b00398be1a9e2a8d8fa935188a96926d31a620c18d2b0e50fc1f0263b3"
+      },
+      {
+        "table": "ProposalCreated",
+        "scope": "proposal rows",
+        "row_count": 1,
+        "sha256": "1ab550def2e9e23afbb54452a4c23b14f0791bca18d88f693fe3104bd43d0f34"
+      },
+      {
+        "table": "ProposalAction",
+        "scope": "proposal actions",
+        "row_count": 1,
+        "sha256": "107812c97f09042cdab1f88ed032c6cf9d02a5f2b7063344e1c3abb7b79e6094"
+      },
+      {
+        "table": "ProposalQueued",
+        "scope": "proposal state epochs",
+        "row_count": 1,
+        "sha256": "f15870fd0c8b6524a71d772263f15edd7e28a919e1b3c3809a7b4becc53ee4fc"
+      },
+      {
+        "table": "ProposalDeadlineExtension",
+        "scope": "deadline extensions",
+        "row_count": 1,
+        "sha256": "4acfbdd34df8c36418fd2262651aae20c0df0094ff4d98330c23f68ea3bc2ea9"
+      },
+      {
+        "table": "ProposalExecuted",
+        "scope": "proposal state epochs",
+        "row_count": 1,
+        "sha256": "9a000d5ecb329a19192b81da6cb25e609afd74cec5439188882860afd3f7185e"
+      },
+      {
+        "table": "ProposalStateEpoch",
+        "scope": "proposal state epochs",
+        "row_count": 3,
+        "sha256": "a8dc043540521459e9027f9f8995eef3ad3dc09f95cd2921d21c8e23ce2432a7"
+      },
+      {
+        "table": "VoteCast",
+        "scope": "votes",
+        "row_count": 1,
+        "sha256": "52af48d8fcf258daaa262f8b1d089c6fd45480de08ab5ae5755fd5971f76c42b"
+      },
+      {
+        "table": "VoteCastWithParams",
+        "scope": "votes",
+        "row_count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "table": "VoteCastGroup",
+        "scope": "proposal/global vote metrics",
+        "row_count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "table": "ProposalVoteMetric",
+        "scope": "proposal/global vote metrics",
+        "row_count": 1,
+        "sha256": "4a98bbb1a889289f73666de5f6420361a39a04daff8dbd3d23aac42445e53e04"
+      },
+      {
+        "table": "DataMetricVoteDelta",
+        "scope": "DataMetric proposal/vote/power/member counts",
+        "row_count": 4,
+        "sha256": "b1d16a9743e232423f3100c3ff9df2abfb6190c406946766c05173cbf18aa3d7"
+      },
+      {
+        "table": "DelegateChanged",
+        "scope": "delegation/token rows",
+        "row_count": 1,
+        "sha256": "f2f85416b3534cf393d25737d4c51068c19e9b822557d6741eb2c77ce7b37f3d"
+      },
+      {
+        "table": "DelegateVotesChanged",
+        "scope": "delegation/token rows",
+        "row_count": 1,
+        "sha256": "94c9e76956a6ec5542990e5c34ee7cf38fe95e7445ce4be1735718e68d3001e9"
+      },
+      {
+        "table": "TokenTransfer",
+        "scope": "delegation/token rows",
+        "row_count": 1,
+        "sha256": "967a6e572ded862e90724b87b75b0b70f929658d92b59fbcaa85e1650323b168"
+      },
+      {
+        "table": "DelegateRolling",
+        "scope": "delegation/token rows",
+        "row_count": 1,
+        "sha256": "f2f85416b3534cf393d25737d4c51068c19e9b822557d6741eb2c77ce7b37f3d"
+      },
+      {
+        "table": "DelegateMapping",
+        "scope": "delegation/token rows",
+        "row_count": 1,
+        "sha256": "0bb41d93250f6b6c0992e244c27846fcd0664f91ddaf9ba0f8c9d572cea17687"
+      },
+      {
+        "table": "Delegate",
+        "scope": "delegation/token rows",
+        "row_count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "table": "Contributor",
+        "scope": "delegation/token rows",
+        "row_count": 1,
+        "sha256": "8df0aae09c586b55f371719c8ca80ffd28c8811da88293bf9bdaac724bc2afb1"
+      },
+      {
+        "table": "DataMetricTokenDelta",
+        "scope": "DataMetric proposal/vote/power/member counts",
+        "row_count": 2,
+        "sha256": "615c69a8783867be82294ca412cfde002b5ae0b715e610077720b7575fb4accb"
+      },
+      {
+        "table": "TokenTransferErc721",
+        "scope": "delegation/token rows",
+        "row_count": 1,
+        "sha256": "50ebcf4783a0e5956e75f19c363300be8f0ed87a48afc3868d3cded1daec66ec"
+      },
+      {
+        "table": "TimelockOperation",
+        "scope": "timelock rows and proposal bindings",
+        "row_count": 1,
+        "sha256": "dcd3de2146d890a7247b605990996504866c4989eb496d0699a87e99e0fc02ea"
+      },
+      {
+        "table": "TimelockCall",
+        "scope": "timelock rows and proposal bindings",
+        "row_count": 1,
+        "sha256": "52146dc91e19ce0abf78c7bd549b982bb37b2c1a584d573c44a69ba78851655a"
+      },
+      {
+        "table": "TimelockRoleEvent",
+        "scope": "timelock role rows",
+        "row_count": 2,
+        "sha256": "02465a2f66dda4f83c04e1db61b1c9a25f9d04e6448765e33a7ec45f389d6cee"
+      },
+      {
+        "table": "TimelockMinDelayChange",
+        "scope": "timelock min-delay rows",
+        "row_count": 1,
+        "sha256": "00a36680480f6fd5530f360532e2ae7059b9640e5529c55a330245d07586e575"
+      },
+      {
+        "table": "TimelockOperationHint",
+        "scope": "timelock rows and proposal bindings",
+        "row_count": 4,
+        "sha256": "b2158fa72b3c89016b552398e01839c74985c2aa08353b7cc24937f38fd9bf0a"
+      },
+      {
+        "table": "ProposalGovernanceReadPlan",
+        "scope": "governance parameter checkpoints",
+        "row_count": 2,
+        "sha256": "1e2c84da5f43fb6c0f00893f913209597140f8ab63fa87b4d8aaaf79ab779d03"
+      },
+      {
+        "table": "TimelockRefreshReadPlan",
+        "scope": "OnchainRefreshTask creation",
+        "row_count": 2,
+        "sha256": "de4d9cb43813b2e7d6a20b9a4533e634a2bd0f4382d4f073e2be4874b4f43723"
+      },
+      {
+        "table": "TokenPowerRefreshReadPlan",
+        "scope": "OnchainRefreshTask creation and known-account discovery",
+        "row_count": 4,
+        "sha256": "52ce180701299fceed81283e440de6a2549ddded35ba7466eea4a50bd49f73d8"
+      }
+    ]
+  },
+  "matched_tables": [
+    {
+      "table": "Proposal",
+      "scope": "proposal rows",
+      "row_count": 1,
+      "sha256": "4626d2b00398be1a9e2a8d8fa935188a96926d31a620c18d2b0e50fc1f0263b3"
+    },
+    {
+      "table": "ProposalCreated",
+      "scope": "proposal rows",
+      "row_count": 1,
+      "sha256": "1ab550def2e9e23afbb54452a4c23b14f0791bca18d88f693fe3104bd43d0f34"
+    },
+    {
+      "table": "ProposalAction",
+      "scope": "proposal actions",
+      "row_count": 1,
+      "sha256": "107812c97f09042cdab1f88ed032c6cf9d02a5f2b7063344e1c3abb7b79e6094"
+    },
+    {
+      "table": "ProposalQueued",
+      "scope": "proposal state epochs",
+      "row_count": 1,
+      "sha256": "f15870fd0c8b6524a71d772263f15edd7e28a919e1b3c3809a7b4becc53ee4fc"
+    },
+    {
+      "table": "ProposalDeadlineExtension",
+      "scope": "deadline extensions",
+      "row_count": 1,
+      "sha256": "4acfbdd34df8c36418fd2262651aae20c0df0094ff4d98330c23f68ea3bc2ea9"
+    },
+    {
+      "table": "ProposalExecuted",
+      "scope": "proposal state epochs",
+      "row_count": 1,
+      "sha256": "9a000d5ecb329a19192b81da6cb25e609afd74cec5439188882860afd3f7185e"
+    },
+    {
+      "table": "ProposalStateEpoch",
+      "scope": "proposal state epochs",
+      "row_count": 3,
+      "sha256": "a8dc043540521459e9027f9f8995eef3ad3dc09f95cd2921d21c8e23ce2432a7"
+    },
+    {
+      "table": "VoteCast",
+      "scope": "votes",
+      "row_count": 1,
+      "sha256": "52af48d8fcf258daaa262f8b1d089c6fd45480de08ab5ae5755fd5971f76c42b"
+    },
+    {
+      "table": "VoteCastWithParams",
+      "scope": "votes",
+      "row_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "VoteCastGroup",
+      "scope": "proposal/global vote metrics",
+      "row_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "ProposalVoteMetric",
+      "scope": "proposal/global vote metrics",
+      "row_count": 1,
+      "sha256": "4a98bbb1a889289f73666de5f6420361a39a04daff8dbd3d23aac42445e53e04"
+    },
+    {
+      "table": "DataMetricVoteDelta",
+      "scope": "DataMetric proposal/vote/power/member counts",
+      "row_count": 4,
+      "sha256": "b1d16a9743e232423f3100c3ff9df2abfb6190c406946766c05173cbf18aa3d7"
+    },
+    {
+      "table": "DelegateChanged",
+      "scope": "delegation/token rows",
+      "row_count": 1,
+      "sha256": "f2f85416b3534cf393d25737d4c51068c19e9b822557d6741eb2c77ce7b37f3d"
+    },
+    {
+      "table": "DelegateVotesChanged",
+      "scope": "delegation/token rows",
+      "row_count": 1,
+      "sha256": "94c9e76956a6ec5542990e5c34ee7cf38fe95e7445ce4be1735718e68d3001e9"
+    },
+    {
+      "table": "TokenTransfer",
+      "scope": "delegation/token rows",
+      "row_count": 1,
+      "sha256": "967a6e572ded862e90724b87b75b0b70f929658d92b59fbcaa85e1650323b168"
+    },
+    {
+      "table": "DelegateRolling",
+      "scope": "delegation/token rows",
+      "row_count": 1,
+      "sha256": "f2f85416b3534cf393d25737d4c51068c19e9b822557d6741eb2c77ce7b37f3d"
+    },
+    {
+      "table": "DelegateMapping",
+      "scope": "delegation/token rows",
+      "row_count": 1,
+      "sha256": "0bb41d93250f6b6c0992e244c27846fcd0664f91ddaf9ba0f8c9d572cea17687"
+    },
+    {
+      "table": "Delegate",
+      "scope": "delegation/token rows",
+      "row_count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "Contributor",
+      "scope": "delegation/token rows",
+      "row_count": 1,
+      "sha256": "8df0aae09c586b55f371719c8ca80ffd28c8811da88293bf9bdaac724bc2afb1"
+    },
+    {
+      "table": "DataMetricTokenDelta",
+      "scope": "DataMetric proposal/vote/power/member counts",
+      "row_count": 2,
+      "sha256": "615c69a8783867be82294ca412cfde002b5ae0b715e610077720b7575fb4accb"
+    },
+    {
+      "table": "TokenTransferErc721",
+      "scope": "delegation/token rows",
+      "row_count": 1,
+      "sha256": "50ebcf4783a0e5956e75f19c363300be8f0ed87a48afc3868d3cded1daec66ec"
+    },
+    {
+      "table": "TimelockOperation",
+      "scope": "timelock rows and proposal bindings",
+      "row_count": 1,
+      "sha256": "dcd3de2146d890a7247b605990996504866c4989eb496d0699a87e99e0fc02ea"
+    },
+    {
+      "table": "TimelockCall",
+      "scope": "timelock rows and proposal bindings",
+      "row_count": 1,
+      "sha256": "52146dc91e19ce0abf78c7bd549b982bb37b2c1a584d573c44a69ba78851655a"
+    },
+    {
+      "table": "TimelockRoleEvent",
+      "scope": "timelock role rows",
+      "row_count": 2,
+      "sha256": "02465a2f66dda4f83c04e1db61b1c9a25f9d04e6448765e33a7ec45f389d6cee"
+    },
+    {
+      "table": "TimelockMinDelayChange",
+      "scope": "timelock min-delay rows",
+      "row_count": 1,
+      "sha256": "00a36680480f6fd5530f360532e2ae7059b9640e5529c55a330245d07586e575"
+    },
+    {
+      "table": "TimelockOperationHint",
+      "scope": "timelock rows and proposal bindings",
+      "row_count": 4,
+      "sha256": "b2158fa72b3c89016b552398e01839c74985c2aa08353b7cc24937f38fd9bf0a"
+    },
+    {
+      "table": "ProposalGovernanceReadPlan",
+      "scope": "governance parameter checkpoints",
+      "row_count": 2,
+      "sha256": "1e2c84da5f43fb6c0f00893f913209597140f8ab63fa87b4d8aaaf79ab779d03"
+    },
+    {
+      "table": "TimelockRefreshReadPlan",
+      "scope": "OnchainRefreshTask creation",
+      "row_count": 2,
+      "sha256": "de4d9cb43813b2e7d6a20b9a4533e634a2bd0f4382d4f073e2be4874b4f43723"
+    },
+    {
+      "table": "TokenPowerRefreshReadPlan",
+      "scope": "OnchainRefreshTask creation and known-account discovery",
+      "row_count": 4,
+      "sha256": "52ce180701299fceed81283e440de6a2549ddded35ba7466eea4a50bd49f73d8"
+    }
+  ],
+  "expected_differences": [
+    {
+      "table": "degov_indexer_checkpoint",
+      "reason": "Datalens-native checkpoint rows replace SQD processor metadata tables for deterministic range progress."
+    },
+    {
+      "table": "vote_power_checkpoint",
+      "reason": "Datalens stores reusable vote-power checkpoint rows; v4 resolved these through processor-local reads."
+    },
+    {
+      "table": "token_balance_checkpoint",
+      "reason": "Datalens stores reusable token-balance checkpoint rows; v4 did not persist this checkpoint table."
+    },
+    {
+      "table": "governance_parameter_checkpoint",
+      "reason": "Datalens checkpoint tables normalize governance parameter reads instead of SQD processor metadata."
+    },
+    {
+      "table": "sqd_processor_status",
+      "reason": "Removed SQD processor metadata is intentionally absent from the Datalens-native indexer."
+    },
+    {
+      "table": "sqd_processor_state",
+      "reason": "Removed SQD processor metadata is intentionally absent from the Datalens-native indexer."
+    },
+    {
+      "table": "sqd_processor_hot_blocks",
+      "reason": "Removed SQD processor metadata is intentionally absent from the Datalens-native indexer."
+    }
+  ],
+  "real_mismatches": [],
+  "missing_v4_tables": [],
+  "unexpected_datalens_tables": [],
+  "summary": {
+    "matched_tables": 29,
+    "expected_differences": 7,
+    "real_mismatches": 0
+  }
+}
