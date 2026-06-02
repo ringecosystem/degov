@@ -12,13 +12,18 @@ how to repair mismatches found by the comparison.
 The comparison checks:
 
 - proposal count and proposal identity
-- proposal title and vote weights
+- proposal title, state/status, vote weights, snapshot, deadline, timestamps,
+  and quorum where available
 - delegate voting power and delegator count by sampled rank
+- delegate token balance where Tally exposes it
 - aggregate delegated voting power
 - indexer sync height
+- direct onchain `state`, `proposalSnapshot`, `proposalDeadline`, `quorum`,
+  `getVotes`, `balanceOf`, and historical vote reads where available
 
-The current script compares DeGov GraphQL against the public Tally web app
-GraphQL calls captured from `tally.xyz`.
+The reusable validation script compares DeGov GraphQL against Tally data and
+direct onchain reads. It supports live Tally API access, replayed Tally GraphQL
+request bodies captured from `tally.xyz`, and fixture-backed dry-runs for CI.
 
 ## Inputs
 
@@ -56,6 +61,34 @@ playwright-cli --raw request-body <organization-summary-request-id> > /tmp/tally
 
 Use the `api-key` header from the browser request when calling
 `https://api.tally.xyz/query`. Do not commit the captured key.
+
+## Run Validation
+
+Dry-run the fixture/test path:
+
+```sh
+pnpm run test:indexer-scripts
+```
+
+Run live ENS/Lisk validation with the shared target file:
+
+```sh
+TALLY_API_KEY=<redacted> pnpm run audit:tally-onchain \
+  --targets-file apps/indexer/scripts/indexer-accuracy-targets.json \
+  --proposal-limit 300 \
+  --delegate-limit 100 \
+  --deterministic-proposals 30 \
+  --random-proposals 20 \
+  --deterministic-delegates 40 \
+  --random-delegates 20 \
+  --json-file reports/tally-onchain-e2e.json \
+  --markdown-file reports/tally-onchain-e2e.md
+```
+
+If the Tally API shape changes, capture the browser request bodies and add
+`tallyProposalsRequestFile` or `tallyDelegatesRequestFile` to the relevant
+target. The script will replay those request bodies against
+`https://api.tally.xyz/query` and keep the same DeGov/onchain comparison logic.
 
 ## DeGov Queries
 
@@ -116,6 +149,8 @@ query($ids: [String!]) {
   a leading heading marker.
 - Compare `for`, `against`, and `abstain` raw vote weights exactly.
 - Compare delegate power raw values exactly.
+- When DeGov and onchain agree but Tally differs, record the conclusion as
+  `tally-wrong`; do not force DeGov to match Tally.
 - Compare aggregate power as both raw difference and percentage difference.
 - Sample several proposal ranges: latest, middle, and oldest.
 - Sample delegates in multiple pages, for example top 80 by Tally voting power.
