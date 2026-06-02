@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    BatchReadPlanConfig, ChainContracts, ChainReadPlan, ChainReadPlanBuilder, ChainReadReason,
-    DecodedDaoEvent, DecodedGovernorEvent, DecodedTokenEvent,
+    BatchReadPlanConfig, ChainContracts, ChainReadMethod, ChainReadPlan, ChainReadPlanBuilder,
+    ChainReadReason, DecodedDaoEvent, DecodedTokenEvent,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14,12 +14,16 @@ pub struct PowerReconcileContext {
     pub to_block: u64,
     pub target_height: Option<u64>,
     pub read_plan_config: BatchReadPlanConfig,
+    pub current_power_method: ChainReadMethod,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PowerReconcileEvent {
     pub block_number: u64,
+    pub block_timestamp_ms: Option<u64>,
     pub transaction_hash: String,
+    pub transaction_index: u64,
+    pub log_index: u64,
     pub event: DecodedDaoEvent,
 }
 
@@ -28,16 +32,14 @@ pub enum PowerActivityReason {
     DelegateChanged,
     DelegateVotesChanged,
     Transfer,
-    VoteCast,
 }
 
 impl PowerActivityReason {
     fn label(self) -> &'static str {
         match self {
-            Self::DelegateChanged => "delegate_changed",
-            Self::DelegateVotesChanged => "delegate_votes_changed",
+            Self::DelegateChanged => "delegate-change",
+            Self::DelegateVotesChanged => "delegate-votes-changed",
             Self::Transfer => "transfer",
-            Self::VoteCast => "vote_cast",
         }
     }
 }
@@ -66,7 +68,10 @@ pub struct PowerRefreshStatusRecord {
     pub reason: String,
     pub first_seen_activity_block: u64,
     pub last_seen_activity_block: u64,
+    pub last_seen_block_timestamp_ms: Option<u64>,
     pub last_seen_transaction_hash: String,
+    pub last_seen_transaction_index: u64,
+    pub last_seen_log_index: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,6 +82,8 @@ pub struct PowerReconcileCandidate {
     pub governor_token: String,
     pub account: String,
     pub latest_activity_block: u64,
+    pub latest_transaction_index: u64,
+    pub latest_log_index: u64,
     pub reasons: BTreeSet<PowerActivityReason>,
     pub observed_log_power: Option<String>,
     pub status: PowerRefreshStatusRecord,
@@ -128,8 +135,11 @@ pub fn plan_power_reconcile(
                 .and_modify(|candidate| {
                     candidate.first_seen_activity_block =
                         candidate.first_seen_activity_block.min(event.block_number);
-                    if event.block_number >= candidate.latest_activity_block {
+                    if event.log_position() >= candidate.latest_position() {
                         candidate.latest_activity_block = event.block_number;
+                        candidate.latest_transaction_index = event.transaction_index;
+                        candidate.latest_log_index = event.log_index;
+                        candidate.last_seen_block_timestamp_ms = event.block_timestamp_ms;
                         candidate.last_seen_transaction_hash = event.transaction_hash.clone();
                     }
                     candidate.reasons.insert(reason);
@@ -138,6 +148,9 @@ pub fn plan_power_reconcile(
                     account: normalized_account,
                     first_seen_activity_block: event.block_number,
                     latest_activity_block: event.block_number,
+                    latest_transaction_index: event.transaction_index,
+                    latest_log_index: event.log_index,
+                    last_seen_block_timestamp_ms: event.block_timestamp_ms,
                     last_seen_transaction_hash: event.transaction_hash.clone(),
                     reasons: [reason].into(),
                 });
@@ -152,10 +165,11 @@ pub fn plan_power_reconcile(
     let candidates = candidates
         .into_values()
         .map(|candidate| {
-            read_plan_builder.add_account_power_refresh(
+            read_plan_builder.add_account_power_refresh_with_method(
                 &candidate.account,
                 candidate.latest_activity_block,
                 ChainReadReason::TokenActivityPowerRefresh,
+                context.current_power_method,
             );
             candidate.into_reconcile_candidate(context)
         })
@@ -188,6 +202,9 @@ struct PendingPowerCandidate {
     account: String,
     first_seen_activity_block: u64,
     latest_activity_block: u64,
+    latest_transaction_index: u64,
+    latest_log_index: u64,
+    last_seen_block_timestamp_ms: Option<u64>,
     last_seen_transaction_hash: String,
     reasons: BTreeSet<PowerActivityReason>,
 }
@@ -205,6 +222,8 @@ impl PendingPowerCandidate {
             governor_token: governor_token.clone(),
             account: self.account.clone(),
             latest_activity_block: self.latest_activity_block,
+            latest_transaction_index: self.latest_transaction_index,
+            latest_log_index: self.latest_log_index,
             reasons: self.reasons,
             observed_log_power: None,
             status: PowerRefreshStatusRecord {
@@ -220,9 +239,20 @@ impl PendingPowerCandidate {
                 reason,
                 first_seen_activity_block: self.first_seen_activity_block,
                 last_seen_activity_block: self.latest_activity_block,
+                last_seen_block_timestamp_ms: self.last_seen_block_timestamp_ms,
                 last_seen_transaction_hash: self.last_seen_transaction_hash,
+                last_seen_transaction_index: self.latest_transaction_index,
+                last_seen_log_index: self.latest_log_index,
             },
         }
+    }
+
+    fn latest_position(&self) -> (u64, u64, u64) {
+        (
+            self.latest_activity_block,
+            self.latest_transaction_index,
+            self.latest_log_index,
+        )
     }
 }
 
@@ -252,12 +282,6 @@ fn affected_accounts(event: &DecodedDaoEvent) -> Vec<(String, PowerActivityReaso
                 PowerActivityReason::DelegateVotesChanged,
             )]
         }
-        DecodedDaoEvent::Governor(DecodedGovernorEvent::VoteCast(event)) => {
-            vec![(event.voter.clone(), PowerActivityReason::VoteCast)]
-        }
-        DecodedDaoEvent::Governor(DecodedGovernorEvent::VoteCastWithParams(event)) => {
-            vec![(event.voter.clone(), PowerActivityReason::VoteCast)]
-        }
         DecodedDaoEvent::Governor(_)
         | DecodedDaoEvent::Timelock(_)
         | DecodedDaoEvent::UnsupportedTopic(_) => Vec::new(),
@@ -279,7 +303,7 @@ fn reason_label(reasons: &BTreeSet<PowerActivityReason>) -> String {
         .iter()
         .map(|reason| reason.label())
         .collect::<Vec<_>>()
-        .join(",")
+        .join("+")
 }
 
 fn is_zero_address(account: &str) -> bool {
@@ -288,4 +312,10 @@ fn is_zero_address(account: &str) -> bool {
 
 fn normalize_identifier(value: &str) -> String {
     value.to_ascii_lowercase()
+}
+
+impl PowerReconcileEvent {
+    fn log_position(&self) -> (u64, u64, u64) {
+        (self.block_number, self.transaction_index, self.log_index)
+    }
 }

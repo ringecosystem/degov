@@ -299,10 +299,25 @@ impl ChainReadPlanBuilder {
         activity_block: u64,
         reason: ChainReadReason,
     ) {
+        self.add_account_power_refresh_with_method(
+            account,
+            activity_block,
+            reason,
+            ChainReadMethod::GetVotes,
+        );
+    }
+
+    pub fn add_account_power_refresh_with_method(
+        &mut self,
+        account: &str,
+        activity_block: u64,
+        reason: ChainReadReason,
+        method: ChainReadMethod,
+    ) {
         let account = normalize_identifier(account);
         self.add_required_read(ChainReadDraft {
             contract_address: self.contracts.governor_token.clone(),
-            method: ChainReadMethod::GetVotes,
+            method,
             args: vec![account.clone()],
             block_mode: BlockReadMode::Fresh,
             account: Some(account),
