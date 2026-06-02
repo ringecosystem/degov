@@ -145,7 +145,7 @@ pub struct ContributorVoteSignalWrite {
     pub transaction_hash: String,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DataMetricVoteDelta {
     pub votes_count: i64,
     pub votes_with_params_count: i64,
@@ -153,6 +153,19 @@ pub struct DataMetricVoteDelta {
     pub votes_weight_for_sum: String,
     pub votes_weight_against_sum: String,
     pub votes_weight_abstain_sum: String,
+}
+
+impl Default for DataMetricVoteDelta {
+    fn default() -> Self {
+        Self {
+            votes_count: 0,
+            votes_with_params_count: 0,
+            votes_without_params_count: 0,
+            votes_weight_for_sum: "0".to_owned(),
+            votes_weight_against_sum: "0".to_owned(),
+            votes_weight_abstain_sum: "0".to_owned(),
+        }
+    }
 }
 
 pub trait VoteProjectionRepository {

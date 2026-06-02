@@ -150,6 +150,94 @@ fn test_project_vote_events_replays_idempotently_and_sorts_by_log_position() {
 }
 
 #[test]
+fn test_repository_replaces_existing_vote_group_delta_by_id() {
+    let first = project_vote_events(
+        &context(),
+        vec![VoteProjectionEvent {
+            log: log(10, 0, 1),
+            event: vote_cast("42", 1, "100"),
+        }],
+    )
+    .expect("projection succeeds");
+    let replacement = project_vote_events(
+        &context(),
+        vec![VoteProjectionEvent {
+            log: log(10, 0, 1),
+            event: vote_cast("42", 0, "25"),
+        }],
+    )
+    .expect("projection succeeds");
+    let mut repository = degov_datalens_indexer::InMemoryVoteProjectionRepository::default();
+
+    repository.apply(&first).expect("first write succeeds");
+    repository
+        .apply(&replacement)
+        .expect("replacement write succeeds");
+
+    let total = repository
+        .proposal_vote_totals()
+        .get("proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42")
+        .expect("proposal total");
+
+    assert_eq!(total.votes_count, 1);
+    assert_eq!(total.votes_weight_for_sum, "0");
+    assert_eq!(total.votes_weight_against_sum, "25");
+    assert_eq!(total.votes_weight_abstain_sum, "0");
+    assert_eq!(repository.data_metric().votes_count, 1);
+    assert_eq!(repository.data_metric().votes_weight_for_sum, "0");
+    assert_eq!(repository.data_metric().votes_weight_against_sum, "25");
+}
+
+#[test]
+fn test_project_vote_events_ignores_unsupported_support_weight_bucket() {
+    let batch = project_vote_events(
+        &context(),
+        vec![VoteProjectionEvent {
+            log: log(10, 0, 1),
+            event: vote_cast("42", 9, "100"),
+        }],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(batch.data_metric_delta.votes_count, 1);
+    assert_eq!(batch.data_metric_delta.votes_weight_for_sum, "0");
+    assert_eq!(batch.data_metric_delta.votes_weight_against_sum, "0");
+    assert_eq!(batch.data_metric_delta.votes_weight_abstain_sum, "0");
+    assert_eq!(batch.proposal_vote_totals[0].votes_count, 1);
+    assert_eq!(batch.proposal_vote_totals[0].votes_weight_for_sum, "0");
+    assert_eq!(batch.proposal_vote_totals[0].votes_weight_against_sum, "0");
+    assert_eq!(batch.proposal_vote_totals[0].votes_weight_abstain_sum, "0");
+}
+
+#[test]
+fn test_project_vote_events_aggregates_large_decimal_string_weights() {
+    let huge = "340282366920938463463374607431768211455";
+    let batch = project_vote_events(
+        &context(),
+        vec![
+            VoteProjectionEvent {
+                log: log(10, 0, 1),
+                event: vote_cast("42", 1, huge),
+            },
+            VoteProjectionEvent {
+                log: log(11, 0, 1),
+                event: vote_cast("42", 1, huge),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(
+        batch.data_metric_delta.votes_weight_for_sum,
+        "680564733841876926926749214863536422910"
+    );
+    assert_eq!(
+        batch.proposal_vote_totals[0].votes_weight_for_sum,
+        "680564733841876926926749214863536422910"
+    );
+}
+
+#[test]
 fn test_project_vote_events_dedupes_proposal_reads_once_per_affected_proposal() {
     let batch = project_vote_events(
         &context(),
