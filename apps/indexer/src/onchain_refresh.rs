@@ -692,8 +692,8 @@ async fn insert_refresh_checkpoints(
              ON CONFLICT (id) DO NOTHING",
         )
         .bind(format!(
-            "onchain-refresh-balance-{}-{}",
-            task.account, task.last_seen_block_number
+            "onchain-refresh-balance-{}",
+            onchain_refresh_checkpoint_scope(task)
         ))
         .bind(task.chain_id)
         .bind(&task.dao_code)
@@ -726,8 +726,8 @@ async fn insert_refresh_checkpoints(
              ON CONFLICT (id) DO NOTHING",
         )
         .bind(format!(
-            "onchain-refresh-power-{}-{}",
-            task.account, task.last_seen_block_number
+            "onchain-refresh-power-{}",
+            onchain_refresh_checkpoint_scope(task)
         ))
         .bind(task.chain_id)
         .bind(&task.dao_code)
@@ -833,6 +833,18 @@ fn data_metric_id(chain_id: i32, governor_address: &str, dao_code: Option<&str>)
     format!(
         "{chain_id}:{governor_address}:{}",
         dao_code.unwrap_or_default()
+    )
+}
+
+fn onchain_refresh_checkpoint_scope(task: &OnchainRefreshTask) -> String {
+    format!(
+        "{}:{}:{}:{}:{}:{}",
+        task.chain_id,
+        task.dao_code.as_deref().unwrap_or_default(),
+        task.governor_address,
+        task.token_address,
+        task.account,
+        task.last_seen_block_number,
     )
 }
 
