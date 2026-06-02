@@ -3,13 +3,78 @@ services:
     image: postgres:17-alpine
     shm_size: 1gb
     environment:
-      POSTGRES_DB: postgres
+      POSTGRES_DB: ${DEGOV_DB_NAME:-postgres}
       POSTGRES_PASSWORD: ${DEGOV_DB_PASSWORD:-postgres}
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
       - ./init-scripts/postgres:/docker-entrypoint-initdb.d
     ports:
       - "${DEGOV_DB_PORT:-5432}:5432"
+
+  indexer-migrate:
+    image: degov-indexer
+    profiles:
+      - indexer
+    depends_on:
+      - postgres
+    build:
+      context: .
+      dockerfile: docker/indexer.Dockerfile
+    command: migrate
+    environment:
+      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/${DEGOV_INDEXER_DB_NAME:-indexer}
+
+  indexer:
+    image: degov-indexer
+    profiles:
+      - indexer
+    depends_on:
+      - postgres
+    build:
+      context: .
+      dockerfile: docker/indexer.Dockerfile
+    command: run
+    environment:
+      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/${DEGOV_INDEXER_DB_NAME:-indexer}
+      DATALENS_ENDPOINT: ${DATALENS_ENDPOINT:-}
+      DATALENS_APPLICATION: ${DATALENS_APPLICATION:-}
+      DATALENS_TOKEN: ${DATALENS_TOKEN:-}
+      DATALENS_TIMEOUT_SECONDS: ${DATALENS_TIMEOUT_SECONDS:-60}
+      DATALENS_FINALITY: ${DATALENS_FINALITY:-durable_only}
+      DATALENS_CHAIN_FAMILY: ${DATALENS_CHAIN_FAMILY:-evm}
+      DATALENS_CHAIN_NAME: ${DATALENS_CHAIN_NAME:-ethereum}
+      DATALENS_CHAIN_ID: ${DATALENS_CHAIN_ID:-1}
+      DATALENS_DATASET_FAMILY: ${DATALENS_DATASET_FAMILY:-evm}
+      DATALENS_DATASET_NAME: ${DATALENS_DATASET_NAME:-logs}
+      DATALENS_QUERY_BLOCK_RANGE_LIMIT: ${DATALENS_QUERY_BLOCK_RANGE_LIMIT:-1000}
+      DATALENS_QUERY_ROW_LIMIT: ${DATALENS_QUERY_ROW_LIMIT:-1000}
+      DATALENS_GOVERNOR_ADDRESS: ${DATALENS_GOVERNOR_ADDRESS:-}
+      DATALENS_GOVERNOR_TOKEN_ADDRESS: ${DATALENS_GOVERNOR_TOKEN_ADDRESS:-}
+      DATALENS_GOVERNOR_TOKEN_STANDARD: ${DATALENS_GOVERNOR_TOKEN_STANDARD:-}
+      DATALENS_TIMELOCK_ADDRESS: ${DATALENS_TIMELOCK_ADDRESS:-}
+
+  onchain-worker:
+    image: degov-indexer
+    profiles:
+      - indexer
+    depends_on:
+      - postgres
+    build:
+      context: .
+      dockerfile: docker/indexer.Dockerfile
+    command: worker
+    environment:
+      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/${DEGOV_INDEXER_DB_NAME:-indexer}
+      DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED: ${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED:-true}
+      DEGOV_ONCHAIN_REFRESH_BATCH_SIZE: ${DEGOV_ONCHAIN_REFRESH_BATCH_SIZE:-100}
+      DEGOV_ONCHAIN_REFRESH_RECONCILE_SEED_BATCH_SIZE: ${DEGOV_ONCHAIN_REFRESH_RECONCILE_SEED_BATCH_SIZE:-100}
+      DEGOV_ONCHAIN_REFRESH_MULTICALL_CHUNK_SIZE: ${DEGOV_ONCHAIN_REFRESH_MULTICALL_CHUNK_SIZE:-100}
+      DEGOV_ONCHAIN_REFRESH_CONCURRENCY: ${DEGOV_ONCHAIN_REFRESH_CONCURRENCY:-1}
+      DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL: ${DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL:-1}
+      DEGOV_ONCHAIN_REFRESH_MAX_SYNC_LAG_BLOCKS: ${DEGOV_ONCHAIN_REFRESH_MAX_SYNC_LAG_BLOCKS:-1000}
+      DEGOV_ONCHAIN_REFRESH_POLL_INTERVAL_MS: ${DEGOV_ONCHAIN_REFRESH_POLL_INTERVAL_MS:-10000}
+      DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS: ${DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS:-120000}
+      DEGOV_ONCHAIN_REFRESH_LOCK_TTL_MS: ${DEGOV_ONCHAIN_REFRESH_LOCK_TTL_MS:-300000}
 
   web:
     image: degov-web
@@ -21,6 +86,7 @@ services:
     ports:
       - "${DEGOV_WEB_PORT:-3000}:3000"
     environment:
-      JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET}
+      JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET:-}
       DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/degov
+      DEGOV_INDEXER_GRAPHQL_ENDPOINT: ${DEGOV_INDEXER_GRAPHQL_ENDPOINT:-}
       # DEGOV_CONFIG_PATH: degov.yml
