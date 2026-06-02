@@ -8,6 +8,7 @@ pub mod evm_log;
 pub mod planner;
 pub mod power_reconcile;
 pub mod proposal_projection;
+pub mod vote_projection;
 
 pub use chain_tool::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadCapability,
@@ -53,4 +54,10 @@ pub use proposal_projection::{
     ProposalProjectionEvent, ProposalProjectionRepository, ProposalQueuedWrite,
     ProposalRepositoryWriteError, ProposalStateEpochWrite, ProposalStateWriteKind, ProposalWrite,
     project_proposal_events,
+};
+pub use vote_projection::{
+    ContributorVoteSignalWrite, DataMetricVoteDelta, InMemoryVoteProjectionRepository,
+    ProposalVoteTotalWrite, VoteCastGroupWrite, VoteCastWithParamsWrite, VoteCastWrite,
+    VoteEventCommon, VoteProjectionBatch, VoteProjectionContext, VoteProjectionError,
+    VoteProjectionEvent, VoteProjectionRepository, VoteRepositoryWriteError, project_vote_events,
 };
