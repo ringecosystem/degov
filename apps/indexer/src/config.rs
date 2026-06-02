@@ -387,7 +387,7 @@ mod tests {
                     "DATALENS_GOVERNOR_TOKEN_ADDRESS",
                     Some("0x2222222222222222222222222222222222222222"),
                 ),
-                ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("erc20")),
+                ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("ERC20")),
                 (
                     "DATALENS_TIMELOCK_ADDRESS",
                     Some("0x3333333333333333333333333333333333333333"),
@@ -486,6 +486,42 @@ mod tests {
                     ConfigError::MissingRequired {
                         field: "DATALENS_ENDPOINT"
                     }
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn test_from_env_accepts_case_insensitive_governor_token_standard() {
+        with_datalens_env(
+            &[
+                ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com")),
+                ("DATALENS_APPLICATION", Some("degov-live")),
+                ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+                (
+                    "DATALENS_GOVERNOR_ADDRESS",
+                    Some("0x1111111111111111111111111111111111111111"),
+                ),
+                (
+                    "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                    Some("0x2222222222222222222222222222222222222222"),
+                ),
+                ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("ErC721")),
+                (
+                    "DATALENS_TIMELOCK_ADDRESS",
+                    Some("0x3333333333333333333333333333333333333333"),
+                ),
+            ],
+            || {
+                let config = DatalensConfig::from_env().expect("load config");
+
+                assert_eq!(
+                    config
+                        .dao_contracts
+                        .as_ref()
+                        .expect("contracts")
+                        .governor_token_standard,
+                    GovernanceTokenStandard::Erc721
                 );
             },
         );

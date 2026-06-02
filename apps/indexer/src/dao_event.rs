@@ -31,11 +31,13 @@ impl FromStr for GovernanceTokenStandard {
     type Err = ConfigError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value.trim() {
+        let trimmed = value.trim();
+
+        match trimmed.to_ascii_lowercase().as_str() {
             "erc20" => Ok(Self::Erc20),
             "erc721" => Ok(Self::Erc721),
-            value => Err(ConfigError::InvalidTokenStandard {
-                value: value.to_owned(),
+            _ => Err(ConfigError::InvalidTokenStandard {
+                value: trimmed.to_owned(),
             }),
         }
     }
