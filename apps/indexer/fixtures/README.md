@@ -18,7 +18,13 @@ Read this when adding or updating fixture ranges. It does not define live Datale
 - `data`
 - `removed`
 
-Expected outputs live under `known-dao-ranges/expected/`. They are explicit JSON snapshots for the decoded/projected output table intent, checkpoint expectation, and duplicate replay expectation.
+Expected outputs live under `known-dao-ranges/expected/`:
+
+- `decoded-events.json` keeps the compact decoded event/table compatibility view.
+- `decoded-payloads.json` snapshots decoded event payload fields from the raw rows.
+- `projected-outputs.json` snapshots selected projected write rows from proposal, vote, token, and timelock projectors.
+- `checkpoint.json` records the expected checkpoint identity and advancement.
+- `duplicate-replay.json` records replay and dedupe expectations.
 
 ## Known DAO Ranges
 

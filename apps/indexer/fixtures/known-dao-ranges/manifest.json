@@ -101,6 +101,8 @@
   ],
   "duplicate_replay_rows_path": "raw-logs/duplicate-replay.json",
   "expected_decoded_events_path": "expected/decoded-events.json",
+  "expected_decoded_payloads_path": "expected/decoded-payloads.json",
+  "expected_projected_outputs_path": "expected/projected-outputs.json",
   "expected_checkpoint": {
     "dao_code": "demo-dao",
     "chain_id": 1,

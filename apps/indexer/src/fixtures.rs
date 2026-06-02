@@ -19,6 +19,8 @@ pub struct DatalensFixture {
     pub pages: Vec<DatalensFixturePage>,
     pub duplicate_replay_rows_path: String,
     pub expected_decoded_events_path: String,
+    pub expected_decoded_payloads_path: String,
+    pub expected_projected_outputs_path: String,
     pub expected_checkpoint: DatalensFixtureCheckpointExpectation,
     pub expected_duplicate_replay: DatalensFixtureDuplicateReplayExpectation,
 }
@@ -180,6 +182,14 @@ impl DatalensFixture {
         &self,
     ) -> Result<Vec<DatalensFixtureExpectedEvent>, DatalensFixtureError> {
         read_json(&fixture_path(&self.name).join(&self.expected_decoded_events_path))
+    }
+
+    pub fn expected_decoded_payloads(&self) -> Result<serde_json::Value, DatalensFixtureError> {
+        read_json(&fixture_path(&self.name).join(&self.expected_decoded_payloads_path))
+    }
+
+    pub fn expected_projected_outputs(&self) -> Result<serde_json::Value, DatalensFixtureError> {
+        read_json(&fixture_path(&self.name).join(&self.expected_projected_outputs_path))
     }
 }
 
