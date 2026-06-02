@@ -20,9 +20,11 @@ Collect these values before running checks:
 - Datalens application identity, such as `degov-live`.
 - Secret-backed Datalens bearer token. Do not print or paste the token into
   issue comments, logs, shell history, or committed files.
-- DeGov indexer database URL.
+- DeGov indexer database URL. Deployed services use
+  `DEGOV_INDEXER_DATABASE_URL`; the examples below use the same name.
 - DeGov GraphQL endpoint, for example
-  `https://indexer.next.degov.ai/<dao-code>/graphql`.
+  `https://indexer.next.degov.ai/<dao-code>/graphql`. Deployed services use
+  `DEGOV_INDEXER_GRAPHQL_ENDPOINT`; the examples below use the same name.
 - DeGov web base URL for the environment under test.
 
 Use placeholders in the examples below:
@@ -30,30 +32,66 @@ Use placeholders in the examples below:
 ```sh
 export DAO_CODE=<dao-code>
 export CHAIN_ID=<chain-id>
+export DATALENS_CHAIN_NAME=<configured-datalens-chain-name>
+export DATALENS_DATASET_KEY=evm.logs
 export GOVERNOR_ADDRESS=<lowercase-governor-address>
 export TOKEN_ADDRESS=<lowercase-token-address>
+export DATALENS_GOVERNOR_ADDRESS="$GOVERNOR_ADDRESS"
+export DATALENS_GOVERNOR_TOKEN_ADDRESS="$TOKEN_ADDRESS"
+export DATALENS_GOVERNOR_TOKEN_STANDARD=<erc20-or-erc721>
+export DATALENS_TIMELOCK_ADDRESS=<lowercase-timelock-address>
 export DATALENS_ENDPOINT=<datalens-service-base-url>
 export DATALENS_APPLICATION=<datalens-application>
 export DATALENS_TOKEN=<secret-backed-token>
-export DEGOV_DATABASE_URL=<postgres-url>
-export DEGOV_GRAPHQL_ENDPOINT=<degov-graphql-url>
+export DEGOV_INDEXER_DATABASE_URL=<postgres-url>
+export DEGOV_INDEXER_GRAPHQL_ENDPOINT=<degov-graphql-url>
 export DEGOV_WEB_URL=<degov-web-base-url>
+```
+
+If an older local script still expects the shorter runbook names, map them to
+the deployed names explicitly:
+
+```sh
+export DEGOV_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL"
+export DEGOV_GRAPHQL_ENDPOINT="$DEGOV_INDEXER_GRAPHQL_ENDPOINT"
 ```
 
 ## Failure Domain Map
 
 Run the checks in this order so the failing layer is clear:
 
-| Check | Healthy signal | Failure domain |
-| --- | --- | --- |
-| Datalens `/health` and discovery | Service responds and native GraphQL discovery succeeds for the DeGov application. | Datalens service, route, or application auth. |
-| Chain and dataset availability | Configured chain and `evm.logs` dataset are discoverable and enabled. | Datalens chain/dataset config. |
-| DeGov checkpoint progress | `processed_height` advances toward `target_height`; `last_error` stays empty. | DeGov query planning, DB, or checkpoint writes. |
-| Chunk logs | Each chunk has a processing log followed by a commit log for the same range. | Datalens query, decode/projection, DB transaction, or checkpoint. |
-| Projection sanity | Proposal, vote, delegate, contributor, and `data_metric` totals are non-empty for an active DAO. | Decode/projection or idempotent writes. |
-| Reconcile/refresh queues | Pending work drains; failed and stale locked rows stay bounded. | ChainTool/RPC, onchain refresh worker, or lock recovery. |
-| GraphQL and web smoke | GraphQL responds; delegates/proposals pages load; synced percentage is plausible. | API compatibility, web/API config, or stale DB view. |
-| Tally/onchain audit | Sampled proposal and power values agree with direct reads or have classified findings. | Business correctness after basic health passes. |
+| Check | Current package status | Healthy signal | Failure domain |
+| --- | --- | --- | --- |
+| Datalens `/health` and discovery | Available now. | Service responds and native GraphQL discovery succeeds for the DeGov application. | Datalens service, route, or application auth. |
+| Chain and dataset availability | Available now through Datalens discovery and a small native query. | Configured chain and `evm.logs` dataset are enabled and can be queried for a bounded range. | Datalens chain/dataset config. |
+| DB/migration readiness | Available now. | Migrations apply and expected Datalens-native tables exist. | DeGov database URL, credentials, migration, or schema drift. |
+| GraphQL and web smoke | Available now. | GraphQL responds; delegates/proposals pages load; synced percentage is plausible when data exists. | API compatibility, web/API config, or stale DB view. |
+| Runtime readiness | Available now. | `run_indexer`, `run_worker`, and GraphQL packaging checks stay alive or report only config/readiness errors. | Process config, secret mounts, service readiness, or packaging. |
+| Active chunk processing | Available after projection packages are implemented. | `processed_height` advances toward `target_height`; chunk processing and commit logs appear. | DeGov query planning, decode/projection, DB transaction, or checkpoint writes. |
+| Row-family counters | Available after projection packages are implemented. | Proposal, vote, delegate, contributor, and `data_metric` totals are non-empty for an active DAO. | Decode/projection or idempotent writes. |
+| Checkpoint commits | Available after projection packages are implemented. | Checkpoint advancement occurs only with committed projection writes. | DB transaction or checkpoint contract. |
+| Onchain refresh queue draining | Available after worker task processing is implemented. | Pending work drains; failed and stale locked rows stay bounded. | ChainTool/RPC, onchain refresh worker, or lock recovery. |
+| Tally/onchain audit | Run after projection and worker packages are implemented and basic health passes. | Sampled proposal and power values agree with direct reads or have classified findings. | Business correctness after basic health passes. |
+
+## Current Package Boundary
+
+HBX-264 documents observability while the checked-in DeGov indexer is still at
+the packaging/readiness boundary:
+
+- `run_indexer` loads Datalens and database configuration, verifies Datalens
+  native GraphQL readiness, logs the configured chain/dataset/contracts, and
+  keeps the service alive.
+- `run_worker` checks `DEGOV_INDEXER_DATABASE_URL` and
+  `DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED`, logs worker packaging readiness, and
+  keeps the service alive. It does not drain refresh tasks yet.
+- `graphql` checks `DEGOV_INDEXER_GRAPHQL_ENDPOINT` packaging/configuration.
+- `migrate` applies the Datalens-native Postgres schema.
+
+Do not classify missing chunk logs, row-family counters, checkpoint commits, or
+queue draining as a runtime failure until the projection and worker execution
+packages are implemented. Today those checks are future acceptance signals; the
+current checks cover Datalens connectivity, DB/migrations, GraphQL/API smoke,
+and process readiness.
 
 ## Datalens Health
 
@@ -73,7 +111,7 @@ indexer uses:
 ```sh
 curl -fsS "$DATALENS_ENDPOINT/native/graphql" \
   -H "Authorization: Bearer $DATALENS_TOKEN" \
-  -H "x-application: $DATALENS_APPLICATION" \
+  -H "x-datalens-application: $DATALENS_APPLICATION" \
   -H "content-type: application/json" \
   --data '{"query":"query { __schema { queryType { name } } }"}'
 ```
@@ -83,37 +121,176 @@ error. A 401/403 or application-scoped error is a Datalens auth failure. Confirm
 the application id, token source, secret mount, and whether the token was
 rotated.
 
-Check that the configured chain and dataset are present in discovery. The exact
-discovery fields are owned by Datalens; the operator check is that the response
-contains the configured chain identity and the `evm.logs` dataset key:
+Check that the configured chain and dataset are present in Datalens native
+discovery. Schema introspection only proves the native GraphQL route is alive;
+it does not verify the configured chain or dataset. The concrete discovery
+check below verifies that a chain matching `DATALENS_CHAIN_NAME` or `CHAIN_ID`
+has an enabled `evm.logs` dataset:
 
 ```sh
 curl -fsS "$DATALENS_ENDPOINT/native/graphql" \
   -H "Authorization: Bearer $DATALENS_TOKEN" \
-  -H "x-application: $DATALENS_APPLICATION" \
+  -H "x-datalens-application: $DATALENS_APPLICATION" \
   -H "content-type: application/json" \
-  --data '{"query":"query { __schema { queryType { fields { name } } } }"}'
+  --data '{"query":"query DatalensDiscovery { discovery { chains { identity datasets { datasetKey rangeKinds selectors enabled } } } }"}' \
+  | node -e '
+const fs = require("fs");
+const body = JSON.parse(fs.readFileSync(0, "utf8"));
+if (body.errors?.length) throw new Error(JSON.stringify(body.errors));
+const chainName = process.env.DATALENS_CHAIN_NAME;
+const chainId = String(process.env.CHAIN_ID || "");
+const datasetKey = process.env.DATALENS_DATASET_KEY || "evm.logs";
+const chains = body.data?.discovery?.chains || [];
+const match = chains.find((chain) => {
+  const identity = chain.identity || {};
+  const configuredName = identity.configuredName || identity.configured_name;
+  const numericId = identity.networkId?.numeric ?? identity.network_id?.numeric;
+  return configuredName === chainName || String(numericId || "") === chainId;
+});
+const dataset = match?.datasets?.find((entry) => entry.datasetKey === datasetKey);
+if (!match || !dataset || dataset.enabled !== true) {
+  throw new Error(`missing enabled ${datasetKey} for ${chainName || chainId}`);
+}
+console.log(`enabled ${datasetKey} for ${chainName || chainId}`);
+'
 ```
 
-Expected signal: native query fields are discoverable. If the DeGov smoke
-command can run in the environment, prefer the checked-in startup boundary:
+Expected signal: the command prints `enabled evm.logs for <chain>`.
+
+If the DeGov smoke command can run in the environment, also use the checked-in
+startup boundary. This verifies Datalens auth and native GraphQL readiness, but
+it still does not prove chunk processing or projection readiness:
 
 ```sh
 pnpm run indexer:smoke-datalens
 ```
 
-When Datalens is reachable but DeGov queries are slow, compare repeated
-identical native log queries over a small block range. A warm query should not
-keep refilling the same range indefinitely. Persistent cache fills, timeouts, or
-quota errors for the same chain/dataset/range point to Datalens cache or
-service capacity before DeGov decode/projection.
+Run a concrete native query against the configured chain and `evm.logs` dataset.
+Choose a bounded block range that is safe/finalized and small enough for the
+application quota:
 
-## DeGov Indexer Health
+```sh
+export DATALENS_TEST_FROM_BLOCK=<known-event-or-empty-safe-start-block>
+export DATALENS_TEST_TO_BLOCK=<known-event-or-empty-safe-end-block>
+
+curl -fsS "$DATALENS_ENDPOINT/native/graphql" \
+  -H "Authorization: Bearer $DATALENS_TOKEN" \
+  -H "x-datalens-application: $DATALENS_APPLICATION" \
+  -H "content-type: application/json" \
+  --data @- <<EOF
+{
+  "query": "query DatalensNativeQuery(\$input: QueryInput!) { query(input: \$input) { chain datasetKey range cache rows } }",
+  "variables": {
+    "input": {
+      "chain": {
+        "family": { "kind": "evm" },
+        "configuredName": "$DATALENS_CHAIN_NAME",
+        "networkId": { "numeric": $CHAIN_ID }
+      },
+      "datasetKey": { "family": "evm", "name": "logs" },
+      "selector": {
+        "kind": "evm_logs",
+        "evmLogs": {
+          "addresses": ["$GOVERNOR_ADDRESS", "$TOKEN_ADDRESS"],
+          "topics": []
+        }
+      },
+      "range": {
+        "kind": "block",
+        "start": $DATALENS_TEST_FROM_BLOCK,
+        "end": $DATALENS_TEST_TO_BLOCK
+      },
+      "finality": "durable_only",
+      "fields": {
+        "include": ["block_number", "transaction_hash", "log_index", "address", "topics", "data"]
+      }
+    }
+  }
+}
+EOF
+```
+
+Expected signal: a GraphQL response with `query.datasetKey` equal to `evm.logs`,
+the requested chain identity, `cache` metadata, and a `rows` value. A zero-row
+response is acceptable for an intentionally empty range; it still exercises the
+target chain/dataset. Unsupported chain/dataset errors belong to Datalens
+configuration, not DeGov projection.
+
+## Datalens Cache Behavior
+
+Repeat the native query above against the same chain, selector, and block range.
+The native response currently exposes cache details in `query.cache`; no
+cache-specific HTTP response headers are documented for this DeGov check.
+
+Expected cache fields, when the Datalens service exposes them, include:
+
+- `hit_ranges`
+- `missing_ranges`
+- `durable_hit_ranges`
+- `hot_hit_ranges`
+- `provider_fill_ranges`
+
+A warm durable query over the same safe/finalized range should move toward
+`hit_ranges` or `durable_hit_ranges` covering the range, with no persistent
+`missing_ranges` or repeated `provider_fill_ranges` for the same chain, dataset,
+selector, and range. Persistent provider fills, timeouts, or quota errors point
+to Datalens cache/service capacity before DeGov decode/projection.
+
+The current DeGov `run_indexer` package does not yet log cache fields per chunk.
+When projection packages are implemented, add operator-visible log or metric
+fields named `datalens_cache_hit_ranges`, `datalens_cache_missing_ranges`,
+`datalens_cache_durable_hit_ranges`, `datalens_cache_hot_hit_ranges`, and
+`datalens_cache_provider_fill_ranges` alongside DAO code, chain id, dataset,
+selector summary, and block range.
+
+## Current DB And Readiness Checks
+
+Apply or verify the current Datalens-native database schema:
+
+```sh
+DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" pnpm run indexer:migrate
+```
+
+Expected signal: the migration command completes and logs that the
+Datalens-native schema was applied. For a read-only check, confirm expected
+tables exist:
+
+```sh
+psql "$DEGOV_INDEXER_DATABASE_URL" -x -c "
+SELECT
+  to_regclass('public.degov_indexer_checkpoint') AS checkpoint_table,
+  to_regclass('public.degov_indexer_reconcile_task') AS reconcile_task_table,
+  to_regclass('squid_processor.status') AS squid_status_table;
+"
+```
+
+Expected signal: each column resolves to the requested table name. Missing
+tables are DB/migration readiness issues.
+
+Check current process readiness boundaries. The first two commands are service
+processes and are expected to keep running after readiness logs appear:
+
+```sh
+DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" pnpm run indexer
+DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" pnpm run indexer:worker
+DEGOV_INDEXER_GRAPHQL_ENDPOINT="$DEGOV_INDEXER_GRAPHQL_ENDPOINT" pnpm run indexer:graphql
+```
+
+Expected signal: `indexer` verifies Datalens and waits, `indexer:worker` logs
+worker packaging readiness and waits, and `indexer:graphql` logs the configured
+endpoint. These commands do not process chunks, commit checkpoints, update row
+families, or drain refresh queues yet.
+
+## Future DeGov Indexer Health
+
+This section is available after projection packages are implemented. With the
+current HBX-264 package, a stale checkpoint, missing chunk log, or empty row
+family can simply mean the runtime is still in placeholder readiness mode.
 
 Read checkpoint state for the workload:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 SELECT
   dao_code,
   chain_id,
@@ -148,7 +325,7 @@ Check the SQD compatibility sync view used by existing synced-percentage
 consumers:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -x -c "
 SELECT id, height, hash
 FROM squid_processor.status
 WHERE id = 0;
@@ -200,7 +377,7 @@ service auth, quota, cache fill, and native query shape before projection code.
 Check row volume by event family for the indexed range:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 WITH counts AS (
   SELECT 'proposal_created' AS family, count(*) AS rows, max(block_number) AS max_block
     FROM proposal_created WHERE dao_code = :'dao' AND chain_id = :'chain'::int
@@ -242,12 +419,14 @@ the checkpoint has crossed blocks containing those events. Empty row families
 with advancing checkpoints usually mean query planning used the wrong address,
 topic set, chain, dataset, or start block.
 
-## Projection Sanity
+## Future Projection Sanity
+
+This section is available after projection packages are implemented.
 
 Check core projection counts:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 SELECT
   count(*) AS proposal_count,
   coalesce(sum(metrics_votes_count), 0) AS proposal_vote_metric_count,
@@ -295,7 +474,7 @@ Expected signal:
 Check aggregate metrics:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 SELECT
   id,
   proposals_count,
@@ -321,7 +500,7 @@ stale, the failure is in projection aggregation rather than Datalens access.
 Run a GraphQL projection smoke against the public endpoint:
 
 ```sh
-curl -fsS "$DEGOV_GRAPHQL_ENDPOINT" \
+curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
   -H "content-type: application/json" \
   --data '{"query":"query { squidStatus { height hash } proposalsConnection(orderBy: [id_ASC]) { totalCount } contributorsConnection(orderBy: [id_ASC]) { totalCount } dataMetrics(where: { id_eq: \"global\" }) { proposalsCount votesCount powerSum memberCount } }"}'
 ```
@@ -330,12 +509,16 @@ Expected signal: GraphQL returns `squidStatus`, proposal/contributor counts, and
 global metrics. If SQL is healthy but GraphQL is missing fields or returns
 errors, classify the failure as API compatibility or GraphQL service config.
 
-## Onchain Refresh Sanity
+## Future Onchain Refresh Sanity
+
+This section is available after worker task processing is implemented. With the
+current package, `run_worker` keeps the service alive but does not drain
+`degov_indexer_reconcile_task` or `onchain_refresh_task`.
 
 Check the native Datalens-era reconcile queue:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 SELECT
   task_type,
   status,
@@ -354,7 +537,7 @@ ORDER BY task_type, status;
 Check the compatibility onchain refresh table consumed by existing diagnostics:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 SELECT
   status,
   count(*) AS rows,
@@ -380,7 +563,7 @@ Expected signal:
 Inspect failed refresh rows:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 SELECT id, task_type, subject_id, attempts, error, updated_at
 FROM degov_indexer_reconcile_task
 WHERE dao_code = :'dao'
@@ -402,7 +585,7 @@ LIMIT 20;
 If power is empty while logs and projections are present, verify sync-lag mode:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 SELECT
   processed_height,
   target_height,
@@ -422,7 +605,7 @@ Check reconcile seed progress by comparing discovered accounts to queued or
 processed refresh work:
 
 ```sh
-psql "$DEGOV_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
+psql "$DEGOV_INDEXER_DATABASE_URL" -v dao="$DAO_CODE" -v chain="$CHAIN_ID" -x -c "
 WITH discovered AS (
   SELECT account FROM vote_power_checkpoint WHERE dao_code = :'dao' AND chain_id = :'chain'::int
   UNION
@@ -450,7 +633,7 @@ unless the DAO or token standard is explicitly configured to skip that path.
 Check GraphQL availability:
 
 ```sh
-curl -fsS "$DEGOV_GRAPHQL_ENDPOINT" \
+curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
   -H "content-type: application/json" \
   --data '{"query":"query { squidStatus { height hash } }"}'
 ```
@@ -469,7 +652,7 @@ routing, web environment config, or frontend data handling.
 Check synced percentage from public data:
 
 ```sh
-curl -fsS "$DEGOV_GRAPHQL_ENDPOINT" \
+curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
   -H "content-type: application/json" \
   --data '{"query":"query { squidStatus { height hash } }"}'
 ```
@@ -487,8 +670,9 @@ compatibility sync table or GraphQL status resolver.
 
 ## Tally And Onchain Audit
 
-After the service, checkpoint, projections, refresh queues, and web/API smoke
-checks are healthy, run the comparison runbook:
+After projection packages, worker task processing, service checks, checkpoint
+commits, projections, refresh queues, and web/API smoke checks are healthy, run
+the comparison runbook:
 
 ```sh
 TALLY_API_KEY=<redacted> pnpm run audit:tally-onchain \
@@ -511,8 +695,9 @@ business-correctness signals, not first-line service health checks.
 | Symptom | First checks | Likely domain | Action |
 | --- | --- | --- | --- |
 | Datalens auth failure | Native discovery returns 401/403 or application error. | Datalens auth. | Verify `DATALENS_APPLICATION`, token secret mount, token rotation, and application allowlist. Do not log the token. |
-| Empty Datalens rows and empty DeGov projections | Datalens health is green, checkpoint advances, row family counts stay zero. | DeGov query planning or Datalens chain/dataset config. | Confirm chain id/name, dataset `evm.logs`, governor/token/timelock addresses, topic filters, start block, and finality mode. Test a small known event range. |
-| Empty processor logs | No chunk logs for the DAO and checkpoint is stale. | Runtime startup or workload config. | Check pod readiness, process args, `DEGOV_CONFIG_PATH`, DAO enabled flag, database connectivity, and whether the worker is watching the expected namespace/config. |
+| Empty Datalens rows and empty DeGov projections | Native query over a known event range returns no rows; after projection packages are implemented, checkpoint advances and row family counts stay zero. | DeGov query planning or Datalens chain/dataset config. | Confirm chain id/name, dataset `evm.logs`, governor/token/timelock addresses, topic filters, start block, and finality mode. Test a small known event range. |
+| Empty processor logs in current package | `run_indexer` verified Datalens and is waiting; no chunk logs are emitted. | Placeholder readiness boundary. | This is expected before projection packages are implemented. Do not restart as a runtime failure solely because chunk logs are absent. |
+| Empty processor logs after projection package lands | No chunk logs for the DAO and checkpoint is stale. | Runtime startup or workload config. | Check pod readiness, process args, `DEGOV_CONFIG_PATH`, DAO enabled flag, database connectivity, and whether the worker is watching the expected namespace/config. |
 | Decode mismatch | Logs show `DAO event decode error`; raw Datalens rows exist. | Decode/projection boundary. | Confirm ABI, event topic, token standard, timelock address, and whether the event is unsupported for the DAO compatibility policy. Unsupported events must be durable and auditable if skipped. |
 | Timestamp unit error | Proposals have implausible `vote_start_timestamp`, `vote_end_timestamp`, or page dates. | Decode/projection. | Compare raw `block_timestamp` values with expected seconds. Millisecond values are usually 1000x too large; second values interpreted as milliseconds are usually near 1970. |
 | Checkpoint stuck | `processing` chunk log repeats or `processed_height` does not advance. | Datalens query, DB transaction, decode/projection, or checkpoint. | Match the last processing log to the next error. If transaction failed, inspect DB errors and confirm checkpoint is advanced only inside the write transaction. |
@@ -527,11 +712,17 @@ business-correctness signals, not first-line service health checks.
 - Classify failures by the first unhealthy layer. Do not treat Tally mismatch as
   a Datalens outage when Datalens, checkpoint, projection, refresh, and GraphQL
   checks are healthy.
+- In the current HBX-264 package, classify missing chunk processing,
+  row-family counters, checkpoint commits, and refresh queue draining as
+  not-yet-implemented unless the process fails its Datalens, DB/migration,
+  GraphQL/API smoke, or readiness checks.
 - Checkpoint advancement without matching projection rows is a serious
-  correctness issue. The batch contract requires projection writes and
-  checkpoint advancement in one transaction.
+  correctness issue after projection packages are implemented. The batch
+  contract requires projection writes and checkpoint advancement in one
+  transaction.
 - A replay may be healthy with zero onchain power until sync-lag mode allows the
-  refresh worker to run. Confirm lag before restarting workers.
+  refresh worker to run after worker task processing is implemented. Confirm
+  lag before restarting workers.
 - For active incidents, capture the DAO code, chain id, block range,
   checkpoint row, the last processing/commit/error log lines, queue counts, and
   one GraphQL smoke response.
