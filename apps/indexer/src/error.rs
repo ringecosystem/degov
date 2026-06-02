@@ -20,6 +20,9 @@ pub enum ConfigError {
     #[error("invalid Datalens chain family {value}")]
     InvalidChainFamily { value: String },
 
+    #[error("invalid Datalens governor token standard {value}")]
+    InvalidTokenStandard { value: String },
+
     #[error("failed to load Datalens configuration: {0}")]
     Load(String),
 }

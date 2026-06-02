@@ -1,5 +1,6 @@
 pub mod checkpoint;
 pub mod config;
+pub mod dao_event;
 pub mod datalens;
 pub mod error;
 pub mod evm_log;
@@ -12,6 +13,14 @@ pub use checkpoint::{
 pub use config::{
     ChainFamily, ChainIdentityConfig, DatalensConfig, DatalensFinality, DatasetKeyConfig,
     QueryLimitConfig, SecretString,
+};
+pub use dao_event::{
+    CallExecutedEvent, CallSaltEvent, CallScheduledEvent, DaoEventDecodeError, DecodedDaoEvent,
+    DecodedGovernorEvent, DecodedTimelockEvent, DecodedTokenEvent, DelegateChangedEvent,
+    DelegateVotesChangedEvent, GovernanceTokenStandard, ParameterChangeEvent, ProposalCreatedEvent,
+    ProposalExtendedEvent, ProposalIdEvent, ProposalQueuedEvent, RoleAccountEvent,
+    RoleAdminChangedEvent, TimelockChangeEvent, TimelockOperationIdEvent, TokenTransferEvent,
+    UnsupportedTopicEvent, VoteCastEvent, VoteCastWithParamsEvent, decode_dao_log,
 };
 pub use datalens::{
     DatalensNativeClient, DatalensNativeReader, ServiceReadiness, verify_datalens_service,
