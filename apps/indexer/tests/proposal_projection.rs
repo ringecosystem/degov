@@ -1,8 +1,9 @@
 use degov_datalens_indexer::{
-    BatchReadPlanConfig, ChainContracts, ChainReadMethod, DecodedGovernorEvent, NormalizedEvmLog,
+    BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadKey,
+    ChainReadMethod, ChainReadResult, ChainReadValue, DecodedGovernorEvent, NormalizedEvmLog,
     ProposalCreatedEvent, ProposalExtendedEvent, ProposalIdEvent, ProposalProjectionContext,
-    ProposalProjectionEvent, ProposalProjectionRepository, ProposalQueuedEvent,
-    ProposalStateWriteKind, ReadRequirement, project_proposal_events,
+    ProposalProjectionError, ProposalProjectionEvent, ProposalProjectionRepository,
+    ProposalQueuedEvent, ProposalStateWriteKind, ReadRequirement, project_proposal_events,
 };
 use serde_json::json;
 
@@ -27,7 +28,8 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
                 description: "# Proposal title\n\nProposal body".to_owned(),
             }),
         }],
-    );
+    )
+    .expect("projection succeeds");
 
     assert_eq!(batch.proposal_created.len(), 1);
     assert_eq!(batch.proposals.len(), 1);
@@ -51,6 +53,8 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
         "0x3bec3dfa58e028fdf10e56bebf69d18a3170b2897a2381164179670dd2fa0193"
     );
     assert_eq!(proposal.current_state.as_deref(), Some("Pending"));
+    assert_eq!(proposal.proposal_snapshot.as_deref(), Some("20"));
+    assert_eq!(proposal.proposal_deadline.as_deref(), Some("40"));
     assert_eq!(proposal.block_timestamp, Some("1700000000".to_owned()));
 
     assert_eq!(batch.proposal_actions[0].action_index, 0);
@@ -114,7 +118,8 @@ fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
                 }),
             },
         ],
-    );
+    )
+    .expect("projection succeeds");
 
     assert_eq!(batch.proposal_queued.len(), 1);
     assert_eq!(batch.proposal_extended.len(), 1);
@@ -176,7 +181,7 @@ fn test_project_proposal_events_replays_idempotently_and_sorts_by_log_position()
     events.push(events[0].clone());
     events.push(events[1].clone());
 
-    let batch = project_proposal_events(&context(), events);
+    let batch = project_proposal_events(&context(), events).expect("projection succeeds");
     let mut repository = degov_datalens_indexer::InMemoryProposalProjectionRepository::default();
 
     repository
@@ -218,7 +223,8 @@ fn test_repository_preserves_lifecycle_metadata_when_identity_arrives_later() {
                 eta_seconds: "1700000400".to_owned(),
             }),
         }],
-    );
+    )
+    .expect("projection succeeds");
     let identity_batch = project_proposal_events(
         &context(),
         vec![ProposalProjectionEvent {
@@ -235,7 +241,8 @@ fn test_repository_preserves_lifecycle_metadata_when_identity_arrives_later() {
                 description: "Plain title".to_owned(),
             }),
         }],
-    );
+    )
+    .expect("projection succeeds");
     let mut repository = degov_datalens_indexer::InMemoryProposalProjectionRepository::default();
 
     repository
@@ -256,6 +263,228 @@ fn test_repository_preserves_lifecycle_metadata_when_identity_arrives_later() {
     );
     assert_eq!(proposal.current_state.as_deref(), Some("Queued"));
     assert_eq!(proposal.proposal_eta.as_deref(), Some("1700000400"));
+}
+
+#[test]
+fn test_project_proposal_events_accepts_empty_input() {
+    let batch = project_proposal_events(&context(), vec![]).expect("empty projection succeeds");
+
+    assert!(batch.event_order.is_empty());
+    assert!(batch.proposals.is_empty());
+    assert!(batch.chain_read_plan.reads.is_empty());
+}
+
+#[test]
+fn test_project_proposal_events_rejects_mixed_chain_input() {
+    let mut second = log(11, 0, 1);
+    second.chain_id = 2;
+
+    let err = project_proposal_events(
+        &context(),
+        vec![
+            ProposalProjectionEvent {
+                log: log(10, 0, 1),
+                event: proposal_created("42", "# Title\nBody"),
+            },
+            ProposalProjectionEvent {
+                log: second,
+                event: proposal_created("43", "# Other\nBody"),
+            },
+        ],
+    )
+    .expect_err("mixed chain input is rejected");
+
+    assert_eq!(
+        err,
+        ProposalProjectionError::MixedChainIds {
+            expected: 1,
+            actual: 2,
+            log_id: "evm:1:11:0xtx11:0:1".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn test_project_proposal_events_rejects_conflicting_duplicate_log_id() {
+    let mut duplicate = log(10, 0, 1);
+    duplicate.block_number = 11;
+
+    let err = project_proposal_events(
+        &context(),
+        vec![
+            ProposalProjectionEvent {
+                log: log(10, 0, 1),
+                event: proposal_created("42", "# Title\nBody"),
+            },
+            ProposalProjectionEvent {
+                log: duplicate,
+                event: proposal_created("43", "# Other\nBody"),
+            },
+        ],
+    )
+    .expect_err("conflicting duplicate log is rejected");
+
+    assert_eq!(
+        err,
+        ProposalProjectionError::ConflictingDuplicateLog {
+            log_id: "evm:1:10:0xtx10:0:1".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn test_project_proposal_created_rejects_action_length_mismatch() {
+    let err = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: log(10, 0, 1),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_owned(),
+                targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+                values: vec![],
+                signatures: vec!["".to_owned()],
+                calldatas: vec!["0x".to_owned()],
+                vote_start: "20".to_owned(),
+                vote_end: "40".to_owned(),
+                description: "# Title\nBody".to_owned(),
+            }),
+        }],
+    )
+    .expect_err("mismatched action vectors are rejected");
+
+    assert_eq!(
+        err,
+        ProposalProjectionError::ActionLengthMismatch {
+            proposal_id: "42".to_owned(),
+            targets: 1,
+            values: 0,
+            signatures: 1,
+            calldatas: 1,
+        }
+    );
+}
+
+#[test]
+fn test_proposal_extended_updates_deadline_and_previous_deadline_when_known() {
+    let batch = project_proposal_events(
+        &context(),
+        vec![
+            ProposalProjectionEvent {
+                log: log(10, 0, 1),
+                event: proposal_created("42", "# Title\nBody"),
+            },
+            ProposalProjectionEvent {
+                log: log(11, 0, 1),
+                event: DecodedGovernorEvent::ProposalExtended(ProposalExtendedEvent {
+                    proposal_id: "42".to_owned(),
+                    extended_deadline: "55".to_owned(),
+                }),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(batch.proposals[0].proposal_deadline.as_deref(), Some("55"));
+    assert_eq!(
+        batch.proposal_deadline_extensions[0]
+            .previous_deadline
+            .as_deref(),
+        Some("40")
+    );
+}
+
+#[test]
+fn test_proposal_extended_id_includes_stable_log_identity() {
+    let batch = project_proposal_events(
+        &context(),
+        vec![
+            ProposalProjectionEvent {
+                log: log(11, 0, 1),
+                event: DecodedGovernorEvent::ProposalExtended(ProposalExtendedEvent {
+                    proposal_id: "42".to_owned(),
+                    extended_deadline: "55".to_owned(),
+                }),
+            },
+            ProposalProjectionEvent {
+                log: log(12, 0, 1),
+                event: DecodedGovernorEvent::ProposalExtended(ProposalExtendedEvent {
+                    proposal_id: "42".to_owned(),
+                    extended_deadline: "60".to_owned(),
+                }),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(batch.proposal_deadline_extensions.len(), 2);
+    assert_ne!(
+        batch.proposal_deadline_extensions[0].id,
+        batch.proposal_deadline_extensions[1].id
+    );
+}
+
+#[test]
+fn test_apply_chain_read_execution_report_updates_proposal_reads() {
+    let mut batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: log(10, 0, 1),
+            event: proposal_created("42", "# Title\nBody"),
+        }],
+    )
+    .expect("projection succeeds");
+    let report = ChainReadExecutionReport {
+        results: vec![
+            read_result(
+                ChainReadMethod::ProposalSnapshot,
+                "42",
+                ChainReadValue::Integer("21".to_owned()),
+            ),
+            read_result(
+                ChainReadMethod::ProposalDeadline,
+                "42",
+                ChainReadValue::Integer("41".to_owned()),
+            ),
+            read_result(
+                ChainReadMethod::State,
+                "42",
+                ChainReadValue::Integer("1".to_owned()),
+            ),
+        ],
+        ..ChainReadExecutionReport::default()
+    };
+
+    batch.apply_chain_read_execution_report(&report);
+
+    assert_eq!(batch.proposals[0].proposal_snapshot.as_deref(), Some("21"));
+    assert_eq!(batch.proposals[0].proposal_deadline.as_deref(), Some("41"));
+    assert_eq!(batch.proposals[0].current_state.as_deref(), Some("Active"));
+}
+
+#[test]
+fn test_description_heading_single_newline_and_no_heading() {
+    let heading = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: log(10, 0, 1),
+            event: proposal_created("42", "# Title\nBody"),
+        }],
+    )
+    .expect("projection succeeds");
+    let plain = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: log(11, 0, 1),
+            event: proposal_created("43", "Plain title\nPlain body"),
+        }],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(heading.proposals[0].title, "Title");
+    assert_eq!(heading.proposals[0].description_body, "Body");
+    assert_eq!(plain.proposals[0].title, "Plain title");
+    assert_eq!(plain.proposals[0].description_body, "Plain body");
 }
 
 fn context() -> ProposalProjectionContext {
@@ -289,5 +518,37 @@ fn log(block_number: u64, transaction_index: u64, log_index: u64) -> NormalizedE
         data: "0x".to_owned(),
         removed: false,
         raw_payload: json!({ "blockNumber": block_number }),
+    }
+}
+
+fn proposal_created(proposal_id: &str, description: &str) -> DecodedGovernorEvent {
+    DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+        proposal_id: proposal_id.to_owned(),
+        proposer: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_owned(),
+        targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+        values: vec!["0".to_owned()],
+        signatures: vec!["".to_owned()],
+        calldatas: vec!["0x".to_owned()],
+        vote_start: "20".to_owned(),
+        vote_end: "40".to_owned(),
+        description: description.to_owned(),
+    })
+}
+
+fn read_result(
+    method: ChainReadMethod,
+    proposal_id: &str,
+    value: ChainReadValue,
+) -> ChainReadResult {
+    ChainReadResult {
+        read_index: 0,
+        key: ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+            method,
+            args: vec![proposal_id.to_owned()],
+            block_mode: BlockReadMode::Fresh,
+        },
+        value,
     }
 }

@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use sha3::{Digest, Keccak256};
 
 use crate::{
-    BatchReadPlanConfig, ChainContracts, ChainReadPlan, ChainReadPlanBuilder, ChainReadReason,
-    DecodedGovernorEvent, NormalizedEvmLog, ProposalCreatedEvent, ProposalExtendedEvent,
-    ProposalQueuedEvent,
+    BatchReadPlanConfig, ChainContracts, ChainReadExecutionReport, ChainReadMethod, ChainReadPlan,
+    ChainReadPlanBuilder, ChainReadReason, ChainReadValue, DecodedGovernorEvent, NormalizedEvmLog,
+    ProposalCreatedEvent, ProposalExtendedEvent, ProposalQueuedEvent,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,6 +35,88 @@ pub struct ProposalProjectionBatch {
     pub proposal_state_epochs: Vec<ProposalStateEpochWrite>,
     pub proposal_deadline_extensions: Vec<ProposalDeadlineExtensionWrite>,
     pub chain_read_plan: ChainReadPlan,
+}
+
+impl ProposalProjectionBatch {
+    pub fn apply_chain_read_execution_report(&mut self, report: &ChainReadExecutionReport) {
+        let proposal_indexes = self
+            .proposals
+            .iter()
+            .enumerate()
+            .map(|(index, proposal)| {
+                (
+                    (
+                        proposal.chain_id,
+                        normalize_identifier(&proposal.governor_address),
+                        normalize_identifier(&proposal.proposal_id),
+                    ),
+                    index,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut results = report.results.iter().collect::<Vec<_>>();
+        results.sort_by_key(|result| {
+            (
+                result.key.chain_id,
+                result.key.contract_address.clone(),
+                result.key.method,
+                result.key.args.clone(),
+                result.read_index,
+            )
+        });
+
+        for result in results {
+            let Some(proposal_id) = result.key.args.first() else {
+                continue;
+            };
+            let key = (
+                result.key.chain_id,
+                normalize_identifier(&result.key.contract_address),
+                normalize_identifier(proposal_id),
+            );
+            let Some(index) = proposal_indexes.get(&key).copied() else {
+                continue;
+            };
+            let proposal = &mut self.proposals[index];
+            match result.key.method {
+                ChainReadMethod::ProposalSnapshot => {
+                    if let Some(value) = chain_read_scalar(&result.value) {
+                        proposal.proposal_snapshot = Some(value);
+                    }
+                }
+                ChainReadMethod::ProposalDeadline => {
+                    if let Some(value) = chain_read_scalar(&result.value) {
+                        proposal.proposal_deadline = Some(value);
+                    }
+                }
+                ChainReadMethod::State => {
+                    if let Some(value) = chain_read_state(&result.value) {
+                        proposal.current_state = Some(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProposalProjectionError {
+    MixedChainIds {
+        expected: i32,
+        actual: i32,
+        log_id: String,
+    },
+    ConflictingDuplicateLog {
+        log_id: String,
+    },
+    ActionLengthMismatch {
+        proposal_id: String,
+        targets: usize,
+        values: usize,
+        signatures: usize,
+        calldatas: usize,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -110,6 +192,8 @@ pub struct ProposalWrite {
     pub title: String,
     pub description_body: String,
     pub description_hash: String,
+    pub proposal_snapshot: Option<String>,
+    pub proposal_deadline: Option<String>,
     pub block_number: String,
     pub block_timestamp: Option<String>,
     pub transaction_hash: String,
@@ -275,17 +359,26 @@ impl ProposalProjectionRepository for InMemoryProposalProjectionRepository {
 pub fn project_proposal_events(
     context: &ProposalProjectionContext,
     events: Vec<ProposalProjectionEvent>,
-) -> ProposalProjectionBatch {
+) -> Result<ProposalProjectionBatch, ProposalProjectionError> {
     let governor_address = normalize_identifier(&context.governor_address);
+    let chain_id = validate_chain_ids(&events)?;
     let mut builder = ChainReadPlanBuilder::new(
-        first_chain_id(&events),
+        chain_id,
         context.contracts.clone(),
         context.read_plan_config,
     );
-    let mut deduped = BTreeMap::new();
+    let mut deduped: BTreeMap<String, ProposalProjectionEvent> = BTreeMap::new();
 
     for event in events {
-        deduped.entry(event.log.id.clone()).or_insert(event);
+        if let Some(stored) = deduped.get(&event.log.id) {
+            if stored.event != event.event {
+                return Err(ProposalProjectionError::ConflictingDuplicateLog {
+                    log_id: event.log.id,
+                });
+            }
+            continue;
+        }
+        deduped.insert(event.log.id.clone(), event);
     }
 
     let mut event_order = Vec::new();
@@ -323,6 +416,7 @@ pub fn project_proposal_events(
 
         match &input.event {
             DecodedGovernorEvent::ProposalCreated(event) => {
+                validate_action_lengths(event)?;
                 let common = common(context, &governor_address, &input.log, &event.proposal_id);
                 let row = proposal_created_write(&input.log.id, common.clone(), event);
                 proposal_created.insert(row.id.clone(), row);
@@ -401,8 +495,26 @@ pub fn project_proposal_events(
                 let common = common(context, &governor_address, &input.log, &event.proposal_id);
                 let row = proposal_extended_write(&input.log.id, common.clone(), event);
                 proposal_extended.insert(row.id.clone(), row);
-                let extension = deadline_extension_write(&common, event);
+                let proposal_ref = proposal_ref(
+                    &common.governor_address,
+                    &common.proposal_id,
+                    common.chain_id,
+                );
+                let previous_deadline = proposals
+                    .get(&proposal_ref)
+                    .and_then(|proposal: &ProposalWrite| proposal.proposal_deadline.clone());
+                let extension = deadline_extension_write(&common, event, previous_deadline);
                 proposal_deadline_extensions.insert(extension.id.clone(), extension);
+                proposals
+                    .entry(proposal_ref)
+                    .and_modify(|proposal: &mut ProposalWrite| {
+                        proposal.proposal_deadline = Some(event.extended_deadline.clone());
+                    })
+                    .or_insert_with(|| {
+                        let mut proposal = lifecycle_stub(&common, "Pending");
+                        proposal.proposal_deadline = Some(event.extended_deadline.clone());
+                        proposal
+                    });
             }
             DecodedGovernorEvent::ProposalExecuted(event) => {
                 let common = common(context, &governor_address, &input.log, &event.proposal_id);
@@ -447,7 +559,7 @@ pub fn project_proposal_events(
         )
     });
 
-    ProposalProjectionBatch {
+    Ok(ProposalProjectionBatch {
         event_order,
         proposal_created: proposal_created.into_values().collect(),
         proposal_queued: proposal_queued.into_values().collect(),
@@ -459,7 +571,7 @@ pub fn project_proposal_events(
         proposal_state_epochs,
         proposal_deadline_extensions: proposal_deadline_extensions.into_values().collect(),
         chain_read_plan: builder.build(),
-    }
+    })
 }
 
 fn write_terminal_state(
@@ -629,6 +741,8 @@ fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> 
         title,
         description_body,
         description_hash: description_hash(&event.description),
+        proposal_snapshot: Some(event.vote_start.clone()),
+        proposal_deadline: Some(event.vote_end.clone()),
         block_number: common.block_number.clone(),
         block_timestamp: common.block_timestamp.clone(),
         transaction_hash: common.transaction_hash.clone(),
@@ -719,6 +833,7 @@ fn state_epoch_write(
 fn deadline_extension_write(
     common: &ProposalEventCommon,
     event: &ProposalExtendedEvent,
+    previous_deadline: Option<String>,
 ) -> ProposalDeadlineExtensionWrite {
     let proposal_ref = proposal_ref(
         &common.governor_address,
@@ -727,7 +842,10 @@ fn deadline_extension_write(
     );
 
     ProposalDeadlineExtensionWrite {
-        id: format!("{}:deadline-extension:{}", proposal_ref, common.log_index),
+        id: format!(
+            "{}:deadline-extension:{}:{}:{}",
+            proposal_ref, common.block_number, common.transaction_hash, common.log_index
+        ),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -736,7 +854,7 @@ fn deadline_extension_write(
         transaction_index: common.transaction_index,
         proposal_ref,
         proposal_id: common.proposal_id.clone(),
-        previous_deadline: None,
+        previous_deadline,
         new_deadline: event.extended_deadline.clone(),
         block_number: common.block_number.clone(),
         block_timestamp: common.block_timestamp.clone(),
@@ -769,6 +887,8 @@ fn lifecycle_stub(common: &ProposalEventCommon, state: &str) -> ProposalWrite {
         title: String::new(),
         description_body: String::new(),
         description_hash: description_hash(""),
+        proposal_snapshot: None,
+        proposal_deadline: None,
         block_number: common.block_number.clone(),
         block_timestamp: common.block_timestamp.clone(),
         transaction_hash: common.transaction_hash.clone(),
@@ -791,6 +911,8 @@ impl ProposalWrite {
         if !next.proposer.is_empty() {
             let mut merged = next.clone();
             merged.current_state = self.current_state.clone().or(merged.current_state);
+            merged.proposal_snapshot = self.proposal_snapshot.clone().or(merged.proposal_snapshot);
+            merged.proposal_deadline = self.proposal_deadline.clone().or(merged.proposal_deadline);
             merged.proposal_eta = self.proposal_eta.clone().or(merged.proposal_eta);
             merged.queued_block_number = self
                 .queued_block_number
@@ -831,6 +953,14 @@ impl ProposalWrite {
             *self = merged;
         } else {
             self.current_state = next.current_state.clone().or(self.current_state.clone());
+            self.proposal_snapshot = next
+                .proposal_snapshot
+                .clone()
+                .or(self.proposal_snapshot.clone());
+            self.proposal_deadline = next
+                .proposal_deadline
+                .clone()
+                .or(self.proposal_deadline.clone());
             self.proposal_eta = next.proposal_eta.clone().or(self.proposal_eta.clone());
             self.queued_block_number = next
                 .queued_block_number
@@ -872,11 +1002,37 @@ impl ProposalWrite {
     }
 }
 
-fn first_chain_id(events: &[ProposalProjectionEvent]) -> i32 {
-    events
-        .first()
-        .map(|event| event.log.chain_id)
-        .unwrap_or_default()
+fn validate_chain_ids(events: &[ProposalProjectionEvent]) -> Result<i32, ProposalProjectionError> {
+    let Some(first) = events.first() else {
+        return Ok(0);
+    };
+    for event in events.iter().skip(1) {
+        if event.log.chain_id != first.log.chain_id {
+            return Err(ProposalProjectionError::MixedChainIds {
+                expected: first.log.chain_id,
+                actual: event.log.chain_id,
+                log_id: event.log.id.clone(),
+            });
+        }
+    }
+    Ok(first.log.chain_id)
+}
+
+fn validate_action_lengths(event: &ProposalCreatedEvent) -> Result<(), ProposalProjectionError> {
+    if event.targets.len() == event.values.len()
+        && event.targets.len() == event.signatures.len()
+        && event.targets.len() == event.calldatas.len()
+    {
+        return Ok(());
+    }
+
+    Err(ProposalProjectionError::ActionLengthMismatch {
+        proposal_id: event.proposal_id.clone(),
+        targets: event.targets.len(),
+        values: event.values.len(),
+        signatures: event.signatures.len(),
+        calldatas: event.calldatas.len(),
+    })
 }
 
 fn proposal_id(event: &DecodedGovernorEvent) -> Option<&str> {
@@ -924,7 +1080,7 @@ fn proposal_ref(governor_address: &str, proposal_id: &str, chain_id: i32) -> Str
 fn split_description(description: &str) -> (String, String) {
     let trimmed = description.trim();
     if let Some(rest) = trimmed.strip_prefix("# ") {
-        let mut parts = rest.splitn(2, "\n\n");
+        let mut parts = rest.splitn(2, '\n');
         let title = parts.next().unwrap_or_default().trim().to_owned();
         let body = parts.next().unwrap_or_default().trim().to_owned();
         return (title, body);
@@ -947,6 +1103,34 @@ fn description_hash(description: &str) -> String {
 
 fn normalize_identifier(value: &str) -> String {
     value.to_ascii_lowercase()
+}
+
+fn chain_read_scalar(value: &ChainReadValue) -> Option<String> {
+    match value {
+        ChainReadValue::Integer(value) | ChainReadValue::String(value) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn chain_read_state(value: &ChainReadValue) -> Option<String> {
+    match value {
+        ChainReadValue::Integer(value) => Some(
+            match value.as_str() {
+                "0" => "Pending",
+                "1" => "Active",
+                "2" => "Canceled",
+                "3" => "Defeated",
+                "4" => "Succeeded",
+                "5" => "Queued",
+                "6" => "Expired",
+                "7" => "Executed",
+                state => state,
+            }
+            .to_owned(),
+        ),
+        ChainReadValue::String(value) => Some(value.clone()),
+        _ => None,
+    }
 }
 
 fn extend_map<T: Clone>(map: &mut BTreeMap<String, T>, rows: &[T], key: impl Fn(&T) -> String) {

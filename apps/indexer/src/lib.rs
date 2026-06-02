@@ -49,7 +49,8 @@ pub use power_reconcile::{
 pub use proposal_projection::{
     InMemoryProposalProjectionRepository, ProposalActionWrite, ProposalCreatedWrite,
     ProposalDeadlineExtensionWrite, ProposalEventCommon, ProposalExtendedWrite, ProposalIdWrite,
-    ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionEvent,
-    ProposalProjectionRepository, ProposalQueuedWrite, ProposalRepositoryWriteError,
-    ProposalStateEpochWrite, ProposalStateWriteKind, ProposalWrite, project_proposal_events,
+    ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionError,
+    ProposalProjectionEvent, ProposalProjectionRepository, ProposalQueuedWrite,
+    ProposalRepositoryWriteError, ProposalStateEpochWrite, ProposalStateWriteKind, ProposalWrite,
+    project_proposal_events,
 };
