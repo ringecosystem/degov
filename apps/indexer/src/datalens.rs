@@ -1,6 +1,6 @@
-use datalens_sdk::DatalensClient;
+use datalens_sdk::{DatalensClient, native::QueryInput};
 
-use crate::{DatalensConfig, DatalensError};
+use crate::{DatalensConfig, DatalensError, DatalensLogQueryReader};
 
 pub trait DatalensNativeReader {
     fn service_readiness(&self) -> Result<ServiceReadiness, DatalensError>;
@@ -32,6 +32,16 @@ impl DatalensNativeReader for DatalensNativeClient {
                 native_graphql_ready: true,
             })
             .map_err(|error| DatalensError::Readiness(error.to_string()))
+    }
+}
+
+impl DatalensLogQueryReader for DatalensNativeClient {
+    fn query_logs(&mut self, input: QueryInput) -> Result<serde_json::Value, DatalensError> {
+        self.client
+            .native()
+            .query(input)
+            .map(|response| response.rows)
+            .map_err(|error| DatalensError::Query(error.to_string()))
     }
 }
 

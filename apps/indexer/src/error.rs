@@ -31,6 +31,9 @@ pub enum DatalensError {
 
     #[error("Datalens service readiness check failed: {0}")]
     Readiness(String),
+
+    #[error("Datalens log query failed: {0}")]
+    Query(String),
 }
 
 #[derive(Debug, Error)]

@@ -3,6 +3,7 @@ pub mod config;
 pub mod datalens;
 pub mod error;
 pub mod evm_log;
+pub mod planner;
 
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -17,3 +18,7 @@ pub use datalens::{
 };
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use evm_log::{EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows};
+pub use planner::{
+    DaoContractAddresses, DaoLogQueryPlan, DaoLogSource, DatalensLogPage, DatalensLogQueryReader,
+    fetch_dao_log_pages, plan_dao_log_queries,
+};
