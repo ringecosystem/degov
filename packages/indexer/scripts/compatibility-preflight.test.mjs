@@ -162,8 +162,57 @@ function testAcceptsSupportedFallbacksAsDegraded() {
   assert.equal(result.voteReads.historical, "getPriorVotes");
 }
 
+function testTreatsMissingCountingModeAsDegraded() {
+  const result = validateDaoCompatibility({
+    dao: {
+      code: "missing-counting-mode-dao",
+      governor: "0x0000000000000000000000000000000000000007",
+      token: {
+        contract: "0x0000000000000000000000000000000000000008",
+        standard: "ERC20",
+      },
+    },
+    probes: {
+      governor: {
+        methods: {
+          CLOCK_MODE: "ok",
+          COUNTING_MODE: "missing",
+          hashProposal: "ok",
+          proposalDeadline: "ok",
+          proposalSnapshot: "ok",
+          proposalVotes: "ok",
+          quorum: "ok",
+          state: "ok",
+          timelock: "ok",
+          votingDelay: "ok",
+          votingPeriod: "ok",
+        },
+        events: ["ProposalCreated", "ProposalExecuted", "VoteCast"],
+      },
+      token: {
+        transferIndexedArgCount: 2,
+        methods: {
+          balanceOf: "ok",
+          delegates: "ok",
+          getPastVotes: "ok",
+          getVotes: "ok",
+          name: "ok",
+          symbol: "ok",
+          totalSupply: "ok",
+        },
+        events: ["DelegateChanged", "DelegateVotesChanged", "Transfer"],
+      },
+    },
+  });
+
+  assert.equal(result.support, "degraded");
+  assert.deepEqual(result.errors, []);
+  assert.match(result.warnings.join("\n"), /COUNTING_MODE missing/);
+}
+
 testRejectsErc20RegistryEntryWithErc721TransferShape();
 testRejectsGovernorSnapshotRevert();
 testAcceptsSupportedFallbacksAsDegraded();
+testTreatsMissingCountingModeAsDegraded();
 
 console.log("Compatibility preflight tests passed");
