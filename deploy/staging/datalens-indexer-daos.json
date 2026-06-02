@@ -36,6 +36,8 @@
       "graphqlPath": "/degov-demo-dao/graphql",
       "startBlock": 5873342,
       "env": {
+        "DEGOV_INDEXER_DAO_CODE": "degov-demo-dao",
+        "DEGOV_INDEXER_START_BLOCK": 5873342,
         "DATALENS_APPLICATION": "degov-staging",
         "DATALENS_FINALITY": "durable_only",
         "DATALENS_CHAIN_FAMILY": "evm",

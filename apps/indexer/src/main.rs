@@ -1,9 +1,17 @@
-use std::{env, future};
+use std::{env, future, time::Duration};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use degov_datalens_indexer::{DatalensConfig, DatalensNativeClient, verify_datalens_service};
+use degov_datalens_indexer::{
+    BatchReadPlanConfig, ChainContracts, ChainReadMethod, DaoEventDecoder, DatalensConfig,
+    DatalensNativeClient, IndexerCheckpointIdentity, IndexerRunner, IndexerRunnerContexts,
+    IndexerRunnerOptions, PostgresIndexerRunnerStore, ProposalProjectionContext,
+    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
+    verify_datalens_service,
+};
 use sqlx::{Executor, postgres::PgPoolOptions};
+use tokio::task;
+use tokio::time::sleep;
 
 const POSTGRES_SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
 
@@ -33,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Worker => run_worker().await,
         Command::Migrate => migrate().await,
         Command::Graphql => graphql(),
-        Command::SmokeDatalens => smoke_datalens(),
+        Command::SmokeDatalens => smoke_datalens().await,
     }
 }
 
@@ -45,9 +53,9 @@ fn init_logging() -> anyhow::Result<()> {
         .map_err(|error| anyhow::anyhow!("initialize tracing subscriber: {error}"))
 }
 
-fn smoke_datalens() -> anyhow::Result<()> {
+async fn smoke_datalens() -> anyhow::Result<()> {
     let config = DatalensConfig::from_env().context("load Datalens configuration")?;
-    verify_datalens(&config)
+    verify_datalens(&config).await
 }
 
 async fn run_indexer() -> anyhow::Result<()> {
@@ -55,22 +63,73 @@ async fn run_indexer() -> anyhow::Result<()> {
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
     let contracts = config
         .dao_contracts
-        .as_ref()
+        .clone()
         .context("Datalens indexer run requires DATALENS_GOVERNOR_* contract envs")?;
+    let runtime = IndexerRuntimeConfig::from_env(&config)?;
 
-    verify_datalens(&config)?;
+    verify_datalens(&config).await?;
     log::info!(
-        "Datalens indexer runtime boundary is ready dao_chain={} dataset={} governor={} token={} timelock={} database_url_configured={}",
+        "Datalens indexer runtime boundary is ready dao_code={} dao_chain={} dataset={} governor={} token={} timelock={} start_block={} target_height={} database_url_configured={}",
+        runtime.dao_code,
         config.chain.configured_name,
         config.dataset.key(),
         contracts.governor,
         contracts.governor_token,
         contracts.timelock,
+        runtime.start_block,
+        runtime.target_height,
         !database_url.is_empty()
     );
-    log::info!("Datalens server is an external dependency; DeGov runs as an application consumer");
 
-    wait_for_service_shutdown("Datalens indexer runtime").await
+    let pool = PgPoolOptions::new()
+        .max_connections(runtime.database_max_connections)
+        .connect(&database_url)
+        .await
+        .context("connect to DeGov indexer Postgres")?;
+    loop {
+        let runtime_pass = runtime.clone();
+        let config_pass = config.clone();
+        let contracts_pass = contracts.clone();
+        let pool_pass = pool.clone();
+        let report = task::spawn_blocking(move || -> anyhow::Result<_> {
+            let client = DatalensNativeClient::from_config(&config_pass)
+                .context("create Datalens client")?;
+            let store = PostgresIndexerRunnerStore::new(pool_pass);
+            let mut runner = IndexerRunner::new(
+                runtime_pass.options(&config_pass, &contracts_pass)?,
+                runtime_pass.contexts(&contracts_pass),
+                client,
+                store,
+                DaoEventDecoder,
+            );
+            if let Some(chunks) = runtime_pass.max_chunks_per_run {
+                runner.request_shutdown_after_chunks(chunks);
+            }
+
+            runner
+                .run_to_target(runtime_pass.target_height)
+                .context("run Datalens indexer to target height")
+        })
+        .await
+        .context("join Datalens indexer runner task")?;
+        let report = report?;
+
+        log::info!(
+            "Datalens indexer run pass completed dao_code={} chunks_processed={} processed_height={:?} target_height={} synced_percentage={} onchain_refresh_allowed={}",
+            runtime.dao_code,
+            report.chunks_processed,
+            report.last_progress.processed_height,
+            report.last_progress.target_height,
+            report.last_progress.synced_percentage,
+            report.last_progress.onchain_refresh_allowed
+        );
+
+        if runtime.run_once {
+            return Ok(());
+        }
+
+        sleep(runtime.poll_interval).await;
+    }
 }
 
 async fn run_worker() -> anyhow::Result<()> {
@@ -132,7 +191,14 @@ fn graphql() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn verify_datalens(config: &DatalensConfig) -> anyhow::Result<()> {
+async fn verify_datalens(config: &DatalensConfig) -> anyhow::Result<()> {
+    let config = config.clone();
+    task::spawn_blocking(move || verify_datalens_blocking(&config))
+        .await
+        .context("join Datalens readiness task")?
+}
+
+fn verify_datalens_blocking(config: &DatalensConfig) -> anyhow::Result<()> {
     log::info!(
         "checking Datalens readiness for application {} at {}",
         config.application,
@@ -143,6 +209,152 @@ fn verify_datalens(config: &DatalensConfig) -> anyhow::Result<()> {
     log::info!("Datalens native GraphQL readiness confirmed");
 
     Ok(())
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct IndexerRuntimeConfig {
+    dao_code: String,
+    start_block: i64,
+    target_height: i64,
+    checkpoint_stream_id: String,
+    data_source_version: String,
+    query_max_attempts: u32,
+    progress_refresh_lag_blocks: i64,
+    poll_interval: Duration,
+    run_once: bool,
+    max_chunks_per_run: Option<u64>,
+    database_max_connections: u32,
+}
+
+impl IndexerRuntimeConfig {
+    fn from_env(config: &DatalensConfig) -> anyhow::Result<Self> {
+        let dao_code = required_env("DEGOV_INDEXER_DAO_CODE")?;
+        let start_block = required_env_i64("DEGOV_INDEXER_START_BLOCK")?;
+        let target_height = optional_env_i64("DEGOV_INDEXER_TARGET_HEIGHT")?.unwrap_or(start_block);
+
+        if target_height < start_block {
+            anyhow::bail!(
+                "DEGOV_INDEXER_TARGET_HEIGHT must be greater than or equal to DEGOV_INDEXER_START_BLOCK"
+            );
+        }
+
+        let query_max_attempts = optional_env_u32("DEGOV_INDEXER_QUERY_MAX_ATTEMPTS")?.unwrap_or(3);
+        if query_max_attempts == 0 {
+            anyhow::bail!("DEGOV_INDEXER_QUERY_MAX_ATTEMPTS must be greater than zero");
+        }
+
+        let database_max_connections =
+            optional_env_u32("DEGOV_INDEXER_DATABASE_MAX_CONNECTIONS")?.unwrap_or(5);
+        if database_max_connections == 0 {
+            anyhow::bail!("DEGOV_INDEXER_DATABASE_MAX_CONNECTIONS must be greater than zero");
+        }
+
+        let poll_interval = Duration::from_millis(
+            optional_env_u64("DEGOV_INDEXER_POLL_INTERVAL_MS")?.unwrap_or(10_000),
+        );
+        let run_once = optional_env_bool("DEGOV_INDEXER_RUN_ONCE")?.unwrap_or(false);
+
+        Ok(Self {
+            dao_code,
+            start_block,
+            target_height,
+            checkpoint_stream_id: optional_env("DEGOV_INDEXER_STREAM_ID")?
+                .unwrap_or_else(|| "datalens-native".to_owned()),
+            data_source_version: optional_env("DEGOV_INDEXER_DATA_SOURCE_VERSION")?
+                .unwrap_or_else(|| "datalens-v1".to_owned()),
+            query_max_attempts,
+            progress_refresh_lag_blocks: optional_env_i64(
+                "DEGOV_INDEXER_PROGRESS_REFRESH_LAG_BLOCKS",
+            )?
+            .unwrap_or(100),
+            poll_interval,
+            run_once,
+            max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,
+            database_max_connections,
+        }
+        .with_chain_id(config)?)
+    }
+
+    fn with_chain_id(self, config: &DatalensConfig) -> anyhow::Result<Self> {
+        config
+            .chain
+            .network_id
+            .context("DATALENS_CHAIN_ID is required for EVM log normalization")?;
+
+        Ok(self)
+    }
+
+    fn options(
+        &self,
+        config: &DatalensConfig,
+        contracts: &degov_datalens_indexer::DaoContractAddresses,
+    ) -> anyhow::Result<IndexerRunnerOptions> {
+        let chain_id = config
+            .chain
+            .network_id
+            .context("DATALENS_CHAIN_ID is required for EVM log normalization")?;
+
+        Ok(IndexerRunnerOptions {
+            datalens_config: config.clone(),
+            addresses: contracts.clone(),
+            checkpoint_identity: IndexerCheckpointIdentity {
+                dao_code: self.dao_code.clone(),
+                chain_id,
+                stream_id: self.checkpoint_stream_id.clone(),
+                data_source_version: self.data_source_version.clone(),
+            },
+            start_block: self.start_block,
+            query_max_attempts: self.query_max_attempts,
+            safe_height: None,
+            progress_refresh_lag_blocks: self.progress_refresh_lag_blocks,
+        })
+    }
+
+    fn contexts(
+        &self,
+        contracts: &degov_datalens_indexer::DaoContractAddresses,
+    ) -> IndexerRunnerContexts {
+        let chain_contracts = ChainContracts {
+            governor: contracts.governor.clone(),
+            governor_token: contracts.governor_token.clone(),
+            timelock: contracts.timelock.clone(),
+        };
+        let read_plan_config = BatchReadPlanConfig::default().validated();
+
+        IndexerRunnerContexts {
+            vote: VoteProjectionContext {
+                dao_code: self.dao_code.clone(),
+                governor_address: contracts.governor.clone(),
+                contracts: chain_contracts.clone(),
+                read_plan_config,
+            },
+            token: TokenProjectionContext {
+                dao_code: self.dao_code.clone(),
+                governor_address: contracts.governor.clone(),
+                token_address: contracts.governor_token.clone(),
+                contracts: chain_contracts.clone(),
+                token_standard: contracts.governor_token_standard,
+                from_block: u64::try_from(self.start_block).unwrap_or_default(),
+                to_block: u64::try_from(self.start_block).unwrap_or_default(),
+                target_height: u64::try_from(self.target_height).ok(),
+                read_plan_config,
+                current_power_method: ChainReadMethod::GetVotes,
+            },
+            proposal: Some(ProposalProjectionContext {
+                dao_code: self.dao_code.clone(),
+                governor_address: contracts.governor.clone(),
+                contracts: chain_contracts.clone(),
+                read_plan_config,
+            }),
+            timelock: Some(TimelockProjectionContext {
+                dao_code: self.dao_code.clone(),
+                governor_address: contracts.governor.clone(),
+                timelock_address: contracts.timelock.clone(),
+                contracts: chain_contracts,
+                read_plan_config,
+            }),
+        }
+    }
 }
 
 fn required_env(name: &'static str) -> anyhow::Result<String> {
@@ -156,14 +368,81 @@ fn required_env(name: &'static str) -> anyhow::Result<String> {
     Ok(value)
 }
 
-fn onchain_refresh_worker_enabled(value: &str) -> anyhow::Result<bool> {
+fn optional_env(name: &'static str) -> anyhow::Result<Option<String>> {
+    match env::var(name) {
+        Ok(value) => {
+            let value = value.trim().to_owned();
+
+            if value.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(value))
+            }
+        }
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("read {name}")),
+    }
+}
+
+fn required_env_i64(name: &'static str) -> anyhow::Result<i64> {
+    parse_i64_env_value(name, &required_env(name)?)
+}
+
+fn optional_env_i64(name: &'static str) -> anyhow::Result<Option<i64>> {
+    optional_env(name)?
+        .map(|value| parse_i64_env_value(name, &value))
+        .transpose()
+}
+
+fn optional_env_u32(name: &'static str) -> anyhow::Result<Option<u32>> {
+    optional_env(name)?
+        .map(|value| parse_u32_env_value(name, &value))
+        .transpose()
+}
+
+fn optional_env_u64(name: &'static str) -> anyhow::Result<Option<u64>> {
+    optional_env(name)?
+        .map(|value| parse_u64_env_value(name, &value))
+        .transpose()
+}
+
+fn optional_env_bool(name: &'static str) -> anyhow::Result<Option<bool>> {
+    optional_env(name)?
+        .map(|value| parse_bool_env_value(name, &value))
+        .transpose()
+}
+
+fn parse_i64_env_value(name: &'static str, value: &str) -> anyhow::Result<i64> {
+    value
+        .trim()
+        .parse::<i64>()
+        .with_context(|| format!("{name} must be a signed integer"))
+}
+
+fn parse_u32_env_value(name: &'static str, value: &str) -> anyhow::Result<u32> {
+    value
+        .trim()
+        .parse::<u32>()
+        .with_context(|| format!("{name} must be an unsigned integer"))
+}
+
+fn parse_u64_env_value(name: &'static str, value: &str) -> anyhow::Result<u64> {
+    value
+        .trim()
+        .parse::<u64>()
+        .with_context(|| format!("{name} must be an unsigned integer"))
+}
+
+fn parse_bool_env_value(name: &'static str, value: &str) -> anyhow::Result<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" => Ok(true),
         "false" | "0" | "no" => Ok(false),
-        _ => anyhow::bail!(
-            "DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED must be one of true, false, 1, 0, yes, or no"
-        ),
+        _ => anyhow::bail!("{name} must be one of true, false, 1, 0, yes, or no"),
     }
+}
+
+fn onchain_refresh_worker_enabled(value: &str) -> anyhow::Result<bool> {
+    parse_bool_env_value("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", value)
 }
 
 fn postgres_schema_statements(sql: &str) -> Vec<&str> {
@@ -316,5 +595,19 @@ mod tests {
                 .to_string()
                 .contains("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED")
         );
+    }
+
+    #[test]
+    fn test_parse_bool_env_value_accepts_runtime_flag_values() {
+        assert!(parse_bool_env_value("DEGOV_INDEXER_RUN_ONCE", "yes").expect("yes parses"));
+        assert!(!parse_bool_env_value("DEGOV_INDEXER_RUN_ONCE", "0").expect("0 parses"));
+    }
+
+    #[test]
+    fn test_parse_i64_env_value_reports_field_name() {
+        let error = parse_i64_env_value("DEGOV_INDEXER_START_BLOCK", "latest")
+            .expect_err("latest is invalid");
+
+        assert!(error.to_string().contains("DEGOV_INDEXER_START_BLOCK"));
     }
 }

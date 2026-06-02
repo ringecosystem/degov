@@ -7,6 +7,7 @@ pub mod error;
 pub mod evm_log;
 pub mod fixtures;
 pub mod planner;
+pub mod postgres_store;
 pub mod power_reconcile;
 pub mod proposal_metadata;
 pub mod proposal_projection;
@@ -52,6 +53,9 @@ pub use fixtures::{
 pub use planner::{
     DaoContractAddresses, DaoLogQueryPlan, DaoLogSource, DatalensLogPage, DatalensLogQueryReader,
     fetch_dao_log_pages, plan_dao_log_queries,
+};
+pub use postgres_store::{
+    PostgresIndexerRunnerStore, PostgresIndexerRunnerStoreError, PostgresIndexerRunnerTransaction,
 };
 pub use power_reconcile::{
     PowerActivityReason, PowerFreshnessState, PowerReconcileCandidate, PowerReconcileContext,
