@@ -95,7 +95,8 @@ Collect these per DAO before starting:
 export DAO_CODE=<dao-code>
 export CHAIN_ID=<chain-id>
 export DATALENS_CHAIN_NAME=<configured-datalens-chain-name>
-export DATALENS_DATASET_KEY=evm.logs
+export DATALENS_DATASET_FAMILY=evm
+export DATALENS_DATASET_NAME=logs
 export DATALENS_APPLICATION=<production-datalens-application>
 export DATALENS_ENDPOINT=<datalens-service-base-url>
 export TARGET_DB_URL=<new-datalens-postgres-url>
@@ -325,12 +326,14 @@ curl -fsSI "$DEGOV_WEB_URL/proposals"
 Side-by-side, Tally, and onchain audit:
 
 ```sh
-pnpm run audit:tally-onchain -- \
+pnpm run audit:tally-onchain \
   --targets-file apps/indexer/scripts/indexer-accuracy-targets.json \
-  --database-url "$TARGET_DB_URL" \
   --json-file reports/tally-onchain-e2e.json \
   --markdown-file reports/tally-onchain-e2e.md
 ```
+
+Use a targets file whose `indexerEndpoint` points at the validation GraphQL
+endpoint backed by `TARGET_DB_URL`.
 
 Use Tally mismatch results as diagnostics. Direct onchain reads remain
 authoritative when Tally and DeGov disagree.
