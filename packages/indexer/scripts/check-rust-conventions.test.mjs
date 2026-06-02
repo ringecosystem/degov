@@ -87,6 +87,21 @@ async function testRejectsImportedInstrumentAttribute() {
   assert.match(result.stderr, /instrument/);
 }
 
+async function testRejectsAliasedImportedInstrumentAttribute() {
+  const result = await runCheck({
+    "src/lib.rs": [
+      "use tracing::instrument as trace_work;",
+      "",
+      "#[trace_work]",
+      "pub fn load() {}",
+      "",
+    ].join("\n"),
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /instrument/);
+}
+
 async function testRejectsAnyhowLibraryApis() {
   const result = await runCheck({
     "src/lib.rs": [
@@ -126,6 +141,7 @@ async function testRejectsSplitEthersCrates() {
 
 await testRejectsImportedTracingMacros();
 await testRejectsImportedInstrumentAttribute();
+await testRejectsAliasedImportedInstrumentAttribute();
 await testRejectsAnyhowLibraryApis();
 await testRejectsSplitEthersCrates();
 

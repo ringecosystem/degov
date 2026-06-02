@@ -30,8 +30,9 @@ const forbiddenRustPatterns = [
       "library Rust files must use log facade macros instead of tracing macros",
   },
   {
-    pattern: /#\s*\[\s*tracing::instrument\b/,
-    message: "library Rust files must not use #[tracing::instrument]",
+    pattern: /#\s*\[\s*(?:tracing::)?instrument\b/,
+    message:
+      "library Rust files must not use #[tracing::instrument] or #[instrument]",
   },
   {
     pattern: /\btracing_subscriber::/,
@@ -115,8 +116,8 @@ function getTracingImports(source) {
       macroNames.add(alias ?? importedName);
     }
 
-    if (importedName === "instrument") {
-      instrumentNames.add(alias ?? importedName);
+    if (importedName === "instrument" && alias) {
+      instrumentNames.add(alias);
     }
   }
 
@@ -145,8 +146,8 @@ function getTracingImports(source) {
         macroNames.add(alias ?? importedName);
       }
 
-      if (importedName === "instrument") {
-        instrumentNames.add(alias ?? importedName);
+      if (importedName === "instrument" && alias) {
+        instrumentNames.add(alias);
       }
     }
   }
