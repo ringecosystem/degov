@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 
 use crate::{
     BatchReadPlanConfig, ChainContracts, ChainReadPlan, ChainReadPlanBuilder, ChainReadReason,
-    DecodedGovernorEvent, NormalizedEvmLog, VoteCastEvent, VoteCastWithParamsEvent,
+    DataMetricWrite, DecodedGovernorEvent, NormalizedEvmLog, VoteCastEvent,
+    VoteCastWithParamsEvent,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,6 +36,7 @@ pub struct VoteProjectionBatch {
     pub vote_cast_groups: Vec<VoteCastGroupWrite>,
     pub proposal_vote_totals: Vec<ProposalVoteTotalWrite>,
     pub contributor_vote_signals: Vec<ContributorVoteSignalWrite>,
+    pub data_metrics: Vec<DataMetricWrite>,
     pub data_metric_delta: DataMetricVoteDelta,
     pub chain_read_plan: ChainReadPlan,
 }
@@ -301,6 +303,7 @@ pub fn project_vote_events(
     let mut vote_cast_groups = Vec::new();
     let mut proposal_vote_totals = BTreeMap::new();
     let mut contributor_vote_signals = BTreeMap::new();
+    let mut data_metrics = Vec::new();
     let mut data_metric_delta = DataMetricVoteDelta::default();
     let mut affected_proposals = BTreeMap::<String, u64>::new();
 
@@ -321,6 +324,7 @@ pub fn project_vote_events(
                 let group = vote_cast_group_without_params(&input.log.id, &common, event);
                 add_group_to_totals(&mut proposal_vote_totals, &group);
                 apply_metric_delta(&mut data_metric_delta, &group, 1);
+                data_metrics.push(vote_data_metric(&input.log.id, &group));
                 contributor_vote_signals.insert(
                     group.voter.clone(),
                     contributor_vote_signal(&common, &group.voter),
@@ -333,6 +337,7 @@ pub fn project_vote_events(
                 let group = vote_cast_group_with_params(&input.log.id, &common, event);
                 add_group_to_totals(&mut proposal_vote_totals, &group);
                 apply_metric_delta(&mut data_metric_delta, &group, 1);
+                data_metrics.push(vote_data_metric(&input.log.id, &group));
                 contributor_vote_signals.insert(
                     group.voter.clone(),
                     contributor_vote_signal(&common, &group.voter),
@@ -364,6 +369,7 @@ pub fn project_vote_events(
         vote_cast_groups,
         proposal_vote_totals: proposal_vote_totals.into_values().collect(),
         contributor_vote_signals: contributor_vote_signals.into_values().collect(),
+        data_metrics,
         data_metric_delta,
         chain_read_plan: builder.build(),
     })
@@ -523,6 +529,43 @@ fn contributor_vote_signal(common: &VoteEventCommon, voter: &str) -> Contributor
         last_vote_timestamp: common.block_timestamp.clone(),
         transaction_hash: common.transaction_hash.clone(),
     }
+}
+
+fn vote_data_metric(log_id: &str, group: &VoteCastGroupWrite) -> DataMetricWrite {
+    let mut metric = DataMetricWrite {
+        id: log_id.to_owned(),
+        contract_set_id: group.contract_set_id.clone(),
+        chain_id: group.chain_id,
+        dao_code: group.dao_code.clone(),
+        governor_address: group.governor_address.clone(),
+        token_address: None,
+        contract_address: Some(group.contract_address.clone()),
+        log_index: Some(group.log_index),
+        transaction_index: Some(group.transaction_index),
+        block_number: group.block_number.clone(),
+        proposals_count: Some(0),
+        votes_count: Some(1),
+        votes_with_params_count: Some(0),
+        votes_without_params_count: Some(0),
+        votes_weight_for_sum: Some("0".to_owned()),
+        votes_weight_against_sum: Some("0".to_owned()),
+        votes_weight_abstain_sum: Some("0".to_owned()),
+        power_sum: None,
+        member_count: None,
+    };
+    match group.kind.as_str() {
+        "vote-cast-with-params" => metric.votes_with_params_count = Some(1),
+        "vote-cast-without-params" => metric.votes_without_params_count = Some(1),
+        _ => {}
+    }
+    match group.support {
+        0 => metric.votes_weight_against_sum = Some(group.weight.clone()),
+        1 => metric.votes_weight_for_sum = Some(group.weight.clone()),
+        2 => metric.votes_weight_abstain_sum = Some(group.weight.clone()),
+        _ => {}
+    }
+
+    metric
 }
 
 fn add_group_to_totals(

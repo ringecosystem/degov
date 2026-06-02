@@ -134,40 +134,18 @@ impl QueryRoot {
         &self,
         ctx: &Context<'_>,
         where_: Option<DataMetricWhereInput>,
+        order_by: Option<Vec<DataMetricOrderByInput>>,
         offset: Option<i32>,
         limit: Option<i32>,
     ) -> GraphqlResult<Vec<DataMetric>> {
-        let pool = pool(ctx)?;
-        let mut query = QueryBuilder::<Postgres>::new(
-            r#"
-            SELECT id, chain_id, dao_code, governor_address,
-              COALESCE(proposals_count, 0) AS proposals_count,
-              COALESCE(votes_count, 0) AS votes_count,
-              COALESCE(votes_with_params_count, 0) AS votes_with_params_count,
-              COALESCE(votes_without_params_count, 0) AS votes_without_params_count,
-              COALESCE(votes_weight_for_sum, 0)::text AS votes_weight_for_sum,
-              COALESCE(votes_weight_against_sum, 0)::text AS votes_weight_against_sum,
-              COALESCE(votes_weight_abstain_sum, 0)::text AS votes_weight_abstain_sum,
-              COALESCE(power_sum, 0)::text AS power_sum,
-              COALESCE(member_count, 0) AS member_count
-            FROM data_metric
-            "#,
-        );
-        if let Some(where_) = where_.as_ref() {
-            query.push(" WHERE ");
-            let mut has_condition = false;
-            push_scope_filters(&mut query, &mut has_condition, &where_.scope, "");
-            if let Some(id) = &where_.id_eq {
-                push_column_eq(&mut query, &mut has_condition, "", "id", id);
-            }
-            if !has_condition {
-                query.push("TRUE");
-            }
-        }
-        query.push(" ORDER BY id ASC");
-        push_page(&mut query, offset, limit);
-
-        Ok(query.build_query_as().fetch_all(pool).await?)
+        query_data_metrics(
+            pool(ctx)?,
+            where_.as_ref(),
+            order_by.as_deref(),
+            offset,
+            limit,
+        )
+        .await
     }
 
     async fn contributors(
@@ -287,6 +265,18 @@ impl QueryRoot {
         let _ = order_by;
         Ok(Connection {
             total_count: count_delegate_mappings(pool(ctx)?, where_.as_ref()).await?,
+        })
+    }
+
+    async fn data_metrics_connection(
+        &self,
+        ctx: &Context<'_>,
+        where_: Option<DataMetricWhereInput>,
+        order_by: Option<Vec<DataMetricOrderByInput>>,
+    ) -> GraphqlResult<Connection> {
+        let _ = order_by;
+        Ok(Connection {
+            total_count: count_data_metrics(pool(ctx)?, where_.as_ref()).await?,
         })
     }
 }
@@ -429,15 +419,19 @@ pub struct DataMetric {
     chain_id: Option<i32>,
     dao_code: Option<String>,
     governor_address: Option<String>,
-    proposals_count: i32,
-    votes_count: i32,
-    votes_with_params_count: i32,
-    votes_without_params_count: i32,
-    votes_weight_for_sum: String,
-    votes_weight_against_sum: String,
-    votes_weight_abstain_sum: String,
-    power_sum: String,
-    member_count: i32,
+    token_address: Option<String>,
+    contract_address: Option<String>,
+    log_index: Option<i32>,
+    transaction_index: Option<i32>,
+    proposals_count: Option<i32>,
+    votes_count: Option<i32>,
+    votes_with_params_count: Option<i32>,
+    votes_without_params_count: Option<i32>,
+    votes_weight_for_sum: Option<String>,
+    votes_weight_against_sum: Option<String>,
+    votes_weight_abstain_sum: Option<String>,
+    power_sum: Option<String>,
+    member_count: Option<i32>,
 }
 
 #[derive(Clone, Debug, FromRow, SimpleObject)]
@@ -580,6 +574,22 @@ pub struct DataMetricWhereInput {
     scope: ScopeWhereInput,
     #[graphql(name = "id_eq")]
     id_eq: Option<String>,
+    #[graphql(name = "proposalsCount_eq")]
+    proposals_count_eq: Option<i32>,
+    #[graphql(name = "votesCount_eq")]
+    votes_count_eq: Option<i32>,
+    #[graphql(name = "votesWithParamsCount_eq")]
+    votes_with_params_count_eq: Option<i32>,
+    #[graphql(name = "votesWithoutParamsCount_eq")]
+    votes_without_params_count_eq: Option<i32>,
+    #[graphql(name = "votesWeightForSum_eq")]
+    votes_weight_for_sum_eq: Option<String>,
+    #[graphql(name = "votesWeightAgainstSum_eq")]
+    votes_weight_against_sum_eq: Option<String>,
+    #[graphql(name = "votesWeightAbstainSum_eq")]
+    votes_weight_abstain_sum_eq: Option<String>,
+    #[graphql(name = "OR")]
+    or: Option<Vec<DataMetricWhereInput>>,
 }
 
 #[derive(Clone, Debug, Default, InputObject)]
@@ -652,6 +662,12 @@ pub enum EventOrderByInput {
     BlockTimestampAscNullsLast,
     #[graphql(name = "blockTimestamp_DESC_NULLS_LAST")]
     BlockTimestampDescNullsLast,
+    #[graphql(name = "id_ASC")]
+    IdAsc,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Enum)]
+pub enum DataMetricOrderByInput {
     #[graphql(name = "id_ASC")]
     IdAsc,
 }
@@ -759,6 +775,42 @@ where
     push_page(&mut query, offset, limit);
 
     Ok(query.build_query_as().fetch_all(pool).await?)
+}
+
+async fn query_data_metrics(
+    pool: &PgPool,
+    where_: Option<&DataMetricWhereInput>,
+    order_by: Option<&[DataMetricOrderByInput]>,
+    offset: Option<i32>,
+    limit: Option<i32>,
+) -> GraphqlResult<Vec<DataMetric>> {
+    let mut query = QueryBuilder::<Postgres>::new(
+        r#"
+        SELECT id, chain_id, dao_code, governor_address, token_address, contract_address,
+          log_index, transaction_index, proposals_count, votes_count, votes_with_params_count,
+          votes_without_params_count, votes_weight_for_sum::text AS votes_weight_for_sum,
+          votes_weight_against_sum::text AS votes_weight_against_sum,
+          votes_weight_abstain_sum::text AS votes_weight_abstain_sum,
+          power_sum::text AS power_sum, member_count
+        FROM data_metric
+        "#,
+    );
+    push_data_metric_where(&mut query, where_);
+    push_data_metric_order(&mut query, order_by);
+    push_page(&mut query, offset, limit);
+
+    Ok(query.build_query_as().fetch_all(pool).await?)
+}
+
+async fn count_data_metrics(
+    pool: &PgPool,
+    where_: Option<&DataMetricWhereInput>,
+) -> GraphqlResult<i64> {
+    let mut query =
+        QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM data_metric");
+    push_data_metric_where(&mut query, where_);
+    let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
+    Ok(total)
 }
 
 async fn query_contributors(
@@ -958,6 +1010,100 @@ fn push_event_where<'a>(
     }
 }
 
+fn push_data_metric_where<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    where_: Option<&'a DataMetricWhereInput>,
+) {
+    if let Some(where_) = where_ {
+        query.push(" WHERE ");
+        let mut has_condition = false;
+        push_data_metric_filters(query, &mut has_condition, where_, "");
+        if !has_condition {
+            query.push("TRUE");
+        }
+    }
+}
+
+fn push_data_metric_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    where_: &'a DataMetricWhereInput,
+    table_alias: &str,
+) {
+    push_scope_filters(query, has_condition, &where_.scope, table_alias);
+    if let Some(id) = &where_.id_eq {
+        push_column_eq(query, has_condition, table_alias, "id", id);
+    }
+    if let Some(proposals_count) = where_.proposals_count_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "proposals_count",
+            proposals_count,
+        );
+    }
+    if let Some(votes_count) = where_.votes_count_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "votes_count",
+            votes_count,
+        );
+    }
+    if let Some(votes_with_params_count) = where_.votes_with_params_count_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "votes_with_params_count",
+            votes_with_params_count,
+        );
+    }
+    if let Some(votes_without_params_count) = where_.votes_without_params_count_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "votes_without_params_count",
+            votes_without_params_count,
+        );
+    }
+    if let Some(votes_weight_for_sum) = &where_.votes_weight_for_sum_eq {
+        push_numeric_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "votes_weight_for_sum",
+            votes_weight_for_sum,
+        );
+    }
+    if let Some(votes_weight_against_sum) = &where_.votes_weight_against_sum_eq {
+        push_numeric_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "votes_weight_against_sum",
+            votes_weight_against_sum,
+        );
+    }
+    if let Some(votes_weight_abstain_sum) = &where_.votes_weight_abstain_sum_eq {
+        push_numeric_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "votes_weight_abstain_sum",
+            votes_weight_abstain_sum,
+        );
+    }
+    if let Some(or) = &where_.or {
+        push_or_group(query, has_condition, or, |query, has_condition, filter| {
+            push_data_metric_filters(query, has_condition, filter, table_alias);
+        });
+    }
+}
+
 fn push_contributor_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     where_: Option<&'a ContributorWhereInput>,
@@ -1143,6 +1289,18 @@ fn push_column_eq<'a, T>(
     query.push(" = ").push_bind(value);
 }
 
+fn push_numeric_column_eq<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    push_qualified_column(query, table_alias, column);
+    query.push(" = ").push_bind(value).push("::numeric");
+}
+
 fn push_qualified_column(query: &mut QueryBuilder<'_, Postgres>, table_alias: &str, column: &str) {
     if table_alias.is_empty() {
         query.push(column);
@@ -1157,6 +1315,19 @@ fn push_and(query: &mut QueryBuilder<'_, Postgres>, has_condition: &mut bool) {
     } else {
         *has_condition = true;
     }
+}
+
+fn push_data_metric_order(
+    query: &mut QueryBuilder<'_, Postgres>,
+    order_by: Option<&[DataMetricOrderByInput]>,
+) {
+    push_order(
+        query,
+        order_by.unwrap_or(&[DataMetricOrderByInput::IdAsc]),
+        |order| match order {
+            DataMetricOrderByInput::IdAsc => "data_metric.id ASC",
+        },
+    );
 }
 
 fn push_proposal_order(

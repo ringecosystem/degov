@@ -50,6 +50,7 @@ fn test_project_vote_events_preserves_vote_rows_groups_totals_and_signals() {
     assert_eq!(batch.vote_cast_groups.len(), 3);
     assert_eq!(batch.proposal_vote_totals.len(), 2);
     assert_eq!(batch.contributor_vote_signals.len(), 3);
+    assert_eq!(batch.data_metrics.len(), 3);
     assert_eq!(batch.data_metric_delta.votes_count, 3);
     assert_eq!(batch.data_metric_delta.votes_with_params_count, 1);
     assert_eq!(batch.data_metric_delta.votes_without_params_count, 2);
@@ -68,9 +69,39 @@ fn test_project_vote_events_preserves_vote_rows_groups_totals_and_signals() {
     assert_eq!(vote.block_timestamp.as_deref(), Some("1700000010"));
     assert_eq!(vote.transaction_hash, "0xtx10");
 
+    let metric = &batch.data_metrics[0];
+    assert_eq!(metric.id, "evm:1:10:0xtx10:0:1");
+    assert_eq!(metric.chain_id, 1);
+    assert_eq!(metric.dao_code, "unit-dao");
+    assert_eq!(
+        metric.governor_address,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
+    assert_eq!(
+        metric.contract_address.as_deref(),
+        Some("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    );
+    assert_eq!(metric.log_index, Some(1));
+    assert_eq!(metric.transaction_index, Some(0));
+    assert_eq!(metric.proposals_count, Some(0));
+    assert_eq!(metric.votes_count, Some(1));
+    assert_eq!(metric.votes_with_params_count, Some(0));
+    assert_eq!(metric.votes_without_params_count, Some(1));
+    assert_eq!(metric.votes_weight_for_sum.as_deref(), Some("100"));
+    assert_eq!(metric.votes_weight_against_sum.as_deref(), Some("0"));
+    assert_eq!(metric.votes_weight_abstain_sum.as_deref(), Some("0"));
+
     let param_vote = &batch.vote_cast_with_params[0];
     assert_eq!(param_vote.params, "0x1234");
     assert_eq!(batch.vote_cast_groups[1].kind, "vote-cast-with-params");
+    let param_metric = &batch.data_metrics[1];
+    assert_eq!(param_metric.id, "evm:1:11:0xtx11:0:1");
+    assert_eq!(param_metric.votes_count, Some(1));
+    assert_eq!(param_metric.votes_with_params_count, Some(1));
+    assert_eq!(param_metric.votes_without_params_count, Some(0));
+    assert_eq!(param_metric.votes_weight_for_sum.as_deref(), Some("0"));
+    assert_eq!(param_metric.votes_weight_against_sum.as_deref(), Some("25"));
+    assert_eq!(param_metric.votes_weight_abstain_sum.as_deref(), Some("0"));
     assert_eq!(
         batch.vote_cast_groups[1].proposal_ref,
         "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42"

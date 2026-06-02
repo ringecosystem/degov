@@ -566,7 +566,7 @@ async fn seed_data_metric_with_scope(
             member_count, votes_count
          )
          VALUES (
-            '46:0x1111111111111111111111111111111111111111:demo-dao',
+            'global',
             $1, 46, 'demo-dao', $2, $3, $4::NUMERIC(78, 0), $5, $6
          )",
     )

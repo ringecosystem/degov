@@ -654,6 +654,7 @@ impl IndexerContractSetRuntimeConfig {
                 current_power_method: ChainReadMethod::GetVotes,
             },
             proposal: Some(ProposalProjectionContext {
+                contract_set_id: self.checkpoint_contract_set_id.clone(),
                 dao_code: self.dao_code.clone(),
                 governor_address: contracts.governor.clone(),
                 contracts: chain_contracts.clone(),

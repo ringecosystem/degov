@@ -540,7 +540,7 @@ CREATE TABLE IF NOT EXISTS vote_cast_group (
   contract_address TEXT,
   log_index INTEGER,
   transaction_index INTEGER,
-  proposal_id TEXT NOT NULL REFERENCES proposal (id) ON DELETE CASCADE,
+  proposal_id TEXT NOT NULL REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE CASCADE,
   type TEXT NOT NULL,
   voter TEXT NOT NULL,
   ref_proposal_id TEXT NOT NULL,
@@ -565,7 +565,7 @@ CREATE TABLE IF NOT EXISTS proposal_action (
   log_index INTEGER,
   transaction_index INTEGER,
   proposal_id TEXT NOT NULL,
-  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON DELETE CASCADE,
+  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE CASCADE,
   action_index INTEGER NOT NULL,
   target TEXT NOT NULL,
   value TEXT NOT NULL,
@@ -588,7 +588,7 @@ CREATE TABLE IF NOT EXISTS proposal_state_epoch (
   log_index INTEGER,
   transaction_index INTEGER,
   proposal_id TEXT NOT NULL,
-  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON DELETE CASCADE,
+  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE CASCADE,
   state TEXT NOT NULL,
   start_timepoint NUMERIC(78, 0),
   end_timepoint NUMERIC(78, 0),
@@ -632,7 +632,7 @@ CREATE TABLE IF NOT EXISTS proposal_deadline_extension (
   log_index INTEGER,
   transaction_index INTEGER,
   proposal_id TEXT NOT NULL,
-  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON DELETE CASCADE,
+  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE CASCADE,
   previous_deadline NUMERIC(78, 0),
   new_deadline NUMERIC(78, 0) NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
@@ -652,7 +652,7 @@ CREATE TABLE IF NOT EXISTS timelock_operation (
   contract_address TEXT,
   log_index INTEGER,
   transaction_index INTEGER,
-  proposal_ref TEXT REFERENCES proposal (id) ON DELETE SET NULL,
+  proposal_ref TEXT REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE SET NULL,
   proposal_id TEXT,
   operation_id TEXT NOT NULL,
   timelock_type TEXT NOT NULL,
@@ -696,7 +696,7 @@ CREATE TABLE IF NOT EXISTS timelock_call (
   transaction_index INTEGER,
   operation_id TEXT NOT NULL,
   operation_ref TEXT NOT NULL REFERENCES timelock_operation (id) ON DELETE CASCADE,
-  proposal_ref TEXT REFERENCES proposal (id) ON DELETE SET NULL,
+  proposal_ref TEXT REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE SET NULL,
   proposal_id TEXT,
   proposal_action_id TEXT,
   proposal_action_index INTEGER,
@@ -783,7 +783,8 @@ CREATE TABLE IF NOT EXISTS data_metric (
   power_sum NUMERIC(78, 0),
   member_count INTEGER,
   PRIMARY KEY (contract_set_id, id),
-  CONSTRAINT data_metric_lookup_unique UNIQUE NULLS NOT DISTINCT (
+  CONSTRAINT data_metric_scope_unique UNIQUE NULLS NOT DISTINCT (
+    id,
     chain_id,
     contract_set_id,
     governor_address,
@@ -793,6 +794,10 @@ CREATE TABLE IF NOT EXISTS data_metric (
 
 CREATE INDEX IF NOT EXISTS data_metric_lookup_idx
   ON data_metric (chain_id, contract_set_id, governor_address, dao_code);
+
+CREATE UNIQUE INDEX IF NOT EXISTS data_metric_event_id_unique
+  ON data_metric (contract_set_id, id)
+  WHERE id <> 'global';
 
 CREATE TABLE IF NOT EXISTS delegate_rolling (
   id TEXT NOT NULL,

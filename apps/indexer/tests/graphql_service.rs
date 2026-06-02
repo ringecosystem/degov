@@ -137,14 +137,15 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
               proposalCanceleds(where: $canceledWhere) { proposalId blockTimestamp }
               proposalExecuteds(where: $executedWhere) { proposalId blockTimestamp }
               proposalQueueds(where: $queuedWhere) { proposalId etaSeconds }
-              dataMetrics(where: { id_eq: "metric:lisk-dao" }) {
+              dataMetrics(where: { id_eq: "global" }) {
                 proposalsCount
                 votesCount
                 votesWeightForSum
                 powerSum
                 memberCount
               }
-              contributors(where: { OR: [{ id_eq: "0xvoter1" }, { power_lt: 50 }] }, orderBy: [power_DESC]) {
+              dataMetricsConnection(where: { votesCount_eq: 1 }, orderBy: id_ASC) { totalCount }
+              contributors(where: { OR: [{ id_eq: "0xvoter1" }, { power_lt: "50" }] }, orderBy: [power_DESC]) {
                 id
                 power
                 lastVoteTimestamp
@@ -199,6 +200,7 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     assert_eq!(data["proposals"][0]["voters"][0]["weight"], "100");
     assert_eq!(data["proposalQueueds"][0]["etaSeconds"], "1700000200");
     assert_eq!(data["dataMetrics"][0]["powerSum"], "150");
+    assert_eq!(data["dataMetricsConnection"]["totalCount"], 1);
     assert_eq!(data["contributors"][0]["id"], "0xvoter1");
     assert_eq!(data["delegates"][0]["isCurrent"], true);
     assert_eq!(data["delegateMappings"][0]["to"], "0xdelegate");
@@ -253,6 +255,163 @@ async fn test_graphql_schema_accepts_current_web_event_where_type_names()
     assert_eq!(data["proposalCanceleds"][0]["proposalId"], "101");
     assert_eq!(data["proposalExecuteds"][0]["proposalId"], "101");
     assert_eq!(data["proposalQueueds"][0]["etaSeconds"], "1700000200");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_data_metrics_parity_fields_filters_and_ordering() -> Result<(), Box<dyn Error>>
+{
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query MetricParity {
+              dataMetrics(orderBy: id_ASC, limit: 3) {
+                id
+                chainId
+                daoCode
+                governorAddress
+                tokenAddress
+                contractAddress
+                logIndex
+                transactionIndex
+                proposalsCount
+                votesCount
+                votesWithParamsCount
+                votesWithoutParamsCount
+                votesWeightForSum
+                votesWeightAgainstSum
+                votesWeightAbstainSum
+                powerSum
+                memberCount
+              }
+              proposalMetrics: dataMetrics(where: { proposalsCount_eq: 1 }, orderBy: id_ASC) {
+                id
+                proposalsCount
+                votesCount
+              }
+              voteMetrics: dataMetrics(where: { votesCount_eq: 1 }, orderBy: id_ASC) {
+                id
+                votesCount
+                votesWithoutParamsCount
+              }
+              globalMetric: dataMetrics(where: { id_eq: "global" }) {
+                id
+                powerSum
+                memberCount
+                proposalsCount
+                votesCount
+              }
+              dataMetricsConnection(orderBy: id_ASC) { totalCount }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["dataMetricsConnection"]["totalCount"], 3);
+    assert_eq!(data["dataMetrics"][0]["id"], "0000000800-proposal");
+    assert_eq!(data["dataMetrics"][1]["id"], "0000000805-vote");
+    assert_eq!(data["dataMetrics"][2]["id"], "global");
+    assert_eq!(data["dataMetrics"][0]["contractAddress"], "0xgovernor");
+    assert_eq!(data["dataMetrics"][0]["logIndex"], 1);
+    assert_eq!(data["dataMetrics"][0]["transactionIndex"], 0);
+    assert_eq!(data["proposalMetrics"][0]["id"], "0000000800-proposal");
+    assert_eq!(data["proposalMetrics"][0]["votesCount"], 0);
+    assert_eq!(data["voteMetrics"][0]["id"], "0000000805-vote");
+    assert_eq!(data["voteMetrics"][0]["votesWithoutParamsCount"], 1);
+    assert_eq!(data["globalMetric"][0]["id"], "global");
+    assert_eq!(data["globalMetric"][0]["powerSum"], "150");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_data_metrics_returns_scoped_global_rows() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+            id, contract_set_id, chain_id, dao_code, governor_address, proposals_count, votes_count,
+            power_sum, member_count
+         )
+         VALUES ('global', 'other-scope', 10, 'other-dao', '0xothergovernor', 7, 9, 700, 3)",
+    )
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(
+            Request::new(
+                r#"
+                query ScopedGlobals($lisk: DataMetricWhereInput, $other: DataMetricWhereInput) {
+                  lisk: dataMetrics(where: $lisk) {
+                    id
+                    chainId
+                    daoCode
+                    governorAddress
+                    proposalsCount
+                    votesCount
+                    powerSum
+                    memberCount
+                  }
+                  other: dataMetrics(where: $other) {
+                    id
+                    chainId
+                    daoCode
+                    governorAddress
+                    proposalsCount
+                    votesCount
+                    powerSum
+                    memberCount
+                  }
+                }
+                "#,
+            )
+            .variables(async_graphql::Variables::from_json(json!({
+                "lisk": {
+                    "id_eq": "global",
+                    "chainId_eq": 1135,
+                    "governorAddress_eq": "0xgovernor",
+                    "daoCode_eq": "lisk-dao"
+                },
+                "other": {
+                    "id_eq": "global",
+                    "chainId_eq": 10,
+                    "governorAddress_eq": "0xothergovernor",
+                    "daoCode_eq": "other-dao"
+                }
+            }))),
+        )
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["lisk"].as_array().expect("lisk rows").len(), 1);
+    assert_eq!(data["other"].as_array().expect("other rows").len(), 1);
+    assert_eq!(data["lisk"][0]["daoCode"], "lisk-dao");
+    assert_eq!(data["lisk"][0]["proposalsCount"], 2);
+    assert_eq!(data["other"][0]["daoCode"], "other-dao");
+    assert_eq!(data["other"][0]["proposalsCount"], 7);
+    assert_eq!(data["other"][0]["powerSum"], "700");
 
     database.cleanup().await?;
 
@@ -448,7 +607,16 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           id, contract_set_id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
           votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
           votes_weight_abstain_sum, power_sum, member_count, proposals_count
-        ) VALUES ('metric:lisk-dao', $1, 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 2, 2)
+        ) VALUES
+          ('global', $1, 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 2, 2),
+          ('0000000800-proposal', $1, 1135, 'lisk-dao', '0xgovernor', 0, 0, 0, 0, 0, 0, 150, 2, 1),
+          ('0000000805-vote', $1, 1135, 'lisk-dao', '0xgovernor', 1, 0, 1, 100, 0, 0, 150, 2, 0);
+        UPDATE data_metric
+        SET contract_address = '0xgovernor', log_index = 1, transaction_index = 0
+        WHERE contract_set_id = $1 AND id = '0000000800-proposal';
+        UPDATE data_metric
+        SET contract_address = '0xgovernor', log_index = 3, transaction_index = 0
+        WHERE contract_set_id = $1 AND id = '0000000805-vote';
         "#,
     )
     .bind(CONTRACT_SET_ID)

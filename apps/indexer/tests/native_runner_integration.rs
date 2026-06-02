@@ -438,6 +438,7 @@ fn contexts() -> IndexerRunnerContexts {
             current_power_method: ChainReadMethod::GetVotes,
         },
         proposal: Some(ProposalProjectionContext {
+            contract_set_id: "dao=demo-dao|chain=1|governor=0xgovernor|token=0xtoken".to_owned(),
             dao_code: "demo-dao".to_owned(),
             governor_address: contracts.governor.clone(),
             contracts: contracts.clone(),
