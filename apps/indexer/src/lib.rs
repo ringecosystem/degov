@@ -6,6 +6,7 @@ pub mod datalens;
 pub mod error;
 pub mod evm_log;
 pub mod planner;
+pub mod power_reconcile;
 
 pub use chain_tool::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadCapability,
@@ -38,4 +39,9 @@ pub use evm_log::{EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_
 pub use planner::{
     DaoContractAddresses, DaoLogQueryPlan, DaoLogSource, DatalensLogPage, DatalensLogQueryReader,
     fetch_dao_log_pages, plan_dao_log_queries,
+};
+pub use power_reconcile::{
+    PowerActivityReason, PowerFreshnessState, PowerReconcileCandidate, PowerReconcileContext,
+    PowerReconcileEvent, PowerReconcileMetrics, PowerReconcilePlan, PowerRefreshReadSource,
+    PowerRefreshStatus, PowerRefreshStatusRecord, plan_power_reconcile,
 };
