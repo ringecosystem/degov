@@ -12,6 +12,12 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use degov_datalens_indexer::{
+    BatchReadPlanConfig, ChainContracts, DecodedGovernorEvent, IndexerProjectionBatch,
+    IndexerRunnerStore, IndexerRunnerTransaction, NormalizedEvmLog, PostgresIndexerRunnerStore,
+    ProposalCreatedEvent, ProposalExtendedEvent, ProposalProjectionContext,
+    ProposalProjectionEvent, ProposalQueuedEvent, project_proposal_events,
+};
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
@@ -125,6 +131,100 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     assert_token_projection_state(&database.pool).await?;
     assert_table_count(&database.pool, "timelock_operation", 1).await?;
     assert_checkpoint(&database.pool).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let context = proposal_projection_context();
+    let lifecycle_batch = project_proposal_events(
+        &context,
+        vec![
+            ProposalProjectionEvent {
+                log: normalized_log("evm:1:3:0xtx30:0:0", 3, 0, 0),
+                event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                    proposal_id: "42".to_owned(),
+                    eta_seconds: "1234".to_owned(),
+                }),
+            },
+            ProposalProjectionEvent {
+                log: normalized_log("evm:1:4:0xtx40:0:0", 4, 0, 0),
+                event: DecodedGovernorEvent::ProposalExtended(ProposalExtendedEvent {
+                    proposal_id: "42".to_owned(),
+                    extended_deadline: "250".to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("lifecycle projection failed: {error:?}"))?;
+    let raw_batch = project_proposal_events(
+        &context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log("evm:1:2:0xtx20:0:0", 2, 0, 0),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Proposal title\n\nProposal body".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("raw projection failed: {error:?}"))?;
+
+    {
+        let mut transaction = store
+            .begin_transaction()
+            .map_err(|error| format!("begin lifecycle transaction failed: {error}"))?;
+        transaction.apply_projection_batch(&IndexerProjectionBatch {
+            proposal: Some(lifecycle_batch),
+            ..IndexerProjectionBatch::default()
+        })
+        .map_err(|error| format!("apply lifecycle batch failed: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("commit lifecycle transaction failed: {error}"))?;
+    }
+    {
+        let mut transaction = store
+            .begin_transaction()
+            .map_err(|error| format!("begin raw transaction failed: {error}"))?;
+        transaction.apply_projection_batch(&IndexerProjectionBatch {
+            proposal: Some(raw_batch),
+            ..IndexerProjectionBatch::default()
+        })
+        .map_err(|error| format!("apply raw batch failed: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("commit raw transaction failed: {error}"))?;
+    }
+
+    let raw_ref = "evm:1:2:0xtx20:0:0";
+    let state = sqlx::query(
+        "SELECT proposal_id, proposal_ref
+         FROM proposal_state_epoch
+         WHERE state = 'Queued'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(state.get::<String, _>("proposal_id"), raw_ref);
+    assert_eq!(state.get::<String, _>("proposal_ref"), raw_ref);
+
+    let extension =
+        sqlx::query("SELECT proposal_id, proposal_ref FROM proposal_deadline_extension")
+            .fetch_one(&database.pool)
+            .await?;
+    assert_eq!(extension.get::<String, _>("proposal_id"), raw_ref);
+    assert_eq!(extension.get::<String, _>("proposal_ref"), raw_ref);
 
     database.cleanup().await?;
 
@@ -345,7 +445,8 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
                 vote_start_timestamp::TEXT AS vote_start_timestamp,
                 vote_end_timestamp::TEXT AS vote_end_timestamp,
                 proposal_eta::TEXT AS proposal_eta, clock_mode, quorum::TEXT AS quorum,
-                decimals::TEXT AS decimals
+                decimals::TEXT AS decimals, metrics_votes_count,
+                metrics_votes_weight_for_sum::TEXT AS metrics_votes_weight_for_sum
          FROM proposal",
     )
     .fetch_one(pool)
@@ -364,6 +465,14 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
     assert_eq!(proposal.get::<String, _>("clock_mode"), "blocknumber");
     assert_eq!(proposal.get::<String, _>("quorum"), "0");
     assert_eq!(proposal.get::<String, _>("decimals"), "0");
+    assert_eq!(
+        proposal.get::<Option<i32>, _>("metrics_votes_count"),
+        Some(1)
+    );
+    assert_eq!(
+        proposal.get::<Option<String>, _>("metrics_votes_weight_for_sum"),
+        Some("77".to_owned())
+    );
 
     let action = sqlx::query("SELECT proposal_id, proposal_ref FROM proposal_action")
         .fetch_one(pool)
@@ -632,6 +741,45 @@ fn raw_log(
         "data": format!("0x{}", hex::encode(data)),
         "removed": false
     })
+}
+
+fn proposal_projection_context() -> ProposalProjectionContext {
+    ProposalProjectionContext {
+        dao_code: "demo-dao".to_owned(),
+        governor_address: GOVERNOR.to_owned(),
+        contracts: ChainContracts {
+            governor: GOVERNOR.to_owned(),
+            governor_token: TOKEN.to_owned(),
+            timelock: TIMELOCK.to_owned(),
+        },
+        read_plan_config: BatchReadPlanConfig {
+            max_concurrency: 4,
+            multicall_batch_size: 10,
+        },
+    }
+}
+
+fn normalized_log(
+    id: &str,
+    block_number: u64,
+    transaction_index: u64,
+    log_index: u64,
+) -> NormalizedEvmLog {
+    NormalizedEvmLog {
+        id: id.to_owned(),
+        chain_id: 1,
+        block_number,
+        block_hash: format!("0xblock{block_number}"),
+        block_timestamp_ms: Some((1_700_000_000 + block_number) * 1_000),
+        transaction_hash: format!("0xtx{block_number}{transaction_index}"),
+        transaction_index,
+        log_index,
+        address: GOVERNOR.to_owned(),
+        topics: vec![],
+        data: "0x".to_owned(),
+        removed: false,
+        raw_payload: json!({ "block_number": block_number }),
+    }
 }
 
 fn uint(value: u64) -> Token {

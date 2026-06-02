@@ -570,6 +570,23 @@ async fn relink_existing_proposal_to_raw_id(
     .execute(&mut **transaction)
     .await?;
 
+    for table in [
+        "proposal_action",
+        "proposal_state_epoch",
+        "proposal_deadline_extension",
+    ] {
+        let sql = format!(
+            "UPDATE {table}
+             SET proposal_id = $1
+             WHERE proposal_ref = $1
+               AND proposal_id <> $1"
+        );
+        sqlx::query(&sql)
+            .bind(&row.id)
+            .execute(&mut **transaction)
+            .await?;
+    }
+
     Ok(())
 }
 
@@ -870,7 +887,20 @@ async fn refresh_proposal_vote_totals(
     row: &ProposalVoteTotalWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
-        "UPDATE proposal
+        "WITH resolved AS (
+             SELECT COALESCE(
+               (
+                 SELECT proposal.id
+                 FROM proposal
+                 WHERE proposal.chain_id IS NOT DISTINCT FROM $2
+                   AND proposal.governor_address IS NOT DISTINCT FROM $3
+                   AND proposal.proposal_id = $4
+                 LIMIT 1
+               ),
+               $1
+             ) AS proposal_ref
+         )
+         UPDATE proposal
          SET metrics_votes_count = totals.votes_count,
              metrics_votes_with_params_count = totals.votes_with_params_count,
              metrics_votes_without_params_count = totals.votes_without_params_count,
@@ -885,12 +915,15 @@ async fn refresh_proposal_vote_totals(
                COALESCE(sum(CASE WHEN support = 1 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_for_sum,
                COALESCE(sum(CASE WHEN support = 0 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_against_sum,
                COALESCE(sum(CASE WHEN support = 2 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_abstain_sum
-             FROM vote_cast_group
-             WHERE proposal_id = $1
-         ) totals
-         WHERE proposal.id = $1",
+             FROM vote_cast_group, resolved
+             WHERE vote_cast_group.proposal_id = resolved.proposal_ref
+         ) totals, resolved
+         WHERE proposal.id = resolved.proposal_ref",
     )
     .bind(&row.proposal_ref)
+    .bind(row.chain_id)
+    .bind(&row.governor_address)
+    .bind(&row.proposal_id)
     .execute(&mut **transaction)
     .await?;
 
