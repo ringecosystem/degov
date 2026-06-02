@@ -1,4 +1,4 @@
-use degov_datalens_indexer::normalize_evm_log_rows;
+use degov_datalens_indexer::{EvmLogNormalizationError, normalize_evm_log_rows};
 use serde_json::{Value, json};
 
 #[test]
@@ -88,6 +88,64 @@ fn test_normalize_evm_log_rows_deduplicates_duplicate_raw_logs_by_stable_event_i
 
     assert_eq!(logs.len(), 1);
     assert_eq!(logs[0].id, "evm:46:100:0xtx1002:2:3");
+}
+
+#[test]
+fn test_normalize_evm_log_rows_rejects_conflicting_duplicate_ids() {
+    let first = raw_log(
+        100,
+        2,
+        3,
+        1_700_000_100,
+        "0xAaBbCcDdEeFf0011223344556677889900AaBbCc",
+    );
+    let mut conflicting = first.clone();
+    conflicting["data"] = json!("0x1234");
+
+    let error = normalize_evm_log_rows(46, vec![first, conflicting]).expect_err("conflict");
+
+    assert_eq!(
+        error,
+        EvmLogNormalizationError::DuplicateConflict {
+            id: "evm:46:100:0xtx1002:2:3".to_owned()
+        }
+    );
+}
+
+#[test]
+fn test_normalize_evm_log_rows_keeps_missing_timestamp_as_none() {
+    let mut row = raw_log(
+        100,
+        2,
+        3,
+        1_700_000_100,
+        "0xAaBbCcDdEeFf0011223344556677889900AaBbCc",
+    );
+    row.as_object_mut()
+        .expect("object")
+        .remove("block_timestamp");
+
+    let logs = normalize_evm_log_rows(46, vec![row]).expect("normalize logs");
+
+    assert_eq!(logs[0].block_timestamp_ms, None);
+}
+
+#[test]
+fn test_normalize_evm_log_rows_rejects_timestamp_overflow() {
+    let row = raw_log(
+        100,
+        2,
+        3,
+        u64::MAX,
+        "0xAaBbCcDdEeFf0011223344556677889900AaBbCc",
+    );
+
+    let error = normalize_evm_log_rows(46, vec![row]).expect_err("timestamp overflow");
+
+    assert_eq!(
+        error,
+        EvmLogNormalizationError::TimestampOverflow { seconds: u64::MAX }
+    );
 }
 
 fn raw_log(

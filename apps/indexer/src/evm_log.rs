@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use serde::Deserialize;
 use thiserror::Error;
@@ -27,6 +27,9 @@ pub enum EvmLogNormalizationError {
 
     #[error("EVM log timestamp {seconds} seconds overflows millisecond timestamp")]
     TimestampOverflow { seconds: u64 },
+
+    #[error("conflicting EVM log rows share stable id {id}")]
+    DuplicateConflict { id: String },
 }
 
 #[derive(Deserialize)]
@@ -55,10 +58,20 @@ pub fn normalize_evm_log_rows(
         .collect::<Result<Vec<_>, _>>()?;
     logs.sort_by_key(|log| (log.block_number, log.transaction_index, log.log_index));
 
-    let mut seen = BTreeSet::new();
-    logs.retain(|log| seen.insert(log.id.clone()));
+    let mut deduped = Vec::new();
+    let mut seen_indexes = BTreeMap::new();
+    for log in logs {
+        match seen_indexes.get(&log.id) {
+            Some(index) if deduped[*index] == log => {}
+            Some(_) => return Err(EvmLogNormalizationError::DuplicateConflict { id: log.id }),
+            None => {
+                seen_indexes.insert(log.id.clone(), deduped.len());
+                deduped.push(log);
+            }
+        }
+    }
 
-    Ok(logs)
+    Ok(deduped)
 }
 
 fn normalize_evm_log_row(
