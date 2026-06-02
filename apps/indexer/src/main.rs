@@ -164,7 +164,8 @@ async fn run_worker() -> anyhow::Result<()> {
         runtime.read_plan_config(),
         runtime.current_power_method,
     );
-    let worker = OnchainRefreshWorker::new(pool, runtime.worker_config(), reader);
+    let worker = OnchainRefreshWorker::new(pool, runtime.worker_config(), reader)
+        .with_current_power_method(runtime.current_power_method);
 
     loop {
         let mut poll_claimed = 0;

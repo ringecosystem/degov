@@ -7,8 +7,8 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshTask,
-    OnchainRefreshWorker, OnchainRefreshWorkerConfig,
+    ChainReadMethod, OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
+    OnchainRefreshTask, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -164,6 +164,52 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_power_checkpoint(&database.pool, ACCOUNT_TWO, "0", "5", "5").await?;
     assert_balance_checkpoint(&database.pool, ACCOUNT_ONE, "4", "17", "13").await?;
     assert_table_count(&database.pool, "token_balance_checkpoint", 1).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_uses_current_votes_checkpoint_source()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+
+    let reader = MockOnchainRefreshReader::new([(
+        "task-one",
+        OnchainRefreshReadValue {
+            task_id: "task-one".to_owned(),
+            balance: None,
+            power: Some("11".to_owned()),
+        },
+    )]);
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            max_attempts: 3,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    )
+    .with_current_power_method(ChainReadMethod::CurrentVotes);
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.completed, 1);
+    assert_power_checkpoint_source(&database.pool, ACCOUNT_ONE, "getCurrentVotes").await?;
 
     database.cleanup().await?;
 
@@ -573,6 +619,25 @@ async fn assert_power_checkpoint(
     assert_eq!(row.get::<String, _>("block_number"), "12");
     assert_eq!(row.get::<String, _>("block_timestamp"), "12000");
     assert_eq!(row.get::<String, _>("transaction_hash"), "onchain-refresh");
+
+    Ok(())
+}
+
+async fn assert_power_checkpoint_source(
+    pool: &PgPool,
+    account: &str,
+    source: &str,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT source
+         FROM vote_power_checkpoint
+         WHERE account = $1",
+    )
+    .bind(account)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("source"), source);
 
     Ok(())
 }
