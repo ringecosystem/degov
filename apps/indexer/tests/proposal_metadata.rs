@@ -35,6 +35,20 @@ fn test_derive_proposal_metadata_applies_stable_title_fallback_rules() {
 }
 
 #[test]
+fn test_derive_proposal_metadata_preserves_legacy_hash_fallback_titles() {
+    let compact_heading = derive_proposal_metadata("#Title\nBody");
+    let nested_heading = derive_proposal_metadata("## Title\nBody");
+    let indented_heading = derive_proposal_metadata("  # Title\nBody");
+
+    assert_eq!(compact_heading.title, "Title");
+    assert_eq!(compact_heading.description_body, "Body");
+    assert_eq!(nested_heading.title, "Title");
+    assert_eq!(nested_heading.description_body, "Body");
+    assert_eq!(indented_heading.title, "Title");
+    assert_eq!(indented_heading.description_body, "Body");
+}
+
+#[test]
 fn test_derive_proposal_metadata_extracts_deterministic_description_tags() {
     let metadata = derive_proposal_metadata(
         "# Title\n\nMain text\n\n<discussion>https://forum.example/proposal</discussion>\n\n<signature>[\"transfer(address,uint256)\",\"\"]</signature>",

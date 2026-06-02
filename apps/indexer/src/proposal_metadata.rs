@@ -26,10 +26,8 @@ pub fn derive_proposal_metadata(description: &str) -> ProposalTextMetadata {
 }
 
 fn extract_title_and_body(description: &str) -> (String, String) {
-    if let Some(rest) = description.strip_prefix('#') {
-        let Some(rest) = strip_heading_space(rest) else {
-            return fallback_title_and_body(description);
-        };
+    let trimmed = description.trim();
+    if let Some(rest) = trimmed.strip_prefix("# ") {
         let mut parts = rest.splitn(2, '\n');
         let raw_title = parts.next().unwrap_or_default();
         let title = normalize_heading_title(raw_title);
@@ -37,15 +35,7 @@ fn extract_title_and_body(description: &str) -> (String, String) {
         return (title, body);
     }
 
-    fallback_title_and_body(description)
-}
-
-fn strip_heading_space(value: &str) -> Option<&str> {
-    let trimmed = value.trim_start_matches(char::is_whitespace);
-    if trimmed.len() == value.len() {
-        return None;
-    }
-    Some(trimmed)
+    fallback_title_and_body(trimmed)
 }
 
 fn normalize_heading_title(value: &str) -> String {
@@ -65,9 +55,8 @@ fn normalize_heading_title(value: &str) -> String {
 }
 
 fn fallback_title_and_body(description: &str) -> (String, String) {
-    let trimmed = description.trim();
-    let mut lines = trimmed.lines();
-    let fallback_title = strip_html_tags(lines.next().unwrap_or_default())
+    let mut lines = description.lines();
+    let fallback_title = strip_html_tags(lines.next().unwrap_or_default().trim_start_matches('#'))
         .trim()
         .to_owned();
     let title = if fallback_title.len() > 50 {
