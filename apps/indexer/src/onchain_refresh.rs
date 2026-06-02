@@ -104,6 +104,7 @@ pub struct OnchainRefreshWorker<R> {
     pool: PgPool,
     config: OnchainRefreshWorkerConfig,
     reader: R,
+    current_power_method: ChainReadMethod,
 }
 
 impl<R> OnchainRefreshWorker<R>
@@ -115,7 +116,13 @@ where
             pool,
             config,
             reader,
+            current_power_method: ChainReadMethod::GetVotes,
         }
+    }
+
+    pub fn with_current_power_method(mut self, current_power_method: ChainReadMethod) -> Self {
+        self.current_power_method = current_power_method;
+        self
     }
 
     pub async fn run_once(&self) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
@@ -266,7 +273,14 @@ where
 
         let previous = read_contributor_refresh_values(&mut transaction, task).await?;
         upsert_contributor_refresh(&mut transaction, task, value).await?;
-        insert_refresh_checkpoints(&mut transaction, task, value, previous).await?;
+        insert_refresh_checkpoints(
+            &mut transaction,
+            task,
+            value,
+            previous,
+            self.current_power_method,
+        )
+        .await?;
         refresh_data_metric(&mut transaction, task).await?;
         complete_task(&mut transaction, &task.id, now_ms).await?;
 
@@ -679,6 +693,7 @@ async fn insert_refresh_checkpoints(
     task: &OnchainRefreshTask,
     value: &OnchainRefreshReadValue,
     previous: ContributorRefreshValues,
+    current_power_method: ChainReadMethod,
 ) -> Result<(), sqlx::Error> {
     if task.refresh_balance {
         let previous_balance = previous.balance.as_deref().unwrap_or("0");
@@ -725,8 +740,8 @@ async fn insert_refresh_checkpoints(
              VALUES (
                 $1, $2, $3, $4, $5, $6, $6, $7, 'blocknumber', $8::NUMERIC(78, 0),
                 $9::NUMERIC(78, 0), $10::NUMERIC(78, 0),
-                ($10::NUMERIC(78, 0) - $9::NUMERIC(78, 0)), 'getVotes', 'onchain-refresh',
-                $8::NUMERIC(78, 0), $11::NUMERIC(78, 0), 'onchain-refresh'
+                ($10::NUMERIC(78, 0) - $9::NUMERIC(78, 0)), $11, 'onchain-refresh',
+                $8::NUMERIC(78, 0), $12::NUMERIC(78, 0), 'onchain-refresh'
              )
              ON CONFLICT (contract_set_id, id) DO NOTHING",
         )
@@ -743,6 +758,7 @@ async fn insert_refresh_checkpoints(
         .bind(&task.last_seen_block_number)
         .bind(previous_power)
         .bind(new_power)
+        .bind(current_power_checkpoint_source(current_power_method))
         .bind(&task.last_seen_block_timestamp)
         .execute(&mut **transaction)
         .await?;
@@ -858,6 +874,13 @@ fn onchain_refresh_checkpoint_scope(task: &OnchainRefreshTask) -> String {
 
 fn contributor_ref(task: &OnchainRefreshTask) -> String {
     normalize_identifier(&task.account)
+}
+
+fn current_power_checkpoint_source(method: ChainReadMethod) -> &'static str {
+    match method {
+        ChainReadMethod::CurrentVotes => "getCurrentVotes",
+        _ => "getVotes",
+    }
 }
 
 fn parse_u64(value: &str) -> Result<u64, OnchainRefreshReaderError> {
