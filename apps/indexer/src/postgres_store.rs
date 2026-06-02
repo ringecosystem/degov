@@ -148,14 +148,35 @@ async fn write_projection_batch(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &IndexerProjectionBatch,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    if let Some(batch) = &batch.proposal {
-        write_proposal_batch(transaction, batch).await?;
+    if let Some(proposal) = &batch.proposal {
+        write_proposal_batch_rows(transaction, proposal).await?;
     }
-    if let Some(batch) = &batch.vote {
-        write_vote_batch(transaction, batch).await?;
+    if let Some(vote) = &batch.vote {
+        write_vote_batch_rows(transaction, vote).await?;
     }
-    if let Some(batch) = &batch.token {
-        write_token_batch(transaction, batch).await?;
+    let inserted_operation_ids = if let Some(token) = &batch.token {
+        write_token_batch_rows(transaction, token).await?
+    } else {
+        Vec::new()
+    };
+    write_data_metric_timeline(
+        transaction,
+        &inserted_operation_ids,
+        batch.proposal.as_ref(),
+        batch.vote.as_ref(),
+        batch.token.as_ref(),
+    )
+    .await?;
+    if let Some(proposal) = &batch.proposal {
+        refresh_proposal_data_metric(transaction, proposal).await?;
+    }
+    if let Some(vote) = &batch.vote {
+        refresh_vote_data_metric(transaction, &vote.contributor_vote_signals).await?;
+    }
+    if let Some(token) = &batch.token {
+        for candidate in &token.reconcile_plan.candidates {
+            upsert_onchain_refresh_task(transaction, candidate).await?;
+        }
     }
     if let Some(batch) = &batch.timelock {
         write_timelock_batch(transaction, batch).await?;
@@ -164,7 +185,7 @@ async fn write_projection_batch(
     Ok(())
 }
 
-async fn write_proposal_batch(
+async fn write_proposal_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &ProposalProjectionBatch,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
@@ -195,14 +216,10 @@ async fn write_proposal_batch(
     for row in &batch.proposal_deadline_extensions {
         insert_proposal_deadline_extension(transaction, row).await?;
     }
-    for row in &batch.data_metrics {
-        upsert_event_data_metric(transaction, row).await?;
-    }
-
     Ok(())
 }
 
-async fn write_vote_batch(
+async fn write_vote_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &VoteProjectionBatch,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
@@ -221,33 +238,28 @@ async fn write_vote_batch(
     for row in &batch.contributor_vote_signals {
         upsert_contributor_vote_signal(transaction, row).await?;
     }
-    for row in &batch.data_metrics {
-        upsert_event_data_metric(transaction, row).await?;
-    }
-    refresh_vote_data_metric(transaction, &batch.contributor_vote_signals).await?;
-
     Ok(())
 }
 
-async fn write_token_batch(
+async fn write_token_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &TokenProjectionBatch,
-) -> Result<(), PostgresIndexerRunnerStoreError> {
+) -> Result<Vec<String>, PostgresIndexerRunnerStoreError> {
     let mut inserted_operation_ids = Vec::new();
 
     for row in &batch.delegate_changed {
         if insert_delegate_changed(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operation_ids.push(row.id.clone());
         }
     }
     for row in &batch.delegate_votes_changed {
         if insert_delegate_votes_changed(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operation_ids.push(row.id.clone());
         }
     }
     for row in &batch.token_transfers {
         if insert_token_transfer(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operation_ids.push(row.id.clone());
         }
     }
     for row in &batch.delegate_rollings {
@@ -256,19 +268,76 @@ async fn write_token_batch(
     for row in &batch.delegate_votes_changed {
         insert_vote_power_checkpoint(transaction, row).await?;
     }
-    for operation in &batch.operations {
-        if inserted_operation_ids
-            .iter()
-            .any(|inserted_id| *inserted_id == token_operation_id(operation))
-        {
-            apply_token_operation(transaction, operation).await?;
-        }
+    Ok(inserted_operation_ids)
+}
+
+enum DataMetricTimelineItem<'a> {
+    Token(&'a TokenProjectionOperation),
+    Proposal(&'a DataMetricWrite),
+    Vote(&'a DataMetricWrite),
+}
+
+async fn write_data_metric_timeline(
+    transaction: &mut Transaction<'_, Postgres>,
+    inserted_operation_ids: &[String],
+    proposal: Option<&ProposalProjectionBatch>,
+    vote: Option<&VoteProjectionBatch>,
+    token: Option<&TokenProjectionBatch>,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let mut items = Vec::new();
+    if let Some(token) = token {
+        items.extend(token.operations.iter().map(DataMetricTimelineItem::Token));
     }
-    for candidate in &batch.reconcile_plan.candidates {
-        upsert_onchain_refresh_task(transaction, candidate).await?;
+    if let Some(proposal) = proposal {
+        items.extend(
+            proposal
+                .data_metrics
+                .iter()
+                .map(DataMetricTimelineItem::Proposal),
+        );
+    }
+    if let Some(vote) = vote {
+        items.extend(vote.data_metrics.iter().map(DataMetricTimelineItem::Vote));
+    }
+    items.sort_by_key(data_metric_timeline_order);
+
+    for item in items {
+        match item {
+            DataMetricTimelineItem::Token(operation) => {
+                if inserted_operation_ids
+                    .iter()
+                    .any(|inserted_id| inserted_id == token_operation_id(operation))
+                {
+                    apply_token_operation(transaction, operation).await?;
+                }
+            }
+            DataMetricTimelineItem::Proposal(row) | DataMetricTimelineItem::Vote(row) => {
+                upsert_event_data_metric(transaction, row).await?;
+            }
+        }
     }
 
     Ok(())
+}
+
+fn data_metric_timeline_order(item: &DataMetricTimelineItem<'_>) -> (u64, u64, u64, String) {
+    match item {
+        DataMetricTimelineItem::Token(operation) => {
+            let common = token_operation_common(operation);
+            (
+                common.block_number.parse::<u64>().unwrap_or(u64::MAX),
+                common.transaction_index,
+                common.log_index,
+                token_operation_id(operation).to_owned(),
+            )
+        }
+        DataMetricTimelineItem::Proposal(row) | DataMetricTimelineItem::Vote(row) => (
+            row.block_number.parse::<u64>().unwrap_or(u64::MAX),
+            row.transaction_index.unwrap_or(u64::MAX),
+            row.log_index.unwrap_or(u64::MAX),
+            row.id.clone(),
+        ),
+    }
 }
 
 async fn write_timelock_batch(
@@ -1018,7 +1087,7 @@ async fn upsert_event_data_metric(
             $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15::NUMERIC(78, 0),
             $16::NUMERIC(78, 0), $17
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (id) WHERE id <> 'global' DO UPDATE
          SET chain_id = EXCLUDED.chain_id,
              dao_code = EXCLUDED.dao_code,
              governor_address = EXCLUDED.governor_address,
@@ -1128,7 +1197,7 @@ async fn refresh_vote_data_metric(
             COALESCE(sum(CASE WHEN support = 2 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0)
          FROM vote_cast_group
          WHERE chain_id = $2 AND governor_address = $4 AND dao_code = $3
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET votes_count = EXCLUDED.votes_count,
              votes_with_params_count = EXCLUDED.votes_with_params_count,
              votes_without_params_count = EXCLUDED.votes_without_params_count,
@@ -1140,6 +1209,54 @@ async fn refresh_vote_data_metric(
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn refresh_proposal_data_metric(
+    transaction: &mut Transaction<'_, Postgres>,
+    batch: &ProposalProjectionBatch,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let scope = batch
+        .proposals
+        .first()
+        .map(|row| {
+            (
+                row.chain_id,
+                row.dao_code.as_str(),
+                row.governor_address.as_str(),
+            )
+        })
+        .or_else(|| {
+            batch.data_metrics.first().map(|row| {
+                (
+                    row.chain_id,
+                    row.dao_code.as_str(),
+                    row.governor_address.as_str(),
+                )
+            })
+        });
+    let Some((chain_id, dao_code, governor_address)) = scope else {
+        return Ok(());
+    };
+    let metric_id = data_metric_id(chain_id, governor_address, dao_code);
+
+    sqlx::query(
+        "INSERT INTO data_metric (
+            id, chain_id, dao_code, governor_address, proposals_count
+         )
+         SELECT $1, $2, $3, $4, count(*)::INTEGER
+         FROM proposal
+         WHERE chain_id = $2 AND governor_address = $4 AND dao_code = $3
+         ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
+         SET proposals_count = EXCLUDED.proposals_count",
+    )
+    .bind(metric_id)
+    .bind(chain_id)
+    .bind(dao_code)
+    .bind(governor_address)
     .execute(&mut **transaction)
     .await?;
 
@@ -1903,7 +2020,7 @@ async fn increment_member_count(
             id, chain_id, dao_code, governor_address, token_address, member_count
          )
          VALUES ($1, $2, $3, $4, $5, 1)
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              member_count = COALESCE(data_metric.member_count, 0) + 1",
     )
@@ -2493,6 +2610,14 @@ fn token_operation_id(operation: &TokenProjectionOperation) -> &str {
         TokenProjectionOperation::DelegateChanged { id, .. }
         | TokenProjectionOperation::DelegateVotesChanged { id, .. }
         | TokenProjectionOperation::Transfer { id, .. } => id,
+    }
+}
+
+fn token_operation_common(operation: &TokenProjectionOperation) -> &TokenEventCommon {
+    match operation {
+        TokenProjectionOperation::DelegateChanged { common, .. }
+        | TokenProjectionOperation::DelegateVotesChanged { common, .. }
+        | TokenProjectionOperation::Transfer { common, .. } => common,
     }
 }
 

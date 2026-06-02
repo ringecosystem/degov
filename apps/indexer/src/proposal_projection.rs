@@ -793,6 +793,7 @@ fn proposal_data_metric(log_id: &str, common: &ProposalEventCommon) -> DataMetri
         contract_address: Some(common.contract_address.clone()),
         log_index: Some(common.log_index),
         transaction_index: Some(common.transaction_index),
+        block_number: common.block_number.clone(),
         proposals_count: Some(1),
         votes_count: Some(0),
         votes_with_params_count: Some(0),

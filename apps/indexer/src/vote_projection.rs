@@ -530,6 +530,7 @@ fn vote_data_metric(log_id: &str, group: &VoteCastGroupWrite) -> DataMetricWrite
         contract_address: Some(group.contract_address.clone()),
         log_index: Some(group.log_index),
         transaction_index: Some(group.transaction_index),
+        block_number: group.block_number.clone(),
         proposals_count: Some(0),
         votes_count: Some(1),
         votes_with_params_count: Some(0),

@@ -339,6 +339,85 @@ async fn test_graphql_data_metrics_parity_fields_filters_and_ordering() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_data_metrics_returns_scoped_global_rows() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+            id, chain_id, dao_code, governor_address, proposals_count, votes_count,
+            power_sum, member_count
+         )
+         VALUES ('global', 10, 'other-dao', '0xothergovernor', 7, 9, 700, 3)",
+    )
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(
+            Request::new(
+                r#"
+                query ScopedGlobals($lisk: DataMetricWhereInput, $other: DataMetricWhereInput) {
+                  lisk: dataMetrics(where: $lisk) {
+                    id
+                    chainId
+                    daoCode
+                    governorAddress
+                    proposalsCount
+                    votesCount
+                    powerSum
+                    memberCount
+                  }
+                  other: dataMetrics(where: $other) {
+                    id
+                    chainId
+                    daoCode
+                    governorAddress
+                    proposalsCount
+                    votesCount
+                    powerSum
+                    memberCount
+                  }
+                }
+                "#,
+            )
+            .variables(async_graphql::Variables::from_json(json!({
+                "lisk": {
+                    "id_eq": "global",
+                    "chainId_eq": 1135,
+                    "governorAddress_eq": "0xgovernor",
+                    "daoCode_eq": "lisk-dao"
+                },
+                "other": {
+                    "id_eq": "global",
+                    "chainId_eq": 10,
+                    "governorAddress_eq": "0xothergovernor",
+                    "daoCode_eq": "other-dao"
+                }
+            }))),
+        )
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["lisk"].as_array().expect("lisk rows").len(), 1);
+    assert_eq!(data["other"].as_array().expect("other rows").len(), 1);
+    assert_eq!(data["lisk"][0]["daoCode"], "lisk-dao");
+    assert_eq!(data["lisk"][0]["proposalsCount"], 2);
+    assert_eq!(data["other"][0]["daoCode"], "other-dao");
+    assert_eq!(data["other"][0]["proposalsCount"], 7);
+    assert_eq!(data["other"][0]["powerSum"], "700");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_http_endpoint_serves_post_requests() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let schema = graphql::build_schema(database.pool.clone());

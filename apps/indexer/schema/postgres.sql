@@ -748,7 +748,7 @@ CREATE INDEX IF NOT EXISTS timelock_min_delay_change_lookup_idx
   ON timelock_min_delay_change (chain_id, governor_address, timelock_address, block_number);
 
 CREATE TABLE IF NOT EXISTS data_metric (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -764,11 +764,21 @@ CREATE TABLE IF NOT EXISTS data_metric (
   votes_weight_against_sum NUMERIC(78, 0),
   votes_weight_abstain_sum NUMERIC(78, 0),
   power_sum NUMERIC(78, 0),
-  member_count INTEGER
+  member_count INTEGER,
+  CONSTRAINT data_metric_scope_unique UNIQUE NULLS NOT DISTINCT (
+    id,
+    chain_id,
+    governor_address,
+    dao_code
+  )
 );
 
 CREATE INDEX IF NOT EXISTS data_metric_lookup_idx
   ON data_metric (chain_id, governor_address, dao_code);
+
+CREATE UNIQUE INDEX IF NOT EXISTS data_metric_event_id_unique
+  ON data_metric (id)
+  WHERE id <> 'global';
 
 CREATE TABLE IF NOT EXISTS delegate_rolling (
   id TEXT PRIMARY KEY,

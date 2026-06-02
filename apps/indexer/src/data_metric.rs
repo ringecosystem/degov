@@ -8,6 +8,7 @@ pub struct DataMetricWrite {
     pub contract_address: Option<String>,
     pub log_index: Option<u64>,
     pub transaction_index: Option<u64>,
+    pub block_number: String,
     pub proposals_count: Option<i64>,
     pub votes_count: Option<i64>,
     pub votes_with_params_count: Option<i64>,

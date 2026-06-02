@@ -765,7 +765,7 @@ async fn refresh_data_metric(
             count(*)::INTEGER
          FROM contributor
          WHERE chain_id = $2 AND governor_address = $4 AND dao_code IS NOT DISTINCT FROM $3
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              power_sum = EXCLUDED.power_sum,
              member_count = EXCLUDED.member_count",
