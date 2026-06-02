@@ -53,7 +53,8 @@ Confirm these Datalens server dependencies before rollout:
 - chain config includes the selected chain id/name and EVM log dataset;
 - S3/cache backing the queried dataset is healthy for the selected range;
 - application auth accepts the `degov-staging` token;
-- query limits are compatible with the chunk size configured in the DAO env.
+- the Datalens query block range limit is compatible with the chunk size
+  configured in the DAO env.
 
 Use the runtime smoke check with a token loaded from secret management:
 
@@ -86,9 +87,27 @@ kubectl --kubeconfig=avault/.kube/<cluster>.config \
   -n <staging-namespace> logs deploy/<dao>-degov-datalens-indexer --since=10m
 ```
 
-Look for DAO, chain, dataset, chunk range, processed height, task backlog, and
-projection error fields in logs. Any projection error should include enough
-context to identify the DAO, stream, block range, and failing projection.
+Look for pod startup, configured DAO, chain, dataset, DB migration, GraphQL
+startup, and projection error fields in logs. Any projection error should
+include enough context to identify the DAO, stream, block range, and failing
+projection.
+
+Check GraphQL availability:
+
+```bash
+curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
+  -H 'content-type: application/json' \
+  --data '{"query":"query { dataMetrics(limit: 1) { proposalsCount } }"}'
+```
+
+Do not treat missing checkpoint advancement, worker task status, or page sync
+percentage as current staging acceptance until the staging runner performs live
+Datalens chunk processing and checkpoint commits.
+
+## Future post-runner checks
+
+After live Datalens chunk processing and checkpoint commits are enabled in
+staging, reclassify these checks as required acceptance.
 
 Check DB checkpoint progress and sync percentage:
 
@@ -102,21 +121,13 @@ The JSON output includes `processedHeight`, `targetHeight`, `lagBlocks`,
 `syncPercent`, `reconcileBacklog`, `reconcileErrors`,
 `onchainRefreshBacklog`, and `onchainRefreshErrors`.
 
-Check GraphQL availability:
-
-```bash
-curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
-  -H 'content-type: application/json' \
-  --data '{"query":"query { dataMetrics(limit: 1) { proposalsCount } }"}'
-```
-
 For DAOs with Tally coverage, run the Tally/onchain comparison after indexing
-reaches the intended target height:
+reaches the intended target height. The Tally/onchain script reads DeGov
+GraphQL endpoints from the targets file and does not accept a database URL.
 
 ```bash
 pnpm run audit:tally-onchain -- \
   --targets-file apps/indexer/scripts/indexer-accuracy-targets.json \
-  --database-url "$DEGOV_INDEXER_DATABASE_URL" \
   --json-file reports/tally-onchain-e2e.json \
   --markdown-file reports/tally-onchain-e2e.md
 ```

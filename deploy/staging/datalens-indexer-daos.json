@@ -44,7 +44,6 @@
         "DATALENS_DATASET_FAMILY": "evm",
         "DATALENS_DATASET_NAME": "logs",
         "DATALENS_QUERY_BLOCK_RANGE_LIMIT": 1000,
-        "DATALENS_QUERY_ROW_LIMIT": 1000,
         "DATALENS_GOVERNOR_ADDRESS": "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517",
         "DATALENS_GOVERNOR_TOKEN_ADDRESS": "0xbC9f58566810F7e853e1eef1b9957ac82F9971df",
         "DATALENS_GOVERNOR_TOKEN_STANDARD": "ERC20",
@@ -59,8 +58,10 @@
   ],
   "requiredRuntimeChecks": [
     "pod-readiness",
+    "graphql-availability"
+  ],
+  "futureRuntimeChecks": [
     "db-checkpoint-progress",
-    "graphql-availability",
     "worker-task-status",
     "page-sync-percentage"
   ]

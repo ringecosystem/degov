@@ -392,7 +392,6 @@ fn options() -> IndexerRunnerOptions {
             },
             query_limits: QueryLimitConfig {
                 block_range_limit: 10,
-                row_limit: 100,
             },
             dao_contracts: Some(addresses()),
         },

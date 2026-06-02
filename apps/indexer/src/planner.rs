@@ -428,10 +428,7 @@ mod tests {
                 family: "evm".to_owned(),
                 name: "logs".to_owned(),
             },
-            query_limits: QueryLimitConfig {
-                block_range_limit,
-                row_limit: 500,
-            },
+            query_limits: QueryLimitConfig { block_range_limit },
             dao_contracts: None,
         }
     }
