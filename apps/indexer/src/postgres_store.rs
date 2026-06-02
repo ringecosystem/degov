@@ -229,21 +229,21 @@ async fn write_token_batch(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &TokenProjectionBatch,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let mut inserted_operation_ids = Vec::new();
+    let mut inserted_operations = Vec::new();
 
     for row in &batch.delegate_changed {
         if insert_delegate_changed(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operations.push((row.common.contract_set_id.as_str(), row.id.as_str()));
         }
     }
     for row in &batch.delegate_votes_changed {
         if insert_delegate_votes_changed(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operations.push((row.common.contract_set_id.as_str(), row.id.as_str()));
         }
     }
     for row in &batch.token_transfers {
         if insert_token_transfer(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operations.push((row.common.contract_set_id.as_str(), row.id.as_str()));
         }
     }
     for row in &batch.delegate_rollings {
@@ -253,9 +253,9 @@ async fn write_token_batch(
         insert_vote_power_checkpoint(transaction, row).await?;
     }
     for operation in &batch.operations {
-        if inserted_operation_ids
+        if inserted_operations
             .iter()
-            .any(|inserted_id| *inserted_id == token_operation_id(operation))
+            .any(|inserted| *inserted == token_operation_key(operation))
         {
             apply_token_operation(transaction, operation).await?;
         }
@@ -953,17 +953,18 @@ async fn insert_delegate_changed(
 ) -> Result<bool, PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "INSERT INTO delegate_changed (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, delegator, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
-            $13::NUMERIC(78, 0), $14
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::NUMERIC(78, 0),
+            $14::NUMERIC(78, 0), $15
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -998,17 +999,18 @@ async fn insert_delegate_votes_changed(
 ) -> Result<bool, PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "INSERT INTO delegate_votes_changed (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, delegate, previous_votes, new_votes, block_number,
             block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0), $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0), $12::NUMERIC(78, 0),
+            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -1043,17 +1045,18 @@ async fn insert_token_transfer(
 ) -> Result<bool, PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "INSERT INTO token_transfer (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, \"from\", \"to\", value, standard, block_number,
             block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0), $12,
-            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0), $13,
+            $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -1089,23 +1092,24 @@ async fn upsert_delegate_rolling(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO delegate_rolling (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, delegator, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash, from_previous_votes, from_new_votes,
             to_previous_votes, to_new_votes
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
-            $13::NUMERIC(78, 0), $14, $15::NUMERIC(78, 0), $16::NUMERIC(78, 0),
-            $17::NUMERIC(78, 0), $18::NUMERIC(78, 0)
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::NUMERIC(78, 0),
+            $14::NUMERIC(78, 0), $15, $16::NUMERIC(78, 0), $17::NUMERIC(78, 0),
+            $18::NUMERIC(78, 0), $19::NUMERIC(78, 0)
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET from_previous_votes = COALESCE(EXCLUDED.from_previous_votes, delegate_rolling.from_previous_votes),
              from_new_votes = COALESCE(EXCLUDED.from_new_votes, delegate_rolling.from_new_votes),
              to_previous_votes = COALESCE(EXCLUDED.to_previous_votes, delegate_rolling.to_previous_votes),
              to_new_votes = COALESCE(EXCLUDED.to_new_votes, delegate_rolling.to_new_votes)",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -1140,32 +1144,37 @@ async fn insert_vote_power_checkpoint(
     row: &DelegateVotesChangedWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let delta = signed_decimal_delta(transaction, &row.new_votes, &row.previous_votes).await?;
-    let rollings = transaction_rollings(transaction, &row.common.transaction_hash).await?;
-    let transfers_count: i64 =
-        sqlx::query("SELECT count(*)::BIGINT FROM token_transfer WHERE transaction_hash = $1")
-            .bind(&row.common.transaction_hash)
-            .fetch_one(&mut **transaction)
-            .await?
-            .get(0);
+    let rollings = transaction_rollings(transaction, &row.common).await?;
+    let transfers_count: i64 = sqlx::query(
+        "SELECT count(*)::BIGINT
+             FROM token_transfer
+             WHERE contract_set_id = $1 AND transaction_hash = $2",
+    )
+    .bind(&row.common.contract_set_id)
+    .bind(&row.common.transaction_hash)
+    .fetch_one(&mut **transaction)
+    .await?
+    .get(0);
     let rolling_match =
         find_rolling_match_from_rows(&rollings, &row.delegate, &delta, row.common.log_index);
     let cause = vote_power_checkpoint_cause(!rollings.is_empty(), transfers_count > 0);
 
     sqlx::query(
         "INSERT INTO vote_power_checkpoint (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, account, clock_mode, timepoint, previous_power,
             new_power, delta, source, cause, delegator, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, 'blocknumber', $10::NUMERIC(78, 0),
-            $11::NUMERIC(78, 0), $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), 'event',
-            $14, $15, $16, $17, $18::NUMERIC(78, 0), $19::NUMERIC(78, 0), $20
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'blocknumber', $11::NUMERIC(78, 0),
+            $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), 'event',
+            $15, $16, $17, $18, $19::NUMERIC(78, 0), $20::NUMERIC(78, 0), $21
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -1317,7 +1326,7 @@ async fn apply_delegate_votes_changed_operation(
     new_votes: &str,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let delta = signed_decimal_delta(transaction, new_votes, previous_votes).await?;
-    let rollings = transaction_rollings(transaction, &common.transaction_hash).await?;
+    let rollings = transaction_rollings(transaction, common).await?;
     let Some(rolling_match) =
         find_rolling_match_from_rows(&rollings, delegate, &delta, common.log_index)
     else {
@@ -1330,11 +1339,12 @@ async fn apply_delegate_votes_changed_operation(
                 "UPDATE delegate_rolling
                  SET from_previous_votes = $2::NUMERIC(78, 0),
                      from_new_votes = $3::NUMERIC(78, 0)
-                 WHERE id = $1",
+                 WHERE contract_set_id = $4 AND id = $1",
             )
             .bind(&rolling_match.id)
             .bind(previous_votes)
             .bind(new_votes)
+            .bind(&common.contract_set_id)
             .execute(&mut **transaction)
             .await?;
             apply_delegate_delta(
@@ -1351,11 +1361,12 @@ async fn apply_delegate_votes_changed_operation(
                 "UPDATE delegate_rolling
                  SET to_previous_votes = $2::NUMERIC(78, 0),
                      to_new_votes = $3::NUMERIC(78, 0)
-                 WHERE id = $1",
+                 WHERE contract_set_id = $4 AND id = $1",
             )
             .bind(&rolling_match.id)
             .bind(previous_votes)
             .bind(new_votes)
+            .bind(&common.contract_set_id)
             .execute(&mut **transaction)
             .await?;
             apply_delegate_delta(
@@ -2190,18 +2201,20 @@ async fn read_delegate_mapping(
 
 async fn transaction_rollings(
     transaction: &mut Transaction<'_, Postgres>,
-    transaction_hash: &str,
+    common: &TokenEventCommon,
 ) -> Result<Vec<DelegateRollingSnapshot>, PostgresIndexerRunnerStoreError> {
     let rows = sqlx::query(
         "SELECT id, log_index, delegator, from_delegate, to_delegate,
                 from_new_votes::TEXT AS from_new_votes,
                 to_new_votes::TEXT AS to_new_votes
          FROM delegate_rolling
-         WHERE transaction_hash = $1
+         WHERE contract_set_id = $1
+           AND transaction_hash = $2
            AND from_delegate <> to_delegate
          ORDER BY log_index DESC",
     )
-    .bind(transaction_hash)
+    .bind(&common.contract_set_id)
+    .bind(&common.transaction_hash)
     .fetch_all(&mut **transaction)
     .await?;
 
@@ -2305,11 +2318,13 @@ fn vote_power_checkpoint_cause(has_delegate_change: bool, has_transfer: bool) ->
     }
 }
 
-fn token_operation_id(operation: &TokenProjectionOperation) -> &str {
+fn token_operation_key(operation: &TokenProjectionOperation) -> (&str, &str) {
     match operation {
-        TokenProjectionOperation::DelegateChanged { id, .. }
-        | TokenProjectionOperation::DelegateVotesChanged { id, .. }
-        | TokenProjectionOperation::Transfer { id, .. } => id,
+        TokenProjectionOperation::DelegateChanged { id, common, .. }
+        | TokenProjectionOperation::DelegateVotesChanged { id, common, .. }
+        | TokenProjectionOperation::Transfer { id, common, .. } => {
+            (common.contract_set_id.as_str(), id.as_str())
+        }
     }
 }
 

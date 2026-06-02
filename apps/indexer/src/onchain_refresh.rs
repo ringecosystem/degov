@@ -718,22 +718,23 @@ async fn insert_refresh_checkpoints(
         let new_power = value.power.as_deref().unwrap_or("0");
         sqlx::query(
             "INSERT INTO vote_power_checkpoint (
-                id, chain_id, dao_code, governor_address, token_address, contract_address,
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
                 account, clock_mode, timepoint, previous_power, new_power, delta, source, cause,
                 block_number, block_timestamp, transaction_hash
              )
              VALUES (
-                $1, $2, $3, $4, $5, $5, $6, 'blocknumber', $7::NUMERIC(78, 0),
-                $8::NUMERIC(78, 0), $9::NUMERIC(78, 0),
-                ($9::NUMERIC(78, 0) - $8::NUMERIC(78, 0)), 'getVotes', 'onchain-refresh',
-                $7::NUMERIC(78, 0), $10::NUMERIC(78, 0), 'onchain-refresh'
+                $1, $2, $3, $4, $5, $6, $6, $7, 'blocknumber', $8::NUMERIC(78, 0),
+                $9::NUMERIC(78, 0), $10::NUMERIC(78, 0),
+                ($10::NUMERIC(78, 0) - $9::NUMERIC(78, 0)), 'getVotes', 'onchain-refresh',
+                $8::NUMERIC(78, 0), $11::NUMERIC(78, 0), 'onchain-refresh'
              )
-             ON CONFLICT (id) DO NOTHING",
+             ON CONFLICT (contract_set_id, id) DO NOTHING",
         )
         .bind(format!(
             "onchain-refresh-power-{}",
             onchain_refresh_checkpoint_scope(task)
         ))
+        .bind(&task.contract_set_id)
         .bind(task.chain_id)
         .bind(&task.dao_code)
         .bind(&task.governor_address)

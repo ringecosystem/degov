@@ -314,6 +314,25 @@ async fn test_checkpoint_schema_primary_key_includes_contract_set_scope()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_checkpoint_schema_token_event_primary_keys_include_contract_set_scope()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    for table in [
+        "delegate_changed",
+        "delegate_votes_changed",
+        "token_transfer",
+    ] {
+        let columns = primary_key_columns(&database.pool, table).await?;
+        assert_eq!(columns, vec!["contract_set_id".to_owned(), "id".to_owned()]);
+    }
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_state_keeps_overlapping_delegate_accounts_distinct()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -374,6 +393,7 @@ async fn test_postgres_token_state_uses_contract_set_scope_without_public_contri
         TOKEN_ONE,
         SCOPE_ONE,
         1,
+        "shared-raw-log",
     )
     .await?;
     write_token_batch_with_scope(
@@ -382,7 +402,8 @@ async fn test_postgres_token_state_uses_contract_set_scope_without_public_contri
         GOVERNOR_ONE,
         TOKEN_ONE,
         SCOPE_TWO,
-        10,
+        1,
+        "shared-raw-log",
     )
     .await?;
 
@@ -488,6 +509,26 @@ async fn test_checkpoint_duplicate_range_replay_is_idempotent() -> Result<(), Bo
     Ok(())
 }
 
+async fn primary_key_columns(pool: &PgPool, table: &str) -> Result<Vec<String>, sqlx::Error> {
+    let columns = sqlx::query(
+        "SELECT a.attname
+         FROM pg_index i
+         JOIN pg_class c ON c.oid = i.indrelid
+         JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
+         WHERE c.relname = $1
+           AND i.indisprimary
+         ORDER BY array_position(i.indkey, a.attnum)",
+    )
+    .bind(table)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|row| row.get::<String, _>("attname"))
+    .collect();
+
+    Ok(columns)
+}
+
 async fn assert_legacy_processor_height(
     pool: &PgPool,
     expected_height: i64,
@@ -520,7 +561,16 @@ async fn write_token_batch(
     token: &str,
     block_number: u64,
 ) -> Result<(), Box<dyn Error>> {
-    write_token_batch_with_scope(store, dao_code, governor, token, dao_code, block_number).await
+    write_token_batch_with_scope(
+        store,
+        dao_code,
+        governor,
+        token,
+        dao_code,
+        block_number,
+        &format!("raw-log-{block_number}"),
+    )
+    .await
 }
 
 async fn write_token_batch_with_scope(
@@ -530,6 +580,7 @@ async fn write_token_batch_with_scope(
     token: &str,
     contract_set_id: &str,
     block_number: u64,
+    raw_log_id: &str,
 ) -> Result<(), Box<dyn Error>> {
     let common = TokenEventCommon {
         contract_set_id: contract_set_id.to_owned(),
@@ -544,8 +595,8 @@ async fn write_token_batch_with_scope(
         block_timestamp: Some((block_number * 1000).to_string()),
         transaction_hash: format!("0xtx{block_number}"),
     };
-    let delegate_changed_id = format!("{contract_set_id}-{block_number}-delegate-changed");
-    let transfer_id = format!("{contract_set_id}-{block_number}-transfer");
+    let delegate_changed_id = format!("{raw_log_id}-delegate-changed");
+    let transfer_id = format!("{raw_log_id}-transfer");
     let token = TokenProjectionBatch {
         event_order: Vec::new(),
         delegate_changed: vec![DelegateChangedWrite {

@@ -75,7 +75,8 @@ CREATE INDEX IF NOT EXISTS degov_indexer_reconcile_task_status_idx
   ON degov_indexer_reconcile_task (status, next_run_at);
 
 CREATE TABLE IF NOT EXISTS delegate_changed (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -88,14 +89,16 @@ CREATE TABLE IF NOT EXISTS delegate_changed (
   to_delegate TEXT NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS delegate_changed_chain_governor_delegator_idx
-  ON delegate_changed (chain_id, governor_address, delegator);
+  ON delegate_changed (chain_id, contract_set_id, governor_address, delegator);
 
 CREATE TABLE IF NOT EXISTS delegate_votes_changed (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -108,14 +111,16 @@ CREATE TABLE IF NOT EXISTS delegate_votes_changed (
   new_votes NUMERIC(78, 0) NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS delegate_votes_changed_chain_governor_delegate_idx
-  ON delegate_votes_changed (chain_id, governor_address, delegate);
+  ON delegate_votes_changed (chain_id, contract_set_id, governor_address, delegate);
 
 CREATE TABLE IF NOT EXISTS token_transfer (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -129,16 +134,18 @@ CREATE TABLE IF NOT EXISTS token_transfer (
   standard TEXT NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS token_transfer_chain_governor_token_idx
-  ON token_transfer (chain_id, governor_address, token_address);
+  ON token_transfer (chain_id, contract_set_id, governor_address, token_address);
 CREATE INDEX IF NOT EXISTS token_transfer_transaction_hash_idx
-  ON token_transfer (transaction_hash);
+  ON token_transfer (contract_set_id, transaction_hash);
 
 CREATE TABLE IF NOT EXISTS vote_power_checkpoint (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -159,11 +166,12 @@ CREATE TABLE IF NOT EXISTS vote_power_checkpoint (
   to_delegate TEXT,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS vote_power_checkpoint_lookup_idx
-  ON vote_power_checkpoint (chain_id, governor_address, token_address, account, clock_mode, timepoint);
+  ON vote_power_checkpoint (chain_id, contract_set_id, governor_address, token_address, account, clock_mode, timepoint);
 
 CREATE TABLE IF NOT EXISTS token_balance_checkpoint (
   id TEXT PRIMARY KEY,
@@ -787,7 +795,8 @@ CREATE INDEX IF NOT EXISTS data_metric_lookup_idx
   ON data_metric (chain_id, contract_set_id, governor_address, dao_code);
 
 CREATE TABLE IF NOT EXISTS delegate_rolling (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -804,13 +813,14 @@ CREATE TABLE IF NOT EXISTS delegate_rolling (
   from_previous_votes NUMERIC(78, 0),
   from_new_votes NUMERIC(78, 0),
   to_previous_votes NUMERIC(78, 0),
-  to_new_votes NUMERIC(78, 0)
+  to_new_votes NUMERIC(78, 0),
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS delegate_rolling_delegator_idx
-  ON delegate_rolling (chain_id, governor_address, delegator);
+  ON delegate_rolling (chain_id, contract_set_id, governor_address, delegator);
 CREATE INDEX IF NOT EXISTS delegate_rolling_transaction_hash_idx
-  ON delegate_rolling (transaction_hash);
+  ON delegate_rolling (contract_set_id, transaction_hash);
 
 CREATE TABLE IF NOT EXISTS delegate (
   id TEXT NOT NULL,
