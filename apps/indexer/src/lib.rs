@@ -8,6 +8,7 @@ pub mod evm_log;
 pub mod planner;
 pub mod power_reconcile;
 pub mod proposal_projection;
+pub mod runner;
 pub mod timelock_projection;
 pub mod token_projection;
 pub mod vote_projection;
@@ -56,6 +57,12 @@ pub use proposal_projection::{
     ProposalProjectionEvent, ProposalProjectionRepository, ProposalQueuedWrite,
     ProposalRepositoryWriteError, ProposalStateEpochWrite, ProposalStateWriteKind, ProposalWrite,
     project_proposal_events,
+};
+pub use runner::{
+    DaoEventDecoder, InMemoryIndexerRunnerStore, InMemoryIndexerRunnerStoreError,
+    IndexerEventDecoder, IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts,
+    IndexerRunnerError, IndexerRunnerOptions, IndexerRunnerProgress, IndexerRunnerReport,
+    IndexerRunnerStore, IndexerRunnerTransaction,
 };
 pub use timelock_projection::{
     InMemoryTimelockProjectionRepository, TIMELOCK_POSTGRES_ADAPTER_GAP, TimelockCallWrite,
