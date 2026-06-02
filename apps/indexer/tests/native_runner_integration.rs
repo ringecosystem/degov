@@ -394,6 +394,7 @@ fn options() -> IndexerRunnerOptions {
                 block_range_limit: 10,
             },
             dao_contracts: Some(addresses()),
+            chains: Vec::new(),
         },
         addresses: addresses(),
         checkpoint_identity: identity(),

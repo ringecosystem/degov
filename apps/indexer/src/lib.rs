@@ -29,8 +29,8 @@ pub use checkpoint::{
     plan_next_checkpoint_range,
 };
 pub use config::{
-    ChainFamily, ChainIdentityConfig, DatalensConfig, DatalensFinality, DatasetKeyConfig,
-    QueryLimitConfig, SecretString,
+    ChainFamily, ChainIdentityConfig, DatalensChainConfig, DatalensConfig,
+    DatalensContractSetConfig, DatalensFinality, DatasetKeyConfig, QueryLimitConfig, SecretString,
 };
 pub use dao_event::{
     CallExecutedEvent, CallSaltEvent, CallScheduledEvent, DaoEventDecodeError, DecodedDaoEvent,

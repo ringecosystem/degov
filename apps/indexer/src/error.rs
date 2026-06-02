@@ -5,6 +5,9 @@ pub enum ConfigError {
     #[error("missing required Datalens configuration field {field}")]
     MissingRequired { field: &'static str },
 
+    #[error("missing required Datalens configuration field {field}")]
+    MissingRequiredPath { field: String },
+
     #[error("Datalens endpoint must be a service base URL, not a native GraphQL path")]
     EndpointMustBeServiceBase,
 
@@ -22,6 +25,9 @@ pub enum ConfigError {
 
     #[error("invalid Datalens governor token standard {value}")]
     InvalidTokenStandard { value: String },
+
+    #[error("invalid Datalens configuration field {field}: {reason}")]
+    InvalidField { field: String, reason: String },
 
     #[error("failed to load Datalens configuration: {0}")]
     Load(String),

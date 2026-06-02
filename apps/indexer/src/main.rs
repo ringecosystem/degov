@@ -61,11 +61,13 @@ async fn smoke_datalens() -> anyhow::Result<()> {
 async fn run_indexer() -> anyhow::Result<()> {
     let config = DatalensConfig::from_env().context("load Datalens configuration")?;
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
-    let contracts = config
-        .dao_contracts
-        .clone()
-        .context("Datalens indexer run requires DATALENS_GOVERNOR_* contract envs")?;
-    let runtime = IndexerRuntimeConfig::from_env(&config)?;
+    let runtime = IndexerRuntimeConfig::from_env()?;
+    let contract_set = config
+        .select_contract_set(&runtime.dao_code)
+        .context("select Datalens indexer contract set")?;
+    let runtime = runtime.with_start_block(contract_set.start_block)?;
+    let config = config.for_contract_set(&contract_set);
+    let contracts = contract_set.addresses();
 
     verify_datalens(&config).await?;
     log::info!(
@@ -272,16 +274,9 @@ struct IndexerRuntimeConfig {
 }
 
 impl IndexerRuntimeConfig {
-    fn from_env(config: &DatalensConfig) -> anyhow::Result<Self> {
+    fn from_env() -> anyhow::Result<Self> {
         let dao_code = required_env("DEGOV_INDEXER_DAO_CODE")?;
-        let start_block = required_env_i64("DEGOV_INDEXER_START_BLOCK")?;
         let target_height = required_env_i64("DEGOV_INDEXER_TARGET_HEIGHT")?;
-
-        if target_height < start_block {
-            anyhow::bail!(
-                "DEGOV_INDEXER_TARGET_HEIGHT must be greater than or equal to DEGOV_INDEXER_START_BLOCK"
-            );
-        }
 
         let query_max_attempts = optional_env_u32("DEGOV_INDEXER_QUERY_MAX_ATTEMPTS")?.unwrap_or(3);
         if query_max_attempts == 0 {
@@ -301,7 +296,7 @@ impl IndexerRuntimeConfig {
 
         Ok(Self {
             dao_code,
-            start_block,
+            start_block: 0,
             target_height,
             checkpoint_stream_id: optional_env("DEGOV_INDEXER_STREAM_ID")?
                 .unwrap_or_else(|| "datalens-native".to_owned()),
@@ -316,15 +311,16 @@ impl IndexerRuntimeConfig {
             run_once,
             max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,
             database_max_connections,
-        }
-        .with_chain_id(config)?)
+        })
     }
 
-    fn with_chain_id(self, config: &DatalensConfig) -> anyhow::Result<Self> {
-        config
-            .chain
-            .network_id
-            .context("DATALENS_CHAIN_ID is required for EVM log normalization")?;
+    fn with_start_block(mut self, start_block: i64) -> anyhow::Result<Self> {
+        if self.target_height < start_block {
+            anyhow::bail!(
+                "DEGOV_INDEXER_TARGET_HEIGHT must be greater than or equal to configured startBlock"
+            );
+        }
+        self.start_block = start_block;
 
         Ok(self)
     }
@@ -761,10 +757,6 @@ fn postgres_schema_statements(sql: &str) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use degov_datalens_indexer::{
-        ChainFamily, ChainIdentityConfig, DatalensFinality, DatasetKeyConfig, QueryLimitConfig,
-        SecretString,
-    };
 
     #[test]
     fn test_postgres_schema_statements_splits_schema_into_individual_statements() {
@@ -822,34 +814,11 @@ mod tests {
                 ("DEGOV_INDEXER_TARGET_HEIGHT", None),
             ],
             || {
-                let error = IndexerRuntimeConfig::from_env(&runtime_test_datalens_config())
-                    .expect_err("missing target height is invalid");
+                let error =
+                    IndexerRuntimeConfig::from_env().expect_err("missing target height is invalid");
 
                 assert!(error.to_string().contains("DEGOV_INDEXER_TARGET_HEIGHT"));
             },
         );
-    }
-
-    fn runtime_test_datalens_config() -> DatalensConfig {
-        DatalensConfig {
-            endpoint: "http://127.0.0.1".to_owned(),
-            application: "degov-test".to_owned(),
-            bearer_token: SecretString::new("unit-test-redacted-value"),
-            timeout: std::time::Duration::from_secs(1),
-            finality: DatalensFinality::DurableOnly,
-            chain: ChainIdentityConfig {
-                family: ChainFamily::Evm,
-                configured_name: "ethereum".to_owned(),
-                network_id: Some(1),
-            },
-            dataset: DatasetKeyConfig {
-                family: "evm".to_owned(),
-                name: "logs".to_owned(),
-            },
-            query_limits: QueryLimitConfig {
-                block_range_limit: 100,
-            },
-            dao_contracts: None,
-        }
     }
 }

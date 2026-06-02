@@ -430,6 +430,7 @@ mod tests {
             },
             query_limits: QueryLimitConfig { block_range_limit },
             dao_contracts: None,
+            chains: Vec::new(),
         }
     }
 
