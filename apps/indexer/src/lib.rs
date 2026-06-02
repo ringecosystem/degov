@@ -7,6 +7,7 @@ pub mod error;
 pub mod evm_log;
 pub mod planner;
 pub mod power_reconcile;
+pub mod proposal_metadata;
 pub mod proposal_projection;
 pub mod timelock_projection;
 pub mod token_projection;
@@ -49,6 +50,7 @@ pub use power_reconcile::{
     PowerReconcileEvent, PowerReconcileMetrics, PowerReconcilePlan, PowerRefreshReadSource,
     PowerRefreshStatus, PowerRefreshStatusRecord, plan_power_reconcile,
 };
+pub use proposal_metadata::{ProposalTextMetadata, derive_proposal_metadata};
 pub use proposal_projection::{
     InMemoryProposalProjectionRepository, ProposalActionWrite, ProposalCreatedWrite,
     ProposalDeadlineExtensionWrite, ProposalEventCommon, ProposalExtendedWrite, ProposalIdWrite,
