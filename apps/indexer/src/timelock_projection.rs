@@ -4,7 +4,7 @@ use crate::{
     BatchReadPlanConfig, CallExecutedEvent, CallScheduledEvent, ChainContracts,
     ChainReadExecutionReport, ChainReadMethod, ChainReadPlan, ChainReadPlanBuilder,
     ChainReadReason, ChainReadValue, DecodedTimelockEvent, NormalizedEvmLog, ParameterChangeEvent,
-    RoleAccountEvent, RoleAdminChangedEvent,
+    ProposalProjectionBatch, RoleAccountEvent, RoleAdminChangedEvent,
 };
 
 pub const TIMELOCK_POSTGRES_ADAPTER_GAP: &str = "Timelock projection write models and repository boundary are implemented; the concrete Postgres adapter is intentionally deferred.";
@@ -22,6 +22,115 @@ pub struct TimelockProjectionContext {
 pub struct TimelockProjectionEvent {
     pub log: NormalizedEvmLog,
     pub event: DecodedTimelockEvent,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TimelockProposalLinkContext {
+    pub proposal_actions: Vec<TimelockProposalActionLink>,
+    action_lookup: BTreeMap<TimelockProposalActionKey, usize>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TimelockProposalActionLink {
+    pub chain_id: i32,
+    pub governor_address: String,
+    pub proposal_ref: String,
+    pub raw_proposal_id: String,
+    pub queue_transaction_hash: String,
+    pub execution_transaction_hash: Option<String>,
+    pub queue_eta: Option<String>,
+    pub proposal_action_id: String,
+    pub proposal_action_index: usize,
+    pub target: String,
+    pub value: String,
+    pub calldata: String,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct TimelockProposalActionKey {
+    chain_id: i32,
+    governor_address: String,
+    queue_transaction_hash: String,
+    action_index: usize,
+    target: String,
+    value: String,
+    calldata: String,
+}
+
+impl TimelockProposalLinkContext {
+    pub fn from_proposal_batch(batch: &ProposalProjectionBatch) -> Self {
+        let proposals = batch
+            .proposals
+            .iter()
+            .map(|proposal| (proposal.id.as_str(), proposal))
+            .collect::<BTreeMap<_, _>>();
+        let mut context = Self::default();
+
+        for action in &batch.proposal_actions {
+            let Some(proposal) = proposals.get(action.proposal_ref.as_str()) else {
+                continue;
+            };
+            let Some(queue_transaction_hash) = proposal.queued_transaction_hash.as_deref() else {
+                continue;
+            };
+            let link = TimelockProposalActionLink {
+                chain_id: action.chain_id,
+                governor_address: normalize_identifier(&action.governor_address),
+                proposal_ref: action.proposal_ref.clone(),
+                raw_proposal_id: proposal.proposal_id.clone(),
+                queue_transaction_hash: normalize_identifier(queue_transaction_hash),
+                execution_transaction_hash: proposal
+                    .executed_transaction_hash
+                    .as_deref()
+                    .map(normalize_identifier),
+                queue_eta: proposal.proposal_eta.clone(),
+                proposal_action_id: action.id.clone(),
+                proposal_action_index: action.action_index,
+                target: normalize_identifier(&action.target),
+                value: action.value.clone(),
+                calldata: normalize_identifier(&action.calldata),
+            };
+            context
+                .action_lookup
+                .insert(link.key(), context.proposal_actions.len());
+            context.proposal_actions.push(link);
+        }
+
+        context
+    }
+
+    fn scheduled_call_link(
+        &self,
+        common: &TimelockEventCommon,
+        event: &CallScheduledEvent,
+    ) -> Option<&TimelockProposalActionLink> {
+        let key = TimelockProposalActionKey {
+            chain_id: common.chain_id,
+            governor_address: common.governor_address.clone(),
+            queue_transaction_hash: common.transaction_hash.clone(),
+            action_index: parse_usize(&event.index),
+            target: normalize_identifier(&event.target),
+            value: event.value.clone(),
+            calldata: normalize_identifier(&event.data),
+        };
+        self.action_lookup
+            .get(&key)
+            .and_then(|index| self.proposal_actions.get(*index))
+    }
+}
+
+impl TimelockProposalActionLink {
+    fn key(&self) -> TimelockProposalActionKey {
+        TimelockProposalActionKey {
+            chain_id: self.chain_id,
+            governor_address: self.governor_address.clone(),
+            queue_transaction_hash: self.queue_transaction_hash.clone(),
+            action_index: self.proposal_action_index,
+            target: self.target.clone(),
+            value: self.value.clone(),
+            calldata: self.calldata.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -317,6 +426,18 @@ pub fn project_timelock_events(
     context: &TimelockProjectionContext,
     events: Vec<TimelockProjectionEvent>,
 ) -> Result<TimelockProjectionBatch, TimelockProjectionError> {
+    project_timelock_events_with_proposal_links(
+        context,
+        &TimelockProposalLinkContext::default(),
+        events,
+    )
+}
+
+pub fn project_timelock_events_with_proposal_links(
+    context: &TimelockProjectionContext,
+    proposal_links: &TimelockProposalLinkContext,
+    events: Vec<TimelockProjectionEvent>,
+) -> Result<TimelockProjectionBatch, TimelockProjectionError> {
     let governor_address = normalize_identifier(&context.governor_address);
     let timelock_address = normalize_identifier(&context.timelock_address);
     let chain_id = validate_chain_ids(&events)?;
@@ -375,12 +496,13 @@ pub fn project_timelock_events(
             DecodedTimelockEvent::CallScheduled(event) => {
                 let operation_id = normalize_identifier(&event.id);
                 let operation_ref = operation_ref(&common, &operation_id);
-                let call = scheduled_call_write(&common, &operation_ref, event);
+                let proposal_link = proposal_links.scheduled_call_link(&common, event);
+                let call = scheduled_call_write(&common, &operation_ref, event, proposal_link);
                 calls
                     .entry(call.id.clone())
                     .and_modify(|stored: &mut TimelockCallWrite| stored.merge(&call))
                     .or_insert(call);
-                let operation = scheduled_operation_write(&common, event);
+                let operation = scheduled_operation_write(&common, event, proposal_link);
                 operations
                     .entry(operation.id.clone())
                     .and_modify(|stored: &mut TimelockOperationWrite| stored.merge(&operation))
@@ -394,7 +516,7 @@ pub fn project_timelock_events(
                     .entry(call.id.clone())
                     .and_modify(|stored: &mut TimelockCallWrite| stored.merge(&call))
                     .or_insert(call);
-                let operation = terminal_operation_write(&common, &operation_id, "Executed");
+                let operation = terminal_operation_write(&common, &operation_id, "Done");
                 operations
                     .entry(operation.id.clone())
                     .and_modify(|stored: &mut TimelockOperationWrite| stored.merge(&operation))
@@ -471,6 +593,7 @@ fn common(
 fn scheduled_operation_write(
     common: &TimelockEventCommon,
     event: &CallScheduledEvent,
+    proposal_link: Option<&TimelockProposalActionLink>,
 ) -> TimelockOperationWrite {
     let operation_id = normalize_identifier(&event.id);
     let ready_at = common
@@ -478,7 +601,7 @@ fn scheduled_operation_write(
         .as_deref()
         .and_then(|timestamp| add_decimal_strings(timestamp, &event.delay));
 
-    TimelockOperationWrite {
+    let mut operation = TimelockOperationWrite {
         id: operation_ref(common, &operation_id),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
@@ -508,7 +631,9 @@ fn scheduled_operation_write(
         executed_block_number: None,
         executed_block_timestamp: None,
         executed_transaction_hash: None,
-    }
+    };
+    bind_operation_to_proposal(&mut operation, proposal_link);
+    operation
 }
 
 fn salt_operation_write(
@@ -528,7 +653,7 @@ fn terminal_operation_write(
 ) -> TimelockOperationWrite {
     let mut operation = operation_stub(common, operation_id, state);
     match state {
-        "Executed" => {
+        "Done" | "Executed" => {
             operation.executed_call_count = Some(1);
             operation.executed_block_number = Some(common.block_number.clone());
             operation.executed_block_timestamp = common.block_timestamp.clone();
@@ -586,8 +711,9 @@ fn scheduled_call_write(
     common: &TimelockEventCommon,
     operation_ref: &str,
     event: &CallScheduledEvent,
+    proposal_link: Option<&TimelockProposalActionLink>,
 ) -> TimelockCallWrite {
-    TimelockCallWrite {
+    let mut call = TimelockCallWrite {
         id: call_ref(operation_ref, &event.index),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
@@ -615,7 +741,9 @@ fn scheduled_call_write(
         executed_block_number: None,
         executed_block_timestamp: None,
         executed_transaction_hash: None,
-    }
+    };
+    bind_call_to_proposal(&mut call, proposal_link);
+    call
 }
 
 fn executed_call_write(
@@ -644,7 +772,7 @@ fn executed_call_write(
         data: event.data.clone(),
         predecessor: None,
         delay_seconds: None,
-        state: "Executed".to_owned(),
+        state: "Done".to_owned(),
         scheduled_block_number: None,
         scheduled_block_timestamp: None,
         scheduled_transaction_hash: None,
@@ -652,6 +780,30 @@ fn executed_call_write(
         executed_block_timestamp: common.block_timestamp.clone(),
         executed_transaction_hash: Some(common.transaction_hash.clone()),
     }
+}
+
+fn bind_operation_to_proposal(
+    operation: &mut TimelockOperationWrite,
+    proposal_link: Option<&TimelockProposalActionLink>,
+) {
+    let Some(proposal_link) = proposal_link else {
+        return;
+    };
+    operation.proposal_ref = Some(proposal_link.proposal_ref.clone());
+    operation.proposal_id = Some(proposal_link.proposal_ref.clone());
+}
+
+fn bind_call_to_proposal(
+    call: &mut TimelockCallWrite,
+    proposal_link: Option<&TimelockProposalActionLink>,
+) {
+    let Some(proposal_link) = proposal_link else {
+        return;
+    };
+    call.proposal_ref = Some(proposal_link.proposal_ref.clone());
+    call.proposal_id = Some(proposal_link.proposal_ref.clone());
+    call.proposal_action_id = Some(proposal_link.proposal_action_id.clone());
+    call.proposal_action_index = Some(proposal_link.proposal_action_index);
 }
 
 fn role_account_write(
@@ -759,6 +911,8 @@ impl TimelockOperationWrite {
         self.contract_address = next.contract_address.clone();
         self.log_index = next.log_index;
         self.transaction_index = next.transaction_index;
+        self.proposal_ref = next.proposal_ref.clone().or(self.proposal_ref.clone());
+        self.proposal_id = next.proposal_id.clone().or(self.proposal_id.clone());
         self.predecessor = next.predecessor.clone().or(self.predecessor.clone());
         self.salt = next.salt.clone().or(self.salt.clone());
         self.state = merge_operation_state(&self.state, &next.state);
@@ -811,6 +965,13 @@ impl TimelockCallWrite {
         self.contract_address = next.contract_address.clone();
         self.log_index = next.log_index;
         self.transaction_index = next.transaction_index;
+        self.proposal_ref = next.proposal_ref.clone().or(self.proposal_ref.clone());
+        self.proposal_id = next.proposal_id.clone().or(self.proposal_id.clone());
+        self.proposal_action_id = next
+            .proposal_action_id
+            .clone()
+            .or(self.proposal_action_id.clone());
+        self.proposal_action_index = next.proposal_action_index.or(self.proposal_action_index);
         self.target = next.target.clone();
         self.value = next.value.clone();
         self.data = next.data.clone();
@@ -965,7 +1126,7 @@ fn merge_call_state(left: &str, right: &str) -> String {
 fn call_state_rank(state: &str) -> u8 {
     match state {
         "Scheduled" => 1,
-        "Executed" => 2,
+        "Done" | "Executed" => 2,
         _ => 0,
     }
 }

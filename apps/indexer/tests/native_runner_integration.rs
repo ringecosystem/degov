@@ -62,6 +62,22 @@ fn test_native_runner_decodes_raw_logs_projects_all_domains_and_replay_is_idempo
             .len(),
         1
     );
+    assert_eq!(
+        replay_runner
+            .store()
+            .timelock_repository
+            .timelock_operations()
+            .len(),
+        1
+    );
+    assert_eq!(
+        replay_runner
+            .store()
+            .timelock_repository
+            .timelock_calls()
+            .len(),
+        1
+    );
 }
 
 #[test]
@@ -112,9 +128,29 @@ fn assert_projected_domains(store: &CapturingStore) {
         .next()
         .expect("timelock operation");
     assert_eq!(operation.operation_id, OPERATION_ID);
-    assert_eq!(operation.state, "Executed");
+    assert_eq!(operation.state, "Done");
+    assert_eq!(
+        operation.proposal_ref.as_deref(),
+        Some(proposal.id.as_str())
+    );
+    assert_eq!(operation.proposal_id.as_deref(), Some(proposal.id.as_str()));
     assert_eq!(operation.call_count, Some(1));
     assert_eq!(operation.executed_call_count, Some(1));
+
+    let call = store
+        .timelock_repository
+        .timelock_calls()
+        .values()
+        .next()
+        .expect("timelock call");
+    assert_eq!(call.state, "Done");
+    assert_eq!(call.proposal_ref.as_deref(), Some(proposal.id.as_str()));
+    assert_eq!(call.proposal_id.as_deref(), Some(proposal.id.as_str()));
+    assert_eq!(
+        call.proposal_action_id.as_deref(),
+        Some(format!("{}:action:0", proposal.id).as_str())
+    );
+    assert_eq!(call.proposal_action_index, Some(0));
 }
 
 fn assert_onchain_refresh_plans(store: &CapturingStore) {
@@ -577,8 +613,8 @@ fn erc20_transfer_row() -> Value {
 fn call_scheduled_row() -> Value {
     raw_log(
         4,
-        1,
         0,
+        1,
         TIMELOCK,
         vec![CALL_SCHEDULED, OPERATION_ID, topic_uint(0).as_str()],
         encode(&[

@@ -130,6 +130,8 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     assert_table_count(&database.pool, "vote_power_checkpoint", 1).await?;
     assert_token_projection_state(&database.pool).await?;
     assert_table_count(&database.pool, "timelock_operation", 1).await?;
+    assert_table_count(&database.pool, "timelock_call", 1).await?;
+    assert_timelock_projection_state(&database.pool).await?;
     assert_checkpoint(&database.pool).await?;
 
     database.cleanup().await?;
@@ -185,11 +187,12 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
         let mut transaction = store
             .begin_transaction()
             .map_err(|error| format!("begin lifecycle transaction failed: {error}"))?;
-        transaction.apply_projection_batch(&IndexerProjectionBatch {
-            proposal: Some(lifecycle_batch),
-            ..IndexerProjectionBatch::default()
-        })
-        .map_err(|error| format!("apply lifecycle batch failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(lifecycle_batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply lifecycle batch failed: {error}"))?;
         transaction
             .commit()
             .map_err(|error| format!("commit lifecycle transaction failed: {error}"))?;
@@ -198,11 +201,12 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
         let mut transaction = store
             .begin_transaction()
             .map_err(|error| format!("begin raw transaction failed: {error}"))?;
-        transaction.apply_projection_batch(&IndexerProjectionBatch {
-            proposal: Some(raw_batch),
-            ..IndexerProjectionBatch::default()
-        })
-        .map_err(|error| format!("apply raw batch failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(raw_batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply raw batch failed: {error}"))?;
         transaction
             .commit()
             .map_err(|error| format!("commit raw transaction failed: {error}"))?;
@@ -588,6 +592,55 @@ async fn assert_token_projection_state(pool: &PgPool) -> Result<(), sqlx::Error>
     Ok(())
 }
 
+async fn assert_timelock_projection_state(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let proposal_ref = "evm:1:2:0xtx20:0:0";
+    let operation = sqlx::query(
+        "SELECT proposal_id, proposal_ref, state, call_count, executed_call_count
+         FROM timelock_operation",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(
+        operation.get::<Option<String>, _>("proposal_id"),
+        Some(proposal_ref.to_owned())
+    );
+    assert_eq!(
+        operation.get::<Option<String>, _>("proposal_ref"),
+        Some(proposal_ref.to_owned())
+    );
+    assert_eq!(operation.get::<String, _>("state"), "Done");
+    assert_eq!(operation.get::<Option<i32>, _>("call_count"), Some(1));
+    assert_eq!(
+        operation.get::<Option<i32>, _>("executed_call_count"),
+        Some(1)
+    );
+
+    let call = sqlx::query(
+        "SELECT proposal_id, proposal_ref, proposal_action_id, proposal_action_index, state
+         FROM timelock_call",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(
+        call.get::<Option<String>, _>("proposal_id"),
+        Some(proposal_ref.to_owned())
+    );
+    assert_eq!(
+        call.get::<Option<String>, _>("proposal_ref"),
+        Some(proposal_ref.to_owned())
+    );
+    assert_eq!(
+        call.get::<Option<String>, _>("proposal_action_id"),
+        Some(format!("{proposal_ref}:action:0"))
+    );
+    assert_eq!(call.get::<Option<i32>, _>("proposal_action_index"), Some(0));
+    assert_eq!(call.get::<String, _>("state"), "Done");
+
+    Ok(())
+}
+
 fn unique_schema_name() -> String {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -702,8 +755,8 @@ fn erc20_transfer_row() -> Value {
 fn call_scheduled_row() -> Value {
     raw_log(
         2,
-        2,
         0,
+        3,
         TIMELOCK,
         vec![CALL_SCHEDULED, OPERATION_ID, topic_uint(0).as_str()],
         encode(&[

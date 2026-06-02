@@ -12,11 +12,12 @@ use crate::{
     InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
     NormalizedEvmLog, ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionEvent,
     ProposalProjectionRepository, TimelockProjectionBatch, TimelockProjectionContext,
-    TimelockProjectionEvent, TimelockProjectionRepository, TokenProjectionBatch,
-    TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository, VoteProjectionBatch,
-    VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository, decode_dao_log,
-    fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries, plan_next_checkpoint_range,
-    project_proposal_events, project_timelock_events, project_token_events, project_vote_events,
+    TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
+    TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository,
+    VoteProjectionBatch, VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
+    decode_dao_log, fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries,
+    plan_next_checkpoint_range, project_proposal_events,
+    project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
 };
 
 #[derive(Clone, Debug)]
@@ -403,7 +404,17 @@ where
             .timelock
             .as_ref()
             .filter(|_| !timelock_events.is_empty())
-            .map(|context| project_timelock_events(context, timelock_events))
+            .map(|context| {
+                let proposal_links = proposal
+                    .as_ref()
+                    .map(TimelockProposalLinkContext::from_proposal_batch)
+                    .unwrap_or_default();
+                project_timelock_events_with_proposal_links(
+                    context,
+                    &proposal_links,
+                    timelock_events,
+                )
+            })
             .transpose()
             .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?;
 
@@ -421,20 +432,20 @@ fn page_rows(rows: serde_json::Value) -> Result<Vec<serde_json::Value>, IndexerR
         serde_json::Value::Array(rows) => Ok(rows),
         serde_json::Value::Object(mut object) => {
             let Some(rows) = object.remove("rows") else {
-                return Err(invalid_rows_payload_error(serde_json::Value::Object(object)));
+                return Err(invalid_rows_payload_error(serde_json::Value::Object(
+                    object,
+                )));
             };
 
             match rows {
                 serde_json::Value::Array(rows) => Ok(rows),
-                serde_json::Value::Object(mut rows_object) => {
-                    match rows_object.remove("rows") {
-                        Some(serde_json::Value::Array(rows)) => Ok(rows),
-                        Some(other) => Err(invalid_rows_payload_error(other)),
-                        None => Err(invalid_rows_payload_error(serde_json::Value::Object(
-                            rows_object,
-                        ))),
-                    }
-                }
+                serde_json::Value::Object(mut rows_object) => match rows_object.remove("rows") {
+                    Some(serde_json::Value::Array(rows)) => Ok(rows),
+                    Some(other) => Err(invalid_rows_payload_error(other)),
+                    None => Err(invalid_rows_payload_error(serde_json::Value::Object(
+                        rows_object,
+                    ))),
+                },
                 other => Err(invalid_rows_payload_error(other)),
             }
         }
