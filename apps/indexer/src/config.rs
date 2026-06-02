@@ -7,7 +7,7 @@ use figment::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{ConfigError, DaoContractAddresses};
+use crate::{ConfigError, DaoContractAddresses, GovernanceTokenStandard};
 
 pub const DEFAULT_DATALENS_TIMEOUT_SECONDS: u64 = 60;
 pub const DEFAULT_DATALENS_FINALITY: DatalensFinality = DatalensFinality::DurableOnly;
@@ -160,6 +160,7 @@ struct RawDatalensConfig {
     datalens_query_row_limit: u32,
     datalens_governor_address: Option<String>,
     datalens_governor_token_address: Option<String>,
+    datalens_governor_token_standard: Option<String>,
     datalens_timelock_address: Option<String>,
 }
 
@@ -180,6 +181,7 @@ impl Default for RawDatalensConfig {
             datalens_query_row_limit: DEFAULT_DATALENS_QUERY_ROW_LIMIT,
             datalens_governor_address: None,
             datalens_governor_token_address: None,
+            datalens_governor_token_standard: None,
             datalens_timelock_address: None,
         }
     }
@@ -204,6 +206,7 @@ impl DatalensConfig {
                     "DATALENS_QUERY_ROW_LIMIT",
                     "DATALENS_GOVERNOR_ADDRESS",
                     "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                    "DATALENS_GOVERNOR_TOKEN_STANDARD",
                     "DATALENS_TIMELOCK_ADDRESS",
                 ]))
                 .extract()
@@ -272,6 +275,7 @@ impl TryFrom<RawDatalensConfig> for DatalensConfig {
             dao_contracts: dao_contract_addresses(
                 raw.datalens_governor_address,
                 raw.datalens_governor_token_address,
+                raw.datalens_governor_token_standard,
                 raw.datalens_timelock_address,
             )?,
         })
@@ -303,35 +307,53 @@ fn optional_non_empty(
 fn dao_contract_addresses(
     governor: Option<String>,
     governor_token: Option<String>,
+    governor_token_standard: Option<String>,
     timelock: Option<String>,
 ) -> Result<Option<DaoContractAddresses>, ConfigError> {
     let governor = optional_non_empty("DATALENS_GOVERNOR_ADDRESS", governor)?;
     let governor_token = optional_non_empty("DATALENS_GOVERNOR_TOKEN_ADDRESS", governor_token)?;
+    let governor_token_standard =
+        optional_non_empty("DATALENS_GOVERNOR_TOKEN_STANDARD", governor_token_standard)?
+            .map(|value| value.parse::<GovernanceTokenStandard>())
+            .transpose()?;
     let timelock = optional_non_empty("DATALENS_TIMELOCK_ADDRESS", timelock)?;
 
-    Ok(match (governor, governor_token, timelock) {
-        (Some(governor), Some(governor_token), Some(timelock)) => Some(DaoContractAddresses {
-            governor,
-            governor_token,
-            timelock,
-        }),
-        (None, None, None) => None,
-        (None, _, _) => {
-            return Err(ConfigError::MissingRequired {
-                field: "DATALENS_GOVERNOR_ADDRESS",
-            });
-        }
-        (_, None, _) => {
-            return Err(ConfigError::MissingRequired {
-                field: "DATALENS_GOVERNOR_TOKEN_ADDRESS",
-            });
-        }
-        (_, _, None) => {
-            return Err(ConfigError::MissingRequired {
-                field: "DATALENS_TIMELOCK_ADDRESS",
-            });
-        }
-    })
+    Ok(
+        match (governor, governor_token, governor_token_standard, timelock) {
+            (
+                Some(governor),
+                Some(governor_token),
+                Some(governor_token_standard),
+                Some(timelock),
+            ) => Some(DaoContractAddresses {
+                governor,
+                governor_token,
+                governor_token_standard,
+                timelock,
+            }),
+            (None, None, None, None) => None,
+            (None, _, _, _) => {
+                return Err(ConfigError::MissingRequired {
+                    field: "DATALENS_GOVERNOR_ADDRESS",
+                });
+            }
+            (_, None, _, _) => {
+                return Err(ConfigError::MissingRequired {
+                    field: "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                });
+            }
+            (_, _, None, _) => {
+                return Err(ConfigError::MissingRequired {
+                    field: "DATALENS_GOVERNOR_TOKEN_STANDARD",
+                });
+            }
+            (_, _, _, None) => {
+                return Err(ConfigError::MissingRequired {
+                    field: "DATALENS_TIMELOCK_ADDRESS",
+                });
+            }
+        },
+    )
 }
 
 #[cfg(test)]
@@ -365,6 +387,7 @@ mod tests {
                     "DATALENS_GOVERNOR_TOKEN_ADDRESS",
                     Some("0x2222222222222222222222222222222222222222"),
                 ),
+                ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("erc20")),
                 (
                     "DATALENS_TIMELOCK_ADDRESS",
                     Some("0x3333333333333333333333333333333333333333"),
@@ -397,6 +420,14 @@ mod tests {
                         .expect("contracts")
                         .governor_token,
                     "0x2222222222222222222222222222222222222222"
+                );
+                assert_eq!(
+                    config
+                        .dao_contracts
+                        .as_ref()
+                        .expect("contracts")
+                        .governor_token_standard,
+                    GovernanceTokenStandard::Erc20
                 );
                 assert_eq!(
                     config.dao_contracts.as_ref().expect("contracts").timelock,
@@ -454,6 +485,40 @@ mod tests {
                     error,
                     ConfigError::MissingRequired {
                         field: "DATALENS_ENDPOINT"
+                    }
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn test_from_env_rejects_invalid_governor_token_standard() {
+        with_datalens_env(
+            &[
+                ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com")),
+                ("DATALENS_APPLICATION", Some("degov-live")),
+                ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+                (
+                    "DATALENS_GOVERNOR_ADDRESS",
+                    Some("0x1111111111111111111111111111111111111111"),
+                ),
+                (
+                    "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                    Some("0x2222222222222222222222222222222222222222"),
+                ),
+                ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("erc1155")),
+                (
+                    "DATALENS_TIMELOCK_ADDRESS",
+                    Some("0x3333333333333333333333333333333333333333"),
+                ),
+            ],
+            || {
+                let error = DatalensConfig::from_env().expect_err("invalid token standard");
+
+                assert_eq!(
+                    error,
+                    ConfigError::InvalidTokenStandard {
+                        value: "erc1155".to_owned()
                     }
                 );
             },
