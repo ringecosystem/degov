@@ -317,6 +317,16 @@ where
             let logs = normalize_evm_log_rows(self.options.checkpoint_identity.chain_id, rows)
                 .map_err(|error| IndexerRunnerError::Normalize(error.to_string()))?;
             for log in logs {
+                if log.removed {
+                    info!(
+                        "skipping removed Datalens EVM log before decode dao_code={} chain_id={} log_id={} block_number={}",
+                        self.options.checkpoint_identity.dao_code,
+                        self.options.checkpoint_identity.chain_id,
+                        log.id,
+                        log.block_number
+                    );
+                    continue;
+                }
                 let token_standard = (page.plan.source == DaoLogSource::GovernorToken)
                     .then_some(self.options.addresses.governor_token_standard);
                 let event = self.decoder.decode(

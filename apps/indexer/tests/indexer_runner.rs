@@ -49,6 +49,30 @@ fn test_runner_processes_multiple_chunks_and_advances_checkpoint_after_commits()
 }
 
 #[test]
+fn test_runner_skips_removed_logs_before_decode_and_still_advances_checkpoint() {
+    let mut options = options();
+    options.datalens_config.finality = DatalensFinality::IncludePending;
+    let mut runner = runner_with_decoder(
+        vec![vec![removed_row(1, 0, 0)], vec![], vec![]],
+        RejectRemovedDecoder,
+        options,
+    );
+
+    let report = runner.run_to_target(1).expect("runner succeeds");
+
+    assert_eq!(report.chunks_processed, 1);
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        2
+    );
+    assert_eq!(runner.store().commit_count(), 1);
+    assert_eq!(
+        runner.store().vote_repository().data_metric().votes_count,
+        0
+    );
+}
+
+#[test]
 fn test_runner_keeps_checkpoint_unchanged_when_transaction_fails() {
     let mut runner = runner(vec![vec![row(1, 0, 0)], vec![], vec![]], ScriptedDecoder);
     runner
@@ -186,12 +210,45 @@ impl IndexerEventDecoder for ScriptedDecoder {
     }
 }
 
+#[derive(Clone)]
+struct RejectRemovedDecoder;
+
+impl IndexerEventDecoder for RejectRemovedDecoder {
+    fn decode(
+        &self,
+        _dao_code: &str,
+        _source: DaoLogSource,
+        _token_standard: Option<GovernanceTokenStandard>,
+        log: &NormalizedEvmLog,
+    ) -> Result<DecodedDaoEvent, DaoEventDecodeError> {
+        assert!(!log.removed, "removed log reached decoder");
+        Ok(DecodedDaoEvent::UnsupportedTopic(
+            degov_datalens_indexer::UnsupportedTopicEvent {
+                dao_code: "demo-dao".to_owned(),
+                source: DaoLogSource::Governor,
+                block_number: log.block_number,
+                transaction_hash: log.transaction_hash.clone(),
+                address: log.address.clone(),
+                topic0: log.topics[0].clone(),
+            },
+        ))
+    }
+}
+
 fn runner(
     rows: Vec<Vec<Value>>,
     decoder: ScriptedDecoder,
 ) -> IndexerRunner<ScriptedDatalensReader, InMemoryIndexerRunnerStore, ScriptedDecoder> {
+    runner_with_decoder(rows, decoder, options())
+}
+
+fn runner_with_decoder<D: IndexerEventDecoder>(
+    rows: Vec<Vec<Value>>,
+    decoder: D,
+    options: IndexerRunnerOptions,
+) -> IndexerRunner<ScriptedDatalensReader, InMemoryIndexerRunnerStore, D> {
     IndexerRunner::new(
-        options(),
+        options,
         contexts(),
         ScriptedDatalensReader {
             rows: VecDeque::from(rows),
@@ -287,6 +344,19 @@ fn addresses() -> DaoContractAddresses {
 }
 
 fn row(block_number: u64, transaction_index: u64, log_index: u64) -> Value {
+    row_with_removed(block_number, transaction_index, log_index, false)
+}
+
+fn removed_row(block_number: u64, transaction_index: u64, log_index: u64) -> Value {
+    row_with_removed(block_number, transaction_index, log_index, true)
+}
+
+fn row_with_removed(
+    block_number: u64,
+    transaction_index: u64,
+    log_index: u64,
+    removed: bool,
+) -> Value {
     json!({
         "block_number": block_number,
         "block_hash": format!("0xblock{block_number}"),
@@ -297,6 +367,6 @@ fn row(block_number: u64, transaction_index: u64, log_index: u64) -> Value {
         "address": "0x1111111111111111111111111111111111111111",
         "topics": ["0x0000000000000000000000000000000000000000000000000000000000000000"],
         "data": "0x",
-        "removed": false
+        "removed": removed
     })
 }
