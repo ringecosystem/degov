@@ -194,6 +194,188 @@ fn test_project_token_events_undelegation_removes_mapping_without_zero_contribut
 }
 
 #[test]
+fn test_project_token_events_redelegation_closes_old_relation_and_opens_new_relation() {
+    let mut repository = InMemoryTokenProjectionRepository::default();
+    let initial = project_token_events(
+        &context(GovernanceTokenStandard::Erc20),
+        vec![
+            TokenProjectionEvent {
+                log: log(10, 0, 1),
+                event: delegate_changed(account("AAAA"), zero(), account("BBBB")),
+            },
+            TokenProjectionEvent {
+                log: log(10, 0, 2),
+                event: delegate_votes_changed(account("BBBB"), "0", "100"),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+    let redelegate = project_token_events(
+        &context(GovernanceTokenStandard::Erc20),
+        vec![
+            TokenProjectionEvent {
+                log: log(11, 0, 1),
+                event: delegate_changed(account("AAAA"), account("BBBB"), account("CCCC")),
+            },
+            TokenProjectionEvent {
+                log: log(11, 0, 2),
+                event: delegate_votes_changed(account("BBBB"), "100", "0"),
+            },
+            TokenProjectionEvent {
+                log: log(11, 0, 3),
+                event: delegate_votes_changed(account("CCCC"), "0", "100"),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    repository.apply(&initial).expect("initial write succeeds");
+    repository
+        .apply(&redelegate)
+        .expect("redelegate write succeeds");
+
+    let mapping = repository
+        .delegate_mappings()
+        .get(&account("aaaa"))
+        .expect("current mapping");
+    assert_eq!(mapping.to, account("cccc"));
+    assert_eq!(mapping.power, "100");
+    assert!(!repository.delegates().contains_key(&format!(
+        "{}_{}",
+        account("bbbb"),
+        account("aaaa")
+    )));
+    if let Some(old_relation) =
+        repository
+            .delegates()
+            .get(&format!("{}_{}", account("aaaa"), account("bbbb")))
+    {
+        assert!(!old_relation.is_current);
+    }
+    let new_relation = repository
+        .delegates()
+        .get(&format!("{}_{}", account("aaaa"), account("cccc")))
+        .expect("new current relation");
+    assert!(new_relation.is_current);
+    assert_eq!(new_relation.power, "100");
+    assert_eq!(
+        repository
+            .contributors()
+            .get(&account("bbbb"))
+            .expect("old delegate contributor")
+            .delegates_count_effective,
+        0
+    );
+    assert_eq!(
+        repository
+            .contributors()
+            .get(&account("cccc"))
+            .expect("new delegate contributor")
+            .delegates_count_effective,
+        1
+    );
+}
+
+#[test]
+fn test_project_token_events_undelegation_old_side_delta_removes_relation_without_reverse() {
+    let mut repository = InMemoryTokenProjectionRepository::default();
+    let initial = project_token_events(
+        &context(GovernanceTokenStandard::Erc20),
+        vec![
+            TokenProjectionEvent {
+                log: log(10, 0, 1),
+                event: delegate_changed(account("AAAA"), zero(), account("BBBB")),
+            },
+            TokenProjectionEvent {
+                log: log(10, 0, 2),
+                event: delegate_votes_changed(account("BBBB"), "0", "100"),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+    let undelegate = project_token_events(
+        &context(GovernanceTokenStandard::Erc20),
+        vec![
+            TokenProjectionEvent {
+                log: log(11, 0, 1),
+                event: delegate_changed(account("AAAA"), account("BBBB"), zero()),
+            },
+            TokenProjectionEvent {
+                log: log(11, 0, 2),
+                event: delegate_votes_changed(account("BBBB"), "100", "0"),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    repository.apply(&initial).expect("initial write succeeds");
+    repository
+        .apply(&undelegate)
+        .expect("undelegate write succeeds");
+
+    assert!(repository.delegate_mappings().is_empty());
+    assert!(!repository.delegates().contains_key(&format!(
+        "{}_{}",
+        account("bbbb"),
+        account("aaaa")
+    )));
+    if let Some(old_relation) =
+        repository
+            .delegates()
+            .get(&format!("{}_{}", account("aaaa"), account("bbbb")))
+    {
+        assert!(!old_relation.is_current);
+    }
+    assert_eq!(
+        repository
+            .contributors()
+            .get(&account("bbbb"))
+            .expect("old delegate contributor")
+            .delegates_count_effective,
+        0
+    );
+}
+
+#[test]
+fn test_project_token_events_delegate_change_without_voting_units_does_not_emit_delegate_edge() {
+    let batch = project_token_events(
+        &context(GovernanceTokenStandard::Erc20),
+        vec![TokenProjectionEvent {
+            log: log(10, 0, 1),
+            event: delegate_changed(account("AAAA"), zero(), account("BBBB")),
+        }],
+    )
+    .expect("projection succeeds");
+    let mut repository = InMemoryTokenProjectionRepository::default();
+
+    repository.apply(&batch).expect("write succeeds");
+
+    let mapping = repository
+        .delegate_mappings()
+        .get(&account("aaaa"))
+        .expect("mapping is preserved");
+    assert_eq!(mapping.to, account("bbbb"));
+    assert_eq!(mapping.power, "0");
+    assert!(repository.delegates().is_empty());
+    assert_eq!(
+        repository
+            .contributors()
+            .get(&account("bbbb"))
+            .expect("delegate contributor")
+            .delegates_count_all,
+        1
+    );
+    assert_eq!(
+        repository
+            .contributors()
+            .get(&account("bbbb"))
+            .expect("delegate contributor")
+            .delegates_count_effective,
+        0
+    );
+}
+
+#[test]
 fn test_project_token_events_applies_same_transaction_delegate_vote_delta_to_relation() {
     let batch = project_token_events(
         &context(GovernanceTokenStandard::Erc20),

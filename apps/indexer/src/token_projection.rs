@@ -334,10 +334,6 @@ impl InMemoryTokenProjectionRepository {
         };
         self.delegate_mappings
             .insert(mapping.id.clone(), mapping.clone());
-
-        if !(from_delegate == zero_address() && delegator == to_delegate) {
-            self.upsert_delegate_snapshot(common, delegator, to_delegate, true, &mapping.power);
-        }
     }
 
     fn apply_delegate_votes_changed(
@@ -367,10 +363,7 @@ impl InMemoryTokenProjectionRepository {
             }
         }
         let (from_delegate, to_delegate) = match side {
-            RollingSide::From if rolling.delegator == rolling.to_delegate => {
-                (rolling.delegator.clone(), rolling.from_delegate.clone())
-            }
-            RollingSide::From => (rolling.from_delegate.clone(), rolling.delegator.clone()),
+            RollingSide::From => (rolling.delegator.clone(), rolling.from_delegate.clone()),
             RollingSide::To => (rolling.delegator.clone(), rolling.to_delegate.clone()),
         };
         self.apply_delegate_delta(common, &from_delegate, &to_delegate, &delta);
@@ -441,6 +434,10 @@ impl InMemoryTokenProjectionRepository {
             return;
         }
         let id = delegate_ref(from_delegate, to_delegate);
+        if is_current && !is_nonzero_decimal(power) {
+            self.delegates.remove(&id);
+            return;
+        }
         let row = DelegateWrite {
             id: id.clone(),
             common: common.clone(),
