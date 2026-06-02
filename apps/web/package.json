@@ -91,7 +91,7 @@
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.0.3",
     "@tailwindcss/postcss": "^4.1.14",
-    "@tanstack/eslint-plugin-query": "^5.91.0",
+    "@tanstack/eslint-plugin-query": "^5.100.14",
     "@types/crypto-js": "^4.2.2",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20",
