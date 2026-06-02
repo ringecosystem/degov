@@ -9,9 +9,9 @@ pub mod planner;
 pub use chain_tool::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadCapability,
     ChainReadExecutionPlan, ChainReadExecutionReport, ChainReadFailure, ChainReadFailureKind,
-    ChainReadKey, ChainReadMethod, ChainReadMetrics, ChainReadPlan, ChainReadPlanBuilder,
-    ChainReadReason, ChainReadRequest, ChainReadRetryPolicy, ChainTool, MulticallReadGroup,
-    PartialChainReadFailureReport, ReadRequirement,
+    ChainReadKey, ChainReadMetadata, ChainReadMethod, ChainReadMetrics, ChainReadPlan,
+    ChainReadPlanBuilder, ChainReadReason, ChainReadRequest, ChainReadResult, ChainReadRetryPolicy,
+    ChainReadValue, ChainTool, MulticallReadGroup, PartialChainReadFailureReport, ReadRequirement,
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,

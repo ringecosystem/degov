@@ -23,6 +23,15 @@ impl Default for BatchReadPlanConfig {
     }
 }
 
+impl BatchReadPlanConfig {
+    pub fn validated(self) -> Self {
+        Self {
+            max_concurrency: self.max_concurrency.max(1),
+            multicall_batch_size: self.multicall_batch_size.max(1),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum BlockReadMode {
     Fresh,
@@ -74,15 +83,20 @@ pub struct ChainReadKey {
     pub method: ChainReadMethod,
     pub args: Vec<String>,
     pub block_mode: BlockReadMode,
-    pub account: Option<String>,
-    pub proposal_id: Option<String>,
-    pub operation_id: Option<String>,
-    pub reason: ChainReadReason,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ChainReadMetadata {
+    pub accounts: BTreeSet<String>,
+    pub proposal_ids: BTreeSet<String>,
+    pub operation_ids: BTreeSet<String>,
+    pub reasons: BTreeSet<ChainReadReason>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ChainReadRequest {
     pub key: ChainReadKey,
+    pub metadata: ChainReadMetadata,
     pub requirement: ReadRequirement,
     pub activity_blocks: Vec<u64>,
 }
@@ -195,7 +209,26 @@ pub trait ChainTool {
 pub struct ChainReadExecutionReport {
     pub metrics: ChainReadMetrics,
     pub capabilities: Vec<ChainReadCapability>,
+    pub results: Vec<ChainReadResult>,
     pub partial_failures: PartialChainReadFailureReport,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ChainReadResult {
+    pub read_index: usize,
+    pub key: ChainReadKey,
+    pub value: ChainReadValue,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ChainReadValue {
+    Null,
+    Bool(bool),
+    Integer(String),
+    String(String),
+    Bytes(String),
+    Array(Vec<ChainReadValue>),
+    Object(BTreeMap<String, ChainReadValue>),
 }
 
 pub struct ChainReadPlanBuilder {
@@ -211,7 +244,7 @@ impl ChainReadPlanBuilder {
         Self {
             chain_id,
             contracts: normalize_contracts(contracts),
-            config,
+            config: config.validated(),
             requested_reads: 0,
             reads: BTreeMap::new(),
         }
@@ -441,6 +474,7 @@ impl ChainReadPlanBuilder {
 
     fn add_read(&mut self, draft: ChainReadDraft, requirement: ReadRequirement) {
         self.requested_reads += 1;
+        let metadata = ChainReadMetadata::from_draft(&draft);
         let key = ChainReadKey {
             chain_id: self.chain_id,
             contract_address: normalize_identifier(&draft.contract_address),
@@ -451,10 +485,6 @@ impl ChainReadPlanBuilder {
                 .map(|arg| normalize_identifier(&arg))
                 .collect(),
             block_mode: draft.block_mode,
-            account: draft.account,
-            proposal_id: draft.proposal_id,
-            operation_id: draft.operation_id,
-            reason: draft.reason,
         };
 
         self.reads
@@ -464,8 +494,9 @@ impl ChainReadPlanBuilder {
                 if let Some(activity_block) = draft.activity_block {
                     read.activity_blocks.insert(activity_block);
                 }
+                read.metadata.merge(metadata.clone());
             })
-            .or_insert_with(|| PendingChainRead::new(requirement, draft.activity_block));
+            .or_insert_with(|| PendingChainRead::new(requirement, draft.activity_block, metadata));
     }
 }
 
@@ -484,13 +515,19 @@ struct ChainReadDraft {
 
 #[derive(Clone, Debug)]
 struct PendingChainRead {
+    metadata: ChainReadMetadata,
     requirement: ReadRequirement,
     activity_blocks: BTreeSet<u64>,
 }
 
 impl PendingChainRead {
-    fn new(requirement: ReadRequirement, activity_block: Option<u64>) -> Self {
+    fn new(
+        requirement: ReadRequirement,
+        activity_block: Option<u64>,
+        metadata: ChainReadMetadata,
+    ) -> Self {
         Self {
+            metadata,
             requirement,
             activity_blocks: activity_block.into_iter().collect(),
         }
@@ -499,9 +536,28 @@ impl PendingChainRead {
     fn into_request(self, key: ChainReadKey) -> ChainReadRequest {
         ChainReadRequest {
             key,
+            metadata: self.metadata,
             requirement: self.requirement,
             activity_blocks: self.activity_blocks.into_iter().collect(),
         }
+    }
+}
+
+impl ChainReadMetadata {
+    fn from_draft(draft: &ChainReadDraft) -> Self {
+        let mut metadata = Self::default();
+        metadata.accounts.extend(draft.account.clone());
+        metadata.proposal_ids.extend(draft.proposal_id.clone());
+        metadata.operation_ids.extend(draft.operation_id.clone());
+        metadata.reasons.insert(draft.reason);
+        metadata
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.accounts.extend(other.accounts);
+        self.proposal_ids.extend(other.proposal_ids);
+        self.operation_ids.extend(other.operation_ids);
+        self.reasons.extend(other.reasons);
     }
 }
 

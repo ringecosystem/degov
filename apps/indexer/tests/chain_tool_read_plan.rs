@@ -1,6 +1,6 @@
 use degov_datalens_indexer::{
-    BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadMethod, ChainReadPlanBuilder,
-    ChainReadReason, ReadRequirement,
+    BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadMethod,
+    ChainReadPlanBuilder, ChainReadReason, ChainReadResult, ChainReadValue, ReadRequirement,
 };
 
 #[test]
@@ -31,15 +31,60 @@ fn test_read_plan_dedupes_repeated_account_power_reads_in_large_datalens_batch()
     );
     assert_eq!(plan.reads[0].key.block_mode, BlockReadMode::Fresh);
     assert_eq!(
-        plan.reads[0].key.account.as_deref(),
-        Some("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        plan.reads[0].metadata.accounts,
+        ["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()].into()
     );
     assert_eq!(
-        plan.reads[0].key.reason,
-        ChainReadReason::TokenActivityPowerRefresh
+        plan.reads[0].metadata.reasons,
+        [ChainReadReason::TokenActivityPowerRefresh].into()
     );
     assert_eq!(plan.reads[0].requirement, ReadRequirement::Required);
     assert_eq!(plan.reads[0].activity_blocks.len(), 10_000);
+}
+
+#[test]
+fn test_read_plan_dedupes_same_rpc_read_across_semantic_metadata() {
+    let contracts = contracts();
+    let mut builder =
+        ChainReadPlanBuilder::new(1, contracts.clone(), BatchReadPlanConfig::default());
+
+    builder.add_account_power_refresh(
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        100,
+        ChainReadReason::TokenActivityPowerRefresh,
+    );
+    builder.add_account_power_refresh(
+        "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        101,
+        ChainReadReason::ProposalSnapshotPower,
+    );
+    builder.add_optional_enrichment_read(
+        contracts.governor_token.clone(),
+        ChainReadMethod::GetVotes,
+        vec!["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()],
+        BlockReadMode::Fresh,
+    );
+
+    let plan = builder.build();
+
+    assert_eq!(plan.metrics.requested_reads, 3);
+    assert_eq!(plan.metrics.deduped_reads, 2);
+    assert_eq!(plan.reads.len(), 1);
+    assert_eq!(plan.reads[0].requirement, ReadRequirement::Required);
+    assert_eq!(plan.reads[0].activity_blocks, vec![100, 101]);
+    assert_eq!(
+        plan.reads[0].metadata.accounts,
+        ["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()].into()
+    );
+    assert_eq!(
+        plan.reads[0].metadata.reasons,
+        [
+            ChainReadReason::OptionalEnrichment,
+            ChainReadReason::ProposalSnapshotPower,
+            ChainReadReason::TokenActivityPowerRefresh,
+        ]
+        .into()
+    );
 }
 
 #[test]
@@ -73,22 +118,24 @@ fn test_read_plan_dedupes_repeated_account_proposal_and_operation_activity() {
     assert_eq!(
         plan.reads
             .iter()
-            .filter(|read| read.key.account.as_deref()
-                == Some("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+            .filter(|read| read
+                .metadata
+                .accounts
+                .contains("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
             .count(),
         1
     );
     assert_eq!(
         plan.reads
             .iter()
-            .filter(|read| read.key.proposal_id.as_deref() == Some("42"))
+            .filter(|read| read.metadata.proposal_ids.contains("42"))
             .count(),
         3
     );
     assert_eq!(
         plan.reads
             .iter()
-            .filter(|read| read.key.operation_id.as_deref() == Some("0xffff"))
+            .filter(|read| read.metadata.operation_ids.contains("0xffff"))
             .count(),
         1
     );
@@ -119,7 +166,13 @@ fn test_read_plan_keeps_distinct_power_reads_when_block_semantics_differ() {
     let keys = plan
         .reads
         .iter()
-        .map(|read| (&read.key.method, &read.key.block_mode, &read.key.reason))
+        .map(|read| {
+            (
+                &read.key.method,
+                &read.key.block_mode,
+                &read.metadata.reasons,
+            )
+        })
         .collect::<Vec<_>>();
 
     assert_eq!(plan.metrics.requested_reads, 3);
@@ -128,17 +181,17 @@ fn test_read_plan_keeps_distinct_power_reads_when_block_semantics_differ() {
     assert!(keys.contains(&(
         &ChainReadMethod::GetVotes,
         &BlockReadMode::Fresh,
-        &ChainReadReason::TokenActivityPowerRefresh,
+        &[ChainReadReason::TokenActivityPowerRefresh].into(),
     )));
     assert!(keys.contains(&(
         &ChainReadMethod::GetPastVotes,
         &BlockReadMode::AtBlock(100),
-        &ChainReadReason::ProposalSnapshotPower,
+        &[ChainReadReason::ProposalSnapshotPower].into(),
     )));
     assert!(keys.contains(&(
         &ChainReadMethod::GetPastVotes,
         &BlockReadMode::AtBlock(101),
-        &ChainReadReason::ProposalSnapshotPower,
+        &[ChainReadReason::ProposalSnapshotPower].into(),
     )));
 }
 
@@ -227,6 +280,59 @@ fn test_read_plan_groups_required_reads_into_bounded_multicall_batches() {
             .map(|group| group.read_indexes.len())
             .collect::<Vec<_>>(),
         vec![2, 2, 1]
+    );
+}
+
+#[test]
+fn test_read_plan_clamps_zero_batch_config_to_valid_minimums() {
+    let contracts = contracts();
+    let mut builder = ChainReadPlanBuilder::new(
+        1,
+        contracts,
+        BatchReadPlanConfig {
+            max_concurrency: 0,
+            multicall_batch_size: 0,
+        },
+    );
+
+    builder.add_account_power_refresh(
+        "0x0000000000000000000000000000000000000001",
+        200,
+        ChainReadReason::TokenActivityPowerRefresh,
+    );
+
+    let plan = builder.build();
+
+    assert_eq!(plan.execution.max_concurrency, 1);
+    assert_eq!(plan.metrics.multicall_batch_size, 1);
+    assert_eq!(plan.execution.multicall_groups.len(), 1);
+    assert_eq!(plan.execution.multicall_groups[0].read_indexes, vec![0]);
+}
+
+#[test]
+fn test_read_execution_report_carries_lossless_read_values() {
+    let contracts = contracts();
+    let mut builder = ChainReadPlanBuilder::new(1, contracts, BatchReadPlanConfig::default());
+    builder.add_account_power_refresh(
+        "0x0000000000000000000000000000000000000001",
+        200,
+        ChainReadReason::TokenActivityPowerRefresh,
+    );
+    let plan = builder.build();
+
+    let report = ChainReadExecutionReport {
+        results: vec![ChainReadResult {
+            read_index: 0,
+            key: plan.reads[0].key.clone(),
+            value: ChainReadValue::Integer("340282366920938463463374607431768211455".to_owned()),
+        }],
+        ..ChainReadExecutionReport::default()
+    };
+
+    assert_eq!(report.results[0].read_index, 0);
+    assert_eq!(
+        report.results[0].value,
+        ChainReadValue::Integer("340282366920938463463374607431768211455".to_owned())
     );
 }
 
