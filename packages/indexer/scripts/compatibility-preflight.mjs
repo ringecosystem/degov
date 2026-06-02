@@ -168,6 +168,11 @@ export function validateDaoCompatibility({ dao, probes }) {
     warnings.push("governor.CLOCK_MODE missing; defaulting to block clock");
   }
 
+  if (methodState(governor.methods, "COUNTING_MODE") !== "ok") {
+    support = raiseSupport(support, "degraded");
+    warnings.push("governor.COUNTING_MODE missing; inferring vote bucket semantics");
+  }
+
   if (methodState(governor.methods, "timelock") !== "ok") {
     support = raiseSupport(support, "degraded");
     warnings.push("governor.timelock missing; indexing without timelock projection");

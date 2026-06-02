@@ -123,6 +123,7 @@ function testAcceptsSupportedFallbacksAsDegraded() {
       governor: {
         methods: {
           CLOCK_MODE: "missing",
+          COUNTING_MODE: "missing",
           hashProposal: "ok",
           proposalDeadline: "ok",
           proposalSnapshot: "ok",
@@ -155,6 +156,7 @@ function testAcceptsSupportedFallbacksAsDegraded() {
 
   assert.equal(result.support, "degraded");
   assert.match(result.warnings.join("\n"), /CLOCK_MODE missing/);
+  assert.match(result.warnings.join("\n"), /COUNTING_MODE missing/);
   assert.match(result.warnings.join("\n"), /timelock missing/);
   assert.equal(result.voteReads.current, "getCurrentVotes");
   assert.equal(result.voteReads.historical, "getPriorVotes");
