@@ -29,7 +29,7 @@ assert.match(buildHumanSummary(status), /legacy squid_processor.status/);
 
 function summarizeFixture() {
   return {
-    checkpoints: [{ daoCode: "ens-dao" }],
+    checkpoints: [{ daoCode: "ens-dao", streamId: "governance-events", syncPercent: 80 }],
     checkpointStalls: [{ daoCode: "ens-dao" }],
     checkpointErrors: [],
     reconcileBacklog: { pending: 1 },

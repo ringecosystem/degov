@@ -86,6 +86,7 @@ const checkpointRows = summarizeCheckpointRows(
 
 assert.equal(checkpointRows[0].stalled, true);
 assert.equal(checkpointRows[0].lagBlocks, "50");
+assert.equal(checkpointRows[0].syncPercent, 66.67);
 assert.equal(checkpointRows[0].classification, "checkpoint-stall");
 assert.equal(checkpointRows[1].classification, "projection-mismatch");
 

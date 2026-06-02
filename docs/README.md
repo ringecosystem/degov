@@ -14,6 +14,7 @@ or API/data-model reference material unless a newer document says otherwise.
 - [Developer guide](./guides/20260325__indexer_developer_guide.md)
 - [Accuracy diagnosis guide](./guides/20260331__indexer_accuracy_diagnosis.md)
 - [Datalens DAO migration runbook](./runbook/datalens-dao-migration.md)
+- [Datalens staging deployment runbook](./runbook/datalens-staging-deployment.md)
 - [Accuracy research summary](./research/20260401__indexer_accuracy_research.md)
 - [Architecture overview](./architecture/20260325__indexer_architecture.md)
 - [Datalens indexer architecture contract](./spec/datalens-indexer-architecture-contract.md)

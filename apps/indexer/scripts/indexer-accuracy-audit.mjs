@@ -325,7 +325,7 @@ export function buildMarkdownReport(report, targets) {
     lines.push("### Checkpoint Stalls", "");
     for (const checkpoint of report.status.checkpointStalls) {
       lines.push(
-        `- ${checkpoint.daoCode}/${checkpoint.streamId}: processed=${checkpoint.processedHeight}, target=${checkpoint.targetHeight}, lag=${checkpoint.lagBlocks}, updated=${checkpoint.updatedAt}`,
+        `- ${checkpoint.daoCode}/${checkpoint.streamId}: processed=${checkpoint.processedHeight}, target=${checkpoint.targetHeight}, sync=${checkpoint.syncPercent ?? "unknown"}%, lag=${checkpoint.lagBlocks}, updated=${checkpoint.updatedAt}`,
       );
     }
   }
