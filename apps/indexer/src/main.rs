@@ -1,4 +1,4 @@
-use std::{env, future, time::Duration};
+use std::{env, future, net::SocketAddr, time::Duration};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
@@ -8,7 +8,7 @@ use degov_datalens_indexer::{
     IndexerRunner, IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshWorker,
     OnchainRefreshWorkerConfig, PostgresIndexerRunnerStore, ProposalProjectionContext,
     TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
-    verify_datalens_service,
+    graphql, verify_datalens_service,
 };
 use sqlx::{Executor, postgres::PgPoolOptions};
 use tokio::task;
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Run => run_indexer().await,
         Command::Worker => run_worker().await,
         Command::Migrate => migrate().await,
-        Command::Graphql => graphql(),
+        Command::Graphql => run_graphql().await,
         Command::SmokeDatalens => smoke_datalens().await,
     }
 }
@@ -269,15 +269,41 @@ async fn migrate() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn graphql() -> anyhow::Result<()> {
+async fn run_graphql() -> anyhow::Result<()> {
+    let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
     let endpoint = required_env("DEGOV_INDEXER_GRAPHQL_ENDPOINT")?;
+    let bind_address = parse_bind_address(&endpoint)?;
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await
+        .context("connect to DeGov indexer Postgres")?;
+    let app = graphql::build_router(graphql::build_schema(pool));
+    let listener = tokio::net::TcpListener::bind(bind_address)
+        .await
+        .with_context(|| format!("bind DeGov indexer GraphQL endpoint {bind_address}"))?;
 
     log::info!(
-        "GraphQL/API packaging is configured endpoint={}; Datalens server remains external",
-        endpoint
+        "DeGov indexer GraphQL service listening endpoint={} bind_address={} path=/graphql",
+        endpoint,
+        bind_address
     );
 
-    Ok(())
+    axum::serve(listener, app)
+        .await
+        .context("serve DeGov indexer GraphQL endpoint")
+}
+
+fn parse_bind_address(endpoint: &str) -> anyhow::Result<SocketAddr> {
+    let address = endpoint
+        .strip_prefix("http://")
+        .or_else(|| endpoint.strip_prefix("https://"))
+        .unwrap_or(endpoint);
+    let address = address.split('/').next().unwrap_or(address);
+
+    address.parse().with_context(|| {
+        format!("parse DEGOV_INDEXER_GRAPHQL_ENDPOINT as bind address: {endpoint}")
+    })
 }
 
 async fn verify_datalens(config: &DatalensConfig) -> anyhow::Result<()> {

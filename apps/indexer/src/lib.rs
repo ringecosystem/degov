@@ -6,6 +6,7 @@ pub mod datalens;
 pub mod error;
 pub mod evm_log;
 pub mod fixtures;
+pub mod graphql;
 pub mod onchain_refresh;
 pub mod planner;
 pub mod postgres_store;
@@ -52,6 +53,7 @@ pub use fixtures::{
     DatalensFixtureExpectedEvent, DatalensFixtureLogSource, DatalensFixturePage,
     DatalensFixtureTokenStandard, load_datalens_fixture,
 };
+pub use graphql::IndexerGraphqlSchema;
 pub use onchain_refresh::{
     ChainToolOnchainRefreshReader, EvmRpcChainTool, OnchainRefreshReadValue, OnchainRefreshReader,
     OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshWorker,
