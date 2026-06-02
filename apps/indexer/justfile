@@ -13,6 +13,7 @@ build:
 test:
     node ./scripts/check-rust-conventions.mjs
     node ./scripts/check-postgres-schema.mjs
+    node ./scripts/runtime-packaging.test.mjs
     cargo test --locked
     node ./scripts/check-rust-conventions.test.mjs
     node ./scripts/compatibility-preflight.test.mjs

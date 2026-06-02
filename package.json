@@ -3,6 +3,14 @@
   "version": "2.0.0",
   "private": true,
   "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "indexer": "cargo run -p degov-datalens-indexer --locked -- run",
+    "indexer:build": "cargo build -p degov-datalens-indexer --locked",
+    "indexer:graphql": "cargo run -p degov-datalens-indexer --locked -- graphql",
+    "indexer:migrate": "cargo run -p degov-datalens-indexer --locked -- migrate",
+    "indexer:smoke-datalens": "cargo run -p degov-datalens-indexer --locked -- smoke-datalens",
+    "indexer:worker": "cargo run -p degov-datalens-indexer --locked -- worker"
+  },
   "pnpm": {
     "packageExtensions": {
       "@hookform/resolvers@4.1.3": {
