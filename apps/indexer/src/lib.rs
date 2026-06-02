@@ -9,6 +9,7 @@ pub mod planner;
 pub mod power_reconcile;
 pub mod proposal_projection;
 pub mod timelock_projection;
+pub mod token_projection;
 pub mod vote_projection;
 
 pub use chain_tool::{
@@ -62,6 +63,13 @@ pub use timelock_projection::{
     TimelockOperationWrite, TimelockProjectionBatch, TimelockProjectionContext,
     TimelockProjectionError, TimelockProjectionEvent, TimelockProjectionRepository,
     TimelockRepositoryWriteError, TimelockRoleEventWrite, project_timelock_events,
+};
+pub use token_projection::{
+    ContributorWrite, DataMetricTokenDelta, DelegateChangedWrite, DelegateMappingWrite,
+    DelegateRollingWrite, DelegateVotesChangedWrite, DelegateWrite,
+    InMemoryTokenProjectionRepository, TokenEventCommon, TokenProjectionBatch,
+    TokenProjectionContext, TokenProjectionError, TokenProjectionEvent, TokenProjectionOperation,
+    TokenProjectionRepository, TokenRepositoryWriteError, TokenTransferWrite, project_token_events,
 };
 pub use vote_projection::{
     ContributorVoteSignalWrite, DataMetricVoteDelta, InMemoryVoteProjectionRepository,
