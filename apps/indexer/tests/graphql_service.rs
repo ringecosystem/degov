@@ -15,6 +15,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::timeout;
 
 const SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
+const CONTRACT_SET_ID: &str = "dao=lisk-dao|chain=1135|datalens_chain=lisk|dataset=evm.logs|governor=0xgovernor|token=0xtoken|token_standard=erc20|timelock=0xtimelock";
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
@@ -324,22 +325,23 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         INSERT INTO vote_cast_group (
-          id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
+          id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
           proposal_id, type, voter, ref_proposal_id, support, weight, reason, params,
           block_number, block_timestamp, transaction_hash
         ) VALUES
         (
-          'vote:101:1', 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 3, 0,
+          'vote:101:1', $1, 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 3, 0,
           'proposal:1135:0xgovernor:101', 'vote-cast', '0xvoter1', '101', 1, 100, 'yes', NULL,
           805, 1700000110, '0xvote1'
         ),
         (
-          'vote:101:2', 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 4, 0,
+          'vote:101:2', $1, 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 4, 0,
           'proposal:1135:0xgovernor:101', 'vote-cast-with-params', '0xvoter2', '101', 0, 25, 'no', '0x1234',
           806, 1700000120, '0xvote2'
         )
         "#,
     )
+    .bind(CONTRACT_SET_ID)
     .execute(pool)
     .await?;
     sqlx::raw_sql(
@@ -354,36 +356,65 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
-    sqlx::raw_sql(
+    sqlx::query(
         r#"
         INSERT INTO data_metric (
-          id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
+          id, contract_set_id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
           votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
           votes_weight_abstain_sum, power_sum, member_count, proposals_count
-        ) VALUES ('metric:lisk-dao', 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 2, 2);
-        INSERT INTO contributor (
-          id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
-          last_vote_block_number, last_vote_timestamp, power, delegates_count_all, delegates_count_effective
-        ) VALUES
-          ('0xvoter1', 1135, 'lisk-dao', '0xgovernor', 805, 1700000110, '0xvote1', 805, 1700000110, 100, 1, 1),
-          ('0xvoter2', 1135, 'lisk-dao', '0xgovernor', 806, 1700000120, '0xvote2', 806, 1700000120, 25, 0, 0);
-        INSERT INTO delegate (
-          id, chain_id, dao_code, governor_address, from_delegate, to_delegate, block_number,
-          block_timestamp, transaction_hash, is_current, power
-        ) VALUES ('0xdelegator_0xdelegate', 1135, 'lisk-dao', '0xgovernor', '0xdelegator', '0xdelegate', 807, 1700000125, '0xdelegate', TRUE, 75);
-        INSERT INTO delegate_mapping (
-          id, chain_id, dao_code, governor_address, "from", "to", power, block_number,
-          block_timestamp, transaction_hash
-        ) VALUES ('0xdelegator', 1135, 'lisk-dao', '0xgovernor', '0xdelegator', '0xdelegate', 75, 807, 1700000125, '0xmapping');
+        ) VALUES ('metric:lisk-dao', $1, 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 2, 2)
         "#,
     )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+          id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
+          last_vote_block_number, last_vote_timestamp, power, delegates_count_all, delegates_count_effective
+        ) VALUES
+          ('0xvoter1', $1, 1135, 'lisk-dao', '0xgovernor', 805, 1700000110, '0xvote1', 805, 1700000110, 100, 1, 1),
+          ('0xvoter2', $1, 1135, 'lisk-dao', '0xgovernor', 806, 1700000120, '0xvote2', 806, 1700000120, 25, 0, 0)
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO delegate (
+          id, contract_set_id, chain_id, dao_code, governor_address, from_delegate, to_delegate, block_number,
+          block_timestamp, transaction_hash, is_current, power
+        ) VALUES ('0xdelegator_0xdelegate', $1, 1135, 'lisk-dao', '0xgovernor', '0xdelegator', '0xdelegate', 807, 1700000125, '0xdelegate', TRUE, 75)
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO delegate_mapping (
+          id, contract_set_id, chain_id, dao_code, governor_address, "from", "to", power, block_number,
+          block_timestamp, transaction_hash
+        ) VALUES ('0xdelegator', $1, 1135, 'lisk-dao', '0xgovernor', '0xdelegator', '0xdelegate', 75, 807, 1700000125, '0xmapping')
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_indexer_checkpoint (
+          dao_code, chain_id, contract_set_id, stream_id, data_source_version, next_block, processed_height, target_height, updated_at
+        ) VALUES ('lisk-dao', 1135, $1, 'evm.logs', 'datalens', 901, 900, 1000, now())
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
     .execute(pool)
     .await?;
     sqlx::raw_sql(
         r#"
-        INSERT INTO degov_indexer_checkpoint (
-          dao_code, chain_id, stream_id, data_source_version, next_block, processed_height, target_height, updated_at
-        ) VALUES ('lisk-dao', 1135, 'evm.logs', 'datalens', 901, 900, 1000, now());
         INSERT INTO squid_processor.status (id, height, hash)
         VALUES (0, 900, '0xstatus');
         "#,

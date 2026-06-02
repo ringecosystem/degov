@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -32,6 +33,33 @@ assert.match(packageConfig.scripts["indexer:worker"], /degov-datalens-indexer .*
 assert.match(packageConfig.scripts["indexer:graphql"], /degov-datalens-indexer .*graphql/);
 assert.match(packageConfig.scripts["indexer:migrate"], /degov-datalens-indexer .*migrate/);
 
+function composeConfig(args = [], { envFile = true } = {}) {
+  const composeArgs = ["compose"];
+  if (envFile) {
+    composeArgs.push("--env-file", ".env.example");
+  }
+  composeArgs.push(...args, "config", "--format", "json");
+
+  const output = execFileSync(
+    "docker",
+    composeArgs,
+    {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  return JSON.parse(output);
+}
+
+const defaultComposeWithoutEnvFile = composeConfig([], { envFile: false });
+const defaultCompose = composeConfig();
+const indexerCompose = composeConfig(["--profile", "indexer"]);
+const defaultServicesWithoutEnvFile = defaultComposeWithoutEnvFile.services ?? {};
+const defaultServices = defaultCompose.services ?? {};
+const indexerServices = indexerCompose.services ?? {};
+
 assert.match(composeYaml, /^\s+indexer:/m, "compose must define an indexer service");
 assert.match(composeYaml, /^\s+onchain-worker:/m, "compose must define an onchain worker service");
 assert.match(
@@ -54,10 +82,45 @@ assert.match(
   /DEGOV_INDEXER_GRAPHQL_ENDPOINT: \$\{DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT:-http:\/\/0\.0\.0\.0:4350\/graphql\}/,
   "compose GraphQL service must bind on the GraphQL path",
 );
-assert.match(
-  composeYaml,
-  /DEGOV_INDEXER_GRAPHQL_ENDPOINT: \$\{DEGOV_INDEXER_GRAPHQL_INTERNAL_ENDPOINT:-http:\/\/indexer-graphql:4350\/graphql\}/,
-  "compose web service must use the local GraphQL service endpoint",
+assert.equal(
+  defaultServicesWithoutEnvFile.web?.depends_on?.["indexer-graphql"],
+  undefined,
+  "default web compose graph must render without an env file and must not depend on profile-gated indexer-graphql",
+);
+assert.equal(
+  defaultServices.web?.depends_on?.["indexer-graphql"],
+  undefined,
+  "default web compose graph must not depend on profile-gated indexer-graphql",
+);
+assert.equal(
+  defaultServices.web?.environment?.DEGOV_CONFIG_INDEXER_ENDPOINT,
+  undefined,
+  "default web compose graph must not override DAO config to local GraphQL",
+);
+assert.equal(
+  defaultServices.web?.environment?.DEGOV_INDEXER_GRAPHQL_ENDPOINT,
+  undefined,
+  "default web compose graph must not expose a misleading unused GraphQL endpoint env",
+);
+assert.equal(
+  indexerServices["indexer-graphql"]?.command?.[0],
+  "graphql",
+  "indexer profile must include the GraphQL service entrypoint",
+);
+assert.equal(
+  indexerServices["web-local-indexer"]?.depends_on?.["indexer-graphql"]?.required,
+  true,
+  "indexer profile local web consumer must depend on local GraphQL",
+);
+assert.equal(
+  indexerServices["web-local-indexer"]?.environment?.DEGOV_CONFIG_INDEXER_ENDPOINT,
+  undefined,
+  "local web DAO endpoint must be baked at build time, not passed as misleading runtime env",
+);
+assert.equal(
+  indexerServices["web-local-indexer"]?.build?.args?.DEGOV_CONFIG_INDEXER_ENDPOINT,
+  "http://indexer-graphql:4350/graphql",
+  "indexer profile local web consumer must build DAO config for local GraphQL",
 );
 assert.match(composeYaml, /DATALENS_ENDPOINT/, "compose must pass Datalens environment");
 assert.match(
@@ -95,6 +158,8 @@ assert.match(
   envExample,
   /DEGOV_INDEXER_GRAPHQL_INTERNAL_ENDPOINT=http:\/\/indexer-graphql:4350\/graphql/,
 );
+assert.match(envExample, /DEGOV_CONFIG_INDEXER_ENDPOINT=http:\/\/127\.0\.0\.1:4350\/graphql/);
+assert.match(envExample, /DEGOV_WEB_INDEXER_PORT=3001/);
 assert.match(envExample, /DEGOV_ONCHAIN_REFRESH_RPC_URL=/);
 assert.match(envExample, /DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED=false/);
 assert.doesNotMatch(
