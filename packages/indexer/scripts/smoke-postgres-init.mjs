@@ -7,6 +7,7 @@ import process from "node:process";
 
 const schemaPath = path.resolve(import.meta.dirname, "..", "schema", "postgres.sql");
 const databaseUrl = process.env.DEGOV_INDEXER_DATABASE_URL;
+const isLinux = process.platform === "linux";
 
 if (!databaseUrl) {
   console.error("DEGOV_INDEXER_DATABASE_URL must point to a clean Postgres database");
@@ -34,15 +35,29 @@ const expectedTables = [
   "delegate_mapping",
 ];
 
+function dockerDatabaseUrl() {
+  if (isLinux) {
+    return databaseUrl;
+  }
+
+  const url = new URL(databaseUrl);
+
+  if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
+    url.hostname = "host.docker.internal";
+  }
+
+  return url.toString();
+}
+
 function runDockerPostgres(args, stdin) {
   return new Promise((resolve, reject) => {
+    const dockerNetworkArgs = isLinux ? ["--network", "host"] : [];
     const child = spawn(
       "docker",
       [
         "run",
         "--rm",
-        "--network",
-        "host",
+        ...dockerNetworkArgs,
         "-i",
         "postgres:17-alpine",
         ...args,
@@ -73,8 +88,37 @@ function runDockerPostgres(args, stdin) {
 
 async function main() {
   const schema = await readFile(schemaPath, "utf8");
+  const psqlDatabaseUrl = dockerDatabaseUrl();
+  const cleanDatabaseSql = [
+    "SELECT table_name",
+    "FROM information_schema.tables",
+    "WHERE table_schema = 'public'",
+    "ORDER BY table_name;",
+  ].join("\n");
+  const cleanDatabaseResult = await runDockerPostgres(
+    ["psql", psqlDatabaseUrl, "--tuples-only", "--no-align"],
+    cleanDatabaseSql,
+  );
+
+  if (cleanDatabaseResult.status !== 0) {
+    console.error(cleanDatabaseResult.stderr);
+    process.exit(cleanDatabaseResult.status ?? 1);
+  }
+
+  const existingTables = cleanDatabaseResult.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (existingTables.length > 0) {
+    console.error(
+      `DEGOV_INDEXER_DATABASE_URL must point to a clean Postgres database; public already contains: ${existingTables.join(", ")}`,
+    );
+    process.exit(1);
+  }
+
   const initResult = await runDockerPostgres(
-    ["psql", databaseUrl, "--set", "ON_ERROR_STOP=1"],
+    ["psql", psqlDatabaseUrl, "--set", "ON_ERROR_STOP=1"],
     schema,
   );
 
@@ -91,7 +135,7 @@ async function main() {
     "ORDER BY table_name;",
   ].join("\n");
   const verifyResult = await runDockerPostgres(
-    ["psql", databaseUrl, "--tuples-only", "--no-align"],
+    ["psql", psqlDatabaseUrl, "--tuples-only", "--no-align"],
     verifySql,
   );
 

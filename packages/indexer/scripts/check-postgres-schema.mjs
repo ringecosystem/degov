@@ -3,7 +3,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import process from "node:process";
 
 const root = path.resolve(import.meta.dirname, "..");
 const schemaPath = path.join(root, "schema", "postgres.sql");
