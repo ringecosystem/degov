@@ -28,5 +28,6 @@ dist-ssr
 .data
 .agentdocs
 .pnpm-store
+/target/
 
 .env

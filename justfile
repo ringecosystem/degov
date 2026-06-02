@@ -10,7 +10,7 @@ install:
     {{pnpm}} install
 
 web *args:
-    @cd packages/web && just {{args}}
+    @cd apps/web && just {{args}}
 
 indexer *args:
-    @cd packages/indexer && just {{args}}
+    @cd apps/indexer && just {{args}}

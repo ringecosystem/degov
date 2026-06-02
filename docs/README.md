@@ -26,4 +26,4 @@ or API/data-model reference material unless a newer document says otherwise.
 - [Projection replay, reconciliation, and rollout](./plans/20260325__degov_projection_replay_reconciliation_rollout.md)
 
 [datalens-rust-conventions]: ./spec/datalens-rust-technical-conventions.md
-[datalens-postgres-schema]: ../packages/indexer/README.md#postgresql-schema-ownership
+[datalens-postgres-schema]: ../apps/indexer/README.md#postgresql-schema-ownership

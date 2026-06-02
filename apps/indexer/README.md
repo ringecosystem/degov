@@ -1,6 +1,6 @@
 # DeGov Indexer
 
-`packages/indexer` is reserved for the upcoming Datalens-native governance
+`apps/indexer` is reserved for the upcoming Datalens-native governance
 indexer.
 
 The previous SQD/Subsquid processor runtime, migrations, codegen, local startup
@@ -50,7 +50,7 @@ They are not runtime inputs and should not be used to revive the SQD processor
 shell.
 
 ```bash
-pnpm --filter @degov/indexer build
-pnpm --filter @degov/indexer test
-DEGOV_INDEXER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/indexer pnpm --filter @degov/indexer run smoke:postgres-init
+just build
+just test
+DEGOV_INDEXER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/indexer node ./scripts/smoke-postgres-init.mjs
 ```

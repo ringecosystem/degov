@@ -165,7 +165,7 @@ The separate stabilization plan is tracked in:
 
 ### Address diagnosis
 
-From `packages/indexer`:
+From `apps/indexer`:
 
 ```bash
 just diagnose-address 0x983110309620d911731ac0932219af06091b6744 ens-dao

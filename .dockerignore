@@ -4,10 +4,11 @@
 
 .git
 node_modules
-packages/*/node_modules
-packages/web/.next
-packages/indexer/.data
-packages/indexer/lib
+apps/*/node_modules
+apps/web/.next
+apps/indexer/.data
+apps/indexer/target
+target
 coverage
 .turbo
 .pnpm-store

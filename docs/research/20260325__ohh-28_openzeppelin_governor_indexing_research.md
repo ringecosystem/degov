@@ -145,4 +145,4 @@ When modifying the indexer, treat these as non-negotiable:
 
 - OHH-28 Linear research comment
 - PR #567 integration summary and validation notes
-- current `packages/indexer` handler, schema, replay, and reconciliation code
+- current `apps/indexer` handler, schema, replay, and reconciliation code

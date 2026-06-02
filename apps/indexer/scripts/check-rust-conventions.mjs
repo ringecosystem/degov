@@ -4,8 +4,9 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
+const repositoryRoot = path.resolve(import.meta.dirname, "..", "..", "..");
 const root = path.resolve(
-  process.env.DEGOV_RUST_CONVENTIONS_ROOT ?? path.join(import.meta.dirname, ".."),
+  process.env.DEGOV_RUST_CONVENTIONS_ROOT ?? repositoryRoot,
 );
 const ignoredDirectories = new Set(["target", "node_modules"]);
 const tracingMacroNames = new Set([

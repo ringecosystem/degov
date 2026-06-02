@@ -21,7 +21,7 @@ Use this flow when:
 From the indexer package:
 
 ```bash
-cd /code/helixbox/degov/packages/indexer
+cd /code/helixbox/degov/apps/indexer
 just diagnose-address 0x983110309620d911731ac0932219af06091b6744 ens-dao
 ```
 
@@ -34,7 +34,7 @@ If the DAO is not in the built-in target list, pass the required chain inputs
 explicitly:
 
 ```bash
-cd /code/helixbox/degov/packages/indexer
+cd /code/helixbox/degov/apps/indexer
 node ./scripts/indexer-accuracy-diagnose.js \
   --address 0x983110309620d911731ac0932219af06091b6744 \
   --endpoint https://indexer.degov.ai/ens-dao/graphql \
@@ -129,7 +129,7 @@ If it finds negative current `Delegate` rows, it also prints a
 This command:
 
 ```bash
-cd /code/helixbox/degov/packages/indexer
+cd /code/helixbox/degov/apps/indexer
 just diagnose-address 0x983110309620d911731ac0932219af06091b6744 ens-dao
 ```
 
@@ -150,7 +150,7 @@ transfer-out had not cleared the current mapping power.
 This command:
 
 ```bash
-cd /code/helixbox/degov/packages/indexer
+cd /code/helixbox/degov/apps/indexer
 just diagnose-address 0x1f3d3a7a9c548be39539b39d7400302753e20591 ens-dao
 ```
 
@@ -170,7 +170,7 @@ Read that output as:
 - those delegate changes overlap with transfer rows in the same transaction
 
 That is the signature of the ENS tx-local pairing bug fixed in
-`packages/indexer/src/handler/token.ts`:
+`apps/indexer/src/handler/token.ts`:
 
 - `storeTokenTransfer()` must not skip the incoming transfer side just because a
   same-tx delegate change exists for that delegator

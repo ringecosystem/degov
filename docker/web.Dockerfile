@@ -12,8 +12,7 @@ FROM base AS builder
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/web/package.json packages/web/package.json
-COPY packages/indexer/package.json packages/indexer/package.json
+COPY apps/web/package.json apps/web/package.json
 
 ENV DEGOV_CONFIG_PATH=/app/degov.yml
 ENV CI=true
@@ -24,9 +23,9 @@ RUN apk add --no-cache python3 make g++ \
 
 COPY degov.yml degov.yml
 COPY docker/copy-prisma-runtime.cjs docker/copy-prisma-runtime.cjs
-COPY packages/web packages/web
+COPY apps/web apps/web
 
-WORKDIR /app/packages/web
+WORKDIR /app/apps/web
 
 RUN pnpm exec prisma generate \
     && pnpm run build
@@ -43,13 +42,13 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/degov.yml degov.yml
-# Standalone output keeps the workspace layout, including packages/web/server.js.
-COPY --from=builder --chown=nextjs:nodejs /app/packages/web/.next/standalone .
-COPY --from=builder --chown=nextjs:nodejs /app/packages/web/.next/static packages/web/.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/packages/web/public packages/web/public
-COPY --from=builder --chown=nextjs:nodejs /app/packages/web/scripts packages/web/scripts
-COPY --from=builder --chown=nextjs:nodejs /app/packages/web/prisma packages/web/prisma
-COPY --from=builder --chown=nextjs:nodejs /app/packages/web/prisma.config.ts packages/web/prisma.config.ts
+# Standalone output keeps the workspace layout, including apps/web/server.js.
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone .
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public apps/web/public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/scripts apps/web/scripts
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/prisma apps/web/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/prisma.config.ts apps/web/prisma.config.ts
 
 # Runtime Prisma support for entrypoint.sh without copying the full install tree.
 COPY --from=builder --chown=nextjs:nodejs /app/prisma-runtime/node_modules node_modules
@@ -61,4 +60,4 @@ ENV HOSTNAME="0.0.0.0"
 
 EXPOSE 3000
 
-ENTRYPOINT [ "/app/packages/web/scripts/entrypoint.sh" ]
+ENTRYPOINT [ "/app/apps/web/scripts/entrypoint.sh" ]
