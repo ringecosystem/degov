@@ -6,12 +6,14 @@ import {
   classifyDatalensQueryError,
   classifyProjectionMismatch,
   compactAmount,
+  findTargetComparisonBlock,
   graphqlRequest,
   loadTargets,
   parsePositiveInt,
   readCurrentVotes,
   readDatalensStatus,
   readTokenBalance,
+  requireOptionValue,
 } from "./indexer-diagnostics.mjs";
 
 const OVERVIEW_QUERY = `
@@ -76,7 +78,7 @@ export function parseArgs(argv) {
     const expectsValue = inlineValue === undefined;
     switch (flag) {
       case "--address":
-        options.address = value.toLowerCase();
+        options.address = requireOptionValue(flag, value).toLowerCase();
         break;
       case "--code":
       case "--dao":
@@ -108,7 +110,10 @@ export function parseArgs(argv) {
         options.rpcUrl = value;
         break;
       case "--targets-file":
-        options.targetsFile = path.resolve(process.cwd(), value);
+        options.targetsFile = path.resolve(
+          process.cwd(),
+          requireOptionValue(flag, value),
+        );
         break;
       default:
         throw new Error(`Unknown option: ${flag}`);
@@ -177,13 +182,17 @@ export async function diagnoseAddress(options, services = {}) {
     };
   }
   const contributor = overview.contributors?.[0] ?? null;
+  const comparisonBlockHeight = findTargetComparisonBlock(target, status);
+  const readTarget = comparisonBlockHeight
+    ? { ...target, comparisonBlockHeight }
+    : target;
   let chainVotes = null;
   let tokenBalance = null;
   let chainReadError = null;
   try {
     [chainVotes, tokenBalance] = await Promise.all([
-      readVotes(target, options.address),
-      readBalance(target, options.address).catch(() => null),
+      readVotes(readTarget, options.address),
+      readBalance(readTarget, options.address).catch(() => null),
     ]);
   } catch (error) {
     chainReadError = {

@@ -7,6 +7,12 @@ import {
   parseArgs,
 } from "./indexer-accuracy-diagnose.mjs";
 
+assert.throws(() => parseArgs(["--address"]), /--address requires a value/);
+assert.throws(
+  () => parseArgs(["--targets-file", "--json"]),
+  /--targets-file requires a value/,
+);
+
 const options = parseArgs([
   "--address",
   "0x983110309620d911731ac0932219af06091b6744",
@@ -64,6 +70,48 @@ assert.equal(report.projectionClassification, "onchain-power-indexed-higher");
 assert.equal(report.incomingMappings.length, 1);
 assert.equal(report.negativeDelegates.length, 1);
 assert.deepEqual(report.status.onchainRefreshBacklog, { pending: 1 });
+
+const historicalReadReport = await diagnoseAddress(
+  {
+    ...options,
+    databaseUrl: "",
+  },
+  {
+    target: {
+      code: "ens-dao",
+      name: "ENS",
+      indexerEndpoint: "https://indexer.example/graphql",
+      rpcUrl: "https://rpc.example",
+      governorToken: "0x0000000000000000000000000000000000000001",
+    },
+    graphqlRequest: async () => ({
+      contributors: [
+        { id: options.address, power: "100", balance: "10", blockNumber: "100" },
+      ],
+      delegateMappings: [],
+      delegates: [],
+    }),
+    readCurrentVotes: async (target) => ({
+      source: "token.getVotes",
+      value: target.comparisonBlockHeight === "100" ? "100" : "80",
+    }),
+    readTokenBalance: async () => "10",
+    status: {
+      checkpoints: [
+        {
+          daoCode: "ens-dao",
+          streamId: "governance-events",
+          processedHeight: "100",
+          targetHeight: "150",
+        },
+      ],
+      checkpointStalls: [],
+      onchainRefreshBacklog: {},
+    },
+  },
+);
+
+assert.equal(historicalReadReport.projectionClassification, null);
 
 const queryErrorReport = await diagnoseAddress(
   {

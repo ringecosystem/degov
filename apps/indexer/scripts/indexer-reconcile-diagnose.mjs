@@ -2,7 +2,7 @@
 
 import {
   readDatalensStatus,
-  summarizeStatusTables,
+  requireOptionValue,
 } from "./indexer-diagnostics.mjs";
 
 export function parseArgs(argv) {
@@ -24,7 +24,7 @@ export function parseArgs(argv) {
     const value = inlineValue ?? argv[index + 1];
     switch (flag) {
       case "--database-url":
-        options.databaseUrl = value;
+        options.databaseUrl = requireOptionValue(flag, value);
         if (inlineValue === undefined) {
           index += 1;
         }
@@ -54,9 +54,10 @@ export function buildHumanSummary(status) {
 
 export function usage() {
   return [
-    "Usage: node apps/indexer/scripts/indexer-reconcile-diagnose.mjs --database-url <postgres-url> [--json]",
+    "Usage: node apps/indexer/scripts/indexer-reconcile-diagnose.mjs [--database-url <postgres-url>] [--json]",
     "",
     "Reads Datalens-owned checkpoint, reconcile, and onchain refresh status tables.",
+    "--database-url falls back to DEGOV_INDEXER_DATABASE_URL, then DATABASE_URL.",
     "The script only runs SELECT statements. squid_processor.status is reported as a legacy bridge when present.",
   ].join("\n");
 }

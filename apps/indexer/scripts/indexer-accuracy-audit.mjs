@@ -7,12 +7,14 @@ import {
   classifyDatalensQueryError,
   classifyProjectionMismatch,
   compactAmount,
+  findTargetComparisonBlock,
   graphqlRequest,
   loadTargets,
   parsePositiveInt,
   readCurrentVotes,
   readDatalensStatus,
   readTokenBalance,
+  requireOptionValue,
 } from "./indexer-diagnostics.mjs";
 
 const TOP_CONTRIBUTORS_QUERY = `
@@ -23,6 +25,7 @@ const TOP_CONTRIBUTORS_QUERY = `
       balance
       delegatesCountAll
       lastVoteTimestamp
+      blockNumber
     }
   }
 `;
@@ -88,7 +91,10 @@ export function parseArgs(argv) {
         options.negativeLimit = parsePositiveInt(value, "--negative-limit");
         break;
       case "--targets-file":
-        options.targetsFile = path.resolve(process.cwd(), value);
+        options.targetsFile = path.resolve(
+          process.cwd(),
+          requireOptionValue(flag, value),
+        );
         break;
       default:
         throw new Error(`Unknown option: ${flag}`);
@@ -327,11 +333,18 @@ export function buildMarkdownReport(report, targets) {
 }
 
 export async function runAudit(targets, options, services = {}) {
+  const status = services.status ?? (await readDatalensStatus(options.databaseUrl));
   const targetResults = [];
   for (const target of targets) {
-    targetResults.push(await auditTarget(target, options, services));
+    const comparisonBlockHeight = findTargetComparisonBlock(target, status);
+    targetResults.push(
+      await auditTarget(
+        comparisonBlockHeight ? { ...target, comparisonBlockHeight } : target,
+        options,
+        services,
+      ),
+    );
   }
-  const status = services.status ?? (await readDatalensStatus(options.databaseUrl));
   return {
     generatedAt: new Date().toISOString(),
     targets: targetResults,

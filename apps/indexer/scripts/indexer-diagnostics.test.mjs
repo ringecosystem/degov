@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import {
   classifyDatalensQueryError,
   classifyProjectionMismatch,
+  findTargetComparisonBlock,
+  readCurrentVotes,
   summarizeCheckpointRows,
   summarizeStatusTables,
 } from "./indexer-diagnostics.mjs";
@@ -87,6 +89,17 @@ assert.equal(checkpointRows[0].lagBlocks, "50");
 assert.equal(checkpointRows[0].classification, "checkpoint-stall");
 assert.equal(checkpointRows[1].classification, "projection-mismatch");
 
+const camelCaseErrorRow = summarizeCheckpointRows([
+  {
+    daoCode: "op-dao",
+    streamId: "governance-events",
+    processedHeight: "1",
+    targetHeight: "1",
+    lastError: "field balance does not exist",
+  },
+]);
+assert.equal(camelCaseErrorRow[0].classification, "projection-mismatch");
+
 const status = summarizeStatusTables({
   checkpoints: [
     {
@@ -114,5 +127,54 @@ assert.deepEqual(status.reconcileBacklog, { pending: 1, failed: 1 });
 assert.deepEqual(status.onchainRefreshBacklog, { pending: 2 });
 assert.equal(status.reconcileErrors[0].classification, "datalens-query-error");
 assert.deepEqual(status.legacySquidStatus, { height: "99", hash: null });
+
+const comparisonBlock = findTargetComparisonBlock(
+  { code: "ens-dao" },
+  {
+    checkpoints: [
+      {
+        daoCode: "ens-dao",
+        streamId: "governance-events",
+        processedHeight: "100",
+        targetHeight: "150",
+      },
+    ],
+  },
+);
+assert.equal(comparisonBlock, "100");
+
+const originalFetch = globalThis.fetch;
+const calls = [];
+globalThis.fetch = async (_url, init) => {
+  const body = JSON.parse(init.body);
+  calls.push(body.params);
+  if (calls.length === 1) {
+    return {
+      ok: true,
+      json: async () => ({ result: "0x" }),
+    };
+  }
+  return {
+    ok: true,
+    json: async () => ({ result: "0x2a" }),
+  };
+};
+try {
+  const voteResult = await readCurrentVotes(
+    {
+      rpcUrl: "https://rpc.example",
+      governorToken: "0x0000000000000000000000000000000000000001",
+      comparisonBlockHeight: "100",
+    },
+    "0x0000000000000000000000000000000000000002",
+  );
+  assert.equal(voteResult.source, "token.getCurrentVotes");
+  assert.equal(voteResult.value, "42");
+  assert.equal(calls[0][1], "0x64");
+  assert.match(calls[1][0].data, /^0xb58131b0/);
+  assert.equal(calls[1][1], "0x64");
+} finally {
+  globalThis.fetch = originalFetch;
+}
 
 console.log("Indexer diagnostics tests passed");

@@ -3,9 +3,10 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const DEFAULT_TARGETS_FILE = path.resolve(
-  path.dirname(new URL(import.meta.url).pathname),
+  path.dirname(fileURLToPath(import.meta.url)),
   "indexer-accuracy-targets.json",
 );
 
@@ -19,6 +20,13 @@ export function parsePositiveInt(value, fieldName) {
 
 export function normalizeAddress(value) {
   return String(value ?? "").trim().toLowerCase();
+}
+
+export function requireOptionValue(flag, value) {
+  if (value === undefined || String(value).startsWith("--")) {
+    throw new Error(`${flag} requires a value`);
+  }
+  return value;
 }
 
 export function classifyDatalensQueryError(error) {
@@ -102,6 +110,7 @@ export function summarizeCheckpointRows(rows, options = {}) {
       ageMinutes >= stallMinutes &&
       (lagBlocks === null || BigInt(lagBlocks) > 0n);
 
+    const lastError = row.last_error ?? row.lastError ?? null;
     return {
       daoCode: row.dao_code ?? row.daoCode ?? null,
       chainId: row.chain_id ?? row.chainId ?? null,
@@ -116,11 +125,11 @@ export function summarizeCheckpointRows(rows, options = {}) {
       updatedAt,
       ageMinutes,
       stalled,
-      lastError: row.last_error ?? row.lastError ?? null,
+      lastError,
       lockOwner: row.lock_owner ?? row.lockOwner ?? null,
       lockedAt: row.locked_at ?? row.lockedAt ?? null,
-      classification: row.last_error
-        ? classifyDatalensQueryError(row.last_error)
+      classification: lastError
+        ? classifyDatalensQueryError(lastError)
         : stalled
           ? "checkpoint-stall"
           : "checkpoint-ok",
@@ -215,11 +224,44 @@ export function encodeAddressArgument(address) {
   return normalizeAddress(address).replace(/^0x/, "").padStart(64, "0");
 }
 
-export async function readUint256(rpcUrl, contract, selector, args = []) {
+export function formatBlockTag(blockHeight) {
+  if (blockHeight === null || blockHeight === undefined || blockHeight === "") {
+    return "latest";
+  }
+  if (typeof blockHeight === "string" && blockHeight.startsWith("0x")) {
+    return blockHeight;
+  }
+  return `0x${BigInt(blockHeight).toString(16)}`;
+}
+
+export function findTargetComparisonBlock(target, status) {
+  const checkpoints = status?.checkpoints ?? [];
+  const matching = checkpoints.filter((checkpoint) => {
+    return (
+      checkpoint.daoCode === target.code ||
+      checkpoint.dao_code === target.code ||
+      (target.chainId !== undefined &&
+        target.chainId !== null &&
+        (checkpoint.chainId === target.chainId ||
+          checkpoint.chain_id === target.chainId))
+    );
+  });
+  const heights = matching
+    .map((checkpoint) => checkpoint.processedHeight ?? checkpoint.processed_height)
+    .filter((height) => height !== null && height !== undefined);
+  if (heights.length === 0) {
+    return null;
+  }
+  return heights.reduce((lowest, height) =>
+    BigInt(height) < BigInt(lowest) ? String(height) : String(lowest),
+  );
+}
+
+export async function readUint256(rpcUrl, contract, selector, args = [], blockTag = "latest") {
   const data = `${selector}${args.join("")}`;
   const result = await rpcCall(rpcUrl, "eth_call", [
     { to: contract, data },
-    "latest",
+    blockTag,
   ]);
   if (!result || result === "0x") {
     throw new Error("decode error: eth_call returned no data");
@@ -229,6 +271,7 @@ export async function readUint256(rpcUrl, contract, selector, args = []) {
 
 export async function readCurrentVotes(target, address) {
   const account = encodeAddressArgument(address);
+  const blockTag = formatBlockTag(target.comparisonBlockHeight ?? target.blockTag);
   try {
     return {
       source: "token.getVotes",
@@ -237,13 +280,32 @@ export async function readCurrentVotes(target, address) {
         target.governorToken,
         "0x9ab24eb0",
         [account],
+        blockTag,
       ),
     };
   } catch (tokenError) {
+    try {
+      return {
+        source: "token.getCurrentVotes",
+        value: await readUint256(
+          target.rpcUrl,
+          target.governorToken,
+          "0xb58131b0",
+          [account],
+          blockTag,
+        ),
+      };
+    } catch {
+      // Continue to the governor fallback below when available.
+    }
     if (!target.governor) {
       throw tokenError;
     }
-    const blockNumber = BigInt(await rpcCall(target.rpcUrl, "eth_blockNumber", []));
+    const blockNumber =
+      target.comparisonBlockHeight === null ||
+      target.comparisonBlockHeight === undefined
+        ? BigInt(await rpcCall(target.rpcUrl, "eth_blockNumber", []))
+        : BigInt(target.comparisonBlockHeight);
     const timepoint = (blockNumber > 1n ? blockNumber - 1n : blockNumber)
       .toString(16)
       .padStart(64, "0");
@@ -254,15 +316,17 @@ export async function readCurrentVotes(target, address) {
         target.governor,
         "0xeb9019d4",
         [account, timepoint],
+        blockTag,
       ),
     };
   }
 }
 
 export async function readTokenBalance(target, address) {
+  const blockTag = formatBlockTag(target.comparisonBlockHeight ?? target.blockTag);
   return readUint256(target.rpcUrl, target.governorToken, "0x70a08231", [
     encodeAddressArgument(address),
-  ]);
+  ], blockTag);
 }
 
 export function compactAmount(rawValue, decimals = 18) {

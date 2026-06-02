@@ -18,6 +18,15 @@ const target = {
   governor: "0x0000000000000000000000000000000000000002",
 };
 
+assert.throws(
+  () => parseArgs(["--targets-file"]),
+  /--targets-file requires a value/,
+);
+assert.throws(
+  () => parseArgs(["--targets-file", "--json-file", "report.json"]),
+  /--targets-file requires a value/,
+);
+
 assert.match(
   parseArgs([
     "--limit",
@@ -65,6 +74,24 @@ assert.equal(targetResult.mismatches[0].hint, "onchain-power-indexed-higher");
 assert.equal(targetResult.negativeContributors.length, 1);
 assert.equal(targetResult.negativeDelegates.length, 1);
 assert.equal(targetResult.anomalyCount, 3);
+
+const caughtUpTargetResult = await auditTarget(
+  { ...target, comparisonBlockHeight: "100" },
+  { limit: 1, negativeLimit: 1, concurrency: 1 },
+  {
+    fetchTopContributors: async () => [
+      { id: "0x1", power: "10", balance: "10", blockNumber: "100" },
+    ],
+    fetchNegativeRows: async () => ({ contributors: [], delegates: [] }),
+    readCurrentVotes: async (_target) => ({
+      source: "token.getVotes",
+      value: "10",
+    }),
+    readTokenBalance: async () => "10",
+  },
+);
+
+assert.equal(caughtUpTargetResult.matches, 1);
 
 const report = await runAudit([target], { limit: 1, negativeLimit: 1, concurrency: 1 }, {
   fetchTopContributors: async () => [{ id: "0x1", power: "10", balance: "10" }],
