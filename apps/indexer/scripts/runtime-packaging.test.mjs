@@ -152,13 +152,20 @@ assert.doesNotMatch(
 assert.match(envExample, /DATALENS_ENDPOINT=/);
 assert.match(envExample, /DATALENS_CHAINS_JSON=\[/);
 assert.match(envExample, /DEGOV_INDEXER_DATABASE_URL=/);
-assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_ENDPOINT=http:\/\/127\.0\.0\.1:4350\/graphql/);
-assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT=http:\/\/0\.0\.0\.0:4350\/graphql/);
+assert.match(
+  envExample,
+  /DEGOV_INDEXER_GRAPHQL_ENDPOINT=http:\/\/127\.0\.0\.1:4350\/degov-demo-dao\/graphql/,
+);
+assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS=0\.0\.0\.0:4350/);
+assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_PATH=\/degov-demo-dao\/graphql/);
 assert.match(
   envExample,
   /DEGOV_INDEXER_GRAPHQL_INTERNAL_ENDPOINT=http:\/\/indexer-graphql:4350\/graphql/,
 );
-assert.match(envExample, /DEGOV_CONFIG_INDEXER_ENDPOINT=http:\/\/127\.0\.0\.1:4350\/graphql/);
+assert.match(
+  envExample,
+  /DEGOV_CONFIG_INDEXER_ENDPOINT=http:\/\/127\.0\.0\.1:4350\/degov-demo-dao\/graphql/,
+);
 assert.match(envExample, /DEGOV_WEB_INDEXER_PORT=3001/);
 assert.match(envExample, /DEGOV_ONCHAIN_REFRESH_RPC_URL=/);
 assert.match(envExample, /DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED=false/);

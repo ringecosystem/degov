@@ -144,7 +144,7 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 powerSum
                 memberCount
               }
-              contributors(where: { OR: [{ id_eq: "0xvoter1" }, { power_lt: "50" }] }, orderBy: [power_DESC]) {
+              contributors(where: { OR: [{ id_eq: "0xvoter1" }, { power_lt: 50 }] }, orderBy: [power_DESC]) {
                 id
                 power
                 lastVoteTimestamp
@@ -290,6 +290,92 @@ async fn test_graphql_http_endpoint_serves_post_requests() -> Result<(), Box<dyn
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_serves_indexer_accuracy_audit_queries() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query AccuracyAudit($limit: Int!, $offset: Int!) {
+              contributors(limit: $limit, offset: $offset, orderBy: [power_DESC]) {
+                id
+                power
+                balance
+                delegatesCountAll
+                lastVoteTimestamp
+                blockNumber
+              }
+              delegates(limit: $limit, offset: $offset, orderBy: [power_ASC], where: { power_lt: 0 }) {
+                id
+                fromDelegate
+                toDelegate
+                power
+              }
+              negativeDelegateMatches: delegates(
+                limit: $limit
+                orderBy: [power_ASC]
+                where: { OR: [{ toDelegate_eq: "0xdelegate", power_lt: 0 }, { fromDelegate_eq: "0xdelegator", power_lt: 0 }] }
+              ) {
+                id
+                power
+              }
+            }
+            "#,
+    )
+    .variables(async_graphql::Variables::from_json(json!({
+        "limit": 100,
+        "offset": 0
+    })));
+    let response = schema.execute(request).await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["contributors"][0]["id"], "0xvoter1");
+    assert_eq!(data["contributors"][0]["balance"], "10");
+    assert_eq!(data["delegates"].as_array().unwrap().len(), 0);
+    assert_eq!(data["negativeDelegateMatches"].as_array().unwrap().len(), 0);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_endpoint_serves_configured_dao_path() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let app = graphql::build_router_with_paths(schema, ["/degov-demo-dao/graphql".to_owned()]);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let endpoint = format!("http://{}/degov-demo-dao/graphql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response: serde_json::Value = timeout(
+        Duration::from_secs(5),
+        Client::new()
+            .post(endpoint)
+            .json(&json!({
+                "query": "query { squidStatus { height finalizedHeight hash finalizedHash } }"
+            }))
+            .send(),
+    )
+    .await??
+    .json()
+    .await?;
+
+    assert_eq!(response["data"]["squidStatus"]["height"], 900);
+
+    server.abort();
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 fn unique_schema_name() -> String {
     let id = SCHEMA_COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("graphql_service_test_{id}")
@@ -372,10 +458,10 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         r#"
         INSERT INTO contributor (
           id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
-          last_vote_block_number, last_vote_timestamp, power, delegates_count_all, delegates_count_effective
+          last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all, delegates_count_effective
         ) VALUES
-          ('0xvoter1', $1, 1135, 'lisk-dao', '0xgovernor', 805, 1700000110, '0xvote1', 805, 1700000110, 100, 1, 1),
-          ('0xvoter2', $1, 1135, 'lisk-dao', '0xgovernor', 806, 1700000120, '0xvote2', 806, 1700000120, 25, 0, 0)
+          ('0xvoter1', $1, 1135, 'lisk-dao', '0xgovernor', 805, 1700000110, '0xvote1', 805, 1700000110, 100, 10, 1, 1),
+          ('0xvoter2', $1, 1135, 'lisk-dao', '0xgovernor', 806, 1700000120, '0xvote2', 806, 1700000120, 25, 5, 0, 0)
         "#,
     )
     .bind(CONTRACT_SET_ID)

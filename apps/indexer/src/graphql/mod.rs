@@ -25,9 +25,19 @@ pub fn build_schema(pool: PgPool) -> IndexerGraphqlSchema {
 }
 
 pub fn build_router(schema: IndexerGraphqlSchema) -> Router {
-    Router::new()
-        .route("/graphql", get(graphql_playground).post(graphql_handler))
-        .with_state(schema)
+    build_router_with_paths(schema, ["/graphql".to_owned()])
+}
+
+pub fn build_router_with_paths<I, S>(schema: IndexerGraphqlSchema, paths: I) -> Router
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut router = Router::new();
+    for path in paths {
+        router = router.route(path.as_ref(), get(graphql_playground).post(graphql_handler));
+    }
+    router.with_state(schema)
 }
 
 async fn graphql_handler(
@@ -442,6 +452,7 @@ pub struct Contributor {
     transaction_hash: String,
     last_vote_timestamp: Option<String>,
     power: String,
+    balance: Option<String>,
     delegates_count_all: i32,
 }
 
@@ -583,7 +594,7 @@ pub struct ContributorWhereInput {
     #[graphql(name = "id_not_eq")]
     id_not_eq: Option<String>,
     #[graphql(name = "power_lt")]
-    power_lt: Option<String>,
+    power_lt: Option<i64>,
     #[graphql(name = "OR")]
     or: Option<Vec<ContributorWhereInput>>,
 }
@@ -599,6 +610,10 @@ pub struct DelegateWhereInput {
     to_delegate_eq: Option<String>,
     #[graphql(name = "isCurrent_eq")]
     is_current_eq: Option<bool>,
+    #[graphql(name = "power_lt")]
+    power_lt: Option<i64>,
+    #[graphql(name = "OR")]
+    or: Option<Vec<DelegateWhereInput>>,
 }
 
 #[derive(Clone, Debug, Default, InputObject)]
@@ -758,7 +773,7 @@ async fn query_contributors(
         SELECT id, chain_id, dao_code, governor_address, block_number::text AS block_number,
           block_timestamp::text AS block_timestamp, transaction_hash,
           last_vote_timestamp::text AS last_vote_timestamp, power::text AS power,
-          delegates_count_all
+          balance::text AS balance, delegates_count_all
         FROM contributor
         "#,
     );
@@ -977,7 +992,7 @@ fn push_contributor_filters<'a>(
         push_qualified_column(query, table_alias, "id");
         query.push(" <> ").push_bind(id);
     }
-    if let Some(power) = &where_.power_lt {
+    if let Some(power) = where_.power_lt {
         push_and(query, has_condition);
         push_qualified_column(query, table_alias, "power");
         query.push(" < ").push_bind(power).push("::numeric");
@@ -996,25 +1011,50 @@ fn push_delegate_where<'a>(
     if let Some(where_) = where_ {
         query.push(" WHERE ");
         let mut has_condition = false;
-        push_scope_filters(query, &mut has_condition, &where_.scope, "");
-        if let Some(from_delegate) = &where_.from_delegate_eq {
-            push_column_eq(
-                query,
-                &mut has_condition,
-                "",
-                "from_delegate",
-                from_delegate,
-            );
-        }
-        if let Some(to_delegate) = &where_.to_delegate_eq {
-            push_column_eq(query, &mut has_condition, "", "to_delegate", to_delegate);
-        }
-        if let Some(is_current) = where_.is_current_eq {
-            push_column_eq(query, &mut has_condition, "", "is_current", is_current);
-        }
+        push_delegate_filters(query, &mut has_condition, where_, "");
         if !has_condition {
             query.push("TRUE");
         }
+    }
+}
+
+fn push_delegate_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    where_: &'a DelegateWhereInput,
+    table_alias: &str,
+) {
+    push_scope_filters(query, has_condition, &where_.scope, table_alias);
+    if let Some(from_delegate) = &where_.from_delegate_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "from_delegate",
+            from_delegate,
+        );
+    }
+    if let Some(to_delegate) = &where_.to_delegate_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "to_delegate",
+            to_delegate,
+        );
+    }
+    if let Some(is_current) = where_.is_current_eq {
+        push_column_eq(query, has_condition, table_alias, "is_current", is_current);
+    }
+    if let Some(power) = where_.power_lt {
+        push_and(query, has_condition);
+        push_qualified_column(query, table_alias, "power");
+        query.push(" < ").push_bind(power).push("::numeric");
+    }
+    if let Some(or) = &where_.or {
+        push_or_group(query, has_condition, or, |query, has_condition, filter| {
+            push_delegate_filters(query, has_condition, filter, table_alias);
+        });
     }
 }
 
