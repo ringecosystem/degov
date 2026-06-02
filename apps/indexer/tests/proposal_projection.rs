@@ -35,6 +35,28 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
     assert_eq!(batch.proposals.len(), 1);
     assert_eq!(batch.proposal_actions.len(), 2);
     assert_eq!(batch.proposal_state_epochs.len(), 2);
+    assert_eq!(batch.data_metrics.len(), 1);
+    let metric = &batch.data_metrics[0];
+    assert_eq!(metric.id, "evm:1:10:0xtx10:2:7");
+    assert_eq!(metric.chain_id, 1);
+    assert_eq!(metric.dao_code, "unit-dao");
+    assert_eq!(
+        metric.governor_address,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
+    assert_eq!(
+        metric.contract_address.as_deref(),
+        Some("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    );
+    assert_eq!(metric.log_index, Some(7));
+    assert_eq!(metric.transaction_index, Some(2));
+    assert_eq!(metric.proposals_count, Some(1));
+    assert_eq!(metric.votes_count, Some(0));
+    assert_eq!(metric.votes_with_params_count, Some(0));
+    assert_eq!(metric.votes_without_params_count, Some(0));
+    assert_eq!(metric.votes_weight_for_sum.as_deref(), Some("0"));
+    assert_eq!(metric.votes_weight_against_sum.as_deref(), Some("0"));
+    assert_eq!(metric.votes_weight_abstain_sum.as_deref(), Some("0"));
 
     let proposal = &batch.proposals[0];
     assert_eq!(proposal.id, "evm:1:10:0xtx10:2:7");

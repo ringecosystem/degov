@@ -16,7 +16,8 @@ use degov_datalens_indexer::{
     BatchReadPlanConfig, ChainContracts, DecodedGovernorEvent, IndexerProjectionBatch,
     IndexerRunnerStore, IndexerRunnerTransaction, NormalizedEvmLog, PostgresIndexerRunnerStore,
     ProposalCreatedEvent, ProposalExtendedEvent, ProposalProjectionContext,
-    ProposalProjectionEvent, ProposalQueuedEvent, project_proposal_events,
+    ProposalProjectionEvent, ProposalQueuedEvent, VoteCastEvent, VoteProjectionContext,
+    VoteProjectionEvent, project_proposal_events, project_vote_events,
 };
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
@@ -185,11 +186,12 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
         let mut transaction = store
             .begin_transaction()
             .map_err(|error| format!("begin lifecycle transaction failed: {error}"))?;
-        transaction.apply_projection_batch(&IndexerProjectionBatch {
-            proposal: Some(lifecycle_batch),
-            ..IndexerProjectionBatch::default()
-        })
-        .map_err(|error| format!("apply lifecycle batch failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(lifecycle_batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply lifecycle batch failed: {error}"))?;
         transaction
             .commit()
             .map_err(|error| format!("commit lifecycle transaction failed: {error}"))?;
@@ -198,11 +200,12 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
         let mut transaction = store
             .begin_transaction()
             .map_err(|error| format!("begin raw transaction failed: {error}"))?;
-        transaction.apply_projection_batch(&IndexerProjectionBatch {
-            proposal: Some(raw_batch),
-            ..IndexerProjectionBatch::default()
-        })
-        .map_err(|error| format!("apply raw batch failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(raw_batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply raw batch failed: {error}"))?;
         transaction
             .commit()
             .map_err(|error| format!("commit raw transaction failed: {error}"))?;
@@ -231,6 +234,111 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
         .await?;
     assert_eq!(action.get::<String, _>("proposal_id"), raw_ref);
     assert_eq!(action.get::<String, _>("proposal_ref"), raw_ref);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_data_metric_event_rows_are_idempotent_and_keep_global()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_global_metric(&database.pool).await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let proposal_batch = project_proposal_events(
+        &proposal_projection_context(),
+        vec![ProposalProjectionEvent {
+            log: normalized_log("0000000002-proposal", 2, 0, 7),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Proposal title\n\nProposal body".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+    let vote_batch = project_vote_events(
+        &vote_projection_context(),
+        vec![VoteProjectionEvent {
+            log: normalized_log("0000000003-vote", 3, 0, 8),
+            event: DecodedGovernorEvent::VoteCast(VoteCastEvent {
+                voter: "0x4444444444444444444444444444444444444444".to_owned(),
+                proposal_id: "42".to_owned(),
+                support: 1,
+                weight: "77".to_owned(),
+                reason: "yes".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("vote projection failed: {error:?}"))?;
+
+    for _ in 0..2 {
+        let mut transaction = store
+            .begin_transaction()
+            .map_err(|error| format!("begin transaction failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(proposal_batch.clone()),
+                vote: Some(vote_batch.clone()),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply projection batch failed: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("commit transaction failed: {error}"))?;
+    }
+
+    let rows = sqlx::query(
+        "SELECT id, proposals_count, votes_count, votes_without_params_count,
+                votes_weight_for_sum::TEXT AS votes_weight_for_sum,
+                power_sum::TEXT AS power_sum, member_count, contract_address,
+                log_index, transaction_index
+         FROM data_metric
+         ORDER BY id ASC",
+    )
+    .fetch_all(&database.pool)
+    .await?;
+
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].get::<String, _>("id"), "0000000002-proposal");
+    assert_eq!(rows[0].get::<Option<i32>, _>("proposals_count"), Some(1));
+    assert_eq!(rows[0].get::<Option<i32>, _>("votes_count"), Some(0));
+    assert_eq!(
+        rows[0].get::<Option<String>, _>("power_sum"),
+        Some("150".to_owned())
+    );
+    assert_eq!(rows[0].get::<Option<i32>, _>("member_count"), Some(2));
+    assert_eq!(
+        rows[0].get::<Option<String>, _>("contract_address"),
+        Some(GOVERNOR.to_owned())
+    );
+    assert_eq!(rows[0].get::<Option<i32>, _>("log_index"), Some(7));
+    assert_eq!(rows[0].get::<Option<i32>, _>("transaction_index"), Some(0));
+    assert_eq!(rows[1].get::<String, _>("id"), "0000000003-vote");
+    assert_eq!(rows[1].get::<Option<i32>, _>("proposals_count"), Some(0));
+    assert_eq!(rows[1].get::<Option<i32>, _>("votes_count"), Some(1));
+    assert_eq!(
+        rows[1].get::<Option<i32>, _>("votes_without_params_count"),
+        Some(1)
+    );
+    assert_eq!(
+        rows[1].get::<Option<String>, _>("votes_weight_for_sum"),
+        Some("77".to_owned())
+    );
+    assert_eq!(rows[2].get::<String, _>("id"), "global");
+    assert_eq!(rows[2].get::<Option<i32>, _>("votes_count"), Some(1));
+
+    let global = sqlx::query("SELECT id FROM data_metric WHERE id = 'global'")
+        .fetch_one(&database.pool)
+        .await?;
+    assert_eq!(global.get::<String, _>("id"), "global");
 
     database.cleanup().await?;
 
@@ -763,6 +871,37 @@ fn proposal_projection_context() -> ProposalProjectionContext {
             multicall_batch_size: 10,
         },
     }
+}
+
+fn vote_projection_context() -> VoteProjectionContext {
+    VoteProjectionContext {
+        dao_code: "demo-dao".to_owned(),
+        governor_address: GOVERNOR.to_owned(),
+        contracts: ChainContracts {
+            governor: GOVERNOR.to_owned(),
+            governor_token: TOKEN.to_owned(),
+            timelock: TIMELOCK.to_owned(),
+        },
+        read_plan_config: BatchReadPlanConfig {
+            max_concurrency: 4,
+            multicall_batch_size: 10,
+        },
+    }
+}
+
+async fn seed_global_metric(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO data_metric (
+            id, chain_id, dao_code, governor_address, token_address, power_sum, member_count
+         )
+         VALUES ('global', 1, 'demo-dao', $1, $2, 150::NUMERIC(78, 0), 2)",
+    )
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 fn normalized_log(

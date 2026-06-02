@@ -3,8 +3,8 @@ use std::{fmt, future::Future};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
 use crate::{
-    CheckpointRepository, ContributorVoteSignalWrite, DelegateChangedWrite, DelegateRollingWrite,
-    DelegateVotesChangedWrite, GovernanceTokenStandard, IndexerCheckpoint,
+    CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite, DelegateChangedWrite,
+    DelegateRollingWrite, DelegateVotesChangedWrite, GovernanceTokenStandard, IndexerCheckpoint,
     IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
     IndexerRunnerTransaction, PowerReconcileCandidate, ProposalActionWrite, ProposalCreatedWrite,
     ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
@@ -195,6 +195,9 @@ async fn write_proposal_batch(
     for row in &batch.proposal_deadline_extensions {
         insert_proposal_deadline_extension(transaction, row).await?;
     }
+    for row in &batch.data_metrics {
+        upsert_event_data_metric(transaction, row).await?;
+    }
 
     Ok(())
 }
@@ -217,6 +220,9 @@ async fn write_vote_batch(
     }
     for row in &batch.contributor_vote_signals {
         upsert_contributor_vote_signal(transaction, row).await?;
+    }
+    for row in &batch.data_metrics {
+        upsert_event_data_metric(transaction, row).await?;
     }
     refresh_vote_data_metric(transaction, &batch.contributor_vote_signals).await?;
 
@@ -981,6 +987,122 @@ async fn upsert_contributor_vote_signal(
     Ok(())
 }
 
+#[derive(Clone, Debug, Default)]
+struct DataMetricSnapshot {
+    token_address: Option<String>,
+    power_sum: Option<String>,
+    member_count: Option<i32>,
+}
+
+async fn upsert_event_data_metric(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &DataMetricWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let snapshot = read_global_data_metric_snapshot(transaction, row).await?;
+    let token_address = row.token_address.clone().or(snapshot.token_address.clone());
+    let power_sum = row.power_sum.clone().or(snapshot.power_sum);
+    let member_count = match row.member_count {
+        Some(value) => Some(i64_to_i32(value, "data_metric.member_count")?),
+        None => snapshot.member_count,
+    };
+
+    sqlx::query(
+        "INSERT INTO data_metric (
+            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            log_index, transaction_index, proposals_count, votes_count, votes_with_params_count,
+            votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
+            votes_weight_abstain_sum, power_sum, member_count
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15::NUMERIC(78, 0),
+            $16::NUMERIC(78, 0), $17
+         )
+         ON CONFLICT (id) DO UPDATE
+         SET chain_id = EXCLUDED.chain_id,
+             dao_code = EXCLUDED.dao_code,
+             governor_address = EXCLUDED.governor_address,
+             token_address = EXCLUDED.token_address,
+             contract_address = EXCLUDED.contract_address,
+             log_index = EXCLUDED.log_index,
+             transaction_index = EXCLUDED.transaction_index,
+             proposals_count = EXCLUDED.proposals_count,
+             votes_count = EXCLUDED.votes_count,
+             votes_with_params_count = EXCLUDED.votes_with_params_count,
+             votes_without_params_count = EXCLUDED.votes_without_params_count,
+             votes_weight_for_sum = EXCLUDED.votes_weight_for_sum,
+             votes_weight_against_sum = EXCLUDED.votes_weight_against_sum,
+             votes_weight_abstain_sum = EXCLUDED.votes_weight_abstain_sum,
+             power_sum = EXCLUDED.power_sum,
+             member_count = EXCLUDED.member_count",
+    )
+    .bind(&row.id)
+    .bind(row.chain_id)
+    .bind(&row.dao_code)
+    .bind(&row.governor_address)
+    .bind(&token_address)
+    .bind(&row.contract_address)
+    .bind(optional_u64_to_i32(row.log_index, "data_metric.log_index")?)
+    .bind(optional_u64_to_i32(
+        row.transaction_index,
+        "data_metric.transaction_index",
+    )?)
+    .bind(optional_i64_to_i32(
+        row.proposals_count,
+        "data_metric.proposals_count",
+    )?)
+    .bind(optional_i64_to_i32(
+        row.votes_count,
+        "data_metric.votes_count",
+    )?)
+    .bind(optional_i64_to_i32(
+        row.votes_with_params_count,
+        "data_metric.votes_with_params_count",
+    )?)
+    .bind(optional_i64_to_i32(
+        row.votes_without_params_count,
+        "data_metric.votes_without_params_count",
+    )?)
+    .bind(&row.votes_weight_for_sum)
+    .bind(&row.votes_weight_against_sum)
+    .bind(&row.votes_weight_abstain_sum)
+    .bind(&power_sum)
+    .bind(member_count)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn read_global_data_metric_snapshot(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &DataMetricWrite,
+) -> Result<DataMetricSnapshot, PostgresIndexerRunnerStoreError> {
+    let snapshot = sqlx::query(
+        "SELECT token_address, power_sum::TEXT AS power_sum, member_count
+         FROM data_metric
+         WHERE id = $1 AND chain_id = $2 AND governor_address = $3 AND dao_code IS NOT DISTINCT FROM $4",
+    )
+    .bind(data_metric_id(
+        row.chain_id,
+        &row.governor_address,
+        &row.dao_code,
+    ))
+    .bind(row.chain_id)
+    .bind(&row.governor_address)
+    .bind(&row.dao_code)
+    .fetch_optional(&mut **transaction)
+    .await?;
+
+    Ok(snapshot
+        .map(|snapshot| DataMetricSnapshot {
+            token_address: snapshot.get("token_address"),
+            power_sum: snapshot.get("power_sum"),
+            member_count: snapshot.get("member_count"),
+        })
+        .unwrap_or_default())
+}
+
 async fn refresh_vote_data_metric(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[ContributorVoteSignalWrite],
@@ -1006,7 +1128,7 @@ async fn refresh_vote_data_metric(
             COALESCE(sum(CASE WHEN support = 2 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0)
          FROM vote_cast_group
          WHERE chain_id = $2 AND governor_address = $4 AND dao_code = $3
-         ON CONFLICT ON CONSTRAINT data_metric_lookup_unique DO UPDATE
+         ON CONFLICT (id) DO UPDATE
          SET votes_count = EXCLUDED.votes_count,
              votes_with_params_count = EXCLUDED.votes_with_params_count,
              votes_without_params_count = EXCLUDED.votes_without_params_count,
@@ -1781,7 +1903,7 @@ async fn increment_member_count(
             id, chain_id, dao_code, governor_address, token_address, member_count
          )
          VALUES ($1, $2, $3, $4, $5, 1)
-         ON CONFLICT ON CONSTRAINT data_metric_lookup_unique DO UPDATE
+         ON CONFLICT (id) DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              member_count = COALESCE(data_metric.member_count, 0) + 1",
     )
@@ -2401,6 +2523,20 @@ fn i64_to_i32(value: i64, field: &str) -> Result<i32, PostgresIndexerRunnerStore
     })
 }
 
+fn optional_i64_to_i32(
+    value: Option<i64>,
+    field: &str,
+) -> Result<Option<i32>, PostgresIndexerRunnerStoreError> {
+    value.map(|value| i64_to_i32(value, field)).transpose()
+}
+
+fn optional_u64_to_i32(
+    value: Option<u64>,
+    field: &str,
+) -> Result<Option<i32>, PostgresIndexerRunnerStoreError> {
+    value.map(|value| u64_to_i32(value, field)).transpose()
+}
+
 fn usize_to_i32(value: usize, field: &str) -> Result<i32, PostgresIndexerRunnerStoreError> {
     i32::try_from(value).map_err(|_| {
         PostgresIndexerRunnerStoreError::new(format!("{field} value {value} exceeds INTEGER"))
@@ -2412,5 +2548,6 @@ fn u64_to_string(value: u64) -> String {
 }
 
 fn data_metric_id(chain_id: i32, governor_address: &str, dao_code: &str) -> String {
-    format!("{chain_id}:{governor_address}:{dao_code}")
+    let _ = (chain_id, governor_address, dao_code);
+    "global".to_owned()
 }

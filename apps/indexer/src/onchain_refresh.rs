@@ -765,7 +765,7 @@ async fn refresh_data_metric(
             count(*)::INTEGER
          FROM contributor
          WHERE chain_id = $2 AND governor_address = $4 AND dao_code IS NOT DISTINCT FROM $3
-         ON CONFLICT ON CONSTRAINT data_metric_lookup_unique DO UPDATE
+         ON CONFLICT (id) DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              power_sum = EXCLUDED.power_sum,
              member_count = EXCLUDED.member_count",
@@ -830,10 +830,8 @@ fn truncate_error(error: &str) -> String {
 }
 
 fn data_metric_id(chain_id: i32, governor_address: &str, dao_code: Option<&str>) -> String {
-    format!(
-        "{chain_id}:{governor_address}:{}",
-        dao_code.unwrap_or_default()
-    )
+    let _ = (chain_id, governor_address, dao_code);
+    "global".to_owned()
 }
 
 fn onchain_refresh_checkpoint_scope(task: &OnchainRefreshTask) -> String {

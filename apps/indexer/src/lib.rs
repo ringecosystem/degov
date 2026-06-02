@@ -2,6 +2,7 @@ pub mod chain_tool;
 pub mod checkpoint;
 pub mod config;
 pub mod dao_event;
+pub mod data_metric;
 pub mod datalens;
 pub mod error;
 pub mod evm_log;
@@ -41,6 +42,7 @@ pub use dao_event::{
     RoleAdminChangedEvent, TimelockChangeEvent, TimelockOperationIdEvent, TokenTransferEvent,
     UnsupportedTopicEvent, VoteCastEvent, VoteCastWithParamsEvent, decode_dao_log,
 };
+pub use data_metric::DataMetricWrite;
 pub use datalens::{
     DatalensNativeClient, DatalensNativeReader, ServiceReadiness, verify_datalens_service,
 };

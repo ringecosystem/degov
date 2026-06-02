@@ -395,7 +395,7 @@ async fn seed_data_metric(pool: &PgPool, power_sum: &str) -> Result<(), sqlx::Er
             member_count, votes_count
          )
          VALUES (
-            '46:0x1111111111111111111111111111111111111111:demo-dao',
+            'global',
             46, 'demo-dao', $1, $2, $3::NUMERIC(78, 0), 1, 7
          )",
     )

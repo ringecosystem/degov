@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::{
     BatchReadPlanConfig, ChainContracts, ChainReadExecutionReport, ChainReadMethod, ChainReadPlan,
-    ChainReadPlanBuilder, ChainReadReason, ChainReadValue, DecodedGovernorEvent, NormalizedEvmLog,
-    ProposalCreatedEvent, ProposalExtendedEvent, ProposalQueuedEvent, derive_proposal_metadata,
+    ChainReadPlanBuilder, ChainReadReason, ChainReadValue, DataMetricWrite, DecodedGovernorEvent,
+    NormalizedEvmLog, ProposalCreatedEvent, ProposalExtendedEvent, ProposalQueuedEvent,
+    derive_proposal_metadata,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,6 +33,7 @@ pub struct ProposalProjectionBatch {
     pub proposal_actions: Vec<ProposalActionWrite>,
     pub proposal_state_epochs: Vec<ProposalStateEpochWrite>,
     pub proposal_deadline_extensions: Vec<ProposalDeadlineExtensionWrite>,
+    pub data_metrics: Vec<DataMetricWrite>,
     pub chain_read_plan: ChainReadPlan,
 }
 
@@ -447,6 +449,7 @@ pub fn project_proposal_events(
     let mut proposal_actions = BTreeMap::new();
     let mut proposal_state_epochs = BTreeMap::new();
     let mut proposal_deadline_extensions = BTreeMap::new();
+    let mut data_metrics = BTreeMap::new();
     let mut proposal_refs = BTreeMap::new();
 
     let mut ordered = deduped.into_values().collect::<Vec<_>>();
@@ -477,6 +480,8 @@ pub fn project_proposal_events(
                 let common = common(context, &governor_address, &input.log, &event.proposal_id);
                 let row = proposal_created_write(&input.log.id, common.clone(), event);
                 proposal_created.insert(row.id.clone(), row);
+                let metric = proposal_data_metric(&input.log.id, &common);
+                data_metrics.insert(metric.id.clone(), metric);
 
                 let proposal = proposal_write(common.clone(), event);
                 proposal_refs.insert(proposal_lookup_key(&common), proposal.id.clone());
@@ -640,6 +645,7 @@ pub fn project_proposal_events(
         proposal_actions: proposal_actions.into_values().collect(),
         proposal_state_epochs,
         proposal_deadline_extensions: proposal_deadline_extensions.into_values().collect(),
+        data_metrics: data_metrics.into_values().collect(),
         chain_read_plan: builder.build(),
     })
 }
@@ -774,6 +780,28 @@ fn proposal_id_write(log_id: &str, common: ProposalEventCommon) -> ProposalIdWri
         id: log_id.to_owned(),
         common,
         proposal_id,
+    }
+}
+
+fn proposal_data_metric(log_id: &str, common: &ProposalEventCommon) -> DataMetricWrite {
+    DataMetricWrite {
+        id: log_id.to_owned(),
+        chain_id: common.chain_id,
+        dao_code: common.dao_code.clone(),
+        governor_address: common.governor_address.clone(),
+        token_address: None,
+        contract_address: Some(common.contract_address.clone()),
+        log_index: Some(common.log_index),
+        transaction_index: Some(common.transaction_index),
+        proposals_count: Some(1),
+        votes_count: Some(0),
+        votes_with_params_count: Some(0),
+        votes_without_params_count: Some(0),
+        votes_weight_for_sum: Some("0".to_owned()),
+        votes_weight_against_sum: Some("0".to_owned()),
+        votes_weight_abstain_sum: Some("0".to_owned()),
+        power_sum: None,
+        member_count: None,
     }
 }
 

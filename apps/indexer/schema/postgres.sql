@@ -764,12 +764,7 @@ CREATE TABLE IF NOT EXISTS data_metric (
   votes_weight_against_sum NUMERIC(78, 0),
   votes_weight_abstain_sum NUMERIC(78, 0),
   power_sum NUMERIC(78, 0),
-  member_count INTEGER,
-  CONSTRAINT data_metric_lookup_unique UNIQUE NULLS NOT DISTINCT (
-    chain_id,
-    governor_address,
-    dao_code
-  )
+  member_count INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS data_metric_lookup_idx
