@@ -4,11 +4,28 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(
+  process.env.DEGOV_RUST_CONVENTIONS_ROOT ?? path.join(import.meta.dirname, ".."),
+);
 const ignoredDirectories = new Set(["target", "node_modules"]);
+const tracingMacroNames = new Set([
+  "debug",
+  "debug_span",
+  "enabled",
+  "error",
+  "error_span",
+  "event",
+  "info",
+  "info_span",
+  "span",
+  "trace",
+  "trace_span",
+  "warn",
+  "warn_span",
+]);
 const forbiddenRustPatterns = [
   {
-    pattern: /\btracing::(?:trace|debug|info|warn|error|event|span)!\s*\(/,
+    pattern: /\btracing::[A-Za-z_]\w*!\s*\(/,
     message:
       "library Rust files must use log facade macros instead of tracing macros",
   },
@@ -22,7 +39,7 @@ const forbiddenRustPatterns = [
       "tracing_subscriber initialization belongs only in binary entrypoints",
   },
   {
-    pattern: /\banyhow::(?:Error|Result)\b/,
+    pattern: /\banyhow::/,
     message: "library Rust APIs must expose typed thiserror errors, not anyhow",
   },
 ];
@@ -76,6 +93,95 @@ function isBinaryEntrypoint(filePath) {
   );
 }
 
+function getTracingImports(source) {
+  const macroNames = new Set();
+  const instrumentNames = new Set();
+  const simpleImportPattern =
+    /\buse\s+tracing::([A-Za-z_]\w*|\*)(?:\s+as\s+([A-Za-z_]\w*))?\s*;/g;
+  const groupedImportPattern = /\buse\s+tracing::\{([^}]+)\}\s*;/g;
+  let match;
+
+  while ((match = simpleImportPattern.exec(source)) !== null) {
+    const [, importedName, alias] = match;
+
+    if (importedName === "*") {
+      return {
+        instrumentNames: new Set(["instrument"]),
+        macroNames: new Set(tracingMacroNames),
+      };
+    }
+
+    if (tracingMacroNames.has(importedName)) {
+      macroNames.add(alias ?? importedName);
+    }
+
+    if (importedName === "instrument") {
+      instrumentNames.add(alias ?? importedName);
+    }
+  }
+
+  while ((match = groupedImportPattern.exec(source)) !== null) {
+    const [, group] = match;
+
+    for (const rawImport of group.split(",")) {
+      const importMatch = rawImport
+        .trim()
+        .match(/^([A-Za-z_]\w*|\*)(?:\s+as\s+([A-Za-z_]\w*))?$/);
+
+      if (!importMatch) {
+        continue;
+      }
+
+      const [, importedName, alias] = importMatch;
+
+      if (importedName === "*") {
+        return {
+          instrumentNames: new Set(["instrument"]),
+          macroNames: new Set(tracingMacroNames),
+        };
+      }
+
+      if (tracingMacroNames.has(importedName)) {
+        macroNames.add(alias ?? importedName);
+      }
+
+      if (importedName === "instrument") {
+        instrumentNames.add(alias ?? importedName);
+      }
+    }
+  }
+
+  return { instrumentNames, macroNames };
+}
+
+function hasImportedTracingMacro(source) {
+  const { macroNames } = getTracingImports(source);
+
+  for (const name of macroNames) {
+    const macroPattern = new RegExp(`\\b${name}!\\s*\\(`);
+
+    if (macroPattern.test(source)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasImportedTracingInstrument(source) {
+  const { instrumentNames } = getTracingImports(source);
+
+  for (const name of instrumentNames) {
+    const instrumentPattern = new RegExp(`#\\s*\\[\\s*${name}\\b`);
+
+    if (instrumentPattern.test(source)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function checkRustFiles() {
   const failures = [];
   const rustFiles = await walk(root, (fileName) => fileName.endsWith(".rs"));
@@ -88,6 +194,16 @@ async function checkRustFiles() {
       if (pattern.test(source) && !isBinaryEntrypoint(filePath)) {
         failures.push(`${relative}: ${message}`);
       }
+    }
+
+    if (hasImportedTracingMacro(source) && !isBinaryEntrypoint(filePath)) {
+      failures.push(
+        `${relative}: library Rust files must use log facade macros instead of imported tracing macros`,
+      );
+    }
+
+    if (hasImportedTracingInstrument(source) && !isBinaryEntrypoint(filePath)) {
+      failures.push(`${relative}: library Rust files must not use #[instrument]`);
     }
   }
 
@@ -104,7 +220,13 @@ async function checkCargoFiles() {
   for (const filePath of cargoFiles) {
     const source = await readFile(filePath, "utf8");
 
-    if (/(^|\n)\s*ethers\s*=|name\s*=\s*"ethers"/.test(source)) {
+    if (
+      /(^|\n)\s*(?:"ethers(?:-[\w-]+)?"|ethers(?:-[\w-]+)?)\s*=/.test(
+        source,
+      ) ||
+      /\bpackage\s*=\s*"ethers(?:-[\w-]+)?"/.test(source) ||
+      /\bname\s*=\s*"ethers(?:-[\w-]+)?"/.test(source)
+    ) {
       failures.push(
         `${path.relative(root, filePath)}: Rust indexer must use alloy, not ethers`,
       );
