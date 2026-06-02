@@ -4,12 +4,17 @@
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
+    "audit:accuracy": "node apps/indexer/scripts/indexer-accuracy-audit.mjs",
+    "audit:diagnose": "node apps/indexer/scripts/indexer-accuracy-diagnose.mjs",
+    "audit:diagnose-address": "pnpm run audit:diagnose",
+    "audit:reconcile": "node apps/indexer/scripts/indexer-reconcile-diagnose.mjs",
     "indexer": "cargo run -p degov-datalens-indexer --locked -- run",
     "indexer:build": "cargo build -p degov-datalens-indexer --locked",
     "indexer:graphql": "cargo run -p degov-datalens-indexer --locked -- graphql",
     "indexer:migrate": "cargo run -p degov-datalens-indexer --locked -- migrate",
     "indexer:smoke-datalens": "cargo run -p degov-datalens-indexer --locked -- smoke-datalens",
-    "indexer:worker": "cargo run -p degov-datalens-indexer --locked -- worker"
+    "indexer:worker": "cargo run -p degov-datalens-indexer --locked -- worker",
+    "test:indexer-scripts": "node apps/indexer/scripts/indexer-diagnostics.test.mjs && node apps/indexer/scripts/indexer-accuracy-audit.test.mjs && node apps/indexer/scripts/indexer-accuracy-diagnose.test.mjs && node apps/indexer/scripts/indexer-reconcile-diagnose.test.mjs"
   },
   "pnpm": {
     "packageExtensions": {

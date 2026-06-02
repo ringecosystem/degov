@@ -14,6 +14,10 @@ test:
     node ./scripts/check-rust-conventions.mjs
     node ./scripts/check-postgres-schema.mjs
     node ./scripts/runtime-packaging.test.mjs
+    node ./scripts/indexer-diagnostics.test.mjs
+    node ./scripts/indexer-accuracy-audit.test.mjs
+    node ./scripts/indexer-accuracy-diagnose.test.mjs
+    node ./scripts/indexer-reconcile-diagnose.test.mjs
     cargo test --locked
     node ./scripts/check-rust-conventions.test.mjs
     node ./scripts/compatibility-preflight.test.mjs
@@ -23,7 +27,10 @@ test-unit:
     cargo test --locked
 
 test-accuracy:
-    @just test
+    node ./scripts/indexer-diagnostics.test.mjs
+    node ./scripts/indexer-accuracy-audit.test.mjs
+    node ./scripts/indexer-accuracy-diagnose.test.mjs
+    node ./scripts/indexer-reconcile-diagnose.test.mjs
 
 test-integration:
     @just test
