@@ -209,13 +209,16 @@ const result = await auditTarget(
             ? "30"
             : "12",
       getPastVotes: address.endsWith("cc") ? "250" : null,
+      getPastVotesError: address.endsWith("aa")
+        ? "getPastVotes execution reverted"
+        : null,
     }),
   },
 );
 
 assert.equal(result.summary.proposals.sampled, 2);
 assert.equal(result.summary.delegates.sampled, 3);
-assert.equal(result.mismatches.length, 7);
+assert.equal(result.mismatches.length, 8);
 
 assert.deepEqual(
   result.mismatches.map((entry) => [entry.scope, entry.field, entry.conclusion]),
@@ -224,6 +227,7 @@ assert.deepEqual(
     ["proposal", "quorum", "tally-bug"],
     ["proposal", "state", "chain-incompatibility"],
     ["proposal", "identity", "degov-bug"],
+    ["delegate", "historicalVotingPower", "chain-incompatibility"],
     ["delegate", "votingPower", "tally-bug"],
     ["delegate", "historicalVotingPower", "expected-representation-difference"],
     ["delegate", "identity", "degov-bug"],
@@ -239,14 +243,17 @@ assert.equal(result.mismatches[3].proposalId, "44");
 assert.equal(result.mismatches[3].degovValue, null);
 assert.equal(result.mismatches[3].tallyValue, "44");
 assert.equal(result.mismatches[3].onchainValue, "44");
-assert.equal(result.mismatches[4].address, "0x00000000000000000000000000000000000000bb");
-assert.equal(result.mismatches[4].degovValue, "200");
-assert.equal(result.mismatches[4].tallyValue, "999");
-assert.equal(result.mismatches[4].onchainValue, "200");
-assert.equal(result.mismatches[5].degovValue, "not-represented");
-assert.equal(result.mismatches[5].tallyValue, "not-represented");
-assert.equal(result.mismatches[5].onchainValue, "250");
-assert.equal(result.mismatches[6].address, "0x00000000000000000000000000000000000000dd");
+assert.equal(result.mismatches[4].address, "0x00000000000000000000000000000000000000aa");
+assert.equal(result.mismatches[4].onchainValue, "unavailable");
+assert.equal(result.mismatches[4].onchainError, "getPastVotes execution reverted");
+assert.equal(result.mismatches[5].address, "0x00000000000000000000000000000000000000bb");
+assert.equal(result.mismatches[5].degovValue, "200");
+assert.equal(result.mismatches[5].tallyValue, "999");
+assert.equal(result.mismatches[5].onchainValue, "200");
+assert.equal(result.mismatches[6].degovValue, "not-represented");
+assert.equal(result.mismatches[6].tallyValue, "not-represented");
+assert.equal(result.mismatches[6].onchainValue, "250");
+assert.equal(result.mismatches[7].address, "0x00000000000000000000000000000000000000dd");
 
 const markdown = buildMarkdownReport({
   generatedAt: "2026-06-02T00:00:00.000Z",
@@ -255,7 +262,7 @@ const markdown = buildMarkdownReport({
     totalMismatches: result.mismatches.length,
     tallyBug: 3,
     degovBug: 2,
-    chainIncompatibility: 1,
+    chainIncompatibility: 2,
     expectedRepresentationDifference: 1,
     queryErrors: 0,
   },

@@ -1,7 +1,7 @@
 # Tally Comparison E2E Runbook
 
-Purpose: repeat the DeGov staging-vs-Tally data comparison for proposals,
-delegates, and voting power.
+Purpose: repeat the DeGov staging-vs-Tally data comparison for proposals and
+sampled delegate voting power.
 
 Read this when validating a DAO after an indexer rebuild, database reset, or
 onchain power refresh change. This does not cover how to deploy the indexer or
@@ -16,7 +16,7 @@ The comparison checks:
   and quorum where available
 - delegate voting power and delegator count by sampled rank
 - delegate token balance where Tally exposes it
-- aggregate delegated voting power
+- DeGov aggregate voting-power metrics as report context
 - indexer sync height
 - direct onchain `state`, `proposalSnapshot`, `proposalDeadline`, `quorum`,
   `getVotes`, `balanceOf`, and historical vote reads where available
@@ -164,7 +164,8 @@ query($ids: [String!]) {
     is unsupported, reverts, or disagrees with both data sources.
   - `expected-representation-difference`: the values are not directly
     comparable because a source does not expose the same representation.
-- Compare aggregate power as both raw difference and percentage difference.
+- Include DeGov aggregate power metrics as context when available. The script
+  does not compare those metrics against a Tally aggregate.
 - Sample several proposal ranges: latest, middle, and oldest.
 - Sample delegates in multiple pages, for example top 80 by Tally voting power.
 
@@ -197,11 +198,9 @@ Delegates:
 - historical vote findings:
 - delegator-count mismatches:
 
-Aggregate power:
-- DeGov:
-- Tally:
-- raw diff:
-- percent diff:
+DeGov aggregate context:
+- powerSum:
+- memberCount:
 
 Findings:
 - ...
@@ -221,6 +220,6 @@ read limitation with the finding. If the read succeeds but neither DeGov nor
 Tally exposes a historical delegate-power row for that sampled snapshot, treat
 the finding as `expected-representation-difference`.
 
-If aggregate power differs while top delegate samples match, widen delegate
-sampling before treating it as a product issue. Tally aggregate fields may have
-slightly different inclusion rules.
+If DeGov aggregate power looks inconsistent with sampled delegates, widen
+delegate sampling before treating it as a product issue. The current script does
+not adjudicate aggregate differences against Tally aggregate fields.

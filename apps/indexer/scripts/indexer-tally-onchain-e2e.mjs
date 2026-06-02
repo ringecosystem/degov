@@ -624,11 +624,11 @@ function classifyConclusion({
   onchainError = null,
   representationDifference = false,
 }) {
-  if (representationDifference) {
-    return "expected-representation-difference";
-  }
   if (onchainError) {
     return "chain-incompatibility";
+  }
+  if (representationDifference) {
+    return "expected-representation-difference";
   }
   if (onchainValue !== null && onchainValue !== undefined) {
     if (degovValue === null && tallyValue === onchainValue) {
@@ -793,7 +793,6 @@ function compareDelegateHistoricalVotes(target, delegate, tally, onchain, mismat
         tallyValue: tally?.historicalVotingPower ?? "not-represented",
         onchainValue: "unavailable",
         onchainError: onchain.getPastVotesError,
-        representationDifference: true,
       });
     }
     return;
