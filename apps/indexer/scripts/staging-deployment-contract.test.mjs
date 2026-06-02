@@ -6,12 +6,16 @@ import path from "node:path";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..", "..", "..");
 
-const [contractJson, releaseYaml] = await Promise.all([
+const [contractJson, releaseYaml, runbookMarkdown] = await Promise.all([
   readFile(
     path.join(repositoryRoot, "deploy/staging/datalens-indexer-daos.json"),
     "utf8",
   ),
   readFile(path.join(repositoryRoot, ".github/workflows/release.yml"), "utf8"),
+  readFile(
+    path.join(repositoryRoot, "docs/runbook/datalens-staging-deployment.md"),
+    "utf8",
+  ),
 ]);
 
 const contract = JSON.parse(contractJson);
@@ -60,6 +64,7 @@ for (const dao of contract.daos) {
   assert.equal(dao.env.DATALENS_APPLICATION, contract.datalens.application);
   assert.equal(dao.env.DATALENS_DATASET_FAMILY, contract.datalens.dataset.family);
   assert.equal(dao.env.DATALENS_DATASET_NAME, contract.datalens.dataset.name);
+  assert.equal(dao.env.DATALENS_QUERY_ROW_LIMIT, undefined);
   assert.equal(dao.env.DATALENS_CHAIN_FAMILY, "evm");
   assert.ok(dao.env.DATALENS_CHAIN_NAME);
   assert.ok(Number.isInteger(dao.env.DATALENS_CHAIN_ID));
@@ -75,6 +80,21 @@ assert.match(
   releaseYaml,
   /-\s+indexer\b/,
   "release workflow must publish the Datalens-native indexer image",
+);
+
+assert.deepEqual(contract.requiredRuntimeChecks, [
+  "pod-readiness",
+  "graphql-availability",
+]);
+assert.deepEqual(contract.futureRuntimeChecks, [
+  "db-checkpoint-progress",
+  "worker-task-status",
+  "page-sync-percentage",
+]);
+assert.doesNotMatch(
+  runbookMarkdown,
+  /pnpm run audit:tally-onchain --[\s\S]*?--database-url/,
+  "Tally/onchain audit does not accept --database-url",
 );
 
 console.log("Staging deployment contract check passed");

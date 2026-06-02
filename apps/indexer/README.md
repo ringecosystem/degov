@@ -12,9 +12,9 @@ the old processor architecture.
 The package now contains the initial Rust configuration and Datalens client
 boundary for the upcoming runtime. It validates the deployed Datalens service
 base endpoint, application identity, bearer token, timeout, finality mode, chain
-identity, dataset key, and query limits at startup. The bearer token is loaded
-from environment or secret-backed configuration and is redacted by config
-formatting.
+identity, dataset key, and query block range limit at startup. The bearer token
+is loaded from environment or secret-backed configuration and is redacted by
+config formatting.
 
 ## PostgreSQL schema ownership
 

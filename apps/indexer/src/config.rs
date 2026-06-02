@@ -17,7 +17,6 @@ pub const DEFAULT_DATALENS_CHAIN_ID: i32 = 1;
 pub const DEFAULT_DATALENS_DATASET_FAMILY: &str = "evm";
 pub const DEFAULT_DATALENS_DATASET_NAME: &str = "logs";
 pub const DEFAULT_DATALENS_QUERY_BLOCK_RANGE_LIMIT: u32 = 1_000;
-pub const DEFAULT_DATALENS_QUERY_ROW_LIMIT: u32 = 1_000;
 pub const DEGOV_DATALENS_USER_AGENT: &str = "degov-datalens-indexer";
 
 #[derive(Clone, Eq, PartialEq)]
@@ -128,7 +127,6 @@ impl DatasetKeyConfig {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QueryLimitConfig {
     pub block_range_limit: u32,
-    pub row_limit: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -157,7 +155,6 @@ struct RawDatalensConfig {
     datalens_dataset_family: String,
     datalens_dataset_name: String,
     datalens_query_block_range_limit: u32,
-    datalens_query_row_limit: u32,
     datalens_governor_address: Option<String>,
     datalens_governor_token_address: Option<String>,
     datalens_governor_token_standard: Option<String>,
@@ -178,7 +175,6 @@ impl Default for RawDatalensConfig {
             datalens_dataset_family: DEFAULT_DATALENS_DATASET_FAMILY.to_owned(),
             datalens_dataset_name: DEFAULT_DATALENS_DATASET_NAME.to_owned(),
             datalens_query_block_range_limit: DEFAULT_DATALENS_QUERY_BLOCK_RANGE_LIMIT,
-            datalens_query_row_limit: DEFAULT_DATALENS_QUERY_ROW_LIMIT,
             datalens_governor_address: None,
             datalens_governor_token_address: None,
             datalens_governor_token_standard: None,
@@ -203,7 +199,6 @@ impl DatalensConfig {
                     "DATALENS_DATASET_FAMILY",
                     "DATALENS_DATASET_NAME",
                     "DATALENS_QUERY_BLOCK_RANGE_LIMIT",
-                    "DATALENS_QUERY_ROW_LIMIT",
                     "DATALENS_GOVERNOR_ADDRESS",
                     "DATALENS_GOVERNOR_TOKEN_ADDRESS",
                     "DATALENS_GOVERNOR_TOKEN_STANDARD",
@@ -247,11 +242,6 @@ impl TryFrom<RawDatalensConfig> for DatalensConfig {
                 field: "DATALENS_QUERY_BLOCK_RANGE_LIMIT",
             });
         }
-        if raw.datalens_query_row_limit == 0 {
-            return Err(ConfigError::InvalidLimit {
-                field: "DATALENS_QUERY_ROW_LIMIT",
-            });
-        }
 
         Ok(Self {
             endpoint,
@@ -270,7 +260,6 @@ impl TryFrom<RawDatalensConfig> for DatalensConfig {
             },
             query_limits: QueryLimitConfig {
                 block_range_limit: raw.datalens_query_block_range_limit,
-                row_limit: raw.datalens_query_row_limit,
             },
             dao_contracts: dao_contract_addresses(
                 raw.datalens_governor_address,
@@ -378,7 +367,6 @@ mod tests {
                 ("DATALENS_DATASET_FAMILY", Some("evm")),
                 ("DATALENS_DATASET_NAME", Some("logs")),
                 ("DATALENS_QUERY_BLOCK_RANGE_LIMIT", Some("500")),
-                ("DATALENS_QUERY_ROW_LIMIT", Some("250")),
                 (
                     "DATALENS_GOVERNOR_ADDRESS",
                     Some("0x1111111111111111111111111111111111111111"),
@@ -408,7 +396,6 @@ mod tests {
                 assert_eq!(config.chain.network_id, Some(1));
                 assert_eq!(config.dataset.key(), "evm.logs");
                 assert_eq!(config.query_limits.block_range_limit, 500);
-                assert_eq!(config.query_limits.row_limit, 250);
                 assert_eq!(
                     config.dao_contracts.as_ref().expect("contracts").governor,
                     "0x1111111111111111111111111111111111111111"
