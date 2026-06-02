@@ -230,7 +230,7 @@ impl IndexerRuntimeConfig {
     fn from_env(config: &DatalensConfig) -> anyhow::Result<Self> {
         let dao_code = required_env("DEGOV_INDEXER_DAO_CODE")?;
         let start_block = required_env_i64("DEGOV_INDEXER_START_BLOCK")?;
-        let target_height = optional_env_i64("DEGOV_INDEXER_TARGET_HEIGHT")?.unwrap_or(start_block);
+        let target_height = required_env_i64("DEGOV_INDEXER_TARGET_HEIGHT")?;
 
         if target_height < start_block {
             anyhow::bail!(
@@ -563,6 +563,10 @@ fn postgres_schema_statements(sql: &str) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use degov_datalens_indexer::{
+        ChainFamily, ChainIdentityConfig, DatalensFinality, DatasetKeyConfig, QueryLimitConfig,
+        SecretString,
+    };
 
     #[test]
     fn test_postgres_schema_statements_splits_schema_into_individual_statements() {
@@ -609,5 +613,45 @@ mod tests {
             .expect_err("latest is invalid");
 
         assert!(error.to_string().contains("DEGOV_INDEXER_START_BLOCK"));
+    }
+
+    #[test]
+    fn test_indexer_runtime_config_requires_explicit_target_height() {
+        temp_env::with_vars(
+            [
+                ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+                ("DEGOV_INDEXER_START_BLOCK", Some("10")),
+                ("DEGOV_INDEXER_TARGET_HEIGHT", None),
+            ],
+            || {
+                let error = IndexerRuntimeConfig::from_env(&runtime_test_datalens_config())
+                    .expect_err("missing target height is invalid");
+
+                assert!(error.to_string().contains("DEGOV_INDEXER_TARGET_HEIGHT"));
+            },
+        );
+    }
+
+    fn runtime_test_datalens_config() -> DatalensConfig {
+        DatalensConfig {
+            endpoint: "http://127.0.0.1".to_owned(),
+            application: "degov-test".to_owned(),
+            bearer_token: SecretString::new("unit-test-redacted-value"),
+            timeout: std::time::Duration::from_secs(1),
+            finality: DatalensFinality::DurableOnly,
+            chain: ChainIdentityConfig {
+                family: ChainFamily::Evm,
+                configured_name: "ethereum".to_owned(),
+                network_id: Some(1),
+            },
+            dataset: DatasetKeyConfig {
+                family: "evm".to_owned(),
+                name: "logs".to_owned(),
+            },
+            query_limits: QueryLimitConfig {
+                block_range_limit: 100,
+            },
+            dao_contracts: None,
+        }
     }
 }

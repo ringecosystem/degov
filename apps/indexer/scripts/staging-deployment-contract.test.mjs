@@ -64,6 +64,10 @@ for (const dao of contract.daos) {
   assert.equal(dao.env.DATALENS_APPLICATION, contract.datalens.application);
   assert.equal(dao.env.DEGOV_INDEXER_DAO_CODE, dao.code);
   assert.equal(dao.env.DEGOV_INDEXER_START_BLOCK, dao.startBlock);
+  assert.equal(dao.env.DEGOV_INDEXER_TARGET_HEIGHT, dao.targetHeight);
+  assert.ok(
+    dao.env.DEGOV_INDEXER_TARGET_HEIGHT >= dao.env.DEGOV_INDEXER_START_BLOCK,
+  );
   assert.equal(dao.env.DATALENS_DATASET_FAMILY, contract.datalens.dataset.family);
   assert.equal(dao.env.DATALENS_DATASET_NAME, contract.datalens.dataset.name);
   assert.equal(dao.env.DATALENS_QUERY_ROW_LIMIT, undefined);
