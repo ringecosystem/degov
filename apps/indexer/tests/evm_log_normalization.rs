@@ -87,7 +87,7 @@ fn test_normalize_evm_log_rows_deduplicates_duplicate_raw_logs_by_stable_event_i
     let logs = normalize_evm_log_rows(46, vec![first, duplicate]).expect("normalize logs");
 
     assert_eq!(logs.len(), 1);
-    assert_eq!(logs[0].id, "evm:46:100:2:3");
+    assert_eq!(logs[0].id, "evm:46:100:0xtx1002:2:3");
 }
 
 fn raw_log(

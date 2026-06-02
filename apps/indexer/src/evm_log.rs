@@ -71,9 +71,10 @@ fn normalize_evm_log_row(
         .block_timestamp
         .map(timestamp_seconds_to_millis)
         .transpose()?;
+    let transaction_hash = row.transaction_hash.to_ascii_lowercase();
     let id = format!(
-        "evm:{chain_id}:{}:{}:{}",
-        row.block_number, row.transaction_index, row.log_index
+        "evm:{chain_id}:{}:{}:{}:{}",
+        row.block_number, transaction_hash, row.transaction_index, row.log_index
     );
 
     Ok(NormalizedEvmLog {
@@ -82,7 +83,7 @@ fn normalize_evm_log_row(
         block_number: row.block_number,
         block_hash: row.block_hash,
         block_timestamp_ms,
-        transaction_hash: row.transaction_hash,
+        transaction_hash,
         transaction_index: row.transaction_index,
         log_index: row.log_index,
         address: row.address.to_ascii_lowercase(),
