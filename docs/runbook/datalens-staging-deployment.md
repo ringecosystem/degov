@@ -40,6 +40,12 @@ Each DAO indexer deployment must receive:
 - `DATALENS_DATASET_FAMILY` and `DATALENS_DATASET_NAME`.
 - `DATALENS_GOVERNOR_ADDRESS`, `DATALENS_GOVERNOR_TOKEN_ADDRESS`,
   `DATALENS_GOVERNOR_TOKEN_STANDARD`, and `DATALENS_TIMELOCK_ADDRESS`.
+- `DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS`: local socket address for the service,
+  for example `0.0.0.0:4350`.
+- `DEGOV_INDEXER_GRAPHQL_ENDPOINT`: public GraphQL URL consumed by web and
+  smoke checks, for example `https://indexer.next.degov.ai/<dao-code>/graphql`.
+- `DEGOV_INDEXER_GRAPHQL_PATH`: public route path mounted by the service when
+  it is not just `/graphql`, for example `/<dao-code>/graphql`.
 
 Run `migrate` against the fresh DB before starting `run`. Start `graphql` only
 after the DB schema exists and the staging web route points at the staging

@@ -24,7 +24,9 @@ Collect these values before running checks:
   `DEGOV_INDEXER_DATABASE_URL`; the examples below use the same name.
 - DeGov GraphQL endpoint, for example
   `https://indexer.next.degov.ai/<dao-code>/graphql`. Deployed services use
-  `DEGOV_INDEXER_GRAPHQL_ENDPOINT`; the examples below use the same name.
+  `DEGOV_INDEXER_GRAPHQL_ENDPOINT`; the GraphQL service binds with
+  `DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS` and also serves
+  `DEGOV_INDEXER_GRAPHQL_PATH` when set.
 - DeGov web base URL for the environment under test.
 
 Use placeholders in the examples below:
@@ -45,6 +47,8 @@ export DATALENS_APPLICATION=<datalens-application>
 export DATALENS_TOKEN=<secret-backed-token>
 export DEGOV_INDEXER_DATABASE_URL=<postgres-url>
 export DEGOV_INDEXER_GRAPHQL_ENDPOINT=<degov-graphql-url>
+export DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS=0.0.0.0:4350
+export DEGOV_INDEXER_GRAPHQL_PATH=/<dao-code>/graphql
 export DEGOV_WEB_URL=<degov-web-base-url>
 ```
 
@@ -274,12 +278,12 @@ processes and are expected to keep running after readiness logs appear:
 ```sh
 DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" pnpm run indexer
 DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED=false pnpm run indexer:worker
-DEGOV_INDEXER_GRAPHQL_ENDPOINT="$DEGOV_INDEXER_GRAPHQL_ENDPOINT" pnpm run indexer:graphql
+DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS="$DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS" DEGOV_INDEXER_GRAPHQL_ENDPOINT="$DEGOV_INDEXER_GRAPHQL_ENDPOINT" pnpm run indexer:graphql
 ```
 
 Expected signal: `indexer` verifies Datalens and processes configured ranges,
 `indexer:worker` logs disabled worker readiness and waits, and `indexer:graphql`
-logs the configured endpoint.
+logs the configured bind address, public endpoint, and served paths.
 
 ## Future DeGov Indexer Health
 

@@ -421,20 +421,20 @@ fn page_rows(rows: serde_json::Value) -> Result<Vec<serde_json::Value>, IndexerR
         serde_json::Value::Array(rows) => Ok(rows),
         serde_json::Value::Object(mut object) => {
             let Some(rows) = object.remove("rows") else {
-                return Err(invalid_rows_payload_error(serde_json::Value::Object(object)));
+                return Err(invalid_rows_payload_error(serde_json::Value::Object(
+                    object,
+                )));
             };
 
             match rows {
                 serde_json::Value::Array(rows) => Ok(rows),
-                serde_json::Value::Object(mut rows_object) => {
-                    match rows_object.remove("rows") {
-                        Some(serde_json::Value::Array(rows)) => Ok(rows),
-                        Some(other) => Err(invalid_rows_payload_error(other)),
-                        None => Err(invalid_rows_payload_error(serde_json::Value::Object(
-                            rows_object,
-                        ))),
-                    }
-                }
+                serde_json::Value::Object(mut rows_object) => match rows_object.remove("rows") {
+                    Some(serde_json::Value::Array(rows)) => Ok(rows),
+                    Some(other) => Err(invalid_rows_payload_error(other)),
+                    None => Err(invalid_rows_payload_error(serde_json::Value::Object(
+                        rows_object,
+                    ))),
+                },
                 other => Err(invalid_rows_payload_error(other)),
             }
         }

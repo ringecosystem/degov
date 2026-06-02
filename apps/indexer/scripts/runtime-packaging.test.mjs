@@ -58,6 +58,8 @@ assert.doesNotMatch(
 
 assert.match(envExample, /DATALENS_ENDPOINT=/);
 assert.match(envExample, /DEGOV_INDEXER_DATABASE_URL=/);
+assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS=/);
+assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_PATH=/);
 assert.match(envExample, /DEGOV_INDEXER_GRAPHQL_ENDPOINT=/);
 assert.doesNotMatch(
   envExample,

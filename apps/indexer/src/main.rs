@@ -227,22 +227,27 @@ async fn migrate() -> anyhow::Result<()> {
 
 async fn run_graphql() -> anyhow::Result<()> {
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
-    let endpoint = required_env("DEGOV_INDEXER_GRAPHQL_ENDPOINT")?;
-    let bind_address = parse_bind_address(&endpoint)?;
+    let config = GraphqlRuntimeConfig::from_env()?;
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
         .await
         .context("connect to DeGov indexer Postgres")?;
-    let app = graphql::build_router(graphql::build_schema(pool));
-    let listener = tokio::net::TcpListener::bind(bind_address)
+    let app = graphql::build_router_with_paths(graphql::build_schema(pool), config.paths.clone());
+    let listener = tokio::net::TcpListener::bind(config.bind_address)
         .await
-        .with_context(|| format!("bind DeGov indexer GraphQL endpoint {bind_address}"))?;
+        .with_context(|| {
+            format!(
+                "bind DeGov indexer GraphQL endpoint {}",
+                config.bind_address
+            )
+        })?;
 
     log::info!(
-        "DeGov indexer GraphQL service listening endpoint={} bind_address={} path=/graphql",
-        endpoint,
-        bind_address
+        "DeGov indexer GraphQL service listening public_endpoint={:?} bind_address={} paths={}",
+        config.public_endpoint,
+        config.bind_address,
+        config.paths.join(",")
     );
 
     axum::serve(listener, app)
@@ -250,16 +255,107 @@ async fn run_graphql() -> anyhow::Result<()> {
         .context("serve DeGov indexer GraphQL endpoint")
 }
 
-fn parse_bind_address(endpoint: &str) -> anyhow::Result<SocketAddr> {
-    let address = endpoint
-        .strip_prefix("http://")
-        .or_else(|| endpoint.strip_prefix("https://"))
-        .unwrap_or(endpoint);
-    let address = address.split('/').next().unwrap_or(address);
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GraphqlRuntimeConfig {
+    bind_address: SocketAddr,
+    public_endpoint: Option<String>,
+    paths: Vec<String>,
+}
 
-    address.parse().with_context(|| {
-        format!("parse DEGOV_INDEXER_GRAPHQL_ENDPOINT as bind address: {endpoint}")
-    })
+impl GraphqlRuntimeConfig {
+    fn from_env() -> anyhow::Result<Self> {
+        let endpoint = optional_env("DEGOV_INDEXER_GRAPHQL_ENDPOINT")?;
+        let bind_address = match optional_env("DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS")? {
+            Some(address) => parse_bind_address("DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS", &address)?,
+            None => legacy_endpoint_bind_address(endpoint.as_deref())?.unwrap_or_else(|| {
+                "0.0.0.0:4350"
+                    .parse()
+                    .expect("default GraphQL bind address parses")
+            }),
+        };
+        let configured_path = optional_env("DEGOV_INDEXER_GRAPHQL_PATH")?;
+        let public_endpoint = endpoint
+            .filter(|value| !value.parse::<SocketAddr>().is_ok())
+            .filter(|value| !value.trim().is_empty());
+        let paths = graphql_paths(public_endpoint.as_deref(), configured_path.as_deref())?;
+
+        Ok(Self {
+            bind_address,
+            public_endpoint,
+            paths,
+        })
+    }
+}
+
+fn parse_bind_address(env_name: &str, value: &str) -> anyhow::Result<SocketAddr> {
+    value
+        .parse()
+        .with_context(|| format!("parse {env_name} as bind address: {value}"))
+}
+
+fn legacy_endpoint_bind_address(endpoint: Option<&str>) -> anyhow::Result<Option<SocketAddr>> {
+    let Some(endpoint) = endpoint else {
+        return Ok(None);
+    };
+    if endpoint.starts_with("http://")
+        || endpoint.starts_with("https://")
+        || endpoint.starts_with('/')
+        || endpoint.trim().is_empty()
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(parse_bind_address(
+        "DEGOV_INDEXER_GRAPHQL_ENDPOINT",
+        endpoint,
+    )?))
+}
+
+fn graphql_paths(
+    endpoint: Option<&str>,
+    configured_path: Option<&str>,
+) -> anyhow::Result<Vec<String>> {
+    let mut paths = vec!["/graphql".to_owned()];
+    if let Some(path) = endpoint.and_then(endpoint_graphql_path) {
+        push_graphql_path(&mut paths, &path)?;
+    }
+    if let Some(path) = configured_path {
+        push_graphql_path(&mut paths, path)?;
+    }
+    Ok(paths)
+}
+
+fn endpoint_graphql_path(endpoint: &str) -> Option<String> {
+    if endpoint.starts_with('/') {
+        return Some(endpoint.to_owned());
+    }
+
+    let endpoint = endpoint
+        .strip_prefix("http://")
+        .or_else(|| endpoint.strip_prefix("https://"))?;
+    let path_start = endpoint.find('/')?;
+    Some(endpoint[path_start..].to_owned())
+}
+
+fn push_graphql_path(paths: &mut Vec<String>, path: &str) -> anyhow::Result<()> {
+    let path = path
+        .trim()
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('/');
+    if path.is_empty() || path == "/graphql" {
+        return Ok(());
+    }
+    if !path.starts_with('/') {
+        anyhow::bail!("DEGOV_INDEXER_GRAPHQL_PATH must start with /: {path}");
+    }
+
+    let path = path.to_owned();
+    if !paths.contains(&path) {
+        paths.push(path);
+    }
+    Ok(())
 }
 
 async fn verify_datalens(config: &DatalensConfig) -> anyhow::Result<()> {
@@ -837,6 +933,49 @@ mod tests {
             .expect_err("latest is invalid");
 
         assert!(error.to_string().contains("DEGOV_INDEXER_START_BLOCK"));
+    }
+
+    #[test]
+    fn test_graphql_runtime_config_keeps_public_endpoint_separate_from_bind_address() {
+        temp_env::with_vars(
+            [
+                (
+                    "DEGOV_INDEXER_GRAPHQL_ENDPOINT",
+                    Some("https://indexer.next.degov.ai/degov-demo-dao/graphql"),
+                ),
+                ("DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS", Some("0.0.0.0:4350")),
+            ],
+            || {
+                let config = GraphqlRuntimeConfig::from_env().expect("graphql config parses");
+
+                assert_eq!(config.bind_address, "0.0.0.0:4350".parse().unwrap());
+                assert_eq!(
+                    config.public_endpoint.as_deref(),
+                    Some("https://indexer.next.degov.ai/degov-demo-dao/graphql")
+                );
+                assert_eq!(
+                    config.paths,
+                    vec!["/graphql".to_owned(), "/degov-demo-dao/graphql".to_owned()]
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn test_graphql_runtime_config_accepts_legacy_bind_endpoint() {
+        temp_env::with_vars(
+            [
+                ("DEGOV_INDEXER_GRAPHQL_ENDPOINT", Some("127.0.0.1:4350")),
+                ("DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS", None),
+            ],
+            || {
+                let config = GraphqlRuntimeConfig::from_env().expect("legacy bind endpoint parses");
+
+                assert_eq!(config.bind_address, "127.0.0.1:4350".parse().unwrap());
+                assert_eq!(config.public_endpoint, None);
+                assert_eq!(config.paths, vec!["/graphql".to_owned()]);
+            },
+        );
     }
 
     #[test]
