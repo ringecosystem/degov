@@ -319,7 +319,8 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
                 query GoldenBaseline(
                   $metricWhere: DataMetricWhereInput,
                   $proposalWhere: ProposalWhereInput,
-                  $votedProposalWhere: ProposalWhereInput
+                  $votedProposalWhere: ProposalWhereInput,
+                  $wrongVoterProposalWhere: ProposalWhereInput
                 ) {
                   proposalsConnection(orderBy: [id_ASC]) { totalCount }
                   contributorsConnection(orderBy: id_ASC) { totalCount }
@@ -356,6 +357,9 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
                   proposalsByVoter: proposals(where: $votedProposalWhere, limit: 1) {
                     proposalId
                   }
+                  proposalsByWrongVoter: proposals(where: $wrongVoterProposalWhere, limit: 1) {
+                    proposalId
+                  }
                   proposalQueueds(orderBy: [id_ASC]) { proposalId etaSeconds }
                   proposalExecuteds(orderBy: [id_ASC]) { proposalId }
                   proposalCanceleds(orderBy: [id_ASC]) { proposalId }
@@ -384,6 +388,16 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
                     "daoCode_eq": baseline.scope.dao_code,
                     "voters_some": {
                         "voter_eq": latest.voter.voter,
+                        "support_eq": latest.voter.support
+                    }
+                },
+                "wrongVoterProposalWhere": {
+                    "proposalId_eq": latest.proposal_id,
+                    "chainId_eq": baseline.scope.chain_id,
+                    "governorAddress_eq": baseline.scope.governor,
+                    "daoCode_eq": baseline.scope.dao_code,
+                    "voters_some": {
+                        "voter_eq": "0x0000000000000000000000000000000000000000",
                         "support_eq": latest.voter.support
                     }
                 },
@@ -475,6 +489,10 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
     assert_eq!(
         data["proposalsByVoter"][0]["proposalId"],
         latest.proposal_id
+    );
+    assert_eq!(
+        data["proposalsByWrongVoter"].as_array().map(Vec::len),
+        Some(0)
     );
     assert_eq!(
         data["proposalQueueds"].as_array().map(Vec::len),
