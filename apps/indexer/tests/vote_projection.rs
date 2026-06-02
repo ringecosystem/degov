@@ -319,6 +319,7 @@ fn test_project_vote_events_rejects_mixed_chain_input() {
 
 fn context() -> VoteProjectionContext {
     VoteProjectionContext {
+        contract_set_id: "demo-scope".to_owned(),
         dao_code: "unit-dao".to_owned(),
         governor_address: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
         contracts: ChainContracts {

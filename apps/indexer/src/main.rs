@@ -374,12 +374,14 @@ impl IndexerRuntimeConfig {
 
         IndexerRunnerContexts {
             vote: VoteProjectionContext {
+                contract_set_id: self.checkpoint_contract_set_id.clone(),
                 dao_code: self.dao_code.clone(),
                 governor_address: contracts.governor.clone(),
                 contracts: chain_contracts.clone(),
                 read_plan_config,
             },
             token: TokenProjectionContext {
+                contract_set_id: self.checkpoint_contract_set_id.clone(),
                 dao_code: self.dao_code.clone(),
                 governor_address: contracts.governor.clone(),
                 token_address: contracts.governor_token.clone(),

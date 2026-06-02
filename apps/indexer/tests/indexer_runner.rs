@@ -303,12 +303,14 @@ fn contexts() -> IndexerRunnerContexts {
 
     IndexerRunnerContexts {
         vote: VoteProjectionContext {
+            contract_set_id: "demo-scope".to_owned(),
             dao_code: "demo-dao".to_owned(),
             governor_address: contracts.governor.clone(),
             contracts: contracts.clone(),
             read_plan_config,
         },
         token: TokenProjectionContext {
+            contract_set_id: "demo-scope".to_owned(),
             dao_code: "demo-dao".to_owned(),
             governor_address: contracts.governor.clone(),
             token_address: contracts.governor_token.clone(),

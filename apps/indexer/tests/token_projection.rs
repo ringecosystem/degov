@@ -532,6 +532,7 @@ fn test_project_token_events_rejects_mixed_chain_input() {
 
 fn context(token_standard: GovernanceTokenStandard) -> TokenProjectionContext {
     TokenProjectionContext {
+        contract_set_id: "demo-scope".to_owned(),
         dao_code: "unit-dao".to_owned(),
         governor_address: account("aaaa"),
         token_address: account("1111"),

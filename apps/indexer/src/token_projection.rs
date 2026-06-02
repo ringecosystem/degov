@@ -10,6 +10,7 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenProjectionContext {
+    pub contract_set_id: String,
     pub dao_code: String,
     pub governor_address: String,
     pub token_address: String,
@@ -58,6 +59,7 @@ pub enum TokenProjectionError {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenEventCommon {
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -639,6 +641,7 @@ pub fn project_token_events(
     }
 
     let reconcile_context = PowerReconcileContext {
+        contract_set_id: context.contract_set_id.clone(),
         dao_code: context.dao_code.clone(),
         chain_id,
         contracts: context.contracts.clone(),
@@ -668,6 +671,7 @@ fn common(
     log: &NormalizedEvmLog,
 ) -> TokenEventCommon {
     TokenEventCommon {
+        contract_set_id: context.contract_set_id.clone(),
         chain_id: log.chain_id,
         dao_code: context.dao_code.clone(),
         governor_address: governor_address.to_owned(),

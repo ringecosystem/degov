@@ -770,13 +770,13 @@ async fn upsert_vote_cast_group(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO vote_cast_group (
-            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index,
             transaction_index, proposal_id, type, voter, ref_proposal_id, support, weight,
             reason, params, block_number, block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-            $13::NUMERIC(78, 0), $14, $15, $16::NUMERIC(78, 0), $17::NUMERIC(78, 0), $18
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+            $14::NUMERIC(78, 0), $15, $16, $17::NUMERIC(78, 0), $18::NUMERIC(78, 0), $19
          )
          ON CONFLICT (id) DO UPDATE
          SET support = EXCLUDED.support,
@@ -788,6 +788,7 @@ async fn upsert_vote_cast_group(
              transaction_hash = EXCLUDED.transaction_hash",
     )
     .bind(&row.id)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
@@ -855,16 +856,16 @@ async fn upsert_contributor_vote_signal(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO contributor (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, block_number, block_timestamp, transaction_hash,
             last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all,
             delegates_count_effective
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9::NUMERIC(78, 0), $10::NUMERIC(78, 0), $11,
-            $9::NUMERIC(78, 0), $10::NUMERIC(78, 0), 0::NUMERIC(78, 0), NULL, 0, 0
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0), $11::NUMERIC(78, 0), $12,
+            $10::NUMERIC(78, 0), $11::NUMERIC(78, 0), 0::NUMERIC(78, 0), NULL, 0, 0
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET last_vote_block_number = GREATEST(
                COALESCE(contributor.last_vote_block_number, EXCLUDED.last_vote_block_number),
                EXCLUDED.last_vote_block_number
@@ -875,13 +876,8 @@ async fn upsert_contributor_vote_signal(
              ),
              transaction_hash = EXCLUDED.transaction_hash",
     )
-    .bind(contributor_ref(
-        row.chain_id,
-        &row.dao_code,
-        &row.governor_address,
-        &row.token_address,
-        &row.voter,
-    ))
+    .bind(&row.voter)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
@@ -918,12 +914,12 @@ async fn refresh_vote_data_metric(
 
     sqlx::query(
         "INSERT INTO data_metric (
-            id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
+            id, contract_set_id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
             votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
             votes_weight_abstain_sum
          )
          SELECT
-            $1, $2, $3, $4,
+            $1, $2, $3, $4, $5,
             count(*)::INTEGER,
             count(*) FILTER (WHERE type = 'vote-cast-with-params')::INTEGER,
             count(*) FILTER (WHERE type = 'vote-cast-without-params')::INTEGER,
@@ -931,7 +927,7 @@ async fn refresh_vote_data_metric(
             COALESCE(sum(CASE WHEN support = 0 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0),
             COALESCE(sum(CASE WHEN support = 2 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0)
          FROM vote_cast_group
-         WHERE chain_id = $2 AND governor_address = $4 AND dao_code = $3
+         WHERE contract_set_id = $2 AND chain_id = $3 AND governor_address = $5 AND dao_code = $4
          ON CONFLICT ON CONSTRAINT data_metric_lookup_unique DO UPDATE
          SET votes_count = EXCLUDED.votes_count,
              votes_with_params_count = EXCLUDED.votes_with_params_count,
@@ -941,6 +937,7 @@ async fn refresh_vote_data_metric(
              votes_weight_abstain_sum = EXCLUDED.votes_weight_abstain_sum",
     )
     .bind(metric_id)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
@@ -1295,7 +1292,8 @@ async fn apply_delegate_changed_operation(
             },
         )
         .await?;
-        sqlx::query("DELETE FROM delegate_mapping WHERE id = $1")
+        sqlx::query("DELETE FROM delegate_mapping WHERE contract_set_id = $1 AND id = $2")
+            .bind(&common.contract_set_id)
             .bind(delegate_mapping_ref(common, delegator))
             .execute(&mut **transaction)
             .await?;
@@ -1419,12 +1417,13 @@ async fn apply_delegate_delta(
 
     sqlx::query(
         r#"UPDATE delegate_mapping
-           SET chain_id = $2, dao_code = $3, governor_address = $4, token_address = $5,
-               contract_address = $6, log_index = $7, transaction_index = $8,
-               power = $9::NUMERIC(78, 0), block_number = $10::NUMERIC(78, 0),
-               block_timestamp = $11::NUMERIC(78, 0), transaction_hash = $12
-           WHERE id = $1 AND "to" = $13"#,
+           SET chain_id = $3, dao_code = $4, governor_address = $5, token_address = $6,
+               contract_address = $7, log_index = $8, transaction_index = $9,
+               power = $10::NUMERIC(78, 0), block_number = $11::NUMERIC(78, 0),
+               block_timestamp = $12::NUMERIC(78, 0), transaction_hash = $13
+           WHERE contract_set_id = $1 AND id = $2 AND "to" = $14"#,
     )
+    .bind(&common.contract_set_id)
     .bind(delegate_mapping_ref(common, from_delegate))
     .bind(common.chain_id)
     .bind(&common.dao_code)
@@ -1485,7 +1484,8 @@ async fn upsert_delegate_snapshot(
     }
     let id = delegate_ref(common, from_delegate, to_delegate);
     if is_current && !is_nonzero_decimal(power) {
-        sqlx::query("DELETE FROM delegate WHERE id = $1")
+        sqlx::query("DELETE FROM delegate WHERE contract_set_id = $1 AND id = $2")
+            .bind(&common.contract_set_id)
             .bind(&id)
             .execute(&mut **transaction)
             .await?;
@@ -1494,15 +1494,15 @@ async fn upsert_delegate_snapshot(
 
     sqlx::query(
         "INSERT INTO delegate (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash, is_current, power
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13, $14, $15::NUMERIC(78, 0)
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
+            $13::NUMERIC(78, 0), $14, $15, $16::NUMERIC(78, 0)
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET chain_id = EXCLUDED.chain_id,
              dao_code = EXCLUDED.dao_code,
              governor_address = EXCLUDED.governor_address,
@@ -1517,6 +1517,7 @@ async fn upsert_delegate_snapshot(
              power = EXCLUDED.power",
     )
     .bind(id)
+    .bind(&common.contract_set_id)
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1552,15 +1553,15 @@ async fn upsert_delegate_mapping(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         r#"INSERT INTO delegate_mapping (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, "from", "to", power, block_number, block_timestamp,
             transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
+            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET chain_id = EXCLUDED.chain_id,
              dao_code = EXCLUDED.dao_code,
              governor_address = EXCLUDED.governor_address,
@@ -1576,6 +1577,7 @@ async fn upsert_delegate_mapping(
              transaction_hash = EXCLUDED.transaction_hash"#,
     )
     .bind(delegate_mapping_ref(common, from))
+    .bind(&common.contract_set_id)
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1615,21 +1617,16 @@ async fn apply_delegate_count_delta(
 
     sqlx::query(
         "UPDATE contributor
-         SET chain_id = $2, dao_code = $3, governor_address = $4, token_address = $5,
-             contract_address = $6, log_index = $7, transaction_index = $8,
-             block_number = $9::NUMERIC(78, 0), block_timestamp = $10::NUMERIC(78, 0),
-             transaction_hash = $11,
-             delegates_count_all = GREATEST(delegates_count_all + $12, 0),
-             delegates_count_effective = GREATEST(delegates_count_effective + $13, 0)
-         WHERE id = $1",
+         SET chain_id = $3, dao_code = $4, governor_address = $5, token_address = $6,
+             contract_address = $7, log_index = $8, transaction_index = $9,
+             block_number = $10::NUMERIC(78, 0), block_timestamp = $11::NUMERIC(78, 0),
+             transaction_hash = $12,
+             delegates_count_all = GREATEST(delegates_count_all + $13, 0),
+             delegates_count_effective = GREATEST(delegates_count_effective + $14, 0)
+         WHERE contract_set_id = $1 AND id = $2",
     )
-    .bind(contributor_ref(
-        common.chain_id,
-        &common.dao_code,
-        &common.governor_address,
-        &common.token_address,
-        delegate,
-    ))
+    .bind(&common.contract_set_id)
+    .bind(contributor_ref(delegate))
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1667,23 +1664,18 @@ async fn ensure_contributor(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "INSERT INTO contributor (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, block_number, block_timestamp, transaction_hash,
             power, balance, delegates_count_all, delegates_count_effective
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9::NUMERIC(78, 0), $10::NUMERIC(78, 0),
-            $11, 0::NUMERIC(78, 0), NULL, 0, 0
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0), $11::NUMERIC(78, 0),
+            $12, 0::NUMERIC(78, 0), NULL, 0, 0
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
-    .bind(contributor_ref(
-        common.chain_id,
-        &common.dao_code,
-        &common.governor_address,
-        &common.token_address,
-        account,
-    ))
+    .bind(contributor_ref(account))
+    .bind(&common.contract_set_id)
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1716,9 +1708,9 @@ async fn increment_member_count(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO data_metric (
-            id, chain_id, dao_code, governor_address, token_address, member_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, member_count
          )
-         VALUES ($1, $2, $3, $4, $5, 1)
+         VALUES ($1, $2, $3, $4, $5, $6, 1)
          ON CONFLICT ON CONSTRAINT data_metric_lookup_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              member_count = COALESCE(data_metric.member_count, 0) + 1",
@@ -1728,6 +1720,7 @@ async fn increment_member_count(
         &common.governor_address,
         &common.dao_code,
     ))
+    .bind(&common.contract_set_id)
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1744,8 +1737,13 @@ async fn upsert_onchain_refresh_task(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let status = &row.status;
     let task_id = format!(
-        "{}:{}:{}:{}:{}",
-        status.dao_code, status.chain_id, status.governor, status.governor_token, status.account
+        "{}:{}:{}:{}:{}:{}",
+        status.contract_set_id,
+        status.dao_code,
+        status.chain_id,
+        status.governor,
+        status.governor_token,
+        status.account
     );
     let reason = if status.reason.is_empty() {
         "token-activity".to_owned()
@@ -1755,15 +1753,15 @@ async fn upsert_onchain_refresh_task(
 
     sqlx::query(
         "INSERT INTO onchain_refresh_task (
-            id, chain_id, dao_code, governor_address, token_address, account, refresh_balance,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account, refresh_balance,
             refresh_power, reason, first_seen_block_number, last_seen_block_number,
             last_seen_block_timestamp, last_seen_transaction_hash, status, attempts,
             next_run_at, pending_after_lock, created_at, updated_at
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0), $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13, 'pending', 0, 0::NUMERIC(78, 0), false,
-            $11::NUMERIC(78, 0), $11::NUMERIC(78, 0)
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0), $12::NUMERIC(78, 0),
+            $13::NUMERIC(78, 0), $14, 'pending', 0, 0::NUMERIC(78, 0), false,
+            $12::NUMERIC(78, 0), $12::NUMERIC(78, 0)
          )
          ON CONFLICT ON CONSTRAINT onchain_refresh_task_account_unique DO UPDATE
          SET refresh_balance = onchain_refresh_task.refresh_balance OR EXCLUDED.refresh_balance,
@@ -1819,6 +1817,7 @@ async fn upsert_onchain_refresh_task(
              updated_at = EXCLUDED.updated_at",
     )
     .bind(task_id)
+    .bind(&status.contract_set_id)
     .bind(status.chain_id)
     .bind(&status.dao_code)
     .bind(&status.governor)
@@ -2175,8 +2174,9 @@ async fn read_delegate_mapping(
     let row = sqlx::query(
         r#"SELECT "from", "to", power::TEXT AS power
            FROM delegate_mapping
-           WHERE id = $1"#,
+           WHERE contract_set_id = $1 AND id = $2"#,
     )
+    .bind(&common.contract_set_id)
     .bind(delegate_mapping_ref(common, from))
     .fetch_optional(&mut **transaction)
     .await?;
@@ -2320,54 +2320,21 @@ fn transfer_units(value: &str, standard: GovernanceTokenStandard) -> String {
     }
 }
 
-fn contributor_ref(
-    chain_id: i32,
-    dao_code: &str,
-    governor_address: &str,
-    token_address: &str,
-    account: &str,
-) -> String {
-    scoped_account_ref(chain_id, dao_code, governor_address, token_address, account)
+fn contributor_ref(account: &str) -> String {
+    normalize_scope_value(account)
 }
 
 fn delegate_mapping_ref(common: &TokenEventCommon, from: &str) -> String {
-    scoped_account_ref(
-        common.chain_id,
-        &common.dao_code,
-        &common.governor_address,
-        &common.token_address,
-        from,
-    )
+    let _ = common;
+    normalize_scope_value(from)
 }
 
 fn delegate_ref(common: &TokenEventCommon, from_delegate: &str, to_delegate: &str) -> String {
+    let _ = common;
     format!(
         "{}_{}",
-        scoped_account_ref(
-            common.chain_id,
-            &common.dao_code,
-            &common.governor_address,
-            &common.token_address,
-            from_delegate,
-        ),
+        normalize_scope_value(from_delegate),
         normalize_scope_value(to_delegate)
-    )
-}
-
-fn scoped_account_ref(
-    chain_id: i32,
-    dao_code: &str,
-    governor_address: &str,
-    token_address: &str,
-    account: &str,
-) -> String {
-    format!(
-        "{}:{}:{}:{}:{}",
-        normalize_scope_value(dao_code),
-        chain_id,
-        normalize_scope_value(governor_address),
-        normalize_scope_value(token_address),
-        normalize_scope_value(account)
     )
 }
 

@@ -618,6 +618,7 @@ fn proposal_context() -> ProposalProjectionContext {
 
 fn vote_context() -> VoteProjectionContext {
     VoteProjectionContext {
+        contract_set_id: "demo-scope".to_owned(),
         dao_code: "demo-dao".to_owned(),
         governor_address: "0x1111111111111111111111111111111111111111".to_owned(),
         contracts: contracts("0x2222222222222222222222222222222222222222"),
@@ -633,6 +634,7 @@ fn token_context(
     to_block: u64,
 ) -> TokenProjectionContext {
     TokenProjectionContext {
+        contract_set_id: "demo-scope".to_owned(),
         dao_code: dao_code.to_owned(),
         governor_address: "0x1111111111111111111111111111111111111111".to_owned(),
         token_address: token_address.to_owned(),

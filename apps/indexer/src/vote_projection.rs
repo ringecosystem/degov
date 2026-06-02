@@ -14,6 +14,7 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VoteProjectionContext {
+    pub contract_set_id: String,
     pub dao_code: String,
     pub governor_address: String,
     pub contracts: ChainContracts,
@@ -52,6 +53,7 @@ pub enum VoteProjectionError {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VoteEventCommon {
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -97,6 +99,7 @@ pub struct VoteCastWithParamsWrite {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VoteCastGroupWrite {
     pub id: String,
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -134,6 +137,7 @@ pub struct ProposalVoteTotalWrite {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContributorVoteSignalWrite {
     pub id: String,
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -372,6 +376,7 @@ fn common(
     proposal_id: &str,
 ) -> VoteEventCommon {
     VoteEventCommon {
+        contract_set_id: context.contract_set_id.clone(),
         chain_id: log.chain_id,
         dao_code: context.dao_code.clone(),
         governor_address: governor_address.to_owned(),
@@ -477,6 +482,7 @@ fn vote_cast_group(
 ) -> VoteCastGroupWrite {
     VoteCastGroupWrite {
         id: log_id.to_owned(),
+        contract_set_id: common.contract_set_id.clone(),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -504,6 +510,7 @@ fn vote_cast_group(
 fn contributor_vote_signal(common: &VoteEventCommon, voter: &str) -> ContributorVoteSignalWrite {
     ContributorVoteSignalWrite {
         id: normalize_identifier(voter),
+        contract_set_id: common.contract_set_id.clone(),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),

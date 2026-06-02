@@ -386,15 +386,15 @@ async fn assert_token_projection_state(pool: &PgPool) -> Result<(), sqlx::Error>
         "SELECT power::TEXT AS power, balance::TEXT AS balance,
                 delegates_count_all, delegates_count_effective
          FROM contributor
-         WHERE chain_id = 1
-           AND dao_code = 'demo-dao'
-           AND governor_address = $1
-           AND token_address = $2
-           AND id LIKE $3",
+	         WHERE chain_id = 1
+	           AND dao_code = 'demo-dao'
+	           AND governor_address = $1
+	           AND token_address = $2
+	           AND id = $3",
     )
     .bind(GOVERNOR)
     .bind(TOKEN)
-    .bind(format!("%:{DELEGATE}"))
+    .bind(DELEGATE)
     .fetch_one(pool)
     .await?;
 

@@ -248,6 +248,7 @@ async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<()
     seed_task_with_scope(
         &database.pool,
         "task-one",
+        "demo-dao",
         46,
         "demo-dao",
         GOVERNOR,
@@ -262,6 +263,7 @@ async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<()
     seed_task_with_scope(
         &database.pool,
         "task-two",
+        "other-dao",
         46,
         "other-dao",
         GOVERNOR_TWO,
@@ -322,7 +324,7 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
     let database = TestDatabase::connect().await?;
     seed_contributor_with_scope(
         &database.pool,
-        scoped_contributor_id("demo-dao", 46, GOVERNOR, TOKEN, ACCOUNT_ONE),
+        SCOPE_ONE,
         46,
         "demo-dao",
         GOVERNOR,
@@ -334,9 +336,9 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
     .await?;
     seed_contributor_with_scope(
         &database.pool,
-        scoped_contributor_id("other-dao", 46, GOVERNOR, TOKEN, ACCOUNT_ONE),
+        SCOPE_TWO,
         46,
-        "other-dao",
+        "demo-dao",
         GOVERNOR,
         TOKEN,
         ACCOUNT_ONE,
@@ -344,9 +346,15 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
         Some("41"),
     )
     .await?;
-    seed_task(
+    seed_data_metric_with_scope(&database.pool, SCOPE_TWO, "31", 1, 7).await?;
+    seed_task_with_contract_set(
         &database.pool,
         "task-one",
+        SCOPE_ONE,
+        46,
+        "demo-dao",
+        GOVERNOR,
+        TOKEN,
         ACCOUNT_ONE,
         "pending",
         0,
@@ -379,12 +387,20 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
 
     assert_eq!(report.completed, 1);
     assert_eq!(
-        contributor_values_by_scope(&database.pool, "demo-dao", ACCOUNT_ONE).await?,
+        contributor_values_by_scope(&database.pool, SCOPE_ONE, ACCOUNT_ONE).await?,
         ("11".to_owned(), Some("17".to_owned()))
     );
     assert_eq!(
-        contributor_values_by_scope(&database.pool, "other-dao", ACCOUNT_ONE).await?,
+        contributor_values_by_scope(&database.pool, SCOPE_TWO, ACCOUNT_ONE).await?,
         ("31".to_owned(), Some("41".to_owned()))
+    );
+    assert_eq!(
+        data_metric_values_by_scope(&database.pool, SCOPE_ONE).await?,
+        ("11".to_owned(), 1)
+    );
+    assert_eq!(
+        data_metric_values_by_scope(&database.pool, SCOPE_TWO).await?,
+        ("31".to_owned(), 1)
     );
     assert_table_count(&database.pool, "contributor", 2).await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
@@ -446,22 +462,14 @@ async fn seed_contributor(
     balance: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     seed_contributor_with_scope(
-        pool,
-        scoped_contributor_id("demo-dao", 46, GOVERNOR, TOKEN, account),
-        46,
-        "demo-dao",
-        GOVERNOR,
-        TOKEN,
-        account,
-        power,
-        balance,
+        pool, "demo-dao", 46, "demo-dao", GOVERNOR, TOKEN, account, power, balance,
     )
     .await
 }
 
 async fn seed_contributor_with_scope(
     pool: &PgPool,
-    id: String,
+    contract_set_id: &str,
     chain_id: i32,
     dao_code: &str,
     governor: &str,
@@ -472,21 +480,21 @@ async fn seed_contributor_with_scope(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO contributor (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, block_number, block_timestamp, transaction_hash,
             power, balance, delegates_count_all, delegates_count_effective
          )
          VALUES (
-            $1, $2, $3, $4, $5, $5, 0, 0, 10::NUMERIC(78, 0),
-            1000::NUMERIC(78, 0), $6, $7::NUMERIC(78, 0), $8::NUMERIC(78, 0), 0, 0
+            $1, $2, $3, $4, $5, $6, $6, 0, 0, 10::NUMERIC(78, 0),
+            1000::NUMERIC(78, 0), '0xseed', $7::NUMERIC(78, 0), $8::NUMERIC(78, 0), 0, 0
          )",
     )
-    .bind(id)
+    .bind(account)
+    .bind(contract_set_id)
     .bind(chain_id)
     .bind(dao_code)
     .bind(governor)
     .bind(token)
-    .bind(account)
     .bind(power)
     .bind(balance)
     .execute(pool)
@@ -496,19 +504,32 @@ async fn seed_contributor_with_scope(
 }
 
 async fn seed_data_metric(pool: &PgPool, power_sum: &str) -> Result<(), sqlx::Error> {
+    seed_data_metric_with_scope(pool, "demo-dao", power_sum, 1, 7).await
+}
+
+async fn seed_data_metric_with_scope(
+    pool: &PgPool,
+    contract_set_id: &str,
+    power_sum: &str,
+    member_count: i32,
+    votes_count: i32,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO data_metric (
-            id, chain_id, dao_code, governor_address, token_address, power_sum,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, power_sum,
             member_count, votes_count
          )
          VALUES (
             '46:0x1111111111111111111111111111111111111111:demo-dao',
-            46, 'demo-dao', $1, $2, $3::NUMERIC(78, 0), 1, 7
+            $1, 46, 'demo-dao', $2, $3, $4::NUMERIC(78, 0), $5, $6
          )",
     )
+    .bind(contract_set_id)
     .bind(GOVERNOR)
     .bind(TOKEN)
     .bind(power_sum)
+    .bind(member_count)
+    .bind(votes_count)
     .execute(pool)
     .await?;
 
@@ -527,6 +548,7 @@ async fn seed_task(
     seed_task_with_scope(
         pool,
         task_id,
+        "demo-dao",
         46,
         "demo-dao",
         GOVERNOR,
@@ -543,6 +565,38 @@ async fn seed_task(
 async fn seed_task_with_scope(
     pool: &PgPool,
     task_id: &str,
+    contract_set_id: &str,
+    chain_id: i32,
+    dao_code: &str,
+    governor: &str,
+    token: &str,
+    account: &str,
+    status: &str,
+    attempts: i32,
+    refresh_balance: bool,
+    refresh_power: bool,
+) -> Result<(), sqlx::Error> {
+    seed_task_with_contract_set(
+        pool,
+        task_id,
+        contract_set_id,
+        chain_id,
+        dao_code,
+        governor,
+        token,
+        account,
+        status,
+        attempts,
+        refresh_balance,
+        refresh_power,
+    )
+    .await
+}
+
+async fn seed_task_with_contract_set(
+    pool: &PgPool,
+    task_id: &str,
+    contract_set_id: &str,
     chain_id: i32,
     dao_code: &str,
     governor: &str,
@@ -555,19 +609,20 @@ async fn seed_task_with_scope(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO onchain_refresh_task (
-            id, chain_id, dao_code, governor_address, token_address, account,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
             refresh_balance, refresh_power, reason, first_seen_block_number,
             last_seen_block_number, last_seen_block_timestamp, last_seen_transaction_hash,
             status, attempts, next_run_at, pending_after_lock, created_at, updated_at
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, 'token-activity',
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, 'token-activity',
             10::NUMERIC(78, 0), 12::NUMERIC(78, 0), 12000::NUMERIC(78, 0),
-            '0xtask', $9, $10, 0::NUMERIC(78, 0), false, 10000::NUMERIC(78, 0),
+            '0xtask', $10, $11, 0::NUMERIC(78, 0), false, 10000::NUMERIC(78, 0),
             10000::NUMERIC(78, 0)
          )",
     )
     .bind(task_id)
+    .bind(contract_set_id)
     .bind(chain_id)
     .bind(dao_code)
     .bind(governor)
@@ -592,9 +647,7 @@ async fn contributor_values(
          FROM contributor
          WHERE id = $1",
     )
-    .bind(scoped_contributor_id(
-        "demo-dao", 46, GOVERNOR, TOKEN, account,
-    ))
+    .bind(account)
     .fetch_one(pool)
     .await?;
 
@@ -606,28 +659,41 @@ async fn contributor_values(
 
 async fn contributor_values_by_scope(
     pool: &PgPool,
-    dao_code: &str,
+    contract_set_id: &str,
     account: &str,
 ) -> Result<(String, Option<String>), sqlx::Error> {
     let row = sqlx::query(
         "SELECT power::TEXT AS power, balance::TEXT AS balance
          FROM contributor
-         WHERE dao_code = $1
-           AND chain_id = 46
-           AND governor_address = $2
-           AND token_address = $3
-           AND id LIKE $4",
+         WHERE contract_set_id = $1 AND id = $2",
     )
-    .bind(dao_code)
-    .bind(GOVERNOR)
-    .bind(TOKEN)
-    .bind(format!("%:{account}"))
+    .bind(contract_set_id)
+    .bind(account)
     .fetch_one(pool)
     .await?;
 
     Ok((
         row.get::<String, _>("power"),
         row.get::<Option<String>, _>("balance"),
+    ))
+}
+
+async fn data_metric_values_by_scope(
+    pool: &PgPool,
+    contract_set_id: &str,
+) -> Result<(String, i32), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT power_sum::TEXT AS power_sum, member_count
+         FROM data_metric
+         WHERE contract_set_id = $1",
+    )
+    .bind(contract_set_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((
+        row.get::<String, _>("power_sum"),
+        row.get::<i32, _>("member_count"),
     ))
 }
 
@@ -789,19 +855,11 @@ fn unique_schema_name() -> String {
     )
 }
 
-fn scoped_contributor_id(
-    dao_code: &str,
-    chain_id: i32,
-    governor: &str,
-    token: &str,
-    account: &str,
-) -> String {
-    format!("{dao_code}:{chain_id}:{governor}:{token}:{account}")
-}
-
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
 const GOVERNOR_TWO: &str = "0x3333333333333333333333333333333333333333";
 const TOKEN: &str = "0x2222222222222222222222222222222222222222";
 const TOKEN_TWO: &str = "0x4444444444444444444444444444444444444444";
+const SCOPE_ONE: &str = "scope:timelock-a:erc20:dataset-a";
+const SCOPE_TWO: &str = "scope:timelock-b:erc721:dataset-b";
 const ACCOUNT_ONE: &str = "0x0000000000000000000000000000000000000001";
 const ACCOUNT_TWO: &str = "0x0000000000000000000000000000000000000002";

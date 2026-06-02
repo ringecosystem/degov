@@ -324,8 +324,10 @@ async fn test_postgres_token_state_keeps_overlapping_delegate_accounts_distinct(
 
     let contributor_count: i64 = sqlx::query(
         "SELECT count(*)::BIGINT
-         FROM contributor",
+         FROM contributor
+         WHERE id = $1",
     )
+    .bind(DELEGATE)
     .fetch_one(&database.pool)
     .await?
     .get(0);
@@ -351,6 +353,92 @@ async fn test_postgres_token_state_keeps_overlapping_delegate_accounts_distinct(
     .get(0);
 
     assert_eq!(contributor_count, 2);
+    assert_eq!(delegate_count, 2);
+    assert_eq!(mapping_count, 2);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_state_uses_contract_set_scope_without_public_contributor_id_change()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+
+    write_token_batch_with_scope(
+        &mut store,
+        "demo-dao",
+        GOVERNOR_ONE,
+        TOKEN_ONE,
+        SCOPE_ONE,
+        1,
+    )
+    .await?;
+    write_token_batch_with_scope(
+        &mut store,
+        "demo-dao",
+        GOVERNOR_ONE,
+        TOKEN_ONE,
+        SCOPE_TWO,
+        10,
+    )
+    .await?;
+
+    let contributors = sqlx::query(
+        "SELECT id, contract_set_id, delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE id = $1
+         ORDER BY contract_set_id",
+    )
+    .bind(DELEGATE)
+    .fetch_all(&database.pool)
+    .await?;
+    let delegate_count: i64 = sqlx::query(
+        "SELECT count(*)::BIGINT
+         FROM delegate
+         WHERE from_delegate = $1 AND to_delegate = $2",
+    )
+    .bind(DELEGATOR)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?
+    .get(0);
+    let mapping_count: i64 = sqlx::query(
+        r#"SELECT count(*)::BIGINT
+           FROM delegate_mapping
+           WHERE id = $1 AND "from" = $1 AND "to" = $2"#,
+    )
+    .bind(DELEGATOR)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?
+    .get(0);
+
+    assert_eq!(contributors.len(), 2);
+    assert!(
+        contributors
+            .iter()
+            .all(|row| row.get::<String, _>("id") == DELEGATE)
+    );
+    assert_eq!(
+        contributors
+            .iter()
+            .map(|row| row.get::<String, _>("contract_set_id"))
+            .collect::<Vec<_>>(),
+        vec![SCOPE_ONE.to_owned(), SCOPE_TWO.to_owned()]
+    );
+    assert!(
+        contributors
+            .iter()
+            .all(|row| row.get::<i32, _>("delegates_count_all") == 1)
+    );
+    assert!(
+        contributors
+            .iter()
+            .all(|row| row.get::<i32, _>("delegates_count_effective") == 1)
+    );
     assert_eq!(delegate_count, 2);
     assert_eq!(mapping_count, 2);
 
@@ -432,7 +520,19 @@ async fn write_token_batch(
     token: &str,
     block_number: u64,
 ) -> Result<(), Box<dyn Error>> {
+    write_token_batch_with_scope(store, dao_code, governor, token, dao_code, block_number).await
+}
+
+async fn write_token_batch_with_scope(
+    store: &mut PostgresIndexerRunnerStore,
+    dao_code: &str,
+    governor: &str,
+    token: &str,
+    contract_set_id: &str,
+    block_number: u64,
+) -> Result<(), Box<dyn Error>> {
     let common = TokenEventCommon {
+        contract_set_id: contract_set_id.to_owned(),
         chain_id: 1,
         dao_code: dao_code.to_owned(),
         governor_address: governor.to_owned(),
@@ -444,8 +544,8 @@ async fn write_token_batch(
         block_timestamp: Some((block_number * 1000).to_string()),
         transaction_hash: format!("0xtx{block_number}"),
     };
-    let delegate_changed_id = format!("{dao_code}-delegate-changed");
-    let transfer_id = format!("{dao_code}-transfer");
+    let delegate_changed_id = format!("{contract_set_id}-{block_number}-delegate-changed");
+    let transfer_id = format!("{contract_set_id}-{block_number}-transfer");
     let token = TokenProjectionBatch {
         event_order: Vec::new(),
         delegate_changed: vec![DelegateChangedWrite {
@@ -482,7 +582,7 @@ async fn write_token_batch(
                 standard: GovernanceTokenStandard::Erc20,
             },
         ],
-        reconcile_plan: empty_reconcile_plan(dao_code, governor, token),
+        reconcile_plan: empty_reconcile_plan(contract_set_id, dao_code, governor, token),
     };
     let batch = IndexerProjectionBatch {
         proposal: None,
@@ -498,13 +598,19 @@ async fn write_token_batch(
     Ok(())
 }
 
-fn empty_reconcile_plan(dao_code: &str, governor: &str, token: &str) -> PowerReconcilePlan {
+fn empty_reconcile_plan(
+    contract_set_id: &str,
+    dao_code: &str,
+    governor: &str,
+    token: &str,
+) -> PowerReconcilePlan {
     let contracts = ChainContracts {
         governor: governor.to_owned(),
         governor_token: token.to_owned(),
         timelock: TIMELOCK.to_owned(),
     };
     let context = PowerReconcileContext {
+        contract_set_id: contract_set_id.to_owned(),
         dao_code: dao_code.to_owned(),
         chain_id: 1,
         contracts: contracts.clone(),
@@ -531,6 +637,8 @@ const GOVERNOR_TWO: &str = "0x3333333333333333333333333333333333333333";
 const TOKEN_ONE: &str = "0x2222222222222222222222222222222222222222";
 const TOKEN_TWO: &str = "0x4444444444444444444444444444444444444444";
 const TIMELOCK: &str = "0x5555555555555555555555555555555555555555";
+const SCOPE_ONE: &str = "scope:timelock-a:erc20:dataset-a";
+const SCOPE_TWO: &str = "scope:timelock-b:erc721:dataset-b";
 const DELEGATOR: &str = "0x0000000000000000000000000000000000000001";
 const DELEGATE: &str = "0x0000000000000000000000000000000000000002";
 const ZERO_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
