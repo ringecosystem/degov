@@ -1,0 +1,14 @@
+{
+  "data": {
+    "delegates": {
+      "nodes": [
+        {
+          "address": "0x00000000000000000000000000000000000000aa",
+          "votesCount": "100",
+          "tokenBalance": "12",
+          "delegatorsCount": 2
+        }
+      ]
+    }
+  }
+}

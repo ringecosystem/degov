@@ -87,7 +87,7 @@ const TALLY_PROPOSALS_QUERY = `
   }
 `;
 
-const TALLY_DELEGATES_QUERY = `
+export const TALLY_DELEGATES_QUERY = `
   query Delegates($input: DelegatesInput!) {
     delegates(input: $input) {
       nodes {
@@ -96,6 +96,8 @@ const TALLY_DELEGATES_QUERY = `
           address
           votesCount
           votes
+          tokenBalance
+          balance
           delegatorsCount
           account {
             address
@@ -264,14 +266,6 @@ function hashSeed(seed) {
     value = Math.imul(value, 16777619);
   }
   return value >>> 0;
-}
-
-function seededRandom(seed) {
-  let state = hashSeed(seed);
-  return () => {
-    state = Math.imul(1664525, state) + 1013904223;
-    return (state >>> 0) / 2 ** 32;
-  };
 }
 
 export function selectSamples(items, options) {
@@ -510,15 +504,29 @@ async function readHistoricalVotes(target, address, timepoint) {
 }
 
 export async function readDelegateOnchain(target, address, snapshot) {
-  const [currentVotes, balance, historicalVotes] = await Promise.all([
+  const [currentVotes, balance, historicalVotes] = await Promise.allSettled([
     readCurrentVotes(target, address).then((entry) => entry.value),
     readTokenBalance(target, address).catch(() => null),
-    readHistoricalVotes(target, address, snapshot).catch(() => null),
+    readHistoricalVotes(target, address, snapshot),
   ]);
   return {
-    getVotes: currentVotes,
-    balanceOf: balance,
-    getPastVotes: historicalVotes,
+    getVotes:
+      currentVotes.status === "fulfilled" ? currentVotes.value : undefined,
+    getVotesError:
+      currentVotes.status === "rejected"
+        ? currentVotes.reason?.message ?? String(currentVotes.reason)
+        : null,
+    balanceOf: balance.status === "fulfilled" ? balance.value : undefined,
+    balanceOfError:
+      balance.status === "rejected"
+        ? balance.reason?.message ?? String(balance.reason)
+        : null,
+    getPastVotes:
+      historicalVotes.status === "fulfilled" ? historicalVotes.value : null,
+    getPastVotesError:
+      historicalVotes.status === "rejected"
+        ? historicalVotes.reason?.message ?? String(historicalVotes.reason)
+        : null,
   };
 }
 
@@ -589,6 +597,9 @@ function normalizeDatalensDelegate(entry) {
     votingPower: normalizeBigIntString(entry.power),
     balance: normalizeBigIntString(entry.balance),
     delegateCount: entry.delegatesCountAll ?? null,
+    historicalVotingPower: normalizeBigIntString(
+      entry.historicalVotingPower ?? entry.pastVotes,
+    ),
   };
 }
 
@@ -600,22 +611,43 @@ function normalizeTallyDelegate(entry) {
     ),
     balance: normalizeBigIntString(entry.tokenBalance ?? entry.balance),
     delegateCount: entry.delegatorsCount ?? entry.delegateCount ?? null,
+    historicalVotingPower: normalizeBigIntString(
+      entry.historicalVotingPower ?? entry.pastVotes,
+    ),
   };
 }
 
-function classifyConclusion(degovValue, tallyValue, onchainValue) {
+function classifyConclusion({
+  degovValue,
+  tallyValue,
+  onchainValue,
+  onchainError = null,
+  representationDifference = false,
+}) {
+  if (representationDifference) {
+    return "expected-representation-difference";
+  }
+  if (onchainError) {
+    return "chain-incompatibility";
+  }
   if (onchainValue !== null && onchainValue !== undefined) {
+    if (degovValue === null && tallyValue === onchainValue) {
+      return "degov-bug";
+    }
+    if (tallyValue === null && degovValue === onchainValue) {
+      return "tally-bug";
+    }
     if (degovValue === onchainValue && tallyValue !== onchainValue) {
-      return "tally-wrong";
+      return "tally-bug";
     }
     if (tallyValue === onchainValue && degovValue !== onchainValue) {
-      return "degov-wrong";
+      return "degov-bug";
     }
     if (degovValue !== onchainValue && tallyValue !== onchainValue) {
-      return "inconclusive";
+      return "chain-incompatibility";
     }
   }
-  return degovValue === tallyValue ? "match" : "inconclusive";
+  return degovValue === tallyValue ? "match" : "expected-representation-difference";
 }
 
 function recordMismatch(mismatches, entry) {
@@ -624,30 +656,32 @@ function recordMismatch(mismatches, entry) {
   }
   mismatches.push({
     ...entry,
-    conclusion: classifyConclusion(
-      entry.degovValue,
-      entry.tallyValue,
-      entry.onchainValue,
-    ),
+    conclusion: classifyConclusion(entry),
   });
+}
+
+async function readOnchainSafely(reader, ...args) {
+  try {
+    return { value: await reader(...args), error: null };
+  } catch (error) {
+    return {
+      value: null,
+      error: error?.message ?? String(error),
+    };
+  }
 }
 
 async function compareProposal(target, proposal, tallyById, services, mismatches) {
   const tally = tallyById.get(proposal.id);
-  const onchain = await services.readProposalOnchain(target, proposal.id);
   if (!tally) {
-    mismatches.push({
-      dao: target.code,
-      scope: "proposal",
-      proposalId: proposal.id,
-      field: "identity",
-      degovValue: proposal.id,
-      tallyValue: null,
-      onchainValue: proposal.id,
-      conclusion: "tally-missing",
-    });
     return;
   }
+  const onchainResult = await readOnchainSafely(
+    services.readProposalOnchain,
+    target,
+    proposal.id,
+  );
+  const onchain = onchainResult.value;
 
   for (const [field, onchainField = field] of [
     ["state"],
@@ -664,10 +698,12 @@ async function compareProposal(target, proposal, tallyById, services, mismatches
     const degovValue = proposal[field];
     const tallyValue = tally[field];
     const onchainValue = onchainField ? onchain?.[onchainField] : null;
+    const onchainError = onchainField ? onchainResult.error : null;
     if (
       degovValue === null ||
       tallyValue === null ||
-      (degovValue === tallyValue && (onchainValue === null || degovValue === onchainValue))
+      (degovValue === tallyValue &&
+        (onchainValue === null || degovValue === onchainValue || onchainError))
     ) {
       continue;
     }
@@ -679,31 +715,124 @@ async function compareProposal(target, proposal, tallyById, services, mismatches
       degovValue,
       tallyValue,
       onchainValue,
+      onchainError,
     });
   }
 }
 
-async function compareDelegate(target, delegate, tallyByAddress, services, snapshot, mismatches) {
-  const tally = tallyByAddress.get(delegate.address);
-  const onchain = await services.readDelegateOnchain(target, delegate.address, snapshot);
-  if (!tally) {
-    mismatches.push({
-      dao: target.code,
-      scope: "delegate",
-      address: delegate.address,
-      field: "identity",
-      degovValue: delegate.address,
-      tallyValue: null,
-      onchainValue: delegate.address,
-      conclusion: "tally-missing",
-    });
+async function recordProposalIdentityMismatch({
+  target,
+  proposalId,
+  degovValue,
+  tallyValue,
+  services,
+  mismatches,
+}) {
+  const onchainResult = await readOnchainSafely(
+    services.readProposalOnchain,
+    target,
+    proposalId,
+  );
+  const onchainValue = onchainResult.value ? proposalId : null;
+  recordMismatch(mismatches, {
+    dao: target.code,
+    scope: "proposal",
+    proposalId,
+    field: "identity",
+    degovValue,
+    tallyValue,
+    onchainValue,
+    onchainError: onchainResult.error,
+  });
+}
+
+async function compareProposalIdentityParity({
+  target,
+  proposals,
+  tallyProposalRows,
+  datalensById,
+  tallyById,
+  services,
+  mismatches,
+}) {
+  for (const proposal of proposals) {
+    if (!tallyById.has(proposal.id)) {
+      await recordProposalIdentityMismatch({
+        target,
+        proposalId: proposal.id,
+        degovValue: proposal.id,
+        tallyValue: null,
+        services,
+        mismatches,
+      });
+    }
+  }
+  for (const tally of tallyProposalRows) {
+    if (!datalensById.has(tally.id)) {
+      await recordProposalIdentityMismatch({
+        target,
+        proposalId: tally.id,
+        degovValue: null,
+        tallyValue: tally.id,
+        services,
+        mismatches,
+      });
+    }
+  }
+}
+
+function compareDelegateHistoricalVotes(target, delegate, tally, onchain, mismatches) {
+  if (onchain?.getPastVotes === null || onchain?.getPastVotes === undefined) {
+    if (onchain?.getPastVotesError) {
+      recordMismatch(mismatches, {
+        dao: target.code,
+        scope: "delegate",
+        address: delegate.address,
+        field: "historicalVotingPower",
+        degovValue: delegate.historicalVotingPower ?? "not-represented",
+        tallyValue: tally?.historicalVotingPower ?? "not-represented",
+        onchainValue: "unavailable",
+        onchainError: onchain.getPastVotesError,
+        representationDifference: true,
+      });
+    }
     return;
   }
+  const degovValue = delegate.historicalVotingPower ?? "not-represented";
+  const tallyValue = tally?.historicalVotingPower ?? "not-represented";
+  if (degovValue === onchain.getPastVotes && tallyValue === onchain.getPastVotes) {
+    return;
+  }
+  recordMismatch(mismatches, {
+    dao: target.code,
+    scope: "delegate",
+    address: delegate.address,
+    field: "historicalVotingPower",
+    degovValue,
+    tallyValue,
+    onchainValue: onchain.getPastVotes,
+    representationDifference:
+      degovValue === "not-represented" && tallyValue === "not-represented",
+  });
+}
 
-  for (const [field, onchainField] of [
-    ["votingPower", "getVotes"],
-    ["balance", "balanceOf"],
-    ["delegateCount", null],
+async function compareDelegate(target, delegate, tallyByAddress, services, snapshot, mismatches) {
+  const tally = tallyByAddress.get(delegate.address);
+  if (!tally) {
+    return;
+  }
+  const onchainResult = await readOnchainSafely(
+    services.readDelegateOnchain,
+    target,
+    delegate.address,
+    snapshot,
+  );
+  const onchain = onchainResult.value;
+
+  for (const [field, onchainField, onchainErrorField] of [
+    ["votingPower", "getVotes", "getVotesError"],
+    ["balance", "balanceOf", "balanceOfError"],
+    ["delegateCount", null, null],
   ]) {
     const degovValue =
       delegate[field] === null || delegate[field] === undefined
@@ -712,10 +841,14 @@ async function compareDelegate(target, delegate, tallyByAddress, services, snaps
     const tallyValue =
       tally[field] === null || tally[field] === undefined ? null : String(tally[field]);
     const onchainValue = onchainField ? onchain?.[onchainField] : null;
+    const onchainError = onchainErrorField
+      ? onchain?.[onchainErrorField] ?? onchainResult.error
+      : null;
     if (
       degovValue === null ||
       tallyValue === null ||
-      (degovValue === tallyValue && (onchainValue === null || degovValue === onchainValue))
+      (degovValue === tallyValue &&
+        (onchainValue === null || degovValue === onchainValue || onchainError))
     ) {
       continue;
     }
@@ -727,7 +860,75 @@ async function compareDelegate(target, delegate, tallyByAddress, services, snaps
       degovValue,
       tallyValue,
       onchainValue,
+      onchainError,
     });
+  }
+  compareDelegateHistoricalVotes(target, delegate, tally, onchain, mismatches);
+}
+
+async function recordDelegateIdentityMismatch({
+  target,
+  address,
+  degovValue,
+  tallyValue,
+  services,
+  snapshot,
+  mismatches,
+}) {
+  const onchainResult = await readOnchainSafely(
+    services.readDelegateOnchain,
+    target,
+    address,
+    snapshot,
+  );
+  const onchain = onchainResult.value;
+  recordMismatch(mismatches, {
+    dao: target.code,
+    scope: "delegate",
+    address,
+    field: "identity",
+    degovValue,
+    tallyValue,
+    onchainValue: onchain?.getVotes !== undefined ? address : null,
+    onchainError: onchain?.getVotesError ?? onchainResult.error,
+  });
+}
+
+async function compareDelegateIdentityParity({
+  target,
+  delegates,
+  tallyDelegateRows,
+  datalensByAddress,
+  tallyByAddress,
+  services,
+  snapshot,
+  mismatches,
+}) {
+  for (const delegate of delegates) {
+    if (!tallyByAddress.has(delegate.address)) {
+      await recordDelegateIdentityMismatch({
+        target,
+        address: delegate.address,
+        degovValue: delegate.address,
+        tallyValue: null,
+        services,
+        snapshot,
+        mismatches,
+      });
+    }
+  }
+  for (const tally of tallyDelegateRows) {
+    if (!datalensByAddress.has(tally.address)) {
+      await recordDelegateIdentityMismatch({
+        target,
+        address: tally.address,
+        degovValue: null,
+        tallyValue: tally.address,
+        services,
+        snapshot,
+        mismatches,
+      });
+    }
   }
 }
 
@@ -773,7 +974,11 @@ export async function auditTarget(target, options, services = {}) {
     const delegates = datalensDelegates.map(normalizeDatalensDelegate);
     const tallyProposalRows = tallyProposals.map(normalizeTallyProposal);
     const tallyDelegateRows = tallyDelegates.map(normalizeTallyDelegate);
+    const datalensById = new Map(proposals.map((entry) => [entry.id, entry]));
     const tallyById = new Map(tallyProposalRows.map((entry) => [entry.id, entry]));
+    const datalensByAddress = new Map(
+      delegates.map((entry) => [entry.address, entry]),
+    );
     const tallyByAddress = new Map(
       tallyDelegateRows.map((entry) => [entry.address, entry]),
     );
@@ -807,6 +1012,15 @@ export async function auditTarget(target, options, services = {}) {
         result.mismatches,
       );
     }
+    await compareProposalIdentityParity({
+      target,
+      proposals,
+      tallyProposalRows,
+      datalensById,
+      tallyById,
+      services: servicesForCompare,
+      mismatches: result.mismatches,
+    });
 
     const historicalSnapshot = proposals.find((entry) => entry.proposalSnapshot)
       ?.proposalSnapshot;
@@ -820,6 +1034,16 @@ export async function auditTarget(target, options, services = {}) {
         result.mismatches,
       );
     }
+    await compareDelegateIdentityParity({
+      target,
+      delegates,
+      tallyDelegateRows,
+      datalensByAddress,
+      tallyByAddress,
+      services: servicesForCompare,
+      snapshot: historicalSnapshot,
+      mismatches: result.mismatches,
+    });
 
     result.sync = datalensResult.summary?.squidStatus ?? null;
     result.aggregate = datalensResult.summary?.metrics ?? null;
@@ -850,9 +1074,12 @@ export function summarizeReport(targets) {
     mismatches.filter((entry) => entry.conclusion === conclusion).length;
   return {
     totalMismatches: mismatches.length,
-    tallyWrong: countConclusion("tally-wrong"),
-    degovWrong: countConclusion("degov-wrong"),
-    inconclusive: countConclusion("inconclusive"),
+    tallyBug: countConclusion("tally-bug"),
+    degovBug: countConclusion("degov-bug"),
+    chainIncompatibility: countConclusion("chain-incompatibility"),
+    expectedRepresentationDifference: countConclusion(
+      "expected-representation-difference",
+    ),
     queryErrors: targets.reduce((sum, target) => sum + target.queryErrors.length, 0),
   };
 }
@@ -878,9 +1105,10 @@ export function buildMarkdownReport(report) {
     "### Summary",
     "",
     `- Total mismatches: ${report.summary.totalMismatches}`,
-    `- Tally wrong: ${report.summary.tallyWrong}`,
-    `- DeGov wrong: ${report.summary.degovWrong}`,
-    `- Inconclusive: ${report.summary.inconclusive}`,
+    `- Tally bugs: ${report.summary.tallyBug}`,
+    `- DeGov bugs: ${report.summary.degovBug}`,
+    `- Chain incompatibilities: ${report.summary.chainIncompatibility}`,
+    `- Expected representation differences: ${report.summary.expectedRepresentationDifference}`,
     `- Query errors: ${report.summary.queryErrors ?? 0}`,
     "",
   ];
@@ -904,7 +1132,7 @@ export function buildMarkdownReport(report) {
           ? `proposal ${mismatch.proposalId}`
           : `delegate ${mismatch.address}`;
       lines.push(
-        `- ${subject} ${mismatch.field}: DeGov ${mismatch.degovValue}, Tally ${mismatch.tallyValue}, onchain ${mismatch.onchainValue}, conclusion \`${mismatch.conclusion}\``,
+        `- ${subject} ${mismatch.field}: DeGov ${mismatch.degovValue}, Tally ${mismatch.tallyValue}, onchain ${mismatch.onchainValue}, conclusion \`${mismatch.conclusion}\`${mismatch.onchainError ? `, onchainError ${mismatch.onchainError}` : ""}`,
       );
     }
     for (const error of target.queryErrors) {
@@ -957,7 +1185,7 @@ export async function main(argv = process.argv.slice(2)) {
   await writeFileIfNeeded(options.jsonFile, JSON.stringify(report, null, 2));
   await writeFileIfNeeded(options.markdownFile, markdown);
   console.log(
-    `Tally/onchain E2E checked ${report.targets.length} DAOs; mismatches=${report.summary.totalMismatches}; tallyWrong=${report.summary.tallyWrong}; degovWrong=${report.summary.degovWrong}; queryErrors=${report.summary.queryErrors}`,
+    `Tally/onchain E2E checked ${report.targets.length} DAOs; mismatches=${report.summary.totalMismatches}; tallyBug=${report.summary.tallyBug}; degovBug=${report.summary.degovBug}; chainIncompatibility=${report.summary.chainIncompatibility}; queryErrors=${report.summary.queryErrors}`,
   );
   if (
     options.failOnMismatches &&

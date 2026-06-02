@@ -149,8 +149,21 @@ query($ids: [String!]) {
   a leading heading marker.
 - Compare `for`, `against`, and `abstain` raw vote weights exactly.
 - Compare delegate power raw values exactly.
-- When DeGov and onchain agree but Tally differs, record the conclusion as
-  `tally-wrong`; do not force DeGov to match Tally.
+- Detect Tally-only and DeGov-only proposal/delegate rows and record identity
+  findings with exact row ids or addresses.
+- Compare delegate token balance when Tally exposes `tokenBalance` or
+  `balance`.
+- Read historical votes at a sampled proposal snapshot when available. The
+  current delegate row does not represent historical voting power, so a
+  successful historical chain read without a matching DeGov or Tally field is
+  reported as `expected-representation-difference`.
+- Use these conclusion values:
+  - `degov-bug`: Tally and onchain agree, but DeGov differs or is missing.
+  - `tally-bug`: DeGov and onchain agree, but Tally differs or is missing.
+  - `chain-incompatibility`: the onchain read needed to adjudicate a mismatch
+    is unsupported, reverts, or disagrees with both data sources.
+  - `expected-representation-difference`: the values are not directly
+    comparable because a source does not expose the same representation.
 - Compare aggregate power as both raw difference and percentage difference.
 - Sample several proposal ranges: latest, middle, and oldest.
 - Sample delegates in multiple pages, for example top 80 by Tally voting power.
@@ -180,6 +193,8 @@ Proposals:
 Delegates:
 - sampled:
 - power mismatches:
+- balance mismatches:
+- historical vote findings:
 - delegator-count mismatches:
 
 Aggregate power:
@@ -198,7 +213,13 @@ If proposal ids, titles, and vote weights match, proposal indexing is generally
 healthy even if display status differs. Check `stateEpochs` separately.
 
 If delegate power differs but Tally matches direct onchain `getVotes`, treat it
-as a DeGov power refresh issue.
+as `degov-bug`. If DeGov matches direct onchain `getVotes` and Tally differs,
+treat it as `tally-bug`.
+
+If historical `getPastVotes` or `getPriorVotes` is unavailable, record the
+read limitation with the finding. If the read succeeds but neither DeGov nor
+Tally exposes a historical delegate-power row for that sampled snapshot, treat
+the finding as `expected-representation-difference`.
 
 If aggregate power differs while top delegate samples match, widen delegate
 sampling before treating it as a product issue. Tally aggregate fields may have

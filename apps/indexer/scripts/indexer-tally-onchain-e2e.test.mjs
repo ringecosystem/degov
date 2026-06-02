@@ -3,8 +3,11 @@
 import assert from "node:assert/strict";
 
 import {
+  TALLY_DELEGATES_QUERY,
   auditTarget,
   buildMarkdownReport,
+  fetchTallyDelegates,
+  fetchTallyProposals,
   normalizeProposalId,
   parseArgs,
   selectSamples,
@@ -36,6 +39,15 @@ assert.throws(
   () => parseArgs(["--targets-file"]),
   /--targets-file requires a value/,
 );
+
+assert.match(TALLY_DELEGATES_QUERY, /tokenBalance/);
+assert.match(TALLY_DELEGATES_QUERY, /balance/);
+
+const fixturesDir = "apps/indexer/scripts/fixtures/tally-onchain-e2e";
+const replayProposals = await fetchTallyProposals(target, { fixturesDir });
+const replayDelegates = await fetchTallyDelegates(target, { fixturesDir });
+assert.equal(replayProposals[0].onchainId, "42");
+assert.equal(replayDelegates[0].tokenBalance, "12");
 
 const result = await auditTarget(
   target,
@@ -101,19 +113,40 @@ const result = await auditTarget(
       {
         onchainId: "43",
         title: "Treasury refill",
-        state: "Succeeded",
+        state: "Defeated",
         votes: { for: "20", against: "1", abstain: "0" },
         quorum: "1000",
         startBlock: "11",
         endBlock: "21",
       },
+      {
+        onchainId: "44",
+        title: "Tally-only proposal",
+        state: "Active",
+        votes: { for: "1", against: "0", abstain: "0" },
+        quorum: "1000",
+        startBlock: "12",
+        endBlock: "22",
+      },
     ],
-    readProposalOnchain: async (_target, proposalId) => ({
-      state: proposalId === "42" ? "Executed" : "Succeeded",
-      proposalSnapshot: proposalId === "42" ? "10" : "11",
-      proposalDeadline: proposalId === "42" ? "20" : "21",
-      quorum: "1000",
-    }),
+    readProposalOnchain: async (_target, proposalId) => {
+      if (proposalId === "43") {
+        throw new Error("proposalSnapshot reverts");
+      }
+      return {
+        state:
+          proposalId === "42"
+            ? "Executed"
+            : proposalId === "44"
+              ? "Active"
+              : "Succeeded",
+        proposalSnapshot:
+          proposalId === "42" ? "10" : proposalId === "44" ? "12" : "11",
+        proposalDeadline:
+          proposalId === "42" ? "20" : proposalId === "44" ? "22" : "21",
+        quorum: "1000",
+      };
+    },
     fetchDatalensDelegates: async () => [
       {
         id: "0x00000000000000000000000000000000000000aa",
@@ -138,7 +171,7 @@ const result = await auditTarget(
       {
         address: "0x00000000000000000000000000000000000000aa",
         votes: "100",
-        tokenBalance: "12",
+        balance: "12",
         delegatorsCount: 2,
       },
       {
@@ -153,25 +186,47 @@ const result = await auditTarget(
         tokenBalance: "30",
         delegatorsCount: 0,
       },
+      {
+        address: "0x00000000000000000000000000000000000000dd",
+        votes: "400",
+        tokenBalance: "40",
+        delegatorsCount: 4,
+      },
     ],
     readDelegateOnchain: async (_target, address) => ({
-      getVotes: address.endsWith("bb") ? "200" : address.endsWith("cc") ? "300" : "100",
-      balanceOf: address.endsWith("bb") ? "25" : address.endsWith("cc") ? "30" : "12",
-      getPastVotes: address.endsWith("bb") ? "200" : address.endsWith("cc") ? "300" : "100",
+      getVotes: address.endsWith("dd")
+        ? "400"
+        : address.endsWith("bb")
+          ? "200"
+          : address.endsWith("cc")
+            ? "300"
+            : "100",
+      balanceOf: address.endsWith("dd")
+        ? "40"
+        : address.endsWith("bb")
+          ? "25"
+          : address.endsWith("cc")
+            ? "30"
+            : "12",
+      getPastVotes: address.endsWith("cc") ? "250" : null,
     }),
   },
 );
 
 assert.equal(result.summary.proposals.sampled, 2);
 assert.equal(result.summary.delegates.sampled, 3);
-assert.equal(result.mismatches.length, 3);
+assert.equal(result.mismatches.length, 7);
 
 assert.deepEqual(
   result.mismatches.map((entry) => [entry.scope, entry.field, entry.conclusion]),
   [
-    ["proposal", "state", "tally-wrong"],
-    ["proposal", "quorum", "tally-wrong"],
-    ["delegate", "votingPower", "tally-wrong"],
+    ["proposal", "state", "tally-bug"],
+    ["proposal", "quorum", "tally-bug"],
+    ["proposal", "state", "chain-incompatibility"],
+    ["proposal", "identity", "degov-bug"],
+    ["delegate", "votingPower", "tally-bug"],
+    ["delegate", "historicalVotingPower", "expected-representation-difference"],
+    ["delegate", "identity", "degov-bug"],
   ],
 );
 
@@ -179,22 +234,35 @@ assert.equal(result.mismatches[0].dao, "ens-dao");
 assert.equal(result.mismatches[0].degovValue, "Executed");
 assert.equal(result.mismatches[0].tallyValue, "Active");
 assert.equal(result.mismatches[0].onchainValue, "Executed");
-assert.equal(result.mismatches[2].address, "0x00000000000000000000000000000000000000bb");
-assert.equal(result.mismatches[2].degovValue, "200");
-assert.equal(result.mismatches[2].tallyValue, "999");
-assert.equal(result.mismatches[2].onchainValue, "200");
+assert.equal(result.mismatches[2].onchainError, "proposalSnapshot reverts");
+assert.equal(result.mismatches[3].proposalId, "44");
+assert.equal(result.mismatches[3].degovValue, null);
+assert.equal(result.mismatches[3].tallyValue, "44");
+assert.equal(result.mismatches[3].onchainValue, "44");
+assert.equal(result.mismatches[4].address, "0x00000000000000000000000000000000000000bb");
+assert.equal(result.mismatches[4].degovValue, "200");
+assert.equal(result.mismatches[4].tallyValue, "999");
+assert.equal(result.mismatches[4].onchainValue, "200");
+assert.equal(result.mismatches[5].degovValue, "not-represented");
+assert.equal(result.mismatches[5].tallyValue, "not-represented");
+assert.equal(result.mismatches[5].onchainValue, "250");
+assert.equal(result.mismatches[6].address, "0x00000000000000000000000000000000000000dd");
 
 const markdown = buildMarkdownReport({
   generatedAt: "2026-06-02T00:00:00.000Z",
   targets: [result],
   summary: {
     totalMismatches: result.mismatches.length,
-    tallyWrong: 3,
-    degovWrong: 0,
-    inconclusive: 0,
+    tallyBug: 3,
+    degovBug: 2,
+    chainIncompatibility: 1,
+    expectedRepresentationDifference: 1,
+    queryErrors: 0,
   },
 });
 assert.match(markdown, /Tally and Onchain E2E Validation/);
-assert.match(markdown, /conclusion `tally-wrong`/);
+assert.match(markdown, /conclusion `tally-bug`/);
+assert.match(markdown, /conclusion `chain-incompatibility`/);
+assert.match(markdown, /conclusion `expected-representation-difference`/);
 
 console.log("Indexer Tally onchain E2E tests passed");

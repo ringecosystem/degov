@@ -1,0 +1,37 @@
+{
+  "data": {
+    "proposals": {
+      "nodes": [
+        {
+          "onchainId": "42",
+          "metadata": {
+            "title": "Upgrade resolver",
+            "description": "# Upgrade resolver\n\nBody"
+          },
+          "status": "active",
+          "voteStats": [
+            {
+              "type": "for",
+              "votesCount": "11"
+            },
+            {
+              "type": "against",
+              "votesCount": "2"
+            },
+            {
+              "type": "abstain",
+              "votesCount": "3"
+            }
+          ],
+          "quorum": "1000",
+          "start": {
+            "number": "10"
+          },
+          "end": {
+            "number": "20"
+          }
+        }
+      ]
+    }
+  }
+}
