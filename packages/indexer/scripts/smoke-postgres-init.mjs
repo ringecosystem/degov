@@ -90,10 +90,22 @@ async function main() {
   const schema = await readFile(schemaPath, "utf8");
   const psqlDatabaseUrl = dockerDatabaseUrl();
   const cleanDatabaseSql = [
-    "SELECT table_name",
-    "FROM information_schema.tables",
-    "WHERE table_schema = 'public'",
-    "ORDER BY table_name;",
+    "SELECT",
+    "  CASE c.relkind",
+    "    WHEN 'r' THEN 'table'",
+    "    WHEN 'p' THEN 'partitioned table'",
+    "    WHEN 'v' THEN 'view'",
+    "    WHEN 'm' THEN 'materialized view'",
+    "    WHEN 'S' THEN 'sequence'",
+    "    WHEN 'f' THEN 'foreign table'",
+    "    WHEN 'i' THEN 'index'",
+    "    WHEN 'I' THEN 'partitioned index'",
+    "    ELSE c.relkind::text",
+    "  END || ':' || c.relname AS object_name",
+    "FROM pg_catalog.pg_class c",
+    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace",
+    "WHERE n.nspname = 'public'",
+    "ORDER BY object_name;",
   ].join("\n");
   const cleanDatabaseResult = await runDockerPostgres(
     ["psql", psqlDatabaseUrl, "--tuples-only", "--no-align"],
@@ -105,14 +117,14 @@ async function main() {
     process.exit(cleanDatabaseResult.status ?? 1);
   }
 
-  const existingTables = cleanDatabaseResult.stdout
+  const existingObjects = cleanDatabaseResult.stdout
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
 
-  if (existingTables.length > 0) {
+  if (existingObjects.length > 0) {
     console.error(
-      `DEGOV_INDEXER_DATABASE_URL must point to a clean Postgres database; public already contains: ${existingTables.join(", ")}`,
+      `DEGOV_INDEXER_DATABASE_URL must point to a clean Postgres database; public already contains: ${existingObjects.join(", ")}`,
     );
     process.exit(1);
   }
