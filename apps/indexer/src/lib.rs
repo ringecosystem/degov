@@ -1,3 +1,4 @@
+pub mod chain_tool;
 pub mod checkpoint;
 pub mod config;
 pub mod datalens;
@@ -5,6 +6,13 @@ pub mod error;
 pub mod evm_log;
 pub mod planner;
 
+pub use chain_tool::{
+    BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadCapability,
+    ChainReadExecutionPlan, ChainReadExecutionReport, ChainReadFailure, ChainReadFailureKind,
+    ChainReadKey, ChainReadMethod, ChainReadMetrics, ChainReadPlan, ChainReadPlanBuilder,
+    ChainReadReason, ChainReadRequest, ChainReadRetryPolicy, ChainTool, MulticallReadGroup,
+    PartialChainReadFailureReport, ReadRequirement,
+};
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
     plan_next_checkpoint_range,
