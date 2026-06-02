@@ -7,6 +7,7 @@ pub mod error;
 pub mod evm_log;
 pub mod planner;
 pub mod power_reconcile;
+pub mod proposal_projection;
 
 pub use chain_tool::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadCapability,
@@ -44,4 +45,11 @@ pub use power_reconcile::{
     PowerActivityReason, PowerFreshnessState, PowerReconcileCandidate, PowerReconcileContext,
     PowerReconcileEvent, PowerReconcileMetrics, PowerReconcilePlan, PowerRefreshReadSource,
     PowerRefreshStatus, PowerRefreshStatusRecord, plan_power_reconcile,
+};
+pub use proposal_projection::{
+    InMemoryProposalProjectionRepository, ProposalActionWrite, ProposalCreatedWrite,
+    ProposalDeadlineExtensionWrite, ProposalEventCommon, ProposalExtendedWrite, ProposalIdWrite,
+    ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionEvent,
+    ProposalProjectionRepository, ProposalQueuedWrite, ProposalRepositoryWriteError,
+    ProposalStateEpochWrite, ProposalStateWriteKind, ProposalWrite, project_proposal_events,
 };

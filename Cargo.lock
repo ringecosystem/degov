@@ -407,6 +407,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "sha3",
  "sqlx",
  "temp-env",
  "thiserror 2.0.18",
