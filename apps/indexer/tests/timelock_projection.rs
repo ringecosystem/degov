@@ -7,6 +7,7 @@ use degov_datalens_indexer::{
     project_timelock_events,
 };
 use serde_json::json;
+use sha3::{Digest, Keccak256};
 
 #[test]
 fn test_project_timelock_scheduled_executed_and_cancelled_operations() {
@@ -189,6 +190,199 @@ fn test_project_timelock_role_and_min_delay_events() {
     assert_eq!(delay.old_duration, "3600");
     assert_eq!(delay.new_duration, "7200");
     assert_eq!(delay.block_number, "22");
+}
+
+#[test]
+fn test_project_timelock_role_labels_use_openzeppelin_hashes() {
+    let proposer_role = role_hash("PROPOSER_ROLE");
+    let executor_role = role_hash("EXECUTOR_ROLE");
+    let admin_role = role_hash("TIMELOCK_ADMIN_ROLE");
+    let batch = project_timelock_events(
+        &context(),
+        vec![
+            TimelockProjectionEvent {
+                log: log(20, 0, 0),
+                event: DecodedTimelockEvent::RoleGranted(RoleAccountEvent {
+                    role: proposer_role.clone(),
+                    account: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_owned(),
+                    sender: "0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD".to_owned(),
+                }),
+            },
+            TimelockProjectionEvent {
+                log: log(21, 0, 0),
+                event: DecodedTimelockEvent::RoleAdminChanged(RoleAdminChangedEvent {
+                    role: proposer_role.clone(),
+                    previous_admin_role: admin_role.clone(),
+                    new_admin_role: executor_role.clone(),
+                }),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    let granted = &batch.timelock_role_events[0];
+    assert_eq!(granted.role, proposer_role);
+    assert_eq!(granted.role_label.as_deref(), Some("PROPOSER_ROLE"));
+
+    let admin_changed = &batch.timelock_role_events[1];
+    assert_eq!(
+        admin_changed.previous_admin_role.as_deref(),
+        Some(admin_role.as_str())
+    );
+    assert_eq!(
+        admin_changed.previous_admin_role_label.as_deref(),
+        Some("TIMELOCK_ADMIN_ROLE")
+    );
+    assert_eq!(
+        admin_changed.new_admin_role.as_deref(),
+        Some(executor_role.as_str())
+    );
+    assert_eq!(
+        admin_changed.new_admin_role_label.as_deref(),
+        Some("EXECUTOR_ROLE")
+    );
+}
+
+#[test]
+fn test_project_timelock_call_ids_preserve_decimal_index_strings() {
+    let large_index = "18446744073709551616".to_owned();
+    let leading_zero_index = "00018446744073709551616".to_owned();
+    let batch = project_timelock_events(
+        &context(),
+        vec![
+            TimelockProjectionEvent {
+                log: log(10, 0, 0),
+                event: DecodedTimelockEvent::CallScheduled(CallScheduledEvent {
+                    id: operation_id(),
+                    index: large_index.clone(),
+                    target: "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned(),
+                    value: "0".to_owned(),
+                    data: "0x".to_owned(),
+                    predecessor: predecessor_id(),
+                    delay: "60".to_owned(),
+                }),
+            },
+            TimelockProjectionEvent {
+                log: log(10, 0, 1),
+                event: DecodedTimelockEvent::CallScheduled(CallScheduledEvent {
+                    id: operation_id(),
+                    index: leading_zero_index.clone(),
+                    target: "0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD".to_owned(),
+                    value: "0".to_owned(),
+                    data: "0x".to_owned(),
+                    predecessor: predecessor_id(),
+                    delay: "60".to_owned(),
+                }),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(batch.timelock_calls.len(), 2);
+    assert!(
+        batch
+            .timelock_calls
+            .iter()
+            .any(|call| call.id.ends_with(&format!(":call:{large_index}")))
+    );
+    assert!(
+        batch
+            .timelock_calls
+            .iter()
+            .any(|call| call.id.ends_with(&format!(":call:{leading_zero_index}")))
+    );
+}
+
+#[test]
+fn test_project_timelock_ready_at_adds_uint256_sized_decimal_strings() {
+    let delay = "115792089237316195423570985008687907853269984665640564039457584007913129639000";
+    let batch = project_timelock_events(
+        &context(),
+        vec![TimelockProjectionEvent {
+            log: log(10, 0, 0),
+            event: DecodedTimelockEvent::CallScheduled(CallScheduledEvent {
+                id: operation_id(),
+                index: "0".to_owned(),
+                target: "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned(),
+                value: "0".to_owned(),
+                data: "0x".to_owned(),
+                predecessor: predecessor_id(),
+                delay: delay.to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(
+        batch.timelock_operations[0].ready_at.as_deref(),
+        Some("115792089237316195423570985008687907853269984665640564039457584007914829639000")
+    );
+}
+
+#[test]
+fn test_project_timelock_repository_merges_incremental_operation_and_call_state() {
+    let mut repository = degov_datalens_indexer::InMemoryTimelockProjectionRepository::default();
+    let scheduled_batch = project_timelock_events(
+        &context(),
+        vec![TimelockProjectionEvent {
+            log: log(10, 0, 0),
+            event: DecodedTimelockEvent::CallScheduled(CallScheduledEvent {
+                id: operation_id(),
+                index: "0".to_owned(),
+                target: "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned(),
+                value: "0".to_owned(),
+                data: "0x".to_owned(),
+                predecessor: predecessor_id(),
+                delay: "60".to_owned(),
+            }),
+        }],
+    )
+    .expect("scheduled projection succeeds");
+    let executed_batch = project_timelock_events(
+        &context(),
+        vec![TimelockProjectionEvent {
+            log: log(11, 0, 0),
+            event: DecodedTimelockEvent::CallExecuted(CallExecutedEvent {
+                id: operation_id(),
+                index: "0".to_owned(),
+                target: "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned(),
+                value: "0".to_owned(),
+                data: "0x".to_owned(),
+            }),
+        }],
+    )
+    .expect("executed projection succeeds");
+
+    repository
+        .apply(&scheduled_batch)
+        .expect("scheduled write succeeds");
+    repository
+        .apply(&executed_batch)
+        .expect("executed write succeeds");
+    repository
+        .apply(&executed_batch)
+        .expect("executed replay succeeds");
+
+    let operation = repository
+        .timelock_operations()
+        .values()
+        .next()
+        .expect("operation");
+    assert_eq!(operation.state, "Executed");
+    assert_eq!(operation.call_count, Some(1));
+    assert_eq!(operation.executed_call_count, Some(1));
+    assert_eq!(
+        operation.predecessor.as_deref(),
+        Some(predecessor_id().as_str())
+    );
+    assert_eq!(operation.ready_at.as_deref(), Some("1700000060"));
+    assert_eq!(operation.queued_block_number.as_deref(), Some("10"));
+    assert_eq!(operation.executed_block_number.as_deref(), Some("11"));
+
+    let call = repository.timelock_calls().values().next().expect("call");
+    assert_eq!(call.state, "Executed");
+    assert_eq!(call.scheduled_block_number.as_deref(), Some("10"));
+    assert_eq!(call.executed_block_number.as_deref(), Some("11"));
 }
 
 #[test]
@@ -397,7 +591,7 @@ fn salt_id() -> String {
 }
 
 fn proposer_role() -> String {
-    "0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1dca736082b6819cc1c".to_owned()
+    "0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1".to_owned()
 }
 
 fn executor_role() -> String {
@@ -405,5 +599,9 @@ fn executor_role() -> String {
 }
 
 fn admin_role() -> String {
-    "0x5f58e31ab30a808bd595a1846dfacf36fb5398db601a2c1f9395392a042330a0".to_owned()
+    "0x5f58e3a2316349923ce3780f8d587db2d72378aed66a8261c916544fa6846ca5".to_owned()
+}
+
+fn role_hash(role: &str) -> String {
+    format!("0x{}", hex::encode(Keccak256::digest(role.as_bytes())))
 }

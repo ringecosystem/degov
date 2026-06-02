@@ -255,14 +255,44 @@ impl TimelockProjectionRepository for InMemoryTimelockProjectionRepository {
     type Error = TimelockRepositoryWriteError;
 
     fn apply(&mut self, batch: &TimelockProjectionBatch) -> Result<(), Self::Error> {
-        extend_map(
-            &mut self.timelock_operations,
-            &batch.timelock_operations,
-            |row| row.id.clone(),
-        );
-        extend_map(&mut self.timelock_calls, &batch.timelock_calls, |row| {
-            row.id.clone()
-        });
+        for operation in &batch.timelock_operations {
+            self.timelock_operations
+                .entry(operation.id.clone())
+                .and_modify(|stored| stored.merge(operation))
+                .or_insert_with(|| operation.clone());
+        }
+        for call in &batch.timelock_calls {
+            self.timelock_calls
+                .entry(call.id.clone())
+                .and_modify(|stored| stored.merge(call))
+                .or_insert_with(|| call.clone());
+        }
+        for operation in self.timelock_operations.values_mut() {
+            let call_count = self
+                .timelock_calls
+                .values()
+                .filter(|call| {
+                    call.operation_ref == operation.id && call.scheduled_block_number.is_some()
+                })
+                .count();
+            let executed_call_count = self
+                .timelock_calls
+                .values()
+                .filter(|call| {
+                    call.operation_ref == operation.id && call.executed_block_number.is_some()
+                })
+                .count();
+            operation.call_count = if call_count > 0 {
+                Some(call_count)
+            } else {
+                None
+            };
+            operation.executed_call_count = if executed_call_count > 0 {
+                Some(executed_call_count)
+            } else {
+                None
+            };
+        }
         extend_map(
             &mut self.timelock_role_events,
             &batch.timelock_role_events,
@@ -851,7 +881,7 @@ fn operation_ref(common: &TimelockEventCommon, operation_id: &str) -> String {
 }
 
 fn call_ref(operation_ref: &str, index: &str) -> String {
-    format!("{operation_ref}:call:{}", parse_usize(index))
+    format!("{operation_ref}:call:{index}")
 }
 
 fn normalize_identifier(value: &str) -> String {
@@ -863,7 +893,38 @@ fn parse_usize(value: &str) -> usize {
 }
 
 fn add_decimal_strings(left: &str, right: &str) -> Option<String> {
-    Some((left.parse::<u128>().ok()? + right.parse::<u128>().ok()?).to_string())
+    if left.is_empty()
+        || right.is_empty()
+        || !left.bytes().all(|byte| byte.is_ascii_digit())
+        || !right.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+
+    let mut carry = 0;
+    let mut digits = Vec::with_capacity(left.len().max(right.len()) + 1);
+    let mut left = left.bytes().rev();
+    let mut right = right.bytes().rev();
+
+    loop {
+        let left_digit = left.next().map(|byte| byte - b'0');
+        let right_digit = right.next().map(|byte| byte - b'0');
+        if left_digit.is_none() && right_digit.is_none() && carry == 0 {
+            break;
+        }
+
+        let sum = left_digit.unwrap_or_default() + right_digit.unwrap_or_default() + carry;
+        digits.push(char::from(b'0' + (sum % 10)));
+        carry = sum / 10;
+    }
+
+    let value = digits.into_iter().rev().collect::<String>();
+    let value = value.trim_start_matches('0');
+    Some(if value.is_empty() {
+        "0".to_owned()
+    } else {
+        value.to_owned()
+    })
 }
 
 fn merge_sum(left: Option<usize>, right: Option<usize>) -> Option<usize> {
@@ -931,13 +992,13 @@ fn role_label(role: &str) -> Option<&'static str> {
         "0x0000000000000000000000000000000000000000000000000000000000000000" => {
             Some("DEFAULT_ADMIN_ROLE")
         }
-        "0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1dca736082b6819cc1c" => {
+        "0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1" => {
             Some("PROPOSER_ROLE")
         }
         "0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63" => {
             Some("EXECUTOR_ROLE")
         }
-        "0x5f58e31ab30a808bd595a1846dfacf36fb5398db601a2c1f9395392a042330a0" => {
+        "0x5f58e3a2316349923ce3780f8d587db2d72378aed66a8261c916544fa6846ca5" => {
             Some("TIMELOCK_ADMIN_ROLE")
         }
         _ => None,
