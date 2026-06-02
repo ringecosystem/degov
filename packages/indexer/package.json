@@ -5,7 +5,7 @@
   "scripts": {
     "build": "node ./scripts/placeholder.mjs",
     "check:rust-conventions": "node ./scripts/check-rust-conventions.mjs",
-    "test": "pnpm run check:rust-conventions && node ./scripts/check-rust-conventions.test.mjs && node ./scripts/placeholder.mjs",
+    "test": "pnpm run check:rust-conventions && node ./scripts/check-rust-conventions.test.mjs && node ./scripts/compatibility-preflight.test.mjs && node ./scripts/placeholder.mjs",
     "test-unit": "node ./scripts/placeholder.mjs"
   }
 }
