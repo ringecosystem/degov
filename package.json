@@ -14,6 +14,7 @@
     "indexer:migrate": "cargo run -p degov-datalens-indexer --locked -- migrate",
     "indexer:smoke-datalens": "cargo run -p degov-datalens-indexer --locked -- smoke-datalens",
     "indexer:worker": "cargo run -p degov-datalens-indexer --locked -- worker",
+    "test:indexer": "cargo test -p degov-datalens-indexer --locked",
     "test:indexer-scripts": "node apps/indexer/scripts/indexer-diagnostics.test.mjs && node apps/indexer/scripts/indexer-accuracy-audit.test.mjs && node apps/indexer/scripts/indexer-accuracy-diagnose.test.mjs && node apps/indexer/scripts/indexer-reconcile-diagnose.test.mjs"
   },
   "pnpm": {
