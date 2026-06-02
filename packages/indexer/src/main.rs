@@ -39,11 +39,8 @@ fn smoke_datalens() -> anyhow::Result<()> {
         config.endpoint
     );
     let client = DatalensNativeClient::from_config(&config).context("create Datalens client")?;
-    let readiness = verify_datalens_service(&client).context("verify Datalens service")?;
-
-    if readiness.native_graphql_ready {
-        log::info!("Datalens native GraphQL readiness confirmed");
-    }
+    verify_datalens_service(&client).context("verify Datalens service")?;
+    log::info!("Datalens native GraphQL readiness confirmed");
 
     Ok(())
 }

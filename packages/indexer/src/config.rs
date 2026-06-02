@@ -86,6 +86,14 @@ pub enum ChainFamily {
     Evm,
 }
 
+impl ChainFamily {
+    pub fn as_datalens_value(self) -> &'static str {
+        match self {
+            Self::Evm => "evm",
+        }
+    }
+}
+
 impl FromStr for ChainFamily {
     type Err = ConfigError;
 
@@ -160,7 +168,7 @@ impl Default for RawDatalensConfig {
             datalens_token: None,
             datalens_timeout_seconds: DEFAULT_DATALENS_TIMEOUT_SECONDS,
             datalens_finality: DEFAULT_DATALENS_FINALITY.as_datalens_value().to_owned(),
-            datalens_chain_family: "evm".to_owned(),
+            datalens_chain_family: DEFAULT_DATALENS_CHAIN_FAMILY.as_datalens_value().to_owned(),
             datalens_chain_name: DEFAULT_DATALENS_CHAIN_NAME.to_owned(),
             datalens_chain_id: Some(DEFAULT_DATALENS_CHAIN_ID),
             datalens_dataset_family: DEFAULT_DATALENS_DATASET_FAMILY.to_owned(),
