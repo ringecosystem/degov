@@ -353,6 +353,7 @@ dependencies = [
  "figment",
  "log",
  "serde",
+ "serde_json",
  "sqlx",
  "temp-env",
  "thiserror",

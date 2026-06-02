@@ -2,6 +2,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod datalens;
 pub mod error;
+pub mod evm_log;
 
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -15,3 +16,4 @@ pub use datalens::{
     DatalensNativeClient, DatalensNativeReader, ServiceReadiness, verify_datalens_service,
 };
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
+pub use evm_log::{EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows};
