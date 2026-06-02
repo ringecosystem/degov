@@ -490,6 +490,8 @@ async fn upsert_proposal(
          )
          ON CONFLICT (id) DO UPDATE
          SET proposer = CASE WHEN EXCLUDED.proposer = '' THEN proposal.proposer ELSE EXCLUDED.proposer END,
+             log_index = CASE WHEN EXCLUDED.proposer = '' THEN proposal.log_index ELSE EXCLUDED.log_index END,
+             transaction_index = CASE WHEN EXCLUDED.proposer = '' THEN proposal.transaction_index ELSE EXCLUDED.transaction_index END,
              targets = CASE WHEN cardinality(EXCLUDED.targets) = 0 THEN proposal.targets ELSE EXCLUDED.targets END,
              values = CASE WHEN cardinality(EXCLUDED.values) = 0 THEN proposal.values ELSE EXCLUDED.values END,
              signatures = CASE WHEN cardinality(EXCLUDED.signatures) = 0 THEN proposal.signatures ELSE EXCLUDED.signatures END,
@@ -497,11 +499,29 @@ async fn upsert_proposal(
              vote_start = GREATEST(proposal.vote_start, EXCLUDED.vote_start),
              vote_end = GREATEST(proposal.vote_end, EXCLUDED.vote_end),
              description = CASE WHEN EXCLUDED.description = '' THEN proposal.description ELSE EXCLUDED.description END,
+             block_number = CASE WHEN EXCLUDED.proposer = '' THEN proposal.block_number ELSE EXCLUDED.block_number END,
+             block_timestamp = CASE WHEN EXCLUDED.proposer = '' THEN proposal.block_timestamp ELSE EXCLUDED.block_timestamp END,
+             transaction_hash = CASE WHEN EXCLUDED.proposer = '' THEN proposal.transaction_hash ELSE EXCLUDED.transaction_hash END,
              title = CASE WHEN EXCLUDED.title = '' THEN proposal.title ELSE EXCLUDED.title END,
+             vote_start_timestamp = CASE WHEN EXCLUDED.proposer = '' THEN proposal.vote_start_timestamp ELSE EXCLUDED.vote_start_timestamp END,
+             vote_end_timestamp = CASE WHEN EXCLUDED.proposer = '' THEN proposal.vote_end_timestamp ELSE EXCLUDED.vote_end_timestamp END,
              description_hash = COALESCE(EXCLUDED.description_hash, proposal.description_hash),
              proposal_snapshot = COALESCE(EXCLUDED.proposal_snapshot, proposal.proposal_snapshot),
-             proposal_deadline = COALESCE(EXCLUDED.proposal_deadline, proposal.proposal_deadline),
-             proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta),
+             proposal_deadline = CASE
+               WHEN EXCLUDED.proposer <> ''
+                    AND proposal.proposal_deadline IS NOT NULL
+                    AND EXCLUDED.proposal_deadline IS NOT NULL
+                    AND proposal.proposal_deadline > EXCLUDED.proposal_deadline
+                 THEN proposal.proposal_deadline
+               ELSE COALESCE(EXCLUDED.proposal_deadline, proposal.proposal_deadline)
+             END,
+             proposal_eta = CASE
+               WHEN EXCLUDED.proposal_eta = 0
+                    AND proposal.proposal_eta IS NOT NULL
+                    AND proposal.proposal_eta <> 0
+                 THEN proposal.proposal_eta
+               ELSE COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta)
+             END,
              queue_ready_at = COALESCE(EXCLUDED.queue_ready_at, proposal.queue_ready_at),
              queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
              clock_mode = EXCLUDED.clock_mode,

@@ -146,14 +146,14 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
         &context,
         vec![
             ProposalProjectionEvent {
-                log: normalized_log("evm:1:3:0xtx30:0:0", 3, 0, 0),
+                log: normalized_log("evm:1:3:0xtx31:1:2", 3, 1, 2),
                 event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
                     proposal_id: "42".to_owned(),
                     eta_seconds: "1234".to_owned(),
                 }),
             },
             ProposalProjectionEvent {
-                log: normalized_log("evm:1:4:0xtx40:0:0", 4, 0, 0),
+                log: normalized_log("evm:1:4:0xtx43:3:4", 4, 3, 4),
                 event: DecodedGovernorEvent::ProposalExtended(ProposalExtendedEvent {
                     proposal_id: "42".to_owned(),
                     extended_deadline: "250".to_owned(),
@@ -165,7 +165,7 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
     let raw_batch = project_proposal_events(
         &context,
         vec![ProposalProjectionEvent {
-            log: normalized_log("evm:1:2:0xtx20:0:0", 2, 0, 0),
+            log: normalized_log("evm:1:2:0xtx25:5:6", 2, 5, 6),
             event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
                 proposal_id: "42".to_owned(),
                 proposer: PROPOSER.to_owned(),
@@ -185,11 +185,12 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
         let mut transaction = store
             .begin_transaction()
             .map_err(|error| format!("begin lifecycle transaction failed: {error}"))?;
-        transaction.apply_projection_batch(&IndexerProjectionBatch {
-            proposal: Some(lifecycle_batch),
-            ..IndexerProjectionBatch::default()
-        })
-        .map_err(|error| format!("apply lifecycle batch failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(lifecycle_batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply lifecycle batch failed: {error}"))?;
         transaction
             .commit()
             .map_err(|error| format!("commit lifecycle transaction failed: {error}"))?;
@@ -198,17 +199,43 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
         let mut transaction = store
             .begin_transaction()
             .map_err(|error| format!("begin raw transaction failed: {error}"))?;
-        transaction.apply_projection_batch(&IndexerProjectionBatch {
-            proposal: Some(raw_batch),
-            ..IndexerProjectionBatch::default()
-        })
-        .map_err(|error| format!("apply raw batch failed: {error}"))?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                proposal: Some(raw_batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| format!("apply raw batch failed: {error}"))?;
         transaction
             .commit()
             .map_err(|error| format!("commit raw transaction failed: {error}"))?;
     }
 
-    let raw_ref = "evm:1:2:0xtx20:0:0";
+    let raw_ref = "evm:1:2:0xtx25:5:6";
+    let proposal = sqlx::query(
+        "SELECT id, log_index, transaction_index, block_number::TEXT AS block_number,
+                block_timestamp::TEXT AS block_timestamp, transaction_hash,
+                vote_start_timestamp::TEXT AS vote_start_timestamp,
+                vote_end_timestamp::TEXT AS vote_end_timestamp,
+                proposal_eta::TEXT AS proposal_eta,
+                proposal_deadline::TEXT AS proposal_deadline
+         FROM proposal",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(proposal.get::<String, _>("id"), raw_ref);
+    assert_eq!(proposal.get::<i32, _>("log_index"), 6);
+    assert_eq!(proposal.get::<i32, _>("transaction_index"), 5);
+    assert_eq!(proposal.get::<String, _>("block_number"), "2");
+    assert_eq!(
+        proposal.get::<String, _>("block_timestamp"),
+        "1700000002000"
+    );
+    assert_eq!(proposal.get::<String, _>("transaction_hash"), "0xtx25");
+    assert_eq!(proposal.get::<String, _>("vote_start_timestamp"), "100");
+    assert_eq!(proposal.get::<String, _>("vote_end_timestamp"), "200");
+    assert_eq!(proposal.get::<String, _>("proposal_eta"), "1234");
+    assert_eq!(proposal.get::<String, _>("proposal_deadline"), "250");
+
     let state = sqlx::query(
         "SELECT proposal_id, proposal_ref
          FROM proposal_state_epoch
