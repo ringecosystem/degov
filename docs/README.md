@@ -9,6 +9,7 @@ The checked-in SQD/Subsquid indexer runtime has been removed while DeGov moves
 to a Datalens-native indexer. The documents below describe historical behavior
 or API/data-model reference material unless a newer document says otherwise.
 
+- [Datalens Rust technical conventions][datalens-rust-conventions]
 - [Developer guide](./guides/20260325__indexer_developer_guide.md)
 - [Accuracy diagnosis guide](./guides/20260331__indexer_accuracy_diagnosis.md)
 - [Accuracy research summary](./research/20260401__indexer_accuracy_research.md)
@@ -19,3 +20,5 @@ or API/data-model reference material unless a newer document says otherwise.
 ## Plans
 
 - [Projection replay, reconciliation, and rollout](./plans/20260325__degov_projection_replay_reconciliation_rollout.md)
+
+[datalens-rust-conventions]: ./spec/datalens-rust-technical-conventions.md
