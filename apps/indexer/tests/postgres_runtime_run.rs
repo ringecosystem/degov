@@ -226,6 +226,12 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
     assert_eq!(extension.get::<String, _>("proposal_id"), raw_ref);
     assert_eq!(extension.get::<String, _>("proposal_ref"), raw_ref);
 
+    let action = sqlx::query("SELECT proposal_id, proposal_ref FROM proposal_action")
+        .fetch_one(&database.pool)
+        .await?;
+    assert_eq!(action.get::<String, _>("proposal_id"), raw_ref);
+    assert_eq!(action.get::<String, _>("proposal_ref"), raw_ref);
+
     database.cleanup().await?;
 
     Ok(())
