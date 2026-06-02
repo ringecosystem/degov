@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::ConfigError;
 
-pub const DEFAULT_DATALENS_ENDPOINT: &str = "https://datalens.ringdao.com";
 pub const DEFAULT_DATALENS_TIMEOUT_SECONDS: u64 = 60;
 pub const DEFAULT_DATALENS_FINALITY: DatalensFinality = DatalensFinality::DurableOnly;
 pub const DEFAULT_DATALENS_CHAIN_FAMILY: ChainFamily = ChainFamily::Evm;
