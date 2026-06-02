@@ -419,10 +419,35 @@ where
 fn page_rows(rows: serde_json::Value) -> Result<Vec<serde_json::Value>, IndexerRunnerError> {
     match rows {
         serde_json::Value::Array(rows) => Ok(rows),
+        serde_json::Value::Object(mut object) => {
+            let Some(rows) = object.remove("rows") else {
+                return Err(invalid_rows_payload_error(serde_json::Value::Object(object)));
+            };
+
+            match rows {
+                serde_json::Value::Array(rows) => Ok(rows),
+                serde_json::Value::Object(mut rows_object) => {
+                    match rows_object.remove("rows") {
+                        Some(serde_json::Value::Array(rows)) => Ok(rows),
+                        Some(other) => Err(invalid_rows_payload_error(other)),
+                        None => Err(invalid_rows_payload_error(serde_json::Value::Object(
+                            rows_object,
+                        ))),
+                    }
+                }
+                other => Err(invalid_rows_payload_error(other)),
+            }
+        }
         other => Err(IndexerRunnerError::Normalize(format!(
-            "Datalens log query returned non-array rows: {other}"
+            "Datalens log query returned invalid rows payload: {other}"
         ))),
     }
+}
+
+fn invalid_rows_payload_error(value: serde_json::Value) -> IndexerRunnerError {
+    IndexerRunnerError::Normalize(format!(
+        "Datalens log query returned invalid rows payload: {value}"
+    ))
 }
 
 fn progress(
@@ -686,5 +711,51 @@ fn checkpoint(identity: IndexerCheckpointIdentity, start_block: i64) -> IndexerC
         last_error: None,
         lock_owner: None,
         locked_at: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn test_page_rows_accepts_bare_array_response() {
+        let rows = page_rows(json!([{"block_number": 1}, {"block_number": 2}]))
+            .expect("bare rows are accepted");
+
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn test_page_rows_accepts_live_datalens_nested_response() {
+        let rows = page_rows(json!({
+            "dataset_key": {
+                "family": "Evm",
+                "name": "logs"
+            },
+            "rows": {
+                "dataset": "logs",
+                "rows": [
+                    {"block_number": 5873379}
+                ]
+            }
+        }))
+        .expect("live Datalens nested rows are accepted");
+
+        assert_eq!(rows, vec![json!({"block_number": 5873379})]);
+    }
+
+    #[test]
+    fn test_page_rows_rejects_malformed_response() {
+        let error = page_rows(json!({"rows": {"dataset": "logs"}}))
+            .expect_err("missing nested rows should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("Datalens log query returned invalid rows payload")
+        );
     }
 }
