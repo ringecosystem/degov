@@ -70,7 +70,7 @@ Run the checks in this order so the failing layer is clear:
 | Active chunk processing | Available after projection packages are implemented. | `processed_height` advances toward `target_height`; chunk processing and commit logs appear. | DeGov query planning, decode/projection, DB transaction, or checkpoint writes. |
 | Row-family counters | Available after projection packages are implemented. | Proposal, vote, delegate, contributor, and `data_metric` totals are non-empty for an active DAO. | Decode/projection or idempotent writes. |
 | Checkpoint commits | Available after projection packages are implemented. | Checkpoint advancement occurs only with committed projection writes. | DB transaction or checkpoint contract. |
-| Onchain refresh queue draining | Available after worker task processing is implemented. | Pending work drains; failed and stale locked rows stay bounded. | ChainTool/RPC, onchain refresh worker, or lock recovery. |
+| Onchain refresh queue draining | Available now when the worker is enabled with an RPC URL. | Pending work drains; failed and stale locked rows stay bounded. | ChainTool/RPC, onchain refresh worker, or lock recovery. |
 | Tally/onchain audit | Run after projection and worker packages are implemented and basic health passes. | Sampled proposal and power values agree with direct reads or have classified findings. | Business correctness after basic health passes. |
 
 ## Current Package Boundary
@@ -82,16 +82,17 @@ the packaging/readiness boundary:
   native GraphQL readiness, logs the configured chain/dataset/contracts, and
   keeps the service alive.
 - `run_worker` checks `DEGOV_INDEXER_DATABASE_URL` and
-  `DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED`, logs worker packaging readiness, and
-  keeps the service alive. It does not drain refresh tasks yet.
+  `DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED`. When enabled, it also requires
+  `DEGOV_ONCHAIN_REFRESH_RPC_URL` and drains `onchain_refresh_task`; when
+  disabled, it keeps the service alive for packaging/readiness checks.
 - `graphql` checks `DEGOV_INDEXER_GRAPHQL_ENDPOINT` packaging/configuration.
 - `migrate` applies the Datalens-native Postgres schema.
 
-Do not classify missing chunk logs, row-family counters, checkpoint commits, or
-queue draining as a runtime failure until the projection and worker execution
-packages are implemented. Today those checks are future acceptance signals; the
-current checks cover Datalens connectivity, DB/migrations, GraphQL/API smoke,
-and process readiness.
+Do not classify queue draining as a runtime failure when the worker is disabled.
+When the worker is enabled, missing queue drain points to RPC configuration,
+worker execution, or lock recovery. The readiness checks still cover Datalens
+connectivity, DB/migrations, GraphQL/API smoke, and process startup before
+business parity checks.
 
 ## Datalens Health
 
@@ -272,14 +273,13 @@ processes and are expected to keep running after readiness logs appear:
 
 ```sh
 DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" pnpm run indexer
-DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" pnpm run indexer:worker
+DEGOV_INDEXER_DATABASE_URL="$DEGOV_INDEXER_DATABASE_URL" DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED=false pnpm run indexer:worker
 DEGOV_INDEXER_GRAPHQL_ENDPOINT="$DEGOV_INDEXER_GRAPHQL_ENDPOINT" pnpm run indexer:graphql
 ```
 
-Expected signal: `indexer` verifies Datalens and waits, `indexer:worker` logs
-worker packaging readiness and waits, and `indexer:graphql` logs the configured
-endpoint. These commands do not process chunks, commit checkpoints, update row
-families, or drain refresh queues yet.
+Expected signal: `indexer` verifies Datalens and processes configured ranges,
+`indexer:worker` logs disabled worker readiness and waits, and `indexer:graphql`
+logs the configured endpoint.
 
 ## Future DeGov Indexer Health
 
@@ -509,11 +509,11 @@ Expected signal: GraphQL returns `squidStatus`, proposal/contributor counts, and
 global metrics. If SQL is healthy but GraphQL is missing fields or returns
 errors, classify the failure as API compatibility or GraphQL service config.
 
-## Future Onchain Refresh Sanity
+## Onchain Refresh Sanity
 
-This section is available after worker task processing is implemented. With the
-current package, `run_worker` keeps the service alive but does not drain
-`degov_indexer_reconcile_task` or `onchain_refresh_task`.
+This section applies when `run_worker` is enabled with
+`DEGOV_ONCHAIN_REFRESH_RPC_URL`. The worker drains `onchain_refresh_task`; the
+older `degov_indexer_reconcile_task` table remains a separate diagnostic queue.
 
 Check the native Datalens-era reconcile queue:
 
@@ -543,7 +543,7 @@ SELECT
   count(*) AS rows,
   min(next_run_at) AS oldest_next_run_at,
   max(attempts) AS max_attempts,
-  count(*) FILTER (WHERE locked_at IS NOT NULL AND locked_at < extract(epoch FROM now() - interval '15 minutes')) AS stale_locks
+  count(*) FILTER (WHERE locked_at IS NOT NULL AND locked_at < (extract(epoch FROM now() - interval '15 minutes') * 1000)::NUMERIC(78, 0)) AS stale_locks
 FROM onchain_refresh_task
 WHERE dao_code = :'dao'
   AND chain_id = :'chain'::int
@@ -557,8 +557,7 @@ Expected signal:
 - `pending` and `processing` rows drain when workers are running.
 - `failed` rows stay bounded and include actionable `error` values.
 - Stale locks are zero or recovered by the worker's lock timeout policy.
-- `processed` rows grow after the checkpoint is close enough to target height
-  for sync-lag mode to allow onchain refresh.
+- `completed` rows grow after workers successfully refresh contributors.
 
 Inspect failed refresh rows:
 
@@ -712,17 +711,16 @@ business-correctness signals, not first-line service health checks.
 - Classify failures by the first unhealthy layer. Do not treat Tally mismatch as
   a Datalens outage when Datalens, checkpoint, projection, refresh, and GraphQL
   checks are healthy.
-- In the current HBX-264 package, classify missing chunk processing,
-  row-family counters, checkpoint commits, and refresh queue draining as
-  not-yet-implemented unless the process fails its Datalens, DB/migration,
-  GraphQL/API smoke, or readiness checks.
+- Classify missing chunk processing, row-family counters, checkpoint commits,
+  and refresh queue draining against the feature flags and runtime processes
+  that are actually enabled for the DAO.
 - Checkpoint advancement without matching projection rows is a serious
   correctness issue after projection packages are implemented. The batch
   contract requires projection writes and checkpoint advancement in one
   transaction.
-- A replay may be healthy with zero onchain power until sync-lag mode allows the
-  refresh worker to run after worker task processing is implemented. Confirm
-  lag before restarting workers.
+- A replay may be healthy with zero onchain power until the refresh worker is
+  enabled, has a working RPC URL, and catches up with pending
+  `onchain_refresh_task` rows. Confirm lag before restarting workers.
 - For active incidents, capture the DAO code, chain id, block range,
   checkpoint row, the last processing/commit/error log lines, queue counts, and
   one GraphQL smoke response.

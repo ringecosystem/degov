@@ -328,6 +328,26 @@ impl ChainReadPlanBuilder {
         });
     }
 
+    pub fn add_account_balance_refresh(
+        &mut self,
+        account: &str,
+        activity_block: u64,
+        reason: ChainReadReason,
+    ) {
+        let account = normalize_identifier(account);
+        self.add_required_read(ChainReadDraft {
+            contract_address: self.contracts.governor_token.clone(),
+            method: ChainReadMethod::BalanceOf,
+            args: vec![account.clone()],
+            block_mode: BlockReadMode::Fresh,
+            account: Some(account),
+            proposal_id: None,
+            operation_id: None,
+            reason,
+            activity_block: Some(activity_block),
+        });
+    }
+
     pub fn add_account_past_power(
         &mut self,
         account: &str,

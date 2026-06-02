@@ -4,10 +4,10 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use degov_datalens_indexer::{
     BatchReadPlanConfig, ChainContracts, ChainReadMethod, DaoEventDecoder, DatalensConfig,
-    DatalensNativeClient, IndexerCheckpointIdentity, IndexerRunner, IndexerRunnerContexts,
-    IndexerRunnerOptions, PostgresIndexerRunnerStore, ProposalProjectionContext,
-    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
-    verify_datalens_service,
+    DatalensNativeClient, EvmRpcChainTool, IndexerCheckpointIdentity, IndexerRunner,
+    IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
+    PostgresIndexerRunnerStore, ProposalProjectionContext, TimelockProjectionContext,
+    TokenProjectionContext, VoteProjectionContext, verify_datalens_service,
 };
 use sqlx::{Executor, postgres::PgPoolOptions};
 use tokio::task;
@@ -134,11 +134,9 @@ async fn run_indexer() -> anyhow::Result<()> {
 
 async fn run_worker() -> anyhow::Result<()> {
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
-    let enabled = env::var("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED")
-        .map(|value| onchain_refresh_worker_enabled(&value))
-        .unwrap_or(Ok(true))?;
+    let runtime = OnchainRefreshRuntimeConfig::from_env()?;
 
-    if !enabled {
+    if !runtime.enabled {
         log::info!(
             "onchain refresh worker is disabled by DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED; keeping service alive"
         );
@@ -146,13 +144,60 @@ async fn run_worker() -> anyhow::Result<()> {
     }
 
     log::info!(
-        "onchain refresh worker packaging is ready enabled={} database_url_configured={}",
-        enabled,
-        !database_url.is_empty()
+        "onchain refresh worker runtime is ready enabled={} database_url_configured={} batch_size={} max_batches_per_poll={} run_once={}",
+        runtime.enabled,
+        !database_url.is_empty(),
+        runtime.batch_size,
+        runtime.max_batches_per_poll,
+        runtime.run_once
     );
-    log::info!("onchain refresh worker runtime will process refresh tasks in a follow-up package");
 
-    wait_for_service_shutdown("onchain refresh worker").await
+    let pool = PgPoolOptions::new()
+        .max_connections(runtime.database_max_connections)
+        .connect(&database_url)
+        .await
+        .context("connect to DeGov indexer Postgres")?;
+    let chain_tool = EvmRpcChainTool::new(runtime.rpc_url.clone(), runtime.request_timeout)
+        .context("create onchain refresh RPC ChainTool")?;
+    let reader = degov_datalens_indexer::ChainToolOnchainRefreshReader::new(
+        chain_tool,
+        runtime.read_plan_config(),
+        runtime.current_power_method,
+    );
+    let worker = OnchainRefreshWorker::new(pool, runtime.worker_config(), reader);
+
+    loop {
+        let mut poll_claimed = 0;
+        let mut poll_completed = 0;
+        let mut poll_failed = 0;
+
+        for _ in 0..runtime.max_batches_per_poll {
+            let report = worker
+                .run_once()
+                .await
+                .context("run onchain refresh batch")?;
+            poll_claimed += report.claimed;
+            poll_completed += report.completed;
+            poll_failed += report.failed;
+
+            if report.claimed == 0 {
+                break;
+            }
+        }
+
+        log::info!(
+            "onchain refresh worker pass completed claimed={} completed={} failed={}",
+            poll_claimed,
+            poll_completed,
+            poll_failed
+        );
+
+        if runtime.run_once {
+            return Ok(());
+        }
+
+        sleep(runtime.poll_interval).await;
+    }
 }
 
 async fn wait_for_service_shutdown(service_name: &str) -> anyhow::Result<()> {
@@ -357,6 +402,120 @@ impl IndexerRuntimeConfig {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct OnchainRefreshRuntimeConfig {
+    enabled: bool,
+    rpc_url: String,
+    batch_size: usize,
+    max_attempts: i32,
+    max_batches_per_poll: usize,
+    poll_interval: Duration,
+    run_once: bool,
+    lock_ttl: Duration,
+    retry_delay: Duration,
+    request_timeout: Duration,
+    database_max_connections: u32,
+    max_concurrency: usize,
+    multicall_batch_size: usize,
+    current_power_method: ChainReadMethod,
+}
+
+impl OnchainRefreshRuntimeConfig {
+    fn from_env() -> anyhow::Result<Self> {
+        let enabled = optional_env_bool("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED")?.unwrap_or(true);
+        let rpc_url = if enabled {
+            required_env("DEGOV_ONCHAIN_REFRESH_RPC_URL")?
+        } else {
+            optional_env("DEGOV_ONCHAIN_REFRESH_RPC_URL")?.unwrap_or_default()
+        };
+        let batch_size = optional_env_usize("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE")?.unwrap_or(100);
+        if batch_size == 0 {
+            anyhow::bail!("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE must be greater than zero");
+        }
+
+        let max_attempts = optional_env_i32("DEGOV_ONCHAIN_REFRESH_MAX_ATTEMPTS")?.unwrap_or(3);
+        if max_attempts <= 0 {
+            anyhow::bail!("DEGOV_ONCHAIN_REFRESH_MAX_ATTEMPTS must be greater than zero");
+        }
+
+        let max_batches_per_poll =
+            optional_env_usize("DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL")?.unwrap_or(1);
+        if max_batches_per_poll == 0 {
+            anyhow::bail!("DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL must be greater than zero");
+        }
+
+        let poll_interval = Duration::from_millis(
+            optional_env_u64("DEGOV_ONCHAIN_REFRESH_POLL_INTERVAL_MS")?.unwrap_or(10_000),
+        );
+        let run_once = optional_env_bool("DEGOV_ONCHAIN_REFRESH_RUN_ONCE")?
+            .or(optional_env_bool("DEGOV_INDEXER_RUN_ONCE")?)
+            .unwrap_or(false);
+        let lock_ttl = Duration::from_millis(
+            optional_env_u64("DEGOV_ONCHAIN_REFRESH_LOCK_TTL_MS")?.unwrap_or(300_000),
+        );
+        let retry_delay = Duration::from_millis(
+            optional_env_u64("DEGOV_ONCHAIN_REFRESH_RETRY_DELAY_MS")?.unwrap_or(30_000),
+        );
+        let request_timeout = Duration::from_millis(
+            optional_env_u64("DEGOV_ONCHAIN_REFRESH_REQUEST_TIMEOUT_MS")?.unwrap_or(15_000),
+        );
+        let database_max_connections =
+            optional_env_u32("DEGOV_INDEXER_DATABASE_MAX_CONNECTIONS")?.unwrap_or(5);
+        if database_max_connections == 0 {
+            anyhow::bail!("DEGOV_INDEXER_DATABASE_MAX_CONNECTIONS must be greater than zero");
+        }
+        let max_concurrency = optional_env_usize("DEGOV_ONCHAIN_REFRESH_CONCURRENCY")?.unwrap_or(1);
+        if max_concurrency == 0 {
+            anyhow::bail!("DEGOV_ONCHAIN_REFRESH_CONCURRENCY must be greater than zero");
+        }
+        let multicall_batch_size =
+            optional_env_usize("DEGOV_ONCHAIN_REFRESH_MULTICALL_CHUNK_SIZE")?.unwrap_or(100);
+        if multicall_batch_size == 0 {
+            anyhow::bail!("DEGOV_ONCHAIN_REFRESH_MULTICALL_CHUNK_SIZE must be greater than zero");
+        }
+        let current_power_method = optional_env("DEGOV_ONCHAIN_REFRESH_CURRENT_POWER_METHOD")?
+            .as_deref()
+            .map(parse_current_power_method)
+            .transpose()?
+            .unwrap_or(ChainReadMethod::GetVotes);
+
+        Ok(Self {
+            enabled,
+            rpc_url,
+            batch_size,
+            max_attempts,
+            max_batches_per_poll,
+            poll_interval,
+            run_once,
+            lock_ttl,
+            retry_delay,
+            request_timeout,
+            database_max_connections,
+            max_concurrency,
+            multicall_batch_size,
+            current_power_method,
+        })
+    }
+
+    fn read_plan_config(&self) -> BatchReadPlanConfig {
+        BatchReadPlanConfig {
+            max_concurrency: self.max_concurrency,
+            multicall_batch_size: self.multicall_batch_size,
+        }
+        .validated()
+    }
+
+    fn worker_config(&self) -> OnchainRefreshWorkerConfig {
+        OnchainRefreshWorkerConfig {
+            batch_size: self.batch_size,
+            max_attempts: self.max_attempts,
+            lock_ttl: self.lock_ttl,
+            retry_delay: self.retry_delay,
+            lock_owner: format!("degov-onchain-refresh-worker:{}", std::process::id()),
+        }
+    }
+}
+
 fn required_env(name: &'static str) -> anyhow::Result<String> {
     let value = env::var(name).with_context(|| format!("{name} is required"))?;
     let value = value.trim().to_owned();
@@ -394,6 +553,12 @@ fn optional_env_i64(name: &'static str) -> anyhow::Result<Option<i64>> {
         .transpose()
 }
 
+fn optional_env_i32(name: &'static str) -> anyhow::Result<Option<i32>> {
+    optional_env(name)?
+        .map(|value| parse_i32_env_value(name, &value))
+        .transpose()
+}
+
 fn optional_env_u32(name: &'static str) -> anyhow::Result<Option<u32>> {
     optional_env(name)?
         .map(|value| parse_u32_env_value(name, &value))
@@ -403,6 +568,12 @@ fn optional_env_u32(name: &'static str) -> anyhow::Result<Option<u32>> {
 fn optional_env_u64(name: &'static str) -> anyhow::Result<Option<u64>> {
     optional_env(name)?
         .map(|value| parse_u64_env_value(name, &value))
+        .transpose()
+}
+
+fn optional_env_usize(name: &'static str) -> anyhow::Result<Option<usize>> {
+    optional_env(name)?
+        .map(|value| parse_usize_env_value(name, &value))
         .transpose()
 }
 
@@ -419,10 +590,24 @@ fn parse_i64_env_value(name: &'static str, value: &str) -> anyhow::Result<i64> {
         .with_context(|| format!("{name} must be a signed integer"))
 }
 
+fn parse_i32_env_value(name: &'static str, value: &str) -> anyhow::Result<i32> {
+    value
+        .trim()
+        .parse::<i32>()
+        .with_context(|| format!("{name} must be a signed integer"))
+}
+
 fn parse_u32_env_value(name: &'static str, value: &str) -> anyhow::Result<u32> {
     value
         .trim()
         .parse::<u32>()
+        .with_context(|| format!("{name} must be an unsigned integer"))
+}
+
+fn parse_usize_env_value(name: &'static str, value: &str) -> anyhow::Result<usize> {
+    value
+        .trim()
+        .parse::<usize>()
         .with_context(|| format!("{name} must be an unsigned integer"))
 }
 
@@ -441,8 +626,21 @@ fn parse_bool_env_value(name: &'static str, value: &str) -> anyhow::Result<bool>
     }
 }
 
+#[cfg(test)]
 fn onchain_refresh_worker_enabled(value: &str) -> anyhow::Result<bool> {
     parse_bool_env_value("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", value)
+}
+
+fn parse_current_power_method(value: &str) -> anyhow::Result<ChainReadMethod> {
+    match value.trim() {
+        "getVotes" | "get_votes" => Ok(ChainReadMethod::GetVotes),
+        "getCurrentVotes" | "get_current_votes" | "currentVotes" | "current_votes" => {
+            Ok(ChainReadMethod::CurrentVotes)
+        }
+        _ => anyhow::bail!(
+            "DEGOV_ONCHAIN_REFRESH_CURRENT_POWER_METHOD must be getVotes or getCurrentVotes"
+        ),
+    }
 }
 
 fn postgres_schema_statements(sql: &str) -> Vec<&str> {
