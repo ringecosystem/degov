@@ -1,7 +1,7 @@
 # Tally Comparison E2E Runbook
 
-Purpose: repeat the DeGov staging-vs-Tally data comparison for proposals,
-delegates, and voting power.
+Purpose: repeat the DeGov staging-vs-Tally data comparison for proposals and
+sampled delegate voting power.
 
 Read this when validating a DAO after an indexer rebuild, database reset, or
 onchain power refresh change. This does not cover how to deploy the indexer or
@@ -12,13 +12,18 @@ how to repair mismatches found by the comparison.
 The comparison checks:
 
 - proposal count and proposal identity
-- proposal title and vote weights
+- proposal title, state/status, vote weights, snapshot, deadline, timestamps,
+  and quorum where available
 - delegate voting power and delegator count by sampled rank
-- aggregate delegated voting power
+- delegate token balance where Tally exposes it
+- DeGov aggregate voting-power metrics as report context
 - indexer sync height
+- direct onchain `state`, `proposalSnapshot`, `proposalDeadline`, `quorum`,
+  `getVotes`, `balanceOf`, and historical vote reads where available
 
-The current script compares DeGov GraphQL against the public Tally web app
-GraphQL calls captured from `tally.xyz`.
+The reusable validation script compares DeGov GraphQL against Tally data and
+direct onchain reads. It supports live Tally API access, replayed Tally GraphQL
+request bodies captured from `tally.xyz`, and fixture-backed dry-runs for CI.
 
 ## Inputs
 
@@ -56,6 +61,34 @@ playwright-cli --raw request-body <organization-summary-request-id> > /tmp/tally
 
 Use the `api-key` header from the browser request when calling
 `https://api.tally.xyz/query`. Do not commit the captured key.
+
+## Run Validation
+
+Dry-run the fixture/test path:
+
+```sh
+pnpm run test:indexer-scripts
+```
+
+Run live ENS/Lisk validation with the shared target file:
+
+```sh
+TALLY_API_KEY=<redacted> pnpm run audit:tally-onchain \
+  --targets-file apps/indexer/scripts/indexer-accuracy-targets.json \
+  --proposal-limit 300 \
+  --delegate-limit 100 \
+  --deterministic-proposals 30 \
+  --random-proposals 20 \
+  --deterministic-delegates 40 \
+  --random-delegates 20 \
+  --json-file reports/tally-onchain-e2e.json \
+  --markdown-file reports/tally-onchain-e2e.md
+```
+
+If the Tally API shape changes, capture the browser request bodies and add
+`tallyProposalsRequestFile` or `tallyDelegatesRequestFile` to the relevant
+target. The script will replay those request bodies against
+`https://api.tally.xyz/query` and keep the same DeGov/onchain comparison logic.
 
 ## DeGov Queries
 
@@ -116,7 +149,23 @@ query($ids: [String!]) {
   a leading heading marker.
 - Compare `for`, `against`, and `abstain` raw vote weights exactly.
 - Compare delegate power raw values exactly.
-- Compare aggregate power as both raw difference and percentage difference.
+- Detect Tally-only and DeGov-only proposal/delegate rows and record identity
+  findings with exact row ids or addresses.
+- Compare delegate token balance when Tally exposes `tokenBalance` or
+  `balance`.
+- Read historical votes at a sampled proposal snapshot when available. The
+  current delegate row does not represent historical voting power, so a
+  successful historical chain read without a matching DeGov or Tally field is
+  reported as `expected-representation-difference`.
+- Use these conclusion values:
+  - `degov-bug`: Tally and onchain agree, but DeGov differs or is missing.
+  - `tally-bug`: DeGov and onchain agree, but Tally differs or is missing.
+  - `chain-incompatibility`: the onchain read needed to adjudicate a mismatch
+    is unsupported, reverts, or disagrees with both data sources.
+  - `expected-representation-difference`: the values are not directly
+    comparable because a source does not expose the same representation.
+- Include DeGov aggregate power metrics as context when available. The script
+  does not compare those metrics against a Tally aggregate.
 - Sample several proposal ranges: latest, middle, and oldest.
 - Sample delegates in multiple pages, for example top 80 by Tally voting power.
 
@@ -145,13 +194,13 @@ Proposals:
 Delegates:
 - sampled:
 - power mismatches:
+- balance mismatches:
+- historical vote findings:
 - delegator-count mismatches:
 
-Aggregate power:
-- DeGov:
-- Tally:
-- raw diff:
-- percent diff:
+DeGov aggregate context:
+- powerSum:
+- memberCount:
 
 Findings:
 - ...
@@ -163,8 +212,14 @@ If proposal ids, titles, and vote weights match, proposal indexing is generally
 healthy even if display status differs. Check `stateEpochs` separately.
 
 If delegate power differs but Tally matches direct onchain `getVotes`, treat it
-as a DeGov power refresh issue.
+as `degov-bug`. If DeGov matches direct onchain `getVotes` and Tally differs,
+treat it as `tally-bug`.
 
-If aggregate power differs while top delegate samples match, widen delegate
-sampling before treating it as a product issue. Tally aggregate fields may have
-slightly different inclusion rules.
+If historical `getPastVotes` or `getPriorVotes` is unavailable, record the
+read limitation with the finding. If the read succeeds but neither DeGov nor
+Tally exposes a historical delegate-power row for that sampled snapshot, treat
+the finding as `expected-representation-difference`.
+
+If DeGov aggregate power looks inconsistent with sampled delegates, widen
+delegate sampling before treating it as a product issue. The current script does
+not adjudicate aggregate differences against Tally aggregate fields.
