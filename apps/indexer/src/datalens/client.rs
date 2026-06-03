@@ -130,10 +130,11 @@ fn is_transient_sdk_api_error(error: &DatalensSdkError) -> bool {
             .is_some_and(|status| (500..600).contains(&status));
     }
 
-    matches!(
-        error,
-        DatalensSdkError::HttpStatus { status, .. } if (500..600).contains(status)
-    )
+    match error {
+        DatalensSdkError::Transport(_) => true,
+        DatalensSdkError::HttpStatus { status, .. } => (500..600).contains(status),
+        _ => false,
+    }
 }
 
 impl DatalensNativeReader for DatalensNativeClient {

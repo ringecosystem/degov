@@ -140,6 +140,29 @@ fn test_datalens_log_query_retries_provider_timeout_before_success() {
 }
 
 #[test]
+fn test_datalens_log_query_retries_transport_failure_before_success() {
+    let server = FakeQueryServer::start_steps(vec![
+        FakeQueryResponse::CloseWithoutResponse,
+        FakeQueryResponse::Http(query_success_response(serde_json::json!([{
+            "block_number": 102
+        }]))),
+    ]);
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(2))
+            .expect("client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+
+    let rows = client
+        .query_logs(plans[0].input.clone())
+        .expect("query retries and succeeds");
+
+    assert_eq!(rows, serde_json::json!([{ "block_number": 102 }]));
+    let requests = server.join();
+    assert_eq!(requests.len(), 2);
+}
+
+#[test]
 fn test_datalens_log_query_does_not_retry_non_retryable_quota_error() {
     let server = FakeQueryServer::start(vec![api_error_response(
         429,
@@ -190,8 +213,17 @@ struct FakeQueryServer {
     handle: thread::JoinHandle<Vec<String>>,
 }
 
+enum FakeQueryResponse {
+    Http(String),
+    CloseWithoutResponse,
+}
+
 impl FakeQueryServer {
     fn start(responses: Vec<String>) -> Self {
+        Self::start_steps(responses.into_iter().map(FakeQueryResponse::Http).collect())
+    }
+
+    fn start_steps(responses: Vec<FakeQueryResponse>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake Datalens query server");
         let endpoint = format!("http://{}", listener.local_addr().expect("local addr"));
         let handle = thread::spawn(move || {
@@ -201,9 +233,12 @@ impl FakeQueryServer {
                     .accept()
                     .expect("accept fake Datalens query request");
                 requests.push(read_http_request(&mut stream));
-                stream
-                    .write_all(response.as_bytes())
-                    .expect("write fake Datalens query response");
+                match response {
+                    FakeQueryResponse::Http(response) => stream
+                        .write_all(response.as_bytes())
+                        .expect("write fake Datalens query response"),
+                    FakeQueryResponse::CloseWithoutResponse => {}
+                }
             }
             requests
         });
