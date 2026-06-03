@@ -630,6 +630,123 @@ async fn test_graphql_schema_applies_implicit_scope_to_queries_and_connections()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_other_scope_checkpoint(&database.pool).await?;
+
+    let admin_schema = graphql::build_schema(database.pool.clone());
+    let admin_response = admin_schema
+        .execute(Request::new(
+            r#"
+            query AdminStatuses {
+              indexerStatuses {
+                daoCode
+                chainId
+                contractSetId
+                processedHeight
+                targetHeight
+                syncedPercentage
+                isSynced
+                updatedAt
+                lastError
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        admin_response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        admin_response.errors
+    );
+
+    let admin_data = admin_response.data.into_json()?;
+    let statuses = admin_data["indexerStatuses"]
+        .as_array()
+        .expect("admin statuses");
+    assert_eq!(statuses.len(), 2);
+    assert_eq!(statuses[0]["daoCode"], "ens-dao");
+    assert_eq!(statuses[0]["processedHeight"], 1200);
+    assert_eq!(statuses[0]["targetHeight"], 1200);
+    assert_eq!(statuses[0]["syncedPercentage"], 100.0);
+    assert_eq!(statuses[0]["isSynced"], true);
+    assert_eq!(statuses[0]["lastError"], "caught up after retry");
+    assert_eq!(statuses[1]["daoCode"], "lisk-dao");
+    assert_eq!(statuses[1]["processedHeight"], 900);
+    assert_eq!(statuses[1]["targetHeight"], 1000);
+    assert_eq!(statuses[1]["syncedPercentage"], 90.0);
+    assert_eq!(statuses[1]["isSynced"], false);
+    assert_eq!(statuses[1]["lastError"], serde_json::Value::Null);
+
+    let scoped_schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            dao_code: Some("lisk-dao".to_owned()),
+            chain_id: Some(1135),
+            governor_address: Some("0xgovernor".to_owned()),
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+        },
+    );
+    let scoped_response = scoped_schema
+        .execute(Request::new(
+            r#"
+            query ScopedStatus {
+              indexerStatus {
+                daoCode
+                chainId
+                contractSetId
+                processedHeight
+                targetHeight
+                syncedPercentage
+                isSynced
+                updatedAt
+                lastError
+              }
+              indexerStatuses {
+                daoCode
+                processedHeight
+              }
+              squidStatus { height finalizedHeight hash finalizedHash }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        scoped_response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        scoped_response.errors
+    );
+
+    let scoped_data = scoped_response.data.into_json()?;
+    assert_eq!(scoped_data["indexerStatus"]["daoCode"], "lisk-dao");
+    assert_eq!(scoped_data["indexerStatus"]["processedHeight"], 900);
+    assert_eq!(scoped_data["indexerStatus"]["targetHeight"], 1000);
+    assert_eq!(scoped_data["indexerStatus"]["syncedPercentage"], 90.0);
+    assert_eq!(scoped_data["indexerStatus"]["isSynced"], false);
+    assert_eq!(
+        scoped_data["indexerStatuses"]
+            .as_array()
+            .expect("scoped statuses")
+            .len(),
+        1
+    );
+    assert_eq!(scoped_data["squidStatus"]["height"], 900);
+    assert_eq!(scoped_data["squidStatus"]["finalizedHeight"], 900);
+    assert_eq!(scoped_data["squidStatus"]["hash"], serde_json::Value::Null);
+    assert_eq!(
+        scoped_data["squidStatus"]["finalizedHash"],
+        serde_json::Value::Null
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_schema_scope_conflicts_return_no_rows() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_other_scope_rows(&database.pool).await?;
@@ -762,9 +879,9 @@ async fn test_graphql_http_dao_path_applies_path_scope_and_preserves_admin()
 async fn test_graphql_http_endpoint_serves_configured_dao_path() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let schema = graphql::build_schema(database.pool.clone());
-    let app = graphql::build_router_with_paths(schema, ["/degov-demo-dao/graphql".to_owned()]);
+    let app = graphql::build_router_with_paths(schema, ["/lisk-dao/graphql".to_owned()]);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let endpoint = format!("http://{}/degov-demo-dao/graphql", listener.local_addr()?);
+    let endpoint = format!("http://{}/lisk-dao/graphql", listener.local_addr()?);
     let server = tokio::spawn(async move { axum::serve(listener, app).await });
 
     let response: serde_json::Value = timeout(
@@ -828,6 +945,25 @@ async fn test_graphql_http_endpoint_serves_configured_dao_graphiql_path()
 fn unique_schema_name() -> String {
     let id = SCHEMA_COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("graphql_service_test_{id}")
+}
+
+async fn seed_other_scope_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO degov_indexer_checkpoint (
+          dao_code, chain_id, contract_set_id, stream_id, data_source_version,
+          next_block, processed_height, target_height, updated_at, last_error
+        ) VALUES (
+          'ens-dao', 10, $1, 'evm.logs', 'datalens',
+          1201, 1200, 1200, now(), 'caught up after retry'
+        )
+        "#,
+    )
+    .bind(OTHER_CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {

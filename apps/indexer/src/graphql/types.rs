@@ -192,6 +192,20 @@ pub struct DelegateMapping {
 
 #[derive(Clone, Debug, FromRow, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
+pub struct IndexerStatus {
+    pub(super) dao_code: String,
+    pub(super) chain_id: i32,
+    pub(super) contract_set_id: String,
+    pub(super) processed_height: Option<i64>,
+    pub(super) target_height: Option<i64>,
+    pub(super) synced_percentage: Option<f64>,
+    pub(super) is_synced: bool,
+    pub(super) updated_at: String,
+    pub(super) last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, FromRow, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
 pub struct SquidStatus {
     pub(super) height: i64,
     pub(super) finalized_height: i64,

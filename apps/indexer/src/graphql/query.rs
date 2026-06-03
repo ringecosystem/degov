@@ -6,6 +6,29 @@ use super::order::*;
 use super::pagination::push_page;
 use super::types::*;
 
+pub(super) async fn query_indexer_status(
+    pool: &PgPool,
+    implicit_scope: &GraphqlScope,
+) -> GraphqlResult<Option<IndexerStatus>> {
+    let mut query = indexer_status_query();
+    push_indexer_status_where(&mut query, implicit_scope);
+    push_indexer_status_order(&mut query);
+    query.push(" LIMIT 1");
+
+    Ok(query.build_query_as().fetch_optional(pool).await?)
+}
+
+pub(super) async fn query_indexer_statuses(
+    pool: &PgPool,
+    implicit_scope: &GraphqlScope,
+) -> GraphqlResult<Vec<IndexerStatus>> {
+    let mut query = indexer_status_query();
+    push_indexer_status_where(&mut query, implicit_scope);
+    push_indexer_status_order(&mut query);
+
+    Ok(query.build_query_as().fetch_all(pool).await?)
+}
+
 pub(super) async fn query_proposals(
     pool: &PgPool,
     implicit_scope: &GraphqlScope,
@@ -49,6 +72,67 @@ pub(super) async fn count_proposals(
     push_proposal_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
+}
+
+fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
+    QueryBuilder::<Postgres>::new(
+        r#"
+        SELECT
+          dao_code,
+          chain_id,
+          contract_set_id,
+          processed_height::BIGINT AS processed_height,
+          target_height::BIGINT AS target_height,
+          CASE
+            WHEN target_height IS NULL THEN NULL
+            WHEN target_height <= 0 THEN 100.0::DOUBLE PRECISION
+            WHEN processed_height IS NULL THEN 0.0::DOUBLE PRECISION
+            ELSE LEAST(
+              (processed_height::DOUBLE PRECISION / target_height::DOUBLE PRECISION) * 100.0,
+              100.0
+            )
+          END AS synced_percentage,
+          CASE
+            WHEN processed_height IS NULL OR target_height IS NULL THEN FALSE
+            ELSE processed_height >= target_height
+          END AS is_synced,
+          updated_at::TEXT AS updated_at,
+          last_error
+        FROM degov_indexer_checkpoint
+        "#,
+    )
+}
+
+fn push_indexer_status_where<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
+) {
+    if implicit_scope.dao_code.is_some()
+        || implicit_scope.chain_id.is_some()
+        || implicit_scope.contract_set_id.is_some()
+    {
+        query.push(" WHERE ");
+        let mut has_condition = false;
+        if let Some(chain_id) = implicit_scope.chain_id {
+            push_column_eq(query, &mut has_condition, "", "chain_id", chain_id);
+        }
+        if let Some(dao_code) = &implicit_scope.dao_code {
+            push_column_eq(query, &mut has_condition, "", "dao_code", dao_code);
+        }
+        if let Some(contract_set_id) = &implicit_scope.contract_set_id {
+            push_column_eq(
+                query,
+                &mut has_condition,
+                "",
+                "contract_set_id",
+                contract_set_id,
+            );
+        }
+    }
+}
+
+fn push_indexer_status_order(query: &mut QueryBuilder<'_, Postgres>) {
+    query.push(" ORDER BY dao_code ASC, chain_id ASC, contract_set_id ASC");
 }
 
 pub(super) async fn query_events<T>(
