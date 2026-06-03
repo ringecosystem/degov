@@ -95,10 +95,12 @@ pub use datalens::{
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use graphql::IndexerGraphqlSchema;
 pub use runner::{
-    DaoEventDecoder, InMemoryIndexerRunnerStore, InMemoryIndexerRunnerStoreError,
-    IndexerEventDecoder, IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts,
-    IndexerRunnerError, IndexerRunnerOptions, IndexerRunnerProgress, IndexerRunnerReport,
-    IndexerRunnerStore, IndexerRunnerTransaction, page_rows,
+    AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig,
+    AdaptiveChunkSizingDecision, AdaptiveChunkSizingReason, DaoEventDecoder,
+    InMemoryIndexerRunnerStore, InMemoryIndexerRunnerStoreError, IndexerEventDecoder,
+    IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts, IndexerRunnerError,
+    IndexerRunnerOptions, IndexerRunnerProgress, IndexerRunnerReport, IndexerRunnerStore,
+    IndexerRunnerTransaction, page_rows,
 };
 pub use runtime_config::{
     GraphqlRuntimeConfig, IndexerContractSetMode, IndexerContractSetRuntimeConfig,

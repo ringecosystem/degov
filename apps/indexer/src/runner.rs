@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
+use std::time::{Duration, Instant};
 
 use log::{error, info};
 use thiserror::Error;
@@ -51,6 +52,135 @@ pub struct IndexerRunnerReport {
     pub chunks_processed: u64,
     pub shutdown_requested: bool,
     pub last_progress: IndexerRunnerProgress,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AdaptiveChunkSizerConfig {
+    pub max_chunk_size: u32,
+    pub min_chunk_size: u32,
+    pub local_processing_shrink_threshold: Duration,
+    pub dense_returned_row_threshold: usize,
+    pub sparse_returned_row_threshold: usize,
+    pub stable_chunks_to_grow: u32,
+}
+
+impl AdaptiveChunkSizerConfig {
+    pub fn for_max_chunk_size(max_chunk_size: u32) -> Self {
+        Self {
+            max_chunk_size,
+            min_chunk_size: 1,
+            local_processing_shrink_threshold: Duration::from_secs(10),
+            dense_returned_row_threshold: 5_000,
+            sparse_returned_row_threshold: 100,
+            stable_chunks_to_grow: 2,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AdaptiveChunkFeedback {
+    pub returned_row_count: usize,
+    pub local_processing_write_duration: Duration,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AdaptiveChunkSizingDecision {
+    pub previous_chunk_size: u32,
+    pub current_chunk_size: u32,
+    pub reason: AdaptiveChunkSizingReason,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AdaptiveChunkSizingReason {
+    DenseReturnedRows,
+    SlowLocalProcessing,
+    StableSparseRange,
+    Hold,
+}
+
+impl fmt::Display for AdaptiveChunkSizingReason {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DenseReturnedRows => formatter.write_str("dense_returned_rows"),
+            Self::SlowLocalProcessing => formatter.write_str("slow_local_processing"),
+            Self::StableSparseRange => formatter.write_str("stable_sparse_range"),
+            Self::Hold => formatter.write_str("hold"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdaptiveChunkSizer {
+    config: AdaptiveChunkSizerConfig,
+    current_chunk_size: u32,
+    stable_chunks: u32,
+}
+
+impl AdaptiveChunkSizer {
+    pub fn new(config: AdaptiveChunkSizerConfig) -> Result<Self, CheckpointError> {
+        if config.max_chunk_size == 0 || config.min_chunk_size == 0 {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
+        if config.min_chunk_size > config.max_chunk_size {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
+
+        Ok(Self {
+            config,
+            current_chunk_size: config.max_chunk_size,
+            stable_chunks: 0,
+        })
+    }
+
+    pub fn current_chunk_size(&self) -> u32 {
+        self.current_chunk_size
+    }
+
+    pub fn plan_next_range(
+        &self,
+        checkpoint: &IndexerCheckpoint,
+        target_height: i64,
+    ) -> Result<Option<CheckpointBlockRange>, CheckpointError> {
+        plan_next_checkpoint_range(checkpoint, self.current_chunk_size, target_height)
+    }
+
+    pub fn record_chunk(&mut self, feedback: AdaptiveChunkFeedback) -> AdaptiveChunkSizingDecision {
+        let previous_chunk_size = self.current_chunk_size;
+        let dense_range = feedback.returned_row_count >= self.config.dense_returned_row_threshold;
+        let slow_local_processing = feedback.local_processing_write_duration
+            > self.config.local_processing_shrink_threshold;
+
+        let reason = if slow_local_processing || dense_range {
+            self.stable_chunks = 0;
+            self.current_chunk_size = (self.current_chunk_size / 2).max(self.config.min_chunk_size);
+            if slow_local_processing {
+                AdaptiveChunkSizingReason::SlowLocalProcessing
+            } else {
+                AdaptiveChunkSizingReason::DenseReturnedRows
+            }
+        } else if feedback.returned_row_count <= self.config.sparse_returned_row_threshold {
+            self.stable_chunks = self.stable_chunks.saturating_add(1);
+            if self.stable_chunks >= self.config.stable_chunks_to_grow {
+                self.stable_chunks = 0;
+                self.current_chunk_size = self
+                    .current_chunk_size
+                    .saturating_mul(2)
+                    .min(self.config.max_chunk_size);
+                AdaptiveChunkSizingReason::StableSparseRange
+            } else {
+                AdaptiveChunkSizingReason::Hold
+            }
+        } else {
+            self.stable_chunks = 0;
+            AdaptiveChunkSizingReason::Hold
+        };
+
+        AdaptiveChunkSizingDecision {
+            previous_chunk_size,
+            current_chunk_size: self.current_chunk_size,
+            reason,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -156,6 +286,40 @@ pub struct IndexerRunner<R, S, D = DaoEventDecoder> {
     shutdown_after_chunks: Option<u64>,
 }
 
+struct ChunkProcessingResult {
+    batch: IndexerProjectionBatch,
+    metrics: ChunkProcessingMetrics,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct ChunkProcessingMetrics {
+    datalens_request_count: usize,
+    returned_row_count: usize,
+    decoded_count: usize,
+    projection_event_counts: ProjectionEventCounts,
+    read_duration: Duration,
+    decode_duration: Duration,
+    project_duration: Duration,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct ProjectionEventCounts {
+    proposal: usize,
+    vote: usize,
+    token: usize,
+    timelock: usize,
+}
+
+struct DecodedChunk {
+    events: Vec<(NormalizedEvmLog, DecodedDaoEvent)>,
+    returned_row_count: usize,
+}
+
+struct ProjectedChunk {
+    batch: IndexerProjectionBatch,
+    event_counts: ProjectionEventCounts,
+}
+
 impl<R, S, D> IndexerRunner<R, S, D>
 where
     R: DatalensLogQueryReader,
@@ -199,6 +363,10 @@ where
             .options
             .safe_height
             .map_or(target_height, |safe_height| safe_height.min(target_height));
+        let mut chunk_sizer =
+            AdaptiveChunkSizer::new(AdaptiveChunkSizerConfig::for_max_chunk_size(
+                self.options.datalens_config.query_limits.block_range_limit,
+            ))?;
         let mut chunks_processed = 0;
         let mut checkpoint = self
             .store
@@ -210,10 +378,12 @@ where
             "start"
         };
         info!(
-            "Datalens indexer checkpoint selected dao_code={} chain_id={} contract_set_id={} start_block={} next_block={} checkpoint_choice={}",
+            "Datalens indexer checkpoint selected dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} start_block={} next_block={} checkpoint_choice={}",
             self.options.checkpoint_identity.dao_code,
             self.options.checkpoint_identity.chain_id,
             self.options.checkpoint_identity.contract_set_id,
+            self.options.checkpoint_identity.stream_id,
+            self.options.checkpoint_identity.data_source_version,
             self.options.start_block,
             checkpoint.next_block,
             checkpoint_choice
@@ -235,12 +405,7 @@ where
                 });
             }
 
-            let Some(range) = plan_next_checkpoint_range(
-                &checkpoint,
-                self.options.datalens_config.query_limits.block_range_limit,
-                effective_target,
-            )?
-            else {
+            let Some(range) = chunk_sizer.plan_next_range(&checkpoint, effective_target)? else {
                 return Ok(IndexerRunnerReport {
                     chunks_processed,
                     shutdown_requested: false,
@@ -253,55 +418,104 @@ where
             };
 
             info!(
-                "processing Datalens indexer chunk dao_code={} chain_id={} from_block={} to_block={} target_height={}",
+                "processing Datalens indexer chunk dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} target_height={} chunk_size={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
+                self.options.checkpoint_identity.contract_set_id,
+                self.options.checkpoint_identity.stream_id,
+                self.options.checkpoint_identity.data_source_version,
                 range.from_block,
                 range.to_block,
-                effective_target
+                effective_target,
+                chunk_sizer.current_chunk_size()
             );
 
-            let batch = match self.process_range(range, effective_target) {
-                Ok(batch) => batch,
+            let chunk_started_at = Instant::now();
+            let processing = match self.process_range(range, effective_target) {
+                Ok(processing) => processing,
                 Err(error) => {
                     error!(
-                        "Datalens indexer chunk failed before transaction dao_code={} chain_id={} from_block={} to_block={} error={}",
+                        "Datalens indexer chunk failed before transaction dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} target_height={} chunk_size={} datalens_retry_attempts=unavailable error={}",
                         self.options.checkpoint_identity.dao_code,
                         self.options.checkpoint_identity.chain_id,
+                        self.options.checkpoint_identity.contract_set_id,
+                        self.options.checkpoint_identity.stream_id,
+                        self.options.checkpoint_identity.data_source_version,
                         range.from_block,
                         range.to_block,
+                        effective_target,
+                        chunk_sizer.current_chunk_size(),
                         error
                     );
                     return Err(error);
                 }
             };
-            let dao_code = self.options.checkpoint_identity.dao_code.clone();
-            let chain_id = self.options.checkpoint_identity.chain_id;
+            let checkpoint_identity = self.options.checkpoint_identity.clone();
+            let checkpoint_next_block_before = checkpoint.next_block;
+            let write_started_at = Instant::now();
             let mut transaction = self
                 .store
                 .begin_transaction()
-                .map_err(|error| transaction_error(&dao_code, chain_id, range, error))?;
+                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             transaction
-                .apply_projection_batch(&batch)
-                .map_err(|error| transaction_error(&dao_code, chain_id, range, error))?;
+                .apply_projection_batch(&processing.batch)
+                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             transaction
                 .advance_checkpoint(
                     &self.options.checkpoint_identity,
                     range.to_block,
                     Some(effective_target),
                 )
-                .map_err(|error| transaction_error(&dao_code, chain_id, range, error))?;
+                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             transaction
                 .commit()
-                .map_err(|error| transaction_error(&dao_code, chain_id, range, error))?;
+                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
+            let write_duration = write_started_at.elapsed();
 
             chunks_processed += 1;
+            let local_processing_write_duration = processing.metrics.decode_duration
+                + processing.metrics.project_duration
+                + write_duration;
+            let sizing_decision = chunk_sizer.record_chunk(AdaptiveChunkFeedback {
+                returned_row_count: processing.metrics.returned_row_count,
+                local_processing_write_duration,
+            });
+            let chunk_progress = progress(
+                Some(range.to_block),
+                effective_target,
+                self.options.progress_refresh_lag_blocks,
+            );
             info!(
-                "committed Datalens indexer chunk and advanced checkpoint dao_code={} chain_id={} processed_height={} target_height={}",
+                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
+                self.options.checkpoint_identity.contract_set_id,
+                self.options.checkpoint_identity.stream_id,
+                self.options.checkpoint_identity.data_source_version,
+                range.from_block,
                 range.to_block,
-                effective_target
+                effective_target,
+                sizing_decision.previous_chunk_size,
+                processing.metrics.datalens_request_count,
+                processing.metrics.returned_row_count,
+                processing.metrics.decoded_count,
+                processing.metrics.projection_event_counts.proposal,
+                processing.metrics.projection_event_counts.vote,
+                processing.metrics.projection_event_counts.token,
+                processing.metrics.projection_event_counts.timelock,
+                processing.metrics.read_duration.as_millis(),
+                processing.metrics.decode_duration.as_millis(),
+                processing.metrics.project_duration.as_millis(),
+                write_duration.as_millis(),
+                local_processing_write_duration.as_millis(),
+                chunk_started_at.elapsed().as_millis(),
+                checkpoint_next_block_before,
+                range.to_block,
+                range.to_block + 1,
+                chunk_progress.synced_percentage,
+                sizing_decision.previous_chunk_size,
+                sizing_decision.current_chunk_size,
+                sizing_decision.reason
             );
             checkpoint = self
                 .store
@@ -317,24 +531,46 @@ where
         &mut self,
         range: CheckpointBlockRange,
         target_height: i64,
-    ) -> Result<IndexerProjectionBatch, IndexerRunnerError> {
+    ) -> Result<ChunkProcessingResult, IndexerRunnerError> {
+        let read_started_at = Instant::now();
         let plans = plan_dao_log_queries(
             &self.options.datalens_config,
             &self.options.addresses,
             range.from_block,
             range.to_block,
         )?;
+        let datalens_request_count = plans.len();
         let pages = fetch_dao_log_pages(&mut self.reader, &plans)?;
+        let read_duration = read_started_at.elapsed();
+        let decode_started_at = Instant::now();
         let decoded = self.decode_pages(pages)?;
+        let decode_duration = decode_started_at.elapsed();
+        let decoded_count = decoded.events.len();
+        let returned_row_count = decoded.returned_row_count;
+        let project_started_at = Instant::now();
+        let projected = self.project_events(decoded.events, range, target_height)?;
+        let project_duration = project_started_at.elapsed();
 
-        self.project_events(decoded, range, target_height)
+        Ok(ChunkProcessingResult {
+            batch: projected.batch,
+            metrics: ChunkProcessingMetrics {
+                datalens_request_count,
+                returned_row_count,
+                decoded_count,
+                projection_event_counts: projected.event_counts,
+                read_duration,
+                decode_duration,
+                project_duration,
+            },
+        })
     }
 
     fn decode_pages(
         &self,
         pages: Vec<DatalensLogPage>,
-    ) -> Result<Vec<(NormalizedEvmLog, DecodedDaoEvent)>, IndexerRunnerError> {
+    ) -> Result<DecodedChunk, IndexerRunnerError> {
         let mut decoded = Vec::new();
+        let mut returned_row_count = 0;
         for page in pages {
             let sources = page
                 .plan
@@ -343,6 +579,7 @@ where
                 .map(|source| (source.address.to_ascii_lowercase(), source.source))
                 .collect::<BTreeMap<_, _>>();
             let rows = page_rows(page.rows)?;
+            returned_row_count += rows.len();
             let logs = normalize_evm_log_rows(self.options.checkpoint_identity.chain_id, rows)
                 .map_err(|error| IndexerRunnerError::Normalize(error.to_string()))?;
             for log in logs {
@@ -374,7 +611,10 @@ where
             }
         }
         decoded.sort_by_key(|(log, _)| (log.block_number, log.transaction_index, log.log_index));
-        Ok(decoded)
+        Ok(DecodedChunk {
+            events: decoded,
+            returned_row_count,
+        })
     }
 
     fn project_events(
@@ -382,7 +622,7 @@ where
         decoded: Vec<(NormalizedEvmLog, DecodedDaoEvent)>,
         range: CheckpointBlockRange,
         target_height: i64,
-    ) -> Result<IndexerProjectionBatch, IndexerRunnerError> {
+    ) -> Result<ProjectedChunk, IndexerRunnerError> {
         let mut proposal_events = Vec::new();
         let mut vote_events = Vec::new();
         let mut token_events = Vec::new();
@@ -411,6 +651,12 @@ where
             }
         }
 
+        let event_counts = ProjectionEventCounts {
+            proposal: proposal_events.len(),
+            vote: vote_events.len(),
+            token: token_events.len(),
+            timelock: timelock_events.len(),
+        };
         let proposal = self
             .contexts
             .proposal
@@ -459,11 +705,14 @@ where
             None
         };
 
-        Ok(IndexerProjectionBatch {
-            proposal,
-            vote,
-            token,
-            timelock,
+        Ok(ProjectedChunk {
+            batch: IndexerProjectionBatch {
+                proposal,
+                vote,
+                token,
+                timelock,
+            },
+            event_counts,
         })
     }
 }
@@ -531,14 +780,20 @@ fn to_checkpoint_error(error: impl fmt::Display) -> IndexerRunnerError {
 }
 
 fn transaction_error(
-    dao_code: &str,
-    chain_id: i32,
+    identity: &IndexerCheckpointIdentity,
     range: CheckpointBlockRange,
     error: impl fmt::Display,
 ) -> IndexerRunnerError {
     error!(
-        "Datalens indexer chunk transaction failed; checkpoint was not advanced dao_code={} chain_id={} from_block={} to_block={} error={}",
-        dao_code, chain_id, range.from_block, range.to_block, error
+        "Datalens indexer chunk transaction failed; checkpoint was not advanced dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} error={}",
+        identity.dao_code,
+        identity.chain_id,
+        identity.contract_set_id,
+        identity.stream_id,
+        identity.data_source_version,
+        range.from_block,
+        range.to_block,
+        error
     );
     IndexerRunnerError::Transaction(error.to_string())
 }
