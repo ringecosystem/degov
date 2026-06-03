@@ -1,13 +1,12 @@
 use async_graphql::{
     ComplexObject, Context, EmptyMutation, EmptySubscription, Enum, InputObject, Object,
-    Result as GraphqlResult, Schema, SimpleObject,
-    http::{GraphQLPlaygroundConfig, playground_source},
+    Result as GraphqlResult, Schema, SimpleObject, http::GraphiQLSource,
 };
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
     Router,
     response::{Html, IntoResponse},
-    routing::get,
+    routing::{get, post},
 };
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder};
 
@@ -35,7 +34,15 @@ where
 {
     let mut router = Router::new();
     for path in paths {
-        router = router.route(path.as_ref(), get(graphql_playground).post(graphql_handler));
+        let graphql_path = path.as_ref().to_owned();
+        let graphiql_path = graphiql_path_for_graphql_path(&graphql_path);
+        router = router.route(&graphql_path, post(graphql_handler)).route(
+            &graphiql_path,
+            get({
+                let endpoint = graphql_path.clone();
+                move || graphql_graphiql(endpoint.clone())
+            }),
+        );
     }
     router.with_state(schema)
 }
@@ -47,8 +54,25 @@ async fn graphql_handler(
     schema.execute(request.into_inner()).await.into()
 }
 
-async fn graphql_playground() -> impl IntoResponse {
-    Html(playground_source(GraphQLPlaygroundConfig::new("/graphql")))
+async fn graphql_graphiql(endpoint: String) -> impl IntoResponse {
+    Html(
+        GraphiQLSource::build()
+            .endpoint(&endpoint)
+            .title("DeGov Indexer GraphiQL")
+            .finish(),
+    )
+}
+
+fn graphiql_path_for_graphql_path(path: &str) -> String {
+    path.strip_suffix("/graphql")
+        .map(|prefix| {
+            if prefix.is_empty() {
+                "/graphiql".to_owned()
+            } else {
+                format!("{prefix}/graphiql")
+            }
+        })
+        .unwrap_or_else(|| format!("{path}/graphiql"))
 }
 
 #[derive(Default)]
