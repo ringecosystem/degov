@@ -82,6 +82,21 @@ assert.match(
   /DEGOV_INDEXER_GRAPHQL_ENDPOINT: \$\{DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT:-http:\/\/0\.0\.0\.0:4350\/graphql\}/,
   "compose GraphQL service must bind on the GraphQL path",
 );
+assert.match(
+  composeYaml,
+  /DEGOV_INDEXER_CONFIG_FILE: \$\{DEGOV_INDEXER_CONFIG_FILE:-\/app\/indexer\.yml\}/,
+  "compose must pass the config file path into indexer workloads",
+);
+assert.match(
+  composeYaml,
+  /DEGOV_INDEXER_CONTRACT_SET_MODE: \$\{DEGOV_INDEXER_CONTRACT_SET_MODE:-all\}/,
+  "compose must default the indexer to all contract set mode",
+);
+assert.match(
+  composeYaml,
+  /\.\/apps\/indexer\/indexer\.example\.yml:\/app\/indexer\.yml:ro/,
+  "compose must mount the config-file based multi-chain contract sets",
+);
 assert.equal(
   defaultServicesWithoutEnvFile.web?.depends_on?.["indexer-graphql"],
   undefined,
@@ -126,7 +141,12 @@ assert.match(composeYaml, /DATALENS_ENDPOINT/, "compose must pass Datalens envir
 assert.match(
   composeYaml,
   /DATALENS_CHAINS_JSON/,
-  "compose must pass structured Datalens chain configuration",
+  "compose may retain legacy structured Datalens chain env compatibility",
+);
+assert.match(
+  composeYaml,
+  /DEGOV_INDEXER_CONTRACT_SET_MODE/,
+  "compose must pass the contract set mode",
 );
 assert.match(
   composeYaml,
@@ -150,7 +170,9 @@ assert.doesNotMatch(
 );
 
 assert.match(envExample, /DATALENS_ENDPOINT=/);
-assert.match(envExample, /DATALENS_CHAINS_JSON=\[/);
+assert.match(envExample, /DEGOV_INDEXER_CONFIG_FILE=apps\/indexer\/indexer\.example\.yml/);
+assert.match(envExample, /DEGOV_INDEXER_CONTRACT_SET_MODE=all/);
+assert.match(envExample, /^DATALENS_CHAINS_JSON=$/m);
 assert.match(envExample, /DEGOV_INDEXER_DATABASE_URL=/);
 assert.match(
   envExample,

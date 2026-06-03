@@ -84,8 +84,9 @@ Recommended indexer environment variables:
 | `DATALENS_ENDPOINT` | Shared service base URL, such as `https://datalens.ringdao.com`. |
 | `DATALENS_APPLICATION` | Datalens application identity, such as `degov-live`. |
 | `DATALENS_TOKEN` | Bearer token loaded from secret management. |
-| `DEGOV_DATABASE_URL` | DeGov application database URL. |
-| `DEGOV_CONFIG_PATH` | DAO/workload config path. |
+| `DEGOV_INDEXER_DATABASE_URL` | Shared DeGov indexer database URL. |
+| `DEGOV_INDEXER_CONFIG_FILE` | Mounted DAO/workload config path. |
+| `DEGOV_INDEXER_CONTRACT_SET_MODE` | `all` for shared staging and production deployments. |
 | `DEGOV_RESET_CHECKPOINT` | Explicit fresh replay/reset-index switch. |
 
 ## Crate and package boundaries

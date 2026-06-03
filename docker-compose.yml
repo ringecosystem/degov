@@ -34,10 +34,13 @@ services:
       context: .
       dockerfile: docker/indexer.Dockerfile
     command: run
+    volumes:
+      - ./apps/indexer/indexer.example.yml:/app/indexer.yml:ro
     environment:
       DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
+      DEGOV_INDEXER_CONFIG_FILE: ${DEGOV_INDEXER_CONFIG_FILE:-/app/indexer.yml}
+      DEGOV_INDEXER_CONTRACT_SET_MODE: ${DEGOV_INDEXER_CONTRACT_SET_MODE:-all}
       DEGOV_INDEXER_DAO_CODE: ${DEGOV_INDEXER_DAO_CODE:-}
-      DEGOV_INDEXER_START_BLOCK: ${DEGOV_INDEXER_START_BLOCK:-0}
       DEGOV_INDEXER_TARGET_HEIGHT: ${DEGOV_INDEXER_TARGET_HEIGHT:-latest}
       DEGOV_INDEXER_RUN_ONCE: ${DEGOV_INDEXER_RUN_ONCE:-false}
       DEGOV_INDEXER_POLL_INTERVAL_MS: ${DEGOV_INDEXER_POLL_INTERVAL_MS:-10000}
@@ -68,8 +71,11 @@ services:
       context: .
       dockerfile: docker/indexer.Dockerfile
     command: worker
+    volumes:
+      - ./apps/indexer/indexer.example.yml:/app/indexer.yml:ro
     environment:
       DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
+      DEGOV_INDEXER_CONFIG_FILE: ${DEGOV_INDEXER_CONFIG_FILE:-/app/indexer.yml}
       DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED: ${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED:-false}
       DEGOV_ONCHAIN_REFRESH_RPC_URL: ${DEGOV_ONCHAIN_REFRESH_RPC_URL:-}
       DEGOV_ONCHAIN_REFRESH_RUN_ONCE: ${DEGOV_ONCHAIN_REFRESH_RUN_ONCE:-false}

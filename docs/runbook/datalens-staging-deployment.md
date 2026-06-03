@@ -1,7 +1,7 @@
 # Datalens Staging Deployment Runbook
 
-> Purpose: define the staging deployment path for selected DAOs running the
-> Datalens-native DeGov indexer.
+> Purpose: define the staging deployment path for selected DAOs running through
+> one shared Datalens-native DeGov indexer deployment.
 >
 > Read this when: preparing or reviewing GitOps changes for the HBX-244 manual
 > migration wave.
@@ -13,8 +13,8 @@
 
 Use `deploy/staging/datalens-indexer-daos.json` as the source-controlled
 staging contract. It pins the Datalens-native image repository,
-`degov-datalens-indexer` entrypoints, selected DAO env, fresh migration DB
-names, and worker state.
+`degov-datalens-indexer` entrypoints, the shared fresh migration DB, all-mode
+contract set config, scoped GraphQL routes, and worker state.
 
 The release workflow publishes the indexer image as:
 
@@ -22,41 +22,55 @@ The release workflow publishes the indexer image as:
 ghcr.io/ringecosystem/degov/indexer:sha-<git-sha>
 ```
 
-Deploy one workload set per selected DAO. Keep staging namespace, database
-name, image tag, and GraphQL route separate from production. Do not share a
-production DB, production GraphQL route, or production web config with a
-Datalens migration validation pod.
+Deploy one workload set for the selected contract sets:
 
-The Datalens GraphQL route is additive during validation. Do not remove or
-repoint existing DAO hostnames/endpoints until the new indexer DB reset,
-indexing workload, GraphQL service, and web reads have been validated together.
+- one fresh Postgres index database initialized by
+  `apps/indexer/migrations/0001_init.sql`;
+- one `run` workload with `DEGOV_INDEXER_CONTRACT_SET_MODE=all`;
+- one `graphql` workload backed by the shared DB;
+- one `worker` workload backed by the shared DB and config-file `rpc.chains`;
+- one or more scoped DAO hostnames or paths routed to the single GraphQL
+  service.
+
+Keep staging namespace, database name, image tag, and scoped GraphQL routes
+separate from production. Do not share a production DB, production GraphQL
+route, or production web config with a Datalens migration validation pod.
+
+The Datalens GraphQL routes are additive during validation. Do not remove or
+repoint existing DAO hostnames/endpoints until the new shared indexer DB reset,
+all-mode indexing workload, GraphQL service, scoped routes, and web reads have
+been validated together.
 
 ## Required environment
 
-Each DAO indexer deployment must receive:
+The shared indexer, GraphQL service, and worker must receive:
 
-- `DEGOV_INDEXER_DATABASE_URL`: points to a fresh DB whose name starts with
-  `degov_datalens_migration_`.
+- `DEGOV_INDEXER_DATABASE_URL`: points to the fresh shared DB, for example
+  `degov_datalens_migration_all_contract_sets`.
+- `DEGOV_INDEXER_CONFIG_FILE`: path to the mounted config file containing
+  `chains` contract sets and `rpc.chains` URL env names.
+- `DEGOV_INDEXER_CONTRACT_SET_MODE=all`: runs every configured contract set.
+  Set `DEGOV_INDEXER_DAO_CODE` only for a temporary debug filter.
 - `DATALENS_ENDPOINT`: Datalens service base URL, not `/native/graphql`.
 - `DATALENS_TOKEN`: application bearer token from GitOps-managed secrets.
 - `DATALENS_APPLICATION`: `degov-staging` for staging validation.
-- `DATALENS_CHAIN_FAMILY`, `DATALENS_CHAIN_NAME`, and `DATALENS_CHAIN_ID`.
 - `DATALENS_DATASET_FAMILY` and `DATALENS_DATASET_NAME`.
-- `DATALENS_CHAINS_JSON` when running structured multi-chain or multi-contract
-  indexing. Keep the legacy single-contract envs during transition only when a
-  single selected DAO still needs them.
-- `DATALENS_GOVERNOR_ADDRESS`, `DATALENS_GOVERNOR_TOKEN_ADDRESS`,
-  `DATALENS_GOVERNOR_TOKEN_STANDARD`, and `DATALENS_TIMELOCK_ADDRESS`.
 - `DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS`: local socket address for the service,
   for example `0.0.0.0:4350`.
-- `DEGOV_INDEXER_GRAPHQL_ENDPOINT`: public GraphQL URL consumed by web and
-  smoke checks, for example `https://indexer.next.degov.ai/<dao-code>/graphql`.
-- `DEGOV_INDEXER_GRAPHQL_PATH`: public route path mounted by the service when
-  it is not just `/graphql`, for example `/<dao-code>/graphql`.
+- `DEGOV_INDEXER_GRAPHQL_ENDPOINT`: public GraphQL URL used by the service to
+  derive an extra scoped path, for example
+  `https://indexer.next.degov.ai/<dao-code>/graphql`.
+- `DEGOV_INDEXER_GRAPHQL_PATH`: additional scoped route path when the public
+  endpoint is not enough, for example `/<dao-code>/graphql`.
 
-Run `migrate` against the fresh DB before starting `run`. Start `graphql` only
-after the DB schema exists and the staging web route points at the staging
-GraphQL endpoint.
+The mounted config file is the source of truth for chain ids, network names,
+governor/token/timelock addresses, start blocks, and worker RPC env names. Keep
+legacy `DATALENS_CHAINS_JSON` and single-contract envs only for local or
+emergency single-DAO debug runs.
+
+Run `migrate` against the fresh shared DB before starting `run`. Start
+`graphql` only after the DB schema exists and the scoped staging web routes
+point at the staging GraphQL service.
 
 ## Datalens dependency gate
 
@@ -83,10 +97,11 @@ retried, and surfaced in diagnostics. The staging contract records this as
 `onchainRefreshWorker.enabled=false`.
 
 When the worker is enabled later, deploy it as a separate workload using the
-`worker` entrypoint. Provide `DEGOV_ONCHAIN_REFRESH_RPC_URL` from secrets and
-keep `DEGOV_ONCHAIN_REFRESH_CURRENT_POWER_METHOD=getVotes` unless a DAO
-requires `getCurrentVotes`. Power refresh must come from onchain RPC reads, not
-log-derived fallback mode. Monitor `onchainRefreshBacklog` plus
+`worker` entrypoint. Prefer `rpc.chains` in `DEGOV_INDEXER_CONFIG_FILE` and
+provide each referenced URL env from secrets, such as `DARWINIA_RPC_URL` or
+`LISK_RPC_URL`. Keep `DEGOV_ONCHAIN_REFRESH_CURRENT_POWER_METHOD=getVotes`
+unless a DAO requires `getCurrentVotes`. Power refresh must come from onchain
+RPC reads, not log-derived fallback mode. Monitor `onchainRefreshBacklog` plus
 `onchainRefreshErrors`.
 
 ## Rollout checks
@@ -97,16 +112,16 @@ target the staging cluster and namespace; in Helixbox workspaces use
 
 ```bash
 kubectl --kubeconfig=avault/.kube/<cluster>.config \
-  -n <staging-namespace> rollout status deploy/<dao>-degov-datalens-indexer
+  -n <staging-namespace> rollout status deploy/degov-datalens-indexer
 
 kubectl --kubeconfig=avault/.kube/<cluster>.config \
-  -n <staging-namespace> logs deploy/<dao>-degov-datalens-indexer --since=10m
+  -n <staging-namespace> logs deploy/degov-datalens-indexer --since=10m
 ```
 
-Look for pod startup, configured DAO, chain, dataset, DB migration, GraphQL
-startup, and projection error fields in logs. Any projection error should
-include enough context to identify the DAO, stream, block range, and failing
-projection.
+Look for pod startup, configured contract sets, chain, dataset, DB migration,
+GraphQL startup, and projection error fields in logs. Any projection error
+should include enough context to identify the DAO, stream, block range,
+contract set, and failing projection.
 
 Check GraphQL availability:
 
@@ -150,14 +165,15 @@ pnpm run audit:tally-onchain -- \
 
 ## Rollback
 
-Rollback does not require an in-place DB migration because staging uses fresh
-Datalens migration databases.
+Rollback does not require an in-place DB migration because staging uses a fresh
+Datalens migration database.
 
 1. Revert the staging GitOps image tag to the previous known-good image.
-2. Restore the previous env/config secret set for the selected DAO.
-3. Repoint the staging web GraphQL endpoint to the previous staging endpoint.
+2. Restore the previous env/config secret set and mounted indexer config file.
+3. Repoint scoped staging web GraphQL endpoints to the previous staging
+   endpoints.
 4. Keep or set `DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED=false`.
-5. Leave the failed `degov_datalens_migration_*` DB intact for inspection, or
-   delete it only after the validation notes have been captured.
+5. Leave the failed shared `degov_datalens_migration_*` DB intact for
+   inspection, or delete it only after the validation notes have been captured.
 6. Re-run pod readiness and GraphQL availability checks against the restored
    deployment.
