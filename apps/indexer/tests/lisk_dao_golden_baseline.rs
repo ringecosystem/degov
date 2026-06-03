@@ -13,7 +13,8 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 
 const SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
-const BASELINE_JSON: &str = include_str!("../fixtures/golden-baselines/lisk-dao.production.json");
+const BASELINE_JSON: &str =
+    include_str!("support/fixtures/golden-baselines/lisk-dao.production.json");
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 

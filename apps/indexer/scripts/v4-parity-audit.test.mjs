@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   buildMarkdownReport,
@@ -11,11 +13,15 @@ import {
   tableSnapshotsFromProjectedOutputs,
 } from "./v4-parity-audit.mjs";
 
+const indexerRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const fixturePath = (...segments) =>
+  path.join(indexerRoot, "tests/support/fixtures", ...segments);
+
 const projectedOutputs = await loadJson(
-  "apps/indexer/fixtures/known-dao-ranges/expected/projected-outputs.json",
+  fixturePath("known-dao-ranges/expected/projected-outputs.json"),
 );
 const expectedReport = await loadJson(
-  "apps/indexer/fixtures/known-dao-ranges/expected/v4-parity-audit.json",
+  fixturePath("known-dao-ranges/expected/v4-parity-audit.json"),
 );
 
 assert.throws(() => parseArgs(["--projected-outputs"]), /requires a value/);
