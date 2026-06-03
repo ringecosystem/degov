@@ -6,13 +6,12 @@ use std::{
 };
 
 use async_graphql::Request;
-use degov_datalens_indexer::graphql;
+use degov_datalens_indexer::{graphql, runtime::apply_migrations};
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 
-const SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
 const BASELINE_JSON: &str =
     include_str!("support/fixtures/golden-baselines/lisk-dao.production.json");
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -155,7 +154,7 @@ impl TestDatabase {
         sqlx::query(&format!(r#"SET search_path TO "{schema}""#))
             .execute(&pool)
             .await?;
-        sqlx::raw_sql(SCHEMA_SQL).execute(&pool).await?;
+        apply_migrations(&pool).await?;
         seed_baseline_rows(&pool, baseline).await?;
 
         Ok(Self {

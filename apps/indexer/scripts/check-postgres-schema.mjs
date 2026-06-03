@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const schemaPath = path.join(root, "schema", "postgres.sql");
+const schemaPath = path.join(root, "migrations", "0001_init.sql");
 const readmePath = path.join(root, "README.md");
 const docsReadmePath = path.resolve(root, "..", "..", "docs", "README.md");
 
@@ -66,10 +66,11 @@ const requiredSchemaSnippets = [
 ];
 
 const requiredReadmeSnippets = [
-  /schema\/postgres\.sql/,
-  /canonical PostgreSQL schema/i,
+  /migrations\/0001_init\.sql/,
+  /canonical fresh PostgreSQL initialization\s+schema/i,
   /reset or recreate/i,
-  /fresh initialization/i,
+  /fresh database initialization/i,
+  /sqlx::migrate/i,
   /reference\/schema\.graphql/,
   /GraphQL/i,
   /sqlx/i,

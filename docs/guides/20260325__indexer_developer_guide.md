@@ -19,7 +19,7 @@ runtime. It contains:
 
 - Rust configuration and Datalens client readiness code.
 - The canonical fresh PostgreSQL initialization schema in
-  `apps/indexer/schema/postgres.sql`.
+  `apps/indexer/migrations/0001_init.sql`.
 - Historical GraphQL and ABI reference artifacts in `apps/indexer/reference/`.
 - Node-based transition checks for schema ownership, Rust conventions, DAO
   compatibility preflight policy, and Postgres initialization smoke tests.
@@ -61,10 +61,11 @@ not start a historical processor or serve an indexer GraphQL endpoint yet.
 
 ## Database Schema
 
-`apps/indexer/schema/postgres.sql` is the canonical fresh index database
-initialization schema. The Datalens migration is a breaking indexer
-implementation change: operators must reset or recreate the Postgres index
-database before adopting the Datalens-native indexer.
+`apps/indexer/migrations/0001_init.sql` is the canonical fresh index database
+initialization schema. The Datalens runtime applies it through `sqlx::migrate!`.
+This is still a breaking indexer implementation change: operators must reset or
+recreate the Postgres index database before adopting the Datalens-native
+indexer.
 
 Do not add in-place migrations for old SQD/Subsquid v3/v4 index databases. A
 table-shape migration cannot recompute historical proposal state, votes,

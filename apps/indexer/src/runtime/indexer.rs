@@ -9,7 +9,7 @@ use crate::{
     PostgresIndexerRunnerStore, required_env,
 };
 
-use super::datalens::verify_datalens;
+use super::{datalens::verify_datalens, migrate::apply_migrations};
 
 pub async fn run_indexer() -> Result<()> {
     let config = DatalensConfig::from_env().context("load Datalens configuration")?;
@@ -31,6 +31,8 @@ pub async fn run_indexer() -> Result<()> {
         .connect(&database_url)
         .await
         .context("connect to DeGov indexer Postgres")?;
+    apply_migrations(&pool).await?;
+
     loop {
         let contract_sets = runtime
             .configured_contract_sets(&config)

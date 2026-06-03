@@ -1,10 +1,10 @@
 use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result};
-use sqlx::{Executor, postgres::PgPoolOptions};
+use sqlx::{PgPool, migrate::Migrator, postgres::PgPoolOptions};
 
-use crate::{postgres_schema_statements, required_env};
+use crate::required_env;
 
-const POSTGRES_SCHEMA_SQL: &str = include_str!("../../schema/postgres.sql");
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 pub async fn migrate() -> Result<()> {
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
@@ -14,13 +14,18 @@ pub async fn migrate() -> Result<()> {
         .await
         .context("connect to DeGov indexer Postgres")?;
 
-    for statement in postgres_schema_statements(POSTGRES_SCHEMA_SQL) {
-        pool.execute(statement).await.with_context(|| {
-            format!("apply Datalens-native DeGov indexer schema statement: {statement}")
-        })?;
-    }
+    apply_migrations(&pool).await?;
 
     log::info!("Datalens-native DeGov indexer schema applied");
+
+    Ok(())
+}
+
+pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
+    MIGRATOR
+        .run(pool)
+        .await
+        .context("apply Datalens-native DeGov indexer init migration")?;
 
     Ok(())
 }

@@ -4,6 +4,8 @@ use sqlx::postgres::PgPoolOptions;
 
 use crate::{GraphqlRuntimeConfig, graphql, required_env};
 
+use super::migrate::apply_migrations;
+
 pub async fn run_graphql() -> Result<()> {
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
     let config = GraphqlRuntimeConfig::from_env()?;
@@ -12,6 +14,8 @@ pub async fn run_graphql() -> Result<()> {
         .connect(&database_url)
         .await
         .context("connect to DeGov indexer Postgres")?;
+    apply_migrations(&pool).await?;
+
     let app = graphql::build_router_with_paths(graphql::build_schema(pool), config.paths.clone());
     let listener = tokio::net::TcpListener::bind(config.bind_address)
         .await

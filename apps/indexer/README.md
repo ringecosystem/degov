@@ -18,11 +18,11 @@ config formatting.
 
 ## PostgreSQL schema ownership
 
-`schema/postgres.sql` is the canonical PostgreSQL schema source for the
-Datalens-native DeGov indexer fresh initialization path. Future Rust repository
-code should initialize a fresh database by applying this file with `sqlx` and
-should keep checkpoint, projection, and reconcile writes inside explicit
-transaction boundaries.
+`migrations/0001_init.sql` is the canonical fresh PostgreSQL initialization
+schema for the Datalens-native DeGov indexer. The runtime applies it through
+`sqlx::migrate!()` so startup and the explicit `migrate` command share the same
+initialization path while keeping checkpoint, projection, and reconcile writes
+inside explicit transaction boundaries.
 
 The Datalens indexer upgrade is a breaking indexer implementation change.
 Operators must reset or recreate the Postgres index database before adopting it
@@ -34,9 +34,9 @@ semantics.
 
 `reference/schema.graphql` remains the compatibility reference for table and
 field names consumed by the current web and square GraphQL/API paths. Edit
-`schema/postgres.sql` for database initialization, Rust SQL models for typed
-access, and `reference/schema.graphql` only when a separate issue explicitly
-changes the API-visible contract.
+`migrations/0001_init.sql` for fresh database initialization, Rust SQL models
+for typed access, and `reference/schema.graphql` only when a separate issue
+explicitly changes the API-visible contract.
 
 ## Reference artifacts
 

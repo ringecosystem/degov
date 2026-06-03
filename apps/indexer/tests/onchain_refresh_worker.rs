@@ -9,11 +9,11 @@ use std::{
 use degov_datalens_indexer::{
     ChainReadMethod, OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
     OnchainRefreshTask, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
+    runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 
-const SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
@@ -43,7 +43,7 @@ impl TestDatabase {
         sqlx::query(&format!(r#"SET search_path TO "{schema}""#))
             .execute(&pool)
             .await?;
-        sqlx::raw_sql(SCHEMA_SQL).execute(&pool).await?;
+        apply_migrations(&pool).await?;
 
         Ok(Self {
             _guard: guard,

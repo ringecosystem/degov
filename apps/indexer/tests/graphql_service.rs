@@ -7,14 +7,13 @@ use std::{
 use std::time::Duration;
 
 use async_graphql::Request;
-use degov_datalens_indexer::graphql;
+use degov_datalens_indexer::{graphql, runtime::apply_migrations};
 use reqwest::Client;
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::timeout;
 
-const SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
 const CONTRACT_SET_ID: &str = "dao=lisk-dao|chain=1135|datalens_chain=lisk|dataset=evm.logs|governor=0xgovernor|token=0xtoken|token_standard=erc20|timelock=0xtimelock";
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
@@ -48,7 +47,7 @@ impl TestDatabase {
         sqlx::query(&format!(r#"SET search_path TO "{schema}""#))
             .execute(&pool)
             .await?;
-        sqlx::raw_sql(SCHEMA_SQL).execute(&pool).await?;
+        apply_migrations(&pool).await?;
         seed_rows(&pool).await?;
 
         Ok(Self {

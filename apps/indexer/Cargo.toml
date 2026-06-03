@@ -21,7 +21,7 @@ reqwest = { version = "0.13.4", default-features = false, features = ["blocking"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sha3 = "0.10.9"
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "macros"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "macros", "migrate"] }
 thiserror = "2.0.17"
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 tracing-log = "0.2.0"
