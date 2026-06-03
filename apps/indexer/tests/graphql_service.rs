@@ -450,6 +450,43 @@ async fn test_graphql_http_endpoint_serves_post_requests() -> Result<(), Box<dyn
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_endpoint_serves_graphiql_on_dedicated_path() -> Result<(), Box<dyn Error>>
+{
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let app = graphql::build_router(schema);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let graphql_endpoint = format!("http://{}/graphql", listener.local_addr()?);
+    let graphiql_endpoint = format!("http://{}/graphiql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new().get(graphql_endpoint).send(),
+    )
+    .await??;
+    assert_eq!(response.status().as_u16(), 405);
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new().get(graphiql_endpoint).send(),
+    )
+    .await??;
+    assert!(response.status().is_success());
+    let body = response.text().await?;
+    assert!(body.contains("GraphiQL"));
+    assert!(body.contains("/graphql"));
+    assert!(body.contains("graphiql@3.9.0"));
+    assert!(body.contains("@graphiql/plugin-explorer@3.0.0"));
+    assert!(body.contains("GraphiQLPluginExplorer.explorerPlugin"));
+
+    server.abort();
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_schema_serves_indexer_accuracy_audit_queries() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let schema = graphql::build_schema(database.pool.clone());
@@ -528,6 +565,43 @@ async fn test_graphql_http_endpoint_serves_configured_dao_path() -> Result<(), B
     .await?;
 
     assert_eq!(response["data"]["squidStatus"]["height"], 900);
+
+    server.abort();
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_endpoint_serves_configured_dao_graphiql_path()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let app = graphql::build_router_with_paths(schema, ["/degov-demo-dao/graphql".to_owned()]);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let graphql_endpoint = format!("http://{}/degov-demo-dao/graphql", listener.local_addr()?);
+    let graphiql_endpoint = format!("http://{}/degov-demo-dao/graphiql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new().get(graphql_endpoint).send(),
+    )
+    .await??;
+    assert_eq!(response.status().as_u16(), 405);
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new().get(graphiql_endpoint).send(),
+    )
+    .await??;
+    assert!(response.status().is_success());
+    let body = response.text().await?;
+    assert!(body.contains("GraphiQL"));
+    assert!(body.contains("/degov-demo-dao/graphql"));
+    assert!(body.contains("graphiql@3.9.0"));
+    assert!(body.contains("@graphiql/plugin-explorer@3.0.0"));
+    assert!(body.contains("GraphiQLPluginExplorer.explorerPlugin"));
 
     server.abort();
     database.cleanup().await?;

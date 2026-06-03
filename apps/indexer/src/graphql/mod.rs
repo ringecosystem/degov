@@ -1,13 +1,13 @@
 use async_graphql::{
     ComplexObject, Context, EmptyMutation, EmptySubscription, Enum, InputObject, Object,
     Result as GraphqlResult, Schema, SimpleObject,
-    http::{GraphQLPlaygroundConfig, playground_source},
+    http::{GraphiQLPlugin, GraphiQLSource},
 };
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
     Router,
     response::{Html, IntoResponse},
-    routing::get,
+    routing::{get, post},
 };
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder};
 
@@ -35,7 +35,15 @@ where
 {
     let mut router = Router::new();
     for path in paths {
-        router = router.route(path.as_ref(), get(graphql_playground).post(graphql_handler));
+        let graphql_path = path.as_ref().to_owned();
+        let graphiql_path = graphiql_path_for_graphql_path(&graphql_path);
+        router = router.route(&graphql_path, post(graphql_handler)).route(
+            &graphiql_path,
+            get({
+                let endpoint = graphql_path.clone();
+                move || graphql_graphiql(endpoint.clone())
+            }),
+        );
     }
     router.with_state(schema)
 }
@@ -47,8 +55,44 @@ async fn graphql_handler(
     schema.execute(request.into_inner()).await.into()
 }
 
-async fn graphql_playground() -> impl IntoResponse {
-    Html(playground_source(GraphQLPlaygroundConfig::new("/graphql")))
+async fn graphql_graphiql(endpoint: String) -> impl IntoResponse {
+    Html(
+        GraphiQLSource::build()
+            .endpoint(&endpoint)
+            .version("3.9.0")
+            .title("DeGov Indexer GraphiQL")
+            .plugins(&[graphiql_explorer_plugin()])
+            .finish(),
+    )
+}
+
+fn graphiql_explorer_plugin<'a>() -> GraphiQLPlugin<'a> {
+    GraphiQLPlugin {
+        name: "GraphiQLPluginExplorer",
+        constructor: "GraphiQLPluginExplorer.explorerPlugin",
+        head_assets: Some(
+            r#"<link rel="stylesheet" href="https://unpkg.com/@graphiql/plugin-explorer@3.0.0/dist/style.css" />"#,
+        ),
+        body_assets: Some(
+            r#"<script
+      src="https://unpkg.com/@graphiql/plugin-explorer@3.0.0/dist/index.umd.js"
+      crossorigin
+    ></script>"#,
+        ),
+        ..Default::default()
+    }
+}
+
+fn graphiql_path_for_graphql_path(path: &str) -> String {
+    path.strip_suffix("/graphql")
+        .map(|prefix| {
+            if prefix.is_empty() {
+                "/graphiql".to_owned()
+            } else {
+                format!("{prefix}/graphiql")
+            }
+        })
+        .unwrap_or_else(|| format!("{path}/graphiql"))
 }
 
 #[derive(Default)]
