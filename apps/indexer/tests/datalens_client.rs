@@ -94,7 +94,7 @@ fn test_datalens_durable_head_reader_uses_latest_finality_when_pending_enabled()
 #[test]
 fn test_datalens_log_query_retries_retryable_rate_limit_before_success() {
     let server = FakeQueryServer::start(vec![
-        api_error_response(429, "rate_limited", "request_rate_limit"),
+        api_error_response(429, "rate_limited", Some("request_rate_limit")),
         query_success_response(serde_json::json!([{ "block_number": 100 }])),
     ]);
     let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
@@ -119,9 +119,33 @@ fn test_datalens_log_query_retries_retryable_rate_limit_before_success() {
 }
 
 #[test]
+fn test_datalens_log_query_retries_provider_timeout_before_success() {
+    let server = FakeQueryServer::start(vec![
+        api_error_response(503, "provider_timeout", None),
+        query_success_response(serde_json::json!([{ "block_number": 101 }])),
+    ]);
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(2))
+            .expect("client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+
+    let rows = client
+        .query_logs(plans[0].input.clone())
+        .expect("query retries and succeeds");
+
+    assert_eq!(rows, serde_json::json!([{ "block_number": 101 }]));
+    let requests = server.join();
+    assert_eq!(requests.len(), 2);
+}
+
+#[test]
 fn test_datalens_log_query_does_not_retry_non_retryable_quota_error() {
-    let server =
-        FakeQueryServer::start(vec![api_error_response(429, "rate_limited", "range_limit")]);
+    let server = FakeQueryServer::start(vec![api_error_response(
+        429,
+        "rate_limited",
+        Some("range_limit"),
+    )]);
     let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
     let mut client =
         DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(3))
@@ -230,34 +254,36 @@ fn query_success_response(rows: serde_json::Value) -> String {
         },
         "cache": {},
         "rows": rows
-    })
-    .to_string();
+    });
     http_response(200, body)
 }
 
-fn api_error_response(status: u16, kind: &str, quota_kind: &str) -> String {
-    let body = serde_json::json!({
+fn api_error_response(status: u16, kind: &str, quota_kind: Option<&str>) -> String {
+    let mut body = serde_json::json!({
         "error": {
             "kind": kind,
-            "message": format!("{quota_kind} exceeded"),
-            "quota": {
-                "kind": quota_kind,
-                "scope": "application",
-                "limit": 1,
-                "requested": 2,
-                "observed": 1,
-                "retry_after_seconds": 0
-            }
+            "message": format!("{kind} failed")
         }
-    })
-    .to_string();
+    });
+    if let Some(quota_kind) = quota_kind {
+        body["error"]["quota"] = serde_json::json!({
+            "kind": quota_kind,
+            "scope": "application",
+            "limit": 1,
+            "requested": 2,
+            "observed": 1,
+            "retry_after_seconds": 0
+        });
+    }
     http_response(status, body)
 }
 
-fn http_response(status: u16, body: String) -> String {
+fn http_response(status: u16, body: serde_json::Value) -> String {
+    let body = body.to_string();
     let reason = match status {
         200 => "OK",
         429 => "Too Many Requests",
+        503 => "Service Unavailable",
         _ => "Error",
     };
     format!(

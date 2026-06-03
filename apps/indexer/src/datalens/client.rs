@@ -1,8 +1,10 @@
+use std::time::Instant;
+
 use datalens_sdk::{
-    DatalensClient, RetryConfig,
+    ApiErrorKind, DatalensClient, Error as DatalensSdkError, RetryConfig,
     native::{ChainHeadFinalityInput, QueryInput},
 };
-use log::info;
+use log::{info, warn};
 
 use crate::{DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader};
 
@@ -21,13 +23,18 @@ pub struct ServiceReadiness {
 
 pub struct DatalensNativeClient {
     client: DatalensClient,
+    retry_config: RetryConfig,
 }
 
 impl DatalensNativeClient {
     pub fn from_config(config: &DatalensConfig) -> Result<Self, DatalensError> {
+        let retry_config = RetryConfig::default();
         let client = DatalensClient::new(config.sdk_config())
             .map_err(|error| DatalensError::SdkConfig(error.to_string()))?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            retry_config,
+        })
     }
 
     pub fn from_config_with_retry_config(
@@ -45,10 +52,88 @@ impl DatalensNativeClient {
             retry_config.jitter,
             retry_config.jitter_factor
         );
-        let client = DatalensClient::new_with_retry_config(config.sdk_config(), retry_config)
-            .map_err(|error| DatalensError::SdkConfig(error.to_string()))?;
-        Ok(Self { client })
+        let client =
+            DatalensClient::new_with_retry_config(config.sdk_config(), retry_config.clone())
+                .map_err(|error| DatalensError::SdkConfig(error.to_string()))?;
+        Ok(Self {
+            client,
+            retry_config,
+        })
     }
+
+    fn query_with_transient_fallback(
+        &self,
+        input: QueryInput,
+    ) -> Result<serde_json::Value, DatalensSdkError> {
+        let started_at = Instant::now();
+        let mut attempt = 1;
+        loop {
+            match self.client.native().query(input.clone()) {
+                Ok(response) => return Ok(response.rows),
+                Err(error) => {
+                    let Some(delay) =
+                        fallback_retry_delay(&self.retry_config, &error, attempt, started_at)
+                    else {
+                        return Err(error);
+                    };
+                    warn!(
+                        "Datalens query transient fallback retry scheduled attempt={} max_attempts={} delay_ms={} error={}",
+                        attempt + 1,
+                        self.retry_config.max_attempts,
+                        delay.as_millis(),
+                        error
+                    );
+                    std::thread::sleep(delay);
+                    attempt += 1;
+                }
+            }
+        }
+    }
+}
+
+fn fallback_retry_delay(
+    retry_config: &RetryConfig,
+    error: &DatalensSdkError,
+    failed_attempt: u32,
+    started_at: Instant,
+) -> Option<std::time::Duration> {
+    if error.is_retryable() || !is_transient_sdk_api_error(error) {
+        return None;
+    }
+    let delay = retry_config.delay_for_attempt(
+        failed_attempt,
+        error
+            .retry_after_seconds()
+            .map(std::time::Duration::from_secs),
+    )?;
+    if let Some(max_elapsed) = retry_config.max_elapsed
+        && started_at.elapsed().saturating_add(delay) > max_elapsed
+    {
+        return None;
+    }
+    Some(delay)
+}
+
+fn is_transient_sdk_api_error(error: &DatalensSdkError) -> bool {
+    if let Some(api_error) = error.api_error() {
+        return matches!(
+            api_error.kind,
+            ApiErrorKind::ProviderFailure
+                | ApiErrorKind::ProviderTimeout
+                | ApiErrorKind::StorageReadFailure
+                | ApiErrorKind::StorageWriteFailure
+                | ApiErrorKind::ManifestUpdateFailure
+                | ApiErrorKind::Internal
+                | ApiErrorKind::UnavailableHead
+        ) || api_error
+            .status
+            .is_some_and(|status| (500..600).contains(&status));
+    }
+
+    matches!(
+        error,
+        DatalensSdkError::HttpStatus { status, .. } if (500..600).contains(status)
+    )
 }
 
 impl DatalensNativeReader for DatalensNativeClient {
@@ -65,10 +150,7 @@ impl DatalensNativeReader for DatalensNativeClient {
 
 impl DatalensLogQueryReader for DatalensNativeClient {
     fn query_logs(&mut self, input: QueryInput) -> Result<serde_json::Value, DatalensError> {
-        self.client
-            .native()
-            .query(input)
-            .map(|response| response.rows)
+        self.query_with_transient_fallback(input)
             .map_err(|error| DatalensError::Query(error.to_string()))
     }
 }
