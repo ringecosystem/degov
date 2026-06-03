@@ -22,8 +22,14 @@ pub enum DaoLogSource {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DaoLogQueryPlan {
+pub struct DaoLogAddressSource {
+    pub address: String,
     pub source: DaoLogSource,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DaoLogQueryPlan {
+    pub sources: Vec<DaoLogAddressSource>,
     pub from_block: i32,
     pub to_block: i32,
     pub input: QueryInput,
@@ -72,30 +78,7 @@ pub fn plan_dao_log_queries(
             DatalensError::Query("Datalens log range end exceeds SDK limit".to_owned())
         })?;
 
-        plans.push(query_plan(
-            config,
-            DaoLogSource::Governor,
-            &addresses.governor,
-            GOVERNOR_TOPIC0_FILTERS,
-            range_start,
-            range_end,
-        ));
-        plans.push(query_plan(
-            config,
-            DaoLogSource::GovernorToken,
-            &addresses.governor_token,
-            GOVERNOR_TOKEN_TOPIC0_FILTERS,
-            range_start,
-            range_end,
-        ));
-        plans.push(query_plan(
-            config,
-            DaoLogSource::Timelock,
-            &addresses.timelock,
-            TIMELOCK_TOPIC0_FILTERS,
-            range_start,
-            range_end,
-        ));
+        plans.push(query_plan(config, addresses, range_start, range_end));
 
         if chunk_end == to_block {
             break;
@@ -124,14 +107,33 @@ pub fn fetch_dao_log_pages(
 
 fn query_plan(
     config: &DatalensConfig,
-    source: DaoLogSource,
-    address: &str,
-    topic0_filters: &[&str],
+    addresses: &DaoContractAddresses,
     from_block: i32,
     to_block: i32,
 ) -> DaoLogQueryPlan {
+    let sources = vec![
+        DaoLogAddressSource {
+            address: addresses.governor.clone(),
+            source: DaoLogSource::Governor,
+        },
+        DaoLogAddressSource {
+            address: addresses.governor_token.clone(),
+            source: DaoLogSource::GovernorToken,
+        },
+        DaoLogAddressSource {
+            address: addresses.timelock.clone(),
+            source: DaoLogSource::Timelock,
+        },
+    ];
+    let topic0_filters = GOVERNOR_TOPIC0_FILTERS
+        .iter()
+        .chain(GOVERNOR_TOKEN_TOPIC0_FILTERS)
+        .chain(TIMELOCK_TOPIC0_FILTERS)
+        .map(|topic| topic.to_string())
+        .collect();
+
     DaoLogQueryPlan {
-        source,
+        sources,
         from_block,
         to_block,
         input: QueryInput {
@@ -153,13 +155,12 @@ fn query_plan(
             selector: QuerySelectorInput {
                 kind: SelectorKindInput::EvmLogs,
                 evm_logs: Some(EvmLogsSelectorInput {
-                    addresses: vec![address.to_owned()],
-                    topics: vec![
-                        topic0_filters
-                            .iter()
-                            .map(|topic| topic.to_string())
-                            .collect(),
+                    addresses: vec![
+                        addresses.governor.clone(),
+                        addresses.governor_token.clone(),
+                        addresses.timelock.clone(),
                     ],
+                    topics: vec![topic0_filters],
                 }),
                 other: None,
             },

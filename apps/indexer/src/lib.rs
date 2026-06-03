@@ -20,8 +20,8 @@ pub use crate::chain::tool::{
     ChainReadValue, ChainTool, MulticallReadGroup, PartialChainReadFailureReport, ReadRequirement,
 };
 pub use crate::datalens::planner::{
-    DaoContractAddresses, DaoLogQueryPlan, DaoLogSource, DatalensLogPage, DatalensLogQueryReader,
-    fetch_dao_log_pages, plan_dao_log_queries,
+    DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan, DaoLogSource, DatalensLogPage,
+    DatalensLogQueryReader, fetch_dao_log_pages, plan_dao_log_queries,
 };
 pub use crate::decode::dao_event::{
     CallExecutedEvent, CallSaltEvent, CallScheduledEvent, DaoEventDecodeError, DecodedDaoEvent,

@@ -6,6 +6,6 @@ pub use client::{
     verify_datalens_service,
 };
 pub use planner::{
-    DaoContractAddresses, DaoLogQueryPlan, DaoLogSource, DatalensLogPage, DatalensLogQueryReader,
-    fetch_dao_log_pages, plan_dao_log_queries,
+    DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan, DaoLogSource, DatalensLogPage,
+    DatalensLogQueryReader, fetch_dao_log_pages, plan_dao_log_queries,
 };

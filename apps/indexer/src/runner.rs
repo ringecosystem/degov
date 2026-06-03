@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 
 use log::{error, info};
@@ -336,6 +336,12 @@ where
     ) -> Result<Vec<(NormalizedEvmLog, DecodedDaoEvent)>, IndexerRunnerError> {
         let mut decoded = Vec::new();
         for page in pages {
+            let sources = page
+                .plan
+                .sources
+                .iter()
+                .map(|source| (source.address.to_ascii_lowercase(), source.source))
+                .collect::<BTreeMap<_, _>>();
             let rows = page_rows(page.rows)?;
             let logs = normalize_evm_log_rows(self.options.checkpoint_identity.chain_id, rows)
                 .map_err(|error| IndexerRunnerError::Normalize(error.to_string()))?;
@@ -350,11 +356,17 @@ where
                     );
                     continue;
                 }
-                let token_standard = (page.plan.source == DaoLogSource::GovernorToken)
+                let Some(source) = sources.get(&log.address).copied() else {
+                    return Err(IndexerRunnerError::Normalize(format!(
+                        "Datalens log address {} was not part of the DAO log query plan",
+                        log.address
+                    )));
+                };
+                let token_standard = (source == DaoLogSource::GovernorToken)
                     .then_some(self.options.addresses.governor_token_standard);
                 let event = self.decoder.decode(
                     &self.options.checkpoint_identity.dao_code,
-                    page.plan.source,
+                    source,
                     token_standard,
                     &log,
                 )?;

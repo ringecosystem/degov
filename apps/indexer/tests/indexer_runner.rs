@@ -56,12 +56,11 @@ fn test_page_rows_rejects_malformed_response() {
 fn test_runner_processes_multiple_chunks_and_advances_checkpoint_after_commits() {
     let mut runner = runner(
         vec![
-            vec![row(1, 0, 0)],
-            vec![],
-            vec![],
+            vec![
+                row(1, 0, 0),
+                row_at_address(1, 0, 1, &TOKEN.to_ascii_uppercase()),
+            ],
             vec![row(2, 0, 0)],
-            vec![],
-            vec![],
         ],
         ScriptedDecoder,
     );
@@ -85,6 +84,10 @@ fn test_runner_processes_multiple_chunks_and_advances_checkpoint_after_commits()
             .votes_weight_for_sum,
         "30"
     );
+    assert_eq!(
+        runner.store().token_repository().delegate_changed().len(),
+        1
+    );
 }
 
 #[test]
@@ -92,7 +95,7 @@ fn test_runner_skips_removed_logs_before_decode_and_still_advances_checkpoint() 
     let mut options = options();
     options.datalens_config.finality = DatalensFinality::IncludePending;
     let mut runner = runner_with_decoder(
-        vec![vec![removed_row(1, 0, 0)], vec![], vec![]],
+        vec![vec![removed_row(1, 0, 0)]],
         RejectRemovedDecoder,
         options,
     );
@@ -113,7 +116,7 @@ fn test_runner_skips_removed_logs_before_decode_and_still_advances_checkpoint() 
 
 #[test]
 fn test_runner_keeps_checkpoint_unchanged_when_transaction_fails() {
-    let mut runner = runner(vec![vec![row(1, 0, 0)], vec![], vec![]], ScriptedDecoder);
+    let mut runner = runner(vec![vec![row(1, 0, 0)]], ScriptedDecoder);
     runner
         .store_mut()
         .fail_next_commit("projection write failed");
@@ -159,14 +162,7 @@ fn test_runner_keeps_checkpoint_unchanged_when_datalens_query_fails() {
 #[test]
 fn test_runner_replay_over_same_range_does_not_double_count_business_totals() {
     let mut runner = runner(
-        vec![
-            vec![row(1, 0, 0)],
-            vec![],
-            vec![],
-            vec![row(1, 0, 0)],
-            vec![],
-            vec![],
-        ],
+        vec![vec![row(1, 0, 0)], vec![row(1, 0, 0)]],
         ScriptedDecoder,
     );
 
@@ -196,14 +192,7 @@ fn test_runner_replay_over_same_range_does_not_double_count_business_totals() {
 #[test]
 fn test_runner_stops_gracefully_between_chunks() {
     let mut runner = runner(
-        vec![
-            vec![row(1, 0, 0)],
-            vec![],
-            vec![],
-            vec![row(2, 0, 0)],
-            vec![],
-            vec![],
-        ],
+        vec![vec![row(1, 0, 0)], vec![row(2, 0, 0)]],
         ScriptedDecoder,
     );
     runner.request_shutdown_after_chunks(1);
@@ -247,36 +236,45 @@ impl IndexerEventDecoder for ScriptedDecoder {
         &self,
         _dao_code: &str,
         source: DaoLogSource,
-        _token_standard: Option<GovernanceTokenStandard>,
+        token_standard: Option<GovernanceTokenStandard>,
         log: &NormalizedEvmLog,
     ) -> Result<DecodedDaoEvent, DaoEventDecodeError> {
         match source {
-            DaoLogSource::Governor => Ok(DecodedDaoEvent::Governor(
-                DecodedGovernorEvent::VoteCast(VoteCastEvent {
-                    voter: format!("0x{:040}", log.block_number),
-                    proposal_id: "42".to_owned(),
-                    support: 1,
-                    weight: (log.block_number * 10).to_string(),
-                    reason: String::new(),
-                }),
-            )),
-            DaoLogSource::GovernorToken => Ok(DecodedDaoEvent::Token(
-                DecodedTokenEvent::DelegateChanged(degov_datalens_indexer::DelegateChangedEvent {
-                    delegator: "0x0000000000000000000000000000000000000001".to_owned(),
-                    from_delegate: "0x0000000000000000000000000000000000000000".to_owned(),
-                    to_delegate: "0x0000000000000000000000000000000000000002".to_owned(),
-                }),
-            )),
-            DaoLogSource::Timelock => Ok(DecodedDaoEvent::UnsupportedTopic(
-                degov_datalens_indexer::UnsupportedTopicEvent {
-                    dao_code: "demo-dao".to_owned(),
-                    source,
-                    block_number: log.block_number,
-                    transaction_hash: log.transaction_hash.clone(),
-                    address: log.address.clone(),
-                    topic0: log.topics[0].clone(),
-                },
-            )),
+            DaoLogSource::Governor => {
+                assert_eq!(token_standard, None);
+                Ok(DecodedDaoEvent::Governor(DecodedGovernorEvent::VoteCast(
+                    VoteCastEvent {
+                        voter: format!("0x{:040}", log.block_number),
+                        proposal_id: "42".to_owned(),
+                        support: 1,
+                        weight: (log.block_number * 10).to_string(),
+                        reason: String::new(),
+                    },
+                )))
+            }
+            DaoLogSource::GovernorToken => {
+                assert_eq!(token_standard, Some(GovernanceTokenStandard::Erc20));
+                Ok(DecodedDaoEvent::Token(DecodedTokenEvent::DelegateChanged(
+                    degov_datalens_indexer::DelegateChangedEvent {
+                        delegator: "0x0000000000000000000000000000000000000001".to_owned(),
+                        from_delegate: "0x0000000000000000000000000000000000000000".to_owned(),
+                        to_delegate: "0x0000000000000000000000000000000000000002".to_owned(),
+                    },
+                )))
+            }
+            DaoLogSource::Timelock => {
+                assert_eq!(token_standard, None);
+                Ok(DecodedDaoEvent::UnsupportedTopic(
+                    degov_datalens_indexer::UnsupportedTopicEvent {
+                        dao_code: "demo-dao".to_owned(),
+                        source,
+                        block_number: log.block_number,
+                        transaction_hash: log.transaction_hash.clone(),
+                        address: log.address.clone(),
+                        topic0: log.topics[0].clone(),
+                    },
+                ))
+            }
         }
     }
 }
@@ -417,17 +415,27 @@ fn addresses() -> DaoContractAddresses {
 }
 
 fn row(block_number: u64, transaction_index: u64, log_index: u64) -> Value {
-    row_with_removed(block_number, transaction_index, log_index, false)
+    row_at_address(block_number, transaction_index, log_index, GOVERNOR)
+}
+
+fn row_at_address(
+    block_number: u64,
+    transaction_index: u64,
+    log_index: u64,
+    address: &str,
+) -> Value {
+    row_with_removed(block_number, transaction_index, log_index, address, false)
 }
 
 fn removed_row(block_number: u64, transaction_index: u64, log_index: u64) -> Value {
-    row_with_removed(block_number, transaction_index, log_index, true)
+    row_with_removed(block_number, transaction_index, log_index, GOVERNOR, true)
 }
 
 fn row_with_removed(
     block_number: u64,
     transaction_index: u64,
     log_index: u64,
+    address: &str,
     removed: bool,
 ) -> Value {
     json!({
@@ -437,9 +445,12 @@ fn row_with_removed(
         "transaction_hash": format!("0xtx{block_number}"),
         "transaction_index": transaction_index,
         "log_index": log_index,
-        "address": "0x1111111111111111111111111111111111111111",
+        "address": address,
         "topics": ["0x0000000000000000000000000000000000000000000000000000000000000000"],
         "data": "0x",
         "removed": removed
     })
 }
+
+const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
+const TOKEN: &str = "0x2222222222222222222222222222222222222222";
