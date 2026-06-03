@@ -22,6 +22,7 @@ use degov_datalens_indexer::{
     TokenProjectionContext, TokenProjectionEvent, VoteCastEvent, VoteProjectionContext,
     VoteProjectionEvent, project_proposal_events, project_timelock_events,
     project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
+    runtime::apply_migrations,
 };
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
@@ -29,7 +30,6 @@ use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::{sleep, timeout};
 
-const SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
@@ -61,7 +61,7 @@ impl TestDatabase {
         sqlx::query(&format!(r#"SET search_path TO "{schema}""#))
             .execute(&pool)
             .await?;
-        sqlx::raw_sql(SCHEMA_SQL).execute(&pool).await?;
+        apply_migrations(&pool).await?;
 
         Ok(Self {
             _guard: guard,

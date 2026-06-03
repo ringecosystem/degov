@@ -91,7 +91,7 @@ pub use runner::{
 pub use runtime_config::{
     GraphqlRuntimeConfig, IndexerContractSetMode, IndexerContractSetRuntimeConfig,
     IndexerRuntimeConfig, OnchainRefreshRuntimeConfig, onchain_refresh_worker_enabled,
-    parse_bool_env_value, parse_i64_env_value, postgres_schema_statements, required_env,
+    parse_bool_env_value, parse_i64_env_value, required_env,
 };
 pub use timelock_projection::{
     InMemoryTimelockProjectionRepository, TIMELOCK_POSTGRES_ADAPTER_GAP, TimelockCallWrite,

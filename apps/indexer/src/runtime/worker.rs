@@ -10,6 +10,8 @@ use crate::{
     OnchainRefreshWorker, required_env,
 };
 
+use super::migrate::apply_migrations;
+
 pub async fn run_worker() -> Result<()> {
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
     let runtime = OnchainRefreshRuntimeConfig::from_env()?;
@@ -35,6 +37,8 @@ pub async fn run_worker() -> Result<()> {
         .connect(&database_url)
         .await
         .context("connect to DeGov indexer Postgres")?;
+    apply_migrations(&pool).await?;
+
     let chain_tool = EvmRpcChainTool::new(runtime.rpc_url.clone(), runtime.request_timeout)
         .context("create onchain refresh RPC ChainTool")?;
     let reader = ChainToolOnchainRefreshReader::new(

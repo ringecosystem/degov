@@ -11,12 +11,11 @@ use degov_datalens_indexer::{
     IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction,
     PostgresIndexerRunnerStore, PowerFreshnessState, PowerReconcileContext, PowerReconcileMetrics,
     PowerReconcilePlan, TokenEventCommon, TokenProjectionBatch, TokenProjectionOperation,
-    TokenTransferWrite, plan_next_checkpoint_range,
+    TokenTransferWrite, plan_next_checkpoint_range, runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 
-const SCHEMA_SQL: &str = include_str!("../schema/postgres.sql");
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
@@ -47,7 +46,7 @@ impl TestDatabase {
         sqlx::query(&format!(r#"SET search_path TO "{schema}""#))
             .execute(&pool)
             .await?;
-        sqlx::raw_sql(SCHEMA_SQL).execute(&pool).await?;
+        apply_migrations(&pool).await?;
         sqlx::query(
             "CREATE TABLE checkpoint_projection_fixture (
                 id TEXT PRIMARY KEY,

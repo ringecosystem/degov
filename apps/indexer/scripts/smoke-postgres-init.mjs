@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import process from "node:process";
 
-const schemaPath = path.resolve(import.meta.dirname, "..", "schema", "postgres.sql");
+const indexerRoot = path.resolve(import.meta.dirname, "..");
 const databaseUrl = process.env.DEGOV_INDEXER_DATABASE_URL;
 const isLinux = process.platform === "linux";
 
@@ -86,8 +85,37 @@ function runDockerPostgres(args, stdin) {
   });
 }
 
+function runCargoMigrate() {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "cargo",
+      ["run", "-p", "degov-datalens-indexer", "--locked", "--", "migrate"],
+      {
+        cwd: indexerRoot,
+        env: {
+          ...process.env,
+          DEGOV_INDEXER_DATABASE_URL: databaseUrl,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      resolve({ status, stdout, stderr });
+    });
+  });
+}
+
 async function main() {
-  const schema = await readFile(schemaPath, "utf8");
   const psqlDatabaseUrl = dockerDatabaseUrl();
   const cleanDatabaseSql = [
     "SELECT",
@@ -129,12 +157,10 @@ async function main() {
     process.exit(1);
   }
 
-  const initResult = await runDockerPostgres(
-    ["psql", psqlDatabaseUrl, "--set", "ON_ERROR_STOP=1"],
-    schema,
-  );
+  const initResult = await runCargoMigrate();
 
   if (initResult.status !== 0) {
+    console.error(initResult.stdout);
     console.error(initResult.stderr);
     process.exit(initResult.status ?? 1);
   }

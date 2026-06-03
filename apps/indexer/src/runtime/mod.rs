@@ -7,5 +7,5 @@ pub mod worker;
 pub use datalens::smoke_datalens;
 pub use graphql::run_graphql;
 pub use indexer::run_indexer;
-pub use migrate::migrate;
+pub use migrate::{apply_migrations, migrate};
 pub use worker::run_worker;

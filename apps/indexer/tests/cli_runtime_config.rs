@@ -3,23 +3,7 @@ use std::time::Duration;
 use degov_datalens_indexer::{
     DatalensConfig, GraphqlRuntimeConfig, IndexerContractSetMode, IndexerRuntimeConfig,
     onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
-    postgres_schema_statements,
 };
-
-#[test]
-fn test_postgres_schema_statements_splits_schema_into_individual_statements() {
-    let statements = postgres_schema_statements(
-        "CREATE TABLE one (id INTEGER);\n\n-- comment with ;\nCREATE INDEX one_id_idx ON one (id);\n",
-    );
-
-    assert_eq!(
-        statements,
-        vec![
-            "CREATE TABLE one (id INTEGER)",
-            "-- comment with ;\nCREATE INDEX one_id_idx ON one (id)"
-        ]
-    );
-}
 
 #[test]
 fn test_onchain_refresh_worker_enabled_accepts_disabled_values() {
