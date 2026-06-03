@@ -51,7 +51,8 @@ pub use dao_event::{
 };
 pub use data_metric::DataMetricWrite;
 pub use datalens::{
-    DatalensNativeClient, DatalensNativeReader, ServiceReadiness, verify_datalens_service,
+    DatalensDurableHeadReader, DatalensNativeClient, DatalensNativeReader, ServiceReadiness,
+    parse_datalens_durable_head_height, verify_datalens_service,
 };
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use evm_log::{EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows};
@@ -90,8 +91,8 @@ pub use runner::{
 };
 pub use runtime_config::{
     GraphqlRuntimeConfig, IndexerContractSetMode, IndexerContractSetRuntimeConfig,
-    IndexerRuntimeConfig, OnchainRefreshRuntimeConfig, onchain_refresh_worker_enabled,
-    parse_bool_env_value, parse_i64_env_value, required_env,
+    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRuntimeConfig,
+    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value, required_env,
 };
 pub use timelock_projection::{
     InMemoryTimelockProjectionRepository, TIMELOCK_POSTGRES_ADAPTER_GAP, TimelockCallWrite,
