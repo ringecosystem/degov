@@ -297,6 +297,7 @@ async fn insert_vote_power_checkpoint(
 
 async fn apply_token_operation(
     transaction: &mut Transaction<'_, Postgres>,
+    delegate_mapping_cache: &mut DelegateMappingCache,
     operation: &TokenProjectionOperation,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     match operation {
@@ -309,6 +310,7 @@ async fn apply_token_operation(
         } => {
             apply_delegate_changed_operation(
                 transaction,
+                delegate_mapping_cache,
                 common,
                 delegator,
                 from_delegate,
@@ -325,6 +327,7 @@ async fn apply_token_operation(
         } => {
             apply_delegate_votes_changed_operation(
                 transaction,
+                delegate_mapping_cache,
                 common,
                 delegate,
                 previous_votes,
@@ -339,12 +342,24 @@ async fn apply_token_operation(
             value,
             standard,
             ..
-        } => apply_transfer_operation(transaction, common, from, to, value, *standard).await,
+        } => {
+            apply_transfer_operation(
+                transaction,
+                delegate_mapping_cache,
+                common,
+                from,
+                to,
+                value,
+                *standard,
+            )
+            .await
+        }
     }
 }
 
 async fn apply_delegate_changed_operation(
     transaction: &mut Transaction<'_, Postgres>,
+    delegate_mapping_cache: &mut DelegateMappingCache,
     common: &TokenEventCommon,
     delegator: &str,
     from_delegate: &str,
@@ -353,7 +368,9 @@ async fn apply_delegate_changed_operation(
     if !is_zero_address(to_delegate) {
         ensure_contributor(transaction, to_delegate, common).await?;
     }
-    let previous_mapping = read_delegate_mapping(transaction, common, delegator).await?;
+    let previous_mapping =
+        read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, delegator)
+            .await?;
     let is_noop = previous_mapping
         .as_ref()
         .is_some_and(|mapping| mapping.to == to_delegate && from_delegate == to_delegate);
@@ -383,11 +400,7 @@ async fn apply_delegate_changed_operation(
             },
         )
         .await?;
-        sqlx::query("DELETE FROM delegate_mapping WHERE contract_set_id = $1 AND id = $2")
-            .bind(&common.contract_set_id)
-            .bind(delegate_mapping_ref(common, delegator))
-            .execute(&mut **transaction)
-            .await?;
+        delete_delegate_mapping(transaction, delegate_mapping_cache, common, delegator).await?;
     }
 
     if is_zero_address(to_delegate) {
@@ -395,13 +408,22 @@ async fn apply_delegate_changed_operation(
     }
 
     apply_delegate_count_delta(transaction, common, to_delegate, 1, 0).await?;
-    upsert_delegate_mapping(transaction, common, delegator, to_delegate, "0").await?;
+    upsert_delegate_mapping(
+        transaction,
+        delegate_mapping_cache,
+        common,
+        delegator,
+        to_delegate,
+        "0",
+    )
+    .await?;
 
     Ok(())
 }
 
 async fn apply_delegate_votes_changed_operation(
     transaction: &mut Transaction<'_, Postgres>,
+    delegate_mapping_cache: &mut DelegateMappingCache,
     common: &TokenEventCommon,
     delegate: &str,
     previous_votes: &str,
@@ -431,6 +453,7 @@ async fn apply_delegate_votes_changed_operation(
             .await?;
             apply_delegate_delta(
                 transaction,
+                delegate_mapping_cache,
                 common,
                 &rolling_match.delegator,
                 &rolling_match.from_delegate,
@@ -453,6 +476,7 @@ async fn apply_delegate_votes_changed_operation(
             .await?;
             apply_delegate_delta(
                 transaction,
+                delegate_mapping_cache,
                 common,
                 &rolling_match.delegator,
                 &rolling_match.to_delegate,
@@ -465,6 +489,7 @@ async fn apply_delegate_votes_changed_operation(
 
 async fn apply_transfer_operation(
     transaction: &mut Transaction<'_, Postgres>,
+    delegate_mapping_cache: &mut DelegateMappingCache,
     common: &TokenEventCommon,
     from: &str,
     to: &str,
@@ -472,9 +497,12 @@ async fn apply_transfer_operation(
     standard: GovernanceTokenStandard,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let value = transfer_units(value, standard);
-    if let Some(mapping) = read_delegate_mapping(transaction, common, from).await? {
+    if let Some(mapping) =
+        read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, from).await?
+    {
         apply_delegate_delta(
             transaction,
+            delegate_mapping_cache,
             common,
             &mapping.from,
             &mapping.to,
@@ -482,8 +510,18 @@ async fn apply_transfer_operation(
         )
         .await?;
     }
-    if let Some(mapping) = read_delegate_mapping(transaction, common, to).await? {
-        apply_delegate_delta(transaction, common, &mapping.from, &mapping.to, &value).await?;
+    if let Some(mapping) =
+        read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, to).await?
+    {
+        apply_delegate_delta(
+            transaction,
+            delegate_mapping_cache,
+            common,
+            &mapping.from,
+            &mapping.to,
+            &value,
+        )
+        .await?;
     }
 
     Ok(())
@@ -491,6 +529,7 @@ async fn apply_transfer_operation(
 
 async fn apply_delegate_delta(
     transaction: &mut Transaction<'_, Postgres>,
+    delegate_mapping_cache: &mut DelegateMappingCache,
     common: &TokenEventCommon,
     from_delegate: &str,
     to_delegate: &str,
@@ -500,15 +539,16 @@ async fn apply_delegate_delta(
         return Ok(());
     }
 
-    let previous_mapping_power = read_delegate_mapping(transaction, common, from_delegate)
-        .await?
-        .filter(|mapping| mapping.to == to_delegate)
-        .map(|mapping| mapping.power)
-        .unwrap_or_else(|| "0".to_owned());
+    let previous_mapping_power =
+        read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, from_delegate)
+            .await?
+            .filter(|mapping| mapping.to == to_delegate)
+            .map(|mapping| mapping.power)
+            .unwrap_or_else(|| "0".to_owned());
     let next_mapping_power =
         add_signed_decimal(transaction, &previous_mapping_power, delta).await?;
 
-    sqlx::query(
+    let result = sqlx::query(
         r#"UPDATE delegate_mapping
            SET chain_id = $3, dao_code = $4, governor_address = $5, token_address = $6,
                contract_address = $7, log_index = $8, transaction_index = $9,
@@ -538,6 +578,17 @@ async fn apply_delegate_delta(
     .bind(to_delegate)
     .execute(&mut **transaction)
     .await?;
+    if result.rows_affected() > 0 {
+        delegate_mapping_cache.set(
+            common,
+            from_delegate,
+            Some(DelegateMappingSnapshot {
+                from: from_delegate.to_owned(),
+                to: to_delegate.to_owned(),
+                power: next_mapping_power.clone(),
+            }),
+        );
+    }
 
     let previous_effective = is_nonzero_decimal(&previous_mapping_power);
     let next_effective = is_nonzero_decimal(&next_mapping_power);
@@ -639,6 +690,7 @@ async fn upsert_delegate_snapshot(
 
 async fn upsert_delegate_mapping(
     transaction: &mut Transaction<'_, Postgres>,
+    delegate_mapping_cache: &mut DelegateMappingCache,
     common: &TokenEventCommon,
     from: &str,
     to: &str,
@@ -692,6 +744,31 @@ async fn upsert_delegate_mapping(
     .bind(&common.transaction_hash)
     .execute(&mut **transaction)
     .await?;
+    delegate_mapping_cache.set(
+        common,
+        from,
+        Some(DelegateMappingSnapshot {
+            from: from.to_owned(),
+            to: to.to_owned(),
+            power: power.to_owned(),
+        }),
+    );
+
+    Ok(())
+}
+
+async fn delete_delegate_mapping(
+    transaction: &mut Transaction<'_, Postgres>,
+    delegate_mapping_cache: &mut DelegateMappingCache,
+    common: &TokenEventCommon,
+    from: &str,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query("DELETE FROM delegate_mapping WHERE contract_set_id = $1 AND id = $2")
+        .bind(&common.contract_set_id)
+        .bind(delegate_mapping_ref(common, from))
+        .execute(&mut **transaction)
+        .await?;
+    delegate_mapping_cache.set(common, from, None);
 
     Ok(())
 }
@@ -844,6 +921,37 @@ struct DelegateMappingSnapshot {
     power: String,
 }
 
+#[derive(Debug, Default)]
+struct DelegateMappingCache {
+    mappings: HashMap<(String, String), Option<DelegateMappingSnapshot>>,
+}
+
+impl DelegateMappingCache {
+    fn get(
+        &self,
+        common: &TokenEventCommon,
+        from: &str,
+    ) -> Option<Option<DelegateMappingSnapshot>> {
+        self.mappings.get(&self.key(common, from)).cloned()
+    }
+
+    fn set(
+        &mut self,
+        common: &TokenEventCommon,
+        from: &str,
+        snapshot: Option<DelegateMappingSnapshot>,
+    ) {
+        self.mappings.insert(self.key(common, from), snapshot);
+    }
+
+    fn key(&self, common: &TokenEventCommon, from: &str) -> (String, String) {
+        (
+            common.contract_set_id.clone(),
+            delegate_mapping_ref(common, from),
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 struct DelegateRollingSnapshot {
     id: String,
@@ -868,6 +976,22 @@ struct DelegateRollingMatch {
     from_delegate: String,
     to_delegate: String,
     side: RollingSide,
+}
+
+async fn read_delegate_mapping_cached(
+    transaction: &mut Transaction<'_, Postgres>,
+    delegate_mapping_cache: &mut DelegateMappingCache,
+    common: &TokenEventCommon,
+    from: &str,
+) -> Result<Option<DelegateMappingSnapshot>, PostgresIndexerRunnerStoreError> {
+    if let Some(snapshot) = delegate_mapping_cache.get(common, from) {
+        return Ok(snapshot);
+    }
+
+    let snapshot = read_delegate_mapping(transaction, common, from).await?;
+    delegate_mapping_cache.set(common, from, snapshot.clone());
+
+    Ok(snapshot)
 }
 
 async fn read_delegate_mapping(
