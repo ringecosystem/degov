@@ -8,6 +8,7 @@ use super::types::*;
 
 pub(super) async fn query_proposals(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&ProposalWhereInput>,
     order_by: Option<&[ProposalOrderByInput]>,
     offset: Option<i32>,
@@ -15,22 +16,24 @@ pub(super) async fn query_proposals(
 ) -> GraphqlResult<Vec<Proposal>> {
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
-        SELECT id, chain_id, dao_code, governor_address, proposal_id, proposer, targets, values,
-          signatures, calldatas, vote_start::text AS vote_start, vote_end::text AS vote_end,
-          description, block_number::text AS block_number, block_timestamp::text AS block_timestamp,
-          transaction_hash, metrics_votes_count, metrics_votes_with_params_count,
-          metrics_votes_without_params_count, metrics_votes_weight_for_sum::text AS metrics_votes_weight_for_sum,
+        SELECT id, contract_set_id, chain_id, dao_code, governor_address, proposal_id, proposer,
+          targets, values, signatures, calldatas, vote_start::text AS vote_start,
+          vote_end::text AS vote_end, description, block_number::text AS block_number,
+          block_timestamp::text AS block_timestamp, transaction_hash, metrics_votes_count,
+          metrics_votes_with_params_count, metrics_votes_without_params_count,
+          metrics_votes_weight_for_sum::text AS metrics_votes_weight_for_sum,
           metrics_votes_weight_against_sum::text AS metrics_votes_weight_against_sum,
-          metrics_votes_weight_abstain_sum::text AS metrics_votes_weight_abstain_sum, title,
-          vote_start_timestamp::text AS vote_start_timestamp, vote_end_timestamp::text AS vote_end_timestamp,
-          block_interval, clock_mode, proposal_deadline::text AS proposal_deadline,
-          proposal_eta::text AS proposal_eta, queue_ready_at::text AS queue_ready_at,
-          queue_expires_at::text AS queue_expires_at, quorum::text AS quorum, decimals::text AS decimals,
-          timelock_address, timelock_grace_period::text AS timelock_grace_period
+          metrics_votes_weight_abstain_sum::text AS metrics_votes_weight_abstain_sum,
+          title, vote_start_timestamp::text AS vote_start_timestamp,
+          vote_end_timestamp::text AS vote_end_timestamp, block_interval, clock_mode,
+          proposal_deadline::text AS proposal_deadline, proposal_eta::text AS proposal_eta,
+          queue_ready_at::text AS queue_ready_at, queue_expires_at::text AS queue_expires_at,
+          quorum::text AS quorum, decimals::text AS decimals, timelock_address,
+          timelock_grace_period::text AS timelock_grace_period
         FROM proposal
         "#,
     );
-    push_proposal_where(&mut query, where_);
+    push_proposal_where(&mut query, implicit_scope, where_);
     push_proposal_order(&mut query, order_by);
     push_page(&mut query, offset, limit);
 
@@ -39,16 +42,18 @@ pub(super) async fn query_proposals(
 
 pub(super) async fn count_proposals(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&ProposalWhereInput>,
 ) -> GraphqlResult<i64> {
     let mut query = QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM proposal");
-    push_proposal_where(&mut query, where_);
+    push_proposal_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
 }
 
 pub(super) async fn query_events<T>(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     table: &'static str,
     where_: Option<&impl ProposalEventWhere>,
     order_by: Option<&[EventOrderByInput]>,
@@ -65,7 +70,7 @@ where
         FROM {table}
         "#
     ));
-    push_event_where(&mut query, where_);
+    push_event_where(&mut query, implicit_scope, where_);
     push_event_order(&mut query, table, order_by);
     push_page(&mut query, offset, limit);
 
@@ -74,6 +79,7 @@ where
 
 pub(super) async fn query_data_metrics(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&DataMetricWhereInput>,
     order_by: Option<&[DataMetricOrderByInput]>,
     offset: Option<i32>,
@@ -90,7 +96,7 @@ pub(super) async fn query_data_metrics(
         FROM data_metric
         "#,
     );
-    push_data_metric_where(&mut query, where_);
+    push_data_metric_where(&mut query, implicit_scope, where_);
     push_data_metric_order(&mut query, order_by);
     push_page(&mut query, offset, limit);
 
@@ -99,17 +105,19 @@ pub(super) async fn query_data_metrics(
 
 pub(super) async fn count_data_metrics(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&DataMetricWhereInput>,
 ) -> GraphqlResult<i64> {
     let mut query =
         QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM data_metric");
-    push_data_metric_where(&mut query, where_);
+    push_data_metric_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
 }
 
 pub(super) async fn query_contributors(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&ContributorWhereInput>,
     order_by: Option<&[ContributorOrderByInput]>,
     offset: Option<i32>,
@@ -124,7 +132,7 @@ pub(super) async fn query_contributors(
         FROM contributor
         "#,
     );
-    push_contributor_where(&mut query, where_);
+    push_contributor_where(&mut query, implicit_scope, where_);
     push_contributor_order(&mut query, order_by);
     push_page(&mut query, offset, limit);
 
@@ -133,6 +141,7 @@ pub(super) async fn query_contributors(
 
 pub(super) async fn query_delegates(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&DelegateWhereInput>,
     order_by: Option<&[DelegateOrderByInput]>,
     offset: Option<i32>,
@@ -146,7 +155,7 @@ pub(super) async fn query_delegates(
         FROM delegate
         "#,
     );
-    push_delegate_where(&mut query, where_);
+    push_delegate_where(&mut query, implicit_scope, where_);
     push_delegate_order(&mut query, order_by);
     push_page(&mut query, offset, limit);
 
@@ -155,6 +164,7 @@ pub(super) async fn query_delegates(
 
 pub(super) async fn query_delegate_mappings(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&DelegateMappingWhereInput>,
     order_by: Option<&[DelegateMappingOrderByInput]>,
     offset: Option<i32>,
@@ -168,7 +178,7 @@ pub(super) async fn query_delegate_mappings(
         FROM delegate_mapping
         "#,
     );
-    push_delegate_mapping_where(&mut query, where_);
+    push_delegate_mapping_where(&mut query, implicit_scope, where_);
     push_delegate_mapping_order(&mut query, order_by);
     push_page(&mut query, offset, limit);
 
@@ -177,32 +187,35 @@ pub(super) async fn query_delegate_mappings(
 
 pub(super) async fn count_contributors(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&ContributorWhereInput>,
 ) -> GraphqlResult<i64> {
     let mut query =
         QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM contributor");
-    push_contributor_where(&mut query, where_);
+    push_contributor_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
 }
 
 pub(super) async fn count_delegates(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&DelegateWhereInput>,
 ) -> GraphqlResult<i64> {
     let mut query = QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM delegate");
-    push_delegate_where(&mut query, where_);
+    push_delegate_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
 }
 
 pub(super) async fn count_delegate_mappings(
     pool: &PgPool,
+    implicit_scope: &GraphqlScope,
     where_: Option<&DelegateMappingWhereInput>,
 ) -> GraphqlResult<i64> {
     let mut query =
         QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM delegate_mapping");
-    push_delegate_mapping_where(&mut query, where_);
+    push_delegate_mapping_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
 }

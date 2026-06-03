@@ -3,17 +3,23 @@ use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
     Router,
+    extract::State,
     response::{Html, IntoResponse},
     routing::{get, post},
 };
 
-use super::{GraphqlState, QueryRoot};
+use super::{GraphqlScope, GraphqlState, QueryRoot};
 
 pub type IndexerGraphqlSchema = Schema<QueryRoot, EmptyMutation, EmptySubscription>;
 
 pub fn build_schema(pool: sqlx::PgPool) -> IndexerGraphqlSchema {
+    build_schema_with_scope(pool, GraphqlScope::default())
+}
+
+pub fn build_schema_with_scope(pool: sqlx::PgPool, scope: GraphqlScope) -> IndexerGraphqlSchema {
     Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
         .data(GraphqlState { pool })
+        .data(scope)
         .finish()
 }
 
@@ -26,26 +32,56 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
+    build_router_with_scoped_paths(
+        schema,
+        paths.into_iter().map(|path| {
+            let path = path.as_ref().to_owned();
+            let scope = GraphqlScope::from_graphql_path(&path);
+            (path, scope)
+        }),
+    )
+}
+
+pub fn build_router_with_scoped_paths<I, S>(schema: IndexerGraphqlSchema, paths: I) -> Router
+where
+    I: IntoIterator<Item = (S, GraphqlScope)>,
+    S: AsRef<str>,
+{
     let mut router = Router::new();
-    for path in paths {
+    for (path, scope) in paths {
         let graphql_path = path.as_ref().to_owned();
         let graphiql_path = graphiql_path_for_graphql_path(&graphql_path);
-        router = router.route(&graphql_path, post(graphql_handler)).route(
-            &graphiql_path,
-            get({
-                let endpoint = graphql_path.clone();
-                move || graphql_graphiql(endpoint.clone())
-            }),
-        );
+        router = router
+            .route(
+                &graphql_path,
+                post({
+                    let scope = scope.clone();
+                    move |State(schema): State<IndexerGraphqlSchema>, request: GraphQLRequest| {
+                        let scope = scope.clone();
+                        async move { graphql_handler(schema, request, scope).await }
+                    }
+                }),
+            )
+            .route(
+                &graphiql_path,
+                get({
+                    let endpoint = graphql_path.clone();
+                    move || graphql_graphiql(endpoint.clone())
+                }),
+            );
     }
     router.with_state(schema)
 }
 
 async fn graphql_handler(
-    axum::extract::State(schema): axum::extract::State<IndexerGraphqlSchema>,
+    schema: IndexerGraphqlSchema,
     request: GraphQLRequest,
+    scope: GraphqlScope,
 ) -> GraphQLResponse {
-    schema.execute(request.into_inner()).await.into()
+    schema
+        .execute(request.into_inner().data(scope))
+        .await
+        .into()
 }
 
 async fn graphql_graphiql(endpoint: String) -> impl IntoResponse {
