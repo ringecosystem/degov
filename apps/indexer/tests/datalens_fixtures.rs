@@ -4,10 +4,13 @@ use degov_datalens_indexer::{
     InMemoryTokenProjectionRepository, NormalizedEvmLog, ProposalProjectionContext,
     ProposalProjectionEvent, TimelockProjectionContext, TimelockProjectionEvent,
     TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository, VoteProjectionContext,
-    VoteProjectionEvent, load_datalens_fixture, normalize_evm_log_rows, project_proposal_events,
-    project_timelock_events, project_token_events, project_vote_events,
+    VoteProjectionEvent, normalize_evm_log_rows, project_proposal_events, project_timelock_events,
+    project_token_events, project_vote_events,
 };
 use serde_json::{Value, json};
+
+mod support;
+use support::fixtures::{DatalensFixture, load_datalens_fixture};
 
 #[test]
 fn test_load_datalens_fixture_normalizes_and_decodes_representative_raw_logs() {
@@ -151,9 +154,7 @@ struct DecodedFixtureEvent {
     event: DecodedDaoEvent,
 }
 
-fn decode_fixture_events(
-    fixture: &degov_datalens_indexer::DatalensFixture,
-) -> Vec<DecodedFixtureEvent> {
+fn decode_fixture_events(fixture: &DatalensFixture) -> Vec<DecodedFixtureEvent> {
     let mut decoded = Vec::new();
     for page in &fixture.pages {
         let logs =

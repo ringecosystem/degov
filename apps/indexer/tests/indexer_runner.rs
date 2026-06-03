@@ -9,9 +9,48 @@ use degov_datalens_indexer::{
     DecodedTokenEvent, GovernanceTokenStandard, InMemoryIndexerRunnerStore,
     IndexerCheckpointIdentity, IndexerEventDecoder, IndexerRunner, IndexerRunnerContexts,
     IndexerRunnerOptions, NormalizedEvmLog, QueryLimitConfig, SecretString, TokenProjectionContext,
-    VoteCastEvent, VoteProjectionContext,
+    VoteCastEvent, VoteProjectionContext, page_rows,
 };
 use serde_json::{Value, json};
+
+#[test]
+fn test_page_rows_accepts_bare_array_response() {
+    let rows = page_rows(json!([{"block_number": 1}, {"block_number": 2}]))
+        .expect("bare rows are accepted");
+
+    assert_eq!(rows.len(), 2);
+}
+
+#[test]
+fn test_page_rows_accepts_live_datalens_nested_response() {
+    let rows = page_rows(json!({
+        "dataset_key": {
+            "family": "Evm",
+            "name": "logs"
+        },
+        "rows": {
+            "dataset": "logs",
+            "rows": [
+                {"block_number": 5873379}
+            ]
+        }
+    }))
+    .expect("live Datalens nested rows are accepted");
+
+    assert_eq!(rows, vec![json!({"block_number": 5873379})]);
+}
+
+#[test]
+fn test_page_rows_rejects_malformed_response() {
+    let error = page_rows(json!({"rows": {"dataset": "logs"}}))
+        .expect_err("missing nested rows should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("Datalens log query returned invalid rows payload")
+    );
+}
 
 #[test]
 fn test_runner_processes_multiple_chunks_and_advances_checkpoint_after_commits() {

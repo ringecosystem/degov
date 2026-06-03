@@ -6,7 +6,7 @@ use std::{
 
 use serde::Deserialize;
 
-use crate::{
+use degov_datalens_indexer::{
     DaoEventDecodeError, DaoLogSource, DecodedDaoEvent, GovernanceTokenStandard, NormalizedEvmLog,
     decode_dao_log,
 };

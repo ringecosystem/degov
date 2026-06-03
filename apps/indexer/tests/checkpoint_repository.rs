@@ -286,8 +286,10 @@ async fn test_checkpoint_schema_primary_key_includes_contract_set_scope()
         "SELECT a.attname
          FROM pg_index i
          JOIN pg_class c ON c.oid = i.indrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
          JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
          WHERE c.relname = 'degov_indexer_checkpoint'
+           AND n.nspname = current_schema()
            AND i.indisprimary
          ORDER BY array_position(i.indkey, a.attnum)",
     )
@@ -514,8 +516,10 @@ async fn primary_key_columns(pool: &PgPool, table: &str) -> Result<Vec<String>, 
         "SELECT a.attname
          FROM pg_index i
          JOIN pg_class c ON c.oid = i.indrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
          JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
          WHERE c.relname = $1
+           AND n.nspname = current_schema()
            AND i.indisprimary
          ORDER BY array_position(i.indkey, a.attnum)",
     )

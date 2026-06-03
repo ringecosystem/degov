@@ -6,7 +6,6 @@ pub mod data_metric;
 pub mod datalens;
 pub mod error;
 pub mod evm_log;
-pub mod fixtures;
 pub mod graphql;
 pub mod onchain_refresh;
 pub mod planner;
@@ -15,6 +14,7 @@ pub mod power_reconcile;
 pub mod proposal_metadata;
 pub mod proposal_projection;
 pub mod runner;
+pub mod runtime_config;
 pub mod timelock_projection;
 pub mod token_projection;
 pub mod vote_projection;
@@ -49,12 +49,6 @@ pub use datalens::{
 };
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use evm_log::{EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows};
-pub use fixtures::{
-    DatalensFixture, DatalensFixtureCheckpointExpectation, DatalensFixtureContracts,
-    DatalensFixtureDaoRange, DatalensFixtureDuplicateReplayExpectation, DatalensFixtureError,
-    DatalensFixtureExpectedEvent, DatalensFixtureLogSource, DatalensFixturePage,
-    DatalensFixtureTokenStandard, load_datalens_fixture,
-};
 pub use graphql::IndexerGraphqlSchema;
 pub use onchain_refresh::{
     ChainToolOnchainRefreshReader, EvmRpcChainTool, OnchainRefreshReadValue, OnchainRefreshReader,
@@ -86,7 +80,12 @@ pub use runner::{
     DaoEventDecoder, InMemoryIndexerRunnerStore, InMemoryIndexerRunnerStoreError,
     IndexerEventDecoder, IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts,
     IndexerRunnerError, IndexerRunnerOptions, IndexerRunnerProgress, IndexerRunnerReport,
-    IndexerRunnerStore, IndexerRunnerTransaction,
+    IndexerRunnerStore, IndexerRunnerTransaction, page_rows,
+};
+pub use runtime_config::{
+    GraphqlRuntimeConfig, IndexerContractSetMode, IndexerContractSetRuntimeConfig,
+    IndexerRuntimeConfig, OnchainRefreshRuntimeConfig, onchain_refresh_worker_enabled,
+    parse_bool_env_value, parse_i64_env_value, postgres_schema_statements, required_env,
 };
 pub use timelock_projection::{
     InMemoryTimelockProjectionRepository, TIMELOCK_POSTGRES_ADAPTER_GAP, TimelockCallWrite,
