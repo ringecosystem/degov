@@ -520,7 +520,6 @@ fn options() -> IndexerRunnerOptions {
         addresses: addresses(),
         checkpoint_identity: identity(),
         start_block: 1,
-        query_max_attempts: 1,
         safe_height: None,
         progress_refresh_lag_blocks: 0,
     }

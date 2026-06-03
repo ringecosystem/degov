@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use degov_datalens_indexer::{
     DatalensConfig, GraphqlRuntimeConfig, IndexerContractSetMode, IndexerRuntimeConfig,
-    IndexerTargetHeight, onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
+    IndexerTargetHeight, datalens_retry_config, onchain_refresh_worker_enabled,
+    parse_bool_env_value, parse_i64_env_value,
 };
 
 #[test]
@@ -126,6 +127,15 @@ fn test_indexer_runtime_config_keeps_numeric_target_height_for_debug_runs() {
             assert_eq!(config.target_height, IndexerTargetHeight::Fixed(123));
         },
     );
+}
+
+#[test]
+fn test_datalens_retry_config_maps_query_max_attempts_to_sdk_retry_attempts() {
+    let retry_config = datalens_retry_config(5);
+
+    assert_eq!(retry_config.max_attempts, 5);
+    assert_eq!(retry_config.max_elapsed, None);
+    assert!(retry_config.jitter);
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, time::Duration};
+use std::time::Duration;
 
 use datalens_sdk::native::{QueryInput, QueryRangeKindInput, SelectorKindInput};
 use degov_datalens_indexer::{
@@ -110,7 +110,7 @@ fn test_fetch_dao_log_pages_treats_empty_rows_as_successful_page() {
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
     let mut reader = MockLogReader::new(vec![Ok(serde_json::json!([]))]);
 
-    let pages = fetch_dao_log_pages(&mut reader, &plans[..1], 3).expect("pages");
+    let pages = fetch_dao_log_pages(&mut reader, &plans[..1]).expect("pages");
 
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].plan, plans[0]);
@@ -119,7 +119,7 @@ fn test_fetch_dao_log_pages_treats_empty_rows_as_successful_page() {
 }
 
 #[test]
-fn test_fetch_dao_log_pages_retries_errors_before_returning_page() {
+fn test_fetch_dao_log_pages_returns_first_reader_error_without_local_retry() {
     let config = config(1_000, DatalensFinality::DurableOnly);
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
     let mut reader = MockLogReader::new(vec![
@@ -127,29 +127,25 @@ fn test_fetch_dao_log_pages_retries_errors_before_returning_page() {
         Ok(serde_json::json!([{ "blockNumber": 100 }])),
     ]);
 
-    let pages = fetch_dao_log_pages(&mut reader, &plans[..1], 3).expect("pages");
+    let error = fetch_dao_log_pages(&mut reader, &plans[..1]).expect_err("query error");
 
-    assert_eq!(pages.len(), 1);
-    assert_eq!(pages[0].rows, serde_json::json!([{ "blockNumber": 100 }]));
-    assert_eq!(reader.calls.len(), 2);
-    assert_eq!(reader.calls[0], reader.calls[1]);
+    assert!(error.to_string().contains("provider timeout"));
+    assert_eq!(reader.calls.len(), 1);
 }
 
 #[test]
-fn test_fetch_dao_log_pages_stops_without_later_pages_when_retries_are_exhausted() {
+fn test_fetch_dao_log_pages_stops_without_later_pages_on_reader_error() {
     let config = config(1_000, DatalensFinality::DurableOnly);
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
     let mut reader = MockLogReader::new(vec![
         Err(DatalensError::Query("rate limited".to_owned())),
-        Err(DatalensError::Query("rate limited".to_owned())),
         Ok(serde_json::json!([])),
     ]);
 
-    let error = fetch_dao_log_pages(&mut reader, &plans[..2], 2).expect_err("query error");
+    let error = fetch_dao_log_pages(&mut reader, &plans[..2]).expect_err("query error");
 
     assert!(error.to_string().contains("rate limited"));
-    assert_eq!(reader.calls.len(), 2);
-    assert_eq!(reader.calls[0], reader.calls[1]);
+    assert_eq!(reader.calls.len(), 1);
 }
 
 fn assert_query(
@@ -219,14 +215,14 @@ fn addresses() -> DaoContractAddresses {
 
 struct MockLogReader {
     calls: Vec<QueryInput>,
-    results: VecDeque<Result<serde_json::Value, DatalensError>>,
+    results: Vec<Result<serde_json::Value, DatalensError>>,
 }
 
 impl MockLogReader {
     fn new(results: Vec<Result<serde_json::Value, DatalensError>>) -> Self {
         Self {
             calls: Vec::new(),
-            results: results.into(),
+            results,
         }
     }
 }
@@ -234,6 +230,6 @@ impl MockLogReader {
 impl DatalensLogQueryReader for MockLogReader {
     fn query_logs(&mut self, input: QueryInput) -> Result<serde_json::Value, DatalensError> {
         self.calls.push(input);
-        self.results.pop_front().expect("mock result")
+        self.results.remove(0)
     }
 }

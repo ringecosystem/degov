@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, env, net::SocketAddr, path::Path, time::Duration};
 
 use anyhow as runtime_anyhow;
+use datalens_sdk::RetryConfig;
 use runtime_anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
@@ -136,6 +137,14 @@ pub enum IndexerContractSetMode {
 pub enum IndexerTargetHeight {
     Latest,
     Fixed(i64),
+}
+
+pub fn datalens_retry_config(max_attempts: u32) -> RetryConfig {
+    RetryConfig {
+        max_attempts,
+        max_elapsed: None,
+        ..RetryConfig::default()
+    }
 }
 
 impl IndexerTargetHeight {
@@ -349,7 +358,6 @@ impl IndexerContractSetRuntimeConfig {
                 data_source_version: self.data_source_version.clone(),
             },
             start_block: self.start_block,
-            query_max_attempts: self.query_max_attempts,
             safe_height: None,
             progress_refresh_lag_blocks: self.progress_refresh_lag_blocks,
         })

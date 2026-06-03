@@ -26,7 +26,6 @@ pub struct IndexerRunnerOptions {
     pub addresses: DaoContractAddresses,
     pub checkpoint_identity: IndexerCheckpointIdentity,
     pub start_block: i64,
-    pub query_max_attempts: u32,
     pub safe_height: Option<i64>,
     pub progress_refresh_lag_blocks: i64,
 }
@@ -325,7 +324,7 @@ where
             range.from_block,
             range.to_block,
         )?;
-        let pages = fetch_dao_log_pages(&mut self.reader, &plans, self.options.query_max_attempts)?;
+        let pages = fetch_dao_log_pages(&mut self.reader, &plans)?;
         let decoded = self.decode_pages(pages)?;
 
         self.project_events(decoded, range, target_height)

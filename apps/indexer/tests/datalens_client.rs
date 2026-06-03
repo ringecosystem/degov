@@ -5,10 +5,13 @@ use std::{
     time::Duration,
 };
 
+use datalens_sdk::RetryConfig;
 use degov_datalens_indexer::{
-    ChainFamily, ChainIdentityConfig, DatalensConfig, DatalensDurableHeadReader, DatalensError,
-    DatalensFinality, DatalensNativeClient, DatalensNativeReader, DatasetKeyConfig,
-    QueryLimitConfig, SecretString, ServiceReadiness, verify_datalens_service,
+    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DatalensConfig,
+    DatalensDurableHeadReader, DatalensError, DatalensFinality, DatalensLogQueryReader,
+    DatalensNativeClient, DatalensNativeReader, DatasetKeyConfig, GovernanceTokenStandard,
+    QueryLimitConfig, SecretString, ServiceReadiness, plan_dao_log_queries,
+    verify_datalens_service,
 };
 
 struct MockDatalensReader {
@@ -88,6 +91,99 @@ fn test_datalens_durable_head_reader_uses_latest_finality_when_pending_enabled()
     assert!(!request.contains(r#""end":2147483647"#));
 }
 
+#[test]
+fn test_datalens_log_query_retries_retryable_rate_limit_before_success() {
+    let server = FakeQueryServer::start(vec![
+        api_error_response(429, "rate_limited", Some("request_rate_limit")),
+        query_success_response(serde_json::json!([{ "block_number": 100 }])),
+    ]);
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(2))
+            .expect("client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+
+    let rows = client
+        .query_logs(plans[0].input.clone())
+        .expect("query retries and succeeds");
+
+    assert_eq!(rows, serde_json::json!([{ "block_number": 100 }]));
+    let requests = server.join();
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.starts_with("POST /v1/query ")),
+        "{requests:?}"
+    );
+}
+
+#[test]
+fn test_datalens_log_query_retries_provider_timeout_before_success() {
+    let server = FakeQueryServer::start(vec![
+        api_error_response(503, "provider_timeout", None),
+        query_success_response(serde_json::json!([{ "block_number": 101 }])),
+    ]);
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(2))
+            .expect("client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+
+    let rows = client
+        .query_logs(plans[0].input.clone())
+        .expect("query retries and succeeds");
+
+    assert_eq!(rows, serde_json::json!([{ "block_number": 101 }]));
+    let requests = server.join();
+    assert_eq!(requests.len(), 2);
+}
+
+#[test]
+fn test_datalens_log_query_retries_transport_failure_before_success() {
+    let server = FakeQueryServer::start_steps(vec![
+        FakeQueryResponse::CloseWithoutResponse,
+        FakeQueryResponse::Http(query_success_response(serde_json::json!([{
+            "block_number": 102
+        }]))),
+    ]);
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(2))
+            .expect("client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+
+    let rows = client
+        .query_logs(plans[0].input.clone())
+        .expect("query retries and succeeds");
+
+    assert_eq!(rows, serde_json::json!([{ "block_number": 102 }]));
+    let requests = server.join();
+    assert_eq!(requests.len(), 2);
+}
+
+#[test]
+fn test_datalens_log_query_does_not_retry_non_retryable_quota_error() {
+    let server = FakeQueryServer::start(vec![api_error_response(
+        429,
+        "rate_limited",
+        Some("range_limit"),
+    )]);
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(3))
+            .expect("client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+
+    let error = client
+        .query_logs(plans[0].input.clone())
+        .expect_err("range limit is not retryable");
+
+    assert!(error.to_string().contains("range_limit"));
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+}
+
 struct FakeHeadServer {
     endpoint: String,
     handle: thread::JoinHandle<String>,
@@ -112,6 +208,51 @@ impl FakeHeadServer {
     }
 }
 
+struct FakeQueryServer {
+    endpoint: String,
+    handle: thread::JoinHandle<Vec<String>>,
+}
+
+enum FakeQueryResponse {
+    Http(String),
+    CloseWithoutResponse,
+}
+
+impl FakeQueryServer {
+    fn start(responses: Vec<String>) -> Self {
+        Self::start_steps(responses.into_iter().map(FakeQueryResponse::Http).collect())
+    }
+
+    fn start_steps(responses: Vec<FakeQueryResponse>) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake Datalens query server");
+        let endpoint = format!("http://{}", listener.local_addr().expect("local addr"));
+        let handle = thread::spawn(move || {
+            let mut requests = Vec::new();
+            for response in responses {
+                let (mut stream, _) = listener
+                    .accept()
+                    .expect("accept fake Datalens query request");
+                requests.push(read_http_request(&mut stream));
+                match response {
+                    FakeQueryResponse::Http(response) => stream
+                        .write_all(response.as_bytes())
+                        .expect("write fake Datalens query response"),
+                    FakeQueryResponse::CloseWithoutResponse => {}
+                }
+            }
+            requests
+        });
+
+        Self { endpoint, handle }
+    }
+
+    fn join(self) -> Vec<String> {
+        self.handle
+            .join()
+            .expect("fake Datalens query server joins")
+    }
+}
+
 fn handle_head_request(mut stream: TcpStream, height: u64, finality: &'static str) -> String {
     let request = read_http_request(&mut stream);
     let body = serde_json::json!({
@@ -133,6 +274,58 @@ fn handle_head_request(mut stream: TcpStream, height: u64, finality: &'static st
         .expect("write fake Datalens head response");
 
     request
+}
+
+fn query_success_response(rows: serde_json::Value) -> String {
+    let body = serde_json::json!({
+        "chain": {
+            "configured_name": "ethereum"
+        },
+        "dataset_key": "evm.logs",
+        "range": {
+            "kind": "block",
+            "start": 100,
+            "end": 100
+        },
+        "cache": {},
+        "rows": rows
+    });
+    http_response(200, body)
+}
+
+fn api_error_response(status: u16, kind: &str, quota_kind: Option<&str>) -> String {
+    let mut body = serde_json::json!({
+        "error": {
+            "kind": kind,
+            "message": format!("{kind} failed")
+        }
+    });
+    if let Some(quota_kind) = quota_kind {
+        body["error"]["quota"] = serde_json::json!({
+            "kind": quota_kind,
+            "scope": "application",
+            "limit": 1,
+            "requested": 2,
+            "observed": 1,
+            "retry_after_seconds": 0
+        });
+    }
+    http_response(status, body)
+}
+
+fn http_response(status: u16, body: serde_json::Value) -> String {
+    let body = body.to_string();
+    let reason = match status {
+        200 => "OK",
+        429 => "Too Many Requests",
+        503 => "Service Unavailable",
+        _ => "Error",
+    };
+    format!(
+        "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    )
 }
 
 fn read_http_request(stream: &mut TcpStream) -> String {
@@ -171,6 +364,26 @@ fn content_length(headers: &[u8]) -> Option<usize> {
             None
         }
     })
+}
+
+fn retry_config_with_attempts(max_attempts: u32) -> RetryConfig {
+    RetryConfig {
+        max_attempts,
+        initial_delay: Duration::from_millis(0),
+        max_delay: Duration::from_millis(0),
+        max_elapsed: None,
+        jitter: false,
+        jitter_factor: 0.0,
+    }
+}
+
+fn addresses() -> DaoContractAddresses {
+    DaoContractAddresses {
+        governor: "0x1111111111111111111111111111111111111111".to_owned(),
+        governor_token: "0x2222222222222222222222222222222222222222".to_owned(),
+        governor_token_standard: GovernanceTokenStandard::Erc20,
+        timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+    }
 }
 
 fn datalens_config(endpoint: &str, finality: DatalensFinality) -> DatalensConfig {
