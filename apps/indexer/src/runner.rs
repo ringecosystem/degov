@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use log::{error, info};
+use log::{error, info, warn};
 use thiserror::Error;
 
 use crate::{
@@ -94,6 +94,7 @@ pub struct AdaptiveChunkSizingDecision {
 pub enum AdaptiveChunkSizingReason {
     DenseReturnedRows,
     SlowLocalProcessing,
+    ProviderLimit,
     StableSparseRange,
     Hold,
 }
@@ -103,6 +104,7 @@ impl fmt::Display for AdaptiveChunkSizingReason {
         match self {
             Self::DenseReturnedRows => formatter.write_str("dense_returned_rows"),
             Self::SlowLocalProcessing => formatter.write_str("slow_local_processing"),
+            Self::ProviderLimit => formatter.write_str("provider_limit"),
             Self::StableSparseRange => formatter.write_str("stable_sparse_range"),
             Self::Hold => formatter.write_str("hold"),
         }
@@ -179,6 +181,23 @@ impl AdaptiveChunkSizer {
             previous_chunk_size,
             current_chunk_size: self.current_chunk_size,
             reason,
+        }
+    }
+
+    pub fn record_provider_limit(
+        &mut self,
+        failed_range_block_count: u32,
+    ) -> AdaptiveChunkSizingDecision {
+        let previous_chunk_size = self.current_chunk_size;
+        self.stable_chunks = 0;
+        self.current_chunk_size = (failed_range_block_count / 2)
+            .max(self.config.min_chunk_size)
+            .min(previous_chunk_size);
+
+        AdaptiveChunkSizingDecision {
+            previous_chunk_size,
+            current_chunk_size: self.current_chunk_size,
+            reason: AdaptiveChunkSizingReason::ProviderLimit,
         }
     }
 }
@@ -434,6 +453,32 @@ where
             let processing = match self.process_range(range, effective_target) {
                 Ok(processing) => processing,
                 Err(error) => {
+                    let failed_range_block_count = range_block_count(range);
+                    if is_provider_limit_error(&error) && failed_range_block_count > 1 {
+                        let sizing_decision =
+                            chunk_sizer.record_provider_limit(failed_range_block_count);
+                        let retry_to_block = range
+                            .from_block
+                            .saturating_add(i64::from(sizing_decision.current_chunk_size))
+                            .saturating_sub(1)
+                            .min(range.to_block);
+                        warn!(
+                            "Datalens indexer chunk provider limit split dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} previous_to_block={} retry_to_block={} previous_chunk_size={} new_chunk_size={} reason={}",
+                            self.options.checkpoint_identity.dao_code,
+                            self.options.checkpoint_identity.chain_id,
+                            self.options.checkpoint_identity.contract_set_id,
+                            self.options.checkpoint_identity.stream_id,
+                            self.options.checkpoint_identity.data_source_version,
+                            range.from_block,
+                            range.to_block,
+                            retry_to_block,
+                            sizing_decision.previous_chunk_size,
+                            sizing_decision.current_chunk_size,
+                            sizing_decision.reason
+                        );
+                        continue;
+                    }
+
                     error!(
                         "Datalens indexer chunk failed before transaction dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} target_height={} chunk_size={} datalens_retry_attempts=unavailable error={}",
                         self.options.checkpoint_identity.dao_code,
@@ -796,6 +841,25 @@ fn transaction_error(
         error
     );
     IndexerRunnerError::Transaction(error.to_string())
+}
+
+fn range_block_count(range: CheckpointBlockRange) -> u32 {
+    range
+        .to_block
+        .saturating_sub(range.from_block)
+        .saturating_add(1)
+        .try_into()
+        .unwrap_or(u32::MAX)
+}
+
+fn is_provider_limit_error(error: &IndexerRunnerError) -> bool {
+    let message = match error {
+        IndexerRunnerError::Datalens(DatalensError::Query(message)) => message,
+        _ => return false,
+    };
+    let normalized = message.to_ascii_lowercase();
+
+    normalized.contains("provider_limit") || normalized.contains("narrow your filter")
 }
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]

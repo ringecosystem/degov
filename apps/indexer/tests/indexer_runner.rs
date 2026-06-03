@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use datalens_sdk::native::QueryInput;
@@ -147,7 +148,7 @@ fn test_runner_keeps_checkpoint_unchanged_when_datalens_query_fails() {
 
     let error = runner.run_to_target(1).expect_err("query fails");
 
-    assert!(error.to_string().contains("rate limited"));
+    assert!(error.to_string().contains("rate_limited"));
     assert_eq!(
         runner.store().checkpoint().expect("checkpoint").next_block,
         1
@@ -156,6 +157,64 @@ fn test_runner_keeps_checkpoint_unchanged_when_datalens_query_fails() {
     assert_eq!(
         runner.store().vote_repository().data_metric().votes_count,
         0
+    );
+}
+
+#[test]
+fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subranges() {
+    let mut options = options();
+    options.datalens_config.query_limits.block_range_limit = 1_000;
+    let observed_ranges = Arc::new(Mutex::new(Vec::new()));
+    let reader = ProviderLimitDatalensReader::new(500, observed_ranges.clone());
+    let mut runner = IndexerRunner::new(
+        options,
+        contexts(),
+        reader,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+        ScriptedDecoder,
+    );
+
+    let report = runner.run_to_target(1_000).expect("runner succeeds");
+
+    assert_eq!(report.chunks_processed, 2);
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        1_001
+    );
+    assert_eq!(runner.store().commit_count(), 2);
+    assert_eq!(
+        *observed_ranges.lock().expect("observed ranges"),
+        vec![(1, 1_000), (1, 500), (501, 1_000)]
+    );
+}
+
+#[test]
+fn test_runner_fails_single_block_provider_limit_without_advancing_checkpoint() {
+    let mut options = options();
+    options.datalens_config.query_limits.block_range_limit = 1;
+    let observed_ranges = Arc::new(Mutex::new(Vec::new()));
+    let reader = ProviderLimitDatalensReader::new(0, observed_ranges.clone());
+    let mut runner = IndexerRunner::new(
+        options,
+        contexts(),
+        reader,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+        ScriptedDecoder,
+    );
+
+    let error = runner
+        .run_to_target(1)
+        .expect_err("single-block provider limit fails");
+
+    assert!(error.to_string().contains("provider_limit"));
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        1
+    );
+    assert_eq!(runner.store().commit_count(), 0);
+    assert_eq!(
+        *observed_ranges.lock().expect("observed ranges"),
+        vec![(1, 1)]
     );
 }
 
@@ -224,7 +283,43 @@ struct FailingDatalensReader;
 
 impl DatalensLogQueryReader for FailingDatalensReader {
     fn query_logs(&mut self, _input: QueryInput) -> Result<Value, DatalensError> {
-        Err(DatalensError::Query("rate limited".to_owned()))
+        Err(DatalensError::Query(
+            r#"datalens HTTP error 429: {"error":{"kind":"rate_limited","message":"rate limited"}}"#
+                .to_owned(),
+        ))
+    }
+}
+
+struct ProviderLimitDatalensReader {
+    max_successful_blocks: i32,
+    observed_ranges: Arc<Mutex<Vec<(i32, i32)>>>,
+}
+
+impl ProviderLimitDatalensReader {
+    fn new(max_successful_blocks: i32, observed_ranges: Arc<Mutex<Vec<(i32, i32)>>>) -> Self {
+        Self {
+            max_successful_blocks,
+            observed_ranges,
+        }
+    }
+}
+
+impl DatalensLogQueryReader for ProviderLimitDatalensReader {
+    fn query_logs(&mut self, input: QueryInput) -> Result<Value, DatalensError> {
+        let range = (input.range.start, input.range.end);
+        self.observed_ranges
+            .lock()
+            .expect("observed ranges")
+            .push(range);
+        let block_count = input.range.end - input.range.start + 1;
+        if block_count > self.max_successful_blocks {
+            return Err(DatalensError::Query(
+                r#"datalens HTTP error 429: {"error":{"kind":"provider_limit","message":"query returns too many logs, narrow your filter: 20000"}}"#
+                    .to_owned(),
+            ));
+        }
+
+        Ok(Value::Array(Vec::new()))
     }
 }
 
