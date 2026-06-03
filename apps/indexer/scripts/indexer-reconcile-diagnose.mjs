@@ -56,9 +56,6 @@ export function buildHumanSummary(status) {
     `reconcile errors: ${status.reconcileErrors.length}`,
     `onchain refresh backlog: ${JSON.stringify(status.onchainRefreshBacklog)}`,
     `onchain refresh errors: ${status.onchainRefreshErrors.length}`,
-    `legacy squid_processor.status: ${
-      status.legacySquidStatus ? JSON.stringify(status.legacySquidStatus) : "not present"
-    }`,
   ].join("\n");
 }
 
@@ -68,7 +65,7 @@ export function usage() {
     "",
     "Reads Datalens-owned checkpoint, reconcile, and onchain refresh status tables.",
     "--database-url falls back to DEGOV_INDEXER_DATABASE_URL, then DATABASE_URL.",
-    "The script only runs SELECT statements. squid_processor.status is reported as a legacy bridge when present.",
+    "The script only runs SELECT statements.",
   ].join("\n");
 }
 

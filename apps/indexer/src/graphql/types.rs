@@ -204,15 +204,6 @@ pub struct IndexerStatus {
     pub(super) last_error: Option<String>,
 }
 
-#[derive(Clone, Debug, FromRow, SimpleObject)]
-#[graphql(rename_fields = "camelCase")]
-pub struct SquidStatus {
-    pub(super) height: i64,
-    pub(super) finalized_height: i64,
-    pub(super) hash: Option<String>,
-    pub(super) finalized_hash: Option<String>,
-}
-
 #[derive(Clone, Debug, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
 pub struct Connection {

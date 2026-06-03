@@ -20,12 +20,11 @@ await assert.rejects(
 
 const status = {
   ...summarizeFixture(),
-  legacySquidStatus: { height: "100", hash: null },
 };
 
 assert.equal(await diagnoseReconcile({ databaseUrl: "" }, { status }), status);
 assert.match(buildHumanSummary(status), /checkpoint stalls: 1/);
-assert.match(buildHumanSummary(status), /legacy squid_processor.status/);
+assert.match(buildHumanSummary(status), /onchain refresh errors: 0/);
 
 function summarizeFixture() {
   return {

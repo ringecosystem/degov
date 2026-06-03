@@ -188,20 +188,6 @@ impl CheckpointRepository {
             return Err(missing_checkpoint(identity));
         }
 
-        sqlx::query(
-            "INSERT INTO squid_processor.status (id, height, hash)
-             VALUES (0, $1::NUMERIC(78, 0), NULL)
-             ON CONFLICT (id) DO UPDATE
-             SET height = GREATEST(
-                   squid_processor.status.height,
-                   EXCLUDED.height
-                 ),
-                 hash = EXCLUDED.hash",
-        )
-        .bind(processed_height)
-        .execute(&mut **transaction)
-        .await?;
-
         Ok(())
     }
 }

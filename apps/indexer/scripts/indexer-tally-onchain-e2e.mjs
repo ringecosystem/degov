@@ -18,7 +18,7 @@ import {
 
 const PROPOSALS_QUERY = `
   query Proposals($limit: Int!, $offset: Int!) {
-    squidStatus { height hash }
+    indexerStatus { processedHeight targetHeight syncedPercentage isSynced }
     dataMetrics(where: { id_eq: "global" }) {
       powerSum
       memberCount
@@ -293,7 +293,7 @@ export async function fetchDatalensProposals(target, limit) {
   });
   return {
     summary: {
-      squidStatus: data.squidStatus ?? null,
+      indexerStatus: data.indexerStatus ?? null,
       metrics: data.dataMetrics?.[0] ?? null,
       proposalsCount: data.proposalsConnection?.totalCount ?? null,
       contributorsCount: data.contributorsConnection?.totalCount ?? null,
@@ -1044,7 +1044,7 @@ export async function auditTarget(target, options, services = {}) {
       mismatches: result.mismatches,
     });
 
-    result.sync = datalensResult.summary?.squidStatus ?? null;
+    result.sync = datalensResult.summary?.indexerStatus ?? null;
     result.aggregate = datalensResult.summary?.metrics ?? null;
     result.summary.proposals.degovCount =
       datalensResult.summary?.proposalsCount ?? proposals.length;
@@ -1122,8 +1122,9 @@ export function buildMarkdownReport(report) {
     lines.push(`- Delegate sample: ${target.summary.delegates.sampled}`);
     lines.push(`- Mismatches: ${target.mismatchCount}`);
     if (target.sync) {
-      lines.push(`- Sync height: ${target.sync.height ?? "unknown"}`);
-      lines.push(`- Sync hash: ${target.sync.hash ?? "unknown"}`);
+      lines.push(`- Sync processed height: ${target.sync.processedHeight ?? "unknown"}`);
+      lines.push(`- Sync target height: ${target.sync.targetHeight ?? "unknown"}`);
+      lines.push(`- Sync percentage: ${target.sync.syncedPercentage ?? "unknown"}`);
     }
     for (const mismatch of target.mismatches) {
       const subject =

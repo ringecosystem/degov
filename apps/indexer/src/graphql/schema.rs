@@ -181,21 +181,6 @@ impl QueryRoot {
         query_indexer_statuses(pool(ctx)?, scope(ctx)?).await
     }
 
-    #[graphql(deprecation = "Use indexerStatus instead.")]
-    async fn squid_status(&self, ctx: &Context<'_>) -> GraphqlResult<SquidStatus> {
-        let height = query_indexer_status(pool(ctx)?, scope(ctx)?)
-            .await?
-            .and_then(|status| status.processed_height)
-            .unwrap_or_default();
-
-        Ok(SquidStatus {
-            height,
-            finalized_height: height,
-            hash: None,
-            finalized_hash: None,
-        })
-    }
-
     async fn proposals_connection(
         &self,
         ctx: &Context<'_>,

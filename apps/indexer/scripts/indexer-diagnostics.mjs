@@ -166,7 +166,6 @@ export function summarizeStatusTables({
   checkpoints = [],
   reconcileTasks = [],
   refreshTasks = [],
-  legacyStatus = null,
 } = {}) {
   const checkpointRows = summarizeCheckpointRows(checkpoints);
   const countByStatus = (rows) =>
@@ -194,7 +193,6 @@ export function summarizeStatusTables({
     reconcileErrors: classifyTaskErrors(reconcileTasks),
     onchainRefreshBacklog: countByStatus(refreshTasks),
     onchainRefreshErrors: classifyTaskErrors(refreshTasks),
-    legacySquidStatus: legacyStatus,
   };
 }
 
@@ -449,7 +447,7 @@ export async function readDatalensStatus(databaseUrl) {
     return summarizeStatusTables();
   }
 
-  const [checkpoints, reconcileTasks, refreshTasks, legacyStatus] =
+  const [checkpoints, reconcileTasks, refreshTasks] =
     await Promise.all([
       queryPostgres(
         databaseUrl,
@@ -477,16 +475,11 @@ export async function readDatalensStatus(databaseUrl) {
           error: error.message,
         },
       ]),
-      queryPostgres(
-        databaseUrl,
-        "SELECT row_to_json(t) FROM (SELECT height::TEXT, hash FROM squid_processor.status LIMIT 1) t",
-      ).catch(() => []),
     ]);
 
   return summarizeStatusTables({
     checkpoints,
     reconcileTasks,
     refreshTasks,
-    legacyStatus: legacyStatus[0] ?? null,
   });
 }

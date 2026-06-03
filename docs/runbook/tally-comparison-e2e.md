@@ -96,7 +96,7 @@ Summary query:
 
 ```graphql
 query {
-  squidStatus { height hash }
+  indexerStatus { processedHeight targetHeight syncedPercentage isSynced }
   dataMetrics(where: { id_eq: "global" }) {
     powerSum
     memberCount

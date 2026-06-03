@@ -43,7 +43,8 @@ assert.throws(
 assert.match(TALLY_DELEGATES_QUERY, /tokenBalance/);
 assert.match(TALLY_DELEGATES_QUERY, /balance/);
 
-const fixturesDir = "apps/indexer/scripts/fixtures/tally-onchain-e2e";
+const fixturesDir = new URL("./fixtures/tally-onchain-e2e", import.meta.url)
+  .pathname;
 const replayProposals = await fetchTallyProposals(target, { fixturesDir });
 const replayDelegates = await fetchTallyDelegates(target, { fixturesDir });
 assert.equal(replayProposals[0].onchainId, "42");
@@ -62,7 +63,12 @@ const result = await auditTarget(
   },
   {
     fetchDatalensSummary: async () => ({
-      squidStatus: { height: "123", hash: "0xabc" },
+      indexerStatus: {
+        processedHeight: "123",
+        targetHeight: "150",
+        syncedPercentage: 82,
+        isSynced: false,
+      },
       proposalsCount: 3,
       contributorsCount: 3,
       metrics: {

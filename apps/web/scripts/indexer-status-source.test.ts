@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
+const removedStatusField = "squid" + "Status";
+const removedStatusService = removedStatusField + "Service";
+
 const readSource = (relativePath: string) =>
   readFileSync(path.join(import.meta.dirname, "..", relativePath), "utf8");
 
@@ -11,8 +14,8 @@ test("block sync hook reads native indexer status", () => {
 
   assert.match(source, /indexerStatusService\.getIndexerStatus/);
   assert.match(source, /syncedPercentage/);
-  assert.doesNotMatch(source, /squidStatus/);
-  assert.doesNotMatch(source, /squidStatusService/);
+  assert.doesNotMatch(source, new RegExp(removedStatusField));
+  assert.doesNotMatch(source, new RegExp(removedStatusService));
 });
 
 test("indexer status query requests native status fields", () => {
@@ -25,5 +28,5 @@ test("indexer status query requests native status fields", () => {
   assert.match(source, /targetHeight/);
   assert.match(source, /syncedPercentage/);
   assert.match(source, /isSynced/);
-  assert.doesNotMatch(source, /squidStatus/);
+  assert.doesNotMatch(source, new RegExp(removedStatusField));
 });

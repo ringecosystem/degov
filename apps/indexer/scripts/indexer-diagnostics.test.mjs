@@ -121,13 +121,11 @@ const status = summarizeStatusTables({
     { id: "p1", status: "pending", attempts: 0 },
     { id: "p2", status: "pending", attempts: 1 },
   ],
-  legacyStatus: { height: "99", hash: null },
 });
 
 assert.deepEqual(status.reconcileBacklog, { pending: 1, failed: 1 });
 assert.deepEqual(status.onchainRefreshBacklog, { pending: 2 });
 assert.equal(status.reconcileErrors[0].classification, "datalens-query-error");
-assert.deepEqual(status.legacySquidStatus, { height: "99", hash: null });
 
 const comparisonBlock = findTargetComparisonBlock(
   { code: "ens-dao" },
