@@ -1,0 +1,473 @@
+// Proposal projection writes.
+async fn write_proposal_batch_rows(
+    transaction: &mut Transaction<'_, Postgres>,
+    batch: &ProposalProjectionBatch,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    for row in &batch.proposal_created {
+        insert_proposal_created(transaction, row).await?;
+    }
+    for row in &batch.proposal_queued {
+        insert_proposal_queued(transaction, row).await?;
+    }
+    for row in &batch.proposal_extended {
+        insert_proposal_extended(transaction, row).await?;
+    }
+    for row in &batch.proposal_executed {
+        insert_proposal_id_event(transaction, "proposal_executed", row).await?;
+    }
+    for row in &batch.proposal_canceled {
+        insert_proposal_id_event(transaction, "proposal_canceled", row).await?;
+    }
+    for row in &batch.proposals {
+        upsert_proposal(transaction, row).await?;
+    }
+    for row in &batch.proposal_actions {
+        insert_proposal_action(transaction, row).await?;
+    }
+    for row in &batch.proposal_state_epochs {
+        insert_proposal_state_epoch(transaction, row).await?;
+    }
+    for row in &batch.proposal_deadline_extensions {
+        insert_proposal_deadline_extension(transaction, row).await?;
+    }
+    Ok(())
+}
+
+async fn insert_proposal_created(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalCreatedWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO proposal_created (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, proposal_id, proposer, targets, values, signatures, calldatas,
+            vote_start, vote_end, description, block_number, block_timestamp, transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+            $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16, $17::NUMERIC(78, 0),
+            $18::NUMERIC(78, 0), $19
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.common.chain_id)
+    .bind(&row.common.dao_code)
+    .bind(&row.common.governor_address)
+    .bind(&row.common.contract_address)
+    .bind(u64_to_i32(
+        row.common.log_index,
+        "proposal_created.log_index",
+    )?)
+    .bind(u64_to_i32(
+        row.common.transaction_index,
+        "proposal_created.transaction_index",
+    )?)
+    .bind(&row.proposal_id)
+    .bind(&row.proposer)
+    .bind(&row.targets)
+    .bind(&row.values)
+    .bind(&row.signatures)
+    .bind(&row.calldatas)
+    .bind(&row.vote_start)
+    .bind(&row.vote_end)
+    .bind(&row.description)
+    .bind(&row.common.block_number)
+    .bind(required_numeric(
+        &row.common.block_timestamp,
+        "proposal_created.block_timestamp",
+    )?)
+    .bind(&row.common.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_proposal_queued(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalQueuedWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO proposal_queued (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, proposal_id, eta_seconds, block_number, block_timestamp,
+            transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9::NUMERIC(78, 0), $10::NUMERIC(78, 0),
+            $11::NUMERIC(78, 0), $12
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.common.chain_id)
+    .bind(&row.common.dao_code)
+    .bind(&row.common.governor_address)
+    .bind(&row.common.contract_address)
+    .bind(u64_to_i32(
+        row.common.log_index,
+        "proposal_queued.log_index",
+    )?)
+    .bind(u64_to_i32(
+        row.common.transaction_index,
+        "proposal_queued.transaction_index",
+    )?)
+    .bind(&row.proposal_id)
+    .bind(&row.eta_seconds)
+    .bind(&row.common.block_number)
+    .bind(required_numeric(
+        &row.common.block_timestamp,
+        "proposal_queued.block_timestamp",
+    )?)
+    .bind(&row.common.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_proposal_extended(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalExtendedWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO proposal_extended (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, proposal_id, extended_deadline, block_number, block_timestamp,
+            transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9::NUMERIC(78, 0), $10::NUMERIC(78, 0),
+            $11::NUMERIC(78, 0), $12
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.common.chain_id)
+    .bind(&row.common.dao_code)
+    .bind(&row.common.governor_address)
+    .bind(&row.common.contract_address)
+    .bind(u64_to_i32(
+        row.common.log_index,
+        "proposal_extended.log_index",
+    )?)
+    .bind(u64_to_i32(
+        row.common.transaction_index,
+        "proposal_extended.transaction_index",
+    )?)
+    .bind(&row.proposal_id)
+    .bind(&row.extended_deadline)
+    .bind(&row.common.block_number)
+    .bind(required_numeric(
+        &row.common.block_timestamp,
+        "proposal_extended.block_timestamp",
+    )?)
+    .bind(&row.common.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_proposal_id_event(
+    transaction: &mut Transaction<'_, Postgres>,
+    table: &str,
+    row: &ProposalIdWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let sql = format!(
+        "INSERT INTO {table} (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, proposal_id, block_number, block_timestamp, transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9::NUMERIC(78, 0), $10::NUMERIC(78, 0), $11
+         )
+         ON CONFLICT (id) DO NOTHING"
+    );
+
+    sqlx::query(&sql)
+        .bind(&row.id)
+        .bind(row.common.chain_id)
+        .bind(&row.common.dao_code)
+        .bind(&row.common.governor_address)
+        .bind(&row.common.contract_address)
+        .bind(u64_to_i32(row.common.log_index, "proposal_id.log_index")?)
+        .bind(u64_to_i32(
+            row.common.transaction_index,
+            "proposal_id.transaction_index",
+        )?)
+        .bind(&row.proposal_id)
+        .bind(&row.common.block_number)
+        .bind(required_numeric(
+            &row.common.block_timestamp,
+            "proposal_id.block_timestamp",
+        )?)
+        .bind(&row.common.transaction_hash)
+        .execute(&mut **transaction)
+        .await?;
+
+    Ok(())
+}
+
+async fn upsert_proposal(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    relink_existing_proposal_to_raw_id(transaction, row).await?;
+
+    sqlx::query(
+        "INSERT INTO proposal (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, proposal_id, proposer, targets, values, signatures, calldatas,
+            vote_start, vote_end, description, block_number, block_timestamp, transaction_hash,
+            title, vote_start_timestamp, vote_end_timestamp, description_hash, proposal_snapshot,
+            proposal_deadline, proposal_eta, queue_ready_at, queue_expires_at, clock_mode, quorum,
+            decimals
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+            $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16, $17::NUMERIC(78, 0),
+            $18::NUMERIC(78, 0), $19, $20, $21::NUMERIC(78, 0), $22::NUMERIC(78, 0),
+            $23, $24::NUMERIC(78, 0), $25::NUMERIC(78, 0), $26::NUMERIC(78, 0),
+            $27::NUMERIC(78, 0), $28::NUMERIC(78, 0), $29, $30::NUMERIC(78, 0),
+            $31::NUMERIC(78, 0)
+         )
+         ON CONFLICT (id) DO UPDATE
+         SET proposer = CASE WHEN EXCLUDED.proposer = '' THEN proposal.proposer ELSE EXCLUDED.proposer END,
+             targets = CASE WHEN cardinality(EXCLUDED.targets) = 0 THEN proposal.targets ELSE EXCLUDED.targets END,
+             values = CASE WHEN cardinality(EXCLUDED.values) = 0 THEN proposal.values ELSE EXCLUDED.values END,
+             signatures = CASE WHEN cardinality(EXCLUDED.signatures) = 0 THEN proposal.signatures ELSE EXCLUDED.signatures END,
+             calldatas = CASE WHEN cardinality(EXCLUDED.calldatas) = 0 THEN proposal.calldatas ELSE EXCLUDED.calldatas END,
+             vote_start = GREATEST(proposal.vote_start, EXCLUDED.vote_start),
+             vote_end = GREATEST(proposal.vote_end, EXCLUDED.vote_end),
+             description = CASE WHEN EXCLUDED.description = '' THEN proposal.description ELSE EXCLUDED.description END,
+             title = CASE WHEN EXCLUDED.title = '' THEN proposal.title ELSE EXCLUDED.title END,
+             description_hash = COALESCE(EXCLUDED.description_hash, proposal.description_hash),
+             proposal_snapshot = COALESCE(EXCLUDED.proposal_snapshot, proposal.proposal_snapshot),
+             proposal_deadline = COALESCE(EXCLUDED.proposal_deadline, proposal.proposal_deadline),
+             proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta),
+             queue_ready_at = COALESCE(EXCLUDED.queue_ready_at, proposal.queue_ready_at),
+             queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
+             clock_mode = EXCLUDED.clock_mode,
+             quorum = EXCLUDED.quorum,
+             decimals = EXCLUDED.decimals",
+    )
+    .bind(&row.id)
+    .bind(row.chain_id)
+    .bind(&row.dao_code)
+    .bind(&row.governor_address)
+    .bind(&row.contract_address)
+    .bind(u64_to_i32(row.log_index, "proposal.log_index")?)
+    .bind(u64_to_i32(
+        row.transaction_index,
+        "proposal.transaction_index",
+    )?)
+    .bind(&row.proposal_id)
+    .bind(&row.proposer)
+    .bind(&row.targets)
+    .bind(&row.values)
+    .bind(&row.signatures)
+    .bind(&row.calldatas)
+    .bind(&row.vote_start)
+    .bind(&row.vote_end)
+    .bind(&row.description)
+    .bind(&row.block_number)
+    .bind(required_numeric(
+        &row.block_timestamp,
+        "proposal.block_timestamp",
+    )?)
+    .bind(&row.transaction_hash)
+    .bind(&row.title)
+    .bind(&row.vote_start_timestamp)
+    .bind(&row.vote_end_timestamp)
+    .bind(&row.description_hash)
+    .bind(row.proposal_snapshot.as_deref())
+    .bind(row.proposal_deadline.as_deref())
+    .bind(row.proposal_eta.as_deref())
+    .bind(row.queue_ready_at.as_deref())
+    .bind(row.queue_expires_at.as_deref())
+    .bind(&row.clock_mode)
+    .bind(&row.quorum)
+    .bind(&row.decimals)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn relink_existing_proposal_to_raw_id(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "UPDATE proposal
+         SET id = $1
+         WHERE chain_id IS NOT DISTINCT FROM $2
+           AND governor_address IS NOT DISTINCT FROM $3
+           AND proposal_id = $4
+           AND id <> $1",
+    )
+    .bind(&row.id)
+    .bind(row.chain_id)
+    .bind(&row.governor_address)
+    .bind(&row.proposal_id)
+    .execute(&mut **transaction)
+    .await?;
+
+    for table in [
+        "proposal_action",
+        "proposal_state_epoch",
+        "proposal_deadline_extension",
+    ] {
+        let sql = format!(
+            "UPDATE {table}
+             SET proposal_id = $1
+             WHERE proposal_ref = $1
+               AND proposal_id <> $1"
+        );
+        sqlx::query(&sql)
+            .bind(&row.id)
+            .execute(&mut **transaction)
+            .await?;
+    }
+
+    Ok(())
+}
+
+async fn insert_proposal_action(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalActionWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO proposal_action (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, proposal_id, proposal_ref, action_index, target, value,
+            signature, calldata, block_number, block_timestamp, transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+            $15::NUMERIC(78, 0), $16::NUMERIC(78, 0), $17
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.chain_id)
+    .bind(&row.dao_code)
+    .bind(&row.governor_address)
+    .bind(&row.contract_address)
+    .bind(u64_to_i32(row.log_index, "proposal_action.log_index")?)
+    .bind(u64_to_i32(
+        row.transaction_index,
+        "proposal_action.transaction_index",
+    )?)
+    .bind(&row.proposal_id)
+    .bind(&row.proposal_ref)
+    .bind(usize_to_i32(
+        row.action_index,
+        "proposal_action.action_index",
+    )?)
+    .bind(&row.target)
+    .bind(&row.value)
+    .bind(&row.signature)
+    .bind(&row.calldata)
+    .bind(&row.block_number)
+    .bind(required_numeric(
+        &row.block_timestamp,
+        "proposal_action.block_timestamp",
+    )?)
+    .bind(&row.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_proposal_state_epoch(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalStateEpochWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO proposal_state_epoch (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, proposal_id, proposal_ref, state, start_timepoint, end_timepoint,
+            start_block_number, start_block_timestamp, end_block_number, end_block_timestamp,
+            transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0),
+            $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14::NUMERIC(78, 0),
+            $15::NUMERIC(78, 0), $16::NUMERIC(78, 0), $17
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.chain_id)
+    .bind(&row.dao_code)
+    .bind(&row.governor_address)
+    .bind(&row.contract_address)
+    .bind(u64_to_i32(row.log_index, "proposal_state_epoch.log_index")?)
+    .bind(u64_to_i32(
+        row.transaction_index,
+        "proposal_state_epoch.transaction_index",
+    )?)
+    .bind(&row.proposal_id)
+    .bind(&row.proposal_ref)
+    .bind(&row.state)
+    .bind(row.start_timepoint.as_deref())
+    .bind(row.end_timepoint.as_deref())
+    .bind(row.start_block_number.as_deref())
+    .bind(row.start_block_timestamp.as_deref())
+    .bind(row.end_block_number.as_deref())
+    .bind(row.end_block_timestamp.as_deref())
+    .bind(&row.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_proposal_deadline_extension(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalDeadlineExtensionWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO proposal_deadline_extension (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, proposal_id, proposal_ref, previous_deadline, new_deadline,
+            block_number, block_timestamp, transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0),
+            $11::NUMERIC(78, 0), $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.chain_id)
+    .bind(&row.dao_code)
+    .bind(&row.governor_address)
+    .bind(&row.contract_address)
+    .bind(u64_to_i32(
+        row.log_index,
+        "proposal_deadline_extension.log_index",
+    )?)
+    .bind(u64_to_i32(
+        row.transaction_index,
+        "proposal_deadline_extension.transaction_index",
+    )?)
+    .bind(&row.proposal_id)
+    .bind(&row.proposal_ref)
+    .bind(row.previous_deadline.as_deref())
+    .bind(&row.new_deadline)
+    .bind(&row.block_number)
+    .bind(required_numeric(
+        &row.block_timestamp,
+        "proposal_deadline_extension.block_timestamp",
+    )?)
+    .bind(&row.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
