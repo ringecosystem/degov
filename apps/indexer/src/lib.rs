@@ -15,6 +15,7 @@ pub mod proposal_metadata;
 pub mod proposal_projection;
 pub mod runner;
 pub mod runtime_config;
+pub mod store;
 pub mod timelock_projection;
 pub mod token_projection;
 pub mod vote_projection;
