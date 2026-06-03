@@ -90,7 +90,7 @@ pub use config::{
 };
 pub use datalens::{
     DatalensDurableHeadReader, DatalensNativeClient, DatalensNativeReader, ServiceReadiness,
-    parse_datalens_durable_head_height, verify_datalens_service,
+    verify_datalens_service,
 };
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use graphql::IndexerGraphqlSchema;

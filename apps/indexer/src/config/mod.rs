@@ -266,7 +266,7 @@ impl DatalensConfig {
 
     pub fn sdk_config(&self) -> ClientConfig {
         ClientConfig {
-            endpoint: format!("{}/native/graphql", self.endpoint.trim_end_matches('/')),
+            endpoint: self.endpoint.trim_end_matches('/').to_owned(),
             bearer_token: Some(self.bearer_token.clone().into_inner()),
             application: Some(self.application.clone()),
             timeout: Some(self.timeout),

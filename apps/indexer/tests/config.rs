@@ -33,7 +33,7 @@ fn remove_config_file(path: PathBuf) {
 }
 
 #[test]
-fn test_from_env_with_required_datalens_fields_builds_sdk_graphql_endpoint() {
+fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint() {
     with_datalens_env(
         &[
             ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com/")),
@@ -116,10 +116,7 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_graphql_endpoint() {
             );
 
             let sdk_config = config.sdk_config();
-            assert_eq!(
-                sdk_config.endpoint,
-                "https://datalens.ringdao.com/native/graphql"
-            );
+            assert_eq!(sdk_config.endpoint, "https://datalens.ringdao.com");
             assert_eq!(
                 sdk_config.bearer_token.as_deref(),
                 Some("unit-test-redacted-value")
