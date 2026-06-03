@@ -2,10 +2,12 @@ pub mod chain_tool;
 pub mod checkpoint;
 pub mod config;
 pub mod dao_event;
+pub mod data_metric;
 pub mod datalens;
 pub mod error;
 pub mod evm_log;
 pub mod fixtures;
+pub mod graphql;
 pub mod onchain_refresh;
 pub mod planner;
 pub mod postgres_store;
@@ -29,7 +31,8 @@ pub use checkpoint::{
     plan_next_checkpoint_range,
 };
 pub use config::{
-    ChainFamily, ChainIdentityConfig, DatalensConfig, DatalensFinality, DatasetKeyConfig,
+    ChainFamily, ChainIdentityConfig, DatalensChainConfig, DatalensConfig,
+    DatalensContractSetConfig, DatalensFinality, DatalensRuntimeContractSet, DatasetKeyConfig,
     QueryLimitConfig, SecretString,
 };
 pub use dao_event::{
@@ -40,6 +43,7 @@ pub use dao_event::{
     RoleAdminChangedEvent, TimelockChangeEvent, TimelockOperationIdEvent, TokenTransferEvent,
     UnsupportedTopicEvent, VoteCastEvent, VoteCastWithParamsEvent, decode_dao_log,
 };
+pub use data_metric::DataMetricWrite;
 pub use datalens::{
     DatalensNativeClient, DatalensNativeReader, ServiceReadiness, verify_datalens_service,
 };
@@ -51,6 +55,7 @@ pub use fixtures::{
     DatalensFixtureExpectedEvent, DatalensFixtureLogSource, DatalensFixturePage,
     DatalensFixtureTokenStandard, load_datalens_fixture,
 };
+pub use graphql::IndexerGraphqlSchema;
 pub use onchain_refresh::{
     ChainToolOnchainRefreshReader, EvmRpcChainTool, OnchainRefreshReadValue, OnchainRefreshReader,
     OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshWorker,
@@ -88,7 +93,8 @@ pub use timelock_projection::{
     TimelockEventCommon, TimelockMinDelayChangeWrite, TimelockOperationHintWrite,
     TimelockOperationWrite, TimelockProjectionBatch, TimelockProjectionContext,
     TimelockProjectionError, TimelockProjectionEvent, TimelockProjectionRepository,
-    TimelockRepositoryWriteError, TimelockRoleEventWrite, project_timelock_events,
+    TimelockProposalActionLink, TimelockProposalLinkContext, TimelockRepositoryWriteError,
+    TimelockRoleEventWrite, project_timelock_events, project_timelock_events_with_proposal_links,
 };
 pub use token_projection::{
     ContributorWrite, DataMetricTokenDelta, DelegateChangedWrite, DelegateMappingWrite,

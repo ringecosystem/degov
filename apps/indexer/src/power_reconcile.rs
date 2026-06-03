@@ -7,6 +7,7 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PowerReconcileContext {
+    pub contract_set_id: String,
     pub dao_code: String,
     pub chain_id: i32,
     pub contracts: ChainContracts,
@@ -56,6 +57,7 @@ pub enum PowerRefreshStatus {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PowerRefreshStatusRecord {
+    pub contract_set_id: String,
     pub dao_code: String,
     pub chain_id: i32,
     pub governor: String,
@@ -76,6 +78,7 @@ pub struct PowerRefreshStatusRecord {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PowerReconcileCandidate {
+    pub contract_set_id: String,
     pub dao_code: String,
     pub chain_id: i32,
     pub governor: String,
@@ -216,6 +219,7 @@ impl PendingPowerCandidate {
         let reason = reason_label(&self.reasons);
 
         PowerReconcileCandidate {
+            contract_set_id: context.contract_set_id.clone(),
             dao_code: context.dao_code.clone(),
             chain_id: context.chain_id,
             governor: governor.clone(),
@@ -227,6 +231,7 @@ impl PendingPowerCandidate {
             reasons: self.reasons,
             observed_log_power: None,
             status: PowerRefreshStatusRecord {
+                contract_set_id: context.contract_set_id.clone(),
                 dao_code: context.dao_code.clone(),
                 chain_id: context.chain_id,
                 governor,

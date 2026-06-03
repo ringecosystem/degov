@@ -3,16 +3,18 @@ use std::{fmt, future::Future};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
 use crate::{
-    CheckpointRepository, ContributorVoteSignalWrite, DelegateChangedWrite, DelegateRollingWrite,
-    DelegateVotesChangedWrite, GovernanceTokenStandard, IndexerCheckpoint,
-    IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
+    CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite, DecodedTimelockEvent,
+    DelegateChangedWrite, DelegateRollingWrite, DelegateVotesChangedWrite, GovernanceTokenStandard,
+    IndexerCheckpoint, IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
     IndexerRunnerTransaction, PowerReconcileCandidate, ProposalActionWrite, ProposalCreatedWrite,
     ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
     ProposalProjectionBatch, ProposalQueuedWrite, ProposalStateEpochWrite, ProposalVoteTotalWrite,
     ProposalWrite, TimelockCallWrite, TimelockMinDelayChangeWrite, TimelockOperationHintWrite,
-    TimelockOperationWrite, TimelockProjectionBatch, TimelockRoleEventWrite, TokenEventCommon,
-    TokenProjectionBatch, TokenProjectionOperation, TokenTransferWrite, VoteCastGroupWrite,
-    VoteCastWithParamsWrite, VoteCastWrite, VoteProjectionBatch,
+    TimelockOperationWrite, TimelockProjectionBatch, TimelockProjectionContext,
+    TimelockProjectionEvent, TimelockProposalActionLink, TimelockProposalLinkContext,
+    TimelockRoleEventWrite, TokenEventCommon, TokenProjectionBatch, TokenProjectionOperation,
+    TokenTransferWrite, VoteCastGroupWrite, VoteCastWithParamsWrite, VoteCastWrite,
+    VoteProjectionBatch,
 };
 
 #[derive(Clone)]
@@ -53,6 +55,17 @@ impl IndexerRunnerStore for PostgresIndexerRunnerStore {
             transaction: Some(transaction),
             checkpoint_repository: self.checkpoint_repository.clone(),
         })
+    }
+
+    fn timelock_proposal_link_context(
+        &mut self,
+        context: &TimelockProjectionContext,
+        events: &[TimelockProjectionEvent],
+        proposal: Option<&ProposalProjectionBatch>,
+    ) -> Result<TimelockProposalLinkContext, Self::Error> {
+        block_on_runtime(read_timelock_proposal_link_context(
+            &self.pool, context, events, proposal,
+        ))
     }
 }
 
@@ -125,6 +138,8 @@ impl fmt::Display for PostgresIndexerRunnerStoreError {
     }
 }
 
+impl std::error::Error for PostgresIndexerRunnerStoreError {}
+
 impl From<sqlx::Error> for PostgresIndexerRunnerStoreError {
     fn from(error: sqlx::Error) -> Self {
         Self::new(format!("Postgres runner store error: {error}"))
@@ -148,14 +163,35 @@ async fn write_projection_batch(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &IndexerProjectionBatch,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    if let Some(batch) = &batch.proposal {
-        write_proposal_batch(transaction, batch).await?;
+    if let Some(proposal) = &batch.proposal {
+        write_proposal_batch_rows(transaction, proposal).await?;
     }
-    if let Some(batch) = &batch.vote {
-        write_vote_batch(transaction, batch).await?;
+    if let Some(vote) = &batch.vote {
+        write_vote_batch_rows(transaction, vote).await?;
     }
-    if let Some(batch) = &batch.token {
-        write_token_batch(transaction, batch).await?;
+    let inserted_operation_ids = if let Some(token) = &batch.token {
+        write_token_batch_rows(transaction, token).await?
+    } else {
+        Vec::new()
+    };
+    write_data_metric_timeline(
+        transaction,
+        &inserted_operation_ids,
+        batch.proposal.as_ref(),
+        batch.vote.as_ref(),
+        batch.token.as_ref(),
+    )
+    .await?;
+    if let Some(proposal) = &batch.proposal {
+        refresh_proposal_data_metric(transaction, proposal).await?;
+    }
+    if let Some(vote) = &batch.vote {
+        refresh_vote_data_metric(transaction, &vote.contributor_vote_signals).await?;
+    }
+    if let Some(token) = &batch.token {
+        for candidate in &token.reconcile_plan.candidates {
+            upsert_onchain_refresh_task(transaction, candidate).await?;
+        }
     }
     if let Some(batch) = &batch.timelock {
         write_timelock_batch(transaction, batch).await?;
@@ -164,7 +200,7 @@ async fn write_projection_batch(
     Ok(())
 }
 
-async fn write_proposal_batch(
+async fn write_proposal_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &ProposalProjectionBatch,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
@@ -195,11 +231,10 @@ async fn write_proposal_batch(
     for row in &batch.proposal_deadline_extensions {
         insert_proposal_deadline_extension(transaction, row).await?;
     }
-
     Ok(())
 }
 
-async fn write_vote_batch(
+async fn write_vote_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &VoteProjectionBatch,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
@@ -218,30 +253,28 @@ async fn write_vote_batch(
     for row in &batch.contributor_vote_signals {
         upsert_contributor_vote_signal(transaction, row).await?;
     }
-    refresh_vote_data_metric(transaction, &batch.contributor_vote_signals).await?;
-
     Ok(())
 }
 
-async fn write_token_batch(
+async fn write_token_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &TokenProjectionBatch,
-) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let mut inserted_operation_ids = Vec::new();
+) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
+    let mut inserted_operation_keys = Vec::new();
 
     for row in &batch.delegate_changed {
         if insert_delegate_changed(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operation_keys.push((row.common.contract_set_id.clone(), row.id.clone()));
         }
     }
     for row in &batch.delegate_votes_changed {
         if insert_delegate_votes_changed(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operation_keys.push((row.common.contract_set_id.clone(), row.id.clone()));
         }
     }
     for row in &batch.token_transfers {
         if insert_token_transfer(transaction, row).await? {
-            inserted_operation_ids.push(row.id.as_str());
+            inserted_operation_keys.push((row.common.contract_set_id.clone(), row.id.clone()));
         }
     }
     for row in &batch.delegate_rollings {
@@ -250,19 +283,75 @@ async fn write_token_batch(
     for row in &batch.delegate_votes_changed {
         insert_vote_power_checkpoint(transaction, row).await?;
     }
-    for operation in &batch.operations {
-        if inserted_operation_ids
-            .iter()
-            .any(|inserted_id| *inserted_id == token_operation_id(operation))
-        {
-            apply_token_operation(transaction, operation).await?;
-        }
+    Ok(inserted_operation_keys)
+}
+
+enum DataMetricTimelineItem<'a> {
+    Token(&'a TokenProjectionOperation),
+    Proposal(&'a DataMetricWrite),
+    Vote(&'a DataMetricWrite),
+}
+
+async fn write_data_metric_timeline(
+    transaction: &mut Transaction<'_, Postgres>,
+    inserted_operation_keys: &[(String, String)],
+    proposal: Option<&ProposalProjectionBatch>,
+    vote: Option<&VoteProjectionBatch>,
+    token: Option<&TokenProjectionBatch>,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let mut items = Vec::new();
+    if let Some(token) = token {
+        items.extend(token.operations.iter().map(DataMetricTimelineItem::Token));
     }
-    for candidate in &batch.reconcile_plan.candidates {
-        upsert_onchain_refresh_task(transaction, candidate).await?;
+    if let Some(proposal) = proposal {
+        items.extend(
+            proposal
+                .data_metrics
+                .iter()
+                .map(DataMetricTimelineItem::Proposal),
+        );
+    }
+    if let Some(vote) = vote {
+        items.extend(vote.data_metrics.iter().map(DataMetricTimelineItem::Vote));
+    }
+    items.sort_by_key(data_metric_timeline_order);
+
+    for item in items {
+        match item {
+            DataMetricTimelineItem::Token(operation) => {
+                if inserted_operation_keys.iter().any(|inserted| {
+                    (inserted.0.as_str(), inserted.1.as_str()) == token_operation_key(operation)
+                }) {
+                    apply_token_operation(transaction, operation).await?;
+                }
+            }
+            DataMetricTimelineItem::Proposal(row) | DataMetricTimelineItem::Vote(row) => {
+                upsert_event_data_metric(transaction, row).await?;
+            }
+        }
     }
 
     Ok(())
+}
+
+fn data_metric_timeline_order(item: &DataMetricTimelineItem<'_>) -> (u64, u64, u64, String) {
+    match item {
+        DataMetricTimelineItem::Token(operation) => {
+            let common = token_operation_common(operation);
+            (
+                common.block_number.parse::<u64>().unwrap_or(u64::MAX),
+                common.transaction_index,
+                common.log_index,
+                token_operation_key(operation).1.to_owned(),
+            )
+        }
+        DataMetricTimelineItem::Proposal(row) | DataMetricTimelineItem::Vote(row) => (
+            row.block_number.parse::<u64>().unwrap_or(u64::MAX),
+            row.transaction_index.unwrap_or(u64::MAX),
+            row.log_index.unwrap_or(u64::MAX),
+            row.id.clone(),
+        ),
+    }
 }
 
 async fn write_timelock_batch(
@@ -284,6 +373,152 @@ async fn write_timelock_batch(
     for row in &batch.timelock_operation_hints {
         insert_timelock_operation_hint(transaction, row).await?;
     }
+
+    Ok(())
+}
+
+async fn read_timelock_proposal_link_context(
+    pool: &PgPool,
+    context: &TimelockProjectionContext,
+    events: &[TimelockProjectionEvent],
+    proposal: Option<&ProposalProjectionBatch>,
+) -> Result<TimelockProposalLinkContext, PostgresIndexerRunnerStoreError> {
+    let mut links = TimelockProposalLinkContext::default();
+    let governor_address = normalize_identifier(&context.governor_address);
+
+    for input in events {
+        let DecodedTimelockEvent::CallScheduled(event) = &input.event else {
+            continue;
+        };
+        let Ok(action_index) = event.index.parse::<i32>() else {
+            continue;
+        };
+        let row = sqlx::query(
+            "SELECT p.chain_id, p.governor_address, p.id AS proposal_ref,
+                    p.proposal_id AS raw_proposal_id,
+                    pq.transaction_hash AS queue_transaction_hash,
+                    pe.transaction_hash AS execution_transaction_hash,
+                    pq.eta_seconds::TEXT AS queue_eta,
+                    pa.id AS proposal_action_id,
+                    pa.action_index AS proposal_action_index,
+                    pa.target, pa.value, pa.calldata
+             FROM proposal_queued pq
+             JOIN proposal p
+               ON p.chain_id IS NOT DISTINCT FROM pq.chain_id
+              AND p.governor_address IS NOT DISTINCT FROM pq.governor_address
+              AND p.proposal_id = pq.proposal_id
+             JOIN proposal_action pa ON pa.proposal_ref = p.id
+             LEFT JOIN proposal_executed pe
+               ON pe.chain_id IS NOT DISTINCT FROM p.chain_id
+              AND pe.governor_address IS NOT DISTINCT FROM p.governor_address
+              AND pe.proposal_id = p.proposal_id
+             WHERE pq.chain_id IS NOT DISTINCT FROM $1
+               AND pq.governor_address IS NOT DISTINCT FROM $2
+               AND pq.transaction_hash = $3
+               AND pa.action_index = $4
+               AND pa.target = $5
+               AND pa.value = $6
+               AND pa.calldata = $7
+             ORDER BY p.id, pa.id
+             LIMIT 1",
+        )
+        .bind(input.log.chain_id)
+        .bind(&governor_address)
+        .bind(normalize_identifier(&input.log.transaction_hash))
+        .bind(action_index)
+        .bind(normalize_identifier(&event.target))
+        .bind(&event.value)
+        .bind(normalize_identifier(&event.data))
+        .fetch_optional(pool)
+        .await?;
+
+        let Some(row) = row else { continue };
+        insert_link_from_row(&mut links, row)?;
+    }
+
+    if let Some(proposal) = proposal {
+        for input in events {
+            let DecodedTimelockEvent::CallScheduled(event) = &input.event else {
+                continue;
+            };
+            let Ok(action_index) = event.index.parse::<i32>() else {
+                continue;
+            };
+            let queue_transaction_hash = normalize_identifier(&input.log.transaction_hash);
+            for queued in proposal.proposal_queued.iter().filter(|queued| {
+                queued.common.chain_id == input.log.chain_id
+                    && normalize_identifier(&queued.common.governor_address) == governor_address
+                    && normalize_identifier(&queued.common.transaction_hash)
+                        == queue_transaction_hash
+            }) {
+                let row = sqlx::query(
+                    "SELECT p.chain_id, p.governor_address, p.id AS proposal_ref,
+                            p.proposal_id AS raw_proposal_id,
+                            $3::TEXT AS queue_transaction_hash,
+                            pe.transaction_hash AS execution_transaction_hash,
+                            $4::TEXT AS queue_eta,
+                            pa.id AS proposal_action_id,
+                            pa.action_index AS proposal_action_index,
+                            pa.target, pa.value, pa.calldata
+                     FROM proposal p
+                     JOIN proposal_action pa ON pa.proposal_ref = p.id
+                     LEFT JOIN proposal_executed pe
+                       ON pe.chain_id IS NOT DISTINCT FROM p.chain_id
+                      AND pe.governor_address IS NOT DISTINCT FROM p.governor_address
+                      AND pe.proposal_id = p.proposal_id
+                     WHERE p.chain_id IS NOT DISTINCT FROM $1
+                       AND p.governor_address IS NOT DISTINCT FROM $2
+                       AND p.proposal_id = $5
+                       AND pa.action_index = $6
+                       AND pa.target = $7
+                       AND pa.value = $8
+                       AND pa.calldata = $9
+                     ORDER BY p.id, pa.id
+                     LIMIT 1",
+                )
+                .bind(input.log.chain_id)
+                .bind(&governor_address)
+                .bind(&queue_transaction_hash)
+                .bind(&queued.eta_seconds)
+                .bind(&queued.proposal_id)
+                .bind(action_index)
+                .bind(normalize_identifier(&event.target))
+                .bind(&event.value)
+                .bind(normalize_identifier(&event.data))
+                .fetch_optional(pool)
+                .await?;
+
+                let Some(row) = row else { continue };
+                insert_link_from_row(&mut links, row)?;
+            }
+        }
+    }
+
+    Ok(links)
+}
+
+fn insert_link_from_row(
+    links: &mut TimelockProposalLinkContext,
+    row: sqlx::postgres::PgRow,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let proposal_action_index = row.get::<i32, _>("proposal_action_index");
+    let proposal_action_index = usize::try_from(proposal_action_index).map_err(|_| {
+        PostgresIndexerRunnerStoreError::new("proposal_action_index cannot be negative")
+    })?;
+    links.insert_action_link(TimelockProposalActionLink {
+        chain_id: row.get("chain_id"),
+        governor_address: row.get("governor_address"),
+        proposal_ref: row.get("proposal_ref"),
+        raw_proposal_id: row.get("raw_proposal_id"),
+        queue_transaction_hash: row.get("queue_transaction_hash"),
+        execution_transaction_hash: row.get("execution_transaction_hash"),
+        queue_eta: row.get("queue_eta"),
+        proposal_action_id: row.get("proposal_action_id"),
+        proposal_action_index,
+        target: row.get("target"),
+        value: row.get("value"),
+        calldata: row.get("calldata"),
+    });
 
     Ok(())
 }
@@ -469,20 +704,24 @@ async fn upsert_proposal(
     transaction: &mut Transaction<'_, Postgres>,
     row: &ProposalWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    relink_existing_proposal_to_raw_id(transaction, row).await?;
+
     sqlx::query(
         "INSERT INTO proposal (
             id, chain_id, dao_code, governor_address, contract_address, log_index,
             transaction_index, proposal_id, proposer, targets, values, signatures, calldatas,
             vote_start, vote_end, description, block_number, block_timestamp, transaction_hash,
             title, vote_start_timestamp, vote_end_timestamp, description_hash, proposal_snapshot,
-            proposal_deadline, proposal_eta, clock_mode, quorum, decimals
+            proposal_deadline, proposal_eta, queue_ready_at, queue_expires_at, clock_mode, quorum,
+            decimals
          )
          VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
             $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16, $17::NUMERIC(78, 0),
-            $18::NUMERIC(78, 0), $19, $20, $14::NUMERIC(78, 0), $15::NUMERIC(78, 0),
-            $21, $22::NUMERIC(78, 0), $23::NUMERIC(78, 0), $24::NUMERIC(78, 0),
-            'blocknumber', 0::NUMERIC(78, 0), 0::NUMERIC(78, 0)
+            $18::NUMERIC(78, 0), $19, $20, $21::NUMERIC(78, 0), $22::NUMERIC(78, 0),
+            $23, $24::NUMERIC(78, 0), $25::NUMERIC(78, 0), $26::NUMERIC(78, 0),
+            $27::NUMERIC(78, 0), $28::NUMERIC(78, 0), $29, $30::NUMERIC(78, 0),
+            $31::NUMERIC(78, 0)
          )
          ON CONFLICT (id) DO UPDATE
          SET proposer = CASE WHEN EXCLUDED.proposer = '' THEN proposal.proposer ELSE EXCLUDED.proposer END,
@@ -497,7 +736,12 @@ async fn upsert_proposal(
              description_hash = COALESCE(EXCLUDED.description_hash, proposal.description_hash),
              proposal_snapshot = COALESCE(EXCLUDED.proposal_snapshot, proposal.proposal_snapshot),
              proposal_deadline = COALESCE(EXCLUDED.proposal_deadline, proposal.proposal_deadline),
-             proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta)",
+             proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta),
+             queue_ready_at = COALESCE(EXCLUDED.queue_ready_at, proposal.queue_ready_at),
+             queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
+             clock_mode = EXCLUDED.clock_mode,
+             quorum = EXCLUDED.quorum,
+             decimals = EXCLUDED.decimals",
     )
     .bind(&row.id)
     .bind(row.chain_id)
@@ -525,12 +769,58 @@ async fn upsert_proposal(
     )?)
     .bind(&row.transaction_hash)
     .bind(&row.title)
+    .bind(&row.vote_start_timestamp)
+    .bind(&row.vote_end_timestamp)
     .bind(&row.description_hash)
     .bind(row.proposal_snapshot.as_deref())
     .bind(row.proposal_deadline.as_deref())
     .bind(row.proposal_eta.as_deref())
+    .bind(row.queue_ready_at.as_deref())
+    .bind(row.queue_expires_at.as_deref())
+    .bind(&row.clock_mode)
+    .bind(&row.quorum)
+    .bind(&row.decimals)
     .execute(&mut **transaction)
     .await?;
+
+    Ok(())
+}
+
+async fn relink_existing_proposal_to_raw_id(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "UPDATE proposal
+         SET id = $1
+         WHERE chain_id IS NOT DISTINCT FROM $2
+           AND governor_address IS NOT DISTINCT FROM $3
+           AND proposal_id = $4
+           AND id <> $1",
+    )
+    .bind(&row.id)
+    .bind(row.chain_id)
+    .bind(&row.governor_address)
+    .bind(&row.proposal_id)
+    .execute(&mut **transaction)
+    .await?;
+
+    for table in [
+        "proposal_action",
+        "proposal_state_epoch",
+        "proposal_deadline_extension",
+    ] {
+        let sql = format!(
+            "UPDATE {table}
+             SET proposal_id = $1
+             WHERE proposal_ref = $1
+               AND proposal_id <> $1"
+        );
+        sqlx::query(&sql)
+            .bind(&row.id)
+            .execute(&mut **transaction)
+            .await?;
+    }
 
     Ok(())
 }
@@ -768,13 +1058,26 @@ async fn upsert_vote_cast_group(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO vote_cast_group (
-            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index,
             transaction_index, proposal_id, type, voter, ref_proposal_id, support, weight,
             reason, params, block_number, block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-            $13::NUMERIC(78, 0), $14, $15, $16::NUMERIC(78, 0), $17::NUMERIC(78, 0), $18
+            $1, $2, $3, $4, $5, $6, $7, $8,
+            COALESCE(
+              (
+                SELECT proposal.id
+                FROM proposal
+                WHERE proposal.chain_id IS NOT DISTINCT FROM $3
+                  AND proposal.dao_code IS NOT DISTINCT FROM $4
+                  AND proposal.governor_address IS NOT DISTINCT FROM $5
+                  AND proposal.proposal_id = $12
+                LIMIT 1
+              ),
+              $9
+            ),
+            $10, $11, $12, $13,
+            $14::NUMERIC(78, 0), $15, $16, $17::NUMERIC(78, 0), $18::NUMERIC(78, 0), $19
          )
          ON CONFLICT (id) DO UPDATE
          SET support = EXCLUDED.support,
@@ -786,6 +1089,7 @@ async fn upsert_vote_cast_group(
              transaction_hash = EXCLUDED.transaction_hash",
     )
     .bind(&row.id)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
@@ -820,7 +1124,20 @@ async fn refresh_proposal_vote_totals(
     row: &ProposalVoteTotalWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
-        "UPDATE proposal
+        "WITH resolved AS (
+             SELECT COALESCE(
+               (
+                 SELECT proposal.id
+                 FROM proposal
+                 WHERE proposal.chain_id IS NOT DISTINCT FROM $2
+                   AND proposal.governor_address IS NOT DISTINCT FROM $3
+                   AND proposal.proposal_id = $4
+                 LIMIT 1
+               ),
+               $1
+             ) AS proposal_ref
+         )
+         UPDATE proposal
          SET metrics_votes_count = totals.votes_count,
              metrics_votes_with_params_count = totals.votes_with_params_count,
              metrics_votes_without_params_count = totals.votes_without_params_count,
@@ -835,12 +1152,15 @@ async fn refresh_proposal_vote_totals(
                COALESCE(sum(CASE WHEN support = 1 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_for_sum,
                COALESCE(sum(CASE WHEN support = 0 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_against_sum,
                COALESCE(sum(CASE WHEN support = 2 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_abstain_sum
-             FROM vote_cast_group
-             WHERE proposal_id = $1
-         ) totals
-         WHERE proposal.id = $1",
+             FROM vote_cast_group, resolved
+             WHERE vote_cast_group.proposal_id = resolved.proposal_ref
+         ) totals, resolved
+         WHERE proposal.id = resolved.proposal_ref",
     )
     .bind(&row.proposal_ref)
+    .bind(row.chain_id)
+    .bind(&row.governor_address)
+    .bind(&row.proposal_id)
     .execute(&mut **transaction)
     .await?;
 
@@ -853,16 +1173,16 @@ async fn upsert_contributor_vote_signal(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO contributor (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, block_number, block_timestamp, transaction_hash,
             last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all,
             delegates_count_effective
          )
          VALUES (
-            $1, $2, $3, $4, NULL, $5, $6, $7, $8::NUMERIC(78, 0), $9::NUMERIC(78, 0), $10,
-            $8::NUMERIC(78, 0), $9::NUMERIC(78, 0), 0::NUMERIC(78, 0), NULL, 0, 0
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0), $11::NUMERIC(78, 0), $12,
+            $10::NUMERIC(78, 0), $11::NUMERIC(78, 0), 0::NUMERIC(78, 0), NULL, 0, 0
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET last_vote_block_number = GREATEST(
                COALESCE(contributor.last_vote_block_number, EXCLUDED.last_vote_block_number),
                EXCLUDED.last_vote_block_number
@@ -874,9 +1194,11 @@ async fn upsert_contributor_vote_signal(
              transaction_hash = EXCLUDED.transaction_hash",
     )
     .bind(&row.voter)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
+    .bind(&row.token_address)
     .bind(&row.contract_address)
     .bind(u64_to_i32(
         row.log_index,
@@ -898,6 +1220,125 @@ async fn upsert_contributor_vote_signal(
     Ok(())
 }
 
+#[derive(Clone, Debug, Default)]
+struct DataMetricSnapshot {
+    token_address: Option<String>,
+    power_sum: Option<String>,
+    member_count: Option<i32>,
+}
+
+async fn upsert_event_data_metric(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &DataMetricWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let snapshot = read_global_data_metric_snapshot(transaction, row).await?;
+    let token_address = row.token_address.clone().or(snapshot.token_address.clone());
+    let power_sum = row.power_sum.clone().or(snapshot.power_sum);
+    let member_count = match row.member_count {
+        Some(value) => Some(i64_to_i32(value, "data_metric.member_count")?),
+        None => snapshot.member_count,
+    };
+
+    sqlx::query(
+        "INSERT INTO data_metric (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
+            log_index, transaction_index, proposals_count, votes_count, votes_with_params_count,
+            votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
+            votes_weight_abstain_sum, power_sum, member_count
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+            $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16::NUMERIC(78, 0),
+            $17::NUMERIC(78, 0), $18
+         )
+         ON CONFLICT (contract_set_id, id) WHERE id <> 'global' DO UPDATE
+         SET contract_set_id = EXCLUDED.contract_set_id,
+             chain_id = EXCLUDED.chain_id,
+             dao_code = EXCLUDED.dao_code,
+             governor_address = EXCLUDED.governor_address,
+             token_address = EXCLUDED.token_address,
+             contract_address = EXCLUDED.contract_address,
+             log_index = EXCLUDED.log_index,
+             transaction_index = EXCLUDED.transaction_index,
+             proposals_count = EXCLUDED.proposals_count,
+             votes_count = EXCLUDED.votes_count,
+             votes_with_params_count = EXCLUDED.votes_with_params_count,
+             votes_without_params_count = EXCLUDED.votes_without_params_count,
+             votes_weight_for_sum = EXCLUDED.votes_weight_for_sum,
+             votes_weight_against_sum = EXCLUDED.votes_weight_against_sum,
+             votes_weight_abstain_sum = EXCLUDED.votes_weight_abstain_sum,
+             power_sum = EXCLUDED.power_sum,
+             member_count = EXCLUDED.member_count",
+    )
+    .bind(&row.id)
+    .bind(&row.contract_set_id)
+    .bind(row.chain_id)
+    .bind(&row.dao_code)
+    .bind(&row.governor_address)
+    .bind(&token_address)
+    .bind(&row.contract_address)
+    .bind(optional_u64_to_i32(row.log_index, "data_metric.log_index")?)
+    .bind(optional_u64_to_i32(
+        row.transaction_index,
+        "data_metric.transaction_index",
+    )?)
+    .bind(optional_i64_to_i32(
+        row.proposals_count,
+        "data_metric.proposals_count",
+    )?)
+    .bind(optional_i64_to_i32(
+        row.votes_count,
+        "data_metric.votes_count",
+    )?)
+    .bind(optional_i64_to_i32(
+        row.votes_with_params_count,
+        "data_metric.votes_with_params_count",
+    )?)
+    .bind(optional_i64_to_i32(
+        row.votes_without_params_count,
+        "data_metric.votes_without_params_count",
+    )?)
+    .bind(&row.votes_weight_for_sum)
+    .bind(&row.votes_weight_against_sum)
+    .bind(&row.votes_weight_abstain_sum)
+    .bind(&power_sum)
+    .bind(member_count)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn read_global_data_metric_snapshot(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &DataMetricWrite,
+) -> Result<DataMetricSnapshot, PostgresIndexerRunnerStoreError> {
+    let snapshot = sqlx::query(
+        "SELECT token_address, power_sum::TEXT AS power_sum, member_count
+         FROM data_metric
+         WHERE id = $1 AND contract_set_id = $2 AND chain_id = $3 AND governor_address = $4 AND dao_code IS NOT DISTINCT FROM $5",
+    )
+    .bind(data_metric_id(
+        row.chain_id,
+        &row.governor_address,
+        &row.dao_code,
+    ))
+    .bind(&row.contract_set_id)
+    .bind(row.chain_id)
+    .bind(&row.governor_address)
+    .bind(&row.dao_code)
+    .fetch_optional(&mut **transaction)
+    .await?;
+
+    Ok(snapshot
+        .map(|snapshot| DataMetricSnapshot {
+            token_address: snapshot.get("token_address"),
+            power_sum: snapshot.get("power_sum"),
+            member_count: snapshot.get("member_count"),
+        })
+        .unwrap_or_default())
+}
+
 async fn refresh_vote_data_metric(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[ContributorVoteSignalWrite],
@@ -909,12 +1350,12 @@ async fn refresh_vote_data_metric(
 
     sqlx::query(
         "INSERT INTO data_metric (
-            id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
+            id, contract_set_id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
             votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
             votes_weight_abstain_sum
          )
          SELECT
-            $1, $2, $3, $4,
+            $1, $2, $3, $4, $5,
             count(*)::INTEGER,
             count(*) FILTER (WHERE type = 'vote-cast-with-params')::INTEGER,
             count(*) FILTER (WHERE type = 'vote-cast-without-params')::INTEGER,
@@ -922,8 +1363,8 @@ async fn refresh_vote_data_metric(
             COALESCE(sum(CASE WHEN support = 0 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0),
             COALESCE(sum(CASE WHEN support = 2 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0)
          FROM vote_cast_group
-         WHERE chain_id = $2 AND governor_address = $4 AND dao_code = $3
-         ON CONFLICT ON CONSTRAINT data_metric_lookup_unique DO UPDATE
+         WHERE contract_set_id = $2 AND chain_id = $3 AND governor_address = $5 AND dao_code = $4
+         ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET votes_count = EXCLUDED.votes_count,
              votes_with_params_count = EXCLUDED.votes_with_params_count,
              votes_without_params_count = EXCLUDED.votes_without_params_count,
@@ -932,9 +1373,61 @@ async fn refresh_vote_data_metric(
              votes_weight_abstain_sum = EXCLUDED.votes_weight_abstain_sum",
     )
     .bind(metric_id)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn refresh_proposal_data_metric(
+    transaction: &mut Transaction<'_, Postgres>,
+    batch: &ProposalProjectionBatch,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let scope = batch
+        .proposals
+        .first()
+        .map(|row| {
+            (
+                row.contract_set_id.as_str(),
+                row.chain_id,
+                row.dao_code.as_str(),
+                row.governor_address.as_str(),
+            )
+        })
+        .or_else(|| {
+            batch.data_metrics.first().map(|row| {
+                (
+                    row.contract_set_id.as_str(),
+                    row.chain_id,
+                    row.dao_code.as_str(),
+                    row.governor_address.as_str(),
+                )
+            })
+        });
+    let Some((contract_set_id, chain_id, dao_code, governor_address)) = scope else {
+        return Ok(());
+    };
+    let metric_id = data_metric_id(chain_id, governor_address, dao_code);
+
+    sqlx::query(
+        "INSERT INTO data_metric (
+            id, contract_set_id, chain_id, dao_code, governor_address, proposals_count
+         )
+         SELECT $1, $2, $3, $4, $5, count(*)::INTEGER
+         FROM proposal
+         WHERE chain_id = $3 AND governor_address = $5 AND dao_code = $4
+         ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
+         SET proposals_count = EXCLUDED.proposals_count",
+    )
+    .bind(metric_id)
+    .bind(contract_set_id)
+    .bind(chain_id)
+    .bind(dao_code)
+    .bind(governor_address)
     .execute(&mut **transaction)
     .await?;
 
@@ -947,17 +1440,18 @@ async fn insert_delegate_changed(
 ) -> Result<bool, PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "INSERT INTO delegate_changed (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, delegator, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
-            $13::NUMERIC(78, 0), $14
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::NUMERIC(78, 0),
+            $14::NUMERIC(78, 0), $15
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -992,17 +1486,18 @@ async fn insert_delegate_votes_changed(
 ) -> Result<bool, PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "INSERT INTO delegate_votes_changed (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, delegate, previous_votes, new_votes, block_number,
             block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0), $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0), $12::NUMERIC(78, 0),
+            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -1037,17 +1532,18 @@ async fn insert_token_transfer(
 ) -> Result<bool, PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "INSERT INTO token_transfer (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, \"from\", \"to\", value, standard, block_number,
             block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0), $12,
-            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0), $13,
+            $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -1083,23 +1579,24 @@ async fn upsert_delegate_rolling(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO delegate_rolling (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, delegator, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash, from_previous_votes, from_new_votes,
             to_previous_votes, to_new_votes
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
-            $13::NUMERIC(78, 0), $14, $15::NUMERIC(78, 0), $16::NUMERIC(78, 0),
-            $17::NUMERIC(78, 0), $18::NUMERIC(78, 0)
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::NUMERIC(78, 0),
+            $14::NUMERIC(78, 0), $15, $16::NUMERIC(78, 0), $17::NUMERIC(78, 0),
+            $18::NUMERIC(78, 0), $19::NUMERIC(78, 0)
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET from_previous_votes = COALESCE(EXCLUDED.from_previous_votes, delegate_rolling.from_previous_votes),
              from_new_votes = COALESCE(EXCLUDED.from_new_votes, delegate_rolling.from_new_votes),
              to_previous_votes = COALESCE(EXCLUDED.to_previous_votes, delegate_rolling.to_previous_votes),
              to_new_votes = COALESCE(EXCLUDED.to_new_votes, delegate_rolling.to_new_votes)",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -1134,32 +1631,37 @@ async fn insert_vote_power_checkpoint(
     row: &DelegateVotesChangedWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let delta = signed_decimal_delta(transaction, &row.new_votes, &row.previous_votes).await?;
-    let rollings = transaction_rollings(transaction, &row.common.transaction_hash).await?;
-    let transfers_count: i64 =
-        sqlx::query("SELECT count(*)::BIGINT FROM token_transfer WHERE transaction_hash = $1")
-            .bind(&row.common.transaction_hash)
-            .fetch_one(&mut **transaction)
-            .await?
-            .get(0);
+    let rollings = transaction_rollings(transaction, &row.common).await?;
+    let transfers_count: i64 = sqlx::query(
+        "SELECT count(*)::BIGINT
+             FROM token_transfer
+             WHERE contract_set_id = $1 AND transaction_hash = $2",
+    )
+    .bind(&row.common.contract_set_id)
+    .bind(&row.common.transaction_hash)
+    .fetch_one(&mut **transaction)
+    .await?
+    .get(0);
     let rolling_match =
         find_rolling_match_from_rows(&rollings, &row.delegate, &delta, row.common.log_index);
     let cause = vote_power_checkpoint_cause(!rollings.is_empty(), transfers_count > 0);
 
     sqlx::query(
         "INSERT INTO vote_power_checkpoint (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, account, clock_mode, timepoint, previous_power,
             new_power, delta, source, cause, delegator, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, 'blocknumber', $10::NUMERIC(78, 0),
-            $11::NUMERIC(78, 0), $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), 'event',
-            $14, $15, $16, $17, $18::NUMERIC(78, 0), $19::NUMERIC(78, 0), $20
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'blocknumber', $11::NUMERIC(78, 0),
+            $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), 'event',
+            $15, $16, $17, $18, $19::NUMERIC(78, 0), $20::NUMERIC(78, 0), $21
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
     .bind(&row.id)
+    .bind(&row.common.contract_set_id)
     .bind(row.common.chain_id)
     .bind(&row.common.dao_code)
     .bind(&row.common.governor_address)
@@ -1256,7 +1758,7 @@ async fn apply_delegate_changed_operation(
     if !is_zero_address(to_delegate) {
         ensure_contributor(transaction, to_delegate, common).await?;
     }
-    let previous_mapping = read_delegate_mapping(transaction, delegator).await?;
+    let previous_mapping = read_delegate_mapping(transaction, common, delegator).await?;
     let is_noop = previous_mapping
         .as_ref()
         .is_some_and(|mapping| mapping.to == to_delegate && from_delegate == to_delegate);
@@ -1286,8 +1788,9 @@ async fn apply_delegate_changed_operation(
             },
         )
         .await?;
-        sqlx::query("DELETE FROM delegate_mapping WHERE id = $1")
-            .bind(delegator)
+        sqlx::query("DELETE FROM delegate_mapping WHERE contract_set_id = $1 AND id = $2")
+            .bind(&common.contract_set_id)
+            .bind(delegate_mapping_ref(common, delegator))
             .execute(&mut **transaction)
             .await?;
     }
@@ -1310,7 +1813,7 @@ async fn apply_delegate_votes_changed_operation(
     new_votes: &str,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let delta = signed_decimal_delta(transaction, new_votes, previous_votes).await?;
-    let rollings = transaction_rollings(transaction, &common.transaction_hash).await?;
+    let rollings = transaction_rollings(transaction, common).await?;
     let Some(rolling_match) =
         find_rolling_match_from_rows(&rollings, delegate, &delta, common.log_index)
     else {
@@ -1323,11 +1826,12 @@ async fn apply_delegate_votes_changed_operation(
                 "UPDATE delegate_rolling
                  SET from_previous_votes = $2::NUMERIC(78, 0),
                      from_new_votes = $3::NUMERIC(78, 0)
-                 WHERE id = $1",
+                 WHERE contract_set_id = $4 AND id = $1",
             )
             .bind(&rolling_match.id)
             .bind(previous_votes)
             .bind(new_votes)
+            .bind(&common.contract_set_id)
             .execute(&mut **transaction)
             .await?;
             apply_delegate_delta(
@@ -1344,11 +1848,12 @@ async fn apply_delegate_votes_changed_operation(
                 "UPDATE delegate_rolling
                  SET to_previous_votes = $2::NUMERIC(78, 0),
                      to_new_votes = $3::NUMERIC(78, 0)
-                 WHERE id = $1",
+                 WHERE contract_set_id = $4 AND id = $1",
             )
             .bind(&rolling_match.id)
             .bind(previous_votes)
             .bind(new_votes)
+            .bind(&common.contract_set_id)
             .execute(&mut **transaction)
             .await?;
             apply_delegate_delta(
@@ -1372,7 +1877,7 @@ async fn apply_transfer_operation(
     standard: GovernanceTokenStandard,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let value = transfer_units(value, standard);
-    if let Some(mapping) = read_delegate_mapping(transaction, from).await? {
+    if let Some(mapping) = read_delegate_mapping(transaction, common, from).await? {
         apply_delegate_delta(
             transaction,
             common,
@@ -1382,7 +1887,7 @@ async fn apply_transfer_operation(
         )
         .await?;
     }
-    if let Some(mapping) = read_delegate_mapping(transaction, to).await? {
+    if let Some(mapping) = read_delegate_mapping(transaction, common, to).await? {
         apply_delegate_delta(transaction, common, &mapping.from, &mapping.to, &value).await?;
     }
 
@@ -1400,7 +1905,7 @@ async fn apply_delegate_delta(
         return Ok(());
     }
 
-    let previous_mapping_power = read_delegate_mapping(transaction, from_delegate)
+    let previous_mapping_power = read_delegate_mapping(transaction, common, from_delegate)
         .await?
         .filter(|mapping| mapping.to == to_delegate)
         .map(|mapping| mapping.power)
@@ -1410,13 +1915,14 @@ async fn apply_delegate_delta(
 
     sqlx::query(
         r#"UPDATE delegate_mapping
-           SET chain_id = $2, dao_code = $3, governor_address = $4, token_address = $5,
-               contract_address = $6, log_index = $7, transaction_index = $8,
-               power = $9::NUMERIC(78, 0), block_number = $10::NUMERIC(78, 0),
-               block_timestamp = $11::NUMERIC(78, 0), transaction_hash = $12
-           WHERE id = $1 AND "to" = $13"#,
+           SET chain_id = $3, dao_code = $4, governor_address = $5, token_address = $6,
+               contract_address = $7, log_index = $8, transaction_index = $9,
+               power = $10::NUMERIC(78, 0), block_number = $11::NUMERIC(78, 0),
+               block_timestamp = $12::NUMERIC(78, 0), transaction_hash = $13
+           WHERE contract_set_id = $1 AND id = $2 AND "to" = $14"#,
     )
-    .bind(from_delegate)
+    .bind(&common.contract_set_id)
+    .bind(delegate_mapping_ref(common, from_delegate))
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1474,9 +1980,10 @@ async fn upsert_delegate_snapshot(
     if is_zero_address(to_delegate) {
         return Ok(());
     }
-    let id = delegate_ref(from_delegate, to_delegate);
+    let id = delegate_ref(common, from_delegate, to_delegate);
     if is_current && !is_nonzero_decimal(power) {
-        sqlx::query("DELETE FROM delegate WHERE id = $1")
+        sqlx::query("DELETE FROM delegate WHERE contract_set_id = $1 AND id = $2")
+            .bind(&common.contract_set_id)
             .bind(&id)
             .execute(&mut **transaction)
             .await?;
@@ -1485,15 +1992,15 @@ async fn upsert_delegate_snapshot(
 
     sqlx::query(
         "INSERT INTO delegate (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash, is_current, power
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13, $14, $15::NUMERIC(78, 0)
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
+            $13::NUMERIC(78, 0), $14, $15, $16::NUMERIC(78, 0)
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET chain_id = EXCLUDED.chain_id,
              dao_code = EXCLUDED.dao_code,
              governor_address = EXCLUDED.governor_address,
@@ -1508,6 +2015,7 @@ async fn upsert_delegate_snapshot(
              power = EXCLUDED.power",
     )
     .bind(id)
+    .bind(&common.contract_set_id)
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1543,15 +2051,15 @@ async fn upsert_delegate_mapping(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         r#"INSERT INTO delegate_mapping (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, "from", "to", power, block_number, block_timestamp,
             transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
+            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET chain_id = EXCLUDED.chain_id,
              dao_code = EXCLUDED.dao_code,
              governor_address = EXCLUDED.governor_address,
@@ -1566,7 +2074,8 @@ async fn upsert_delegate_mapping(
              block_timestamp = EXCLUDED.block_timestamp,
              transaction_hash = EXCLUDED.transaction_hash"#,
     )
-    .bind(from)
+    .bind(delegate_mapping_ref(common, from))
+    .bind(&common.contract_set_id)
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1606,15 +2115,16 @@ async fn apply_delegate_count_delta(
 
     sqlx::query(
         "UPDATE contributor
-         SET chain_id = $2, dao_code = $3, governor_address = $4, token_address = $5,
-             contract_address = $6, log_index = $7, transaction_index = $8,
-             block_number = $9::NUMERIC(78, 0), block_timestamp = $10::NUMERIC(78, 0),
-             transaction_hash = $11,
-             delegates_count_all = GREATEST(delegates_count_all + $12, 0),
-             delegates_count_effective = GREATEST(delegates_count_effective + $13, 0)
-         WHERE id = $1",
+         SET chain_id = $3, dao_code = $4, governor_address = $5, token_address = $6,
+             contract_address = $7, log_index = $8, transaction_index = $9,
+             block_number = $10::NUMERIC(78, 0), block_timestamp = $11::NUMERIC(78, 0),
+             transaction_hash = $12,
+             delegates_count_all = GREATEST(delegates_count_all + $13, 0),
+             delegates_count_effective = GREATEST(delegates_count_effective + $14, 0)
+         WHERE contract_set_id = $1 AND id = $2",
     )
-    .bind(delegate)
+    .bind(&common.contract_set_id)
+    .bind(contributor_ref(delegate))
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1652,17 +2162,18 @@ async fn ensure_contributor(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "INSERT INTO contributor (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, block_number, block_timestamp, transaction_hash,
             power, balance, delegates_count_all, delegates_count_effective
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9::NUMERIC(78, 0), $10::NUMERIC(78, 0),
-            $11, 0::NUMERIC(78, 0), NULL, 0, 0
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0), $11::NUMERIC(78, 0),
+            $12, 0::NUMERIC(78, 0), NULL, 0, 0
          )
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (contract_set_id, id) DO NOTHING",
     )
-    .bind(account)
+    .bind(contributor_ref(account))
+    .bind(&common.contract_set_id)
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1695,10 +2206,10 @@ async fn increment_member_count(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO data_metric (
-            id, chain_id, dao_code, governor_address, token_address, member_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, member_count
          )
-         VALUES ($1, $2, $3, $4, $5, 1)
-         ON CONFLICT ON CONSTRAINT data_metric_lookup_unique DO UPDATE
+         VALUES ($1, $2, $3, $4, $5, $6, 1)
+         ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              member_count = COALESCE(data_metric.member_count, 0) + 1",
     )
@@ -1707,6 +2218,7 @@ async fn increment_member_count(
         &common.governor_address,
         &common.dao_code,
     ))
+    .bind(&common.contract_set_id)
     .bind(common.chain_id)
     .bind(&common.dao_code)
     .bind(&common.governor_address)
@@ -1723,8 +2235,13 @@ async fn upsert_onchain_refresh_task(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let status = &row.status;
     let task_id = format!(
-        "{}:{}:{}:{}",
-        status.chain_id, status.governor, status.governor_token, status.account
+        "{}:{}:{}:{}:{}:{}",
+        status.contract_set_id,
+        status.dao_code,
+        status.chain_id,
+        status.governor,
+        status.governor_token,
+        status.account
     );
     let reason = if status.reason.is_empty() {
         "token-activity".to_owned()
@@ -1734,15 +2251,15 @@ async fn upsert_onchain_refresh_task(
 
     sqlx::query(
         "INSERT INTO onchain_refresh_task (
-            id, chain_id, dao_code, governor_address, token_address, account, refresh_balance,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account, refresh_balance,
             refresh_power, reason, first_seen_block_number, last_seen_block_number,
             last_seen_block_timestamp, last_seen_transaction_hash, status, attempts,
             next_run_at, pending_after_lock, created_at, updated_at
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0), $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13, 'pending', 0, 0::NUMERIC(78, 0), false,
-            $11::NUMERIC(78, 0), $11::NUMERIC(78, 0)
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0), $12::NUMERIC(78, 0),
+            $13::NUMERIC(78, 0), $14, 'pending', 0, 0::NUMERIC(78, 0), false,
+            $12::NUMERIC(78, 0), $12::NUMERIC(78, 0)
          )
          ON CONFLICT ON CONSTRAINT onchain_refresh_task_account_unique DO UPDATE
          SET refresh_balance = onchain_refresh_task.refresh_balance OR EXCLUDED.refresh_balance,
@@ -1798,6 +2315,7 @@ async fn upsert_onchain_refresh_task(
              updated_at = EXCLUDED.updated_at",
     )
     .bind(task_id)
+    .bind(&status.contract_set_id)
     .bind(status.chain_id)
     .bind(&status.dao_code)
     .bind(&status.governor)
@@ -1836,9 +2354,33 @@ async fn upsert_timelock_operation(
             $25::NUMERIC(78, 0), $26, $27::NUMERIC(78, 0), $28::NUMERIC(78, 0), $29
          )
          ON CONFLICT (id) DO UPDATE
-         SET predecessor = COALESCE(EXCLUDED.predecessor, timelock_operation.predecessor),
+         SET proposal_ref = COALESCE(timelock_operation.proposal_ref, EXCLUDED.proposal_ref),
+             proposal_id = COALESCE(timelock_operation.proposal_id, EXCLUDED.proposal_id),
+             predecessor = COALESCE(EXCLUDED.predecessor, timelock_operation.predecessor),
              salt = COALESCE(EXCLUDED.salt, timelock_operation.salt),
-             state = EXCLUDED.state,
+             state = CASE
+                 WHEN CASE EXCLUDED.state
+                         WHEN 'Cancelled' THEN 4
+                         WHEN 'Done' THEN 3
+                         WHEN 'Executed' THEN 3
+                         WHEN 'Ready' THEN 2
+                         WHEN 'Waiting' THEN 1
+                         WHEN 'Queued' THEN 1
+                         WHEN 'Unset' THEN 0
+                         ELSE 0
+                      END >= CASE timelock_operation.state
+                         WHEN 'Cancelled' THEN 4
+                         WHEN 'Done' THEN 3
+                         WHEN 'Executed' THEN 3
+                         WHEN 'Ready' THEN 2
+                         WHEN 'Waiting' THEN 1
+                         WHEN 'Queued' THEN 1
+                         WHEN 'Unset' THEN 0
+                         ELSE 0
+                      END
+                 THEN EXCLUDED.state
+                 ELSE timelock_operation.state
+             END,
              call_count = COALESCE(EXCLUDED.call_count, timelock_operation.call_count),
              executed_call_count = COALESCE(EXCLUDED.executed_call_count, timelock_operation.executed_call_count),
              delay_seconds = COALESCE(EXCLUDED.delay_seconds, timelock_operation.delay_seconds),
@@ -1915,12 +2457,30 @@ async fn upsert_timelock_call(
             $23::NUMERIC(78, 0), $24, $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27
          )
          ON CONFLICT (id) DO UPDATE
-         SET target = EXCLUDED.target,
+         SET proposal_ref = COALESCE(timelock_call.proposal_ref, EXCLUDED.proposal_ref),
+             proposal_id = COALESCE(timelock_call.proposal_id, EXCLUDED.proposal_id),
+             proposal_action_id = COALESCE(timelock_call.proposal_action_id, EXCLUDED.proposal_action_id),
+             proposal_action_index = COALESCE(timelock_call.proposal_action_index, EXCLUDED.proposal_action_index),
+             target = EXCLUDED.target,
              value = EXCLUDED.value,
              data = EXCLUDED.data,
              predecessor = COALESCE(EXCLUDED.predecessor, timelock_call.predecessor),
              delay_seconds = COALESCE(EXCLUDED.delay_seconds, timelock_call.delay_seconds),
-             state = EXCLUDED.state,
+             state = CASE
+                 WHEN CASE EXCLUDED.state
+                         WHEN 'Done' THEN 2
+                         WHEN 'Executed' THEN 2
+                         WHEN 'Scheduled' THEN 1
+                         ELSE 0
+                      END >= CASE timelock_call.state
+                         WHEN 'Done' THEN 2
+                         WHEN 'Executed' THEN 2
+                         WHEN 'Scheduled' THEN 1
+                         ELSE 0
+                      END
+                 THEN EXCLUDED.state
+                 ELSE timelock_call.state
+             END,
              scheduled_block_number = COALESCE(EXCLUDED.scheduled_block_number, timelock_call.scheduled_block_number),
              scheduled_block_timestamp = COALESCE(EXCLUDED.scheduled_block_timestamp, timelock_call.scheduled_block_timestamp),
              scheduled_transaction_hash = COALESCE(EXCLUDED.scheduled_transaction_hash, timelock_call.scheduled_transaction_hash),
@@ -2113,6 +2673,10 @@ fn required_numeric<'a>(
         .ok_or_else(|| PostgresIndexerRunnerStoreError::new(format!("{field} is required")))
 }
 
+fn normalize_identifier(value: &str) -> String {
+    value.to_ascii_lowercase()
+}
+
 #[derive(Clone, Debug)]
 struct DelegateMappingSnapshot {
     from: String,
@@ -2148,14 +2712,16 @@ struct DelegateRollingMatch {
 
 async fn read_delegate_mapping(
     transaction: &mut Transaction<'_, Postgres>,
+    common: &TokenEventCommon,
     from: &str,
 ) -> Result<Option<DelegateMappingSnapshot>, PostgresIndexerRunnerStoreError> {
     let row = sqlx::query(
         r#"SELECT "from", "to", power::TEXT AS power
            FROM delegate_mapping
-           WHERE id = $1"#,
+           WHERE contract_set_id = $1 AND id = $2"#,
     )
-    .bind(from)
+    .bind(&common.contract_set_id)
+    .bind(delegate_mapping_ref(common, from))
     .fetch_optional(&mut **transaction)
     .await?;
 
@@ -2168,18 +2734,20 @@ async fn read_delegate_mapping(
 
 async fn transaction_rollings(
     transaction: &mut Transaction<'_, Postgres>,
-    transaction_hash: &str,
+    common: &TokenEventCommon,
 ) -> Result<Vec<DelegateRollingSnapshot>, PostgresIndexerRunnerStoreError> {
     let rows = sqlx::query(
         "SELECT id, log_index, delegator, from_delegate, to_delegate,
                 from_new_votes::TEXT AS from_new_votes,
                 to_new_votes::TEXT AS to_new_votes
          FROM delegate_rolling
-         WHERE transaction_hash = $1
+         WHERE contract_set_id = $1
+           AND transaction_hash = $2
            AND from_delegate <> to_delegate
          ORDER BY log_index DESC",
     )
-    .bind(transaction_hash)
+    .bind(&common.contract_set_id)
+    .bind(&common.transaction_hash)
     .fetch_all(&mut **transaction)
     .await?;
 
@@ -2283,11 +2851,21 @@ fn vote_power_checkpoint_cause(has_delegate_change: bool, has_transfer: bool) ->
     }
 }
 
-fn token_operation_id(operation: &TokenProjectionOperation) -> &str {
+fn token_operation_key(operation: &TokenProjectionOperation) -> (&str, &str) {
     match operation {
-        TokenProjectionOperation::DelegateChanged { id, .. }
-        | TokenProjectionOperation::DelegateVotesChanged { id, .. }
-        | TokenProjectionOperation::Transfer { id, .. } => id,
+        TokenProjectionOperation::DelegateChanged { id, common, .. }
+        | TokenProjectionOperation::DelegateVotesChanged { id, common, .. }
+        | TokenProjectionOperation::Transfer { id, common, .. } => {
+            (common.contract_set_id.as_str(), id.as_str())
+        }
+    }
+}
+
+fn token_operation_common(operation: &TokenProjectionOperation) -> &TokenEventCommon {
+    match operation {
+        TokenProjectionOperation::DelegateChanged { common, .. }
+        | TokenProjectionOperation::DelegateVotesChanged { common, .. }
+        | TokenProjectionOperation::Transfer { common, .. } => common,
     }
 }
 
@@ -2298,8 +2876,26 @@ fn transfer_units(value: &str, standard: GovernanceTokenStandard) -> String {
     }
 }
 
-fn delegate_ref(from_delegate: &str, to_delegate: &str) -> String {
-    format!("{from_delegate}_{to_delegate}")
+fn contributor_ref(account: &str) -> String {
+    normalize_scope_value(account)
+}
+
+fn delegate_mapping_ref(common: &TokenEventCommon, from: &str) -> String {
+    let _ = common;
+    normalize_scope_value(from)
+}
+
+fn delegate_ref(common: &TokenEventCommon, from_delegate: &str, to_delegate: &str) -> String {
+    let _ = common;
+    format!(
+        "{}_{}",
+        normalize_scope_value(from_delegate),
+        normalize_scope_value(to_delegate)
+    )
+}
+
+fn normalize_scope_value(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
 }
 
 fn is_zero_address(value: &str) -> bool {
@@ -2318,6 +2914,20 @@ fn i64_to_i32(value: i64, field: &str) -> Result<i32, PostgresIndexerRunnerStore
     })
 }
 
+fn optional_i64_to_i32(
+    value: Option<i64>,
+    field: &str,
+) -> Result<Option<i32>, PostgresIndexerRunnerStoreError> {
+    value.map(|value| i64_to_i32(value, field)).transpose()
+}
+
+fn optional_u64_to_i32(
+    value: Option<u64>,
+    field: &str,
+) -> Result<Option<i32>, PostgresIndexerRunnerStoreError> {
+    value.map(|value| u64_to_i32(value, field)).transpose()
+}
+
 fn usize_to_i32(value: usize, field: &str) -> Result<i32, PostgresIndexerRunnerStoreError> {
     i32::try_from(value).map_err(|_| {
         PostgresIndexerRunnerStoreError::new(format!("{field} value {value} exceeds INTEGER"))
@@ -2329,5 +2939,6 @@ fn u64_to_string(value: u64) -> String {
 }
 
 fn data_metric_id(chain_id: i32, governor_address: &str, dao_code: &str) -> String {
-    format!("{chain_id}:{governor_address}:{dao_code}")
+    let _ = (chain_id, governor_address, dao_code);
+    "global".to_owned()
 }

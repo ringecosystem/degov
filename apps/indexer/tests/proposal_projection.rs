@@ -34,13 +34,32 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
     assert_eq!(batch.proposal_created.len(), 1);
     assert_eq!(batch.proposals.len(), 1);
     assert_eq!(batch.proposal_actions.len(), 2);
-    assert_eq!(batch.proposal_state_epochs.len(), 1);
+    assert_eq!(batch.proposal_state_epochs.len(), 2);
+    assert_eq!(batch.data_metrics.len(), 1);
+    let metric = &batch.data_metrics[0];
+    assert_eq!(metric.id, "evm:1:10:0xtx10:2:7");
+    assert_eq!(metric.chain_id, 1);
+    assert_eq!(metric.dao_code, "unit-dao");
+    assert_eq!(
+        metric.governor_address,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
+    assert_eq!(
+        metric.contract_address.as_deref(),
+        Some("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    );
+    assert_eq!(metric.log_index, Some(7));
+    assert_eq!(metric.transaction_index, Some(2));
+    assert_eq!(metric.proposals_count, Some(1));
+    assert_eq!(metric.votes_count, Some(0));
+    assert_eq!(metric.votes_with_params_count, Some(0));
+    assert_eq!(metric.votes_without_params_count, Some(0));
+    assert_eq!(metric.votes_weight_for_sum.as_deref(), Some("0"));
+    assert_eq!(metric.votes_weight_against_sum.as_deref(), Some("0"));
+    assert_eq!(metric.votes_weight_abstain_sum.as_deref(), Some("0"));
 
     let proposal = &batch.proposals[0];
-    assert_eq!(
-        proposal.id,
-        "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42"
-    );
+    assert_eq!(proposal.id, "evm:1:10:0xtx10:2:7");
     assert_eq!(proposal.proposal_id, "42");
     assert_eq!(
         proposal.proposer,
@@ -55,35 +74,144 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
     assert_eq!(proposal.current_state.as_deref(), Some("Pending"));
     assert_eq!(proposal.proposal_snapshot.as_deref(), Some("20"));
     assert_eq!(proposal.proposal_deadline.as_deref(), Some("40"));
-    assert_eq!(proposal.block_timestamp, Some("1700000000".to_owned()));
+    assert_eq!(proposal.block_timestamp, Some("1700000000010".to_owned()));
 
     assert_eq!(batch.proposal_actions[0].action_index, 0);
+    assert_eq!(
+        batch.proposal_actions[0].proposal_ref,
+        "evm:1:10:0xtx10:2:7"
+    );
+    assert_eq!(batch.proposal_actions[0].proposal_id, "evm:1:10:0xtx10:2:7");
     assert_eq!(
         batch.proposal_actions[0].target,
         "0xcccccccccccccccccccccccccccccccccccccccc"
     );
     assert_eq!(batch.proposal_actions[1].action_index, 1);
-    assert_eq!(batch.proposal_state_epochs[0].state, "Pending");
+    let states = batch
+        .proposal_state_epochs
+        .iter()
+        .map(|epoch| epoch.state.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(states, vec!["Pending", "Active"]);
 
     let methods = batch
         .chain_read_plan
         .reads
         .iter()
         .map(|read| {
-            assert_eq!(read.requirement, ReadRequirement::Required);
-            assert_eq!(read.metadata.proposal_ids, ["42".to_owned()].into());
-            assert_eq!(read.activity_blocks, vec![10]);
+            if matches!(
+                read.key.method,
+                ChainReadMethod::ProposalSnapshot
+                    | ChainReadMethod::ProposalDeadline
+                    | ChainReadMethod::State
+            ) {
+                assert_eq!(read.requirement, ReadRequirement::Required);
+                assert_eq!(read.metadata.proposal_ids, ["42".to_owned()].into());
+                assert_eq!(read.activity_blocks, vec![10]);
+            } else {
+                assert_eq!(read.requirement, ReadRequirement::Optional);
+            }
             read.key.method
         })
         .collect::<Vec<_>>();
     assert_eq!(
         methods,
         vec![
+            ChainReadMethod::Decimals,
+            ChainReadMethod::ClockMode,
             ChainReadMethod::ProposalSnapshot,
             ChainReadMethod::ProposalDeadline,
             ChainReadMethod::State,
+            ChainReadMethod::Quorum,
         ]
     );
+}
+
+#[test]
+fn test_project_proposal_created_uses_raw_log_id_and_timestamp_clock_enrichment() {
+    let batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: production_log(
+                "0003952205-5710e-000000",
+                3_952_205,
+                0,
+                0,
+                1_722_633_201_000,
+            ),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb"
+                    .to_owned(),
+                proposer: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_owned(),
+                targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+                values: vec!["0".to_owned()],
+                signatures: vec!["".to_owned()],
+                calldatas: vec!["0x".to_owned()],
+                vote_start: "1722633201".to_owned(),
+                vote_end: "1723238001".to_owned(),
+                description: "Production shaped proposal".to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+
+    let proposal = &batch.proposals[0];
+    assert_eq!(proposal.id, "0003952205-5710e-000000");
+    assert_eq!(
+        proposal.proposal_id,
+        "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb"
+    );
+    assert_eq!(proposal.clock_mode, "timestamp");
+    assert_eq!(proposal.vote_start_timestamp, "1722633201000");
+    assert_eq!(proposal.vote_end_timestamp, "1723238001000");
+    assert_eq!(proposal.block_timestamp.as_deref(), Some("1722633201000"));
+    assert_eq!(proposal.proposal_snapshot.as_deref(), Some("1722633201"));
+    assert_eq!(proposal.proposal_deadline.as_deref(), Some("1723238001"));
+    assert_eq!(proposal.proposal_eta.as_deref(), Some("0"));
+    assert_eq!(proposal.quorum, "0");
+    assert_eq!(proposal.decimals, "0");
+
+    let action = &batch.proposal_actions[0];
+    assert_eq!(action.id, "0003952205-5710e-000000:action:0");
+    assert_eq!(action.proposal_ref, "0003952205-5710e-000000");
+    assert_eq!(action.proposal_id, "0003952205-5710e-000000");
+
+    let pending = batch
+        .proposal_state_epochs
+        .iter()
+        .find(|epoch| epoch.state == "Pending")
+        .expect("pending epoch");
+    assert_eq!(pending.id, "0003952205-5710e-000000:state:pending");
+    assert_eq!(pending.proposal_ref, "0003952205-5710e-000000");
+    assert_eq!(pending.proposal_id, "0003952205-5710e-000000");
+    assert_eq!(pending.start_timepoint.as_deref(), Some("1722633201"));
+    assert_eq!(pending.end_timepoint.as_deref(), Some("1722633201"));
+    assert_eq!(pending.start_block_number.as_deref(), Some("3952205"));
+    assert_eq!(
+        pending.start_block_timestamp.as_deref(),
+        Some("1722633201000")
+    );
+    assert_eq!(
+        pending.end_block_timestamp.as_deref(),
+        Some("1722633201000")
+    );
+
+    let active = batch
+        .proposal_state_epochs
+        .iter()
+        .find(|epoch| epoch.state == "Active")
+        .expect("active epoch");
+    assert_eq!(active.id, "0003952205-5710e-000000:state:active");
+    assert_eq!(active.proposal_ref, "0003952205-5710e-000000");
+    assert_eq!(active.proposal_id, "0003952205-5710e-000000");
+    assert_eq!(active.start_timepoint.as_deref(), Some("1722633201"));
+    assert_eq!(active.end_timepoint.as_deref(), Some("1723238001"));
+    assert_eq!(active.start_block_number, None);
+    assert_eq!(
+        active.start_block_timestamp.as_deref(),
+        Some("1722633201000")
+    );
+    assert_eq!(active.end_block_timestamp.as_deref(), Some("1723238001000"));
 }
 
 #[test]
@@ -135,9 +263,21 @@ fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
     assert_eq!(
         states,
         vec![
-            ("42", ProposalStateWriteKind::Queued, "Queued"),
-            ("42", ProposalStateWriteKind::Executed, "Executed"),
-            ("43", ProposalStateWriteKind::Canceled, "Canceled"),
+            (
+                "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42",
+                ProposalStateWriteKind::Queued,
+                "Queued"
+            ),
+            (
+                "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42",
+                ProposalStateWriteKind::Executed,
+                "Executed"
+            ),
+            (
+                "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:43",
+                ProposalStateWriteKind::Canceled,
+                "Canceled"
+            ),
         ]
     );
 
@@ -146,7 +286,10 @@ fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
     assert_eq!(queued.eta_seconds, "1700000400");
 
     let extension = &batch.proposal_deadline_extensions[0];
-    assert_eq!(extension.proposal_id, "42");
+    assert_eq!(
+        extension.proposal_id,
+        "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42"
+    );
     assert_eq!(extension.new_deadline, "55");
 
     assert_eq!(batch.chain_read_plan.metrics.requested_reads, 12);
@@ -204,7 +347,7 @@ fn test_project_proposal_events_replays_idempotently_and_sorts_by_log_position()
     assert_eq!(
         repository
             .proposals()
-            .get("proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42")
+            .get("evm:1:11:0xtx11:0:1")
             .expect("proposal")
             .current_state
             .as_deref(),
@@ -254,7 +397,7 @@ fn test_repository_preserves_lifecycle_metadata_when_identity_arrives_later() {
 
     let proposal = repository
         .proposals()
-        .get("proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42")
+        .get("evm:1:11:0xtx11:0:1")
         .expect("proposal");
 
     assert_eq!(
@@ -491,6 +634,60 @@ fn test_apply_chain_read_execution_report_updates_proposal_reads() {
 }
 
 #[test]
+fn test_apply_chain_read_execution_report_updates_enriched_fields() {
+    let mut batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: production_log(
+                "0003952205-5710e-000000",
+                3_952_205,
+                0,
+                0,
+                1_722_633_201_000,
+            ),
+            event: proposal_created(
+                "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb",
+                "Production shaped proposal",
+            ),
+        }],
+    )
+    .expect("projection succeeds");
+    let report = ChainReadExecutionReport {
+        results: vec![
+            read_result(
+                ChainReadMethod::ClockMode,
+                "",
+                ChainReadValue::String("mode=timestamp".to_owned()),
+            ),
+            read_result(
+                ChainReadMethod::Quorum,
+                "20",
+                ChainReadValue::Integer("24000000000000000000000000".to_owned()),
+            ),
+            ChainReadResult {
+                read_index: 0,
+                key: ChainReadKey {
+                    chain_id: 1,
+                    contract_address: "0x1111111111111111111111111111111111111111".to_owned(),
+                    method: ChainReadMethod::Decimals,
+                    args: vec![],
+                    block_mode: BlockReadMode::Fresh,
+                },
+                value: ChainReadValue::Integer("18".to_owned()),
+            },
+        ],
+        ..ChainReadExecutionReport::default()
+    };
+
+    batch.apply_chain_read_execution_report(&report);
+
+    let proposal = &batch.proposals[0];
+    assert_eq!(proposal.clock_mode, "timestamp");
+    assert_eq!(proposal.quorum, "24000000000000000000000000");
+    assert_eq!(proposal.decimals, "18");
+}
+
+#[test]
 fn test_description_heading_single_newline_and_no_heading() {
     let heading = project_proposal_events(
         &context(),
@@ -517,6 +714,7 @@ fn test_description_heading_single_newline_and_no_heading() {
 
 fn context() -> ProposalProjectionContext {
     ProposalProjectionContext {
+        contract_set_id: "dao=unit-dao|chain=1|governor=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|token=0x1111111111111111111111111111111111111111".to_owned(),
         dao_code: "unit-dao".to_owned(),
         governor_address: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
         contracts: ChainContracts {
@@ -538,6 +736,30 @@ fn log(block_number: u64, transaction_index: u64, log_index: u64) -> NormalizedE
         block_number,
         block_hash: format!("0xblock{block_number}"),
         block_timestamp_ms: Some(1_700_000_000_000 + block_number),
+        transaction_hash: format!("0xtx{block_number}"),
+        transaction_index,
+        log_index,
+        address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+        topics: vec![],
+        data: "0x".to_owned(),
+        removed: false,
+        raw_payload: json!({ "blockNumber": block_number }),
+    }
+}
+
+fn production_log(
+    id: &str,
+    block_number: u64,
+    transaction_index: u64,
+    log_index: u64,
+    block_timestamp_ms: u64,
+) -> NormalizedEvmLog {
+    NormalizedEvmLog {
+        id: id.to_owned(),
+        chain_id: 1,
+        block_number,
+        block_hash: format!("0xblock{block_number}"),
+        block_timestamp_ms: Some(block_timestamp_ms),
         transaction_hash: format!("0xtx{block_number}"),
         transaction_index,
         log_index,

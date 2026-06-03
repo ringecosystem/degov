@@ -12,11 +12,12 @@ use crate::{
     InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
     NormalizedEvmLog, ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionEvent,
     ProposalProjectionRepository, TimelockProjectionBatch, TimelockProjectionContext,
-    TimelockProjectionEvent, TimelockProjectionRepository, TokenProjectionBatch,
-    TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository, VoteProjectionBatch,
-    VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository, decode_dao_log,
-    fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries, plan_next_checkpoint_range,
-    project_proposal_events, project_timelock_events, project_token_events, project_vote_events,
+    TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
+    TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository,
+    VoteProjectionBatch, VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
+    decode_dao_log, fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries,
+    plan_next_checkpoint_range, project_proposal_events,
+    project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
 };
 
 #[derive(Clone, Debug)]
@@ -112,6 +113,15 @@ pub trait IndexerRunnerStore {
     ) -> Result<IndexerCheckpoint, Self::Error>;
 
     fn begin_transaction(&mut self) -> Result<Self::Transaction<'_>, Self::Error>;
+
+    fn timelock_proposal_link_context(
+        &mut self,
+        _context: &TimelockProjectionContext,
+        _events: &[TimelockProjectionEvent],
+        _proposal: Option<&ProposalProjectionBatch>,
+    ) -> Result<TimelockProposalLinkContext, Self::Error> {
+        Ok(TimelockProposalLinkContext::default())
+    }
 }
 
 pub trait IndexerRunnerTransaction {
@@ -195,6 +205,20 @@ where
             .store
             .read_or_create_checkpoint(&self.options.checkpoint_identity, self.options.start_block)
             .map_err(to_checkpoint_error)?;
+        let checkpoint_choice = if checkpoint.next_block > self.options.start_block {
+            "resume"
+        } else {
+            "start"
+        };
+        info!(
+            "Datalens indexer checkpoint selected dao_code={} chain_id={} contract_set_id={} start_block={} next_block={} checkpoint_choice={}",
+            self.options.checkpoint_identity.dao_code,
+            self.options.checkpoint_identity.chain_id,
+            self.options.checkpoint_identity.contract_set_id,
+            self.options.start_block,
+            checkpoint.next_block,
+            checkpoint_choice
+        );
 
         loop {
             if self
@@ -343,7 +367,7 @@ where
     }
 
     fn project_events(
-        &self,
+        &mut self,
         decoded: Vec<(NormalizedEvmLog, DecodedDaoEvent)>,
         range: CheckpointBlockRange,
         target_height: i64,
@@ -398,14 +422,31 @@ where
             .then(|| project_token_events(&token_context, token_events))
             .transpose()
             .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?;
-        let timelock = self
+        let timelock = if let Some(context) = self
             .contexts
             .timelock
             .as_ref()
             .filter(|_| !timelock_events.is_empty())
-            .map(|context| project_timelock_events(context, timelock_events))
-            .transpose()
-            .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?;
+            .cloned()
+        {
+            let mut proposal_links = self
+                .store
+                .timelock_proposal_link_context(&context, &timelock_events, proposal.as_ref())
+                .map_err(|error| IndexerRunnerError::Projection(error.to_string()))?;
+            if let Some(proposal) = &proposal {
+                proposal_links.extend(TimelockProposalLinkContext::from_proposal_batch(proposal));
+            }
+            Some(
+                project_timelock_events_with_proposal_links(
+                    &context,
+                    &proposal_links,
+                    timelock_events,
+                )
+                .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?,
+            )
+        } else {
+            None
+        };
 
         Ok(IndexerProjectionBatch {
             proposal,
@@ -421,20 +462,20 @@ fn page_rows(rows: serde_json::Value) -> Result<Vec<serde_json::Value>, IndexerR
         serde_json::Value::Array(rows) => Ok(rows),
         serde_json::Value::Object(mut object) => {
             let Some(rows) = object.remove("rows") else {
-                return Err(invalid_rows_payload_error(serde_json::Value::Object(object)));
+                return Err(invalid_rows_payload_error(serde_json::Value::Object(
+                    object,
+                )));
             };
 
             match rows {
                 serde_json::Value::Array(rows) => Ok(rows),
-                serde_json::Value::Object(mut rows_object) => {
-                    match rows_object.remove("rows") {
-                        Some(serde_json::Value::Array(rows)) => Ok(rows),
-                        Some(other) => Err(invalid_rows_payload_error(other)),
-                        None => Err(invalid_rows_payload_error(serde_json::Value::Object(
-                            rows_object,
-                        ))),
-                    }
-                }
+                serde_json::Value::Object(mut rows_object) => match rows_object.remove("rows") {
+                    Some(serde_json::Value::Array(rows)) => Ok(rows),
+                    Some(other) => Err(invalid_rows_payload_error(other)),
+                    None => Err(invalid_rows_payload_error(serde_json::Value::Object(
+                        rows_object,
+                    ))),
+                },
                 other => Err(invalid_rows_payload_error(other)),
             }
         }
@@ -590,6 +631,26 @@ impl IndexerRunnerStore for InMemoryIndexerRunnerStore {
             token_repository: None,
             timelock_repository: None,
         })
+    }
+
+    fn timelock_proposal_link_context(
+        &mut self,
+        _context: &TimelockProjectionContext,
+        _events: &[TimelockProjectionEvent],
+        proposal: Option<&ProposalProjectionBatch>,
+    ) -> Result<TimelockProposalLinkContext, Self::Error> {
+        let mut links = TimelockProposalLinkContext::from_proposal_rows(
+            self.proposal_repository.proposals().values(),
+            self.proposal_repository.proposal_actions().values(),
+        );
+        if let Some(proposal) = proposal {
+            links.extend(TimelockProposalLinkContext::from_queued_proposal_rows(
+                proposal.proposal_queued.iter(),
+                self.proposal_repository.proposals().values(),
+                self.proposal_repository.proposal_actions().values(),
+            ));
+        }
+        Ok(links)
     }
 }
 

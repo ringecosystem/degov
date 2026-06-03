@@ -43,12 +43,26 @@ async function writeConfig(degovConfig) {
   await fs.writeFile("public/degov.yml", configCode, "utf-8");
 }
 
+function applyIndexerEndpointOverride(degovConfig) {
+  const endpoint = $.env["DEGOV_CONFIG_INDEXER_ENDPOINT"]?.trim();
+
+  if (!endpoint) {
+    return;
+  }
+
+  degovConfig.indexer = {
+    ...(degovConfig.indexer ?? {}),
+    endpoint,
+  };
+}
+
 async function main() {
   const degovConfigPath = $.env["DEGOV_CONFIG_PATH"] ?? "../../degov.yml";
 
   const content = await fs.readFile(degovConfigPath, "utf-8");
   const degovConfig = YAML.parse(content);
 
+  applyIndexerEndpointOverride(degovConfig);
   extendChainConfig(degovConfig);
 
   await writeConfig(degovConfig);

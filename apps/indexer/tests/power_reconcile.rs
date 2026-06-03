@@ -286,6 +286,7 @@ fn test_plan_power_reconcile_is_fresh_when_processor_is_past_target_height() {
 
 fn context(from_block: u64, to_block: u64, target_height: Option<u64>) -> PowerReconcileContext {
     PowerReconcileContext {
+        contract_set_id: "demo-scope".to_owned(),
         dao_code: "unit-dao".to_owned(),
         chain_id: 1,
         contracts: ChainContracts {

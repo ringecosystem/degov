@@ -38,7 +38,7 @@ services:
       DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
       DEGOV_INDEXER_DAO_CODE: ${DEGOV_INDEXER_DAO_CODE:-}
       DEGOV_INDEXER_START_BLOCK: ${DEGOV_INDEXER_START_BLOCK:-0}
-      DEGOV_INDEXER_TARGET_HEIGHT: "${DEGOV_INDEXER_TARGET_HEIGHT:?DEGOV_INDEXER_TARGET_HEIGHT is required}"
+      DEGOV_INDEXER_TARGET_HEIGHT: ${DEGOV_INDEXER_TARGET_HEIGHT:-0}
       DEGOV_INDEXER_RUN_ONCE: ${DEGOV_INDEXER_RUN_ONCE:-false}
       DEGOV_INDEXER_POLL_INTERVAL_MS: ${DEGOV_INDEXER_POLL_INTERVAL_MS:-10000}
       DATALENS_ENDPOINT: ${DATALENS_ENDPOINT:-}
@@ -52,6 +52,7 @@ services:
       DATALENS_DATASET_FAMILY: ${DATALENS_DATASET_FAMILY:-evm}
       DATALENS_DATASET_NAME: ${DATALENS_DATASET_NAME:-logs}
       DATALENS_QUERY_BLOCK_RANGE_LIMIT: ${DATALENS_QUERY_BLOCK_RANGE_LIMIT:-1000}
+      DATALENS_CHAINS_JSON: ${DATALENS_CHAINS_JSON:-}
       DATALENS_GOVERNOR_ADDRESS: ${DATALENS_GOVERNOR_ADDRESS:-}
       DATALENS_GOVERNOR_TOKEN_ADDRESS: ${DATALENS_GOVERNOR_TOKEN_ADDRESS:-}
       DATALENS_GOVERNOR_TOKEN_STANDARD: ${DATALENS_GOVERNOR_TOKEN_STANDARD:-}
@@ -69,7 +70,7 @@ services:
     command: worker
     environment:
       DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
-      DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED: ${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED:-true}
+      DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED: ${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED:-false}
       DEGOV_ONCHAIN_REFRESH_RPC_URL: ${DEGOV_ONCHAIN_REFRESH_RPC_URL:-}
       DEGOV_ONCHAIN_REFRESH_RUN_ONCE: ${DEGOV_ONCHAIN_REFRESH_RUN_ONCE:-false}
       DEGOV_ONCHAIN_REFRESH_BATCH_SIZE: ${DEGOV_ONCHAIN_REFRESH_BATCH_SIZE:-100}
@@ -86,6 +87,22 @@ services:
       DEGOV_ONCHAIN_REFRESH_RETRY_DELAY_MS: ${DEGOV_ONCHAIN_REFRESH_RETRY_DELAY_MS:-30000}
       DEGOV_ONCHAIN_REFRESH_REQUEST_TIMEOUT_MS: ${DEGOV_ONCHAIN_REFRESH_REQUEST_TIMEOUT_MS:-15000}
 
+  indexer-graphql:
+    image: degov-indexer
+    profiles:
+      - indexer
+    depends_on:
+      - postgres
+    build:
+      context: .
+      dockerfile: docker/indexer.Dockerfile
+    command: graphql
+    ports:
+      - "${DEGOV_INDEXER_PORT:-4350}:4350"
+    environment:
+      DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
+      DEGOV_INDEXER_GRAPHQL_ENDPOINT: ${DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT:-http://0.0.0.0:4350/graphql}
+
   web:
     image: degov-web
     depends_on:
@@ -98,5 +115,22 @@ services:
     environment:
       JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET:-}
       DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/degov
-      DEGOV_INDEXER_GRAPHQL_ENDPOINT: ${DEGOV_INDEXER_GRAPHQL_ENDPOINT:-}
       # DEGOV_CONFIG_PATH: degov.yml
+
+  web-local-indexer:
+    image: degov-web-local-indexer
+    profiles:
+      - indexer
+    depends_on:
+      - postgres
+      - indexer-graphql
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        DEGOV_CONFIG_INDEXER_ENDPOINT: ${DEGOV_INDEXER_GRAPHQL_INTERNAL_ENDPOINT:-http://indexer-graphql:4350/graphql}
+    ports:
+      - "${DEGOV_WEB_INDEXER_PORT:-3001}:3000"
+    environment:
+      JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET:-}
+      DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/degov

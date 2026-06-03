@@ -1,10 +1,12 @@
 use degov_datalens_indexer::{
     BatchReadPlanConfig, CallExecutedEvent, CallSaltEvent, CallScheduledEvent, ChainContracts,
     ChainReadExecutionReport, ChainReadKey, ChainReadMethod, ChainReadResult, ChainReadValue,
-    DecodedTimelockEvent, NormalizedEvmLog, ParameterChangeEvent, ReadRequirement,
-    RoleAccountEvent, RoleAdminChangedEvent, TimelockOperationIdEvent, TimelockProjectionContext,
-    TimelockProjectionError, TimelockProjectionEvent, TimelockProjectionRepository,
-    project_timelock_events,
+    DecodedGovernorEvent, DecodedTimelockEvent, NormalizedEvmLog, ParameterChangeEvent,
+    ProposalCreatedEvent, ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
+    ReadRequirement, RoleAccountEvent, RoleAdminChangedEvent, TimelockOperationIdEvent,
+    TimelockProjectionContext, TimelockProjectionError, TimelockProjectionEvent,
+    TimelockProjectionRepository, TimelockProposalLinkContext, project_proposal_events,
+    project_timelock_events, project_timelock_events_with_proposal_links,
 };
 use serde_json::json;
 use sha3::{Digest, Keccak256};
@@ -97,7 +99,7 @@ fn test_project_timelock_scheduled_executed_and_cancelled_operations() {
     assert_eq!(call.target, "0xcccccccccccccccccccccccccccccccccccccccc");
     assert_eq!(call.value, "100");
     assert_eq!(call.data, "0x1234");
-    assert_eq!(call.state, "Executed");
+    assert_eq!(call.state, "Done");
     assert_eq!(call.scheduled_block_number.as_deref(), Some("10"));
     assert_eq!(call.executed_block_number.as_deref(), Some("11"));
 
@@ -320,6 +322,72 @@ fn test_project_timelock_ready_at_adds_uint256_sized_decimal_strings() {
 }
 
 #[test]
+fn test_project_timelock_links_scheduled_calls_to_known_proposal_actions() {
+    let proposal_batch = project_proposal_events(
+        &proposal_context(),
+        vec![
+            ProposalProjectionEvent {
+                log: proposal_log(8, 0, 0),
+                event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                    proposal_id: "42".to_owned(),
+                    proposer: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_owned(),
+                    targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+                    values: vec!["100".to_owned()],
+                    signatures: vec!["".to_owned()],
+                    calldatas: vec!["0x1234".to_owned()],
+                    vote_start: "20".to_owned(),
+                    vote_end: "40".to_owned(),
+                    description: "Proposal title".to_owned(),
+                }),
+            },
+            ProposalProjectionEvent {
+                log: proposal_log(10, 0, 0),
+                event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                    proposal_id: "42".to_owned(),
+                    eta_seconds: "1700003600".to_owned(),
+                }),
+            },
+        ],
+    )
+    .expect("proposal projection succeeds");
+    let links = TimelockProposalLinkContext::from_proposal_batch(&proposal_batch);
+
+    let batch = project_timelock_events_with_proposal_links(
+        &context(),
+        &links,
+        vec![TimelockProjectionEvent {
+            log: log(10, 0, 1),
+            event: DecodedTimelockEvent::CallScheduled(CallScheduledEvent {
+                id: operation_id(),
+                index: "0".to_owned(),
+                target: "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned(),
+                value: "100".to_owned(),
+                data: "0x1234".to_owned(),
+                predecessor: predecessor_id(),
+                delay: "3600".to_owned(),
+            }),
+        }],
+    )
+    .expect("timelock projection succeeds");
+
+    assert_eq!(batch.timelock_operations.len(), 1);
+    assert_eq!(batch.timelock_calls.len(), 1);
+
+    let operation = &batch.timelock_operations[0];
+    assert_eq!(operation.proposal_ref.as_deref(), Some("evm:1:8:0xtx8:0:0"));
+    assert_eq!(operation.proposal_id.as_deref(), Some("evm:1:8:0xtx8:0:0"));
+
+    let call = &batch.timelock_calls[0];
+    assert_eq!(call.proposal_ref.as_deref(), Some("evm:1:8:0xtx8:0:0"));
+    assert_eq!(call.proposal_id.as_deref(), Some("evm:1:8:0xtx8:0:0"));
+    assert_eq!(
+        call.proposal_action_id.as_deref(),
+        Some("evm:1:8:0xtx8:0:0:action:0")
+    );
+    assert_eq!(call.proposal_action_index, Some(0));
+}
+
+#[test]
 fn test_project_timelock_repository_merges_incremental_operation_and_call_state() {
     let mut repository = degov_datalens_indexer::InMemoryTimelockProjectionRepository::default();
     let scheduled_batch = project_timelock_events(
@@ -368,7 +436,7 @@ fn test_project_timelock_repository_merges_incremental_operation_and_call_state(
         .values()
         .next()
         .expect("operation");
-    assert_eq!(operation.state, "Executed");
+    assert_eq!(operation.state, "Done");
     assert_eq!(operation.call_count, Some(1));
     assert_eq!(operation.executed_call_count, Some(1));
     assert_eq!(
@@ -380,7 +448,7 @@ fn test_project_timelock_repository_merges_incremental_operation_and_call_state(
     assert_eq!(operation.executed_block_number.as_deref(), Some("11"));
 
     let call = repository.timelock_calls().values().next().expect("call");
-    assert_eq!(call.state, "Executed");
+    assert_eq!(call.state, "Done");
     assert_eq!(call.scheduled_block_number.as_deref(), Some("10"));
     assert_eq!(call.executed_block_number.as_deref(), Some("11"));
 }
@@ -435,7 +503,7 @@ fn test_project_timelock_events_replays_idempotently() {
             .next()
             .expect("operation")
             .state,
-        "Executed"
+        "Done"
     );
 }
 
@@ -560,6 +628,23 @@ fn context() -> TimelockProjectionContext {
     }
 }
 
+fn proposal_context() -> ProposalProjectionContext {
+    ProposalProjectionContext {
+        contract_set_id: "dao=unit-dao|chain=1|governor=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|token=0x1111111111111111111111111111111111111111".to_owned(),
+        dao_code: "unit-dao".to_owned(),
+        governor_address: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
+        contracts: ChainContracts {
+            governor: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
+            governor_token: "0x1111111111111111111111111111111111111111".to_owned(),
+            timelock: "0x2222222222222222222222222222222222222222".to_owned(),
+        },
+        read_plan_config: BatchReadPlanConfig {
+            max_concurrency: 4,
+            multicall_batch_size: 10,
+        },
+    }
+}
+
 fn log(block_number: u64, transaction_index: u64, log_index: u64) -> NormalizedEvmLog {
     NormalizedEvmLog {
         id: format!("evm:1:{block_number}:0xtx{block_number}:{transaction_index}:{log_index}"),
@@ -576,6 +661,12 @@ fn log(block_number: u64, transaction_index: u64, log_index: u64) -> NormalizedE
         removed: false,
         raw_payload: json!({ "blockNumber": block_number }),
     }
+}
+
+fn proposal_log(block_number: u64, transaction_index: u64, log_index: u64) -> NormalizedEvmLog {
+    let mut log = log(block_number, transaction_index, log_index);
+    log.address = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned();
+    log
 }
 
 fn operation_id() -> String {

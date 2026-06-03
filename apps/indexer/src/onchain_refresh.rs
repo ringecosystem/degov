@@ -35,6 +35,7 @@ pub struct OnchainRefreshRunReport {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshTask {
     pub id: String,
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: Option<String>,
     pub governor_address: String,
@@ -103,6 +104,7 @@ pub struct OnchainRefreshWorker<R> {
     pool: PgPool,
     config: OnchainRefreshWorkerConfig,
     reader: R,
+    current_power_method: ChainReadMethod,
 }
 
 impl<R> OnchainRefreshWorker<R>
@@ -114,7 +116,13 @@ where
             pool,
             config,
             reader,
+            current_power_method: ChainReadMethod::GetVotes,
         }
+    }
+
+    pub fn with_current_power_method(mut self, current_power_method: ChainReadMethod) -> Self {
+        self.current_power_method = current_power_method;
+        self
     }
 
     pub async fn run_once(&self) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
@@ -201,6 +209,7 @@ where
              WHERE onchain_refresh_task.id = candidates.id
              RETURNING
                  onchain_refresh_task.id,
+                 onchain_refresh_task.contract_set_id,
                  onchain_refresh_task.chain_id,
                  onchain_refresh_task.dao_code,
                  onchain_refresh_task.governor_address,
@@ -225,6 +234,7 @@ where
             .into_iter()
             .map(|row| OnchainRefreshTask {
                 id: row.get("id"),
+                contract_set_id: row.get("contract_set_id"),
                 chain_id: row.get("chain_id"),
                 dao_code: row.get("dao_code"),
                 governor_address: row.get("governor_address"),
@@ -261,9 +271,16 @@ where
 
         let mut transaction = self.pool.begin().await?;
 
-        let previous = read_contributor_refresh_values(&mut transaction, &task.account).await?;
+        let previous = read_contributor_refresh_values(&mut transaction, task).await?;
         upsert_contributor_refresh(&mut transaction, task, value).await?;
-        insert_refresh_checkpoints(&mut transaction, task, value, previous).await?;
+        insert_refresh_checkpoints(
+            &mut transaction,
+            task,
+            value,
+            previous,
+            self.current_power_method,
+        )
+        .await?;
         refresh_data_metric(&mut transaction, task).await?;
         complete_task(&mut transaction, &task.id, now_ms).await?;
 
@@ -602,17 +619,17 @@ async fn upsert_contributor_refresh(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO contributor (
-            id, chain_id, dao_code, governor_address, token_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, block_number, block_timestamp, transaction_hash,
             power, balance, delegates_count_all, delegates_count_effective
          )
          VALUES (
-            $1, $2, $3, $4, $5, $5, 0, 0, $6::NUMERIC(78, 0), $7::NUMERIC(78, 0), $8,
-            CASE WHEN $9 THEN $10::NUMERIC(78, 0) ELSE 0::NUMERIC(78, 0) END,
-            CASE WHEN $11 THEN $12::NUMERIC(78, 0) ELSE NULL END,
+            $1, $2, $3, $4, $5, $6, $6, 0, 0, $7::NUMERIC(78, 0), $8::NUMERIC(78, 0), $9,
+            CASE WHEN $10 THEN $11::NUMERIC(78, 0) ELSE 0::NUMERIC(78, 0) END,
+            CASE WHEN $12 THEN $13::NUMERIC(78, 0) ELSE NULL END,
             0, 0
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET chain_id = EXCLUDED.chain_id,
              dao_code = EXCLUDED.dao_code,
              governor_address = EXCLUDED.governor_address,
@@ -621,10 +638,11 @@ async fn upsert_contributor_refresh(
              block_number = GREATEST(contributor.block_number, EXCLUDED.block_number),
              block_timestamp = GREATEST(contributor.block_timestamp, EXCLUDED.block_timestamp),
              transaction_hash = EXCLUDED.transaction_hash,
-             power = CASE WHEN $9 THEN EXCLUDED.power ELSE contributor.power END,
-             balance = CASE WHEN $11 THEN EXCLUDED.balance ELSE contributor.balance END",
+             power = CASE WHEN $10 THEN EXCLUDED.power ELSE contributor.power END,
+             balance = CASE WHEN $12 THEN EXCLUDED.balance ELSE contributor.balance END",
     )
-    .bind(&task.account)
+    .bind(contributor_ref(task))
+    .bind(&task.contract_set_id)
     .bind(task.chain_id)
     .bind(&task.dao_code)
     .bind(&task.governor_address)
@@ -650,14 +668,15 @@ struct ContributorRefreshValues {
 
 async fn read_contributor_refresh_values(
     transaction: &mut Transaction<'_, Postgres>,
-    account: &str,
+    task: &OnchainRefreshTask,
 ) -> Result<ContributorRefreshValues, sqlx::Error> {
     let row = sqlx::query(
         "SELECT power::TEXT AS power, balance::TEXT AS balance
          FROM contributor
-         WHERE id = $1",
+         WHERE contract_set_id = $1 AND id = $2",
     )
-    .bind(account)
+    .bind(&task.contract_set_id)
+    .bind(contributor_ref(task))
     .fetch_optional(&mut **transaction)
     .await?;
 
@@ -674,6 +693,7 @@ async fn insert_refresh_checkpoints(
     task: &OnchainRefreshTask,
     value: &OnchainRefreshReadValue,
     previous: ContributorRefreshValues,
+    current_power_method: ChainReadMethod,
 ) -> Result<(), sqlx::Error> {
     if task.refresh_balance {
         let previous_balance = previous.balance.as_deref().unwrap_or("0");
@@ -713,22 +733,23 @@ async fn insert_refresh_checkpoints(
         let new_power = value.power.as_deref().unwrap_or("0");
         sqlx::query(
             "INSERT INTO vote_power_checkpoint (
-                id, chain_id, dao_code, governor_address, token_address, contract_address,
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
                 account, clock_mode, timepoint, previous_power, new_power, delta, source, cause,
                 block_number, block_timestamp, transaction_hash
              )
              VALUES (
-                $1, $2, $3, $4, $5, $5, $6, 'blocknumber', $7::NUMERIC(78, 0),
-                $8::NUMERIC(78, 0), $9::NUMERIC(78, 0),
-                ($9::NUMERIC(78, 0) - $8::NUMERIC(78, 0)), 'getVotes', 'onchain-refresh',
-                $7::NUMERIC(78, 0), $10::NUMERIC(78, 0), 'onchain-refresh'
+                $1, $2, $3, $4, $5, $6, $6, $7, 'blocknumber', $8::NUMERIC(78, 0),
+                $9::NUMERIC(78, 0), $10::NUMERIC(78, 0),
+                ($10::NUMERIC(78, 0) - $9::NUMERIC(78, 0)), $11, 'onchain-refresh',
+                $8::NUMERIC(78, 0), $12::NUMERIC(78, 0), 'onchain-refresh'
              )
-             ON CONFLICT (id) DO NOTHING",
+             ON CONFLICT (contract_set_id, id) DO NOTHING",
         )
         .bind(format!(
             "onchain-refresh-power-{}",
             onchain_refresh_checkpoint_scope(task)
         ))
+        .bind(&task.contract_set_id)
         .bind(task.chain_id)
         .bind(&task.dao_code)
         .bind(&task.governor_address)
@@ -737,6 +758,7 @@ async fn insert_refresh_checkpoints(
         .bind(&task.last_seen_block_number)
         .bind(previous_power)
         .bind(new_power)
+        .bind(current_power_checkpoint_source(current_power_method))
         .bind(&task.last_seen_block_timestamp)
         .execute(&mut **transaction)
         .await?;
@@ -757,20 +779,21 @@ async fn refresh_data_metric(
 
     sqlx::query(
         "INSERT INTO data_metric (
-            id, chain_id, dao_code, governor_address, token_address, power_sum, member_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, power_sum, member_count
          )
          SELECT
-            $1, $2, $3, $4, $5,
+            $1, $2, $3, $4, $5, $6,
             COALESCE(sum(power), 0)::NUMERIC(78, 0),
             count(*)::INTEGER
          FROM contributor
-         WHERE chain_id = $2 AND governor_address = $4 AND dao_code IS NOT DISTINCT FROM $3
-         ON CONFLICT ON CONSTRAINT data_metric_lookup_unique DO UPDATE
+         WHERE contract_set_id = $2 AND chain_id = $3 AND governor_address = $5 AND dao_code IS NOT DISTINCT FROM $4
+         ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              power_sum = EXCLUDED.power_sum,
              member_count = EXCLUDED.member_count",
     )
     .bind(metric_id)
+    .bind(&task.contract_set_id)
     .bind(task.chain_id)
     .bind(&task.dao_code)
     .bind(&task.governor_address)
@@ -830,15 +853,14 @@ fn truncate_error(error: &str) -> String {
 }
 
 fn data_metric_id(chain_id: i32, governor_address: &str, dao_code: Option<&str>) -> String {
-    format!(
-        "{chain_id}:{governor_address}:{}",
-        dao_code.unwrap_or_default()
-    )
+    let _ = (chain_id, governor_address, dao_code);
+    "global".to_owned()
 }
 
 fn onchain_refresh_checkpoint_scope(task: &OnchainRefreshTask) -> String {
     format!(
-        "{}:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{}:{}",
+        task.contract_set_id,
         task.chain_id,
         task.dao_code.as_deref().unwrap_or_default(),
         task.governor_address,
@@ -846,6 +868,17 @@ fn onchain_refresh_checkpoint_scope(task: &OnchainRefreshTask) -> String {
         task.account,
         task.last_seen_block_number,
     )
+}
+
+fn contributor_ref(task: &OnchainRefreshTask) -> String {
+    normalize_identifier(&task.account)
+}
+
+fn current_power_checkpoint_source(method: ChainReadMethod) -> &'static str {
+    match method {
+        ChainReadMethod::CurrentVotes => "getCurrentVotes",
+        _ => "getVotes",
+    }
 }
 
 fn parse_u64(value: &str) -> Result<u64, OnchainRefreshReaderError> {

@@ -279,6 +279,7 @@ fn options() -> IndexerRunnerOptions {
                 block_range_limit: 1,
             },
             dao_contracts: Some(addresses()),
+            chains: Vec::new(),
         },
         addresses: addresses(),
         checkpoint_identity: identity(),
@@ -302,12 +303,14 @@ fn contexts() -> IndexerRunnerContexts {
 
     IndexerRunnerContexts {
         vote: VoteProjectionContext {
+            contract_set_id: "demo-scope".to_owned(),
             dao_code: "demo-dao".to_owned(),
             governor_address: contracts.governor.clone(),
             contracts: contracts.clone(),
             read_plan_config,
         },
         token: TokenProjectionContext {
+            contract_set_id: "demo-scope".to_owned(),
             dao_code: "demo-dao".to_owned(),
             governor_address: contracts.governor.clone(),
             token_address: contracts.governor_token.clone(),
@@ -328,6 +331,7 @@ fn identity() -> IndexerCheckpointIdentity {
     IndexerCheckpointIdentity {
         dao_code: "demo-dao".to_owned(),
         chain_id: 1,
+        contract_set_id: "demo-scope".to_owned(),
         stream_id: "datalens-native".to_owned(),
         data_source_version: "test".to_owned(),
     }

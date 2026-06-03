@@ -11,10 +11,13 @@ RUN corepack enable \
 FROM base AS builder
 WORKDIR /app
 
+ARG DEGOV_CONFIG_INDEXER_ENDPOINT=
+
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 
 ENV DEGOV_CONFIG_PATH=/app/degov.yml
+ENV DEGOV_CONFIG_INDEXER_ENDPOINT=${DEGOV_CONFIG_INDEXER_ENDPOINT}
 ENV CI=true
 
 RUN apk add --no-cache python3 make g++ \

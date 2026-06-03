@@ -15,6 +15,7 @@
 CREATE TABLE IF NOT EXISTS degov_indexer_checkpoint (
   dao_code TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
+  contract_set_id TEXT NOT NULL,
   stream_id TEXT NOT NULL,
   data_source_version TEXT NOT NULL,
   next_block NUMERIC(78, 0) NOT NULL,
@@ -24,11 +25,11 @@ CREATE TABLE IF NOT EXISTS degov_indexer_checkpoint (
   last_error TEXT,
   lock_owner TEXT,
   locked_at TIMESTAMPTZ,
-  PRIMARY KEY (dao_code, chain_id, stream_id, data_source_version)
+  PRIMARY KEY (dao_code, chain_id, contract_set_id, stream_id, data_source_version)
 );
 
 CREATE INDEX IF NOT EXISTS degov_indexer_checkpoint_processed_height_idx
-  ON degov_indexer_checkpoint (chain_id, dao_code, processed_height);
+  ON degov_indexer_checkpoint (chain_id, dao_code, contract_set_id, processed_height);
 
 -- Temporary compatibility bridge for existing sync-lag/synced-percentage
 -- consumers that still read SQD's built-in squidStatus field.
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS squid_processor.status (
 
 CREATE TABLE IF NOT EXISTS degov_indexer_reconcile_task (
   id TEXT PRIMARY KEY,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
   dao_code TEXT,
   governor_address TEXT NOT NULL,
@@ -61,6 +63,8 @@ CREATE TABLE IF NOT EXISTS degov_indexer_reconcile_task (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT degov_indexer_reconcile_task_unique_subject UNIQUE NULLS NOT DISTINCT (
     chain_id,
+    contract_set_id,
+    dao_code,
     governor_address,
     task_type,
     subject_id
@@ -71,7 +75,8 @@ CREATE INDEX IF NOT EXISTS degov_indexer_reconcile_task_status_idx
   ON degov_indexer_reconcile_task (status, next_run_at);
 
 CREATE TABLE IF NOT EXISTS delegate_changed (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -84,14 +89,16 @@ CREATE TABLE IF NOT EXISTS delegate_changed (
   to_delegate TEXT NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS delegate_changed_chain_governor_delegator_idx
-  ON delegate_changed (chain_id, governor_address, delegator);
+  ON delegate_changed (chain_id, contract_set_id, governor_address, delegator);
 
 CREATE TABLE IF NOT EXISTS delegate_votes_changed (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -104,14 +111,16 @@ CREATE TABLE IF NOT EXISTS delegate_votes_changed (
   new_votes NUMERIC(78, 0) NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS delegate_votes_changed_chain_governor_delegate_idx
-  ON delegate_votes_changed (chain_id, governor_address, delegate);
+  ON delegate_votes_changed (chain_id, contract_set_id, governor_address, delegate);
 
 CREATE TABLE IF NOT EXISTS token_transfer (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -125,16 +134,18 @@ CREATE TABLE IF NOT EXISTS token_transfer (
   standard TEXT NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS token_transfer_chain_governor_token_idx
-  ON token_transfer (chain_id, governor_address, token_address);
+  ON token_transfer (chain_id, contract_set_id, governor_address, token_address);
 CREATE INDEX IF NOT EXISTS token_transfer_transaction_hash_idx
-  ON token_transfer (transaction_hash);
+  ON token_transfer (contract_set_id, transaction_hash);
 
 CREATE TABLE IF NOT EXISTS vote_power_checkpoint (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -155,11 +166,12 @@ CREATE TABLE IF NOT EXISTS vote_power_checkpoint (
   to_delegate TEXT,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS vote_power_checkpoint_lookup_idx
-  ON vote_power_checkpoint (chain_id, governor_address, token_address, account, clock_mode, timepoint);
+  ON vote_power_checkpoint (chain_id, contract_set_id, governor_address, token_address, account, clock_mode, timepoint);
 
 CREATE TABLE IF NOT EXISTS token_balance_checkpoint (
   id TEXT PRIMARY KEY,
@@ -186,6 +198,7 @@ CREATE INDEX IF NOT EXISTS token_balance_checkpoint_lookup_idx
 
 CREATE TABLE IF NOT EXISTS onchain_refresh_task (
   id TEXT PRIMARY KEY,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
   dao_code TEXT,
   governor_address TEXT NOT NULL,
@@ -213,6 +226,8 @@ CREATE TABLE IF NOT EXISTS onchain_refresh_task (
   updated_at NUMERIC(78, 0) NOT NULL,
   CONSTRAINT onchain_refresh_task_account_unique UNIQUE NULLS NOT DISTINCT (
     chain_id,
+    contract_set_id,
+    dao_code,
     governor_address,
     token_address,
     account
@@ -518,13 +533,14 @@ CREATE INDEX IF NOT EXISTS proposal_lookup_idx
 
 CREATE TABLE IF NOT EXISTS vote_cast_group (
   id TEXT PRIMARY KEY,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
   contract_address TEXT,
   log_index INTEGER,
   transaction_index INTEGER,
-  proposal_id TEXT NOT NULL REFERENCES proposal (id) ON DELETE CASCADE,
+  proposal_id TEXT NOT NULL REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE CASCADE,
   type TEXT NOT NULL,
   voter TEXT NOT NULL,
   ref_proposal_id TEXT NOT NULL,
@@ -538,7 +554,7 @@ CREATE TABLE IF NOT EXISTS vote_cast_group (
 );
 
 CREATE INDEX IF NOT EXISTS vote_cast_group_lookup_idx
-  ON vote_cast_group (chain_id, governor_address, ref_proposal_id);
+  ON vote_cast_group (chain_id, contract_set_id, governor_address, ref_proposal_id);
 
 CREATE TABLE IF NOT EXISTS proposal_action (
   id TEXT PRIMARY KEY,
@@ -549,7 +565,7 @@ CREATE TABLE IF NOT EXISTS proposal_action (
   log_index INTEGER,
   transaction_index INTEGER,
   proposal_id TEXT NOT NULL,
-  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON DELETE CASCADE,
+  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE CASCADE,
   action_index INTEGER NOT NULL,
   target TEXT NOT NULL,
   value TEXT NOT NULL,
@@ -572,7 +588,7 @@ CREATE TABLE IF NOT EXISTS proposal_state_epoch (
   log_index INTEGER,
   transaction_index INTEGER,
   proposal_id TEXT NOT NULL,
-  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON DELETE CASCADE,
+  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE CASCADE,
   state TEXT NOT NULL,
   start_timepoint NUMERIC(78, 0),
   end_timepoint NUMERIC(78, 0),
@@ -616,7 +632,7 @@ CREATE TABLE IF NOT EXISTS proposal_deadline_extension (
   log_index INTEGER,
   transaction_index INTEGER,
   proposal_id TEXT NOT NULL,
-  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON DELETE CASCADE,
+  proposal_ref TEXT NOT NULL REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE CASCADE,
   previous_deadline NUMERIC(78, 0),
   new_deadline NUMERIC(78, 0) NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
@@ -636,7 +652,7 @@ CREATE TABLE IF NOT EXISTS timelock_operation (
   contract_address TEXT,
   log_index INTEGER,
   transaction_index INTEGER,
-  proposal_ref TEXT REFERENCES proposal (id) ON DELETE SET NULL,
+  proposal_ref TEXT REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE SET NULL,
   proposal_id TEXT,
   operation_id TEXT NOT NULL,
   timelock_type TEXT NOT NULL,
@@ -680,7 +696,7 @@ CREATE TABLE IF NOT EXISTS timelock_call (
   transaction_index INTEGER,
   operation_id TEXT NOT NULL,
   operation_ref TEXT NOT NULL REFERENCES timelock_operation (id) ON DELETE CASCADE,
-  proposal_ref TEXT REFERENCES proposal (id) ON DELETE SET NULL,
+  proposal_ref TEXT REFERENCES proposal (id) ON UPDATE CASCADE ON DELETE SET NULL,
   proposal_id TEXT,
   proposal_action_id TEXT,
   proposal_action_index INTEGER,
@@ -748,7 +764,8 @@ CREATE INDEX IF NOT EXISTS timelock_min_delay_change_lookup_idx
   ON timelock_min_delay_change (chain_id, governor_address, timelock_address, block_number);
 
 CREATE TABLE IF NOT EXISTS data_metric (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -765,18 +782,26 @@ CREATE TABLE IF NOT EXISTS data_metric (
   votes_weight_abstain_sum NUMERIC(78, 0),
   power_sum NUMERIC(78, 0),
   member_count INTEGER,
-  CONSTRAINT data_metric_lookup_unique UNIQUE NULLS NOT DISTINCT (
+  PRIMARY KEY (contract_set_id, id),
+  CONSTRAINT data_metric_scope_unique UNIQUE NULLS NOT DISTINCT (
+    id,
     chain_id,
+    contract_set_id,
     governor_address,
     dao_code
   )
 );
 
 CREATE INDEX IF NOT EXISTS data_metric_lookup_idx
-  ON data_metric (chain_id, governor_address, dao_code);
+  ON data_metric (chain_id, contract_set_id, governor_address, dao_code);
+
+CREATE UNIQUE INDEX IF NOT EXISTS data_metric_event_id_unique
+  ON data_metric (contract_set_id, id)
+  WHERE id <> 'global';
 
 CREATE TABLE IF NOT EXISTS delegate_rolling (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -793,16 +818,18 @@ CREATE TABLE IF NOT EXISTS delegate_rolling (
   from_previous_votes NUMERIC(78, 0),
   from_new_votes NUMERIC(78, 0),
   to_previous_votes NUMERIC(78, 0),
-  to_new_votes NUMERIC(78, 0)
+  to_new_votes NUMERIC(78, 0),
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS delegate_rolling_delegator_idx
-  ON delegate_rolling (chain_id, governor_address, delegator);
+  ON delegate_rolling (chain_id, contract_set_id, governor_address, delegator);
 CREATE INDEX IF NOT EXISTS delegate_rolling_transaction_hash_idx
-  ON delegate_rolling (transaction_hash);
+  ON delegate_rolling (contract_set_id, transaction_hash);
 
 CREATE TABLE IF NOT EXISTS delegate (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -816,14 +843,16 @@ CREATE TABLE IF NOT EXISTS delegate (
   block_timestamp NUMERIC(78, 0) NOT NULL,
   transaction_hash TEXT NOT NULL,
   is_current BOOLEAN NOT NULL,
-  power NUMERIC(78, 0) NOT NULL
+  power NUMERIC(78, 0) NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS delegate_lookup_idx
-  ON delegate (chain_id, governor_address, from_delegate, to_delegate);
+  ON delegate (chain_id, contract_set_id, governor_address, from_delegate, to_delegate);
 
 CREATE TABLE IF NOT EXISTS contributor (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -839,14 +868,16 @@ CREATE TABLE IF NOT EXISTS contributor (
   power NUMERIC(78, 0) NOT NULL,
   balance NUMERIC(78, 0),
   delegates_count_all INTEGER NOT NULL,
-  delegates_count_effective INTEGER NOT NULL
+  delegates_count_effective INTEGER NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS contributor_lookup_idx
-  ON contributor (chain_id, governor_address, id);
+  ON contributor (chain_id, contract_set_id, governor_address, id);
 
 CREATE TABLE IF NOT EXISTS delegate_mapping (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -859,8 +890,9 @@ CREATE TABLE IF NOT EXISTS delegate_mapping (
   power NUMERIC(78, 0) NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS delegate_mapping_lookup_idx
-  ON delegate_mapping (chain_id, governor_address, "from");
+  ON delegate_mapping (chain_id, contract_set_id, governor_address, "from");

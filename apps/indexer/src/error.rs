@@ -5,6 +5,9 @@ pub enum ConfigError {
     #[error("missing required Datalens configuration field {field}")]
     MissingRequired { field: &'static str },
 
+    #[error("missing required Datalens configuration field {field}")]
+    MissingRequiredPath { field: String },
+
     #[error("Datalens endpoint must be a service base URL, not a native GraphQL path")]
     EndpointMustBeServiceBase,
 
@@ -22,6 +25,9 @@ pub enum ConfigError {
 
     #[error("invalid Datalens governor token standard {value}")]
     InvalidTokenStandard { value: String },
+
+    #[error("invalid Datalens configuration field {field}: {reason}")]
+    InvalidField { field: String, reason: String },
 
     #[error("failed to load Datalens configuration: {0}")]
     Load(String),
@@ -48,11 +54,12 @@ pub enum CheckpointError {
     InvalidBlockHeight,
 
     #[error(
-        "checkpoint row is missing for DAO {dao_code}, chain {chain_id}, stream {stream_id}, data source {data_source_version}"
+        "checkpoint row is missing for DAO {dao_code}, chain {chain_id}, contract set {contract_set_id}, stream {stream_id}, data source {data_source_version}"
     )]
     MissingCheckpoint {
         dao_code: String,
         chain_id: i32,
+        contract_set_id: String,
         stream_id: String,
         data_source_version: String,
     },
