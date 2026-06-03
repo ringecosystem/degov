@@ -1,0 +1,129 @@
+use anyhow as runtime_anyhow;
+use runtime_anyhow::{Context, Result};
+use sqlx::postgres::PgPoolOptions;
+use tokio::{task, time::sleep};
+
+use crate::{
+    DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensNativeClient,
+    IndexerContractSetRuntimeConfig, IndexerRunner, IndexerRunnerReport, IndexerRuntimeConfig,
+    PostgresIndexerRunnerStore, required_env,
+};
+
+use super::datalens::verify_datalens;
+
+pub async fn run_indexer() -> Result<()> {
+    let config = DatalensConfig::from_env().context("load Datalens configuration")?;
+    let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
+    let runtime = IndexerRuntimeConfig::from_env()?;
+
+    verify_datalens(&config).await?;
+    log::info!(
+        "Datalens indexer runtime boundary is ready contract_set_mode={} dao_filter={:?} dataset={} target_height={} database_url_configured={}",
+        runtime.contract_set_mode.as_str(),
+        runtime.dao_filter,
+        config.dataset.key(),
+        runtime.target_height,
+        !database_url.is_empty()
+    );
+
+    let pool = PgPoolOptions::new()
+        .max_connections(runtime.database_max_connections)
+        .connect(&database_url)
+        .await
+        .context("connect to DeGov indexer Postgres")?;
+    loop {
+        let contract_sets = runtime
+            .configured_contract_sets(&config)
+            .context("select Datalens indexer contract sets")?;
+
+        for contract_set in contract_sets {
+            let contract_runtime = match runtime.for_configured_contract_set(&contract_set) {
+                Ok(contract_runtime) => contract_runtime,
+                Err(error)
+                    if runtime.should_skip_contract_set_start_after_target(
+                        contract_set.contract.start_block,
+                    ) =>
+                {
+                    log::warn!(
+                        "skipping Datalens indexer contract set because configured startBlock is above target dao_code={} chain_id={} contract_set_id={} start_block={} target_height={} error={}",
+                        contract_set.dao_code,
+                        contract_set.contract.chain_id,
+                        contract_set.contract_set_id,
+                        contract_set.contract.start_block,
+                        runtime.target_height,
+                        error
+                    );
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            let report = run_contract_set_pass(
+                contract_runtime.clone(),
+                contract_set.config.clone(),
+                contract_set.addresses.clone(),
+                pool.clone(),
+            )
+            .await?;
+
+            log::info!(
+                "Datalens indexer run pass completed dao_code={} chain_id={} contract_set_id={} chunks_processed={} processed_height={:?} target_height={} synced_percentage={} onchain_refresh_allowed={}",
+                contract_runtime.dao_code,
+                contract_set.contract.chain_id,
+                contract_runtime.checkpoint_contract_set_id,
+                report.chunks_processed,
+                report.last_progress.processed_height,
+                report.last_progress.target_height,
+                report.last_progress.synced_percentage,
+                report.last_progress.onchain_refresh_allowed
+            );
+        }
+
+        if runtime.run_once {
+            return Ok(());
+        }
+
+        sleep(runtime.poll_interval).await;
+    }
+}
+
+async fn run_contract_set_pass(
+    runtime: IndexerContractSetRuntimeConfig,
+    config: DatalensConfig,
+    contracts: DaoContractAddresses,
+    pool: sqlx::PgPool,
+) -> Result<IndexerRunnerReport> {
+    log::info!(
+        "Datalens indexer contract set pass is ready dao_code={} dao_chain={} chain_id={:?} contract_set_id={} governor={} token={} timelock={} start_block={} target_height={}",
+        runtime.dao_code,
+        config.chain.configured_name,
+        config.chain.network_id,
+        runtime.checkpoint_contract_set_id,
+        contracts.governor,
+        contracts.governor_token,
+        contracts.timelock,
+        runtime.start_block,
+        runtime.target_height
+    );
+
+    task::spawn_blocking(move || -> Result<_> {
+        let client =
+            DatalensNativeClient::from_config(&config).context("create Datalens client")?;
+        let store = PostgresIndexerRunnerStore::new(pool);
+        let mut runner = IndexerRunner::new(
+            runtime.options(&config, &contracts)?,
+            runtime.contexts(&contracts),
+            client,
+            store,
+            DaoEventDecoder,
+        );
+        if let Some(chunks) = runtime.max_chunks_per_run {
+            runner.request_shutdown_after_chunks(chunks);
+        }
+
+        runner
+            .run_to_target(runtime.target_height)
+            .context("run Datalens indexer to target height")
+    })
+    .await
+    .context("join Datalens indexer runner task")?
+}
