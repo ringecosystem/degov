@@ -1,6 +1,7 @@
 use async_graphql::{
     ComplexObject, Context, EmptyMutation, EmptySubscription, Enum, InputObject, Object,
-    Result as GraphqlResult, Schema, SimpleObject, http::GraphiQLSource,
+    Result as GraphqlResult, Schema, SimpleObject,
+    http::{GraphiQLSource, graphiql_plugin_explorer},
 };
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
@@ -59,6 +60,7 @@ async fn graphql_graphiql(endpoint: String) -> impl IntoResponse {
         GraphiQLSource::build()
             .endpoint(&endpoint)
             .title("DeGov Indexer GraphiQL")
+            .plugins(&[graphiql_plugin_explorer()])
             .finish(),
     )
 }
