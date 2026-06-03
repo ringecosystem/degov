@@ -1,6 +1,6 @@
 export * from "./proposals";
 export * from "./delegates";
-export * from "./squidStatus";
+export * from "./indexerStatus";
 export * from "./profile";
 export * from "./contributors";
 export * from "./counts";

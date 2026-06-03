@@ -4,7 +4,7 @@ import { useBlockNumber } from "wagmi";
 
 import { INDEXER_CONFIG } from "@/config/indexer";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { squidStatusService } from "@/services/graphql";
+import { indexerStatusService } from "@/services/graphql";
 import { CACHE_TIMES } from "@/utils/query-config";
 
 export type BlockSyncStatus = "operational" | "syncing" | "offline";
@@ -16,24 +16,31 @@ export function useBlockSync() {
     chainId: daoConfig?.chain?.id,
   });
 
-  const { data: squidStatus, isLoading } = useQuery({
-    queryKey: ["squidStatus", daoConfig?.indexer?.endpoint],
+  const { data: indexerStatus, isLoading } = useQuery({
+    queryKey: ["indexerStatus", daoConfig?.indexer?.endpoint],
     queryFn: async () => {
       if (!daoConfig?.indexer?.endpoint) return null;
-      return squidStatusService.getSquidStatus(daoConfig.indexer.endpoint);
+      return indexerStatusService.getIndexerStatus(daoConfig.indexer.endpoint);
     },
     enabled: !!daoConfig?.indexer?.endpoint,
     refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
   });
 
   const currentBlock = currentBlockData ? Number(currentBlockData) : 0;
-  const indexedBlock = squidStatus?.height ? Number(squidStatus.height) : 0;
+  const indexedBlock = indexerStatus?.processedHeight
+    ? Number(indexerStatus.processedHeight)
+    : 0;
+  const nativeSyncPercentage = indexerStatus?.syncedPercentage;
 
   const syncPercentage = useMemo(() => {
+    if (nativeSyncPercentage !== null && nativeSyncPercentage !== undefined) {
+      return Number(Number(nativeSyncPercentage).toFixed(1));
+    }
+
     if (!currentBlock || !indexedBlock) return 0;
     const ratio = (indexedBlock / currentBlock) * 100;
     return Number(ratio.toFixed(1));
-  }, [currentBlock, indexedBlock]);
+  }, [currentBlock, indexedBlock, nativeSyncPercentage]);
 
   const status: BlockSyncStatus = useMemo(() => {
     if (!indexedBlock) return "offline";
