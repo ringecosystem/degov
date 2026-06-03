@@ -12,6 +12,11 @@ async fn write_data_metric_timeline(
     vote: Option<&VoteProjectionBatch>,
     token: Option<&TokenProjectionBatch>,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let inserted_operation_keys = inserted_operation_keys
+        .iter()
+        .map(|(contract_set_id, id)| (contract_set_id.as_str(), id.as_str()))
+        .collect::<HashSet<_>>();
+    let mut delegate_mapping_cache = DelegateMappingCache::default();
     let mut items = Vec::new();
     if let Some(token) = token {
         items.extend(token.operations.iter().map(DataMetricTimelineItem::Token));
@@ -32,10 +37,9 @@ async fn write_data_metric_timeline(
     for item in items {
         match item {
             DataMetricTimelineItem::Token(operation) => {
-                if inserted_operation_keys.iter().any(|inserted| {
-                    (inserted.0.as_str(), inserted.1.as_str()) == token_operation_key(operation)
-                }) {
-                    apply_token_operation(transaction, operation).await?;
+                if inserted_operation_keys.contains(&token_operation_key(operation)) {
+                    apply_token_operation(transaction, &mut delegate_mapping_cache, operation)
+                        .await?;
                 }
             }
             DataMetricTimelineItem::Proposal(row) | DataMetricTimelineItem::Vote(row) => {

@@ -15,12 +15,12 @@ use std::{
 use degov_datalens_indexer::{
     BatchReadPlanConfig, CallExecutedEvent, CallScheduledEvent, ChainContracts, ChainReadMethod,
     DecodedGovernorEvent, DecodedTimelockEvent, DecodedTokenEvent, DelegateChangedEvent,
-    GovernanceTokenStandard, IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction,
-    NormalizedEvmLog, PostgresIndexerRunnerStore, ProposalCreatedEvent, ProposalExtendedEvent,
-    ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
+    DelegateVotesChangedEvent, GovernanceTokenStandard, IndexerProjectionBatch, IndexerRunnerStore,
+    IndexerRunnerTransaction, NormalizedEvmLog, PostgresIndexerRunnerStore, ProposalCreatedEvent,
+    ProposalExtendedEvent, ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
     TimelockProjectionContext, TimelockProjectionEvent, TimelockProposalLinkContext,
-    TokenProjectionContext, TokenProjectionEvent, VoteCastEvent, VoteProjectionContext,
-    VoteProjectionEvent, project_proposal_events, project_timelock_events,
+    TokenProjectionContext, TokenProjectionEvent, TokenTransferEvent, VoteCastEvent,
+    VoteProjectionContext, VoteProjectionEvent, project_proposal_events, project_timelock_events,
     project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
     runtime::apply_migrations,
 };
@@ -540,6 +540,168 @@ async fn test_postgres_data_metric_event_snapshots_follow_mixed_batch_event_orde
         Some("0".to_owned())
     );
     assert_eq!(metric.get::<Option<i32>, _>("member_count"), Some(1));
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_same_batch_mapping_mutations_remain_ordered()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let initial = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000001-delegate", 1, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000002-votes", 1, 0, 2),
+                event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                    delegate: DELEGATE.to_owned(),
+                    previous_votes: "0".to_owned(),
+                    new_votes: "100".to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("initial token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(initial),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let same_batch = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000003-transfer", 2, 0, 1),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: DELEGATOR.to_owned(),
+                    to: RECEIVER.to_owned(),
+                    value: "40".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000004-redelegate", 2, 0, 2),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: DELEGATE.to_owned(),
+                    to_delegate: SECOND_DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000005-new-votes", 2, 0, 3),
+                event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                    delegate: SECOND_DELEGATE.to_owned(),
+                    previous_votes: "0".to_owned(),
+                    new_votes: "60".to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000006-second-transfer", 2, 0, 4),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: DELEGATOR.to_owned(),
+                    to: RECEIVER.to_owned(),
+                    value: "10".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("same-batch token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(same_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let mapping = sqlx::query(
+        r#"SELECT "to", power::TEXT AS power
+           FROM delegate_mapping
+           WHERE contract_set_id = $1 AND "from" = $2"#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATOR)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(mapping.get::<String, _>("to"), SECOND_DELEGATE);
+    assert_eq!(mapping.get::<String, _>("power"), "50");
+
+    let previous_relation = sqlx::query(
+        "SELECT power::TEXT AS power, is_current
+         FROM delegate
+         WHERE contract_set_id = $1 AND from_delegate = $2 AND to_delegate = $3",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATOR)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(previous_relation.get::<String, _>("power"), "60");
+    assert!(!previous_relation.get::<bool, _>("is_current"));
+
+    let current_relation = sqlx::query(
+        "SELECT power::TEXT AS power, is_current
+         FROM delegate
+         WHERE contract_set_id = $1 AND from_delegate = $2 AND to_delegate = $3",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATOR)
+    .bind(SECOND_DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(current_relation.get::<String, _>("power"), "50");
+    assert!(current_relation.get::<bool, _>("is_current"));
+
+    let previous_delegate_counts = sqlx::query(
+        "SELECT delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        previous_delegate_counts.get::<i32, _>("delegates_count_all"),
+        0
+    );
+    assert_eq!(
+        previous_delegate_counts.get::<i32, _>("delegates_count_effective"),
+        0
+    );
+
+    let current_delegate_counts = sqlx::query(
+        "SELECT delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(SECOND_DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        current_delegate_counts.get::<i32, _>("delegates_count_all"),
+        1
+    );
+    assert_eq!(
+        current_delegate_counts.get::<i32, _>("delegates_count_effective"),
+        1
+    );
 
     database.cleanup().await?;
 
@@ -1759,6 +1921,7 @@ const VOTER: &str = "0x0000000000000000000000000000000000000b01";
 const DELEGATOR: &str = "0x0000000000000000000000000000000000000c01";
 const DELEGATE: &str = "0x0000000000000000000000000000000000000c02";
 const RECEIVER: &str = "0x0000000000000000000000000000000000000c03";
+const SECOND_DELEGATE: &str = "0x0000000000000000000000000000000000000c04";
 const ZERO_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
 const OPERATION_ID: &str = "0x0101010101010101010101010101010101010101010101010101010101010101";
 const ZERO_OPERATION_ID: &str =
