@@ -16,6 +16,13 @@ identity, dataset key, and query block range limit at startup. The bearer token
 is loaded from environment or secret-backed configuration and is redacted by
 config formatting.
 
+The default deployment model is one shared Postgres indexer database, one
+all-mode indexer process, one GraphQL service, one onchain refresh worker, and
+scoped DAO routes or hostnames. Use `DEGOV_INDEXER_CONFIG_FILE` for multi-chain
+contract sets and set `DEGOV_INDEXER_CONTRACT_SET_MODE=all` for normal
+staging/production runs. `DEGOV_INDEXER_DAO_CODE` is a temporary debug filter,
+not the default deployment unit.
+
 ## PostgreSQL schema ownership
 
 `migrations/0001_init.sql` is the canonical fresh PostgreSQL initialization

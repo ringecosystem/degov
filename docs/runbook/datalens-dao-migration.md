@@ -14,10 +14,12 @@
 ## Migration Contract
 
 This is an incompatible indexer migration. The normal production path is a
-fresh target Postgres database, Datalens-native schema initialization, and a
-clean reindex from the DAO's configured start block. Reusing an existing SQD/v4
-database is not allowed unless that specific DAO has a written, validated DB
-reuse path with parity evidence and rollback coverage.
+fresh shared Postgres indexer database, Datalens-native schema initialization,
+and a clean reindex from each configured DAO's start block. The HBX-307
+deployment model is one DB, one `DEGOV_INDEXER_CONTRACT_SET_MODE=all` indexer,
+one GraphQL service, one worker, and scoped DAO routes or hostnames. Reusing an
+existing SQD/v4 database is not allowed unless that specific deployment has a
+written, validated DB reuse path with parity evidence and rollback coverage.
 
 DB migrations alone cannot rewrite historical projections that were already
 indexed under the old runtime. A schema migration can create or reshape tables,
@@ -81,6 +83,9 @@ All preconditions must be true before scheduling production cutover.
 - Target DB initialization is ready: a new database can be created, credentials
   can be mounted, and `pnpm run indexer:migrate` can initialize the
   Datalens-native schema.
+- The production indexer config file can be mounted through
+  `DEGOV_INDEXER_CONFIG_FILE` and contains every contract set in the rollout
+  plus `rpc.chains` URL env names for the shared worker.
 - Production web/API cutover path is known: DB pointer, image tag, runtime
   entrypoint, GraphQL endpoint, and web config changes can be reverted
   independently.
@@ -99,7 +104,9 @@ export DATALENS_DATASET_FAMILY=evm
 export DATALENS_DATASET_NAME=logs
 export DATALENS_APPLICATION=<production-datalens-application>
 export DATALENS_ENDPOINT=<datalens-service-base-url>
-export TARGET_DB_URL=<new-datalens-postgres-url>
+export DEGOV_INDEXER_CONFIG_FILE=<mounted-indexer-config-file>
+export DEGOV_INDEXER_CONTRACT_SET_MODE=all
+export TARGET_DB_URL=<new-shared-datalens-postgres-url>
 export OLD_DB_URL=<current-sqd-v4-postgres-url>
 export CANDIDATE_IMAGE=ghcr.io/ringecosystem/degov/indexer:sha-<git-sha>
 export DEGOV_INDEXER_GRAPHQL_ENDPOINT=<production-or-validation-graphql-url>
@@ -112,14 +119,16 @@ or committed files.
 
 ## Staging Proof Gate
 
-Complete staging proof before production cutover. For each DAO:
+Complete staging proof before production cutover. For the shared deployment:
 
-1. Deploy the Datalens-backed staging indexer with a fresh staging DB.
+1. Deploy the Datalens-backed staging indexer with a fresh shared staging DB,
+   `DEGOV_INDEXER_CONTRACT_SET_MODE=all`, and the same config-file shape.
 2. Confirm Datalens server, application auth, chain dataset, and cache checks
    pass.
 3. Confirm the current package boundary is understood for the deployed image.
-4. After projection packages land, wait for the staging checkpoint to reach the
-   intended target height and verify proposal/delegate/metric counts.
+4. After projection packages land, wait for every configured staging
+   checkpoint to reach the intended target height and verify
+   proposal/delegate/metric counts by DAO scope.
 5. After worker packages land and if the DAO supports refresh, run onchain
    refresh and verify queue drain.
 6. Run side-by-side checks against the old runtime, Tally, and direct onchain
@@ -130,31 +139,34 @@ Complete staging proof before production cutover. For each DAO:
 For detailed commands, use the staging and observability runbooks instead of
 duplicating all checks here.
 
-## One-DAO Production Cutover
+## Shared Production Cutover
 
-Use this sequence for a single DAO. For a batch, run the same sequence per DAO
-and apply the batching controls in the next section.
+Use this sequence for the shared production deployment. Individual DAO cutover
+still happens through scoped routes, web config, and validation targets, not
+through separate Datalens-native databases.
 
 ### 1. Freeze The Cutover Scope
 
-Record the exact DAO, image tag, current production DB, target DB name, current
-production image/env, and rollback commit or GitOps revision. Keep this record
-outside the production DB being changed.
+Record the exact DAO set, image tag, current production DB pointers, shared
+target DB name, current production image/env, scoped routes, and rollback
+commit or GitOps revision. Keep this record outside the production DB being
+changed.
 
 Do not include unsupported DAOs. If compatibility preflight classifies a DAO as
 unsupported, exclude it from active production workloads before continuing.
 
 ### 2. Create The Target DB
 
-Create a new production target database for the DAO. Use a name that clearly
-marks it as Datalens-native and production, for example:
+Create one new production target database for the all-mode Datalens-native
+deployment. Use a name that clearly marks it as shared, Datalens-native, and
+production, for example:
 
 ```text
-degov_datalens_prod_<dao_code>
+degov_datalens_prod_all_contract_sets
 ```
 
 Do not point the Datalens-native indexer at the existing SQD/v4 database unless
-there is a validated DB reuse path for this exact DAO.
+there is a validated DB reuse path for this exact deployment.
 
 Initialize the target DB:
 
@@ -168,15 +180,15 @@ cutover and keep production on the old runtime.
 
 ### 3. Deploy The Datalens-Backed Indexer
 
-Deploy a production validation workload for the DAO using:
+Deploy production validation workloads using:
 
 - image `CANDIDATE_IMAGE`;
-- `run` entrypoint for the indexer;
+- one `run` entrypoint with `DEGOV_INDEXER_CONTRACT_SET_MODE=all`;
 - `graphql` entrypoint only after DB initialization is complete;
 - `worker` entrypoint only when worker task processing is supported and enabled
-  for this DAO;
-- production Datalens endpoint, application, chain/dataset, governor, token,
-  and optional timelock environment;
+  for the configured contract sets;
+- production Datalens endpoint, application, dataset, and mounted config file
+  containing chain/dataset contract sets plus `rpc.chains`;
 - `DEGOV_INDEXER_DATABASE_URL="$TARGET_DB_URL"`.
 
 Keep the old SQD/v4 runtime serving production while the Datalens workload
@@ -363,15 +375,18 @@ After production traffic is served by the Datalens-backed DB/image/env and the
 public smoke checks pass, stop or scale down the old SQD/v4 runtime for this
 DAO. Do not delete the old DB, volumes, secrets, or SQD-specific resources yet.
 
-## Batched DAO Migration
+## Scoped DAO Route Cutover
 
-Use batches only after at least one DAO has completed the one-DAO path and
-validated rollback. A batch is a list of independent one-DAO migrations with a
-shared release window, not a single all-or-nothing DB operation.
+Use scoped route cutovers only after at least one DAO has completed validation
+against the shared Datalens deployment and rollback is understood. A batch is a
+list of DAO routes/web configs cut over to the shared DB-backed GraphQL service,
+not a set of separate Datalens-native DBs.
 
 Batch controls:
 
-- Keep one target DB per DAO. Do not share target DBs across DAOs.
+- Keep one shared target DB for the all-mode Datalens deployment. Do not create
+  new DAO-specific Datalens-native DBs unless rollback requires a temporary
+  validation fork.
 - Require every DAO in the batch to pass compatibility preflight and staging
   proof before the batch starts.
 - Freeze one image tag for the batch unless a DAO has a documented exception.
@@ -381,12 +396,12 @@ Batch controls:
 - Roll back only the affected DAO when failures are DAO-specific. Roll back the
   whole batch only when the failure is shared infrastructure, image, schema, or
   Datalens application behavior.
-- Track old and target DB pointers per DAO so rollback never depends on memory
-  or shell history.
+- Track old DB pointers, shared target DB pointer, and scoped route/web config
+  per DAO so rollback never depends on memory or shell history.
 
 Minimum batch record:
 
-| DAO | Old DB | Target DB | Image | Target height | Refresh supported | Validation owner | Cutover status |
+| DAO | Old DB | Shared target DB | Image | Target height | Refresh supported | Validation owner | Cutover status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `<dao-code>` | `<old-db>` | `<target-db>` | `<sha-tag>` | `<height>` | `yes/no` | `<owner>` | `<pending/done/rollback>` |
 

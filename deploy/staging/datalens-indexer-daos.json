@@ -10,6 +10,12 @@
     "graphql": ["graphql"],
     "onchainRefreshWorker": ["worker"]
   },
+  "deploymentModel": {
+    "database": "one shared fresh Datalens indexer database",
+    "indexer": "one all-mode Datalens indexer workload",
+    "graphql": "one GraphQL service with scoped DAO routes",
+    "onchainRefreshWorker": "one shared worker workload"
+  },
   "datalens": {
     "endpointEnv": "DATALENS_ENDPOINT",
     "tokenEnv": "DATALENS_TOKEN",
@@ -22,22 +28,56 @@
   },
   "database": {
     "urlEnv": "DEGOV_INDEXER_DATABASE_URL",
-    "freshDatabasePrefix": "degov_datalens_migration_"
+    "databaseName": "degov_datalens_migration_all_contract_sets",
+    "freshInitOnly": true,
+    "migration": "apps/indexer/migrations/0001_init.sql"
+  },
+  "configFile": {
+    "env": "DEGOV_INDEXER_CONFIG_FILE",
+    "mountPath": "/app/indexer.yml",
+    "source": "GitOps-managed config file rendered from contractSets and rpc.chains",
+    "contractSetMode": "all"
+  },
+  "runtimeEnv": {
+    "DEGOV_INDEXER_CONFIG_FILE": "/app/indexer.yml",
+    "DEGOV_INDEXER_CONTRACT_SET_MODE": "all",
+    "DEGOV_INDEXER_TARGET_HEIGHT": "latest",
+    "DEGOV_INDEXER_RUN_ONCE": "false",
+    "DEGOV_INDEXER_POLL_INTERVAL_MS": 10000,
+    "DATALENS_APPLICATION": "degov-staging",
+    "DATALENS_FINALITY": "durable_only",
+    "DATALENS_DATASET_FAMILY": "evm",
+    "DATALENS_DATASET_NAME": "logs",
+    "DATALENS_QUERY_BLOCK_RANGE_LIMIT": 1000
   },
   "graphql": {
     "endpointEnv": "DEGOV_INDEXER_GRAPHQL_ENDPOINT",
     "bindEndpoint": "http://0.0.0.0:4350/graphql",
     "port": 4350,
     "path": "/graphql",
-    "routePolicy": "Add the Datalens GraphQL route for validation without removing existing DAO hostnames or endpoints."
+    "routePolicy": "Expose multiple scoped DAO hostnames or paths through the single GraphQL service without removing existing DAO hostnames until cutover is validated.",
+    "scopedRoutes": [
+      {
+        "daoCode": "degov-demo-dao",
+        "hostname": "indexer.next.degov.ai",
+        "path": "/degov-demo-dao/graphql",
+        "publicEndpoint": "https://indexer.next.degov.ai/degov-demo-dao/graphql"
+      },
+      {
+        "daoCode": "lisk-dao",
+        "hostname": "indexer.next.degov.ai",
+        "path": "/lisk-dao/graphql",
+        "publicEndpoint": "https://indexer.next.degov.ai/lisk-dao/graphql"
+      }
+    ]
   },
   "onchainRefreshWorker": {
     "enabled": false,
-    "rpcUrlEnv": "DEGOV_ONCHAIN_REFRESH_RPC_URL",
+    "rpcChainUrlEnvs": ["DARWINIA_RPC_URL", "LISK_RPC_URL"],
     "enableWhen": "Enable only after checkpoint/status integration can prove refresh tasks are created, processed, retried, and surfaced in diagnostics.",
     "env": {
+      "DEGOV_INDEXER_CONFIG_FILE": "/app/indexer.yml",
       "DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED": "false",
-      "DEGOV_ONCHAIN_REFRESH_RPC_URL": "",
       "DEGOV_ONCHAIN_REFRESH_CURRENT_POWER_METHOD": "getVotes",
       "DEGOV_ONCHAIN_REFRESH_BATCH_SIZE": 100,
       "DEGOV_ONCHAIN_REFRESH_MAX_ATTEMPTS": 3,
@@ -53,40 +93,42 @@
       "DEGOV_ONCHAIN_REFRESH_REQUEST_TIMEOUT_MS": 15000
     }
   },
-  "daos": [
+  "contractSets": [
     {
-      "code": "degov-demo-dao",
-      "databaseName": "degov_datalens_migration_degov_demo_dao",
-      "registryConfigPath": "degov.yml",
-      "graphqlPath": "/degov-demo-dao/graphql",
-      "startBlock": 5873342,
-      "targetHeight": 5874342,
-      "env": {
-        "DEGOV_INDEXER_DAO_CODE": "degov-demo-dao",
-        "DEGOV_INDEXER_START_BLOCK": 5873342,
-        "DEGOV_INDEXER_TARGET_HEIGHT": 5874342,
-        "DEGOV_INDEXER_GRAPHQL_ENDPOINT": "http://0.0.0.0:4350/graphql",
-        "DATALENS_APPLICATION": "degov-staging",
-        "DATALENS_FINALITY": "durable_only",
-        "DATALENS_CHAIN_FAMILY": "evm",
-        "DATALENS_CHAIN_NAME": "darwinia",
-        "DATALENS_CHAIN_ID": 46,
-        "DATALENS_DATASET_FAMILY": "evm",
-        "DATALENS_DATASET_NAME": "logs",
-        "DATALENS_QUERY_BLOCK_RANGE_LIMIT": 1000,
-        "DATALENS_CHAINS_JSON": "[{\"chainId\":46,\"networkName\":\"darwinia\",\"contracts\":[{\"daoCode\":\"degov-demo-dao\",\"governor\":\"0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517\",\"governorToken\":\"0xbC9f58566810F7e853e1eef1b9957ac82F9971df\",\"tokenStandard\":\"ERC20\",\"timelock\":\"0x6AB15C6ada9515A8E21321e241013dB457C8576c\",\"startBlock\":5873342}]}]",
-        "DATALENS_GOVERNOR_ADDRESS": "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517",
-        "DATALENS_GOVERNOR_TOKEN_ADDRESS": "0xbC9f58566810F7e853e1eef1b9957ac82F9971df",
-        "DATALENS_GOVERNOR_TOKEN_STANDARD": "ERC20",
-        "DATALENS_TIMELOCK_ADDRESS": "0x6AB15C6ada9515A8E21321e241013dB457C8576c"
-      }
+      "chainId": 46,
+      "networkName": "darwinia",
+      "contracts": [
+        {
+          "daoCode": "degov-demo-dao",
+          "governor": "0xC9EA55E644F496D6CaAEDcBAD91dE7481Dcd7517",
+          "governorToken": "0xbC9f58566810F7e853e1eef1b9957ac82F9971df",
+          "tokenStandard": "ERC20",
+          "timelock": "0x6AB15C6ada9515A8E21321e241013dB457C8576c",
+          "startBlock": 5873342
+        }
+      ]
+    },
+    {
+      "chainId": 1135,
+      "networkName": "lisk",
+      "contracts": [
+        {
+          "daoCode": "lisk-dao",
+          "governor": "0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568",
+          "governorToken": "0x2eE6Eca46d2406454708a1C80356a6E63b57D404",
+          "tokenStandard": "ERC20",
+          "timelock": "0x2294A7f24187B84995A2A28112f82f07BE1BceAD",
+          "startBlock": 568752
+        }
+      ]
     }
   ],
   "sharedSecretKeys": [
     "DATALENS_ENDPOINT",
     "DATALENS_TOKEN",
     "DEGOV_INDEXER_DATABASE_URL",
-    "DEGOV_ONCHAIN_REFRESH_RPC_URL"
+    "DARWINIA_RPC_URL",
+    "LISK_RPC_URL"
   ],
   "requiredRuntimeChecks": [
     "pod-readiness",

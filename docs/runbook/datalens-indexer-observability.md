@@ -20,13 +20,16 @@ Collect these values before running checks:
 - Datalens application identity, such as `degov-live`.
 - Secret-backed Datalens bearer token. Do not print or paste the token into
   issue comments, logs, shell history, or committed files.
-- DeGov indexer database URL. Deployed services use
-  `DEGOV_INDEXER_DATABASE_URL`; the examples below use the same name.
-- DeGov GraphQL endpoint, for example
-  `https://indexer.next.degov.ai/<dao-code>/graphql`. Deployed services use
-  `DEGOV_INDEXER_GRAPHQL_ENDPOINT`; the GraphQL service binds with
-  `DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS` and also serves
-  `DEGOV_INDEXER_GRAPHQL_PATH` when set.
+- Shared DeGov indexer database URL. Deployed services use
+  `DEGOV_INDEXER_DATABASE_URL`; the examples below use the same name and filter
+  by DAO scope where needed.
+- Mounted indexer config file. Deployed all-mode services use
+  `DEGOV_INDEXER_CONFIG_FILE` plus `DEGOV_INDEXER_CONTRACT_SET_MODE=all`; the
+  file contains `chains` contract sets and worker `rpc.chains` URL env names.
+- Scoped DeGov GraphQL endpoint, for example
+  `https://indexer.next.degov.ai/<dao-code>/graphql`. One GraphQL service
+  serves the shared DB and exposes `/graphql` plus scoped DAO paths derived from
+  `DEGOV_INDEXER_GRAPHQL_ENDPOINT` or `DEGOV_INDEXER_GRAPHQL_PATH`.
 - DeGov web base URL for the environment under test.
 
 Use placeholders in the examples below:
@@ -46,6 +49,8 @@ export DATALENS_ENDPOINT=<datalens-service-base-url>
 export DATALENS_APPLICATION=<datalens-application>
 export DATALENS_TOKEN=<secret-backed-token>
 export DEGOV_INDEXER_DATABASE_URL=<postgres-url>
+export DEGOV_INDEXER_CONFIG_FILE=<mounted-indexer-config-file>
+export DEGOV_INDEXER_CONTRACT_SET_MODE=all
 export DEGOV_INDEXER_GRAPHQL_ENDPOINT=<degov-graphql-url>
 export DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS=0.0.0.0:4350
 export DEGOV_INDEXER_GRAPHQL_PATH=/<dao-code>/graphql
