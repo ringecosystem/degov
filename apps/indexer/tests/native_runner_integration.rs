@@ -103,11 +103,7 @@ fn test_native_runner_links_timelock_to_proposal_actions_from_previous_range() {
     let mut runner = native_runner_with_options(
         vec![
             vec![proposal_created_row()],
-            vec![],
-            vec![],
-            vec![proposal_queued_row()],
-            vec![],
-            vec![call_scheduled_row()],
+            vec![proposal_queued_row(), call_scheduled_row()],
         ],
         CapturingStore::new(identity(), 1),
         options,
@@ -595,19 +591,16 @@ fn addresses() -> DaoContractAddresses {
 }
 
 fn scripted_pages() -> Vec<Vec<Value>> {
-    vec![
-        vec![
-            vote_cast_row(),
-            proposal_created_row(),
-            proposal_queued_row(),
-        ],
-        vec![
-            delegate_changed_row(),
-            delegate_votes_changed_row(),
-            erc20_transfer_row(),
-        ],
-        vec![call_executed_row(), call_scheduled_row()],
-    ]
+    vec![vec![
+        call_executed_row(),
+        delegate_changed_row(),
+        vote_cast_row(),
+        proposal_created_row(),
+        call_scheduled_row(),
+        delegate_votes_changed_row(),
+        erc20_transfer_row(),
+        proposal_queued_row(),
+    ]]
 }
 
 fn proposal_created_row() -> Value {

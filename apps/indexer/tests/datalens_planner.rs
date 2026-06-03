@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use datalens_sdk::native::{QueryInput, QueryRangeKindInput, SelectorKindInput};
 use degov_datalens_indexer::{
-    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DaoLogQueryPlan, DaoLogSource,
-    DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader, DatasetKeyConfig,
-    GovernanceTokenStandard, QueryLimitConfig, SecretString, fetch_dao_log_pages,
+    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan,
+    DaoLogSource, DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader,
+    DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig, SecretString, fetch_dao_log_pages,
     plan_dao_log_queries,
 };
 
@@ -13,11 +13,23 @@ fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelo
     let config = config(1_000, DatalensFinality::DurableOnly);
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 199).expect("plans");
 
-    assert_eq!(plans.len(), 3);
+    assert_eq!(plans.len(), 1);
     assert_query(
         &plans[0],
-        DaoLogSource::Governor,
-        "0x1111111111111111111111111111111111111111",
+        &[
+            DaoLogAddressSource {
+                address: "0x1111111111111111111111111111111111111111".to_owned(),
+                source: DaoLogSource::Governor,
+            },
+            DaoLogAddressSource {
+                address: "0x2222222222222222222222222222222222222222".to_owned(),
+                source: DaoLogSource::GovernorToken,
+            },
+            DaoLogAddressSource {
+                address: "0x3333333333333333333333333333333333333333".to_owned(),
+                source: DaoLogSource::Timelock,
+            },
+        ],
         &[
             "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0",
             "0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892",
@@ -32,29 +44,9 @@ fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelo
             "0x08f74ea46ef7894f65eabfb5e6e695de773a000b47c529ab559178069b226401",
             "0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4",
             "0xe2babfbac5889a709b63bb7f598b324e08bc5a4fb9ec647fb3cbc9ec07eb8712",
-        ],
-        100,
-        199,
-        "durable_only",
-    );
-    assert_query(
-        &plans[1],
-        DaoLogSource::GovernorToken,
-        "0x2222222222222222222222222222222222222222",
-        &[
             "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
             "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f",
             "0xdec2bacdd2f05b59de34da9b523dff8be42e5e38e818c82fdb0bae774387a724",
-        ],
-        100,
-        199,
-        "durable_only",
-    );
-    assert_query(
-        &plans[2],
-        DaoLogSource::Timelock,
-        "0x3333333333333333333333333333333333333333",
-        &[
             "0x4cf4410cc57040e44862ef0f45f3dd5a5e02db8eb8add648d4b0e236f1d07dca",
             "0xc2617efa69bab66782fa219543714338489c4e9e178271560a91b82c3f612b58",
             "0x20fda5fd27a1ea7bf5b9567f143ac5470bb059374a27e8f67cb44f946f6d0387",
@@ -76,7 +68,6 @@ fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 220).expect("plans");
     let ranges = plans
         .iter()
-        .filter(|plan| plan.source == DaoLogSource::Governor)
         .map(|plan| (plan.from_block, plan.to_block))
         .collect::<Vec<_>>();
 
@@ -135,8 +126,8 @@ fn test_fetch_dao_log_pages_returns_first_reader_error_without_local_retry() {
 
 #[test]
 fn test_fetch_dao_log_pages_stops_without_later_pages_on_reader_error() {
-    let config = config(1_000, DatalensFinality::DurableOnly);
-    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
+    let config = config(1, DatalensFinality::DurableOnly);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 101).expect("plans");
     let mut reader = MockLogReader::new(vec![
         Err(DatalensError::Query("rate limited".to_owned())),
         Ok(serde_json::json!([])),
@@ -150,14 +141,13 @@ fn test_fetch_dao_log_pages_stops_without_later_pages_on_reader_error() {
 
 fn assert_query(
     plan: &DaoLogQueryPlan,
-    source: DaoLogSource,
-    address: &str,
+    sources: &[DaoLogAddressSource],
     topic0_values: &[&str],
     from_block: i32,
     to_block: i32,
     finality: &str,
 ) {
-    assert_eq!(plan.source, source);
+    assert_eq!(plan.sources, sources);
     assert_eq!(plan.from_block, from_block);
     assert_eq!(plan.to_block, to_block);
     assert_eq!(plan.input.chain.configured_name, "ethereum");
@@ -170,7 +160,13 @@ fn assert_query(
     assert_eq!(plan.input.finality.as_deref(), Some(finality));
 
     let evm_logs = plan.input.selector.evm_logs.as_ref().expect("evm logs");
-    assert_eq!(evm_logs.addresses, vec![address.to_owned()]);
+    assert_eq!(
+        evm_logs.addresses,
+        sources
+            .iter()
+            .map(|source| source.address.clone())
+            .collect::<Vec<_>>()
+    );
     assert_eq!(
         evm_logs.topics,
         vec![

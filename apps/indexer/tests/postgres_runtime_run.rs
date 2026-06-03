@@ -126,7 +126,7 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     run_indexer_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 1);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
     assert_table_count(&database.pool, "proposal_created", 1).await?;
     assert_table_count(&database.pool, "proposal", 1).await?;
     assert_table_count(&database.pool, "vote_cast", 1).await?;
@@ -155,7 +155,7 @@ async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
     run_indexer_all_contract_sets_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 0);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
     assert_checkpoint_scope(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_scope(&database.pool, SECOND_CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_row_count(&database.pool, 2).await?;
@@ -924,13 +924,13 @@ fn handle_datalens_request(
             "range_kind": "block"
         })
     } else {
-        let query_index = query_count.fetch_add(1, Ordering::Relaxed);
-        let rows = match query_index {
-            0 => governor_rows.to_vec(),
-            1 => token_rows.to_vec(),
-            2 => timelock_rows.to_vec(),
-            _ => Vec::new(),
-        };
+        query_count.fetch_add(1, Ordering::Relaxed);
+        let rows = governor_rows
+            .iter()
+            .chain(token_rows)
+            .chain(timelock_rows)
+            .cloned()
+            .collect::<Vec<_>>();
 
         json!({
             "chain": {},
