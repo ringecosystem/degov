@@ -378,10 +378,12 @@ where
             "start"
         };
         info!(
-            "Datalens indexer checkpoint selected dao_code={} chain_id={} contract_set_id={} start_block={} next_block={} checkpoint_choice={}",
+            "Datalens indexer checkpoint selected dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} start_block={} next_block={} checkpoint_choice={}",
             self.options.checkpoint_identity.dao_code,
             self.options.checkpoint_identity.chain_id,
             self.options.checkpoint_identity.contract_set_id,
+            self.options.checkpoint_identity.stream_id,
+            self.options.checkpoint_identity.data_source_version,
             self.options.start_block,
             checkpoint.next_block,
             checkpoint_choice
@@ -416,10 +418,12 @@ where
             };
 
             info!(
-                "processing Datalens indexer chunk dao_code={} chain_id={} contract_set_id={} from_block={} to_block={} target_height={} chunk_size={}",
+                "processing Datalens indexer chunk dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} target_height={} chunk_size={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
                 self.options.checkpoint_identity.contract_set_id,
+                self.options.checkpoint_identity.stream_id,
+                self.options.checkpoint_identity.data_source_version,
                 range.from_block,
                 range.to_block,
                 effective_target,
@@ -431,10 +435,12 @@ where
                 Ok(processing) => processing,
                 Err(error) => {
                     error!(
-                        "Datalens indexer chunk failed before transaction dao_code={} chain_id={} contract_set_id={} from_block={} to_block={} target_height={} chunk_size={} datalens_retry_attempts=unavailable error={}",
+                        "Datalens indexer chunk failed before transaction dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} target_height={} chunk_size={} datalens_retry_attempts=unavailable error={}",
                         self.options.checkpoint_identity.dao_code,
                         self.options.checkpoint_identity.chain_id,
                         self.options.checkpoint_identity.contract_set_id,
+                        self.options.checkpoint_identity.stream_id,
+                        self.options.checkpoint_identity.data_source_version,
                         range.from_block,
                         range.to_block,
                         effective_target,
@@ -444,27 +450,26 @@ where
                     return Err(error);
                 }
             };
-            let dao_code = self.options.checkpoint_identity.dao_code.clone();
-            let chain_id = self.options.checkpoint_identity.chain_id;
+            let checkpoint_identity = self.options.checkpoint_identity.clone();
             let checkpoint_next_block_before = checkpoint.next_block;
             let write_started_at = Instant::now();
             let mut transaction = self
                 .store
                 .begin_transaction()
-                .map_err(|error| transaction_error(&dao_code, chain_id, range, error))?;
+                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             transaction
                 .apply_projection_batch(&processing.batch)
-                .map_err(|error| transaction_error(&dao_code, chain_id, range, error))?;
+                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             transaction
                 .advance_checkpoint(
                     &self.options.checkpoint_identity,
                     range.to_block,
                     Some(effective_target),
                 )
-                .map_err(|error| transaction_error(&dao_code, chain_id, range, error))?;
+                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             transaction
                 .commit()
-                .map_err(|error| transaction_error(&dao_code, chain_id, range, error))?;
+                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             let write_duration = write_started_at.elapsed();
 
             chunks_processed += 1;
@@ -481,10 +486,12 @@ where
                 self.options.progress_refresh_lag_blocks,
             );
             info!(
-                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={}",
+                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
                 self.options.checkpoint_identity.contract_set_id,
+                self.options.checkpoint_identity.stream_id,
+                self.options.checkpoint_identity.data_source_version,
                 range.from_block,
                 range.to_block,
                 effective_target,
@@ -773,14 +780,20 @@ fn to_checkpoint_error(error: impl fmt::Display) -> IndexerRunnerError {
 }
 
 fn transaction_error(
-    dao_code: &str,
-    chain_id: i32,
+    identity: &IndexerCheckpointIdentity,
     range: CheckpointBlockRange,
     error: impl fmt::Display,
 ) -> IndexerRunnerError {
     error!(
-        "Datalens indexer chunk transaction failed; checkpoint was not advanced dao_code={} chain_id={} from_block={} to_block={} error={}",
-        dao_code, chain_id, range.from_block, range.to_block, error
+        "Datalens indexer chunk transaction failed; checkpoint was not advanced dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} error={}",
+        identity.dao_code,
+        identity.chain_id,
+        identity.contract_set_id,
+        identity.stream_id,
+        identity.data_source_version,
+        range.from_block,
+        range.to_block,
+        error
     );
     IndexerRunnerError::Transaction(error.to_string())
 }
