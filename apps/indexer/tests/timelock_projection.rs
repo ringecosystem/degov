@@ -69,13 +69,8 @@ fn test_project_timelock_scheduled_executed_and_cancelled_operations() {
     assert_eq!(batch.timelock_operation_hints.len(), 4);
 
     let operation = &batch.timelock_operations[0];
-    assert_eq!(
-        operation.id,
-        format!(
-            "timelock-operation:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0x2222222222222222222222222222222222222222:{}",
-            operation_id()
-        )
-    );
+    let expected_operation_ref = operation_ref();
+    assert_eq!(operation.id, expected_operation_ref);
     assert_eq!(operation.operation_id, operation_id());
     assert_eq!(operation.timelock_type, "TimelockController");
     assert_eq!(
@@ -374,15 +369,22 @@ fn test_project_timelock_links_scheduled_calls_to_known_proposal_actions() {
     assert_eq!(batch.timelock_calls.len(), 1);
 
     let operation = &batch.timelock_operations[0];
-    assert_eq!(operation.proposal_ref.as_deref(), Some("evm:1:8:0xtx8:0:0"));
-    assert_eq!(operation.proposal_id.as_deref(), Some("evm:1:8:0xtx8:0:0"));
+    let expected_proposal_ref = proposal_ref("42");
+    assert_eq!(
+        operation.proposal_ref.as_deref(),
+        Some(expected_proposal_ref)
+    );
+    assert_eq!(
+        operation.proposal_id.as_deref(),
+        Some(expected_proposal_ref)
+    );
 
     let call = &batch.timelock_calls[0];
-    assert_eq!(call.proposal_ref.as_deref(), Some("evm:1:8:0xtx8:0:0"));
-    assert_eq!(call.proposal_id.as_deref(), Some("evm:1:8:0xtx8:0:0"));
+    assert_eq!(call.proposal_ref.as_deref(), Some(expected_proposal_ref));
+    assert_eq!(call.proposal_id.as_deref(), Some(expected_proposal_ref));
     assert_eq!(
         call.proposal_action_id.as_deref(),
-        Some("evm:1:8:0xtx8:0:0:action:0")
+        Some(format!("{expected_proposal_ref}:action:0").as_str())
     );
     assert_eq!(call.proposal_action_index, Some(0));
 }
@@ -643,6 +645,22 @@ fn proposal_context() -> ProposalProjectionContext {
             max_concurrency: 4,
             multicall_batch_size: 10,
         },
+    }
+}
+
+fn operation_ref() -> String {
+    format!(
+        "timelock-operation:unit-dao-contract-set:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0x2222222222222222222222222222222222222222:{}",
+        operation_id()
+    )
+}
+
+fn proposal_ref(proposal_id: &str) -> &'static str {
+    match proposal_id {
+        "42" => {
+            "proposal:dao=unit-dao|chain=1|governor=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|token=0x1111111111111111111111111111111111111111:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42"
+        }
+        _ => panic!("unexpected proposal id {proposal_id}"),
     }
 }
 
