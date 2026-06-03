@@ -109,31 +109,14 @@ pub fn plan_dao_log_queries(
 pub fn fetch_dao_log_pages(
     reader: &mut impl DatalensLogQueryReader,
     plans: &[DaoLogQueryPlan],
-    max_attempts: u32,
 ) -> Result<Vec<DatalensLogPage>, DatalensError> {
-    if max_attempts == 0 {
-        return Err(DatalensError::Query(
-            "Datalens log query attempts must be greater than zero".to_owned(),
-        ));
-    }
-
     let mut pages = Vec::new();
     for plan in plans {
-        let mut attempt = 0;
-        loop {
-            attempt += 1;
-            match reader.query_logs(plan.input.clone()) {
-                Ok(rows) => {
-                    pages.push(DatalensLogPage {
-                        plan: plan.clone(),
-                        rows,
-                    });
-                    break;
-                }
-                Err(_) if attempt < max_attempts => continue,
-                Err(error) => return Err(error),
-            }
-        }
+        let rows = reader.query_logs(plan.input.clone())?;
+        pages.push(DatalensLogPage {
+            plan: plan.clone(),
+            rows,
+        });
     }
 
     Ok(pages)

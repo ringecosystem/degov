@@ -6,7 +6,8 @@ use tokio::{task, time::sleep};
 use crate::{
     DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
     DatalensNativeClient, IndexerContractSetRuntimeConfig, IndexerRunner, IndexerRunnerReport,
-    IndexerRuntimeConfig, IndexerTargetHeight, PostgresIndexerRunnerStore, required_env,
+    IndexerRuntimeConfig, IndexerTargetHeight, PostgresIndexerRunnerStore, datalens_retry_config,
+    required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -113,8 +114,11 @@ async fn run_contract_set_pass(
     );
 
     task::spawn_blocking(move || -> Result<_> {
-        let client =
-            DatalensNativeClient::from_config(&config).context("create Datalens client")?;
+        let client = DatalensNativeClient::from_config_with_retry_config(
+            &config,
+            datalens_retry_config(runtime.query_max_attempts),
+        )
+        .context("create Datalens client")?;
         let store = PostgresIndexerRunnerStore::new(pool);
         let mut runner = IndexerRunner::new(
             runtime.options(&config, &contracts)?,
@@ -143,9 +147,11 @@ async fn resolve_contract_set_target_height(
         IndexerTargetHeight::Fixed(height) => Ok(height),
         IndexerTargetHeight::Latest => {
             let config = config.clone();
+            let retry_config = datalens_retry_config(runtime.query_max_attempts);
             task::spawn_blocking(move || -> Result<_> {
                 let mut client =
-                    DatalensNativeClient::from_config(&config).context("create Datalens client")?;
+                    DatalensNativeClient::from_config_with_retry_config(&config, retry_config)
+                        .context("create Datalens client")?;
                 client
                     .durable_head_height(&config)
                     .context("resolve latest Datalens durable head height")

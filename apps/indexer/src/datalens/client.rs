@@ -1,7 +1,8 @@
 use datalens_sdk::{
-    DatalensClient,
+    DatalensClient, RetryConfig,
     native::{ChainHeadFinalityInput, QueryInput},
 };
+use log::info;
 
 use crate::{DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader};
 
@@ -25,6 +26,26 @@ pub struct DatalensNativeClient {
 impl DatalensNativeClient {
     pub fn from_config(config: &DatalensConfig) -> Result<Self, DatalensError> {
         let client = DatalensClient::new(config.sdk_config())
+            .map_err(|error| DatalensError::SdkConfig(error.to_string()))?;
+        Ok(Self { client })
+    }
+
+    pub fn from_config_with_retry_config(
+        config: &DatalensConfig,
+        retry_config: RetryConfig,
+    ) -> Result<Self, DatalensError> {
+        info!(
+            "Datalens SDK retry/backoff configured max_attempts={} initial_delay_ms={} max_delay_ms={} max_elapsed_ms={:?} jitter={} jitter_factor={} per_attempt_delays_managed_by_sdk=true",
+            retry_config.max_attempts,
+            retry_config.initial_delay.as_millis(),
+            retry_config.max_delay.as_millis(),
+            retry_config
+                .max_elapsed
+                .map(|duration| duration.as_millis()),
+            retry_config.jitter,
+            retry_config.jitter_factor
+        );
+        let client = DatalensClient::new_with_retry_config(config.sdk_config(), retry_config)
             .map_err(|error| DatalensError::SdkConfig(error.to_string()))?;
         Ok(Self { client })
     }

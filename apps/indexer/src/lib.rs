@@ -103,6 +103,6 @@ pub use runner::{
 pub use runtime_config::{
     GraphqlRuntimeConfig, IndexerContractSetMode, IndexerContractSetRuntimeConfig,
     IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRpcChainConfig,
-    OnchainRefreshRuntimeConfig, onchain_refresh_worker_enabled, parse_bool_env_value,
-    parse_i64_env_value, required_env,
+    OnchainRefreshRuntimeConfig, datalens_retry_config, onchain_refresh_worker_enabled,
+    parse_bool_env_value, parse_i64_env_value, required_env,
 };

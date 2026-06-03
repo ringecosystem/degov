@@ -133,6 +133,30 @@ fn test_runner_keeps_checkpoint_unchanged_when_transaction_fails() {
 }
 
 #[test]
+fn test_runner_keeps_checkpoint_unchanged_when_datalens_query_fails() {
+    let mut runner = IndexerRunner::new(
+        options(),
+        contexts(),
+        FailingDatalensReader,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+        ScriptedDecoder,
+    );
+
+    let error = runner.run_to_target(1).expect_err("query fails");
+
+    assert!(error.to_string().contains("rate limited"));
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        1
+    );
+    assert_eq!(runner.store().commit_count(), 0);
+    assert_eq!(
+        runner.store().vote_repository().data_metric().votes_count,
+        0
+    );
+}
+
+#[test]
 fn test_runner_replay_over_same_range_does_not_double_count_business_totals() {
     let mut runner = runner(
         vec![
@@ -204,6 +228,14 @@ impl DatalensLogQueryReader for ScriptedDatalensReader {
         Ok(Value::Array(
             self.rows.pop_front().expect("scripted query response"),
         ))
+    }
+}
+
+struct FailingDatalensReader;
+
+impl DatalensLogQueryReader for FailingDatalensReader {
+    fn query_logs(&mut self, _input: QueryInput) -> Result<Value, DatalensError> {
+        Err(DatalensError::Query("rate limited".to_owned()))
     }
 }
 
@@ -323,7 +355,6 @@ fn options() -> IndexerRunnerOptions {
         addresses: addresses(),
         checkpoint_identity: identity(),
         start_block: 1,
-        query_max_attempts: 1,
         safe_height: None,
         progress_refresh_lag_blocks: 0,
     }
