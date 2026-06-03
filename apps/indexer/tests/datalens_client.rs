@@ -52,7 +52,7 @@ fn test_verify_datalens_service_rejects_mocked_unready_client() {
 
 #[test]
 fn test_datalens_durable_head_reader_uses_sdk_chain_head_safe_finality() {
-    let server = FakeHeadServer::start(568800);
+    let server = FakeHeadServer::start(568800, "safe");
     let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
     let mut client = DatalensNativeClient::from_config(&config).expect("client");
 
@@ -71,7 +71,7 @@ fn test_datalens_durable_head_reader_uses_sdk_chain_head_safe_finality() {
 
 #[test]
 fn test_datalens_durable_head_reader_uses_latest_finality_when_pending_enabled() {
-    let server = FakeHeadServer::start(568801);
+    let server = FakeHeadServer::start(568801, "latest");
     let config = datalens_config(&server.endpoint, DatalensFinality::IncludePending);
     let mut client = DatalensNativeClient::from_config(&config).expect("client");
 
@@ -94,14 +94,14 @@ struct FakeHeadServer {
 }
 
 impl FakeHeadServer {
-    fn start(height: u64) -> Self {
+    fn start(height: u64, finality: &'static str) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake Datalens head server");
         let endpoint = format!("http://{}", listener.local_addr().expect("local addr"));
         let handle = thread::spawn(move || {
             let (stream, _) = listener
                 .accept()
                 .expect("accept fake Datalens head request");
-            handle_head_request(stream, height)
+            handle_head_request(stream, height, finality)
         });
 
         Self { endpoint, handle }
@@ -112,14 +112,14 @@ impl FakeHeadServer {
     }
 }
 
-fn handle_head_request(mut stream: TcpStream, height: u64) -> String {
+fn handle_head_request(mut stream: TcpStream, height: u64, finality: &'static str) -> String {
     let request = read_http_request(&mut stream);
     let body = serde_json::json!({
         "chain": {
             "configured_name": "ethereum"
         },
         "height": height,
-        "finality": "safe",
+        "finality": finality,
         "range_kind": "block"
     })
     .to_string();
