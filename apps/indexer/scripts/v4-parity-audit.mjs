@@ -3,11 +3,20 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const INDEXER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const DEFAULT_PROJECTED_OUTPUTS =
-  "apps/indexer/fixtures/known-dao-ranges/expected/projected-outputs.json";
+  path.join(
+    INDEXER_ROOT,
+    "tests/support/fixtures/known-dao-ranges/expected/projected-outputs.json",
+  );
 const DEFAULT_V4_PARITY_REPORT =
-  "apps/indexer/fixtures/known-dao-ranges/expected/v4-parity-audit.json";
+  path.join(
+    INDEXER_ROOT,
+    "tests/support/fixtures/known-dao-ranges/expected/v4-parity-audit.json",
+  );
 
 const TABLE_SPECS = [
   { table: "Proposal", scope: "proposal rows", path: ["proposal", "proposals"] },

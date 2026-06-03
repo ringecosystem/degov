@@ -208,6 +208,8 @@ pub fn load_datalens_fixture(name: &str) -> Result<DatalensFixture, DatalensFixt
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from_str(env!("CARGO_MANIFEST_DIR"))
         .expect("manifest dir")
+        .join("tests")
+        .join("support")
         .join("fixtures")
         .join(name)
 }
