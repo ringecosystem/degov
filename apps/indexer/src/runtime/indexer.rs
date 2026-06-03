@@ -155,3 +155,59 @@ async fn resolve_contract_set_target_height(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::{
+        ChainFamily, ChainIdentityConfig, DatalensFinality, DatasetKeyConfig, QueryLimitConfig,
+        SecretString,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_resolve_contract_set_target_height_keeps_fixed_numeric_target_without_datalens() {
+        let runtime = IndexerRuntimeConfig {
+            dao_filter: Some("demo-dao".to_owned()),
+            contract_set_mode: crate::IndexerContractSetMode::Single,
+            target_height: IndexerTargetHeight::Fixed(568800),
+            poll_interval: Duration::from_millis(10),
+            run_once: true,
+            max_chunks_per_run: None,
+            database_max_connections: 1,
+            checkpoint_stream_id: "datalens-native".to_owned(),
+            data_source_version: "datalens-v1".to_owned(),
+            query_max_attempts: 1,
+            progress_refresh_lag_blocks: 100,
+        };
+        let config = DatalensConfig {
+            endpoint: "http://127.0.0.1:1".to_owned(),
+            application: "degov-test".to_owned(),
+            bearer_token: SecretString::new("unit-test-redacted-value"),
+            timeout: Duration::from_secs(1),
+            finality: DatalensFinality::DurableOnly,
+            chain: ChainIdentityConfig {
+                family: ChainFamily::Evm,
+                configured_name: "ethereum".to_owned(),
+                network_id: Some(1),
+            },
+            dataset: DatasetKeyConfig {
+                family: "evm".to_owned(),
+                name: "logs".to_owned(),
+            },
+            query_limits: QueryLimitConfig {
+                block_range_limit: 1_000,
+            },
+            dao_contracts: None,
+            chains: Vec::new(),
+        };
+
+        let height = resolve_contract_set_target_height(&runtime, &config)
+            .await
+            .expect("fixed target height resolves without Datalens");
+
+        assert_eq!(height, 568800);
+    }
+}

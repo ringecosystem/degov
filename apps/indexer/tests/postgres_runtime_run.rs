@@ -125,6 +125,7 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
 
     run_indexer_command(&database.database_url, &datalens.endpoint).await?;
 
+    assert_eq!(datalens.head_count.load(Ordering::Relaxed), 1);
     assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
     assert_table_count(&database.pool, "proposal_created", 1).await?;
     assert_table_count(&database.pool, "proposal", 1).await?;
@@ -153,6 +154,7 @@ async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
 
     run_indexer_all_contract_sets_command(&database.database_url, &datalens.endpoint).await?;
 
+    assert_eq!(datalens.head_count.load(Ordering::Relaxed), 0);
     assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
     assert_checkpoint_scope(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_scope(&database.pool, SECOND_CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
@@ -860,6 +862,7 @@ async fn run_indexer_all_contract_sets_command(
 
 struct FakeDatalensServer {
     endpoint: String,
+    head_count: Arc<AtomicU64>,
     query_count: Arc<AtomicU64>,
 }
 
@@ -867,7 +870,9 @@ impl FakeDatalensServer {
     fn start(governor_rows: Vec<Value>, token_rows: Vec<Value>, timelock_rows: Vec<Value>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake Datalens server");
         let endpoint = format!("http://{}", listener.local_addr().expect("local addr"));
+        let head_count = Arc::new(AtomicU64::new(0));
         let query_count = Arc::new(AtomicU64::new(0));
+        let server_head_count = head_count.clone();
         let server_query_count = query_count.clone();
 
         thread::spawn(move || {
@@ -877,6 +882,7 @@ impl FakeDatalensServer {
                     &governor_rows,
                     &token_rows,
                     &timelock_rows,
+                    &server_head_count,
                     &server_query_count,
                 );
             }
@@ -884,6 +890,7 @@ impl FakeDatalensServer {
 
         Self {
             endpoint,
+            head_count,
             query_count,
         }
     }
@@ -894,6 +901,7 @@ fn handle_datalens_request(
     governor_rows: &[Value],
     token_rows: &[Value],
     timelock_rows: &[Value],
+    head_count: &AtomicU64,
     query_count: &AtomicU64,
 ) {
     let request = read_http_request(&mut stream);
@@ -905,14 +913,15 @@ fn handle_datalens_request(
                 }
             }
         })
-    } else if request.contains(r#""end":2147483647"#) {
+    } else if request.starts_with("GET /v1/chains/ethereum/head?finality=safe ") {
+        head_count.fetch_add(1, Ordering::Relaxed);
         json!({
-            "data": null,
-            "errors": [
-                {
-                    "message": "range exceeds adapter safe/finalized height: requested end 2147483647, safe/finalized height 2"
-                }
-            ]
+            "chain": {
+                "configured_name": "ethereum"
+            },
+            "height": 2,
+            "finality": "safe",
+            "range_kind": "block"
         })
     } else {
         let query_index = query_count.fetch_add(1, Ordering::Relaxed);
@@ -924,15 +933,11 @@ fn handle_datalens_request(
         };
 
         json!({
-            "data": {
-                "query": {
-                    "chain": {},
-                    "datasetKey": "evm.logs",
-                    "range": {},
-                    "cache": {},
-                    "rows": rows
-                }
-            }
+            "chain": {},
+            "dataset_key": "evm.logs",
+            "range": {},
+            "cache": {},
+            "rows": rows
         })
     }
     .to_string();

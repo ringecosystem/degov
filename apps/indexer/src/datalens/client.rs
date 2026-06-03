@@ -1,13 +1,9 @@
 use datalens_sdk::{
     DatalensClient,
-    native::{
-        ChainFamilyInput, ChainFamilyKindInput, ChainIdentityInput, DatasetKeyInput,
-        EvmLogsSelectorInput, FieldSelectionInput, NetworkIdInput, QueryInput, QueryRangeInput,
-        QueryRangeKindInput, QuerySelectorInput, SelectorKindInput,
-    },
+    native::{ChainHeadFinalityInput, QueryInput},
 };
 
-use crate::{DatalensConfig, DatalensError, DatalensLogQueryReader};
+use crate::{DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader};
 
 pub trait DatalensNativeReader {
     fn service_readiness(&self) -> Result<ServiceReadiness, DatalensError>;
@@ -58,30 +54,23 @@ impl DatalensLogQueryReader for DatalensNativeClient {
 
 impl DatalensDurableHeadReader for DatalensNativeClient {
     fn durable_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
-        match self.client.native().query(durable_head_probe_input(config)) {
-            Ok(_) => Ok(i64::from(i32::MAX)),
-            Err(error) => parse_datalens_durable_head_height(&error.to_string()),
-        }
+        let finality = match config.finality {
+            DatalensFinality::DurableOnly => ChainHeadFinalityInput::Safe,
+            DatalensFinality::IncludePending => ChainHeadFinalityInput::Latest,
+        };
+        let response = self
+            .client
+            .native()
+            .chain_head(&config.chain.configured_name, Some(finality))
+            .map_err(|error| DatalensError::Query(error.to_string()))?;
+
+        i64::try_from(response.height).map_err(|_| {
+            DatalensError::Query(format!(
+                "Datalens chain head height {} exceeds supported indexer height",
+                response.height
+            ))
+        })
     }
-}
-
-pub fn parse_datalens_durable_head_height(message: &str) -> Result<i64, DatalensError> {
-    const MARKER: &str = "safe/finalized height ";
-    let Some((_, height)) = message.rsplit_once(MARKER) else {
-        return Err(DatalensError::Query(format!(
-            "Datalens durable head height was not available: {message}"
-        )));
-    };
-    let height = height
-        .split(|character: char| !character.is_ascii_digit())
-        .next()
-        .unwrap_or("");
-
-    height.parse::<i64>().map_err(|_| {
-        DatalensError::Query(format!(
-            "Datalens durable head height was not available: {message}"
-        ))
-    })
 }
 
 pub fn verify_datalens_service(
@@ -94,41 +83,4 @@ pub fn verify_datalens_service(
         ));
     }
     Ok(readiness)
-}
-
-fn durable_head_probe_input(config: &DatalensConfig) -> QueryInput {
-    QueryInput {
-        chain: ChainIdentityInput {
-            family: ChainFamilyInput {
-                kind: ChainFamilyKindInput::Evm,
-                other: None,
-            },
-            configured_name: config.chain.configured_name.clone(),
-            network_id: config.chain.network_id.map(|numeric| NetworkIdInput {
-                numeric: Some(numeric),
-                textual: None,
-            }),
-        },
-        dataset_key: DatasetKeyInput {
-            family: config.dataset.family.clone(),
-            name: config.dataset.name.clone(),
-        },
-        selector: QuerySelectorInput {
-            kind: SelectorKindInput::EvmLogs,
-            evm_logs: Some(EvmLogsSelectorInput {
-                addresses: Vec::new(),
-                topics: Vec::new(),
-            }),
-            other: None,
-        },
-        range: QueryRangeInput {
-            kind: QueryRangeKindInput::Block,
-            start: 0,
-            end: i32::MAX,
-        },
-        finality: Some("durable_only".to_owned()),
-        fields: Some(FieldSelectionInput {
-            include: Vec::new(),
-        }),
-    }
 }

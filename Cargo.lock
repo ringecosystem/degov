@@ -697,7 +697,7 @@ checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 [[package]]
 name = "datalens-sdk"
 version = "0.1.0"
-source = "git+https://github.com/ringecosystem/datalens?rev=1744283cd1547240e0bc290b5fa3c5d1c55e74d6#1744283cd1547240e0bc290b5fa3c5d1c55e74d6"
+source = "git+https://github.com/ringecosystem/datalens?rev=6978b8bf552fdbdc2c894f724d7dd8a72c038958#6978b8bf552fdbdc2c894f724d7dd8a72c038958"
 dependencies = [
  "reqwest",
  "serde",
