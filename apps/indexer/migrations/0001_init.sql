@@ -31,16 +31,6 @@ CREATE TABLE IF NOT EXISTS degov_indexer_checkpoint (
 CREATE INDEX IF NOT EXISTS degov_indexer_checkpoint_processed_height_idx
   ON degov_indexer_checkpoint (chain_id, dao_code, contract_set_id, processed_height);
 
--- Temporary compatibility bridge for existing sync-lag/synced-percentage
--- consumers that still read SQD's built-in squidStatus field.
-CREATE SCHEMA IF NOT EXISTS squid_processor;
-
-CREATE TABLE IF NOT EXISTS squid_processor.status (
-  id INTEGER PRIMARY KEY DEFAULT 0,
-  height NUMERIC(78, 0) NOT NULL DEFAULT 0,
-  hash TEXT
-);
-
 CREATE TABLE IF NOT EXISTS degov_indexer_reconcile_task (
   id TEXT PRIMARY KEY,
   contract_set_id TEXT NOT NULL,

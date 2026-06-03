@@ -1259,17 +1259,5 @@ async fn seed_status(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::Err
     .execute(pool)
     .await?;
 
-    sqlx::query("INSERT INTO squid_processor.status (id, height, hash) VALUES (0, $1, '0xstatus')")
-        .bind(
-            baseline
-                .samples
-                .latest_proposal
-                .block_number
-                .parse::<i64>()
-                .unwrap(),
-        )
-        .execute(pool)
-        .await?;
-
     Ok(())
 }

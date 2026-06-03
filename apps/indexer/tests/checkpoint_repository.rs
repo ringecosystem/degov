@@ -157,7 +157,7 @@ async fn test_checkpoint_commit_advances_with_business_writes() -> Result<(), Bo
     assert_eq!(checkpoint.next_block, 110);
     assert_eq!(checkpoint.processed_height, Some(109));
     assert_eq!(checkpoint.target_height, Some(120));
-    assert_legacy_processor_height(&database.pool, 109).await?;
+    assert_legacy_processor_status_table_absent(&database.pool).await?;
 
     let count: i64 = sqlx::query("SELECT count(*)::BIGINT FROM checkpoint_projection_fixture")
         .fetch_one(&database.pool)
@@ -192,7 +192,7 @@ async fn test_checkpoint_rollback_keeps_previous_state() -> Result<(), Box<dyn E
     let checkpoint = repository.read_or_create(&identity, 100).await?;
     assert_eq!(checkpoint.next_block, 100);
     assert_eq!(checkpoint.processed_height, None);
-    assert_legacy_processor_status_is_empty(&database.pool).await?;
+    assert_legacy_processor_status_table_absent(&database.pool).await?;
 
     let count: i64 = sqlx::query("SELECT count(*)::BIGINT FROM checkpoint_projection_fixture")
         .fetch_one(&database.pool)
@@ -224,7 +224,7 @@ async fn test_checkpoint_restart_resumes_from_committed_next_block() -> Result<(
 
     assert_eq!(range.from_block, 50);
     assert_eq!(range.to_block, 54);
-    assert_legacy_processor_height(&database.pool, 49).await?;
+    assert_legacy_processor_status_table_absent(&database.pool).await?;
 
     database.cleanup().await?;
 
@@ -497,7 +497,7 @@ async fn test_checkpoint_duplicate_range_replay_is_idempotent() -> Result<(), Bo
     let checkpoint = repository.read_or_create(&identity, 10).await?;
     assert_eq!(checkpoint.next_block, 11);
     assert_eq!(checkpoint.processed_height, Some(10));
-    assert_legacy_processor_height(&database.pool, 10).await?;
+    assert_legacy_processor_status_table_absent(&database.pool).await?;
 
     let rows = sqlx::query("SELECT id, value FROM checkpoint_projection_fixture")
         .fetch_all(&database.pool)
@@ -532,27 +532,14 @@ async fn primary_key_columns(pool: &PgPool, table: &str) -> Result<Vec<String>, 
     Ok(columns)
 }
 
-async fn assert_legacy_processor_height(
-    pool: &PgPool,
-    expected_height: i64,
-) -> Result<(), sqlx::Error> {
-    let height: i64 = sqlx::query("SELECT height::BIGINT FROM squid_processor.status WHERE id = 0")
+async fn assert_legacy_processor_status_table_absent(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let removed_table = "squid_processor".to_owned() + ".status";
+    let table: Option<String> = sqlx::query_scalar("SELECT to_regclass($1)::TEXT")
+        .bind(removed_table)
         .fetch_one(pool)
-        .await?
-        .get(0);
+        .await?;
 
-    assert_eq!(height, expected_height);
-
-    Ok(())
-}
-
-async fn assert_legacy_processor_status_is_empty(pool: &PgPool) -> Result<(), sqlx::Error> {
-    let count: i64 = sqlx::query("SELECT count(*)::BIGINT FROM squid_processor.status")
-        .fetch_one(pool)
-        .await?
-        .get(0);
-
-    assert_eq!(count, 0);
+    assert_eq!(table, None);
 
     Ok(())
 }

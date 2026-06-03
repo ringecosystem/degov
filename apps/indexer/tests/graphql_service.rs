@@ -162,7 +162,6 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 to
                 power
               }
-              squidStatus { height finalizedHeight hash finalizedHash }
               proposalsConnection(where: $where, orderBy: id_ASC) { totalCount }
               contributorsConnection(orderBy: id_ASC) { totalCount }
               delegatesConnection(where: { fromDelegate_eq: "0xdelegator" }, orderBy: [id_ASC]) { totalCount }
@@ -204,8 +203,6 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     assert_eq!(data["contributors"][0]["id"], "0xvoter1");
     assert_eq!(data["delegates"][0]["isCurrent"], true);
     assert_eq!(data["delegateMappings"][0]["to"], "0xdelegate");
-    assert_eq!(data["squidStatus"]["height"], 900);
-    assert_eq!(data["squidStatus"]["finalizedHeight"], 900);
     assert_eq!(data["proposalsConnection"]["totalCount"], 1);
     assert_eq!(data["contributorsConnection"]["totalCount"], 2);
     assert_eq!(data["delegatesConnection"]["totalCount"], 1);
@@ -432,7 +429,7 @@ async fn test_graphql_http_endpoint_serves_post_requests() -> Result<(), Box<dyn
         Client::new()
             .post(endpoint)
             .json(&json!({
-                "query": "query { squidStatus { height finalizedHeight hash finalizedHash } }"
+                "query": "query { indexerStatus { processedHeight targetHeight } }"
             }))
             .send(),
     )
@@ -440,8 +437,8 @@ async fn test_graphql_http_endpoint_serves_post_requests() -> Result<(), Box<dyn
     .json()
     .await?;
 
-    assert_eq!(response["data"]["squidStatus"]["height"], 900);
-    assert_eq!(response["data"]["squidStatus"]["finalizedHeight"], 900);
+    assert_eq!(response["data"]["indexerStatus"]["processedHeight"], 900);
+    assert_eq!(response["data"]["indexerStatus"]["targetHeight"], 1000);
 
     server.abort();
     database.cleanup().await?;
@@ -708,7 +705,6 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
                 daoCode
                 processedHeight
               }
-              squidStatus { height finalizedHeight hash finalizedHash }
             }
             "#,
         ))
@@ -733,15 +729,29 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
             .len(),
         1
     );
-    assert_eq!(scoped_data["squidStatus"]["height"], 900);
-    assert_eq!(scoped_data["squidStatus"]["finalizedHeight"], 900);
-    assert_eq!(scoped_data["squidStatus"]["hash"], serde_json::Value::Null);
-    assert_eq!(
-        scoped_data["squidStatus"]["finalizedHash"],
-        serde_json::Value::Null
-    );
 
     database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_rejects_removed_squid_status_compatibility()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/degov")?;
+    let schema = graphql::build_schema(pool);
+    let sdl = schema.sdl();
+    let removed_field = "squid".to_owned() + "Status";
+    let removed_type = "type ".to_owned() + "Squid" + "Status";
+
+    assert!(
+        !sdl.contains(&removed_field),
+        "schema still exposes removed status field:\n{sdl}"
+    );
+    assert!(
+        !sdl.contains(&removed_type),
+        "schema still exposes removed status type:\n{sdl}"
+    );
 
     Ok(())
 }
@@ -889,7 +899,7 @@ async fn test_graphql_http_endpoint_serves_configured_dao_path() -> Result<(), B
         Client::new()
             .post(endpoint)
             .json(&json!({
-                "query": "query { squidStatus { height finalizedHeight hash finalizedHash } }"
+                "query": "query { indexerStatus { processedHeight targetHeight } }"
             }))
             .send(),
     )
@@ -897,7 +907,8 @@ async fn test_graphql_http_endpoint_serves_configured_dao_path() -> Result<(), B
     .json()
     .await?;
 
-    assert_eq!(response["data"]["squidStatus"]["height"], 900);
+    assert_eq!(response["data"]["indexerStatus"]["processedHeight"], 900);
+    assert_eq!(response["data"]["indexerStatus"]["targetHeight"], 1000);
 
     server.abort();
     database.cleanup().await?;
@@ -1106,14 +1117,6 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         "#,
     )
     .bind(CONTRACT_SET_ID)
-    .execute(pool)
-    .await?;
-    sqlx::raw_sql(
-        r#"
-        INSERT INTO squid_processor.status (id, height, hash)
-        VALUES (0, 900, '0xstatus');
-        "#,
-    )
     .execute(pool)
     .await?;
 

@@ -325,7 +325,7 @@ GraphQL smoke:
 ```sh
 curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
   -H "content-type: application/json" \
-  --data '{"query":"query { squidStatus { height hash } proposalsConnection(orderBy: [id_ASC]) { totalCount } contributorsConnection(orderBy: [id_ASC]) { totalCount } dataMetrics(where: { id_eq: \"global\" }) { proposalsCount powerSum memberCount } }"}'
+  --data '{"query":"query { indexerStatus { processedHeight targetHeight syncedPercentage isSynced } proposalsConnection(orderBy: [id_ASC]) { totalCount } contributorsConnection(orderBy: [id_ASC]) { totalCount } dataMetrics(where: { id_eq: \"global\" }) { proposalsCount powerSum memberCount } }"}'
 ```
 
 Web delegates/proposals smoke:

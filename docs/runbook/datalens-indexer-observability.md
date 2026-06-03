@@ -269,8 +269,7 @@ tables exist:
 psql "$DEGOV_INDEXER_DATABASE_URL" -x -c "
 SELECT
   to_regclass('public.degov_indexer_checkpoint') AS checkpoint_table,
-  to_regclass('public.degov_indexer_reconcile_task') AS reconcile_task_table,
-  to_regclass('squid_processor.status') AS squid_status_table;
+  to_regclass('public.degov_indexer_reconcile_task') AS reconcile_task_table;
 "
 ```
 
@@ -330,21 +329,16 @@ Expected signal:
 - `last_error`, `lock_owner`, and stale `locked_at` are empty unless an active
   worker owns the row.
 
-Check the SQD compatibility sync view used by existing synced-percentage
-consumers:
+Check the native sync summary exposed to API consumers:
 
 ```sh
-psql "$DEGOV_INDEXER_DATABASE_URL" -x -c "
-SELECT id, height, hash
-FROM squid_processor.status
-WHERE id = 0;
-"
+curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
+  -H "content-type: application/json" \
+  --data '{"query":"query { indexerStatus { processedHeight targetHeight syncedPercentage isSynced } }"}'
 ```
 
-Expected signal: `height` follows the latest committed
-`degov_indexer_checkpoint.processed_height`. If checkpoint height advances but
-this table is stale, the DB transaction path is not updating the compatibility
-sync view that GraphQL/web consumers may still read.
+Expected signal: `processedHeight`, `targetHeight`, and `syncedPercentage`
+match the active row in `degov_indexer_checkpoint`.
 
 Inspect chunk logs around the same time window:
 
@@ -511,12 +505,12 @@ Run a GraphQL projection smoke against the public endpoint:
 ```sh
 curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
   -H "content-type: application/json" \
-  --data '{"query":"query { squidStatus { height hash } proposalsConnection(orderBy: [id_ASC]) { totalCount } contributorsConnection(orderBy: [id_ASC]) { totalCount } dataMetrics(where: { id_eq: \"global\" }) { proposalsCount votesCount powerSum memberCount } }"}'
+  --data '{"query":"query { indexerStatus { processedHeight targetHeight syncedPercentage isSynced } proposalsConnection(orderBy: [id_ASC]) { totalCount } contributorsConnection(orderBy: [id_ASC]) { totalCount } dataMetrics(where: { id_eq: \"global\" }) { proposalsCount votesCount powerSum memberCount } }"}'
 ```
 
-Expected signal: GraphQL returns `squidStatus`, proposal/contributor counts, and
+Expected signal: GraphQL returns `indexerStatus`, proposal/contributor counts, and
 global metrics. If SQL is healthy but GraphQL is missing fields or returns
-errors, classify the failure as API compatibility or GraphQL service config.
+errors, classify the failure as native API status or GraphQL service config.
 
 ## Onchain Refresh Sanity
 
@@ -643,7 +637,7 @@ Check GraphQL availability:
 ```sh
 curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
   -H "content-type: application/json" \
-  --data '{"query":"query { squidStatus { height hash } }"}'
+  --data '{"query":"query { indexerStatus { processedHeight targetHeight syncedPercentage isSynced } }"}'
 ```
 
 Check application pages:
@@ -662,19 +656,19 @@ Check synced percentage from public data:
 ```sh
 curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
   -H "content-type: application/json" \
-  --data '{"query":"query { squidStatus { height hash } }"}'
+  --data '{"query":"query { indexerStatus { processedHeight targetHeight syncedPercentage isSynced } }"}'
 ```
 
-Compare `squidStatus.height` with `degov_indexer_checkpoint.target_height`.
-The synced percentage is:
+Compare `indexerStatus.processedHeight` with
+`indexerStatus.targetHeight`. The synced percentage is:
 
 ```text
-min(100, squidStatus.height / target_height * 100)
+min(100, processedHeight / targetHeight * 100)
 ```
 
 If synced percentage is low and checkpoint lag is high, the indexer is still
 catching up. If synced percentage is low while checkpoint is current, debug the
-compatibility sync table or GraphQL status resolver.
+native GraphQL status resolver and checkpoint query scope.
 
 ## Tally And Onchain Audit
 
@@ -709,7 +703,7 @@ business-correctness signals, not first-line service health checks.
 | Decode mismatch | Logs show `DAO event decode error`; raw Datalens rows exist. | Decode/projection boundary. | Confirm ABI, event topic, token standard, timelock address, and whether the event is unsupported for the DAO compatibility policy. Unsupported events must be durable and auditable if skipped. |
 | Timestamp unit error | Proposals have implausible `vote_start_timestamp`, `vote_end_timestamp`, or page dates. | Decode/projection. | Compare raw `block_timestamp` values with expected seconds. Millisecond values are usually 1000x too large; second values interpreted as milliseconds are usually near 1970. |
 | Checkpoint stuck | `processing` chunk log repeats or `processed_height` does not advance. | Datalens query, DB transaction, decode/projection, or checkpoint. | Match the last processing log to the next error. If transaction failed, inspect DB errors and confirm checkpoint is advanced only inside the write transaction. |
-| Checkpoint advances but pages are stale | `degov_indexer_checkpoint.processed_height` advances while `squid_processor.status.height` or GraphQL `squidStatus.height` is stale. | DB compatibility view or API. | Verify the checkpoint transaction updates `squid_processor.status`; restart GraphQL/API if it caches status unexpectedly. |
+| Checkpoint advances but pages are stale | `degov_indexer_checkpoint.processed_height` and GraphQL `indexerStatus.processedHeight` advance while page data stays stale. | Projection, API, or web. | Verify projection tables update for the same DAO scope; restart GraphQL/API if it caches query results unexpectedly. |
 | Power refresh backlog | `pending`/`processing` refresh rows grow; contributors have zero power. | Onchain refresh or ChainTool/RPC. | Check sync-lag mode, stale locks, failed row errors, RPC credentials, provider rate limits, and reconcile worker concurrency. |
 | Failed refresh rows repeat | Failed rows show the same account or subject with rising attempts. | Onchain refresh input or chain read. | Inspect the exact `error`, confirm token standard, vote-read method (`getVotes`, `getCurrentVotes`, `getPastVotes`, or `getPriorVotes`), and whether the account/timepoint is valid for the DAO. |
 | GraphQL unavailable | SQL checks are healthy; GraphQL smoke fails. | Web/API. | Check GraphQL service readiness, endpoint routing, database URL, schema compatibility, and public endpoint configuration. |

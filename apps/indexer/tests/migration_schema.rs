@@ -134,7 +134,7 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     for table_name in REQUIRED_TABLES {
         assert_table_exists(&database.pool, &database.schema, table_name).await?;
     }
-    assert_table_exists(&database.pool, "squid_processor", "status").await?;
+    assert_removed_processor_status_table_absent(&database.pool).await?;
     assert_table_exists(&database.pool, &database.schema, "_sqlx_migrations").await?;
 
     database.cleanup().await?;
@@ -217,6 +217,18 @@ async fn assert_table_exists(
     .await?;
 
     assert!(exists, "expected table {schema}.{table_name} to exist");
+
+    Ok(())
+}
+
+async fn assert_removed_processor_status_table_absent(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let removed_table = "squid_processor".to_owned() + ".status";
+    let table: Option<String> = sqlx::query_scalar("SELECT to_regclass($1)::TEXT")
+        .bind(removed_table)
+        .fetch_one(pool)
+        .await?;
+
+    assert_eq!(table, None);
 
     Ok(())
 }
