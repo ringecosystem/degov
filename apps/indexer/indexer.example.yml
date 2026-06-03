@@ -1,0 +1,46 @@
+# DeGov Datalens indexer example configuration.
+#
+# Load this file with:
+#   DEGOV_INDEXER_CONFIG_FILE=apps/indexer/indexer.example.yml
+#
+# Keep DATALENS_TOKEN in the environment or a secret manager. It is intentionally
+# omitted here. Environment variables override values from this file.
+#
+# Set DEGOV_INDEXER_DAO_CODE to run one contract set. Leave it unset to run all
+# configured contract sets when every contract has daoCode.
+
+datalens:
+  endpoint: https://datalens.ringdao.com
+  application: degov-live
+  finality: durable_only
+  dataset:
+    family: evm
+    name: logs
+  queryLimits:
+    blockRangeLimit: 1000
+
+chains:
+  - chainId: 1
+    networkName: ethereum
+    contracts:
+      - daoCode: ens-dao
+        governor: "0x0000000000000000000000000000000000000001"
+        governorToken: "0x0000000000000000000000000000000000000002"
+        tokenStandard: ERC20
+        timelock: "0x0000000000000000000000000000000000000003"
+        startBlock: 13533418
+      - daoCode: demo-ethereum-dao
+        governor: "0x0000000000000000000000000000000000000004"
+        governorToken: "0x0000000000000000000000000000000000000005"
+        tokenStandard: ERC721
+        timelock: "0x0000000000000000000000000000000000000006"
+        startBlock: 18000000
+  - chainId: 1135
+    networkName: lisk
+    contracts:
+      - daoCode: lisk-dao
+        governor: "0x0000000000000000000000000000000000000007"
+        governorToken: "0x0000000000000000000000000000000000000008"
+        tokenStandard: ERC20
+        timelock: "0x0000000000000000000000000000000000000009"
+        startBlock: 568752
