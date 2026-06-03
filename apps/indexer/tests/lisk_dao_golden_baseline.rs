@@ -613,10 +613,11 @@ async fn seed_baseline_rows(pool: &PgPool, baseline: &Baseline) -> Result<(), sq
 
 async fn seed_proposals(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::Error> {
     let latest = &baseline.samples.latest_proposal;
+    let contract_set_id = baseline_contract_set_id(baseline);
     sqlx::query(
         r#"
         INSERT INTO proposal (
-          id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
+          id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
           proposal_id, proposer, targets, values, signatures, calldatas, vote_start, vote_end,
           description, block_number, block_timestamp, transaction_hash,
           metrics_votes_count, metrics_votes_with_params_count, metrics_votes_without_params_count,
@@ -625,6 +626,7 @@ async fn seed_proposals(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::
         )
         SELECT
           format('proposal:%s:%s:%s', $1::int, lower($3), i),
+          $15,
           $1,
           $2,
           $3,
@@ -673,6 +675,7 @@ async fn seed_proposals(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::
     .bind(&latest.votes_weight_abstain_sum)
     .bind(&baseline.scope.timelock)
     .bind(baseline.counts.proposals)
+    .bind(&contract_set_id)
     .execute(pool)
     .await?;
 
@@ -1023,16 +1026,17 @@ async fn seed_token_projection_rows(pool: &PgPool, baseline: &Baseline) -> Resul
     sqlx::query(
         r#"
         INSERT INTO token_balance_checkpoint (
-          id, chain_id, dao_code, governor_address, token_address, contract_address, log_index,
+          id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address, log_index,
           transaction_index, account, previous_balance, new_balance, delta, source, cause,
           block_number, block_timestamp, transaction_hash
         )
-        SELECT format('token-balance-checkpoint:%s', i), $1, $2, $3, $4, $4, i, 0,
+        SELECT format('token-balance-checkpoint:%s', i), $1, $2, $3, $4, $5, $5, i, 0,
           format('0xbalance%040s', i), i, i + 1, 1, 'token-transfer', 'transfer',
-          $5 + i, $5 + i, format('0xtokenbalancecheckpoint%042s', i)
-        FROM generate_series(0, $6::int - 1) AS i
+          $6 + i, $6 + i, format('0xtokenbalancecheckpoint%042s', i)
+        FROM generate_series(0, $7::int - 1) AS i
         "#,
     )
+    .bind(&contract_set_id)
     .bind(baseline.scope.chain_id)
     .bind(&baseline.scope.dao_code)
     .bind(&baseline.scope.governor)
@@ -1072,23 +1076,25 @@ async fn seed_token_projection_rows(pool: &PgPool, baseline: &Baseline) -> Resul
 }
 
 async fn seed_timelock_rows(pool: &PgPool, baseline: &Baseline) -> Result<(), sqlx::Error> {
+    let contract_set_id = baseline_contract_set_id(baseline);
     sqlx::query(
         r#"
         INSERT INTO timelock_operation (
-          id, chain_id, dao_code, governor_address, timelock_address, contract_address, log_index,
+          id, contract_set_id, chain_id, dao_code, governor_address, timelock_address, contract_address, log_index,
           transaction_index, proposal_id, operation_id, timelock_type, predecessor, salt, state,
           call_count, executed_call_count, delay_seconds, ready_at, expires_at, queued_block_number,
           queued_block_timestamp, queued_transaction_hash, executed_block_number,
           executed_block_timestamp, executed_transaction_hash
         )
-        SELECT format('timelock-operation:%s', i), $1, $2, $3, $4, $4, i, 0,
+        SELECT format('timelock-operation:%s', i), $1, $2, $3, $4, $5, $5, i, 0,
           format('baseline-proposal-%s', i), format('operation-%s', i), 'single', NULL, NULL,
-          'executed', 1, 1, 0, $5 + i, $5 + i + 1000, $5 + i, $5 + i,
-          format('0xtimelockqueued%048s', i), $5 + i, $5 + i,
+          'executed', 1, 1, 0, $6 + i, $6 + i + 1000, $6 + i, $6 + i,
+          format('0xtimelockqueued%048s', i), $6 + i, $6 + i,
           format('0xtimelockexecuted%046s', i)
-        FROM generate_series(0, $6::int - 1) AS i
+        FROM generate_series(0, $7::int - 1) AS i
         "#,
     )
+    .bind(&contract_set_id)
     .bind(baseline.scope.chain_id)
     .bind(&baseline.scope.dao_code)
     .bind(&baseline.scope.governor)
@@ -1101,20 +1107,21 @@ async fn seed_timelock_rows(pool: &PgPool, baseline: &Baseline) -> Result<(), sq
     sqlx::query(
         r#"
         INSERT INTO timelock_call (
-          id, chain_id, dao_code, governor_address, timelock_address, contract_address, log_index,
+          id, contract_set_id, chain_id, dao_code, governor_address, timelock_address, contract_address, log_index,
           transaction_index, operation_id, operation_ref, proposal_id, action_index, target, value,
           data, predecessor, delay_seconds, state, scheduled_block_number, scheduled_block_timestamp,
           scheduled_transaction_hash, executed_block_number, executed_block_timestamp,
           executed_transaction_hash
         )
-        SELECT format('timelock-call:%s', i), $1, $2, $3, $4, $4, i, 0,
+        SELECT format('timelock-call:%s', i), $1, $2, $3, $4, $5, $5, i, 0,
           format('operation-%s', i), format('timelock-operation:%s', i),
-          format('baseline-proposal-%s', i), 0, $4, '0', '0x', NULL, 0, 'executed',
-          $5 + i, $5 + i, format('0xtimelockcallscheduled%041s', i),
-          $5 + i, $5 + i, format('0xtimelockcallexecuted%042s', i)
-        FROM generate_series(0, $6::int - 1) AS i
+          format('baseline-proposal-%s', i), 0, $5, '0', '0x', NULL, 0, 'executed',
+          $6 + i, $6 + i, format('0xtimelockcallscheduled%041s', i),
+          $6 + i, $6 + i, format('0xtimelockcallexecuted%042s', i)
+        FROM generate_series(0, $7::int - 1) AS i
         "#,
     )
+    .bind(&contract_set_id)
     .bind(baseline.scope.chain_id)
     .bind(&baseline.scope.dao_code)
     .bind(&baseline.scope.governor)

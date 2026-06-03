@@ -130,6 +130,7 @@ async fn upsert_vote_cast_group(
                 WHERE proposal.chain_id IS NOT DISTINCT FROM $3
                   AND proposal.dao_code IS NOT DISTINCT FROM $4
                   AND proposal.governor_address IS NOT DISTINCT FROM $5
+                  AND proposal.contract_set_id = $2
                   AND proposal.proposal_id = $12
                 LIMIT 1
               ),
@@ -138,7 +139,7 @@ async fn upsert_vote_cast_group(
             $10, $11, $12, $13,
             $14::NUMERIC(78, 0), $15, $16, $17::NUMERIC(78, 0), $18::NUMERIC(78, 0), $19
          )
-         ON CONFLICT (id) DO UPDATE
+         ON CONFLICT (contract_set_id, id) DO UPDATE
          SET support = EXCLUDED.support,
              weight = EXCLUDED.weight,
              reason = EXCLUDED.reason,
@@ -188,9 +189,10 @@ async fn refresh_proposal_vote_totals(
                (
                  SELECT proposal.id
                  FROM proposal
-                 WHERE proposal.chain_id IS NOT DISTINCT FROM $2
-                   AND proposal.governor_address IS NOT DISTINCT FROM $3
-                   AND proposal.proposal_id = $4
+                 WHERE proposal.contract_set_id = $2
+                   AND proposal.chain_id IS NOT DISTINCT FROM $3
+                   AND proposal.governor_address IS NOT DISTINCT FROM $4
+                   AND proposal.proposal_id = $5
                  LIMIT 1
                ),
                $1
@@ -217,6 +219,7 @@ async fn refresh_proposal_vote_totals(
          WHERE proposal.id = resolved.proposal_ref",
     )
     .bind(&row.proposal_ref)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.governor_address)
     .bind(&row.proposal_id)
@@ -278,4 +281,3 @@ async fn upsert_contributor_vote_signal(
 
     Ok(())
 }
-

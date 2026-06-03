@@ -51,6 +51,7 @@ async fn read_timelock_proposal_link_context(
              JOIN proposal p
                ON p.chain_id IS NOT DISTINCT FROM pq.chain_id
               AND p.governor_address IS NOT DISTINCT FROM pq.governor_address
+              AND p.contract_set_id = $8
               AND p.proposal_id = pq.proposal_id
              JOIN proposal_action pa ON pa.proposal_ref = p.id
              LEFT JOIN proposal_executed pe
@@ -74,6 +75,7 @@ async fn read_timelock_proposal_link_context(
         .bind(normalize_identifier(&event.target))
         .bind(&event.value)
         .bind(normalize_identifier(&event.data))
+        .bind(&context.contract_set_id)
         .fetch_optional(pool)
         .await?;
 
@@ -113,6 +115,7 @@ async fn read_timelock_proposal_link_context(
                       AND pe.proposal_id = p.proposal_id
                      WHERE p.chain_id IS NOT DISTINCT FROM $1
                        AND p.governor_address IS NOT DISTINCT FROM $2
+                       AND p.contract_set_id = $10
                        AND p.proposal_id = $5
                        AND pa.action_index = $6
                        AND pa.target = $7
@@ -130,6 +133,7 @@ async fn read_timelock_proposal_link_context(
                 .bind(normalize_identifier(&event.target))
                 .bind(&event.value)
                 .bind(normalize_identifier(&event.data))
+                .bind(&context.contract_set_id)
                 .fetch_optional(pool)
                 .await?;
 
@@ -174,7 +178,7 @@ async fn upsert_timelock_operation(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO timelock_operation (
-            id, chain_id, dao_code, governor_address, timelock_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, timelock_address, contract_address,
             log_index, transaction_index, proposal_ref, proposal_id, operation_id, timelock_type,
             predecessor, salt, state, call_count, executed_call_count, delay_seconds, ready_at,
             expires_at, queued_block_number, queued_block_timestamp, queued_transaction_hash,
@@ -182,10 +186,10 @@ async fn upsert_timelock_operation(
             executed_block_number, executed_block_timestamp, executed_transaction_hash
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-            $18::NUMERIC(78, 0), $19::NUMERIC(78, 0), $20::NUMERIC(78, 0),
-            $21::NUMERIC(78, 0), $22::NUMERIC(78, 0), $23, $24::NUMERIC(78, 0),
-            $25::NUMERIC(78, 0), $26, $27::NUMERIC(78, 0), $28::NUMERIC(78, 0), $29
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+            $19::NUMERIC(78, 0), $20::NUMERIC(78, 0), $21::NUMERIC(78, 0),
+            $22::NUMERIC(78, 0), $23::NUMERIC(78, 0), $24, $25::NUMERIC(78, 0),
+            $26::NUMERIC(78, 0), $27, $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30
          )
          ON CONFLICT (id) DO UPDATE
          SET proposal_ref = COALESCE(timelock_operation.proposal_ref, EXCLUDED.proposal_ref),
@@ -231,6 +235,7 @@ async fn upsert_timelock_operation(
              executed_transaction_hash = COALESCE(EXCLUDED.executed_transaction_hash, timelock_operation.executed_transaction_hash)",
     )
     .bind(&row.id)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
@@ -278,7 +283,7 @@ async fn upsert_timelock_call(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO timelock_call (
-            id, chain_id, dao_code, governor_address, timelock_address, contract_address,
+            id, contract_set_id, chain_id, dao_code, governor_address, timelock_address, contract_address,
             log_index, transaction_index, operation_id, operation_ref, proposal_ref, proposal_id,
             proposal_action_id, proposal_action_index, action_index, target, value, data,
             predecessor, delay_seconds, state, scheduled_block_number, scheduled_block_timestamp,
@@ -287,8 +292,8 @@ async fn upsert_timelock_call(
          )
          VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-            $17, $18, $19, $20::NUMERIC(78, 0), $21, $22::NUMERIC(78, 0),
-            $23::NUMERIC(78, 0), $24, $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27
+            $17, $18, $19, $20, $21::NUMERIC(78, 0), $22, $23::NUMERIC(78, 0),
+            $24::NUMERIC(78, 0), $25, $26::NUMERIC(78, 0), $27::NUMERIC(78, 0), $28
          )
          ON CONFLICT (id) DO UPDATE
          SET proposal_ref = COALESCE(timelock_call.proposal_ref, EXCLUDED.proposal_ref),
@@ -323,6 +328,7 @@ async fn upsert_timelock_call(
              executed_transaction_hash = COALESCE(EXCLUDED.executed_transaction_hash, timelock_call.executed_transaction_hash)",
     )
     .bind(&row.id)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)

@@ -124,6 +124,7 @@ pub struct VoteCastGroupWrite {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProposalVoteTotalWrite {
     pub proposal_ref: String,
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -251,6 +252,7 @@ impl InMemoryVoteProjectionRepository {
             .entry(group.proposal_ref.clone())
             .or_insert_with(|| ProposalVoteTotalWrite {
                 proposal_ref: group.proposal_ref.clone(),
+                contract_set_id: group.contract_set_id.clone(),
                 chain_id: group.chain_id,
                 dao_code: group.dao_code.clone(),
                 governor_address: group.governor_address.clone(),
@@ -496,6 +498,7 @@ fn vote_cast_group(
         log_index: common.log_index,
         transaction_index: common.transaction_index,
         proposal_ref: proposal_ref(
+            &common.contract_set_id,
             &common.governor_address,
             &common.proposal_id,
             common.chain_id,
@@ -576,6 +579,7 @@ fn add_group_to_totals(
         .entry(group.proposal_ref.clone())
         .or_insert_with(|| ProposalVoteTotalWrite {
             proposal_ref: group.proposal_ref.clone(),
+            contract_set_id: group.contract_set_id.clone(),
             chain_id: group.chain_id,
             dao_code: group.dao_code.clone(),
             governor_address: group.governor_address.clone(),
@@ -689,9 +693,14 @@ fn vote_signal_order(signal: &ContributorVoteSignalWrite) -> (u64, u64, u64, Str
     )
 }
 
-fn proposal_ref(governor_address: &str, proposal_id: &str, chain_id: i32) -> String {
+fn proposal_ref(
+    contract_set_id: &str,
+    governor_address: &str,
+    proposal_id: &str,
+    chain_id: i32,
+) -> String {
     format!(
-        "proposal:{chain_id}:{}:{proposal_id}",
+        "proposal:{contract_set_id}:{chain_id}:{}:{proposal_id}",
         normalize_identifier(governor_address)
     )
 }

@@ -613,6 +613,7 @@ fn test_apply_chain_read_execution_report_updates_operation_state() {
 
 fn context() -> TimelockProjectionContext {
     TimelockProjectionContext {
+        contract_set_id: "unit-dao-contract-set".to_owned(),
         dao_code: "unit-dao".to_owned(),
         governor_address: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
         timelock_address: "0x2222222222222222222222222222222222222222".to_owned(),

@@ -652,6 +652,7 @@ fn token_context(
 
 fn timelock_context() -> TimelockProjectionContext {
     TimelockProjectionContext {
+        contract_set_id: "dao=timelock-heavy|chain=1|governor=0x1111111111111111111111111111111111111111|token=0x2222222222222222222222222222222222222222".to_owned(),
         dao_code: "timelock-heavy".to_owned(),
         governor_address: "0x1111111111111111111111111111111111111111".to_owned(),
         timelock_address: "0x3333333333333333333333333333333333333333".to_owned(),

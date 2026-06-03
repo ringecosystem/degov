@@ -218,7 +218,7 @@ async fn upsert_proposal(
 
     sqlx::query(
         "INSERT INTO proposal (
-            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index,
             transaction_index, proposal_id, proposer, targets, values, signatures, calldatas,
             vote_start, vote_end, description, block_number, block_timestamp, transaction_hash,
             title, vote_start_timestamp, vote_end_timestamp, description_hash, proposal_snapshot,
@@ -226,12 +226,12 @@ async fn upsert_proposal(
             decimals
          )
          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-            $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16, $17::NUMERIC(78, 0),
-            $18::NUMERIC(78, 0), $19, $20, $21::NUMERIC(78, 0), $22::NUMERIC(78, 0),
-            $23, $24::NUMERIC(78, 0), $25::NUMERIC(78, 0), $26::NUMERIC(78, 0),
-            $27::NUMERIC(78, 0), $28::NUMERIC(78, 0), $29, $30::NUMERIC(78, 0),
-            $31::NUMERIC(78, 0)
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+            $15::NUMERIC(78, 0), $16::NUMERIC(78, 0), $17, $18::NUMERIC(78, 0),
+            $19::NUMERIC(78, 0), $20, $21, $22::NUMERIC(78, 0), $23::NUMERIC(78, 0),
+            $24, $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27::NUMERIC(78, 0),
+            $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30, $31::NUMERIC(78, 0),
+            $32::NUMERIC(78, 0)
          )
          ON CONFLICT (id) DO UPDATE
          SET proposer = CASE WHEN EXCLUDED.proposer = '' THEN proposal.proposer ELSE EXCLUDED.proposer END,
@@ -254,6 +254,7 @@ async fn upsert_proposal(
              decimals = EXCLUDED.decimals",
     )
     .bind(&row.id)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.dao_code)
     .bind(&row.governor_address)
@@ -303,12 +304,14 @@ async fn relink_existing_proposal_to_raw_id(
     sqlx::query(
         "UPDATE proposal
          SET id = $1
-         WHERE chain_id IS NOT DISTINCT FROM $2
-           AND governor_address IS NOT DISTINCT FROM $3
-           AND proposal_id = $4
+         WHERE contract_set_id = $2
+           AND chain_id IS NOT DISTINCT FROM $3
+           AND governor_address IS NOT DISTINCT FROM $4
+           AND proposal_id = $5
            AND id <> $1",
     )
     .bind(&row.id)
+    .bind(&row.contract_set_id)
     .bind(row.chain_id)
     .bind(&row.governor_address)
     .bind(&row.proposal_id)

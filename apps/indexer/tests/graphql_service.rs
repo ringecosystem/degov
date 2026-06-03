@@ -617,7 +617,7 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         INSERT INTO proposal (
-          id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
+          id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
           proposal_id, proposer, targets, values, signatures, calldatas, vote_start, vote_end,
           description, block_number, block_timestamp, transaction_hash,
           metrics_votes_count, metrics_votes_with_params_count, metrics_votes_without_params_count,
@@ -625,19 +625,20 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           title, vote_start_timestamp, vote_end_timestamp, clock_mode, quorum, decimals
         ) VALUES
         (
-          'proposal:1135:0xgovernor:101', 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 1, 0,
+          'proposal:1135:0xgovernor:101', $1, 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 1, 0,
           '101', '0xproposer', ARRAY['0xtarget'], ARRAY['0'], ARRAY['transfer(address,uint256)'], ARRAY['0x'],
           1000, 2000, 'Launch treasury program', 800, 1700000100, '0xproposal',
           2, 1, 1, 100, 25, 0, 'Launch treasury program', 1700001000, 1700002000, 'mode=blocknumber&from=default', 40, 18
         ),
         (
-          'proposal:1135:0xgovernor:102', 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 2, 0,
+          'proposal:1135:0xgovernor:102', $1, 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 2, 0,
           '102', '0xother', ARRAY[]::TEXT[], ARRAY[]::TEXT[], ARRAY[]::TEXT[], ARRAY[]::TEXT[],
           1000, 2000, 'Unrelated', 801, 1700000200, '0xproposal2',
           0, 0, 0, 0, 0, 0, 'Unrelated', 1700001000, 1700002000, 'mode=blocknumber&from=default', 40, 18
         )
         "#,
     )
+    .bind(CONTRACT_SET_ID)
     .execute(pool)
     .await?;
     sqlx::query(

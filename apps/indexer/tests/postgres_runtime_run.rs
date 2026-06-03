@@ -236,7 +236,7 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
             .map_err(|error| format!("commit raw transaction failed: {error}"))?;
     }
 
-    let raw_ref = "evm:1:2:0xtx20:0:0";
+    let raw_ref = expected_proposal_ref(CONTRACT_SET_ID, 1, GOVERNOR, "42");
     let state = sqlx::query(
         "SELECT proposal_id, proposal_ref
          FROM proposal_state_epoch
@@ -544,6 +544,68 @@ async fn test_postgres_data_metric_event_snapshots_follow_mixed_batch_event_orde
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_projection_state_scopes_repeated_identifiers_by_contract_set_and_chain()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+
+    for scope in [
+        (CONTRACT_SET_ID, 1, GOVERNOR, TOKEN, TIMELOCK, "demo-dao"),
+        (
+            SECOND_CONTRACT_SET_ID,
+            1,
+            GOVERNOR,
+            TOKEN,
+            TIMELOCK,
+            "demo-dao",
+        ),
+        (
+            "chain-two-contract-set",
+            2,
+            GOVERNOR,
+            TOKEN,
+            TIMELOCK,
+            "demo-dao",
+        ),
+    ] {
+        let batch = scoped_projection_batch(scope.0, scope.1, scope.2, scope.3, scope.4, scope.5)?;
+        apply_projection_batch(&mut store, batch)?;
+    }
+
+    let proposal_count: i64 =
+        sqlx::query_scalar("SELECT count(*)::BIGINT FROM proposal WHERE proposal_id = '42'")
+            .fetch_one(&database.pool)
+            .await?;
+    assert_eq!(proposal_count, 3);
+
+    let vote_group_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT FROM vote_cast_group WHERE ref_proposal_id = '42'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(vote_group_count, 3);
+
+    let contributor_count: i64 =
+        sqlx::query_scalar("SELECT count(*)::BIGINT FROM contributor WHERE id = $1")
+            .bind(VOTER)
+            .fetch_one(&database.pool)
+            .await?;
+    assert_eq!(contributor_count, 3);
+
+    let timelock_operation_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT FROM timelock_operation WHERE operation_id = $1",
+    )
+    .bind(OPERATION_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(timelock_operation_count, 3);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 fn apply_projection_batch(
     store: &mut PostgresIndexerRunnerStore,
     batch: IndexerProjectionBatch,
@@ -559,6 +621,97 @@ fn apply_projection_batch(
         .map_err(|error| format!("commit transaction failed: {error}"))?;
 
     Ok(())
+}
+
+fn scoped_projection_batch(
+    contract_set_id: &str,
+    chain_id: i32,
+    governor: &str,
+    token: &str,
+    timelock: &str,
+    dao_code: &str,
+) -> Result<IndexerProjectionBatch, Box<dyn Error>> {
+    let proposal_context = proposal_projection_context_with_scope(
+        contract_set_id,
+        chain_id,
+        governor,
+        token,
+        timelock,
+        dao_code,
+    );
+    let vote_context = vote_projection_context_with_scope(
+        contract_set_id,
+        chain_id,
+        governor,
+        token,
+        timelock,
+        dao_code,
+    );
+    let timelock_context = timelock_projection_context_with_scope(
+        contract_set_id,
+        chain_id,
+        governor,
+        token,
+        timelock,
+        dao_code,
+    );
+    let proposal = project_proposal_events(
+        &proposal_context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log_with_scope(chain_id, "proposal-created", 10, 0, 0, governor),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Scoped proposal".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+    let vote = project_vote_events(
+        &vote_context,
+        vec![VoteProjectionEvent {
+            log: normalized_log_with_scope(chain_id, "vote-cast", 11, 0, 0, governor),
+            event: DecodedGovernorEvent::VoteCast(VoteCastEvent {
+                voter: VOTER.to_owned(),
+                proposal_id: "42".to_owned(),
+                support: 1,
+                weight: "7".to_owned(),
+                reason: "same account".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("vote projection failed: {error:?}"))?;
+    let timelock_links = TimelockProposalLinkContext::from_proposal_batch(&proposal);
+    let timelock = project_timelock_events_with_proposal_links(
+        &timelock_context,
+        &timelock_links,
+        vec![TimelockProjectionEvent {
+            log: normalized_log_with_scope(chain_id, "call-scheduled", 12, 0, 0, timelock),
+            event: DecodedTimelockEvent::CallScheduled(CallScheduledEvent {
+                id: OPERATION_ID.to_owned(),
+                index: "0".to_owned(),
+                target: TARGET.to_owned(),
+                value: "1".to_owned(),
+                data: "0x1234".to_owned(),
+                predecessor: ZERO_OPERATION_ID.to_owned(),
+                delay: "60".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("timelock projection failed: {error:?}"))?;
+
+    Ok(IndexerProjectionBatch {
+        proposal: Some(proposal),
+        vote: Some(vote),
+        timelock: Some(timelock),
+        ..IndexerProjectionBatch::default()
+    })
 }
 
 async fn run_indexer_command(
@@ -936,7 +1089,7 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
     .fetch_one(pool)
     .await?;
 
-    let proposal_ref = "evm:1:2:0xtx20:0:0";
+    let proposal_ref = expected_proposal_ref(CONTRACT_SET_ID, 1, GOVERNOR, "42");
     assert_eq!(proposal.get::<String, _>("id"), proposal_ref);
     assert_eq!(proposal.get::<String, _>("proposal_id"), "42");
     assert_eq!(
@@ -1087,7 +1240,7 @@ async fn assert_token_projection_state(pool: &PgPool) -> Result<(), sqlx::Error>
 }
 
 async fn assert_timelock_projection_state(pool: &PgPool) -> Result<(), sqlx::Error> {
-    let proposal_ref = "evm:1:2:0xtx20:0:0";
+    let proposal_ref = expected_proposal_ref(CONTRACT_SET_ID, 1, GOVERNOR, "42");
     let operation = sqlx::query(
         "SELECT proposal_id, proposal_ref, state, call_count, executed_call_count
          FROM timelock_operation",
@@ -1332,6 +1485,7 @@ fn vote_projection_context() -> VoteProjectionContext {
 
 fn timelock_projection_context() -> TimelockProjectionContext {
     TimelockProjectionContext {
+        contract_set_id: CONTRACT_SET_ID.to_owned(),
         dao_code: "demo-dao".to_owned(),
         governor_address: GOVERNOR.to_owned(),
         timelock_address: TIMELOCK.to_owned(),
@@ -1339,6 +1493,79 @@ fn timelock_projection_context() -> TimelockProjectionContext {
             governor: GOVERNOR.to_owned(),
             governor_token: TOKEN.to_owned(),
             timelock: TIMELOCK.to_owned(),
+        },
+        read_plan_config: BatchReadPlanConfig {
+            max_concurrency: 4,
+            multicall_batch_size: 10,
+        },
+    }
+}
+
+fn proposal_projection_context_with_scope(
+    contract_set_id: &str,
+    _chain_id: i32,
+    governor: &str,
+    token: &str,
+    timelock: &str,
+    dao_code: &str,
+) -> ProposalProjectionContext {
+    ProposalProjectionContext {
+        contract_set_id: contract_set_id.to_owned(),
+        dao_code: dao_code.to_owned(),
+        governor_address: governor.to_owned(),
+        contracts: ChainContracts {
+            governor: governor.to_owned(),
+            governor_token: token.to_owned(),
+            timelock: timelock.to_owned(),
+        },
+        read_plan_config: BatchReadPlanConfig {
+            max_concurrency: 4,
+            multicall_batch_size: 10,
+        },
+    }
+}
+
+fn vote_projection_context_with_scope(
+    contract_set_id: &str,
+    _chain_id: i32,
+    governor: &str,
+    token: &str,
+    timelock: &str,
+    dao_code: &str,
+) -> VoteProjectionContext {
+    VoteProjectionContext {
+        contract_set_id: contract_set_id.to_owned(),
+        dao_code: dao_code.to_owned(),
+        governor_address: governor.to_owned(),
+        contracts: ChainContracts {
+            governor: governor.to_owned(),
+            governor_token: token.to_owned(),
+            timelock: timelock.to_owned(),
+        },
+        read_plan_config: BatchReadPlanConfig {
+            max_concurrency: 4,
+            multicall_batch_size: 10,
+        },
+    }
+}
+
+fn timelock_projection_context_with_scope(
+    _contract_set_id: &str,
+    _chain_id: i32,
+    governor: &str,
+    token: &str,
+    timelock: &str,
+    dao_code: &str,
+) -> TimelockProjectionContext {
+    TimelockProjectionContext {
+        contract_set_id: _contract_set_id.to_owned(),
+        dao_code: dao_code.to_owned(),
+        governor_address: governor.to_owned(),
+        timelock_address: timelock.to_owned(),
+        contracts: ChainContracts {
+            governor: governor.to_owned(),
+            governor_token: token.to_owned(),
+            timelock: timelock.to_owned(),
         },
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
@@ -1435,6 +1662,43 @@ fn normalized_log(
         removed: false,
         raw_payload: json!({ "block_number": block_number }),
     }
+}
+
+fn normalized_log_with_scope(
+    chain_id: i32,
+    label: &str,
+    block_number: u64,
+    transaction_index: u64,
+    log_index: u64,
+    address: &str,
+) -> NormalizedEvmLog {
+    NormalizedEvmLog {
+        id: format!("evm:{chain_id}:{block_number}:0x{label}:{transaction_index}:{log_index}"),
+        chain_id,
+        block_number,
+        block_hash: format!("0xblock{chain_id}{block_number}"),
+        block_timestamp_ms: Some((1_700_000_000 + block_number) * 1_000),
+        transaction_hash: format!("0x{label}"),
+        transaction_index,
+        log_index,
+        address: address.to_owned(),
+        topics: vec![],
+        data: "0x".to_owned(),
+        removed: false,
+        raw_payload: json!({ "block_number": block_number }),
+    }
+}
+
+fn expected_proposal_ref(
+    contract_set_id: &str,
+    chain_id: i32,
+    governor_address: &str,
+    proposal_id: &str,
+) -> String {
+    format!(
+        "proposal:{contract_set_id}:{chain_id}:{}:{proposal_id}",
+        governor_address.to_ascii_lowercase()
+    )
 }
 
 fn timelock_normalized_log(

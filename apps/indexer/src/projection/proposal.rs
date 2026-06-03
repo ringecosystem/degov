@@ -1190,11 +1190,17 @@ impl ProposalStateEpochWrite {
 }
 
 fn common_id(common: &ProposalEventCommon) -> String {
-    common.log_id.clone()
+    proposal_ref(
+        &common.contract_set_id,
+        &common.governor_address,
+        &common.proposal_id,
+        common.chain_id,
+    )
 }
 
-fn proposal_lookup_key(common: &ProposalEventCommon) -> (i32, String, String) {
+fn proposal_lookup_key(common: &ProposalEventCommon) -> (String, i32, String, String) {
     (
+        common.contract_set_id.clone(),
         common.chain_id,
         common.governor_address.clone(),
         common.proposal_id.clone(),
@@ -1202,7 +1208,7 @@ fn proposal_lookup_key(common: &ProposalEventCommon) -> (i32, String, String) {
 }
 
 fn proposal_entity_ref(
-    proposal_refs: &BTreeMap<(i32, String, String), String>,
+    proposal_refs: &BTreeMap<(String, i32, String, String), String>,
     common: &ProposalEventCommon,
 ) -> String {
     proposal_refs
@@ -1210,6 +1216,7 @@ fn proposal_entity_ref(
         .cloned()
         .unwrap_or_else(|| {
             proposal_ref(
+                &common.contract_set_id,
                 &common.governor_address,
                 &common.proposal_id,
                 common.chain_id,
@@ -1301,9 +1308,14 @@ fn seconds_to_millis(seconds: &str) -> Option<String> {
         .map(|seconds| (seconds * 1_000).to_string())
 }
 
-fn proposal_ref(governor_address: &str, proposal_id: &str, chain_id: i32) -> String {
+fn proposal_ref(
+    contract_set_id: &str,
+    governor_address: &str,
+    proposal_id: &str,
+    chain_id: i32,
+) -> String {
     format!(
-        "proposal:{chain_id}:{}:{proposal_id}",
+        "proposal:{contract_set_id}:{chain_id}:{}:{proposal_id}",
         normalize_identifier(governor_address)
     )
 }
