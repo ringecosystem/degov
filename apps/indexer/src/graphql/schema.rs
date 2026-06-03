@@ -22,7 +22,15 @@ impl QueryRoot {
         limit: Option<i32>,
     ) -> GraphqlResult<Vec<Proposal>> {
         let pool = pool(ctx)?;
-        query_proposals(pool, where_.as_ref(), order_by.as_deref(), offset, limit).await
+        query_proposals(
+            pool,
+            scope(ctx)?,
+            where_.as_ref(),
+            order_by.as_deref(),
+            offset,
+            limit,
+        )
+        .await
     }
 
     async fn proposal_canceleds(
@@ -35,6 +43,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Vec<ProposalCanceled>> {
         query_events(
             pool(ctx)?,
+            scope(ctx)?,
             "proposal_canceled",
             where_.as_ref(),
             order_by.as_deref(),
@@ -54,6 +63,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Vec<ProposalExecuted>> {
         query_events(
             pool(ctx)?,
+            scope(ctx)?,
             "proposal_executed",
             where_.as_ref(),
             order_by.as_deref(),
@@ -80,7 +90,7 @@ impl QueryRoot {
             FROM proposal_queued
             "#,
         );
-        push_event_where(&mut query, where_.as_ref());
+        push_event_where(&mut query, scope(ctx)?, where_.as_ref());
         push_event_order(&mut query, "proposal_queued", order_by.as_deref());
         push_page(&mut query, offset, limit);
 
@@ -97,6 +107,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Vec<DataMetric>> {
         query_data_metrics(
             pool(ctx)?,
+            scope(ctx)?,
             where_.as_ref(),
             order_by.as_deref(),
             offset,
@@ -115,6 +126,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Vec<Contributor>> {
         query_contributors(
             pool(ctx)?,
+            scope(ctx)?,
             where_.as_ref(),
             order_by.as_deref(),
             offset,
@@ -133,6 +145,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Vec<Delegate>> {
         query_delegates(
             pool(ctx)?,
+            scope(ctx)?,
             where_.as_ref(),
             order_by.as_deref(),
             offset,
@@ -151,6 +164,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Vec<DelegateMapping>> {
         query_delegate_mappings(
             pool(ctx)?,
+            scope(ctx)?,
             where_.as_ref(),
             order_by.as_deref(),
             offset,
@@ -185,7 +199,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Connection> {
         let _ = order_by;
         Ok(Connection {
-            total_count: count_proposals(pool(ctx)?, where_.as_ref()).await?,
+            total_count: count_proposals(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
         })
     }
 
@@ -197,7 +211,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Connection> {
         let _ = order_by;
         Ok(Connection {
-            total_count: count_contributors(pool(ctx)?, where_.as_ref()).await?,
+            total_count: count_contributors(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
         })
     }
 
@@ -209,7 +223,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Connection> {
         let _ = order_by;
         Ok(Connection {
-            total_count: count_delegates(pool(ctx)?, where_.as_ref()).await?,
+            total_count: count_delegates(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
         })
     }
 
@@ -221,7 +235,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Connection> {
         let _ = order_by;
         Ok(Connection {
-            total_count: count_delegate_mappings(pool(ctx)?, where_.as_ref()).await?,
+            total_count: count_delegate_mappings(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
         })
     }
 
@@ -233,7 +247,7 @@ impl QueryRoot {
     ) -> GraphqlResult<Connection> {
         let _ = order_by;
         Ok(Connection {
-            total_count: count_data_metrics(pool(ctx)?, where_.as_ref()).await?,
+            total_count: count_data_metrics(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
         })
     }
 }
@@ -258,10 +272,14 @@ impl Proposal {
             "#,
         );
         query
-            .push(" WHERE (proposal_id = ")
+            .push(" WHERE ((proposal_id = ")
             .push_bind(&self.id)
-            .push(" OR (ref_proposal_id = ")
-            .push_bind(&self.proposal_id);
+            .push(" AND contract_set_id = ")
+            .push_bind(&self.contract_set_id)
+            .push(") OR (ref_proposal_id = ")
+            .push_bind(&self.proposal_id)
+            .push(" AND contract_set_id = ")
+            .push_bind(&self.contract_set_id);
         if let Some(chain_id) = self.chain_id {
             query.push(" AND chain_id = ").push_bind(chain_id);
         }
@@ -275,7 +293,7 @@ impl Proposal {
         }
         query.push("))");
         let mut has_condition = true;
-        push_vote_cast_group_where(&mut query, &mut has_condition, where_.as_ref());
+        push_vote_cast_group_where(&mut query, &mut has_condition, scope(ctx)?, where_.as_ref());
         push_vote_cast_group_order(&mut query, order_by.as_deref());
         push_page(&mut query, offset, limit);
 
@@ -285,4 +303,8 @@ impl Proposal {
 
 fn pool<'a>(ctx: &'a Context<'_>) -> GraphqlResult<&'a sqlx::PgPool> {
     Ok(&ctx.data::<GraphqlState>()?.pool)
+}
+
+fn scope<'a>(ctx: &'a Context<'_>) -> GraphqlResult<&'a GraphqlScope> {
+    Ok(ctx.data::<GraphqlScope>()?)
 }

@@ -1,10 +1,44 @@
 use async_graphql::{Enum, InputObject, SimpleObject};
 use sqlx::FromRow;
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GraphqlScope {
+    pub dao_code: Option<String>,
+    pub chain_id: Option<i32>,
+    pub governor_address: Option<String>,
+    pub contract_set_id: Option<String>,
+}
+
+impl GraphqlScope {
+    pub(super) fn is_empty(&self) -> bool {
+        self.dao_code.is_none()
+            && self.chain_id.is_none()
+            && self.governor_address.is_none()
+            && self.contract_set_id.is_none()
+    }
+
+    pub(super) fn from_graphql_path(path: &str) -> Self {
+        let Some(prefix) = path.strip_suffix("/graphql") else {
+            return Self::default();
+        };
+        let dao_code = prefix.trim_matches('/');
+        if dao_code.is_empty() || dao_code.contains('/') {
+            return Self::default();
+        }
+
+        Self {
+            dao_code: Some(dao_code.to_owned()),
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Clone, Debug, FromRow, SimpleObject)]
 #[graphql(rename_fields = "camelCase", complex)]
 pub struct Proposal {
     pub(super) id: String,
+    #[graphql(skip)]
+    pub(super) contract_set_id: String,
     pub(super) chain_id: Option<i32>,
     pub(super) dao_code: Option<String>,
     pub(super) governor_address: Option<String>,

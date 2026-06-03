@@ -4,12 +4,22 @@ use super::types::*;
 
 pub(super) fn push_proposal_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
     where_: Option<&'a ProposalWhereInput>,
 ) {
-    if let Some(where_) = where_ {
+    if !implicit_scope.is_empty() || where_.is_some() {
         query.push(" WHERE ");
         let mut has_condition = false;
-        push_proposal_filters(query, &mut has_condition, where_, "proposal");
+        push_implicit_scope_filters(query, &mut has_condition, implicit_scope, "proposal", true);
+        if let Some(where_) = where_ {
+            push_proposal_filters(
+                query,
+                &mut has_condition,
+                implicit_scope,
+                where_,
+                "proposal",
+            );
+        }
         if !has_condition {
             query.push("TRUE");
         }
@@ -19,6 +29,7 @@ pub(super) fn push_proposal_where<'a>(
 pub(super) fn push_proposal_filters<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     has_condition: &mut bool,
+    implicit_scope: &'a GraphqlScope,
     where_: &'a ProposalWhereInput,
     table_alias: &str,
 ) {
@@ -47,12 +58,13 @@ pub(super) fn push_proposal_filters<'a>(
         push_and(query, has_condition);
         query.push("EXISTS (SELECT 1 FROM vote_cast_group v WHERE v.proposal_id = proposal.id");
         let mut nested_has_condition = true;
+        push_implicit_scope_filters(query, &mut nested_has_condition, implicit_scope, "v", true);
         push_vote_cast_group_filters(query, &mut nested_has_condition, voters_some, "v");
         query.push(")");
     }
     if let Some(or) = &where_.or {
         push_or_group(query, has_condition, or, |query, has_condition, filter| {
-            push_proposal_filters(query, has_condition, filter, table_alias);
+            push_proposal_filters(query, has_condition, implicit_scope, filter, table_alias);
         });
     }
 }
@@ -60,8 +72,10 @@ pub(super) fn push_proposal_filters<'a>(
 pub(super) fn push_vote_cast_group_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     has_condition: &mut bool,
+    implicit_scope: &'a GraphqlScope,
     where_: Option<&'a VoteCastGroupWhereInput>,
 ) {
+    push_implicit_scope_filters(query, has_condition, implicit_scope, "", true);
     if let Some(where_) = where_ {
         push_vote_cast_group_filters(query, has_condition, where_, "");
     }
@@ -88,14 +102,18 @@ pub(super) fn push_vote_cast_group_filters<'a>(
 
 pub(super) fn push_event_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
     where_: Option<&'a impl ProposalEventWhere>,
 ) {
-    if let Some(where_) = where_ {
+    if !implicit_scope.is_empty() || where_.is_some() {
         query.push(" WHERE ");
         let mut has_condition = false;
-        push_scope_filters(query, &mut has_condition, where_.scope(), "");
-        if let Some(proposal_id) = where_.proposal_id_eq() {
-            push_column_eq(query, &mut has_condition, "", "proposal_id", proposal_id);
+        push_implicit_event_scope_filters(query, &mut has_condition, implicit_scope, "");
+        if let Some(where_) = where_ {
+            push_scope_filters(query, &mut has_condition, where_.scope(), "");
+            if let Some(proposal_id) = where_.proposal_id_eq() {
+                push_column_eq(query, &mut has_condition, "", "proposal_id", proposal_id);
+            }
         }
         if !has_condition {
             query.push("TRUE");
@@ -105,12 +123,16 @@ pub(super) fn push_event_where<'a>(
 
 pub(super) fn push_data_metric_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
     where_: Option<&'a DataMetricWhereInput>,
 ) {
-    if let Some(where_) = where_ {
+    if !implicit_scope.is_empty() || where_.is_some() {
         query.push(" WHERE ");
         let mut has_condition = false;
-        push_data_metric_filters(query, &mut has_condition, where_, "");
+        push_implicit_scope_filters(query, &mut has_condition, implicit_scope, "", true);
+        if let Some(where_) = where_ {
+            push_data_metric_filters(query, &mut has_condition, where_, "");
+        }
         if !has_condition {
             query.push("TRUE");
         }
@@ -199,12 +221,16 @@ pub(super) fn push_data_metric_filters<'a>(
 
 pub(super) fn push_contributor_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
     where_: Option<&'a ContributorWhereInput>,
 ) {
-    if let Some(where_) = where_ {
+    if !implicit_scope.is_empty() || where_.is_some() {
         query.push(" WHERE ");
         let mut has_condition = false;
-        push_contributor_filters(query, &mut has_condition, where_, "");
+        push_implicit_scope_filters(query, &mut has_condition, implicit_scope, "", true);
+        if let Some(where_) = where_ {
+            push_contributor_filters(query, &mut has_condition, where_, "");
+        }
         if !has_condition {
             query.push("TRUE");
         }
@@ -245,12 +271,16 @@ pub(super) fn push_contributor_filters<'a>(
 
 pub(super) fn push_delegate_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
     where_: Option<&'a DelegateWhereInput>,
 ) {
-    if let Some(where_) = where_ {
+    if !implicit_scope.is_empty() || where_.is_some() {
         query.push(" WHERE ");
         let mut has_condition = false;
-        push_delegate_filters(query, &mut has_condition, where_, "");
+        push_implicit_scope_filters(query, &mut has_condition, implicit_scope, "", true);
+        if let Some(where_) = where_ {
+            push_delegate_filters(query, &mut has_condition, where_, "");
+        }
         if !has_condition {
             query.push("TRUE");
         }
@@ -299,17 +329,21 @@ pub(super) fn push_delegate_filters<'a>(
 
 pub(super) fn push_delegate_mapping_where<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
     where_: Option<&'a DelegateMappingWhereInput>,
 ) {
-    if let Some(where_) = where_ {
+    if !implicit_scope.is_empty() || where_.is_some() {
         query.push(" WHERE ");
         let mut has_condition = false;
-        push_scope_filters(query, &mut has_condition, &where_.scope, "");
-        if let Some(from) = &where_.from_eq {
-            push_column_eq(query, &mut has_condition, "", r#""from""#, from);
-        }
-        if let Some(to) = &where_.to_eq {
-            push_column_eq(query, &mut has_condition, "", r#""to""#, to);
+        push_implicit_scope_filters(query, &mut has_condition, implicit_scope, "", true);
+        if let Some(where_) = where_ {
+            push_scope_filters(query, &mut has_condition, &where_.scope, "");
+            if let Some(from) = &where_.from_eq {
+                push_column_eq(query, &mut has_condition, "", r#""from""#, from);
+            }
+            if let Some(to) = &where_.to_eq {
+                push_column_eq(query, &mut has_condition, "", r#""to""#, to);
+            }
         }
         if !has_condition {
             query.push("TRUE");
@@ -337,6 +371,62 @@ pub(super) fn push_scope_filters<'a>(
     }
     if let Some(dao_code) = &scope.dao_code_eq {
         push_column_eq(query, has_condition, table_alias, "dao_code", dao_code);
+    }
+}
+
+pub(super) fn push_implicit_scope_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    scope: &'a GraphqlScope,
+    table_alias: &str,
+    include_contract_set_id: bool,
+) {
+    if let Some(chain_id) = scope.chain_id {
+        push_column_eq(query, has_condition, table_alias, "chain_id", chain_id);
+    }
+    if let Some(governor_address) = &scope.governor_address {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "governor_address",
+            governor_address,
+        );
+    }
+    if let Some(dao_code) = &scope.dao_code {
+        push_column_eq(query, has_condition, table_alias, "dao_code", dao_code);
+    }
+    if include_contract_set_id {
+        if let Some(contract_set_id) = &scope.contract_set_id {
+            push_column_eq(
+                query,
+                has_condition,
+                table_alias,
+                "contract_set_id",
+                contract_set_id,
+            );
+        }
+    }
+}
+
+pub(super) fn push_implicit_event_scope_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    scope: &'a GraphqlScope,
+    table_alias: &str,
+) {
+    push_implicit_scope_filters(query, has_condition, scope, table_alias, false);
+    if let Some(contract_set_id) = &scope.contract_set_id {
+        push_and(query, has_condition);
+        query.push("EXISTS (SELECT 1 FROM proposal p WHERE p.contract_set_id = ");
+        query.push_bind(contract_set_id);
+        query.push(" AND p.proposal_id = ");
+        push_qualified_column(query, table_alias, "proposal_id");
+        query.push(" AND p.chain_id IS NOT DISTINCT FROM ");
+        push_qualified_column(query, table_alias, "chain_id");
+        query.push(" AND p.governor_address IS NOT DISTINCT FROM ");
+        push_qualified_column(query, table_alias, "governor_address");
+        query.push(")");
     }
 }
 

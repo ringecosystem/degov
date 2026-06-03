@@ -15,6 +15,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::timeout;
 
 const CONTRACT_SET_ID: &str = "dao=lisk-dao|chain=1135|datalens_chain=lisk|dataset=evm.logs|governor=0xgovernor|token=0xtoken|token_standard=erc20|timelock=0xtimelock";
+const OTHER_CONTRACT_SET_ID: &str = "dao=ens-dao|chain=10|datalens_chain=ethereum|dataset=evm.logs|governor=0xensgovernor|token=0xenstoken|token_standard=erc20";
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
@@ -542,6 +543,222 @@ async fn test_graphql_schema_serves_indexer_accuracy_audit_queries() -> Result<(
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_applies_implicit_scope_to_queries_and_connections()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_other_scope_rows(&database.pool).await?;
+    let schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            dao_code: Some("lisk-dao".to_owned()),
+            chain_id: Some(1135),
+            governor_address: Some("0xgovernor".to_owned()),
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+        },
+    );
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query ScopedQueries {
+              proposals(orderBy: [id_ASC]) {
+                proposalId
+                daoCode
+                voters(orderBy: [id_ASC]) { voter }
+              }
+              proposalCanceleds(orderBy: [id_ASC]) { proposalId }
+              proposalExecuteds(orderBy: [id_ASC]) { proposalId }
+              proposalQueueds(orderBy: [id_ASC]) { proposalId etaSeconds }
+              dataMetrics(orderBy: id_ASC) { id daoCode }
+              contributors(orderBy: [id_ASC]) { id daoCode }
+              delegates(orderBy: [id_ASC]) { id daoCode }
+              delegateMappings(orderBy: [id_ASC]) { id daoCode }
+              proposalsConnection { totalCount }
+              dataMetricsConnection { totalCount }
+              contributorsConnection { totalCount }
+              delegatesConnection { totalCount }
+              delegateMappingsConnection { totalCount }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["proposals"].as_array().expect("proposals").len(), 2);
+    assert_eq!(data["proposals"][0]["daoCode"], "lisk-dao");
+    assert_eq!(
+        data["proposals"][0]["voters"]
+            .as_array()
+            .expect("voters")
+            .len(),
+        2
+    );
+    assert_eq!(
+        data["proposalCanceleds"]
+            .as_array()
+            .expect("canceled")
+            .len(),
+        1
+    );
+    assert_eq!(
+        data["proposalExecuteds"]
+            .as_array()
+            .expect("executed")
+            .len(),
+        1
+    );
+    assert_eq!(data["proposalQueueds"].as_array().expect("queued").len(), 1);
+    assert_eq!(data["dataMetricsConnection"]["totalCount"], 3);
+    assert_eq!(data["contributorsConnection"]["totalCount"], 2);
+    assert_eq!(data["delegatesConnection"]["totalCount"], 1);
+    assert_eq!(data["delegateMappingsConnection"]["totalCount"], 1);
+    assert_eq!(data["proposalsConnection"]["totalCount"], 2);
+    assert_eq!(data["dataMetrics"][0]["daoCode"], "lisk-dao");
+    assert_eq!(data["contributors"][0]["daoCode"], "lisk-dao");
+    assert_eq!(data["delegates"][0]["daoCode"], "lisk-dao");
+    assert_eq!(data["delegateMappings"][0]["daoCode"], "lisk-dao");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_scope_conflicts_return_no_rows() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_other_scope_rows(&database.pool).await?;
+    let schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            dao_code: Some("lisk-dao".to_owned()),
+            chain_id: Some(1135),
+            governor_address: Some("0xgovernor".to_owned()),
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+        },
+    );
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query ScopedConflicts {
+              proposals(where: { daoCode_eq: "ens-dao" }) { id }
+              proposalCanceleds(where: { daoCode_eq: "ens-dao" }) { id }
+              proposalExecuteds(where: { daoCode_eq: "ens-dao" }) { id }
+              proposalQueueds(where: { daoCode_eq: "ens-dao" }) { id }
+              dataMetrics(where: { daoCode_eq: "ens-dao" }) { id }
+              contributors(where: { daoCode_eq: "ens-dao" }) { id }
+              delegates(where: { daoCode_eq: "ens-dao" }) { id }
+              delegateMappings(where: { daoCode_eq: "ens-dao" }) { id }
+              proposalsConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              dataMetricsConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              contributorsConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              delegatesConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              delegateMappingsConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    for field in [
+        "proposals",
+        "proposalCanceleds",
+        "proposalExecuteds",
+        "proposalQueueds",
+        "dataMetrics",
+        "contributors",
+        "delegates",
+        "delegateMappings",
+    ] {
+        assert_eq!(data[field].as_array().expect(field).len(), 0, "{field}");
+    }
+    for field in [
+        "proposalsConnection",
+        "dataMetricsConnection",
+        "contributorsConnection",
+        "delegatesConnection",
+        "delegateMappingsConnection",
+    ] {
+        assert_eq!(data[field]["totalCount"], 0, "{field}");
+    }
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_dao_path_applies_path_scope_and_preserves_admin()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_other_scope_rows(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let app = graphql::build_router_with_paths(
+        schema,
+        ["/graphql".to_owned(), "/ens-dao/graphql".to_owned()],
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let admin_endpoint = format!("http://{}/graphql", listener.local_addr()?);
+    let ens_endpoint = format!("http://{}/ens-dao/graphql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let admin_response: serde_json::Value = timeout(
+        Duration::from_secs(5),
+        Client::new()
+            .post(admin_endpoint)
+            .json(&json!({
+                "query": "query { contributorsConnection { totalCount } contributors(orderBy: [id_ASC]) { daoCode } }"
+            }))
+            .send(),
+    )
+    .await??
+    .json()
+    .await?;
+    let ens_response: serde_json::Value = timeout(
+        Duration::from_secs(5),
+        Client::new()
+            .post(ens_endpoint)
+            .json(&json!({
+                "query": "query { contributorsConnection { totalCount } contributors(orderBy: [id_ASC]) { daoCode } }"
+            }))
+            .send(),
+    )
+    .await??
+    .json()
+    .await?;
+
+    assert_eq!(
+        admin_response["data"]["contributorsConnection"]["totalCount"],
+        3
+    );
+    assert_eq!(
+        ens_response["data"]["contributorsConnection"]["totalCount"],
+        1
+    );
+    assert_eq!(
+        ens_response["data"]["contributors"][0]["daoCode"],
+        "ens-dao"
+    );
+
+    server.abort();
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_http_endpoint_serves_configured_dao_path() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let schema = graphql::build_schema(database.pool.clone());
@@ -761,6 +978,104 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         VALUES (0, 900, '0xstatus');
         "#,
     )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_other_scope_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO proposal (
+          id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
+          proposal_id, proposer, targets, values, signatures, calldatas, vote_start, vote_end,
+          description, block_number, block_timestamp, transaction_hash,
+          metrics_votes_count, metrics_votes_with_params_count, metrics_votes_without_params_count,
+          metrics_votes_weight_for_sum, metrics_votes_weight_against_sum, metrics_votes_weight_abstain_sum,
+          title, vote_start_timestamp, vote_end_timestamp, clock_mode, quorum, decimals
+        ) VALUES (
+          'proposal:10:0xensgovernor:201', $1, 10, 'ens-dao', '0xensgovernor', '0xensgovernor', 1, 0,
+          '201', '0xensproposer', ARRAY['0xenstarget'], ARRAY['0'], ARRAY['transfer(address,uint256)'], ARRAY['0x'],
+          1000, 2000, 'ENS treasury program', 900, 1700001100, '0xensproposal',
+          1, 0, 1, 50, 0, 0, 'ENS treasury program', 1700001000, 1700002000, 'mode=blocknumber&from=default', 40, 18
+        )
+        "#,
+    )
+    .bind(OTHER_CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO vote_cast_group (
+          id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index, transaction_index,
+          proposal_id, type, voter, ref_proposal_id, support, weight, reason, params,
+          block_number, block_timestamp, transaction_hash
+        ) VALUES (
+          'vote:201:1', $1, 10, 'ens-dao', '0xensgovernor', '0xensgovernor', 2, 0,
+          'proposal:10:0xensgovernor:201', 'vote-cast', '0xensvoter', '201', 1, 50, 'yes', NULL,
+          905, 1700001110, '0xensvote'
+        )
+        "#,
+    )
+    .bind(OTHER_CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::raw_sql(
+        r#"
+        INSERT INTO proposal_canceled (id, chain_id, dao_code, governor_address, proposal_id, block_number, block_timestamp, transaction_hash)
+        VALUES ('cancel:201', 10, 'ens-dao', '0xensgovernor', '201', 910, 1700001130, '0xenscancel');
+        INSERT INTO proposal_executed (id, chain_id, dao_code, governor_address, proposal_id, block_number, block_timestamp, transaction_hash)
+        VALUES ('execute:201', 10, 'ens-dao', '0xensgovernor', '201', 920, 1700001140, '0xensexecute');
+        INSERT INTO proposal_queued (id, chain_id, dao_code, governor_address, proposal_id, eta_seconds, block_number, block_timestamp, transaction_hash)
+        VALUES ('queue:201', 10, 'ens-dao', '0xensgovernor', '201', 1700001200, 915, 1700001135, '0xensqueue');
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO data_metric (
+          id, contract_set_id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
+          votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
+          votes_weight_abstain_sum, power_sum, member_count, proposals_count
+        ) VALUES ('global', $1, 10, 'ens-dao', '0xensgovernor', 1, 0, 1, 50, 0, 0, 50, 1, 1)
+        "#,
+    )
+    .bind(OTHER_CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+          id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
+          last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all, delegates_count_effective
+        ) VALUES ('0xensvoter', $1, 10, 'ens-dao', '0xensgovernor', 905, 1700001110, '0xensvote', 905, 1700001110, 50, 5, 1, 1)
+        "#,
+    )
+    .bind(OTHER_CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO delegate (
+          id, contract_set_id, chain_id, dao_code, governor_address, from_delegate, to_delegate, block_number,
+          block_timestamp, transaction_hash, is_current, power
+        ) VALUES ('0xensdelegator_0xensdelegate', $1, 10, 'ens-dao', '0xensgovernor', '0xensdelegator', '0xensdelegate', 907, 1700001125, '0xensdelegate', TRUE, 50)
+        "#,
+    )
+    .bind(OTHER_CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO delegate_mapping (
+          id, contract_set_id, chain_id, dao_code, governor_address, "from", "to", power, block_number,
+          block_timestamp, transaction_hash
+        ) VALUES ('0xensdelegator', $1, 10, 'ens-dao', '0xensgovernor', '0xensdelegator', '0xensdelegate', 50, 907, 1700001125, '0xensmapping')
+        "#,
+    )
+    .bind(OTHER_CONTRACT_SET_ID)
     .execute(pool)
     .await?;
 
