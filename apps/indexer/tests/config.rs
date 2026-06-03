@@ -283,6 +283,78 @@ chains:
 }
 
 #[test]
+fn test_from_env_loads_checked_in_example_config() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("indexer.example.yml");
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+            ("DATALENS_CHAINS_JSON", None),
+            ("DATALENS_GOVERNOR_ADDRESS", None),
+            ("DATALENS_GOVERNOR_TOKEN_ADDRESS", None),
+            ("DATALENS_GOVERNOR_TOKEN_STANDARD", None),
+            ("DATALENS_TIMELOCK_ADDRESS", None),
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_START_BLOCK", None),
+        ],
+        || {
+            let config = DatalensConfig::from_env().expect("load checked-in example config");
+
+            assert_eq!(config.endpoint, "https://datalens.ringdao.com");
+            assert_eq!(config.application, "degov-live");
+            assert_eq!(config.dataset.key(), "evm.logs");
+            assert_eq!(config.query_limits.block_range_limit, 1000);
+            assert_eq!(config.chains.len(), 4);
+
+            let contracts = config
+                .configured_contract_sets(None)
+                .expect("configured contract sets");
+            let dao_codes = contracts
+                .iter()
+                .map(|contract| contract.dao_code.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                dao_codes,
+                vec!["ens-dao", "lisk-dao", "internet-token-dao", "gmx-dao"]
+            );
+
+            let ens = contracts
+                .iter()
+                .find(|contract| contract.dao_code == "ens-dao")
+                .expect("ens config");
+            assert_eq!(ens.contract.chain_id, 1);
+            assert_eq!(
+                ens.contract.governor,
+                "0x323A76393544d5ecca80cd6ef2A560C6a395b7E3"
+            );
+
+            let lisk = contracts
+                .iter()
+                .find(|contract| contract.dao_code == "lisk-dao")
+                .expect("lisk config");
+            assert_eq!(lisk.contract.chain_id, 1135);
+            assert_eq!(lisk.contract.start_block, 568752);
+
+            let base = contracts
+                .iter()
+                .find(|contract| contract.dao_code == "internet-token-dao")
+                .expect("base config");
+            assert_eq!(base.contract.chain_id, 8453);
+
+            let arbitrum = contracts
+                .iter()
+                .find(|contract| contract.dao_code == "gmx-dao")
+                .expect("arbitrum config");
+            assert_eq!(arbitrum.contract.chain_id, 42161);
+        },
+    );
+}
+
+#[test]
 fn test_from_env_overrides_config_file_values() {
     let path = write_config_file(
         "yml",

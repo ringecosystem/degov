@@ -27,29 +27,45 @@ rpc:
       urlEnv: ETHEREUM_RPC_URL
     "1135":
       urlEnv: LISK_RPC_URL
+    "8453":
+      urlEnv: BASE_RPC_URL
+    "42161":
+      urlEnv: ARBITRUM_RPC_URL
 
 chains:
   - chainId: 1
     networkName: ethereum
     contracts:
       - daoCode: ens-dao
-        governor: "0x0000000000000000000000000000000000000001"
-        governorToken: "0x0000000000000000000000000000000000000002"
+        governor: "0x323A76393544d5ecca80cd6ef2A560C6a395b7E3"
+        governorToken: "0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72"
         tokenStandard: ERC20
-        timelock: "0x0000000000000000000000000000000000000003"
+        timelock: "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7"
         startBlock: 13533418
-      - daoCode: demo-ethereum-dao
-        governor: "0x0000000000000000000000000000000000000004"
-        governorToken: "0x0000000000000000000000000000000000000005"
-        tokenStandard: ERC721
-        timelock: "0x0000000000000000000000000000000000000006"
-        startBlock: 18000000
   - chainId: 1135
     networkName: lisk
     contracts:
       - daoCode: lisk-dao
-        governor: "0x0000000000000000000000000000000000000007"
-        governorToken: "0x0000000000000000000000000000000000000008"
+        governor: "0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568"
+        governorToken: "0x2eE6Eca46d2406454708a1C80356a6E63b57D404"
         tokenStandard: ERC20
-        timelock: "0x0000000000000000000000000000000000000009"
+        timelock: "0x2294A7f24187B84995A2A28112f82f07BE1BceAD"
         startBlock: 568752
+  - chainId: 8453
+    networkName: base
+    contracts:
+      - daoCode: internet-token-dao
+        governor: "0xc5C3a1882Eff9539527D88E2453cAB10d9bc1581"
+        governorToken: "0x968D6A288d7B024D5012c0B25d67A889E4E3eC19"
+        tokenStandard: ERC20
+        timelock: "0xE05dD5B785f578337B2B8F695Fbc521669c69403"
+        startBlock: 12149008
+  - chainId: 42161
+    networkName: arbitrum
+    contracts:
+      - daoCode: gmx-dao
+        governor: "0x03e8f708e9C85EDCEaa6AD7Cd06824CeB82A7E68"
+        governorToken: "0x2A29D3a792000750807cc401806d6fd539928481"
+        tokenStandard: ERC20
+        timelock: "0x4bd1cdAab4254fC43ef6424653cA2375b4C94C0E"
+        startBlock: 168596066

@@ -31,3 +31,4 @@ dist-ssr
 /target/
 
 .env
+apps/indexer/indexer.yml
