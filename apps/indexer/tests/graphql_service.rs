@@ -468,7 +468,8 @@ async fn test_graphql_http_endpoint_serves_graphiql_on_dedicated_path() -> Resul
     let body = response.text().await?;
     assert!(body.contains("GraphiQL"));
     assert!(body.contains("/graphql"));
-    assert!(body.contains("@graphiql/plugin-explorer"));
+    assert!(body.contains("graphiql@3.9.0"));
+    assert!(body.contains("@graphiql/plugin-explorer@3.0.0"));
     assert!(body.contains("GraphiQLPluginExplorer.explorerPlugin"));
 
     server.abort();
@@ -582,7 +583,8 @@ async fn test_graphql_http_endpoint_serves_configured_dao_graphiql_path()
     let body = response.text().await?;
     assert!(body.contains("GraphiQL"));
     assert!(body.contains("/degov-demo-dao/graphql"));
-    assert!(body.contains("@graphiql/plugin-explorer"));
+    assert!(body.contains("graphiql@3.9.0"));
+    assert!(body.contains("@graphiql/plugin-explorer@3.0.0"));
     assert!(body.contains("GraphiQLPluginExplorer.explorerPlugin"));
 
     server.abort();
