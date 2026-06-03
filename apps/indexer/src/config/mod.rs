@@ -203,7 +203,7 @@ struct RawDatalensConfig {
     degov_indexer_start_block: Option<i64>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct RawDatalensChainConfig {
     #[serde(rename = "chainId", alias = "chain_id")]
     chain_id: Option<i32>,
@@ -212,7 +212,7 @@ struct RawDatalensChainConfig {
     contracts: Option<Vec<RawDatalensContractSetConfig>>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct RawDatalensContractSetConfig {
     #[serde(rename = "daoCode", alias = "dao_code")]
     dao_code: Option<String>,
@@ -680,7 +680,7 @@ fn parse_contract_config(
     parent_network_name: &str,
     raw: RawDatalensContractSetConfig,
 ) -> Result<DatalensContractSetConfig, ConfigError> {
-    let chain_id = required_i32_path(format!("{contract_path}.chainId"), raw.chain_id)?;
+    let chain_id = raw.chain_id.unwrap_or(parent_chain_id);
     validate_chain_id(format!("{contract_path}.chainId"), chain_id)?;
     if chain_id != parent_chain_id {
         return Err(ConfigError::InvalidField {
@@ -688,8 +688,9 @@ fn parse_contract_config(
             reason: format!("must match parent chainId {parent_chain_id}"),
         });
     }
-    let network_name =
-        required_string_path(format!("{contract_path}.networkName"), raw.network_name)?;
+    let network_name = raw
+        .network_name
+        .unwrap_or_else(|| parent_network_name.to_owned());
     if network_name != parent_network_name {
         return Err(ConfigError::InvalidField {
             field: format!("{contract_path}.networkName"),

@@ -1,4 +1,9 @@
-use std::time::Duration;
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use degov_datalens_indexer::{
     ConfigError, DatalensConfig, DatalensFinality, GovernanceTokenStandard, SecretString,
@@ -6,6 +11,24 @@ use degov_datalens_indexer::{
 
 fn with_datalens_env<T>(vars: &[(&str, Option<&str>)], test: impl FnOnce() -> T) -> T {
     temp_env::with_vars(vars, test)
+}
+
+fn write_config_file(extension: &str, contents: &str) -> PathBuf {
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is after unix epoch")
+        .as_nanos();
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let path =
+        std::env::temp_dir().join(format!("degov-indexer-config-{timestamp}-{id}.{extension}"));
+    fs::write(&path, contents).expect("write config file fixture");
+    path
+}
+
+fn remove_config_file(path: PathBuf) {
+    fs::remove_file(path).expect("remove config file fixture");
 }
 
 #[test]
@@ -189,6 +212,283 @@ fn test_from_env_loads_multi_chain_contract_config_json() {
             assert_eq!(selected.start_block, 568752);
         },
     );
+}
+
+#[test]
+fn test_from_env_loads_yaml_config_file_with_env_secret() {
+    let path = write_config_file(
+        "yml",
+        r#"
+datalens:
+  endpoint: https://datalens.ringdao.com/
+  application: degov-live
+  finality: durable_only
+  dataset:
+    family: evm
+    name: logs
+  queryLimits:
+    blockRangeLimit: 777
+chains:
+  - chainId: 1
+    networkName: ethereum
+    contracts:
+      - daoCode: ens-dao
+        governor: "0x1111111111111111111111111111111111111111"
+        governorToken: "0x2222222222222222222222222222222222222222"
+        tokenStandard: ERC20
+        timelock: "0x3333333333333333333333333333333333333333"
+        startBlock: 13533418
+  - chainId: 1135
+    networkName: lisk
+    contracts:
+      - daoCode: lisk-dao
+        governor: "0x4444444444444444444444444444444444444444"
+        governorToken: "0x5555555555555555555555555555555555555555"
+        tokenStandard: ERC20
+        timelock: "0x6666666666666666666666666666666666666666"
+        startBlock: 568752
+"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+        ],
+        || {
+            let config = DatalensConfig::from_env().expect("load yaml config");
+
+            assert_eq!(config.endpoint, "https://datalens.ringdao.com");
+            assert_eq!(config.application, "degov-live");
+            assert_eq!(
+                config.bearer_token.expose_secret(),
+                "unit-test-redacted-value"
+            );
+            assert_eq!(config.query_limits.block_range_limit, 777);
+            assert_eq!(config.chains.len(), 2);
+            assert_eq!(config.chains[0].contracts[0].chain_id, 1);
+            assert_eq!(config.chains[0].contracts[0].network_name, "ethereum");
+            assert_eq!(
+                config.chains[1].contracts[0].dao_code.as_deref(),
+                Some("lisk-dao")
+            );
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_from_env_overrides_config_file_values() {
+    let path = write_config_file(
+        "yml",
+        r#"
+datalens:
+  endpoint: https://file-datalens.example
+  application: file-application
+  token: file-token-for-local-only
+  queryLimits:
+    blockRangeLimit: 1000
+chains:
+  - chainId: 1
+    networkName: ethereum
+    contracts:
+      - daoCode: file-dao
+        governor: "0x1111111111111111111111111111111111111111"
+        governorToken: "0x2222222222222222222222222222222222222222"
+        tokenStandard: ERC20
+        timelock: "0x3333333333333333333333333333333333333333"
+        startBlock: 100
+"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DATALENS_ENDPOINT", Some("https://env-datalens.example/")),
+            ("DATALENS_APPLICATION", Some("env-application")),
+            ("DATALENS_TOKEN", Some("env-token")),
+            ("DATALENS_QUERY_BLOCK_RANGE_LIMIT", Some("250")),
+            (
+                "DATALENS_CHAINS_JSON",
+                Some(
+                    r#"[
+                        {
+                            "chainId": 1135,
+                            "networkName": "lisk",
+                            "contracts": [
+                                {
+                                    "daoCode": "env-dao",
+                                    "governor": "0x4444444444444444444444444444444444444444",
+                                    "governorToken": "0x5555555555555555555555555555555555555555",
+                                    "tokenStandard": "ERC20",
+                                    "timelock": "0x6666666666666666666666666666666666666666",
+                                    "startBlock": 568752
+                                }
+                            ]
+                        }
+                    ]"#,
+                ),
+            ),
+        ],
+        || {
+            let config = DatalensConfig::from_env().expect("load config with env overrides");
+
+            assert_eq!(config.endpoint, "https://env-datalens.example");
+            assert_eq!(config.application, "env-application");
+            assert_eq!(config.bearer_token.expose_secret(), "env-token");
+            assert_eq!(config.query_limits.block_range_limit, 250);
+            assert_eq!(config.chains.len(), 1);
+            assert_eq!(config.chains[0].network_id, 1135);
+            assert_eq!(
+                config.chains[0].contracts[0].dao_code.as_deref(),
+                Some("env-dao")
+            );
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_from_env_loads_toml_config_file() {
+    let path = write_config_file(
+        "toml",
+        r#"
+[datalens]
+endpoint = "https://datalens.ringdao.com"
+application = "degov-live"
+
+[datalens.dataset]
+family = "evm"
+name = "logs"
+
+[[chains]]
+chainId = 1
+networkName = "ethereum"
+
+[[chains.contracts]]
+daoCode = "ens-dao"
+governor = "0x1111111111111111111111111111111111111111"
+governorToken = "0x2222222222222222222222222222222222222222"
+tokenStandard = "ERC20"
+timelock = "0x3333333333333333333333333333333333333333"
+startBlock = 13533418
+"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+        ],
+        || {
+            let config = DatalensConfig::from_env().expect("load toml config");
+
+            assert_eq!(config.chains.len(), 1);
+            assert_eq!(
+                config.chains[0].contracts[0].dao_code.as_deref(),
+                Some("ens-dao")
+            );
+            assert_eq!(config.dataset.key(), "evm.logs");
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_from_env_loads_json_config_file() {
+    let path = write_config_file(
+        "json",
+        r#"{
+  "datalens": {
+    "endpoint": "https://datalens.ringdao.com",
+    "application": "degov-live"
+  },
+  "chains": [
+    {
+      "chainId": 1135,
+      "networkName": "lisk",
+      "contracts": [
+        {
+          "daoCode": "lisk-dao",
+          "governor": "0x1111111111111111111111111111111111111111",
+          "governorToken": "0x2222222222222222222222222222222222222222",
+          "tokenStandard": "ERC20",
+          "timelock": "0x3333333333333333333333333333333333333333",
+          "startBlock": 568752
+        }
+      ]
+    }
+  ]
+}"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+        ],
+        || {
+            let config = DatalensConfig::from_env().expect("load json config");
+
+            assert_eq!(config.chains.len(), 1);
+            assert_eq!(config.chains[0].network_id, 1135);
+            assert_eq!(
+                config
+                    .select_contract_set("lisk-dao")
+                    .expect("select")
+                    .governor,
+                "0x1111111111111111111111111111111111111111"
+            );
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_from_env_config_file_still_requires_secret() {
+    let path = write_config_file(
+        "yml",
+        r#"
+datalens:
+  endpoint: https://datalens.ringdao.com
+  application: degov-live
+"#,
+    );
+
+    with_datalens_env(
+        &[(
+            "DEGOV_INDEXER_CONFIG_FILE",
+            Some(path.to_str().expect("utf8 path")),
+        )],
+        || {
+            let error = DatalensConfig::from_env().expect_err("missing token fails");
+
+            assert_eq!(
+                error,
+                ConfigError::MissingRequired {
+                    field: "DATALENS_TOKEN"
+                }
+            );
+        },
+    );
+
+    remove_config_file(path);
 }
 
 #[test]
