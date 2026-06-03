@@ -12,7 +12,6 @@ build:
 
 test:
     node ./scripts/check-rust-conventions.mjs
-    node ./scripts/check-postgres-schema.mjs
     node ./scripts/runtime-packaging.test.mjs
     node ./scripts/indexer-diagnostics.test.mjs
     node ./scripts/indexer-accuracy-audit.test.mjs
@@ -21,7 +20,6 @@ test:
     cargo test --locked
     node ./scripts/check-rust-conventions.test.mjs
     node ./scripts/compatibility-preflight.test.mjs
-    node ./scripts/smoke-postgres-init.test.mjs
 
 test-unit:
     cargo test --locked

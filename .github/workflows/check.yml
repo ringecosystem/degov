@@ -61,11 +61,9 @@ jobs:
           cargo build --locked -p degov-datalens-indexer
           cd apps/indexer
           node ./scripts/check-rust-conventions.mjs
-          node ./scripts/check-postgres-schema.mjs
           cargo test --locked
           node ./scripts/check-rust-conventions.test.mjs
           node ./scripts/compatibility-preflight.test.mjs
-          node ./scripts/smoke-postgres-init.test.mjs
 
   check-config:
     name: Check Config

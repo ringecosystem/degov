@@ -52,5 +52,4 @@ shell.
 ```bash
 just build
 just test
-DEGOV_INDEXER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/indexer node ./scripts/smoke-postgres-init.mjs
 ```
