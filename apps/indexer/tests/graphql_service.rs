@@ -456,8 +456,16 @@ async fn test_graphql_http_endpoint_serves_graphiql_on_dedicated_path() -> Resul
     let schema = graphql::build_schema(database.pool.clone());
     let app = graphql::build_router(schema);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let graphql_endpoint = format!("http://{}/graphql", listener.local_addr()?);
     let graphiql_endpoint = format!("http://{}/graphiql", listener.local_addr()?);
     let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new().get(graphql_endpoint).send(),
+    )
+    .await??;
+    assert_eq!(response.status().as_u16(), 405);
 
     let response = timeout(
         Duration::from_secs(5),
@@ -571,8 +579,16 @@ async fn test_graphql_http_endpoint_serves_configured_dao_graphiql_path()
     let schema = graphql::build_schema(database.pool.clone());
     let app = graphql::build_router_with_paths(schema, ["/degov-demo-dao/graphql".to_owned()]);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let graphql_endpoint = format!("http://{}/degov-demo-dao/graphql", listener.local_addr()?);
     let graphiql_endpoint = format!("http://{}/degov-demo-dao/graphiql", listener.local_addr()?);
     let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new().get(graphql_endpoint).send(),
+    )
+    .await??;
+    assert_eq!(response.status().as_u16(), 405);
 
     let response = timeout(
         Duration::from_secs(5),
