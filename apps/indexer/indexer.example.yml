@@ -8,6 +8,8 @@
 #
 # Set DEGOV_INDEXER_DAO_CODE to run one contract set. Leave it unset to run all
 # configured contract sets when every contract has daoCode.
+# Leave DEGOV_INDEXER_TARGET_HEIGHT unset or set it to latest for production
+# durable-head tracking. Numeric target heights are for debug or bounded test runs.
 
 datalens:
   endpoint: https://datalens.ringdao.com

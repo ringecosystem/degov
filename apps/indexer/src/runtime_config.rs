@@ -114,7 +114,7 @@ fn push_graphql_path(paths: &mut Vec<String>, path: &str) -> Result<()> {
 pub struct IndexerRuntimeConfig {
     pub dao_filter: Option<String>,
     pub contract_set_mode: IndexerContractSetMode,
-    pub target_height: i64,
+    pub target_height: IndexerTargetHeight,
     pub poll_interval: Duration,
     pub run_once: bool,
     pub max_chunks_per_run: Option<u64>,
@@ -129,6 +129,28 @@ pub struct IndexerRuntimeConfig {
 pub enum IndexerContractSetMode {
     Single,
     All,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IndexerTargetHeight {
+    Latest,
+    Fixed(i64),
+}
+
+impl IndexerTargetHeight {
+    pub fn configured_height(self) -> Option<i64> {
+        match self {
+            Self::Latest => None,
+            Self::Fixed(height) => Some(height),
+        }
+    }
+
+    pub fn as_log_value(self) -> String {
+        match self {
+            Self::Latest => "latest".to_owned(),
+            Self::Fixed(height) => height.to_string(),
+        }
+    }
 }
 
 impl IndexerContractSetMode {
@@ -171,7 +193,7 @@ impl IndexerRuntimeConfig {
             IndexerContractSetMode::Single => Some(required_env("DEGOV_INDEXER_DAO_CODE")?),
             IndexerContractSetMode::All => optional_env("DEGOV_INDEXER_DAO_CODE")?,
         };
-        let target_height = required_env_i64("DEGOV_INDEXER_TARGET_HEIGHT")?;
+        let target_height = parse_indexer_target_height()?;
 
         let query_max_attempts = optional_env_u32("DEGOV_INDEXER_QUERY_MAX_ATTEMPTS")?.unwrap_or(3);
         if query_max_attempts == 0 {
@@ -241,10 +263,23 @@ impl IndexerRuntimeConfig {
         &self,
         contract_set: &DatalensRuntimeContractSet,
     ) -> Result<IndexerContractSetRuntimeConfig> {
+        let target_height = self
+            .target_height
+            .configured_height()
+            .context("latest DEGOV_INDEXER_TARGET_HEIGHT must be resolved before planning")?;
+
+        self.for_configured_contract_set_at_target(contract_set, target_height)
+    }
+
+    pub fn for_configured_contract_set_at_target(
+        &self,
+        contract_set: &DatalensRuntimeContractSet,
+        target_height: i64,
+    ) -> Result<IndexerContractSetRuntimeConfig> {
         let runtime = IndexerContractSetRuntimeConfig {
             dao_code: contract_set.dao_code.clone(),
             start_block: 0,
-            target_height: self.target_height,
+            target_height,
             checkpoint_contract_set_id: String::new(),
             checkpoint_stream_id: self.checkpoint_stream_id.clone(),
             data_source_version: self.data_source_version.clone(),
@@ -260,7 +295,18 @@ impl IndexerRuntimeConfig {
 
     pub fn should_skip_contract_set_start_after_target(&self, start_block: i64) -> bool {
         matches!(self.contract_set_mode, IndexerContractSetMode::All)
-            && self.target_height < start_block
+            && self
+                .target_height
+                .configured_height()
+                .is_some_and(|target_height| target_height < start_block)
+    }
+
+    pub fn should_skip_contract_set_start_after_resolved_target(
+        &self,
+        start_block: i64,
+        target_height: i64,
+    ) -> bool {
+        matches!(self.contract_set_mode, IndexerContractSetMode::All) && target_height < start_block
     }
 }
 
@@ -497,10 +543,6 @@ fn optional_env(name: &'static str) -> Result<Option<String>> {
     }
 }
 
-fn required_env_i64(name: &'static str) -> Result<i64> {
-    parse_i64_env_value(name, &required_env(name)?)
-}
-
 fn optional_env_i64(name: &'static str) -> Result<Option<i64>> {
     optional_env(name)?
         .map(|value| parse_i64_env_value(name, &value))
@@ -535,6 +577,15 @@ fn optional_env_bool(name: &'static str) -> Result<Option<bool>> {
     optional_env(name)?
         .map(|value| parse_bool_env_value(name, &value))
         .transpose()
+}
+
+fn parse_indexer_target_height() -> Result<IndexerTargetHeight> {
+    match optional_env("DEGOV_INDEXER_TARGET_HEIGHT")? {
+        None => Ok(IndexerTargetHeight::Latest),
+        Some(value) if value.eq_ignore_ascii_case("latest") => Ok(IndexerTargetHeight::Latest),
+        Some(value) => parse_i64_env_value("DEGOV_INDEXER_TARGET_HEIGHT", &value)
+            .map(IndexerTargetHeight::Fixed),
+    }
 }
 
 pub fn parse_i64_env_value(name: &'static str, value: &str) -> Result<i64> {

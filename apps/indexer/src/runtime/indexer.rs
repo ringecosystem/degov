@@ -4,9 +4,9 @@ use sqlx::postgres::PgPoolOptions;
 use tokio::{task, time::sleep};
 
 use crate::{
-    DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensNativeClient,
-    IndexerContractSetRuntimeConfig, IndexerRunner, IndexerRunnerReport, IndexerRuntimeConfig,
-    PostgresIndexerRunnerStore, required_env,
+    DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
+    DatalensNativeClient, IndexerContractSetRuntimeConfig, IndexerRunner, IndexerRunnerReport,
+    IndexerRuntimeConfig, IndexerTargetHeight, PostgresIndexerRunnerStore, required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -22,7 +22,7 @@ pub async fn run_indexer() -> Result<()> {
         runtime.contract_set_mode.as_str(),
         runtime.dao_filter,
         config.dataset.key(),
-        runtime.target_height,
+        runtime.target_height.as_log_value(),
         !database_url.is_empty()
     );
 
@@ -39,11 +39,16 @@ pub async fn run_indexer() -> Result<()> {
             .context("select Datalens indexer contract sets")?;
 
         for contract_set in contract_sets {
-            let contract_runtime = match runtime.for_configured_contract_set(&contract_set) {
+            let target_height =
+                resolve_contract_set_target_height(&runtime, &contract_set.config).await?;
+            let contract_runtime = match runtime
+                .for_configured_contract_set_at_target(&contract_set, target_height)
+            {
                 Ok(contract_runtime) => contract_runtime,
                 Err(error)
-                    if runtime.should_skip_contract_set_start_after_target(
+                    if runtime.should_skip_contract_set_start_after_resolved_target(
                         contract_set.contract.start_block,
+                        target_height,
                     ) =>
                 {
                     log::warn!(
@@ -52,7 +57,7 @@ pub async fn run_indexer() -> Result<()> {
                         contract_set.contract.chain_id,
                         contract_set.contract_set_id,
                         contract_set.contract.start_block,
-                        runtime.target_height,
+                        target_height,
                         error
                     );
                     continue;
@@ -128,4 +133,25 @@ async fn run_contract_set_pass(
     })
     .await
     .context("join Datalens indexer runner task")?
+}
+
+async fn resolve_contract_set_target_height(
+    runtime: &IndexerRuntimeConfig,
+    config: &DatalensConfig,
+) -> Result<i64> {
+    match runtime.target_height {
+        IndexerTargetHeight::Fixed(height) => Ok(height),
+        IndexerTargetHeight::Latest => {
+            let config = config.clone();
+            task::spawn_blocking(move || -> Result<_> {
+                let mut client =
+                    DatalensNativeClient::from_config(&config).context("create Datalens client")?;
+                client
+                    .durable_head_height(&config)
+                    .context("resolve latest Datalens durable head height")
+            })
+            .await
+            .context("join Datalens target height resolver task")?
+        }
+    }
 }

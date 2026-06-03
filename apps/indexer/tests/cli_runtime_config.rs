@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use degov_datalens_indexer::{
     DatalensConfig, GraphqlRuntimeConfig, IndexerContractSetMode, IndexerRuntimeConfig,
-    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
+    IndexerTargetHeight, onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
 };
 
 #[test]
@@ -81,7 +81,7 @@ fn test_graphql_runtime_config_accepts_legacy_bind_endpoint() {
 }
 
 #[test]
-fn test_indexer_runtime_config_requires_explicit_target_height() {
+fn test_indexer_runtime_config_defaults_to_latest_target_height() {
     temp_env::with_vars(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
@@ -89,10 +89,41 @@ fn test_indexer_runtime_config_requires_explicit_target_height() {
             ("DEGOV_INDEXER_TARGET_HEIGHT", None),
         ],
         || {
-            let error =
-                IndexerRuntimeConfig::from_env().expect_err("missing target height is invalid");
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
 
-            assert!(error.to_string().contains("DEGOV_INDEXER_TARGET_HEIGHT"));
+            assert_eq!(config.target_height, IndexerTargetHeight::Latest);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_accepts_latest_target_height() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_START_BLOCK", Some("10")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("latest")),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.target_height, IndexerTargetHeight::Latest);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_keeps_numeric_target_height_for_debug_runs() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_START_BLOCK", Some("10")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.target_height, IndexerTargetHeight::Fixed(123));
         },
     );
 }
@@ -137,7 +168,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
     let runtime = IndexerRuntimeConfig {
         dao_filter: Some("lisk-dao".to_owned()),
         contract_set_mode: IndexerContractSetMode::Single,
-        target_height: 568800,
+        target_height: IndexerTargetHeight::Fixed(568800),
         checkpoint_stream_id: "datalens-native".to_owned(),
         data_source_version: "datalens-v1".to_owned(),
         query_max_attempts: 3,
@@ -207,7 +238,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
     let runtime = IndexerRuntimeConfig {
         dao_filter: Some("lisk-dao".to_owned()),
         contract_set_mode: IndexerContractSetMode::Single,
-        target_height: 568751,
+        target_height: IndexerTargetHeight::Fixed(568751),
         checkpoint_stream_id: "datalens-native".to_owned(),
         data_source_version: "datalens-v1".to_owned(),
         query_max_attempts: 3,
@@ -231,4 +262,23 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
     assert!(!runtime.should_skip_contract_set_start_after_target(568752));
     assert!(all_mode_runtime.should_skip_contract_set_start_after_target(568752));
     assert!(error.to_string().contains("DEGOV_INDEXER_TARGET_HEIGHT"));
+}
+
+#[test]
+fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_sets() {
+    let runtime = IndexerRuntimeConfig {
+        dao_filter: None,
+        contract_set_mode: IndexerContractSetMode::All,
+        target_height: IndexerTargetHeight::Latest,
+        checkpoint_stream_id: "datalens-native".to_owned(),
+        data_source_version: "datalens-v1".to_owned(),
+        query_max_attempts: 3,
+        progress_refresh_lag_blocks: 100,
+        poll_interval: Duration::from_secs(10),
+        run_once: true,
+        max_chunks_per_run: None,
+        database_max_connections: 1,
+    };
+
+    assert!(!runtime.should_skip_contract_set_start_after_target(568752));
 }

@@ -723,7 +723,6 @@ async fn run_indexer_command(
         .env("DEGOV_INDEXER_DATABASE_URL", database_url)
         .env("DEGOV_INDEXER_DAO_CODE", "demo-dao")
         .env("DEGOV_INDEXER_START_BLOCK", "1")
-        .env("DEGOV_INDEXER_TARGET_HEIGHT", "2")
         .env("DEGOV_INDEXER_RUN_ONCE", "true")
         .env("DATALENS_ENDPOINT", datalens_endpoint)
         .env("DATALENS_APPLICATION", "degov-test")
@@ -872,7 +871,7 @@ impl FakeDatalensServer {
         let server_query_count = query_count.clone();
 
         thread::spawn(move || {
-            for stream in listener.incoming().take(4).flatten() {
+            for stream in listener.incoming().take(8).flatten() {
                 handle_datalens_request(
                     stream,
                     &governor_rows,
@@ -905,6 +904,15 @@ fn handle_datalens_request(
                     "chains": []
                 }
             }
+        })
+    } else if request.contains(r#""end":2147483647"#) {
+        json!({
+            "data": null,
+            "errors": [
+                {
+                    "message": "range exceeds adapter safe/finalized height: requested end 2147483647, safe/finalized height 2"
+                }
+            ]
         })
     } else {
         let query_index = query_count.fetch_add(1, Ordering::Relaxed);
