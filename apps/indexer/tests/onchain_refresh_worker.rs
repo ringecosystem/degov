@@ -7,8 +7,10 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    ChainReadMethod, OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
-    OnchainRefreshTask, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
+    BatchReadPlanConfig, ChainReadExecutionReport, ChainReadMethod, ChainReadMetrics,
+    ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool, MultiChainToolOnchainRefreshReader,
+    OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshTask,
+    OnchainRefreshWorker, OnchainRefreshWorkerConfig, PartialChainReadFailureReport,
     runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
@@ -457,6 +459,103 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
     Ok(())
 }
 
+#[test]
+fn test_multi_chain_reader_routes_tasks_to_matching_chain_tool() {
+    let reader = MultiChainToolOnchainRefreshReader::new(
+        BTreeMap::from([
+            (1, StaticValueChainTool::new("101")),
+            (1135, StaticValueChainTool::new("202")),
+        ]),
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+
+    let values = reader
+        .read_tasks(&[
+            task_for_chain("task-one", 1, ACCOUNT_ONE),
+            task_for_chain("task-two", 1135, ACCOUNT_TWO),
+        ])
+        .expect("read tasks");
+    let values = values
+        .into_iter()
+        .map(|value| (value.task_id.clone(), value))
+        .collect::<BTreeMap<_, _>>();
+
+    assert_eq!(
+        values.get("task-one").expect("task-one").power.as_deref(),
+        Some("101")
+    );
+    assert_eq!(
+        values.get("task-two").expect("task-two").power.as_deref(),
+        Some("202")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_fails_only_missing_rpc_chain_group()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task_with_scope(
+        &database.pool,
+        "task-one",
+        "ethereum-dao",
+        1,
+        "ethereum-dao",
+        GOVERNOR,
+        TOKEN,
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+    seed_task_with_scope(
+        &database.pool,
+        "task-two",
+        "lisk-dao",
+        1135,
+        "lisk-dao",
+        GOVERNOR_TWO,
+        TOKEN_TWO,
+        ACCOUNT_TWO,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+
+    let reader = MultiChainToolOnchainRefreshReader::new(
+        BTreeMap::from([(1, StaticValueChainTool::new("101"))]),
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            max_attempts: 3,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 2);
+    assert_eq!(report.completed, 1);
+    assert_eq!(report.failed, 1);
+    assert_completed_task(&database.pool, "task-one", 1).await?;
+    assert_failed_task_error_contains(&database.pool, "task-two", "chain_id 1135").await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 struct MockOnchainRefreshReader {
     values: BTreeMap<String, OnchainRefreshReadValue>,
@@ -498,6 +597,65 @@ impl OnchainRefreshReader for FailingOnchainRefreshReader {
         _tasks: &[OnchainRefreshTask],
     ) -> Result<Vec<OnchainRefreshReadValue>, OnchainRefreshReaderError> {
         Err(OnchainRefreshReaderError::new("mock reader failed"))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct StaticValueChainTool {
+    value: String,
+}
+
+impl StaticValueChainTool {
+    fn new(value: &str) -> Self {
+        Self {
+            value: value.to_owned(),
+        }
+    }
+}
+
+impl ChainTool for StaticValueChainTool {
+    fn execute_read_plan(
+        &self,
+        plan: &ChainReadPlan,
+    ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        Ok(ChainReadExecutionReport {
+            metrics: ChainReadMetrics {
+                requested_reads: plan.metrics.requested_reads,
+                deduped_reads: plan.metrics.deduped_reads,
+                executed_rpc_calls: plan.reads.len(),
+                multicall_batch_size: plan.metrics.multicall_batch_size,
+                ..ChainReadMetrics::default()
+            },
+            results: plan
+                .reads
+                .iter()
+                .enumerate()
+                .map(|(read_index, read)| ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value: ChainReadValue::Integer(self.value.clone()),
+                })
+                .collect(),
+            ..ChainReadExecutionReport::default()
+        })
+    }
+}
+
+fn task_for_chain(task_id: &str, chain_id: i32, account: &str) -> OnchainRefreshTask {
+    OnchainRefreshTask {
+        id: task_id.to_owned(),
+        contract_set_id: format!("scope-{chain_id}"),
+        chain_id,
+        dao_code: Some(format!("dao-{chain_id}")),
+        governor_address: GOVERNOR.to_owned(),
+        token_address: TOKEN.to_owned(),
+        account: account.to_owned(),
+        refresh_balance: false,
+        refresh_power: true,
+        last_seen_block_number: "12".to_owned(),
+        last_seen_block_timestamp: "12000".to_owned(),
+        last_seen_transaction_hash: "0xtask".to_owned(),
+        attempts: 0,
     }
 }
 
@@ -769,6 +927,31 @@ async fn assert_completed_task(
     assert_eq!(row.get::<Option<String>, _>("locked_at"), None);
     assert_eq!(row.get::<Option<String>, _>("locked_by"), None);
     assert!(row.get::<Option<String>, _>("processed_at").is_some());
+
+    Ok(())
+}
+
+async fn assert_failed_task_error_contains(
+    pool: &PgPool,
+    task_id: &str,
+    expected_error: &str,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT status, attempts, error
+         FROM onchain_refresh_task
+         WHERE id = $1",
+    )
+    .bind(task_id)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("status"), "failed");
+    assert_eq!(row.get::<i32, _>("attempts"), 1);
+    assert!(
+        row.get::<Option<String>, _>("error")
+            .expect("error")
+            .contains(expected_error)
+    );
 
     Ok(())
 }

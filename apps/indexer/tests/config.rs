@@ -6,7 +6,8 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    ConfigError, DatalensConfig, DatalensFinality, GovernanceTokenStandard, SecretString,
+    ConfigError, DatalensConfig, DatalensFinality, GovernanceTokenStandard,
+    OnchainRefreshRuntimeConfig, SecretString,
 };
 
 fn with_datalens_env<T>(vars: &[(&str, Option<&str>)], test: impl FnOnce() -> T) -> T {
@@ -458,6 +459,223 @@ fn test_from_env_loads_json_config_file() {
     );
 
     remove_config_file(path);
+}
+
+#[test]
+fn test_onchain_refresh_runtime_loads_yaml_rpc_chains() {
+    let path = write_config_file(
+        "yml",
+        r#"
+rpc:
+  chains:
+    "1":
+      urlEnv: ETHEREUM_RPC_URL
+    "1135":
+      urlEnv: LISK_RPC_URL
+"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DEGOV_ONCHAIN_REFRESH_RPC_URL", None),
+            (
+                "ETHEREUM_RPC_URL",
+                Some("https://ethereum.example/rpc-secret"),
+            ),
+            ("LISK_RPC_URL", Some("https://lisk.example/rpc-secret")),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("load runtime config");
+
+            assert_eq!(config.rpc_chains.len(), 2);
+            assert_eq!(
+                config.rpc_chains.get(&1).expect("ethereum rpc").url_env,
+                "ETHEREUM_RPC_URL"
+            );
+            assert_eq!(
+                config
+                    .rpc_chains
+                    .get(&1)
+                    .expect("ethereum rpc")
+                    .url
+                    .expose_secret(),
+                "https://ethereum.example/rpc-secret"
+            );
+            assert_eq!(
+                config
+                    .rpc_chains
+                    .get(&1135)
+                    .expect("lisk rpc")
+                    .url
+                    .expose_secret(),
+                "https://lisk.example/rpc-secret"
+            );
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_onchain_refresh_runtime_loads_toml_rpc_chains() {
+    let path = write_config_file(
+        "toml",
+        r#"
+[rpc.chains."1"]
+urlEnv = "ETHEREUM_RPC_URL"
+
+[rpc.chains."1135"]
+urlEnv = "LISK_RPC_URL"
+"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DEGOV_ONCHAIN_REFRESH_RPC_URL", None),
+            (
+                "ETHEREUM_RPC_URL",
+                Some("https://ethereum.example/rpc-secret"),
+            ),
+            ("LISK_RPC_URL", Some("https://lisk.example/rpc-secret")),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("load runtime config");
+
+            assert_eq!(
+                config
+                    .rpc_chains
+                    .get(&1135)
+                    .expect("lisk rpc")
+                    .url
+                    .expose_secret(),
+                "https://lisk.example/rpc-secret"
+            );
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_onchain_refresh_runtime_loads_json_rpc_chains() {
+    let path = write_config_file(
+        "json",
+        r#"{
+  "rpc": {
+    "chains": {
+      "1": {
+        "urlEnv": "ETHEREUM_RPC_URL"
+      },
+      "1135": {
+        "urlEnv": "LISK_RPC_URL"
+      }
+    }
+  }
+}"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DEGOV_ONCHAIN_REFRESH_RPC_URL", None),
+            (
+                "ETHEREUM_RPC_URL",
+                Some("https://ethereum.example/rpc-secret"),
+            ),
+            ("LISK_RPC_URL", Some("https://lisk.example/rpc-secret")),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("load runtime config");
+
+            assert_eq!(
+                config
+                    .rpc_chains
+                    .get(&1)
+                    .expect("ethereum rpc")
+                    .url
+                    .expose_secret(),
+                "https://ethereum.example/rpc-secret"
+            );
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_onchain_refresh_runtime_redacts_rpc_urls_in_debug_output() {
+    let path = write_config_file(
+        "yml",
+        r#"
+rpc:
+  chains:
+    "1":
+      urlEnv: ETHEREUM_RPC_URL
+"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DEGOV_ONCHAIN_REFRESH_RPC_URL", None),
+            (
+                "ETHEREUM_RPC_URL",
+                Some("https://ethereum.example/rpc-secret"),
+            ),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("load runtime config");
+            let debug = format!("{config:?}");
+
+            assert!(!debug.contains("https://ethereum.example/rpc-secret"));
+            assert!(debug.contains("<redacted>"));
+            assert!(debug.contains("ETHEREUM_RPC_URL"));
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_onchain_refresh_runtime_keeps_legacy_single_rpc_env_fallback() {
+    with_datalens_env(
+        &[
+            ("DEGOV_INDEXER_CONFIG_FILE", None),
+            ("DATALENS_CHAIN_ID", Some("46")),
+            (
+                "DEGOV_ONCHAIN_REFRESH_RPC_URL",
+                Some("https://darwinia.example/rpc-secret"),
+            ),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("load runtime config");
+
+            assert_eq!(config.rpc_chains.len(), 1);
+            assert_eq!(
+                config
+                    .rpc_chains
+                    .get(&46)
+                    .expect("legacy rpc")
+                    .url
+                    .expose_secret(),
+                "https://darwinia.example/rpc-secret"
+            );
+        },
+    );
 }
 
 #[test]

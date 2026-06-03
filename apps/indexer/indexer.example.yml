@@ -21,6 +21,13 @@ datalens:
   queryLimits:
     blockRangeLimit: 1000
 
+rpc:
+  chains:
+    "1":
+      urlEnv: ETHEREUM_RPC_URL
+    "1135":
+      urlEnv: LISK_RPC_URL
+
 chains:
   - chainId: 1
     networkName: ethereum

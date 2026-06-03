@@ -1,12 +1,13 @@
-use std::{env, net::SocketAddr, time::Duration};
+use std::{collections::BTreeMap, env, net::SocketAddr, path::Path, time::Duration};
 
 use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result, bail};
+use serde::Deserialize;
 
 use crate::{
     BatchReadPlanConfig, ChainContracts, ChainReadMethod, DatalensConfig,
     DatalensRuntimeContractSet, IndexerCheckpointIdentity, IndexerRunnerContexts,
-    IndexerRunnerOptions, OnchainRefreshWorkerConfig, ProposalProjectionContext,
+    IndexerRunnerOptions, OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString,
     TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
 };
 
@@ -405,7 +406,7 @@ impl IndexerContractSetRuntimeConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshRuntimeConfig {
     pub enabled: bool,
-    pub rpc_url: String,
+    pub rpc_chains: BTreeMap<i32, OnchainRefreshRpcChainConfig>,
     pub batch_size: usize,
     pub max_attempts: i32,
     pub max_batches_per_poll: usize,
@@ -420,14 +421,33 @@ pub struct OnchainRefreshRuntimeConfig {
     pub current_power_method: ChainReadMethod,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OnchainRefreshRpcChainConfig {
+    pub chain_id: i32,
+    pub url_env: String,
+    pub url: SecretString,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct RawOnchainRefreshFileConfig {
+    rpc: Option<RawRpcFileConfig>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct RawRpcFileConfig {
+    chains: Option<BTreeMap<String, RawRpcChainFileConfig>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct RawRpcChainFileConfig {
+    #[serde(rename = "urlEnv", alias = "url_env")]
+    url_env: Option<String>,
+}
+
 impl OnchainRefreshRuntimeConfig {
     pub fn from_env() -> Result<Self> {
         let enabled = optional_env_bool("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED")?.unwrap_or(true);
-        let rpc_url = if enabled {
-            required_env("DEGOV_ONCHAIN_REFRESH_RPC_URL")?
-        } else {
-            optional_env("DEGOV_ONCHAIN_REFRESH_RPC_URL")?.unwrap_or_default()
-        };
+        let rpc_chains = load_onchain_refresh_rpc_chains(enabled)?;
         let batch_size = optional_env_usize("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE")?.unwrap_or(100);
         if batch_size == 0 {
             bail!("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE must be greater than zero");
@@ -481,7 +501,7 @@ impl OnchainRefreshRuntimeConfig {
 
         Ok(Self {
             enabled,
-            rpc_url,
+            rpc_chains,
             batch_size,
             max_attempts,
             max_batches_per_poll,
@@ -516,6 +536,93 @@ impl OnchainRefreshRuntimeConfig {
     }
 }
 
+fn load_onchain_refresh_rpc_chains(
+    enabled: bool,
+) -> Result<BTreeMap<i32, OnchainRefreshRpcChainConfig>> {
+    let configured = load_rpc_chain_url_envs_from_config_file()?;
+    if !configured.is_empty() {
+        return configured
+            .into_iter()
+            .map(|(chain_id, url_env)| {
+                let url = if enabled {
+                    required_dynamic_env(&url_env).with_context(|| {
+                        format!("resolve rpc.chains chain_id {chain_id} urlEnv {url_env}")
+                    })?
+                } else {
+                    optional_dynamic_env(&url_env)?.unwrap_or_default()
+                };
+
+                Ok((
+                    chain_id,
+                    OnchainRefreshRpcChainConfig {
+                        chain_id,
+                        url_env,
+                        url: SecretString::new(url),
+                    },
+                ))
+            })
+            .collect();
+    }
+
+    let legacy_url = if enabled {
+        Some(required_env("DEGOV_ONCHAIN_REFRESH_RPC_URL")?)
+    } else {
+        optional_env("DEGOV_ONCHAIN_REFRESH_RPC_URL")?
+    };
+    let Some(legacy_url) = legacy_url else {
+        return Ok(BTreeMap::new());
+    };
+    let chain_id =
+        optional_env_i32("DATALENS_CHAIN_ID")?.unwrap_or(crate::config::DEFAULT_DATALENS_CHAIN_ID);
+
+    Ok(BTreeMap::from([(
+        chain_id,
+        OnchainRefreshRpcChainConfig {
+            chain_id,
+            url_env: "DEGOV_ONCHAIN_REFRESH_RPC_URL".to_owned(),
+            url: SecretString::new(legacy_url),
+        },
+    )]))
+}
+
+fn load_rpc_chain_url_envs_from_config_file() -> Result<BTreeMap<i32, String>> {
+    let Some(config_file) = optional_env("DEGOV_INDEXER_CONFIG_FILE")? else {
+        return Ok(BTreeMap::new());
+    };
+
+    let file: RawOnchainRefreshFileConfig = ::config::Config::builder()
+        .add_source(::config::File::from(Path::new(&config_file)))
+        .build()
+        .with_context(|| format!("failed to load DEGOV_INDEXER_CONFIG_FILE: {config_file}"))?
+        .try_deserialize()
+        .with_context(|| format!("failed to parse DEGOV_INDEXER_CONFIG_FILE: {config_file}"))?;
+
+    let Some(rpc) = file.rpc else {
+        return Ok(BTreeMap::new());
+    };
+    let Some(chains) = rpc.chains else {
+        return Ok(BTreeMap::new());
+    };
+
+    chains
+        .into_iter()
+        .map(|(chain_id, chain)| {
+            let parsed_chain_id = chain_id
+                .parse::<i32>()
+                .with_context(|| format!("rpc.chains contains invalid chain id {chain_id}"))?;
+            let url_env = chain
+                .url_env
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+                .with_context(|| {
+                    format!("rpc.chains chain_id {parsed_chain_id} requires urlEnv")
+                })?;
+
+            Ok((parsed_chain_id, url_env))
+        })
+        .collect()
+}
+
 pub fn required_env(name: &'static str) -> Result<String> {
     let value = env::var(name).with_context(|| format!("{name} is required"))?;
     let value = value.trim().to_owned();
@@ -527,7 +634,34 @@ pub fn required_env(name: &'static str) -> Result<String> {
     Ok(value)
 }
 
+fn required_dynamic_env(name: &str) -> Result<String> {
+    let value = env::var(name).with_context(|| format!("{name} is required"))?;
+    let value = value.trim().to_owned();
+
+    if value.is_empty() {
+        bail!("{name} must not be empty");
+    }
+
+    Ok(value)
+}
+
 fn optional_env(name: &'static str) -> Result<Option<String>> {
+    match env::var(name) {
+        Ok(value) => {
+            let value = value.trim().to_owned();
+
+            if value.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(value))
+            }
+        }
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("read {name}")),
+    }
+}
+
+fn optional_dynamic_env(name: &str) -> Result<Option<String>> {
     match env::var(name) {
         Ok(value) => {
             let value = value.trim().to_owned();
