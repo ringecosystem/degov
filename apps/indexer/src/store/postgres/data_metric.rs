@@ -266,7 +266,7 @@ async fn refresh_proposal_data_metric(
          )
          SELECT $1, $2, $3, $4, $5, count(*)::INTEGER
          FROM proposal
-         WHERE chain_id = $3 AND governor_address = $5 AND dao_code = $4
+         WHERE contract_set_id = $2 AND chain_id = $3 AND governor_address = $5 AND dao_code = $4
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET proposals_count = EXCLUDED.proposals_count",
     )

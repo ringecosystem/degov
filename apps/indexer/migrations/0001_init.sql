@@ -174,7 +174,8 @@ CREATE INDEX IF NOT EXISTS vote_power_checkpoint_lookup_idx
   ON vote_power_checkpoint (chain_id, contract_set_id, governor_address, token_address, account, clock_mode, timepoint);
 
 CREATE TABLE IF NOT EXISTS token_balance_checkpoint (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -190,11 +191,12 @@ CREATE TABLE IF NOT EXISTS token_balance_checkpoint (
   cause TEXT NOT NULL,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS token_balance_checkpoint_lookup_idx
-  ON token_balance_checkpoint (chain_id, governor_address, token_address, account, block_number);
+  ON token_balance_checkpoint (chain_id, contract_set_id, governor_address, token_address, account, block_number);
 
 CREATE TABLE IF NOT EXISTS onchain_refresh_task (
   id TEXT PRIMARY KEY,
@@ -485,6 +487,7 @@ CREATE INDEX IF NOT EXISTS vote_cast_with_params_lookup_idx
 
 CREATE TABLE IF NOT EXISTS proposal (
   id TEXT PRIMARY KEY,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -525,14 +528,14 @@ CREATE TABLE IF NOT EXISTS proposal (
   clock_mode TEXT NOT NULL,
   quorum NUMERIC(78, 0) NOT NULL,
   decimals NUMERIC(78, 0) NOT NULL,
-  CONSTRAINT proposal_lookup_unique UNIQUE NULLS NOT DISTINCT (chain_id, governor_address, proposal_id)
+  CONSTRAINT proposal_lookup_unique UNIQUE NULLS NOT DISTINCT (chain_id, contract_set_id, governor_address, proposal_id)
 );
 
 CREATE INDEX IF NOT EXISTS proposal_lookup_idx
-  ON proposal (chain_id, governor_address, proposal_id);
+  ON proposal (chain_id, contract_set_id, governor_address, proposal_id);
 
 CREATE TABLE IF NOT EXISTS vote_cast_group (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
@@ -550,7 +553,8 @@ CREATE TABLE IF NOT EXISTS vote_cast_group (
   params TEXT,
   block_number NUMERIC(78, 0) NOT NULL,
   block_timestamp NUMERIC(78, 0) NOT NULL,
-  transaction_hash TEXT NOT NULL
+  transaction_hash TEXT NOT NULL,
+  PRIMARY KEY (contract_set_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS vote_cast_group_lookup_idx
@@ -645,6 +649,7 @@ CREATE INDEX IF NOT EXISTS proposal_deadline_extension_lookup_idx
 
 CREATE TABLE IF NOT EXISTS timelock_operation (
   id TEXT PRIMARY KEY,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -675,6 +680,7 @@ CREATE TABLE IF NOT EXISTS timelock_operation (
   executed_transaction_hash TEXT,
   CONSTRAINT timelock_operation_lookup_unique UNIQUE NULLS NOT DISTINCT (
     chain_id,
+    contract_set_id,
     governor_address,
     timelock_address,
     proposal_id,
@@ -683,10 +689,11 @@ CREATE TABLE IF NOT EXISTS timelock_operation (
 );
 
 CREATE INDEX IF NOT EXISTS timelock_operation_lookup_idx
-  ON timelock_operation (chain_id, governor_address, timelock_address, proposal_id, operation_id);
+  ON timelock_operation (chain_id, contract_set_id, governor_address, timelock_address, proposal_id, operation_id);
 
 CREATE TABLE IF NOT EXISTS timelock_call (
   id TEXT PRIMARY KEY,
+  contract_set_id TEXT NOT NULL,
   chain_id INTEGER,
   dao_code TEXT,
   governor_address TEXT,
@@ -716,7 +723,7 @@ CREATE TABLE IF NOT EXISTS timelock_call (
 );
 
 CREATE INDEX IF NOT EXISTS timelock_call_lookup_idx
-  ON timelock_call (chain_id, governor_address, timelock_address, operation_id, action_index);
+  ON timelock_call (chain_id, contract_set_id, governor_address, timelock_address, operation_id, action_index);
 
 CREATE TABLE IF NOT EXISTS timelock_role_event (
   id TEXT PRIMARY KEY,

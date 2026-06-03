@@ -700,21 +700,22 @@ async fn insert_refresh_checkpoints(
         let new_balance = value.balance.as_deref().unwrap_or("0");
         sqlx::query(
             "INSERT INTO token_balance_checkpoint (
-                id, chain_id, dao_code, governor_address, token_address, contract_address,
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
                 account, previous_balance, new_balance, delta, source, cause, block_number,
                 block_timestamp, transaction_hash
              )
              VALUES (
-                $1, $2, $3, $4, $5, $5, $6, $7::NUMERIC(78, 0), $8::NUMERIC(78, 0),
-                ($8::NUMERIC(78, 0) - $7::NUMERIC(78, 0)), 'balanceOf', 'onchain-refresh',
-                $9::NUMERIC(78, 0), $10::NUMERIC(78, 0), 'onchain-refresh'
+                $1, $2, $3, $4, $5, $6, $6, $7, $8::NUMERIC(78, 0), $9::NUMERIC(78, 0),
+                ($9::NUMERIC(78, 0) - $8::NUMERIC(78, 0)), 'balanceOf', 'onchain-refresh',
+                $10::NUMERIC(78, 0), $11::NUMERIC(78, 0), 'onchain-refresh'
              )
-             ON CONFLICT (id) DO NOTHING",
+             ON CONFLICT (contract_set_id, id) DO NOTHING",
         )
         .bind(format!(
             "onchain-refresh-balance-{}",
             onchain_refresh_checkpoint_scope(task)
         ))
+        .bind(&task.contract_set_id)
         .bind(task.chain_id)
         .bind(&task.dao_code)
         .bind(&task.governor_address)

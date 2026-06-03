@@ -12,6 +12,7 @@ pub const TIMELOCK_POSTGRES_ADAPTER_GAP: &str = "Timelock projection write model
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimelockProjectionContext {
+    pub contract_set_id: String,
     pub dao_code: String,
     pub governor_address: String,
     pub timelock_address: String,
@@ -287,6 +288,7 @@ pub enum TimelockProjectionError {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimelockEventCommon {
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -302,6 +304,7 @@ pub struct TimelockEventCommon {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimelockOperationWrite {
     pub id: String,
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -335,6 +338,7 @@ pub struct TimelockOperationWrite {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimelockCallWrite {
     pub id: String,
+    pub contract_set_id: String,
     pub chain_id: i32,
     pub dao_code: String,
     pub governor_address: String,
@@ -655,6 +659,7 @@ fn common(
     log: &NormalizedEvmLog,
 ) -> TimelockEventCommon {
     TimelockEventCommon {
+        contract_set_id: context.contract_set_id.clone(),
         chain_id: log.chain_id,
         dao_code: context.dao_code.clone(),
         governor_address: governor_address.to_owned(),
@@ -683,6 +688,7 @@ fn scheduled_operation_write(
 
     let mut operation = TimelockOperationWrite {
         id: operation_ref(common, &operation_id),
+        contract_set_id: common.contract_set_id.clone(),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -756,6 +762,7 @@ fn operation_stub(
 ) -> TimelockOperationWrite {
     TimelockOperationWrite {
         id: operation_ref(common, operation_id),
+        contract_set_id: common.contract_set_id.clone(),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -795,6 +802,7 @@ fn scheduled_call_write(
 ) -> TimelockCallWrite {
     let mut call = TimelockCallWrite {
         id: call_ref(operation_ref, &event.index),
+        contract_set_id: common.contract_set_id.clone(),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -833,6 +841,7 @@ fn executed_call_write(
 ) -> TimelockCallWrite {
     TimelockCallWrite {
         id: call_ref(operation_ref, &event.index),
+        contract_set_id: common.contract_set_id.clone(),
         chain_id: common.chain_id,
         dao_code: common.dao_code.clone(),
         governor_address: common.governor_address.clone(),
@@ -1113,7 +1122,8 @@ fn operation_id(event: &DecodedTimelockEvent) -> Option<&str> {
 
 fn operation_ref(common: &TimelockEventCommon, operation_id: &str) -> String {
     format!(
-        "timelock-operation:{}:{}:{}:{}",
+        "timelock-operation:{}:{}:{}:{}:{}",
+        common.contract_set_id,
         common.chain_id,
         common.governor_address,
         common.timelock_address,

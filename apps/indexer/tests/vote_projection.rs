@@ -102,10 +102,7 @@ fn test_project_vote_events_preserves_vote_rows_groups_totals_and_signals() {
     assert_eq!(param_metric.votes_weight_for_sum.as_deref(), Some("0"));
     assert_eq!(param_metric.votes_weight_against_sum.as_deref(), Some("25"));
     assert_eq!(param_metric.votes_weight_abstain_sum.as_deref(), Some("0"));
-    assert_eq!(
-        batch.vote_cast_groups[1].proposal_ref,
-        "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42"
-    );
+    assert_eq!(batch.vote_cast_groups[1].proposal_ref, proposal_ref("42"));
 
     let proposal_42 = batch
         .proposal_vote_totals
@@ -171,7 +168,7 @@ fn test_project_vote_events_replays_idempotently_and_sorts_by_log_position() {
     );
     let total = repository
         .proposal_vote_totals()
-        .get("proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42")
+        .get(proposal_ref("42"))
         .expect("proposal total");
     assert_eq!(total.votes_count, 3);
     assert_eq!(total.votes_weight_for_sum, "100");
@@ -207,7 +204,7 @@ fn test_repository_replaces_existing_vote_group_delta_by_id() {
 
     let total = repository
         .proposal_vote_totals()
-        .get("proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42")
+        .get(proposal_ref("42"))
         .expect("proposal total");
 
     assert_eq!(total.votes_count, 1);
@@ -362,6 +359,13 @@ fn context() -> VoteProjectionContext {
             max_concurrency: 4,
             multicall_batch_size: 10,
         },
+    }
+}
+
+fn proposal_ref(proposal_id: &str) -> &'static str {
+    match proposal_id {
+        "42" => "proposal:demo-scope:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42",
+        _ => panic!("unexpected proposal id {proposal_id}"),
     }
 }
 
