@@ -502,13 +502,13 @@ export const delegateService = {
   },
 };
 
-export const squidStatusService = {
-  getSquidStatus: async (endpoint: string) => {
-    const response = await request<Types.SquidStatusResponse>(
+export const indexerStatusService = {
+  getIndexerStatus: async (endpoint: string) => {
+    const response = await request<Types.IndexerStatusResponse>(
       endpoint,
-      Queries.GET_SQUID_STATUS
+      Queries.GET_INDEXER_STATUS
     );
-    return response?.squidStatus;
+    return response?.indexerStatus;
   },
 };
 
