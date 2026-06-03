@@ -59,7 +59,8 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
     assert_eq!(metric.votes_weight_abstain_sum.as_deref(), Some("0"));
 
     let proposal = &batch.proposals[0];
-    assert_eq!(proposal.id, "evm:1:10:0xtx10:2:7");
+    let expected_proposal_ref = proposal_ref("42");
+    assert_eq!(proposal.id, expected_proposal_ref);
     assert_eq!(proposal.proposal_id, "42");
     assert_eq!(
         proposal.proposer,
@@ -79,9 +80,9 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
     assert_eq!(batch.proposal_actions[0].action_index, 0);
     assert_eq!(
         batch.proposal_actions[0].proposal_ref,
-        "evm:1:10:0xtx10:2:7"
+        expected_proposal_ref
     );
-    assert_eq!(batch.proposal_actions[0].proposal_id, "evm:1:10:0xtx10:2:7");
+    assert_eq!(batch.proposal_actions[0].proposal_id, expected_proposal_ref);
     assert_eq!(
         batch.proposal_actions[0].target,
         "0xcccccccccccccccccccccccccccccccccccccccc"
@@ -156,7 +157,9 @@ fn test_project_proposal_created_uses_raw_log_id_and_timestamp_clock_enrichment(
     .expect("projection succeeds");
 
     let proposal = &batch.proposals[0];
-    assert_eq!(proposal.id, "0003952205-5710e-000000");
+    let expected_proposal_ref =
+        proposal_ref("0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb");
+    assert_eq!(proposal.id, expected_proposal_ref);
     assert_eq!(
         proposal.proposal_id,
         "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb"
@@ -172,18 +175,18 @@ fn test_project_proposal_created_uses_raw_log_id_and_timestamp_clock_enrichment(
     assert_eq!(proposal.decimals, "0");
 
     let action = &batch.proposal_actions[0];
-    assert_eq!(action.id, "0003952205-5710e-000000:action:0");
-    assert_eq!(action.proposal_ref, "0003952205-5710e-000000");
-    assert_eq!(action.proposal_id, "0003952205-5710e-000000");
+    assert_eq!(action.id, format!("{expected_proposal_ref}:action:0"));
+    assert_eq!(action.proposal_ref, expected_proposal_ref);
+    assert_eq!(action.proposal_id, expected_proposal_ref);
 
     let pending = batch
         .proposal_state_epochs
         .iter()
         .find(|epoch| epoch.state == "Pending")
         .expect("pending epoch");
-    assert_eq!(pending.id, "0003952205-5710e-000000:state:pending");
-    assert_eq!(pending.proposal_ref, "0003952205-5710e-000000");
-    assert_eq!(pending.proposal_id, "0003952205-5710e-000000");
+    assert_eq!(pending.id, format!("{expected_proposal_ref}:state:pending"));
+    assert_eq!(pending.proposal_ref, expected_proposal_ref);
+    assert_eq!(pending.proposal_id, expected_proposal_ref);
     assert_eq!(pending.start_timepoint.as_deref(), Some("1722633201"));
     assert_eq!(pending.end_timepoint.as_deref(), Some("1722633201"));
     assert_eq!(pending.start_block_number.as_deref(), Some("3952205"));
@@ -201,9 +204,9 @@ fn test_project_proposal_created_uses_raw_log_id_and_timestamp_clock_enrichment(
         .iter()
         .find(|epoch| epoch.state == "Active")
         .expect("active epoch");
-    assert_eq!(active.id, "0003952205-5710e-000000:state:active");
-    assert_eq!(active.proposal_ref, "0003952205-5710e-000000");
-    assert_eq!(active.proposal_id, "0003952205-5710e-000000");
+    assert_eq!(active.id, format!("{expected_proposal_ref}:state:active"));
+    assert_eq!(active.proposal_ref, expected_proposal_ref);
+    assert_eq!(active.proposal_id, expected_proposal_ref);
     assert_eq!(active.start_timepoint.as_deref(), Some("1722633201"));
     assert_eq!(active.end_timepoint.as_deref(), Some("1723238001"));
     assert_eq!(active.start_block_number, None);
@@ -263,18 +266,14 @@ fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
     assert_eq!(
         states,
         vec![
+            (proposal_ref("42"), ProposalStateWriteKind::Queued, "Queued"),
             (
-                "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42",
-                ProposalStateWriteKind::Queued,
-                "Queued"
-            ),
-            (
-                "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42",
+                proposal_ref("42"),
                 ProposalStateWriteKind::Executed,
                 "Executed"
             ),
             (
-                "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:43",
+                proposal_ref("43"),
                 ProposalStateWriteKind::Canceled,
                 "Canceled"
             ),
@@ -286,10 +285,7 @@ fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
     assert_eq!(queued.eta_seconds, "1700000400");
 
     let extension = &batch.proposal_deadline_extensions[0];
-    assert_eq!(
-        extension.proposal_id,
-        "proposal:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42"
-    );
+    assert_eq!(extension.proposal_id, proposal_ref("42"));
     assert_eq!(extension.new_deadline, "55");
 
     assert_eq!(batch.chain_read_plan.metrics.requested_reads, 12);
@@ -347,7 +343,7 @@ fn test_project_proposal_events_replays_idempotently_and_sorts_by_log_position()
     assert_eq!(
         repository
             .proposals()
-            .get("evm:1:11:0xtx11:0:1")
+            .get(proposal_ref("42"))
             .expect("proposal")
             .current_state
             .as_deref(),
@@ -397,7 +393,7 @@ fn test_repository_preserves_lifecycle_metadata_when_identity_arrives_later() {
 
     let proposal = repository
         .proposals()
-        .get("evm:1:11:0xtx11:0:1")
+        .get(proposal_ref("42"))
         .expect("proposal");
 
     assert_eq!(
@@ -726,6 +722,21 @@ fn context() -> ProposalProjectionContext {
             max_concurrency: 4,
             multicall_batch_size: 10,
         },
+    }
+}
+
+fn proposal_ref(proposal_id: &str) -> &'static str {
+    match proposal_id {
+        "42" => {
+            "proposal:dao=unit-dao|chain=1|governor=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|token=0x1111111111111111111111111111111111111111:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:42"
+        }
+        "43" => {
+            "proposal:dao=unit-dao|chain=1|governor=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|token=0x1111111111111111111111111111111111111111:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:43"
+        }
+        "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb" => {
+            "proposal:dao=unit-dao|chain=1|governor=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|token=0x1111111111111111111111111111111111111111:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb"
+        }
+        _ => panic!("unexpected proposal id {proposal_id}"),
     }
 }
 
