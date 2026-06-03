@@ -1550,7 +1550,7 @@ fn vote_projection_context_with_scope(
 }
 
 fn timelock_projection_context_with_scope(
-    _contract_set_id: &str,
+    contract_set_id: &str,
     _chain_id: i32,
     governor: &str,
     token: &str,
@@ -1558,7 +1558,7 @@ fn timelock_projection_context_with_scope(
     dao_code: &str,
 ) -> TimelockProjectionContext {
     TimelockProjectionContext {
-        contract_set_id: _contract_set_id.to_owned(),
+        contract_set_id: contract_set_id.to_owned(),
         dao_code: dao_code.to_owned(),
         governor_address: governor.to_owned(),
         timelock_address: timelock.to_owned(),
