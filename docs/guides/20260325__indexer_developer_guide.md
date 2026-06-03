@@ -72,12 +72,15 @@ table-shape migration cannot recompute historical proposal state, votes,
 delegations, contributor power, or aggregate metrics under the new indexing
 semantics.
 
-To smoke-test the schema against a clean database:
+To initialize a fresh database manually:
 
 ```bash
-DEGOV_INDEXER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/indexer \
-  node apps/indexer/scripts/smoke-postgres-init.mjs
+DEGOV_INDEXER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/indexer pnpm run indexer:migrate
 ```
+
+The Rust `migration_schema` integration test covers clean initialization,
+required tables, repeated migrator execution, and the single init migration
+contract.
 
 ## Reference Artifacts
 
