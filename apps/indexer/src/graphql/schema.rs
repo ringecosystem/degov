@@ -173,22 +173,27 @@ impl QueryRoot {
         .await
     }
 
-    async fn squid_status(&self, ctx: &Context<'_>) -> GraphqlResult<SquidStatus> {
-        let pool = pool(ctx)?;
-        let status = sqlx::query_as::<_, SquidStatus>(
-            r#"
-            SELECT
-              COALESCE(MAX(processed_height), 0)::int8 AS finalized_height,
-              COALESCE(MAX(processed_height), 0)::int8 AS height,
-              (SELECT hash FROM squid_processor.status WHERE id = 0) AS hash,
-              (SELECT hash FROM squid_processor.status WHERE id = 0) AS finalized_hash
-            FROM degov_indexer_checkpoint
-            "#,
-        )
-        .fetch_one(pool)
-        .await?;
+    async fn indexer_status(&self, ctx: &Context<'_>) -> GraphqlResult<Option<IndexerStatus>> {
+        query_indexer_status(pool(ctx)?, scope(ctx)?).await
+    }
 
-        Ok(status)
+    async fn indexer_statuses(&self, ctx: &Context<'_>) -> GraphqlResult<Vec<IndexerStatus>> {
+        query_indexer_statuses(pool(ctx)?, scope(ctx)?).await
+    }
+
+    #[graphql(deprecation = "Use indexerStatus instead.")]
+    async fn squid_status(&self, ctx: &Context<'_>) -> GraphqlResult<SquidStatus> {
+        let height = query_indexer_status(pool(ctx)?, scope(ctx)?)
+            .await?
+            .and_then(|status| status.processed_height)
+            .unwrap_or_default();
+
+        Ok(SquidStatus {
+            height,
+            finalized_height: height,
+            hash: None,
+            finalized_hash: None,
+        })
     }
 
     async fn proposals_connection(
