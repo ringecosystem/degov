@@ -267,6 +267,88 @@ fn test_runner_stops_gracefully_between_chunks() {
     assert_eq!(runner.store().commit_count(), 1);
 }
 
+#[test]
+fn test_runner_decodes_distinct_log_addresses_with_matching_sources() {
+    let attempts = Arc::new(Mutex::new(Vec::new()));
+    let mut runner = runner_with_decoder(
+        vec![vec![
+            row_at_address(1, 0, 0, GOVERNOR),
+            row_at_address(1, 0, 1, TOKEN),
+        ]],
+        SourceMatchingDecoder::new(attempts.clone()),
+        options(),
+    );
+
+    runner.run_to_target(1).expect("runner succeeds");
+
+    assert_eq!(
+        *attempts.lock().expect("attempts"),
+        vec![DaoLogSource::Governor, DaoLogSource::GovernorToken]
+    );
+    assert_eq!(
+        runner.store().vote_repository().data_metric().votes_count,
+        1
+    );
+    assert_eq!(
+        runner.store().token_repository().delegate_changed().len(),
+        1
+    );
+}
+
+#[test]
+fn test_runner_decodes_duplicate_address_token_log_with_token_source() {
+    let attempts = Arc::new(Mutex::new(Vec::new()));
+    let mut runner = runner_with_decoder(
+        vec![vec![row_at_address(1, 0, 1, GOVERNOR)]],
+        SourceMatchingDecoder::new(attempts.clone()),
+        duplicate_address_options(),
+    );
+
+    runner.run_to_target(1).expect("runner succeeds");
+
+    assert_eq!(
+        *attempts.lock().expect("attempts"),
+        vec![DaoLogSource::Governor, DaoLogSource::GovernorToken]
+    );
+    assert_eq!(
+        runner.store().token_repository().delegate_changed().len(),
+        1
+    );
+}
+
+#[test]
+fn test_runner_keeps_duplicate_address_unsupported_topic_unsupported() {
+    let attempts = Arc::new(Mutex::new(Vec::new()));
+    let mut runner = runner_with_decoder(
+        vec![vec![row_at_address(1, 0, 0, GOVERNOR)]],
+        AlwaysUnsupportedDecoder::new(attempts.clone()),
+        duplicate_address_options(),
+    );
+
+    runner.run_to_target(1).expect("runner succeeds");
+
+    assert_eq!(
+        *attempts.lock().expect("attempts"),
+        vec![
+            DaoLogSource::Governor,
+            DaoLogSource::GovernorToken,
+            DaoLogSource::Timelock
+        ]
+    );
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        2
+    );
+    assert_eq!(
+        runner.store().vote_repository().data_metric().votes_count,
+        0
+    );
+    assert_eq!(
+        runner.store().token_repository().delegate_changed().len(),
+        0
+    );
+}
+
 struct ScriptedDatalensReader {
     rows: VecDeque<Vec<Value>>,
 }
@@ -399,6 +481,89 @@ impl IndexerEventDecoder for RejectRemovedDecoder {
     }
 }
 
+#[derive(Clone)]
+struct SourceMatchingDecoder {
+    attempts: Arc<Mutex<Vec<DaoLogSource>>>,
+}
+
+impl SourceMatchingDecoder {
+    fn new(attempts: Arc<Mutex<Vec<DaoLogSource>>>) -> Self {
+        Self { attempts }
+    }
+}
+
+impl IndexerEventDecoder for SourceMatchingDecoder {
+    fn decode(
+        &self,
+        _dao_code: &str,
+        source: DaoLogSource,
+        token_standard: Option<GovernanceTokenStandard>,
+        log: &NormalizedEvmLog,
+    ) -> Result<DecodedDaoEvent, DaoEventDecodeError> {
+        self.attempts.lock().expect("attempts").push(source);
+        match source {
+            DaoLogSource::Governor if log.log_index == 0 && log.address == GOVERNOR => {
+                assert_eq!(token_standard, None);
+                Ok(DecodedDaoEvent::Governor(DecodedGovernorEvent::VoteCast(
+                    VoteCastEvent {
+                        voter: "0x0000000000000000000000000000000000000001".to_owned(),
+                        proposal_id: "42".to_owned(),
+                        support: 1,
+                        weight: "10".to_owned(),
+                        reason: String::new(),
+                    },
+                )))
+            }
+            DaoLogSource::GovernorToken => {
+                assert_eq!(token_standard, Some(GovernanceTokenStandard::Erc20));
+                Ok(DecodedDaoEvent::Token(DecodedTokenEvent::DelegateChanged(
+                    degov_datalens_indexer::DelegateChangedEvent {
+                        delegator: "0x0000000000000000000000000000000000000001".to_owned(),
+                        from_delegate: "0x0000000000000000000000000000000000000000".to_owned(),
+                        to_delegate: "0x0000000000000000000000000000000000000002".to_owned(),
+                    },
+                )))
+            }
+            _ => Ok(unsupported_topic(source, log)),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct AlwaysUnsupportedDecoder {
+    attempts: Arc<Mutex<Vec<DaoLogSource>>>,
+}
+
+impl AlwaysUnsupportedDecoder {
+    fn new(attempts: Arc<Mutex<Vec<DaoLogSource>>>) -> Self {
+        Self { attempts }
+    }
+}
+
+impl IndexerEventDecoder for AlwaysUnsupportedDecoder {
+    fn decode(
+        &self,
+        _dao_code: &str,
+        source: DaoLogSource,
+        _token_standard: Option<GovernanceTokenStandard>,
+        log: &NormalizedEvmLog,
+    ) -> Result<DecodedDaoEvent, DaoEventDecodeError> {
+        self.attempts.lock().expect("attempts").push(source);
+        Ok(unsupported_topic(source, log))
+    }
+}
+
+fn unsupported_topic(source: DaoLogSource, log: &NormalizedEvmLog) -> DecodedDaoEvent {
+    DecodedDaoEvent::UnsupportedTopic(degov_datalens_indexer::UnsupportedTopicEvent {
+        dao_code: "demo-dao".to_owned(),
+        source,
+        block_number: log.block_number,
+        transaction_hash: log.transaction_hash.clone(),
+        address: log.address.clone(),
+        topic0: log.topics[0].clone(),
+    })
+}
+
 fn runner(
     rows: Vec<Vec<Value>>,
     decoder: ScriptedDecoder,
@@ -451,6 +616,14 @@ fn options() -> IndexerRunnerOptions {
         safe_height: None,
         progress_refresh_lag_blocks: 0,
     }
+}
+
+fn duplicate_address_options() -> IndexerRunnerOptions {
+    let mut options = options();
+    options.addresses.governor_token = options.addresses.governor.clone();
+    options.addresses.timelock = options.addresses.governor.clone();
+    options.datalens_config.dao_contracts = Some(options.addresses.clone());
+    options
 }
 
 fn contexts() -> IndexerRunnerContexts {

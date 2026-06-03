@@ -621,8 +621,13 @@ where
                 .plan
                 .sources
                 .iter()
-                .map(|source| (source.address.to_ascii_lowercase(), source.source))
-                .collect::<BTreeMap<_, _>>();
+                .fold(BTreeMap::new(), |mut sources, source| {
+                    sources
+                        .entry(source.address.to_ascii_lowercase())
+                        .or_insert_with(Vec::new)
+                        .push(source.source);
+                    sources
+                });
             let rows = page_rows(page.rows)?;
             returned_row_count += rows.len();
             let logs = normalize_evm_log_rows(self.options.checkpoint_identity.chain_id, rows)
@@ -638,20 +643,36 @@ where
                     );
                     continue;
                 }
-                let Some(source) = sources.get(&log.address).copied() else {
+                let Some(candidate_sources) = sources.get(&log.address) else {
                     return Err(IndexerRunnerError::Normalize(format!(
                         "Datalens log address {} was not part of the DAO log query plan",
                         log.address
                     )));
                 };
-                let token_standard = (source == DaoLogSource::GovernorToken)
-                    .then_some(self.options.addresses.governor_token_standard);
-                let event = self.decoder.decode(
-                    &self.options.checkpoint_identity.dao_code,
-                    source,
-                    token_standard,
-                    &log,
-                )?;
+                let mut unsupported_event = None;
+                let mut decoded_event = None;
+                for source in candidate_sources {
+                    let token_standard = (*source == DaoLogSource::GovernorToken)
+                        .then_some(self.options.addresses.governor_token_standard);
+                    let event = self.decoder.decode(
+                        &self.options.checkpoint_identity.dao_code,
+                        *source,
+                        token_standard,
+                        &log,
+                    )?;
+                    match event {
+                        DecodedDaoEvent::UnsupportedTopic(_) => {
+                            unsupported_event.get_or_insert(event);
+                        }
+                        _ => {
+                            decoded_event = Some(event);
+                            break;
+                        }
+                    }
+                }
+                let event = decoded_event
+                    .or(unsupported_event)
+                    .expect("candidate sources are present");
                 decoded.push((log, event));
             }
         }
