@@ -1,4 +1,4 @@
-use std::future;
+use std::{collections::BTreeMap, future};
 
 use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result};
@@ -6,7 +6,7 @@ use sqlx::postgres::PgPoolOptions;
 use tokio::time::sleep;
 
 use crate::{
-    ChainToolOnchainRefreshReader, EvmRpcChainTool, OnchainRefreshRuntimeConfig,
+    EvmRpcChainTool, MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig,
     OnchainRefreshWorker, required_env,
 };
 
@@ -39,10 +39,21 @@ pub async fn run_worker() -> Result<()> {
         .context("connect to DeGov indexer Postgres")?;
     apply_migrations(&pool).await?;
 
-    let chain_tool = EvmRpcChainTool::new(runtime.rpc_url.clone(), runtime.request_timeout)
-        .context("create onchain refresh RPC ChainTool")?;
-    let reader = ChainToolOnchainRefreshReader::new(
-        chain_tool,
+    let chain_tools = runtime
+        .rpc_chains
+        .iter()
+        .map(|(chain_id, rpc)| {
+            let chain_tool =
+                EvmRpcChainTool::new(rpc.url.expose_secret().to_owned(), runtime.request_timeout)
+                    .with_context(|| {
+                    format!("create onchain refresh RPC ChainTool for chain_id {chain_id}")
+                })?;
+
+            Ok((*chain_id, chain_tool))
+        })
+        .collect::<Result<BTreeMap<_, _>>>()?;
+    let reader = MultiChainToolOnchainRefreshReader::new(
+        chain_tools,
         runtime.read_plan_config(),
         runtime.current_power_method,
     );

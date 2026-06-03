@@ -58,9 +58,10 @@ pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use evm_log::{EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows};
 pub use graphql::IndexerGraphqlSchema;
 pub use onchain_refresh::{
-    ChainToolOnchainRefreshReader, EvmRpcChainTool, OnchainRefreshReadValue, OnchainRefreshReader,
-    OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshWorker,
-    OnchainRefreshWorkerConfig, OnchainRefreshWorkerError,
+    ChainToolOnchainRefreshReader, EvmRpcChainTool, MultiChainToolOnchainRefreshReader,
+    OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
+    OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
+    OnchainRefreshWorkerError,
 };
 pub use planner::{
     DaoContractAddresses, DaoLogQueryPlan, DaoLogSource, DatalensLogPage, DatalensLogQueryReader,
@@ -91,8 +92,9 @@ pub use runner::{
 };
 pub use runtime_config::{
     GraphqlRuntimeConfig, IndexerContractSetMode, IndexerContractSetRuntimeConfig,
-    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRuntimeConfig,
-    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value, required_env,
+    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRpcChainConfig,
+    OnchainRefreshRuntimeConfig, onchain_refresh_worker_enabled, parse_bool_env_value,
+    parse_i64_env_value, required_env,
 };
 pub use timelock_projection::{
     InMemoryTimelockProjectionRepository, TIMELOCK_POSTGRES_ADAPTER_GAP, TimelockCallWrite,

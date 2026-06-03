@@ -137,34 +137,42 @@ where
             completed: 0,
             failed: 0,
         };
-        let values = match self.reader.read_tasks(&tasks) {
-            Ok(values) => values
-                .into_iter()
-                .map(|value| (value.task_id.clone(), value))
-                .collect::<BTreeMap<_, _>>(),
-            Err(error) => {
-                let message = error.to_string();
-                self.mark_tasks_failed(&tasks, &message, now_ms).await?;
-                report.failed = tasks.len();
 
-                return Ok(report);
-            }
-        };
-
+        let mut tasks_by_chain = BTreeMap::<i32, Vec<OnchainRefreshTask>>::new();
         for task in tasks {
-            match values.get(&task.id) {
-                Some(value) => match self.apply_success(&task, value, now_ms).await {
-                    Ok(()) => report.completed += 1,
-                    Err(error) => {
-                        let message = error.to_string();
-                        self.mark_task_failed(&task.id, &message, now_ms).await?;
+            tasks_by_chain.entry(task.chain_id).or_default().push(task);
+        }
+
+        for (_chain_id, tasks) in tasks_by_chain {
+            let values = match self.reader.read_tasks(&tasks) {
+                Ok(values) => values
+                    .into_iter()
+                    .map(|value| (value.task_id.clone(), value))
+                    .collect::<BTreeMap<_, _>>(),
+                Err(error) => {
+                    let message = error.to_string();
+                    self.mark_tasks_failed(&tasks, &message, now_ms).await?;
+                    report.failed += tasks.len();
+
+                    continue;
+                }
+            };
+
+            for task in tasks {
+                match values.get(&task.id) {
+                    Some(value) => match self.apply_success(&task, value, now_ms).await {
+                        Ok(()) => report.completed += 1,
+                        Err(error) => {
+                            let message = error.to_string();
+                            self.mark_task_failed(&task.id, &message, now_ms).await?;
+                            report.failed += 1;
+                        }
+                    },
+                    None => {
+                        self.mark_task_failed(&task.id, "missing reader result", now_ms)
+                            .await?;
                         report.failed += 1;
                     }
-                },
-                None => {
-                    self.mark_task_failed(&task.id, "missing reader result", now_ms)
-                        .await?;
-                    report.failed += 1;
                 }
             }
         }
@@ -329,6 +337,62 @@ where
         .await?;
 
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct MultiChainToolOnchainRefreshReader<T> {
+    chain_tools: BTreeMap<i32, T>,
+    read_plan_config: BatchReadPlanConfig,
+    current_power_method: ChainReadMethod,
+}
+
+impl<T> MultiChainToolOnchainRefreshReader<T> {
+    pub fn new(
+        chain_tools: BTreeMap<i32, T>,
+        read_plan_config: BatchReadPlanConfig,
+        current_power_method: ChainReadMethod,
+    ) -> Self {
+        Self {
+            chain_tools,
+            read_plan_config: read_plan_config.validated(),
+            current_power_method,
+        }
+    }
+}
+
+impl<T> OnchainRefreshReader for MultiChainToolOnchainRefreshReader<T>
+where
+    T: ChainTool + Clone + Send + Sync + 'static,
+{
+    fn read_tasks(
+        &self,
+        tasks: &[OnchainRefreshTask],
+    ) -> Result<Vec<OnchainRefreshReadValue>, OnchainRefreshReaderError> {
+        let mut tasks_by_chain = BTreeMap::<i32, Vec<OnchainRefreshTask>>::new();
+        for task in tasks {
+            tasks_by_chain
+                .entry(task.chain_id)
+                .or_default()
+                .push(task.clone());
+        }
+
+        let mut values = Vec::new();
+        for (chain_id, tasks) in tasks_by_chain {
+            let chain_tool = self.chain_tools.get(&chain_id).ok_or_else(|| {
+                OnchainRefreshReaderError::new(format!(
+                    "missing onchain refresh RPC configuration for chain_id {chain_id}"
+                ))
+            })?;
+            let reader = ChainToolOnchainRefreshReader::new(
+                chain_tool.clone(),
+                self.read_plan_config,
+                self.current_power_method,
+            );
+            values.extend(reader.read_tasks(&tasks)?);
+        }
+
+        Ok(values)
     }
 }
 
