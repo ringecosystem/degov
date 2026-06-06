@@ -6,8 +6,8 @@ use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
     BatchReadPlanConfig, ChainContracts, ChainFamily, ChainIdentityConfig, DaoContractAddresses,
     DaoEventDecodeError, DaoLogSource, DatalensConfig, DatalensError, DatalensFinality,
-    DatalensLogQueryReader, DatasetKeyConfig, DecodedDaoEvent, DecodedGovernorEvent,
-    DecodedTokenEvent, GovernanceTokenStandard, InMemoryIndexerRunnerStore,
+    DatalensLogQueryReader, DatalensLogQueryResult, DatasetKeyConfig, DecodedDaoEvent,
+    DecodedGovernorEvent, DecodedTokenEvent, GovernanceTokenStandard, InMemoryIndexerRunnerStore,
     IndexerCheckpointIdentity, IndexerEventDecoder, IndexerRunner, IndexerRunnerContexts,
     IndexerRunnerOptions, NormalizedEvmLog, QueryLimitConfig, SecretString, TokenProjectionContext,
     VoteCastEvent, VoteProjectionContext, page_rows,
@@ -460,17 +460,17 @@ struct ScriptedDatalensReader {
 }
 
 impl DatalensLogQueryReader for ScriptedDatalensReader {
-    fn query_logs(&mut self, _input: QueryInput) -> Result<Value, DatalensError> {
-        Ok(Value::Array(
+    fn query_logs(&mut self, _input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
+        Ok(DatalensLogQueryResult::rows_only(Value::Array(
             self.rows.pop_front().expect("scripted query response"),
-        ))
+        )))
     }
 }
 
 struct FailingDatalensReader;
 
 impl DatalensLogQueryReader for FailingDatalensReader {
-    fn query_logs(&mut self, _input: QueryInput) -> Result<Value, DatalensError> {
+    fn query_logs(&mut self, _input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
         Err(DatalensError::Query(
             r#"datalens HTTP error 429: {"error":{"kind":"rate_limited","message":"rate limited"}}"#
                 .to_owned(),
@@ -493,7 +493,7 @@ impl ProviderLimitDatalensReader {
 }
 
 impl DatalensLogQueryReader for ProviderLimitDatalensReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<Value, DatalensError> {
+    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
         let range = (input.range.start, input.range.end);
         self.observed_ranges
             .lock()
@@ -507,7 +507,7 @@ impl DatalensLogQueryReader for ProviderLimitDatalensReader {
             ));
         }
 
-        Ok(Value::Array(Vec::new()))
+        Ok(DatalensLogQueryResult::rows_only(Value::Array(Vec::new())))
     }
 }
 

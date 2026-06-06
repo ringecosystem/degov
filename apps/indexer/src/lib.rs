@@ -27,6 +27,11 @@ pub use crate::datalens::warmup::{
     DatalensWarmupConfig, DatalensWarmupEnsureOutcome, DatalensWarmupEnsurer, DatalensWarmupKind,
     DatalensWarmupSubmitRequest, ensure_datalens_warmup_task, follow_query_request,
 };
+pub use crate::datalens::{
+    DatalensLogQueryCacheOutcome, DatalensLogQueryCacheSummary, DatalensLogQueryResult,
+    DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields,
+    datalens_selector_fingerprint,
+};
 pub use crate::decode::dao_event::{
     CallExecutedEvent, CallSaltEvent, CallScheduledEvent, DaoEventDecodeError, DecodedDaoEvent,
     DecodedGovernorEvent, DecodedTimelockEvent, DecodedTokenEvent, DelegateChangedEvent,

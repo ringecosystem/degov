@@ -100,12 +100,19 @@ impl DatalensNativeClient {
     fn query_with_transient_fallback(
         &self,
         input: QueryInput,
-    ) -> Result<serde_json::Value, DatalensSdkError> {
+    ) -> Result<crate::DatalensLogQueryResult, DatalensSdkError> {
         let started_at = Instant::now();
         let mut attempt = 1;
         loop {
             match self.client.native().query(input.clone()) {
-                Ok(response) => return Ok(response.rows),
+                Ok(response) => {
+                    return Ok(crate::DatalensLogQueryResult {
+                        rows: response.rows,
+                        cache: crate::DatalensLogQueryCacheSummary::from_datalens_cache_json(
+                            &response.cache,
+                        ),
+                    });
+                }
                 Err(error) => {
                     let Some(delay) =
                         fallback_retry_delay(&self.retry_config, &error, attempt, started_at)
@@ -186,7 +193,10 @@ impl DatalensNativeReader for DatalensNativeClient {
 }
 
 impl DatalensLogQueryReader for DatalensNativeClient {
-    fn query_logs(&mut self, input: QueryInput) -> Result<serde_json::Value, DatalensError> {
+    fn query_logs(
+        &mut self,
+        input: QueryInput,
+    ) -> Result<crate::DatalensLogQueryResult, DatalensError> {
         self.query_with_transient_fallback(input)
             .map_err(|error| DatalensError::Query(error.to_string()))
     }
