@@ -71,6 +71,12 @@ fn test_runner_processes_multiple_chunks_and_advances_checkpoint_after_commits()
     assert_eq!(report.chunks_processed, 2);
     assert_eq!(report.last_progress.processed_height, Some(2));
     assert_eq!(report.last_progress.synced_percentage, 100.0);
+    assert_eq!(report.last_progress.configured_start_block, 1);
+    assert_eq!(
+        report.last_progress.configured_range_synced_percentage,
+        100.0
+    );
+    assert_eq!(report.last_progress.remaining_blocks, 0);
     assert!(report.last_progress.onchain_refresh_allowed);
     assert_eq!(
         runner.store().checkpoint().expect("checkpoint").next_block,
@@ -88,6 +94,106 @@ fn test_runner_processes_multiple_chunks_and_advances_checkpoint_after_commits()
     assert_eq!(
         runner.store().token_repository().delegate_changed().len(),
         1
+    );
+}
+
+#[test]
+fn test_runner_reports_configured_range_progress_for_nonzero_start_block() {
+    let mut options = options();
+    options.start_block = 100;
+    options.datalens_config.query_limits.block_range_limit = 10;
+    let mut runner = runner_with_store(
+        vec![vec![row(100, 0, 0)]],
+        ScriptedDecoder,
+        options,
+        InMemoryIndexerRunnerStore::new(identity(), 100),
+    );
+    runner.request_shutdown_after_chunks(1);
+
+    let report = runner.run_to_target(199).expect("runner succeeds");
+
+    assert_eq!(report.chunks_processed, 1);
+    assert_eq!(report.last_progress.processed_height, Some(109));
+    assert_eq!(report.last_progress.target_height, 199);
+    assert_eq!(report.last_progress.configured_start_block, 100);
+    assert_eq!(report.last_progress.remaining_blocks, 90);
+    assert_eq!(
+        report.last_progress.configured_range_synced_percentage,
+        10.0
+    );
+    assert_eq!(report.last_progress.eta_seconds, None);
+}
+
+#[test]
+fn test_runner_updates_configured_range_progress_when_target_height_changes() {
+    let mut options = options();
+    options.datalens_config.query_limits.block_range_limit = 10;
+    let store = InMemoryIndexerRunnerStore::new(identity(), 1);
+    let mut runner = runner_with_store(
+        vec![vec![row(1, 0, 0)], vec![row(11, 0, 0)]],
+        ScriptedDecoder,
+        options,
+        store,
+    );
+
+    let first_report = runner.run_to_target(10).expect("first run succeeds");
+    let second_report = runner.run_to_target(20).expect("second run succeeds");
+
+    assert_eq!(first_report.last_progress.processed_height, Some(10));
+    assert_eq!(first_report.last_progress.synced_percentage, 100.0);
+    assert_eq!(
+        first_report
+            .last_progress
+            .configured_range_synced_percentage,
+        100.0
+    );
+    assert_eq!(second_report.last_progress.processed_height, Some(20));
+    assert_eq!(second_report.last_progress.synced_percentage, 100.0);
+    assert_eq!(
+        second_report
+            .last_progress
+            .configured_range_synced_percentage,
+        100.0
+    );
+    assert_eq!(second_report.last_progress.remaining_blocks, 0);
+}
+
+#[test]
+fn test_runner_reports_unavailable_eta_with_insufficient_samples() {
+    let mut runner = runner(vec![vec![row(1, 0, 0)]], ScriptedDecoder);
+    runner.request_shutdown_after_chunks(1);
+
+    let report = runner.run_to_target(3).expect("runner stops cleanly");
+
+    assert_eq!(report.chunks_processed, 1);
+    assert_eq!(report.last_progress.remaining_blocks, 2);
+    assert_eq!(report.last_progress.current_rate_blocks_per_second, None);
+    assert_eq!(report.last_progress.eta_seconds, None);
+}
+
+#[test]
+fn test_runner_reports_eta_after_enough_progress_samples() {
+    let mut runner = runner(
+        vec![vec![row(1, 0, 0)], vec![row(2, 0, 0)]],
+        ScriptedDecoder,
+    );
+    runner.request_shutdown_after_chunks(2);
+
+    let report = runner.run_to_target(4).expect("runner stops cleanly");
+
+    assert_eq!(report.chunks_processed, 2);
+    assert_eq!(report.last_progress.remaining_blocks, 2);
+    assert!(
+        report
+            .last_progress
+            .current_rate_blocks_per_second
+            .is_some_and(|rate| rate > 0.0)
+    );
+    assert!(
+        report
+            .last_progress
+            .eta_seconds
+            .is_some_and(|eta| eta > 0.0)
     );
 }
 
@@ -576,13 +682,27 @@ fn runner_with_decoder<D: IndexerEventDecoder>(
     decoder: D,
     options: IndexerRunnerOptions,
 ) -> IndexerRunner<ScriptedDatalensReader, InMemoryIndexerRunnerStore, D> {
+    runner_with_store(
+        rows,
+        decoder,
+        options,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+    )
+}
+
+fn runner_with_store<D: IndexerEventDecoder>(
+    rows: Vec<Vec<Value>>,
+    decoder: D,
+    options: IndexerRunnerOptions,
+    store: InMemoryIndexerRunnerStore,
+) -> IndexerRunner<ScriptedDatalensReader, InMemoryIndexerRunnerStore, D> {
     IndexerRunner::new(
         options,
         contexts(),
         ScriptedDatalensReader {
             rows: VecDeque::from(rows),
         },
-        InMemoryIndexerRunnerStore::new(identity(), 1),
+        store,
         decoder,
     )
 }

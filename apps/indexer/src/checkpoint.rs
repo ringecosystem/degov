@@ -29,6 +29,12 @@ pub struct CheckpointBlockRange {
     pub to_block: i64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ConfiguredRangeProgress {
+    pub remaining_blocks: i64,
+    pub synced_percentage: f64,
+}
+
 #[derive(Clone)]
 pub struct CheckpointRepository {
     pool: PgPool,
@@ -217,6 +223,43 @@ pub fn plan_next_checkpoint_range(
         from_block: checkpoint.next_block,
         to_block: limited_end.min(target_height),
     }))
+}
+
+pub fn configured_range_progress(
+    processed_height: Option<i64>,
+    start_block: i64,
+    target_height: i64,
+) -> ConfiguredRangeProgress {
+    if target_height < start_block {
+        return ConfiguredRangeProgress {
+            remaining_blocks: 0,
+            synced_percentage: 100.0,
+        };
+    }
+
+    let total_blocks = target_height.saturating_sub(start_block).saturating_add(1);
+    if total_blocks == 0 {
+        return ConfiguredRangeProgress {
+            remaining_blocks: 0,
+            synced_percentage: 100.0,
+        };
+    }
+
+    let processed_blocks = processed_height
+        .map(|height| {
+            height
+                .saturating_sub(start_block)
+                .saturating_add(1)
+                .clamp(0, total_blocks)
+        })
+        .unwrap_or(0);
+    let remaining_blocks = total_blocks.saturating_sub(processed_blocks);
+    let synced_percentage = ((processed_blocks as f64 / total_blocks as f64) * 100.0).min(100.0);
+
+    ConfiguredRangeProgress {
+        remaining_blocks,
+        synced_percentage,
+    }
 }
 
 fn checkpoint_from_row(row: &sqlx::postgres::PgRow) -> Result<IndexerCheckpoint, CheckpointError> {
