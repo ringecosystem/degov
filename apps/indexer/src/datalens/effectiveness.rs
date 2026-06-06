@@ -160,6 +160,10 @@ impl DatalensWarmupEffectivenessAggregation {
     pub fn query_duration_max_ms(&self) -> Option<u128> {
         self.query_duration_max.map(|duration| duration.as_millis())
     }
+
+    pub fn query_duration_max(&self) -> Option<Duration> {
+        self.query_duration_max
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

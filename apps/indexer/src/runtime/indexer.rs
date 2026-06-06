@@ -341,6 +341,7 @@ mod tests {
             data_source_version: "datalens-v1".to_owned(),
             query_max_attempts: 1,
             progress_refresh_lag_blocks: 100,
+            adaptive_chunk_sizer: Default::default(),
             onchain_refresh_tick: Default::default(),
         };
         let config = DatalensConfig {

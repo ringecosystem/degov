@@ -6,7 +6,7 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    ConfigError, DatalensConfig, DatalensFinality, GovernanceTokenStandard,
+    ConfigError, DatalensConfig, DatalensFinality, GovernanceTokenStandard, IndexerRuntimeConfig,
     OnchainRefreshRuntimeConfig, SecretString,
 };
 
@@ -327,6 +327,42 @@ chains:
     );
 
     remove_config_file(path);
+}
+
+#[test]
+fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_limit() {
+    with_datalens_env(
+        &[
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS", Some("25")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS", Some("400")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS", Some("250")),
+            (
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_HIGH_DURATION_MS",
+                Some("2500"),
+            ),
+        ],
+        || {
+            let runtime = IndexerRuntimeConfig::from_env().expect("load runtime config");
+
+            assert_eq!(runtime.adaptive_chunk_sizer.min_chunk_size, 25);
+            assert_eq!(runtime.adaptive_chunk_sizer.max_chunk_size, Some(400));
+            assert_eq!(
+                runtime.adaptive_chunk_sizer.fast_chunk_duration_threshold,
+                Duration::from_millis(250)
+            );
+            assert_eq!(
+                runtime.adaptive_chunk_sizer.high_query_duration_threshold,
+                Duration::from_millis(2500)
+            );
+
+            let capped = runtime.adaptive_chunk_sizer.for_block_range_limit(300);
+
+            assert_eq!(capped.initial_chunk_size, 300);
+            assert_eq!(capped.max_chunk_size, 300);
+            assert_eq!(capped.min_chunk_size, 25);
+        },
+    );
 }
 
 #[test]

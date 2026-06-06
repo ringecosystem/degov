@@ -4,9 +4,11 @@ use std::time::Duration;
 
 use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
+    AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig, AdaptiveChunkSizingReason,
     BatchReadPlanConfig, ChainContracts, ChainFamily, ChainIdentityConfig, DaoContractAddresses,
     DaoEventDecodeError, DaoLogSource, DatalensConfig, DatalensError, DatalensFinality,
-    DatalensLogQueryReader, DatalensLogQueryResult, DatasetKeyConfig, DecodedDaoEvent,
+    DatalensLogQueryCacheSummary, DatalensLogQueryReader, DatalensLogQueryResult,
+    DatalensWarmupEffectivenessAggregation, DatasetKeyConfig, DecodedDaoEvent,
     DecodedGovernorEvent, DecodedTokenEvent, GovernanceTokenStandard, InMemoryIndexerRunnerStore,
     IndexerCheckpointIdentity, IndexerEventDecoder, IndexerRunner, IndexerRunnerContexts,
     IndexerRunnerOptions, NormalizedEvmLog, QueryLimitConfig, SecretString, TokenProjectionContext,
@@ -102,7 +104,7 @@ fn test_runner_processes_multiple_chunks_and_advances_checkpoint_after_commits()
 fn test_runner_reports_configured_range_progress_for_nonzero_start_block() {
     let mut options = options();
     options.start_block = 100;
-    options.datalens_config.query_limits.block_range_limit = 10;
+    set_block_range_limit(&mut options, 10);
     let mut runner = runner_with_store(
         vec![vec![row(100, 0, 0)]],
         ScriptedDecoder,
@@ -128,7 +130,7 @@ fn test_runner_reports_configured_range_progress_for_nonzero_start_block() {
 #[test]
 fn test_runner_updates_configured_range_progress_when_target_height_changes() {
     let mut options = options();
-    options.datalens_config.query_limits.block_range_limit = 10;
+    set_block_range_limit(&mut options, 10);
     let store = InMemoryIndexerRunnerStore::new(identity(), 1);
     let mut runner = runner_with_store(
         vec![vec![row(1, 0, 0)], vec![row(11, 0, 0)]],
@@ -303,7 +305,7 @@ fn test_runner_keeps_checkpoint_unchanged_when_datalens_query_fails() {
 #[test]
 fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subranges() {
     let mut options = options();
-    options.datalens_config.query_limits.block_range_limit = 1_000;
+    set_block_range_limit(&mut options, 1_000);
     let observed_ranges = Arc::new(Mutex::new(Vec::new()));
     let reader = ProviderLimitDatalensReader::new(500, observed_ranges.clone());
     let mut runner = IndexerRunner::new(
@@ -331,7 +333,7 @@ fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subrang
 #[test]
 fn test_runner_fails_single_block_provider_limit_without_advancing_checkpoint() {
     let mut options = options();
-    options.datalens_config.query_limits.block_range_limit = 1;
+    set_block_range_limit(&mut options, 1);
     let observed_ranges = Arc::new(Mutex::new(Vec::new()));
     let reader = ProviderLimitDatalensReader::new(0, observed_ranges.clone());
     let mut runner = IndexerRunner::new(
@@ -356,6 +358,120 @@ fn test_runner_fails_single_block_provider_limit_without_advancing_checkpoint() 
         *observed_ranges.lock().expect("observed ranges"),
         vec![(1, 1)]
     );
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_grows_after_consecutive_full_cache_hits() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let first = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit(),
+        Duration::from_millis(50),
+        1_000,
+    ));
+    let second = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit(),
+        Duration::from_millis(50),
+        1_000,
+    ));
+
+    assert_eq!(first.current_chunk_size, 100);
+    assert_eq!(first.reason, AdaptiveChunkSizingReason::Hold);
+    assert_eq!(second.previous_chunk_size, 100);
+    assert_eq!(second.current_chunk_size, 200);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::StableFullHit);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_grows_after_consecutive_fast_chunks() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    sizer.record_chunk(adaptive_feedback(
+        cache_unavailable(),
+        Duration::from_millis(20),
+    ));
+    let decision = sizer.record_chunk(adaptive_feedback(
+        cache_unavailable(),
+        Duration::from_millis(20),
+    ));
+
+    assert_eq!(decision.current_chunk_size, 200);
+    assert_eq!(decision.reason, AdaptiveChunkSizingReason::StableFastChunk);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_shrinks_after_repeated_partial_or_miss() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let first = sizer.record_chunk(adaptive_feedback(
+        cache_partial_hit(),
+        Duration::from_millis(50),
+    ));
+    let second = sizer.record_chunk(adaptive_feedback(cache_miss(), Duration::from_millis(50)));
+
+    assert_eq!(first.current_chunk_size, 100);
+    assert_eq!(first.reason, AdaptiveChunkSizingReason::CacheFillHold);
+    assert_eq!(second.previous_chunk_size, 100);
+    assert_eq!(second.current_chunk_size, 50);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::RepeatedCacheFill);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_holds_on_single_cache_fill_and_high_duration() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let cache_fill = sizer.record_chunk(adaptive_feedback(
+        cache_partial_hit(),
+        Duration::from_millis(50),
+    ));
+    let high_duration = sizer.record_chunk(adaptive_feedback(
+        cache_unavailable(),
+        Duration::from_millis(1_500),
+    ));
+
+    assert_eq!(cache_fill.current_chunk_size, 100);
+    assert_eq!(cache_fill.reason, AdaptiveChunkSizingReason::CacheFillHold);
+    assert_eq!(high_duration.current_chunk_size, 50);
+    assert_eq!(
+        high_duration.reason,
+        AdaptiveChunkSizingReason::HighQueryDuration
+    );
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_respects_min_and_max_caps() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 200)).expect("sizer");
+
+    sizer.record_chunk(adaptive_feedback(
+        cache_full_hit(),
+        Duration::from_millis(20),
+    ));
+    let maxed = sizer.record_chunk(adaptive_feedback(
+        cache_full_hit(),
+        Duration::from_millis(20),
+    ));
+    let shrunk = sizer.record_provider_limit(100);
+    let minned = sizer.record_chunk(adaptive_feedback(cache_miss(), Duration::from_millis(50)));
+
+    assert_eq!(maxed.current_chunk_size, 200);
+    assert_eq!(shrunk.current_chunk_size, 50);
+    assert_eq!(minned.current_chunk_size, 50);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_provider_limit_split_shrinks_without_growth() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(1_000, 1_000)).expect("sizer");
+
+    let split = sizer.record_provider_limit(1_000);
+    let hold = sizer.record_chunk(adaptive_feedback(
+        cache_full_hit(),
+        Duration::from_millis(20),
+    ));
+
+    assert_eq!(split.current_chunk_size, 500);
+    assert_eq!(split.reason, AdaptiveChunkSizingReason::ProviderLimit);
+    assert_eq!(hold.current_chunk_size, 500);
+    assert_eq!(hold.reason, AdaptiveChunkSizingReason::Hold);
 }
 
 #[test]
@@ -798,7 +914,81 @@ fn options() -> IndexerRunnerOptions {
         start_block: 1,
         safe_height: None,
         progress_refresh_lag_blocks: 0,
+        adaptive_chunk_sizer: AdaptiveChunkSizerConfig::for_max_chunk_size(1),
     }
+}
+
+fn adaptive_config(initial_chunk_size: u32, max_chunk_size: u32) -> AdaptiveChunkSizerConfig {
+    AdaptiveChunkSizerConfig {
+        initial_chunk_size,
+        max_chunk_size,
+        min_chunk_size: 50,
+        fast_chunk_duration_threshold: Duration::from_millis(100),
+        high_query_duration_threshold: Duration::from_millis(1_000),
+        ..AdaptiveChunkSizerConfig::for_max_chunk_size(max_chunk_size)
+    }
+}
+
+fn adaptive_feedback(
+    warmup_effectiveness: DatalensWarmupEffectivenessAggregation,
+    query_duration: Duration,
+) -> AdaptiveChunkFeedback {
+    adaptive_feedback_with_rows(warmup_effectiveness, query_duration, 0)
+}
+
+fn adaptive_feedback_with_rows(
+    warmup_effectiveness: DatalensWarmupEffectivenessAggregation,
+    query_duration: Duration,
+    returned_row_count: usize,
+) -> AdaptiveChunkFeedback {
+    AdaptiveChunkFeedback {
+        returned_row_count,
+        local_processing_write_duration: Duration::from_millis(20),
+        read_duration: query_duration,
+        warmup_effectiveness,
+    }
+}
+
+fn cache_full_hit() -> DatalensWarmupEffectivenessAggregation {
+    cache_aggregation(DatalensLogQueryCacheSummary::from_datalens_cache_json(
+        &json!({
+            "hit_ranges": [{ "kind": "block", "start": 1, "end": 100 }],
+            "missing_ranges": [],
+            "provider_fill_ranges": []
+        }),
+    ))
+}
+
+fn cache_partial_hit() -> DatalensWarmupEffectivenessAggregation {
+    cache_aggregation(DatalensLogQueryCacheSummary::from_datalens_cache_json(
+        &json!({
+            "hit_ranges": [{ "kind": "block", "start": 1, "end": 50 }],
+            "missing_ranges": [{ "kind": "block", "start": 51, "end": 100 }],
+            "provider_fill_ranges": [{ "kind": "block", "start": 51, "end": 100 }]
+        }),
+    ))
+}
+
+fn cache_miss() -> DatalensWarmupEffectivenessAggregation {
+    cache_aggregation(DatalensLogQueryCacheSummary::from_datalens_cache_json(
+        &json!({
+            "hit_ranges": [],
+            "missing_ranges": [{ "kind": "block", "start": 1, "end": 100 }],
+            "provider_fill_ranges": [{ "kind": "block", "start": 1, "end": 100 }]
+        }),
+    ))
+}
+
+fn cache_unavailable() -> DatalensWarmupEffectivenessAggregation {
+    cache_aggregation(DatalensLogQueryCacheSummary::unavailable())
+}
+
+fn cache_aggregation(
+    cache: DatalensLogQueryCacheSummary,
+) -> DatalensWarmupEffectivenessAggregation {
+    let mut aggregation = DatalensWarmupEffectivenessAggregation::new();
+    aggregation.record_query(cache, Duration::from_millis(20));
+    aggregation
 }
 
 fn duplicate_address_options() -> IndexerRunnerOptions {
@@ -807,6 +997,11 @@ fn duplicate_address_options() -> IndexerRunnerOptions {
     options.addresses.timelock = options.addresses.governor.clone();
     options.datalens_config.dao_contracts = Some(options.addresses.clone());
     options
+}
+
+fn set_block_range_limit(options: &mut IndexerRunnerOptions, block_range_limit: u32) {
+    options.datalens_config.query_limits.block_range_limit = block_range_limit;
+    options.adaptive_chunk_sizer = AdaptiveChunkSizerConfig::for_max_chunk_size(block_range_limit);
 }
 
 fn contexts() -> IndexerRunnerContexts {

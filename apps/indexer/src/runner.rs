@@ -33,6 +33,7 @@ pub struct IndexerRunnerOptions {
     pub start_block: i64,
     pub safe_height: Option<i64>,
     pub progress_refresh_lag_blocks: i64,
+    pub adaptive_chunk_sizer: AdaptiveChunkSizerConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -65,31 +66,49 @@ pub struct IndexerRunnerReport {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AdaptiveChunkSizerConfig {
+    pub initial_chunk_size: u32,
     pub max_chunk_size: u32,
     pub min_chunk_size: u32,
     pub local_processing_shrink_threshold: Duration,
+    pub fast_chunk_duration_threshold: Duration,
+    pub high_query_duration_threshold: Duration,
     pub dense_returned_row_threshold: usize,
     pub sparse_returned_row_threshold: usize,
     pub stable_chunks_to_grow: u32,
+    pub unstable_chunks_to_shrink: u32,
 }
 
 impl AdaptiveChunkSizerConfig {
     pub fn for_max_chunk_size(max_chunk_size: u32) -> Self {
         Self {
+            initial_chunk_size: max_chunk_size,
             max_chunk_size,
             min_chunk_size: 1,
             local_processing_shrink_threshold: Duration::from_secs(10),
+            fast_chunk_duration_threshold: Duration::from_secs(1),
+            high_query_duration_threshold: Duration::from_secs(10),
             dense_returned_row_threshold: 5_000,
             sparse_returned_row_threshold: 100,
             stable_chunks_to_grow: 2,
+            unstable_chunks_to_shrink: 2,
         }
+    }
+
+    pub fn capped_to_block_range_limit(mut self, block_range_limit: u32) -> Self {
+        self.max_chunk_size = self.max_chunk_size.min(block_range_limit);
+        self.min_chunk_size = self.min_chunk_size.min(self.max_chunk_size);
+        self.initial_chunk_size = self.initial_chunk_size.min(self.max_chunk_size);
+        self.initial_chunk_size = self.initial_chunk_size.max(self.min_chunk_size);
+        self
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdaptiveChunkFeedback {
     pub returned_row_count: usize,
     pub local_processing_write_duration: Duration,
+    pub read_duration: Duration,
+    pub warmup_effectiveness: DatalensWarmupEffectivenessAggregation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -103,8 +122,13 @@ pub struct AdaptiveChunkSizingDecision {
 pub enum AdaptiveChunkSizingReason {
     DenseReturnedRows,
     SlowLocalProcessing,
+    HighQueryDuration,
     ProviderLimit,
     StableSparseRange,
+    StableFullHit,
+    StableFastChunk,
+    CacheFillHold,
+    RepeatedCacheFill,
     Hold,
 }
 
@@ -113,8 +137,13 @@ impl fmt::Display for AdaptiveChunkSizingReason {
         match self {
             Self::DenseReturnedRows => formatter.write_str("dense_returned_rows"),
             Self::SlowLocalProcessing => formatter.write_str("slow_local_processing"),
+            Self::HighQueryDuration => formatter.write_str("high_query_duration"),
             Self::ProviderLimit => formatter.write_str("provider_limit"),
             Self::StableSparseRange => formatter.write_str("stable_sparse_range"),
+            Self::StableFullHit => formatter.write_str("stable_full_hit"),
+            Self::StableFastChunk => formatter.write_str("stable_fast_chunk"),
+            Self::CacheFillHold => formatter.write_str("cache_fill_hold"),
+            Self::RepeatedCacheFill => formatter.write_str("repeated_cache_fill"),
             Self::Hold => formatter.write_str("hold"),
         }
     }
@@ -125,21 +154,34 @@ pub struct AdaptiveChunkSizer {
     config: AdaptiveChunkSizerConfig,
     current_chunk_size: u32,
     stable_chunks: u32,
+    unstable_chunks: u32,
 }
 
 impl AdaptiveChunkSizer {
     pub fn new(config: AdaptiveChunkSizerConfig) -> Result<Self, CheckpointError> {
-        if config.max_chunk_size == 0 || config.min_chunk_size == 0 {
+        if config.initial_chunk_size == 0
+            || config.max_chunk_size == 0
+            || config.min_chunk_size == 0
+        {
             return Err(CheckpointError::InvalidRangeLimit);
         }
         if config.min_chunk_size > config.max_chunk_size {
             return Err(CheckpointError::InvalidRangeLimit);
         }
+        if config.initial_chunk_size < config.min_chunk_size
+            || config.initial_chunk_size > config.max_chunk_size
+        {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
+        if config.stable_chunks_to_grow == 0 || config.unstable_chunks_to_shrink == 0 {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
 
         Ok(Self {
             config,
-            current_chunk_size: config.max_chunk_size,
+            current_chunk_size: config.initial_chunk_size,
             stable_chunks: 0,
+            unstable_chunks: 0,
         })
     }
 
@@ -160,29 +202,58 @@ impl AdaptiveChunkSizer {
         let dense_range = feedback.returned_row_count >= self.config.dense_returned_row_threshold;
         let slow_local_processing = feedback.local_processing_write_duration
             > self.config.local_processing_shrink_threshold;
+        let high_query_duration = feedback.read_duration
+            > self.config.high_query_duration_threshold
+            || feedback
+                .warmup_effectiveness
+                .query_duration_max()
+                .is_some_and(|duration| duration > self.config.high_query_duration_threshold);
+        let cache_fill = feedback.warmup_effectiveness.partial_hit_count > 0
+            || feedback.warmup_effectiveness.miss_count > 0
+            || feedback.warmup_effectiveness.provider_fill_range_count > 0;
+        let stable_growth_reason = feedback.stable_growth_reason(&self.config);
+        let stable_growth_candidate = stable_growth_reason
+            != AdaptiveChunkSizingReason::StableSparseRange
+            || feedback.returned_row_count <= self.config.sparse_returned_row_threshold;
 
-        let reason = if slow_local_processing || dense_range {
+        let reason = if slow_local_processing || high_query_duration || dense_range {
             self.stable_chunks = 0;
+            self.unstable_chunks = 0;
             self.current_chunk_size = (self.current_chunk_size / 2).max(self.config.min_chunk_size);
             if slow_local_processing {
                 AdaptiveChunkSizingReason::SlowLocalProcessing
+            } else if high_query_duration {
+                AdaptiveChunkSizingReason::HighQueryDuration
             } else {
                 AdaptiveChunkSizingReason::DenseReturnedRows
             }
-        } else if feedback.returned_row_count <= self.config.sparse_returned_row_threshold {
+        } else if cache_fill {
+            self.stable_chunks = 0;
+            self.unstable_chunks = self.unstable_chunks.saturating_add(1);
+            if self.unstable_chunks >= self.config.unstable_chunks_to_shrink {
+                self.unstable_chunks = 0;
+                self.current_chunk_size =
+                    (self.current_chunk_size / 2).max(self.config.min_chunk_size);
+                AdaptiveChunkSizingReason::RepeatedCacheFill
+            } else {
+                AdaptiveChunkSizingReason::CacheFillHold
+            }
+        } else if stable_growth_candidate {
             self.stable_chunks = self.stable_chunks.saturating_add(1);
+            self.unstable_chunks = 0;
             if self.stable_chunks >= self.config.stable_chunks_to_grow {
                 self.stable_chunks = 0;
                 self.current_chunk_size = self
                     .current_chunk_size
                     .saturating_mul(2)
                     .min(self.config.max_chunk_size);
-                AdaptiveChunkSizingReason::StableSparseRange
+                stable_growth_reason
             } else {
                 AdaptiveChunkSizingReason::Hold
             }
         } else {
             self.stable_chunks = 0;
+            self.unstable_chunks = 0;
             AdaptiveChunkSizingReason::Hold
         };
 
@@ -199,6 +270,7 @@ impl AdaptiveChunkSizer {
     ) -> AdaptiveChunkSizingDecision {
         let previous_chunk_size = self.current_chunk_size;
         self.stable_chunks = 0;
+        self.unstable_chunks = 0;
         self.current_chunk_size = (failed_range_block_count / 2)
             .max(self.config.min_chunk_size)
             .min(previous_chunk_size);
@@ -208,6 +280,34 @@ impl AdaptiveChunkSizer {
             current_chunk_size: self.current_chunk_size,
             reason: AdaptiveChunkSizingReason::ProviderLimit,
         }
+    }
+}
+
+impl AdaptiveChunkFeedback {
+    fn stable_growth_reason(&self, config: &AdaptiveChunkSizerConfig) -> AdaptiveChunkSizingReason {
+        if self.has_full_cache_hit() {
+            AdaptiveChunkSizingReason::StableFullHit
+        } else if self.is_fast(config) {
+            AdaptiveChunkSizingReason::StableFastChunk
+        } else {
+            AdaptiveChunkSizingReason::StableSparseRange
+        }
+    }
+
+    fn has_full_cache_hit(&self) -> bool {
+        self.warmup_effectiveness.full_hit_count > 0
+            && self.warmup_effectiveness.partial_hit_count == 0
+            && self.warmup_effectiveness.miss_count == 0
+            && self.warmup_effectiveness.provider_fill_range_count == 0
+    }
+
+    fn is_fast(&self, config: &AdaptiveChunkSizerConfig) -> bool {
+        self.read_duration <= config.fast_chunk_duration_threshold
+            && self.local_processing_write_duration <= config.fast_chunk_duration_threshold
+            && self
+                .warmup_effectiveness
+                .query_duration_max()
+                .is_none_or(|duration| duration <= config.fast_chunk_duration_threshold)
     }
 }
 
@@ -451,10 +551,13 @@ where
             .options
             .safe_height
             .map_or(target_height, |safe_height| safe_height.min(target_height));
-        let mut chunk_sizer =
-            AdaptiveChunkSizer::new(AdaptiveChunkSizerConfig::for_max_chunk_size(
-                self.options.datalens_config.query_limits.block_range_limit,
-            ))?;
+        let mut chunk_sizer = AdaptiveChunkSizer::new(
+            self.options
+                .adaptive_chunk_sizer
+                .capped_to_block_range_limit(
+                    self.options.datalens_config.query_limits.block_range_limit,
+                ),
+        )?;
         let mut progress_rate = ProgressRateEstimator::default();
         let mut chunks_processed = 0;
         let mut provider_limit_count_since_summary = 0;
@@ -539,7 +642,7 @@ where
                             .saturating_sub(1)
                             .min(range.to_block);
                         warn!(
-                            "Datalens indexer chunk provider limit split dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} previous_to_block={} retry_to_block={} previous_chunk_size={} new_chunk_size={} reason={}",
+                            "Datalens indexer chunk provider limit split dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} previous_to_block={} retry_to_block={} previous_chunk_size={} new_chunk_size={} reason={} adaptive_cache_summary=unavailable duration_ms={}",
                             self.options.checkpoint_identity.dao_code,
                             self.options.checkpoint_identity.chain_id,
                             self.options.checkpoint_identity.contract_set_id,
@@ -550,7 +653,8 @@ where
                             retry_to_block,
                             sizing_decision.previous_chunk_size,
                             sizing_decision.current_chunk_size,
-                            sizing_decision.reason
+                            sizing_decision.reason,
+                            chunk_started_at.elapsed().as_millis()
                         );
                         continue;
                     }
@@ -601,6 +705,8 @@ where
             let sizing_decision = chunk_sizer.record_chunk(AdaptiveChunkFeedback {
                 returned_row_count: processing.metrics.returned_row_count,
                 local_processing_write_duration,
+                read_duration: processing.metrics.read_duration,
+                warmup_effectiveness: processing.metrics.warmup_effectiveness.clone(),
             });
             progress_rate.record(range.to_block, Instant::now());
             let chunk_progress = progress(
@@ -611,7 +717,7 @@ where
                 self.options.progress_refresh_lag_blocks,
             );
             info!(
-                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={}",
+                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={} adaptive_cache_full_hit_count={} adaptive_cache_partial_hit_count={} adaptive_cache_miss_count={} adaptive_cache_provider_fill_range_count={} adaptive_query_duration_max_ms={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
                 self.options.checkpoint_identity.contract_set_id,
@@ -645,7 +751,20 @@ where
                 optional_f64_log_value(chunk_progress.eta_seconds),
                 sizing_decision.previous_chunk_size,
                 sizing_decision.current_chunk_size,
-                sizing_decision.reason
+                sizing_decision.reason,
+                processing.metrics.warmup_effectiveness.full_hit_count,
+                processing.metrics.warmup_effectiveness.partial_hit_count,
+                processing.metrics.warmup_effectiveness.miss_count,
+                processing
+                    .metrics
+                    .warmup_effectiveness
+                    .provider_fill_range_count,
+                optional_u128_log_value(
+                    processing
+                        .metrics
+                        .warmup_effectiveness
+                        .query_duration_max_ms()
+                )
             );
             let mut warmup_effectiveness_aggregation =
                 processing.metrics.warmup_effectiveness.clone();
