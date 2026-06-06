@@ -43,6 +43,7 @@ impl std::str::FromStr for DatalensWarmupKind {
 pub struct DatalensWarmupConfig {
     pub enabled: bool,
     pub ensure_on_startup: bool,
+    pub required: bool,
     pub kind: DatalensWarmupKind,
 }
 
@@ -51,6 +52,7 @@ impl Default for DatalensWarmupConfig {
         Self {
             enabled: false,
             ensure_on_startup: true,
+            required: false,
             kind: DatalensWarmupKind::FollowQuery,
         }
     }
@@ -59,6 +61,7 @@ impl Default for DatalensWarmupConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DatalensWarmupEnsureOutcome {
     Disabled,
+    Failed { error: String },
     Submitted { task_id: String, created: bool },
 }
 
@@ -132,10 +135,24 @@ pub fn ensure_datalens_warmup_task(
         return Ok(DatalensWarmupEnsureOutcome::Disabled);
     }
 
-    match config.warmup.kind {
-        DatalensWarmupKind::FollowQuery => {
-            ensurer.ensure_warmup_task(follow_query_request(config, addresses, start_block)?)
-        }
+    let result = match config.warmup.kind {
+        DatalensWarmupKind::FollowQuery => follow_query_request(config, addresses, start_block)
+            .and_then(|request| ensurer.ensure_warmup_task(request)),
+    };
+
+    match result {
+        Ok(outcome) => Ok(outcome),
+        Err(error) if config.warmup.required => Err(error),
+        Err(error) => Ok(DatalensWarmupEnsureOutcome::Failed {
+            error: warmup_failure_message(error),
+        }),
+    }
+}
+
+fn warmup_failure_message(error: DatalensError) -> String {
+    match error {
+        DatalensError::Warmup(message) => message,
+        error => error.to_string(),
     }
 }
 

@@ -23,6 +23,12 @@ datalens:
   warmup:
     enabled: true
     ensureOnStartup: true
+    required: false
+
+# Optional Datalens query concurrency env vars are process-local to one
+# indexer process/pod:
+#   DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT
+#   DEGOV_INDEXER_DATALENS_QUERY_PER_CHAIN_MAX_IN_FLIGHT
 
 rpc:
   chains:

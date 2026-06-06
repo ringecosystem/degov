@@ -56,7 +56,7 @@ fn test_verify_datalens_service_rejects_mocked_unready_client() {
 }
 
 #[test]
-fn test_datalens_query_gate_blocks_when_global_limit_is_full() {
+fn test_datalens_query_gate_blocks_when_process_limit_is_full() {
     let gate = DatalensQueryConcurrencyGate::new(DatalensQueryConcurrencyConfig {
         global_max_in_flight: Some(1),
         per_chain_max_in_flight: None,

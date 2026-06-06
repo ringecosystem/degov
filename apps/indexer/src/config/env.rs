@@ -26,6 +26,7 @@ struct RawDatalensEnvOverlay {
     datalens_query_block_range_limit: Option<u32>,
     datalens_warmup_enabled: Option<bool>,
     datalens_warmup_ensure_on_startup: Option<bool>,
+    datalens_warmup_required: Option<bool>,
     datalens_warmup_kind: Option<String>,
     datalens_governor_address: Option<String>,
     datalens_governor_token_address: Option<String>,
@@ -80,6 +81,7 @@ struct RawDatalensQueryLimitFileConfig {
 struct RawDatalensWarmupFileConfig {
     enabled: Option<bool>,
     ensure_on_startup: Option<bool>,
+    required: Option<bool>,
     kind: Option<String>,
 }
 
@@ -108,6 +110,7 @@ fn load_env_overlay() -> Result<RawDatalensEnvOverlay, ConfigError> {
             "DATALENS_QUERY_BLOCK_RANGE_LIMIT",
             "DATALENS_WARMUP_ENABLED",
             "DATALENS_WARMUP_ENSURE_ON_STARTUP",
+            "DATALENS_WARMUP_REQUIRED",
             "DATALENS_WARMUP_KIND",
             "DATALENS_GOVERNOR_ADDRESS",
             "DATALENS_GOVERNOR_TOKEN_ADDRESS",
@@ -193,6 +196,7 @@ impl RawDatalensConfig {
                     &mut self.datalens_warmup_ensure_on_startup,
                     warmup.ensure_on_startup,
                 );
+                assign_value_if_some(&mut self.datalens_warmup_required, warmup.required);
                 assign_value_if_some(&mut self.datalens_warmup_kind, warmup.kind);
             }
         }
@@ -235,6 +239,10 @@ impl RawDatalensConfig {
         assign_value_if_some(
             &mut self.datalens_warmup_ensure_on_startup,
             env.datalens_warmup_ensure_on_startup,
+        );
+        assign_value_if_some(
+            &mut self.datalens_warmup_required,
+            env.datalens_warmup_required,
         );
         assign_value_if_some(&mut self.datalens_warmup_kind, env.datalens_warmup_kind);
         assign_if_some(

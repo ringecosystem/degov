@@ -781,16 +781,13 @@ where
                 &warmup_effectiveness_aggregation,
             );
             info!(
-                "Datalens follow_query warmup effectiveness summary dao_code={} chain_id={} contract_set_id={} selector_fingerprint={} query_watermark={} current_checkpoint={} warmup_task_id={} warmup_cursor={} warmup_lead_blocks={} full_hit_count={} partial_hit_count={} miss_count={} empty_count={} unavailable_count={} provider_fill_range_count={} provider_limit_count={} query_duration_min_ms={} query_duration_avg_ms={} query_duration_max_ms={}",
+                "Datalens follow_query warmup effectiveness summary dao_code={} chain_id={} contract_set_id={} selector_fingerprint={} query_watermark={} current_checkpoint={} full_hit_count={} partial_hit_count={} miss_count={} empty_count={} unavailable_count={} provider_fill_range_count={} provider_limit_count={} query_duration_min_ms={} query_duration_avg_ms={} query_duration_max_ms={}",
                 warmup_effectiveness.dao_code,
                 warmup_effectiveness.chain_id,
                 warmup_effectiveness.contract_set_id,
                 warmup_effectiveness.selector_fingerprint,
                 optional_i64_log_value(warmup_effectiveness.query_watermark),
                 optional_i64_log_value(warmup_effectiveness.current_checkpoint),
-                warmup_effectiveness.warmup_task_id,
-                warmup_effectiveness.warmup_cursor,
-                warmup_effectiveness.warmup_lead_blocks,
                 warmup_effectiveness.full_hit_count,
                 warmup_effectiveness.partial_hit_count,
                 warmup_effectiveness.miss_count,

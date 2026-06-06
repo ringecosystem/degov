@@ -200,6 +200,7 @@ struct RawDatalensConfig {
     datalens_query_block_range_limit: u32,
     datalens_warmup_enabled: bool,
     datalens_warmup_ensure_on_startup: bool,
+    datalens_warmup_required: bool,
     datalens_warmup_kind: String,
     datalens_governor_address: Option<String>,
     datalens_governor_token_address: Option<String>,
@@ -253,6 +254,7 @@ impl Default for RawDatalensConfig {
             datalens_query_block_range_limit: DEFAULT_DATALENS_QUERY_BLOCK_RANGE_LIMIT,
             datalens_warmup_enabled: DatalensWarmupConfig::default().enabled,
             datalens_warmup_ensure_on_startup: DatalensWarmupConfig::default().ensure_on_startup,
+            datalens_warmup_required: DatalensWarmupConfig::default().required,
             datalens_warmup_kind: DatalensWarmupKind::default().as_str().to_owned(),
             datalens_governor_address: None,
             datalens_governor_token_address: None,
@@ -505,6 +507,7 @@ impl DatalensConfig {
             warmup: DatalensWarmupConfig {
                 enabled: raw.datalens_warmup_enabled,
                 ensure_on_startup: raw.datalens_warmup_ensure_on_startup,
+                required: raw.datalens_warmup_required,
                 kind: raw.datalens_warmup_kind.parse()?,
             },
             dao_contracts,
