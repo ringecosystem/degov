@@ -71,7 +71,6 @@ pub struct DatalensWarmupSubmitRequest {
     pub start: u64,
     pub end: Option<u64>,
     pub mode: String,
-    pub finality: Option<String>,
     pub chunk_policy: WarmupChunkPolicy,
 }
 
@@ -166,7 +165,6 @@ pub fn follow_query_request(
         start: start_block as u64,
         end: None,
         mode: "follow_query".to_owned(),
-        finality: query.input.finality.clone(),
         chunk_policy: WarmupChunkPolicy {
             max_range_len: config.query_limits.block_range_limit,
         },
