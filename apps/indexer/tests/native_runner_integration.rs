@@ -4,13 +4,14 @@ use std::time::Duration;
 
 use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
-    BatchReadPlanConfig, ChainContracts, ChainFamily, ChainIdentityConfig, ChainReadMethod,
-    DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensError, DatalensFinality,
-    DatalensLogQueryReader, DatalensLogQueryResult, DatasetKeyConfig, GovernanceTokenStandard,
-    InMemoryProposalProjectionRepository, InMemoryTimelockProjectionRepository,
-    InMemoryTokenProjectionRepository, InMemoryVoteProjectionRepository, IndexerCheckpoint,
-    IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts,
-    IndexerRunnerOptions, IndexerRunnerStore, IndexerRunnerTransaction, ProposalProjectionBatch,
+    AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainFamily,
+    ChainIdentityConfig, ChainReadMethod, DaoContractAddresses, DaoEventDecoder, DatalensConfig,
+    DatalensError, DatalensFinality, DatalensLogQueryReader, DatalensLogQueryResult,
+    DatasetKeyConfig, GovernanceTokenStandard, InMemoryProposalProjectionRepository,
+    InMemoryTimelockProjectionRepository, InMemoryTokenProjectionRepository,
+    InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
+    IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts, IndexerRunnerOptions,
+    IndexerRunnerStore, IndexerRunnerTransaction, ProposalProjectionBatch,
     ProposalProjectionContext, ProposalProjectionRepository, QueryLimitConfig, SecretString,
     TimelockProjectionContext, TimelockProjectionEvent, TimelockProjectionRepository,
     TimelockProposalLinkContext, TokenProjectionContext, TokenProjectionRepository,
@@ -99,7 +100,7 @@ fn test_native_runner_does_not_advance_checkpoint_when_raw_decode_fails() {
 #[test]
 fn test_native_runner_links_timelock_to_proposal_actions_from_previous_range() {
     let mut options = options();
-    options.datalens_config.query_limits.block_range_limit = 2;
+    set_block_range_limit(&mut options, 2);
     let mut runner = native_runner_with_options(
         vec![
             vec![proposal_created_row()],
@@ -519,7 +520,13 @@ fn options() -> IndexerRunnerOptions {
         start_block: 1,
         safe_height: None,
         progress_refresh_lag_blocks: 0,
+        adaptive_chunk_sizer: AdaptiveChunkSizerConfig::for_max_chunk_size(10),
     }
+}
+
+fn set_block_range_limit(options: &mut IndexerRunnerOptions, block_range_limit: u32) {
+    options.datalens_config.query_limits.block_range_limit = block_range_limit;
+    options.adaptive_chunk_sizer = AdaptiveChunkSizerConfig::for_max_chunk_size(block_range_limit);
 }
 
 fn contexts() -> IndexerRunnerContexts {

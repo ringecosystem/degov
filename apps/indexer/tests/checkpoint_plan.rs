@@ -3,7 +3,8 @@ use std::time::Duration;
 use degov_datalens_indexer::checkpoint::configured_range_progress;
 use degov_datalens_indexer::{
     AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig, CheckpointBlockRange,
-    IndexerCheckpoint, IndexerCheckpointIdentity, plan_next_checkpoint_range,
+    DatalensWarmupEffectivenessAggregation, IndexerCheckpoint, IndexerCheckpointIdentity,
+    plan_next_checkpoint_range,
 };
 
 fn checkpoint(next_block: i64) -> IndexerCheckpoint {
@@ -87,61 +88,43 @@ fn test_configured_range_progress_uses_updated_target_height() {
 #[test]
 fn test_adaptive_chunk_sizer_shrinks_for_dense_or_slow_chunks_and_grows_after_stable_chunks() {
     let mut sizer = AdaptiveChunkSizer::new(AdaptiveChunkSizerConfig {
-        max_chunk_size: 16,
         min_chunk_size: 1,
         local_processing_shrink_threshold: Duration::from_millis(100),
         dense_returned_row_threshold: 10,
         sparse_returned_row_threshold: 2,
         stable_chunks_to_grow: 2,
+        ..AdaptiveChunkSizerConfig::for_max_chunk_size(16)
     })
     .expect("valid adaptive chunk config");
 
     assert_eq!(sizer.current_chunk_size(), 16);
 
-    sizer.record_chunk(AdaptiveChunkFeedback {
-        returned_row_count: 11,
-        local_processing_write_duration: Duration::from_millis(10),
-    });
+    sizer.record_chunk(adaptive_feedback(11, Duration::from_millis(10)));
     assert_eq!(sizer.current_chunk_size(), 8);
 
-    sizer.record_chunk(AdaptiveChunkFeedback {
-        returned_row_count: 1,
-        local_processing_write_duration: Duration::from_millis(120),
-    });
+    sizer.record_chunk(adaptive_feedback(1, Duration::from_millis(120)));
     assert_eq!(sizer.current_chunk_size(), 4);
 
-    sizer.record_chunk(AdaptiveChunkFeedback {
-        returned_row_count: 1,
-        local_processing_write_duration: Duration::from_millis(10),
-    });
+    sizer.record_chunk(adaptive_feedback(1, Duration::from_millis(10)));
     assert_eq!(sizer.current_chunk_size(), 4);
 
-    sizer.record_chunk(AdaptiveChunkFeedback {
-        returned_row_count: 1,
-        local_processing_write_duration: Duration::from_millis(10),
-    });
+    sizer.record_chunk(adaptive_feedback(1, Duration::from_millis(10)));
     assert_eq!(sizer.current_chunk_size(), 8);
 
-    sizer.record_chunk(AdaptiveChunkFeedback {
-        returned_row_count: 1,
-        local_processing_write_duration: Duration::from_millis(10),
-    });
-    sizer.record_chunk(AdaptiveChunkFeedback {
-        returned_row_count: 1,
-        local_processing_write_duration: Duration::from_millis(10),
-    });
+    sizer.record_chunk(adaptive_feedback(1, Duration::from_millis(10)));
+    sizer.record_chunk(adaptive_feedback(1, Duration::from_millis(10)));
     assert_eq!(sizer.current_chunk_size(), 16);
 }
 
 #[test]
 fn test_adaptive_chunk_sizer_plans_contiguous_checkpoint_ranges_after_resize() {
     let mut sizer = AdaptiveChunkSizer::new(AdaptiveChunkSizerConfig {
-        max_chunk_size: 4,
         min_chunk_size: 1,
         local_processing_shrink_threshold: Duration::from_millis(100),
         dense_returned_row_threshold: 5,
         sparse_returned_row_threshold: 1,
         stable_chunks_to_grow: 1,
+        ..AdaptiveChunkSizerConfig::for_max_chunk_size(4)
     })
     .expect("valid adaptive chunk config");
     let mut checkpoint = checkpoint(10);
@@ -158,10 +141,7 @@ fn test_adaptive_chunk_sizer_plans_contiguous_checkpoint_ranges_after_resize() {
         }
     );
 
-    sizer.record_chunk(AdaptiveChunkFeedback {
-        returned_row_count: 6,
-        local_processing_write_duration: Duration::from_millis(10),
-    });
+    sizer.record_chunk(adaptive_feedback(6, Duration::from_millis(10)));
     checkpoint.next_block = first.to_block + 1;
 
     let second = sizer
@@ -176,10 +156,7 @@ fn test_adaptive_chunk_sizer_plans_contiguous_checkpoint_ranges_after_resize() {
         }
     );
 
-    sizer.record_chunk(AdaptiveChunkFeedback {
-        returned_row_count: 0,
-        local_processing_write_duration: Duration::from_millis(10),
-    });
+    sizer.record_chunk(adaptive_feedback(0, Duration::from_millis(10)));
     checkpoint.next_block = second.to_block + 1;
 
     let third = sizer
@@ -193,4 +170,16 @@ fn test_adaptive_chunk_sizer_plans_contiguous_checkpoint_ranges_after_resize() {
             to_block: 19,
         }
     );
+}
+
+fn adaptive_feedback(
+    returned_row_count: usize,
+    local_processing_write_duration: Duration,
+) -> AdaptiveChunkFeedback {
+    AdaptiveChunkFeedback {
+        returned_row_count,
+        local_processing_write_duration,
+        read_duration: Duration::from_millis(10),
+        warmup_effectiveness: DatalensWarmupEffectivenessAggregation::new(),
+    }
 }

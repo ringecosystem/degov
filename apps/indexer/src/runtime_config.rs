@@ -6,7 +6,7 @@ use runtime_anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use crate::{
-    BatchReadPlanConfig, ChainContracts, ChainReadMethod, DatalensConfig,
+    AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainReadMethod, DatalensConfig,
     DatalensRuntimeContractSet, IndexerCheckpointIdentity, IndexerRunnerContexts,
     IndexerRunnerOptions, OnchainRefreshTickConfig, OnchainRefreshWorkerConfig,
     ProposalProjectionContext, SecretString, TimelockProjectionContext, TokenProjectionContext,
@@ -126,6 +126,7 @@ pub struct IndexerRuntimeConfig {
     pub data_source_version: String,
     pub query_max_attempts: u32,
     pub progress_refresh_lag_blocks: i64,
+    pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
 }
 
@@ -195,8 +196,45 @@ pub struct IndexerContractSetRuntimeConfig {
     pub data_source_version: String,
     pub query_max_attempts: u32,
     pub progress_refresh_lag_blocks: i64,
+    pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub max_chunks_per_run: Option<u64>,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AdaptiveChunkSizerRuntimeConfig {
+    pub min_chunk_size: u32,
+    pub max_chunk_size: Option<u32>,
+    pub fast_chunk_duration_threshold: Duration,
+    pub high_query_duration_threshold: Duration,
+}
+
+impl Default for AdaptiveChunkSizerRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            min_chunk_size: 1,
+            max_chunk_size: None,
+            fast_chunk_duration_threshold: Duration::from_secs(1),
+            high_query_duration_threshold: Duration::from_secs(10),
+        }
+    }
+}
+
+impl AdaptiveChunkSizerRuntimeConfig {
+    pub fn for_block_range_limit(self, block_range_limit: u32) -> AdaptiveChunkSizerConfig {
+        let max_chunk_size = self
+            .max_chunk_size
+            .unwrap_or(block_range_limit)
+            .min(block_range_limit);
+        AdaptiveChunkSizerConfig {
+            initial_chunk_size: max_chunk_size,
+            max_chunk_size,
+            min_chunk_size: self.min_chunk_size.min(max_chunk_size),
+            fast_chunk_duration_threshold: self.fast_chunk_duration_threshold,
+            high_query_duration_threshold: self.high_query_duration_threshold,
+            ..AdaptiveChunkSizerConfig::for_max_chunk_size(max_chunk_size)
+        }
+    }
 }
 
 impl IndexerRuntimeConfig {
@@ -237,6 +275,7 @@ impl IndexerRuntimeConfig {
                 "DEGOV_INDEXER_PROGRESS_REFRESH_LAG_BLOCKS",
             )?
             .unwrap_or(100),
+            adaptive_chunk_sizer: load_adaptive_chunk_sizer_runtime_config()?,
             onchain_refresh_tick: load_onchain_refresh_tick_config()?,
             poll_interval,
             run_once,
@@ -299,6 +338,7 @@ impl IndexerRuntimeConfig {
             data_source_version: self.data_source_version.clone(),
             query_max_attempts: self.query_max_attempts,
             progress_refresh_lag_blocks: self.progress_refresh_lag_blocks,
+            adaptive_chunk_sizer: self.adaptive_chunk_sizer,
             max_chunks_per_run: self.max_chunks_per_run,
             onchain_refresh_tick: self.onchain_refresh_tick.clone(),
         };
@@ -365,6 +405,9 @@ impl IndexerContractSetRuntimeConfig {
             start_block: self.start_block,
             safe_height: None,
             progress_refresh_lag_blocks: self.progress_refresh_lag_blocks,
+            adaptive_chunk_sizer: self
+                .adaptive_chunk_sizer
+                .for_block_range_limit(config.query_limits.block_range_limit),
         })
     }
 
@@ -582,6 +625,49 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     }
     if config.min_blocks_between_ticks < 0 {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS must be zero or greater");
+    }
+
+    Ok(config)
+}
+
+fn load_adaptive_chunk_sizer_runtime_config() -> Result<AdaptiveChunkSizerRuntimeConfig> {
+    let defaults = AdaptiveChunkSizerRuntimeConfig::default();
+    let config = AdaptiveChunkSizerRuntimeConfig {
+        min_chunk_size: optional_env_u32("DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS")?
+            .unwrap_or(defaults.min_chunk_size),
+        max_chunk_size: optional_env_u32("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS")?,
+        fast_chunk_duration_threshold: Duration::from_millis(
+            optional_env_u64("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS")?
+                .unwrap_or(duration_millis_u64(defaults.fast_chunk_duration_threshold)),
+        ),
+        high_query_duration_threshold: Duration::from_millis(
+            optional_env_u64("DEGOV_INDEXER_ADAPTIVE_CHUNK_HIGH_DURATION_MS")?
+                .unwrap_or(duration_millis_u64(defaults.high_query_duration_threshold)),
+        ),
+    };
+
+    if config.min_chunk_size == 0 {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS must be greater than zero");
+    }
+    if config
+        .max_chunk_size
+        .is_some_and(|max_chunk_size| max_chunk_size == 0)
+    {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS must be greater than zero");
+    }
+    if config
+        .max_chunk_size
+        .is_some_and(|max_chunk_size| config.min_chunk_size > max_chunk_size)
+    {
+        bail!(
+            "DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS must be less than or equal to DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS"
+        );
+    }
+    if config.fast_chunk_duration_threshold.is_zero() {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS must be greater than zero");
+    }
+    if config.high_query_duration_threshold.is_zero() {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_HIGH_DURATION_MS must be greater than zero");
     }
 
     Ok(config)
