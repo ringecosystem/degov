@@ -9,10 +9,12 @@ use datalens_sdk::RetryConfig;
 use degov_datalens_indexer::{
     ChainFamily, ChainIdentityConfig, DaoContractAddresses, DatalensConfig,
     DatalensDurableHeadReader, DatalensError, DatalensFinality, DatalensLogQueryReader,
-    DatalensNativeClient, DatalensNativeReader, DatasetKeyConfig, GovernanceTokenStandard,
-    QueryLimitConfig, SecretString, ServiceReadiness, plan_dao_log_queries,
-    verify_datalens_service,
+    DatalensNativeClient, DatalensNativeReader, DatalensQueryConcurrencyConfig,
+    DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey, DatalensQueryErrorClass,
+    DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig, SecretString, ServiceReadiness,
+    classify_datalens_query_error, plan_dao_log_queries, verify_datalens_service,
 };
+use std::sync::mpsc;
 
 struct MockDatalensReader {
     readiness: Result<ServiceReadiness, DatalensError>,
@@ -51,6 +53,96 @@ fn test_verify_datalens_service_rejects_mocked_unready_client() {
     let error = verify_datalens_service(&reader).expect_err("unready");
 
     assert!(error.to_string().contains("readiness was not confirmed"));
+}
+
+#[test]
+fn test_datalens_query_gate_blocks_when_global_limit_is_full() {
+    let gate = DatalensQueryConcurrencyGate::new(DatalensQueryConcurrencyConfig {
+        global_max_in_flight: Some(1),
+        per_chain_max_in_flight: None,
+    })
+    .expect("gate");
+    let first_key = query_key("evm", "ethereum", Some(1));
+    let second_key = query_key("evm", "lisk", Some(1135));
+    let first = gate.acquire(&first_key).expect("first permit");
+    let (sender, receiver) = mpsc::channel();
+    let thread_gate = gate.clone();
+
+    let handle = thread::spawn(move || {
+        let permit = thread_gate.acquire(&second_key).expect("second permit");
+        sender
+            .send(permit.wait_duration > Duration::ZERO)
+            .expect("send wait result");
+    });
+
+    assert!(receiver.recv_timeout(Duration::from_millis(50)).is_err());
+    drop(first);
+    assert!(
+        receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("unblocked")
+    );
+    handle.join().expect("thread joins");
+}
+
+#[test]
+fn test_datalens_query_gate_limits_same_chain_but_allows_other_chain() {
+    let gate = DatalensQueryConcurrencyGate::new(DatalensQueryConcurrencyConfig {
+        global_max_in_flight: Some(2),
+        per_chain_max_in_flight: Some(1),
+    })
+    .expect("gate");
+    let ethereum = query_key("evm", "ethereum", Some(1));
+    let same_ethereum = query_key("evm", "ethereum", Some(1));
+    let lisk = query_key("evm", "lisk", Some(1135));
+    let first = gate.acquire(&ethereum).expect("first permit");
+    let (same_sender, same_receiver) = mpsc::channel();
+    let same_gate = gate.clone();
+    let same_handle = thread::spawn(move || {
+        let _permit = same_gate
+            .acquire(&same_ethereum)
+            .expect("same-chain permit");
+        same_sender.send(()).expect("send same-chain result");
+    });
+
+    assert!(
+        same_receiver
+            .recv_timeout(Duration::from_millis(50))
+            .is_err()
+    );
+    let other = gate.acquire(&lisk).expect("other-chain permit");
+    drop(other);
+    drop(first);
+    same_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("same chain unblocked");
+    same_handle.join().expect("thread joins");
+}
+
+#[test]
+fn test_datalens_query_concurrency_key_uses_full_chain_identity() {
+    let ethereum = query_key("evm", "ethereum", Some(1));
+    let ethereum_alias = query_key("evm", "ethereum-mainnet", Some(1));
+    let textual = query_key("evm", "ethereum", None);
+
+    assert_ne!(ethereum, ethereum_alias);
+    assert_ne!(ethereum, textual);
+}
+
+#[test]
+fn test_classify_datalens_query_error_separates_provider_limit_from_timeout() {
+    assert_eq!(
+        classify_datalens_query_error("provider_limit: narrow your filter"),
+        DatalensQueryErrorClass::ProviderLimit
+    );
+    assert_eq!(
+        classify_datalens_query_error("provider_timeout: upstream RPC timed out"),
+        DatalensQueryErrorClass::Transient
+    );
+    assert_eq!(
+        classify_datalens_query_error("request_rate_limit"),
+        DatalensQueryErrorClass::Transient
+    );
 }
 
 #[test]
@@ -374,6 +466,18 @@ fn retry_config_with_attempts(max_attempts: u32) -> RetryConfig {
         max_elapsed: None,
         jitter: false,
         jitter_factor: 0.0,
+    }
+}
+
+fn query_key(
+    family: &'static str,
+    configured_name: &'static str,
+    network_id: Option<i32>,
+) -> DatalensQueryConcurrencyKey {
+    DatalensQueryConcurrencyKey {
+        family: family.to_owned(),
+        configured_name: configured_name.to_owned(),
+        network_id,
     }
 }
 

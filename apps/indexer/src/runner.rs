@@ -8,18 +8,20 @@ use thiserror::Error;
 use crate::{
     CheckpointBlockRange, CheckpointError, DaoContractAddresses, DaoEventDecodeError, DaoLogSource,
     DatalensConfig, DatalensError, DatalensLogPage, DatalensLogQueryReader,
-    DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields, DecodedDaoEvent,
-    GovernanceTokenStandard, InMemoryProposalProjectionRepository,
-    InMemoryTimelockProjectionRepository, InMemoryTokenProjectionRepository,
-    InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
-    NormalizedEvmLog, ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionEvent,
-    ProposalProjectionRepository, TimelockProjectionBatch, TimelockProjectionContext,
-    TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
-    TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository,
-    VoteProjectionBatch, VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
-    datalens_selector_fingerprint, decode_dao_log, fetch_dao_log_pages, normalize_evm_log_rows,
-    plan_dao_log_queries, plan_next_checkpoint_range, project_proposal_events,
-    project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
+    DatalensQueryErrorClass, DatalensWarmupEffectivenessAggregation,
+    DatalensWarmupEffectivenessLogFields, DecodedDaoEvent, GovernanceTokenStandard,
+    InMemoryProposalProjectionRepository, InMemoryTimelockProjectionRepository,
+    InMemoryTokenProjectionRepository, InMemoryVoteProjectionRepository, IndexerCheckpoint,
+    IndexerCheckpointIdentity, NormalizedEvmLog, ProposalProjectionBatch,
+    ProposalProjectionContext, ProposalProjectionEvent, ProposalProjectionRepository,
+    TimelockProjectionBatch, TimelockProjectionContext, TimelockProjectionEvent,
+    TimelockProjectionRepository, TimelockProposalLinkContext, TokenProjectionBatch,
+    TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository, VoteProjectionBatch,
+    VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
+    classify_datalens_query_error, datalens_selector_fingerprint, decode_dao_log,
+    fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries, plan_next_checkpoint_range,
+    project_proposal_events, project_timelock_events_with_proposal_links, project_token_events,
+    project_vote_events,
 };
 
 use crate::OnchainRefreshTickReport;
@@ -1199,9 +1201,8 @@ fn is_provider_limit_error(error: &IndexerRunnerError) -> bool {
         IndexerRunnerError::Datalens(DatalensError::Query(message)) => message,
         _ => return false,
     };
-    let normalized = message.to_ascii_lowercase();
 
-    normalized.contains("provider_limit") || normalized.contains("narrow your filter")
+    classify_datalens_query_error(message) == DatalensQueryErrorClass::ProviderLimit
 }
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]

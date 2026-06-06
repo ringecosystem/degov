@@ -4,7 +4,9 @@ pub mod planner;
 pub mod warmup;
 
 pub use client::{
-    DatalensDurableHeadReader, DatalensNativeClient, DatalensNativeReader, ServiceReadiness,
+    DatalensDurableHeadReader, DatalensNativeClient, DatalensNativeReader,
+    DatalensQueryConcurrencyConfig, DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey,
+    DatalensQueryErrorClass, ServiceReadiness, classify_datalens_query_error,
     verify_datalens_service,
 };
 pub use effectiveness::{

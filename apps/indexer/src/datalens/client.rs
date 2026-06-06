@@ -1,4 +1,8 @@
-use std::time::Instant;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Condvar, Mutex},
+    time::{Duration, Instant},
+};
 
 use datalens_sdk::{
     ApiErrorKind, DatalensClient, Error as DatalensSdkError, RetryConfig,
@@ -28,6 +32,198 @@ pub struct DatalensNativeClient {
     application: String,
     bearer_token: crate::SecretString,
     http: reqwest::blocking::Client,
+    query_gate: Option<DatalensQueryConcurrencyGate>,
+    query_key: DatalensQueryConcurrencyKey,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DatalensQueryConcurrencyConfig {
+    pub global_max_in_flight: Option<usize>,
+    pub per_chain_max_in_flight: Option<usize>,
+}
+
+impl DatalensQueryConcurrencyConfig {
+    pub fn is_limited(self) -> bool {
+        self.global_max_in_flight.is_some() || self.per_chain_max_in_flight.is_some()
+    }
+
+    pub fn validate(self) -> Result<Self, DatalensError> {
+        if self.global_max_in_flight.is_some_and(|limit| limit == 0) {
+            return Err(DatalensError::Query(
+                "Datalens global query concurrency limit must be greater than zero".to_owned(),
+            ));
+        }
+        if self.per_chain_max_in_flight.is_some_and(|limit| limit == 0) {
+            return Err(DatalensError::Query(
+                "Datalens per-chain query concurrency limit must be greater than zero".to_owned(),
+            ));
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct DatalensQueryConcurrencyKey {
+    pub family: String,
+    pub configured_name: String,
+    pub network_id: Option<i32>,
+}
+
+impl DatalensQueryConcurrencyKey {
+    pub fn from_config(config: &DatalensConfig) -> Self {
+        Self {
+            family: config.chain.family.as_datalens_value().to_owned(),
+            configured_name: config.chain.configured_name.clone(),
+            network_id: config.chain.network_id,
+        }
+    }
+
+    fn log_network_id(&self) -> String {
+        self.network_id
+            .map(|network_id| network_id.to_string())
+            .unwrap_or_else(|| "none".to_owned())
+    }
+}
+
+#[derive(Clone)]
+pub struct DatalensQueryConcurrencyGate {
+    inner: Arc<DatalensQueryConcurrencyGateInner>,
+}
+
+struct DatalensQueryConcurrencyGateInner {
+    config: DatalensQueryConcurrencyConfig,
+    state: Mutex<DatalensQueryConcurrencyGateState>,
+    available: Condvar,
+}
+
+#[derive(Default)]
+struct DatalensQueryConcurrencyGateState {
+    global_in_flight: usize,
+    per_chain_in_flight: HashMap<DatalensQueryConcurrencyKey, usize>,
+}
+
+pub struct DatalensQueryConcurrencyPermit {
+    gate: DatalensQueryConcurrencyGate,
+    key: DatalensQueryConcurrencyKey,
+    pub wait_duration: Duration,
+    pub global_in_flight: usize,
+    pub chain_in_flight: usize,
+}
+
+impl DatalensQueryConcurrencyGate {
+    pub fn new(config: DatalensQueryConcurrencyConfig) -> Result<Self, DatalensError> {
+        let config = config.validate()?;
+        Ok(Self {
+            inner: Arc::new(DatalensQueryConcurrencyGateInner {
+                config,
+                state: Mutex::new(DatalensQueryConcurrencyGateState::default()),
+                available: Condvar::new(),
+            }),
+        })
+    }
+
+    pub fn acquire(
+        &self,
+        key: &DatalensQueryConcurrencyKey,
+    ) -> Result<DatalensQueryConcurrencyPermit, DatalensError> {
+        let started_at = Instant::now();
+        let mut state = self.inner.state.lock().map_err(|_| {
+            DatalensError::Query("Datalens query concurrency gate lock poisoned".to_owned())
+        })?;
+
+        while self
+            .inner
+            .config
+            .global_max_in_flight
+            .is_some_and(|limit| state.global_in_flight >= limit)
+            || self
+                .inner
+                .config
+                .per_chain_max_in_flight
+                .is_some_and(|limit| {
+                    state
+                        .per_chain_in_flight
+                        .get(key)
+                        .copied()
+                        .unwrap_or_default()
+                        >= limit
+                })
+        {
+            state = self.inner.available.wait(state).map_err(|_| {
+                DatalensError::Query("Datalens query concurrency gate lock poisoned".to_owned())
+            })?;
+        }
+
+        state.global_in_flight += 1;
+        let chain_in_flight = {
+            let chain_in_flight = state.per_chain_in_flight.entry(key.clone()).or_default();
+            *chain_in_flight += 1;
+            *chain_in_flight
+        };
+        let global_in_flight = state.global_in_flight;
+
+        Ok(DatalensQueryConcurrencyPermit {
+            gate: self.clone(),
+            key: key.clone(),
+            wait_duration: started_at.elapsed(),
+            global_in_flight,
+            chain_in_flight,
+        })
+    }
+}
+
+impl Drop for DatalensQueryConcurrencyPermit {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.gate.inner.state.lock() {
+            state.global_in_flight = state.global_in_flight.saturating_sub(1);
+            if let Some(chain_in_flight) = state.per_chain_in_flight.get_mut(&self.key) {
+                *chain_in_flight = chain_in_flight.saturating_sub(1);
+                if *chain_in_flight == 0 {
+                    state.per_chain_in_flight.remove(&self.key);
+                }
+            }
+        }
+        self.gate.inner.available.notify_all();
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DatalensQueryErrorClass {
+    ProviderLimit,
+    Transient,
+    Other,
+}
+
+impl DatalensQueryErrorClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ProviderLimit => "provider_limit",
+            Self::Transient => "transient",
+            Self::Other => "other",
+        }
+    }
+}
+
+pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
+    let normalized = error.to_ascii_lowercase();
+    if normalized.contains("provider_limit") || normalized.contains("narrow your filter") {
+        return DatalensQueryErrorClass::ProviderLimit;
+    }
+    if normalized.contains("provider_timeout")
+        || normalized.contains("timeout")
+        || normalized.contains("request_rate_limit")
+        || normalized.contains("rate_limit")
+        || normalized.contains("transport")
+        || normalized.contains("provider_failure")
+        || normalized.contains("unavailable_head")
+        || normalized.contains("storage_read_failure")
+        || normalized.contains("storage_write_failure")
+        || normalized.contains("manifest_update_failure")
+        || normalized.contains("internal")
+    {
+        return DatalensQueryErrorClass::Transient;
+    }
+    DatalensQueryErrorClass::Other
 }
 
 impl DatalensNativeClient {
@@ -46,6 +242,8 @@ impl DatalensNativeClient {
                 .user_agent(crate::config::DEGOV_DATALENS_USER_AGENT)
                 .build()
                 .map_err(|error| DatalensError::SdkConfig(error.to_string()))?,
+            query_gate: None,
+            query_key: DatalensQueryConcurrencyKey::from_config(config),
         })
     }
 
@@ -78,7 +276,14 @@ impl DatalensNativeClient {
                 .user_agent(crate::config::DEGOV_DATALENS_USER_AGENT)
                 .build()
                 .map_err(|error| DatalensError::SdkConfig(error.to_string()))?,
+            query_gate: None,
+            query_key: DatalensQueryConcurrencyKey::from_config(config),
         })
+    }
+
+    pub fn with_query_concurrency_gate(mut self, gate: DatalensQueryConcurrencyGate) -> Self {
+        self.query_gate = Some(gate);
+        self
     }
 
     pub(crate) fn service_base_endpoint(&self) -> &str {
@@ -120,10 +325,11 @@ impl DatalensNativeClient {
                         return Err(error);
                     };
                     warn!(
-                        "Datalens query transient fallback retry scheduled attempt={} max_attempts={} delay_ms={} error={}",
+                        "Datalens query transient fallback retry scheduled attempt={} max_attempts={} delay_ms={} error_class={} error={}",
                         attempt + 1,
                         self.retry_config.max_attempts,
                         delay.as_millis(),
+                        classify_datalens_query_error(&error.to_string()).as_str(),
                         error
                     );
                     std::thread::sleep(delay);
@@ -197,8 +403,34 @@ impl DatalensLogQueryReader for DatalensNativeClient {
         &mut self,
         input: QueryInput,
     ) -> Result<crate::DatalensLogQueryResult, DatalensError> {
-        self.query_with_transient_fallback(input)
-            .map_err(|error| DatalensError::Query(error.to_string()))
+        let _permit = self
+            .query_gate
+            .as_ref()
+            .map(|gate| {
+                let permit = gate.acquire(&self.query_key)?;
+                info!(
+                    "Datalens query concurrency permit acquired chain_family={} chain_name={} chain_network_id={} wait_ms={} global_in_flight={} chain_in_flight={}",
+                    self.query_key.family,
+                    self.query_key.configured_name,
+                    self.query_key.log_network_id(),
+                    permit.wait_duration.as_millis(),
+                    permit.global_in_flight,
+                    permit.chain_in_flight
+                );
+                Ok::<_, DatalensError>(permit)
+            })
+            .transpose()?;
+
+        self.query_with_transient_fallback(input).map_err(|error| {
+            let error_message = error.to_string();
+            warn!(
+                "Datalens query failed error_class={} max_attempts={} error={}",
+                classify_datalens_query_error(&error_message).as_str(),
+                self.retry_config.max_attempts,
+                error_message
+            );
+            DatalensError::Query(error_message)
+        })
     }
 }
 

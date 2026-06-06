@@ -7,10 +7,10 @@ use serde::Deserialize;
 
 use crate::{
     AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainReadMethod, DatalensConfig,
-    DatalensRuntimeContractSet, IndexerCheckpointIdentity, IndexerRunnerContexts,
-    IndexerRunnerOptions, OnchainRefreshTickConfig, OnchainRefreshWorkerConfig,
-    ProposalProjectionContext, SecretString, TimelockProjectionContext, TokenProjectionContext,
-    VoteProjectionContext,
+    DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet, IndexerCheckpointIdentity,
+    IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshTickConfig,
+    OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString, TimelockProjectionContext,
+    TokenProjectionContext, VoteProjectionContext,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -125,6 +125,7 @@ pub struct IndexerRuntimeConfig {
     pub checkpoint_stream_id: String,
     pub data_source_version: String,
     pub query_max_attempts: u32,
+    pub datalens_query_concurrency: DatalensQueryConcurrencyConfig,
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
@@ -195,6 +196,7 @@ pub struct IndexerContractSetRuntimeConfig {
     pub checkpoint_stream_id: String,
     pub data_source_version: String,
     pub query_max_attempts: u32,
+    pub datalens_query_concurrency: DatalensQueryConcurrencyConfig,
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub max_chunks_per_run: Option<u64>,
@@ -271,6 +273,7 @@ impl IndexerRuntimeConfig {
             data_source_version: optional_env("DEGOV_INDEXER_DATA_SOURCE_VERSION")?
                 .unwrap_or_else(|| "datalens-v1".to_owned()),
             query_max_attempts,
+            datalens_query_concurrency: load_datalens_query_concurrency_config()?,
             progress_refresh_lag_blocks: optional_env_i64(
                 "DEGOV_INDEXER_PROGRESS_REFRESH_LAG_BLOCKS",
             )?
@@ -337,6 +340,7 @@ impl IndexerRuntimeConfig {
             checkpoint_stream_id: self.checkpoint_stream_id.clone(),
             data_source_version: self.data_source_version.clone(),
             query_max_attempts: self.query_max_attempts,
+            datalens_query_concurrency: self.datalens_query_concurrency,
             progress_refresh_lag_blocks: self.progress_refresh_lag_blocks,
             adaptive_chunk_sizer: self.adaptive_chunk_sizer,
             max_chunks_per_run: self.max_chunks_per_run,
@@ -625,6 +629,30 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     }
     if config.min_blocks_between_ticks < 0 {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS must be zero or greater");
+    }
+
+    Ok(config)
+}
+
+fn load_datalens_query_concurrency_config() -> Result<DatalensQueryConcurrencyConfig> {
+    let config = DatalensQueryConcurrencyConfig {
+        global_max_in_flight: optional_env_usize("DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT")?,
+        per_chain_max_in_flight: optional_env_usize(
+            "DEGOV_INDEXER_DATALENS_QUERY_PER_CHAIN_MAX_IN_FLIGHT",
+        )?,
+    };
+
+    if config
+        .global_max_in_flight
+        .is_some_and(|max_in_flight| max_in_flight == 0)
+    {
+        bail!("DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT must be greater than zero");
+    }
+    if config
+        .per_chain_max_in_flight
+        .is_some_and(|max_in_flight| max_in_flight == 0)
+    {
+        bail!("DEGOV_INDEXER_DATALENS_QUERY_PER_CHAIN_MAX_IN_FLIGHT must be greater than zero");
     }
 
     Ok(config)
