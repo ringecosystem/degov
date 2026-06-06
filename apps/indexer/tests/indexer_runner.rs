@@ -12,6 +12,7 @@ use degov_datalens_indexer::{
     IndexerRunnerOptions, NormalizedEvmLog, QueryLimitConfig, SecretString, TokenProjectionContext,
     VoteCastEvent, VoteProjectionContext, page_rows,
 };
+use degov_datalens_indexer::{IndexerOnchainRefreshTick, OnchainRefreshTickReport};
 use serde_json::{Value, json};
 
 #[test]
@@ -240,6 +241,39 @@ fn test_runner_keeps_checkpoint_unchanged_when_transaction_fails() {
         runner.store().vote_repository().data_metric().votes_count,
         0
     );
+}
+
+#[test]
+fn test_runner_runs_onchain_refresh_tick_after_chunk_commit() {
+    let tick_blocks = Arc::new(Mutex::new(Vec::new()));
+    let tick = RecordingOnchainRefreshTick {
+        blocks: Arc::clone(&tick_blocks),
+    };
+    let mut runner =
+        runner(vec![vec![row(1, 0, 0)]], ScriptedDecoder).with_onchain_refresh_tick(Box::new(tick));
+
+    runner.run_to_target(1).expect("runner succeeds");
+
+    assert_eq!(*tick_blocks.lock().expect("tick blocks"), vec![1]);
+    assert_eq!(runner.store().commit_count(), 1);
+}
+
+#[test]
+fn test_runner_does_not_run_onchain_refresh_tick_when_chunk_commit_fails() {
+    let tick_blocks = Arc::new(Mutex::new(Vec::new()));
+    let tick = RecordingOnchainRefreshTick {
+        blocks: Arc::clone(&tick_blocks),
+    };
+    let mut runner =
+        runner(vec![vec![row(1, 0, 0)]], ScriptedDecoder).with_onchain_refresh_tick(Box::new(tick));
+    runner
+        .store_mut()
+        .fail_next_commit("projection write failed");
+
+    runner.run_to_target(1).expect_err("commit fails");
+
+    assert_eq!(*tick_blocks.lock().expect("tick blocks"), Vec::<i64>::new());
+    assert_eq!(runner.store().commit_count(), 0);
 }
 
 #[test]
@@ -475,6 +509,34 @@ impl DatalensLogQueryReader for FailingDatalensReader {
             r#"datalens HTTP error 429: {"error":{"kind":"rate_limited","message":"rate limited"}}"#
                 .to_owned(),
         ))
+    }
+}
+
+struct RecordingOnchainRefreshTick {
+    blocks: Arc<Mutex<Vec<i64>>>,
+}
+
+impl IndexerOnchainRefreshTick for RecordingOnchainRefreshTick {
+    fn run_after_chunk(
+        &mut self,
+        processed_block: i64,
+    ) -> Result<OnchainRefreshTickReport, String> {
+        self.blocks
+            .lock()
+            .expect("tick blocks")
+            .push(processed_block);
+
+        Ok(OnchainRefreshTickReport {
+            processed: 0,
+            claimed: 0,
+            completed: 0,
+            failed: 0,
+            duration: Duration::ZERO,
+            task_budget_hit: false,
+            duration_budget_hit: false,
+            skipped: None,
+            backlog: None,
+        })
     }
 }
 

@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use degov_datalens_indexer::{
     DatalensConfig, GraphqlRuntimeConfig, IndexerContractSetMode, IndexerRuntimeConfig,
-    IndexerTargetHeight, datalens_retry_config, onchain_refresh_worker_enabled,
-    parse_bool_env_value, parse_i64_env_value,
+    IndexerTargetHeight, OnchainRefreshTickConfig, datalens_retry_config,
+    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
 };
 
 #[test]
@@ -130,6 +130,84 @@ fn test_indexer_runtime_config_keeps_numeric_target_height_for_debug_runs() {
 }
 
 #[test]
+fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bounded() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS", None),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.onchain_refresh_tick,
+                OnchainRefreshTickConfig::default()
+            );
+            assert!(!config.onchain_refresh_tick.enabled);
+            assert_eq!(config.onchain_refresh_tick.max_tasks_per_tick, 10);
+            assert_eq!(
+                config.onchain_refresh_tick.max_duration_per_tick,
+                Duration::from_millis(500)
+            );
+            assert_eq!(config.onchain_refresh_tick.min_blocks_between_ticks, 100);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", Some("true")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", Some("3")),
+            (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS",
+                Some("25"),
+            ),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS", Some("5")),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(config.onchain_refresh_tick.enabled);
+            assert_eq!(config.onchain_refresh_tick.max_tasks_per_tick, 3);
+            assert_eq!(
+                config.onchain_refresh_tick.max_duration_per_tick,
+                Duration::from_millis(25)
+            );
+            assert_eq!(config.onchain_refresh_tick.min_blocks_between_ticks, 5);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_budget() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", Some("true")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", Some("0")),
+        ],
+        || {
+            let error = IndexerRuntimeConfig::from_env().expect_err("zero task budget is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS")
+            );
+        },
+    );
+}
+
+#[test]
 fn test_datalens_retry_config_maps_query_max_attempts_to_sdk_retry_attempts() {
     let retry_config = datalens_retry_config(5);
 
@@ -188,6 +266,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         run_once: true,
         max_chunks_per_run: None,
         database_max_connections: 1,
+        onchain_refresh_tick: OnchainRefreshTickConfig::default(),
     };
     let selected = config
         .configured_contract_sets(Some("lisk-dao"))
@@ -259,6 +338,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         run_once: true,
         max_chunks_per_run: None,
         database_max_connections: 1,
+        onchain_refresh_tick: OnchainRefreshTickConfig::default(),
     };
     let selected = config
         .configured_contract_sets(Some("lisk-dao"))
@@ -290,6 +370,7 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         run_once: true,
         max_chunks_per_run: None,
         database_max_connections: 1,
+        onchain_refresh_tick: OnchainRefreshTickConfig::default(),
     };
 
     assert!(!runtime.should_skip_contract_set_start_after_target(568752));

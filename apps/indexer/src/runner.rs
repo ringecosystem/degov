@@ -22,6 +22,7 @@ use crate::{
     project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
 };
 
+use crate::OnchainRefreshTickReport;
 use crate::checkpoint::configured_range_progress;
 
 #[derive(Clone, Debug)]
@@ -346,6 +347,12 @@ pub struct IndexerRunner<R, S, D = DaoEventDecoder> {
     store: S,
     decoder: D,
     shutdown_after_chunks: Option<u64>,
+    onchain_refresh_tick: Option<Box<dyn IndexerOnchainRefreshTick>>,
+}
+
+pub trait IndexerOnchainRefreshTick: Send {
+    fn run_after_chunk(&mut self, processed_block: i64)
+    -> Result<OnchainRefreshTickReport, String>;
 }
 
 struct ChunkProcessingResult {
@@ -415,6 +422,7 @@ where
             store,
             decoder,
             shutdown_after_chunks: None,
+            onchain_refresh_tick: None,
         }
     }
 
@@ -428,6 +436,11 @@ where
 
     pub fn request_shutdown_after_chunks(&mut self, chunks: u64) {
         self.shutdown_after_chunks = Some(chunks);
+    }
+
+    pub fn with_onchain_refresh_tick(mut self, tick: Box<dyn IndexerOnchainRefreshTick>) -> Self {
+        self.onchain_refresh_tick = Some(tick);
+        self
     }
 
     pub fn run_to_target(
@@ -579,6 +592,7 @@ where
                 .commit()
                 .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             let write_duration = write_started_at.elapsed();
+            self.run_onchain_refresh_tick(range.to_block);
 
             chunks_processed += 1;
             let local_processing_write_duration = processing.metrics.decode_duration
@@ -674,6 +688,49 @@ where
                     self.options.start_block,
                 )
                 .map_err(to_checkpoint_error)?;
+        }
+    }
+
+    fn run_onchain_refresh_tick(&mut self, processed_block: i64) {
+        let Some(tick) = self.onchain_refresh_tick.as_mut() else {
+            return;
+        };
+
+        match tick.run_after_chunk(processed_block) {
+            Ok(report) => info!(
+                "Datalens indexer onchain refresh tick completed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} processed_block={} processed={} claimed={} completed={} failed={} skipped_reason={} duration_ms={} task_budget_hit={} duration_budget_hit={} backlog={}",
+                self.options.checkpoint_identity.dao_code,
+                self.options.checkpoint_identity.chain_id,
+                self.options.checkpoint_identity.contract_set_id,
+                self.options.checkpoint_identity.stream_id,
+                self.options.checkpoint_identity.data_source_version,
+                processed_block,
+                report.processed,
+                report.claimed,
+                report.completed,
+                report.failed,
+                report
+                    .skipped
+                    .map(|reason| reason.to_string())
+                    .unwrap_or_else(|| "none".to_owned()),
+                report.duration.as_millis(),
+                report.task_budget_hit,
+                report.duration_budget_hit,
+                report
+                    .backlog
+                    .map(|backlog| backlog.to_string())
+                    .unwrap_or_else(|| "unknown".to_owned())
+            ),
+            Err(error) => warn!(
+                "Datalens indexer onchain refresh tick failed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} processed_block={} error={}",
+                self.options.checkpoint_identity.dao_code,
+                self.options.checkpoint_identity.chain_id,
+                self.options.checkpoint_identity.contract_set_id,
+                self.options.checkpoint_identity.stream_id,
+                self.options.checkpoint_identity.data_source_version,
+                processed_block,
+                error
+            ),
         }
     }
 

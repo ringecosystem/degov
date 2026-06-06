@@ -8,8 +8,9 @@ use serde::Deserialize;
 use crate::{
     BatchReadPlanConfig, ChainContracts, ChainReadMethod, DatalensConfig,
     DatalensRuntimeContractSet, IndexerCheckpointIdentity, IndexerRunnerContexts,
-    IndexerRunnerOptions, OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString,
-    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
+    IndexerRunnerOptions, OnchainRefreshTickConfig, OnchainRefreshWorkerConfig,
+    ProposalProjectionContext, SecretString, TimelockProjectionContext, TokenProjectionContext,
+    VoteProjectionContext,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -125,6 +126,7 @@ pub struct IndexerRuntimeConfig {
     pub data_source_version: String,
     pub query_max_attempts: u32,
     pub progress_refresh_lag_blocks: i64,
+    pub onchain_refresh_tick: OnchainRefreshTickConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -194,6 +196,7 @@ pub struct IndexerContractSetRuntimeConfig {
     pub query_max_attempts: u32,
     pub progress_refresh_lag_blocks: i64,
     pub max_chunks_per_run: Option<u64>,
+    pub onchain_refresh_tick: OnchainRefreshTickConfig,
 }
 
 impl IndexerRuntimeConfig {
@@ -234,6 +237,7 @@ impl IndexerRuntimeConfig {
                 "DEGOV_INDEXER_PROGRESS_REFRESH_LAG_BLOCKS",
             )?
             .unwrap_or(100),
+            onchain_refresh_tick: load_onchain_refresh_tick_config()?,
             poll_interval,
             run_once,
             max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,
@@ -296,6 +300,7 @@ impl IndexerRuntimeConfig {
             query_max_attempts: self.query_max_attempts,
             progress_refresh_lag_blocks: self.progress_refresh_lag_blocks,
             max_chunks_per_run: self.max_chunks_per_run,
+            onchain_refresh_tick: self.onchain_refresh_tick.clone(),
         };
 
         Ok(runtime
@@ -455,6 +460,14 @@ struct RawRpcChainFileConfig {
 impl OnchainRefreshRuntimeConfig {
     pub fn from_env() -> Result<Self> {
         let enabled = optional_env_bool("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED")?.unwrap_or(true);
+        Self::from_env_with_enabled(enabled)
+    }
+
+    pub fn from_env_for_indexer_tick() -> Result<Self> {
+        Self::from_env_with_enabled(true)
+    }
+
+    fn from_env_with_enabled(enabled: bool) -> Result<Self> {
         let rpc_chains = load_onchain_refresh_rpc_chains(enabled)?;
         let batch_size = optional_env_usize("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE")?.unwrap_or(100);
         if batch_size == 0 {
@@ -542,6 +555,40 @@ impl OnchainRefreshRuntimeConfig {
             lock_owner: format!("degov-onchain-refresh-worker:{}", std::process::id()),
         }
     }
+}
+
+fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
+    let defaults = OnchainRefreshTickConfig::default();
+    let config = OnchainRefreshTickConfig {
+        enabled: optional_env_bool("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED")?
+            .unwrap_or(defaults.enabled),
+        max_tasks_per_tick: optional_env_usize("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS")?
+            .unwrap_or(defaults.max_tasks_per_tick),
+        max_duration_per_tick: Duration::from_millis(
+            optional_env_u64("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS")?
+                .unwrap_or(duration_millis_u64(defaults.max_duration_per_tick)),
+        ),
+        min_blocks_between_ticks: optional_env_i64(
+            "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS",
+        )?
+        .unwrap_or(defaults.min_blocks_between_ticks),
+    };
+
+    if config.enabled && config.max_tasks_per_tick == 0 {
+        bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS must be greater than zero");
+    }
+    if config.enabled && config.max_duration_per_tick.is_zero() {
+        bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS must be greater than zero");
+    }
+    if config.min_blocks_between_ticks < 0 {
+        bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS must be zero or greater");
+    }
+
+    Ok(config)
+}
+
+fn duration_millis_u64(duration: Duration) -> u64 {
+    duration.as_millis().try_into().unwrap_or(u64::MAX)
 }
 
 fn load_onchain_refresh_rpc_chains(
