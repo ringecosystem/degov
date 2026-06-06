@@ -7,12 +7,13 @@ use tokio::{runtime::Handle, task, time::sleep};
 
 use crate::{
     DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
-    DatalensNativeClient, DatalensWarmupEnsureOutcome, EvmRpcChainTool,
-    IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner, IndexerRunnerReport,
-    IndexerRuntimeConfig, IndexerTargetHeight, MultiChainToolOnchainRefreshReader,
-    OnchainRefreshRuntimeConfig, OnchainRefreshTickReport, OnchainRefreshTickRunner,
-    OnchainRefreshTickScheduler, OnchainRefreshWorker, OnchainRefreshWorkerError,
-    PostgresIndexerRunnerStore, datalens_retry_config, ensure_datalens_warmup_task, required_env,
+    DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensWarmupEnsureOutcome,
+    EvmRpcChainTool, IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner,
+    IndexerRunnerReport, IndexerRuntimeConfig, IndexerTargetHeight,
+    MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTickReport,
+    OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshWorker,
+    OnchainRefreshWorkerError, PostgresIndexerRunnerStore, datalens_retry_config,
+    ensure_datalens_warmup_task, required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -39,6 +40,14 @@ pub async fn run_indexer() -> Result<()> {
         .context("connect to DeGov indexer Postgres")?;
     apply_migrations(&pool).await?;
     ensure_warmup_on_startup(&runtime, &config).await?;
+    let datalens_query_gate = if runtime.datalens_query_concurrency.is_limited() {
+        Some(
+            DatalensQueryConcurrencyGate::new(runtime.datalens_query_concurrency)
+                .context("create Datalens query concurrency gate")?,
+        )
+    } else {
+        None
+    };
 
     loop {
         let contract_sets = runtime
@@ -76,6 +85,7 @@ pub async fn run_indexer() -> Result<()> {
                 contract_set.config.clone(),
                 contract_set.addresses.clone(),
                 pool.clone(),
+                datalens_query_gate.clone(),
             )
             .await?;
 
@@ -159,6 +169,7 @@ async fn run_contract_set_pass(
     config: DatalensConfig,
     contracts: DaoContractAddresses,
     pool: sqlx::PgPool,
+    datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
 ) -> Result<IndexerRunnerReport> {
     log::info!(
         "Datalens indexer contract set pass is ready dao_code={} dao_chain={} chain_id={:?} contract_set_id={} governor={} token={} timelock={} start_block={} target_height={}",
@@ -176,11 +187,14 @@ async fn run_contract_set_pass(
     let onchain_refresh_tick = build_onchain_refresh_tick(&runtime, pool.clone())?;
 
     task::spawn_blocking(move || -> Result<_> {
-        let client = DatalensNativeClient::from_config_with_retry_config(
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
             &config,
             datalens_retry_config(runtime.query_max_attempts),
         )
         .context("create Datalens client")?;
+        if let Some(gate) = datalens_query_gate {
+            client = client.with_query_concurrency_gate(gate);
+        }
         let store = PostgresIndexerRunnerStore::new(pool);
         let mut runner = IndexerRunner::new(
             runtime.options(&config, &contracts)?,
@@ -340,6 +354,7 @@ mod tests {
             checkpoint_stream_id: "datalens-native".to_owned(),
             data_source_version: "datalens-v1".to_owned(),
             query_max_attempts: 1,
+            datalens_query_concurrency: Default::default(),
             progress_refresh_lag_blocks: 100,
             adaptive_chunk_sizer: Default::default(),
             onchain_refresh_tick: Default::default(),

@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use degov_datalens_indexer::{
-    DatalensConfig, GraphqlRuntimeConfig, IndexerContractSetMode, IndexerRuntimeConfig,
-    IndexerTargetHeight, OnchainRefreshTickConfig, datalens_retry_config,
+    DatalensConfig, DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig, IndexerContractSetMode,
+    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshTickConfig, datalens_retry_config,
     onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
 };
 
@@ -125,6 +125,75 @@ fn test_indexer_runtime_config_keeps_numeric_target_height_for_debug_runs() {
             let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
 
             assert_eq!(config.target_height, IndexerTargetHeight::Fixed(123));
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_defaults_datalens_query_concurrency_to_unbounded() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT", None),
+            ("DEGOV_INDEXER_DATALENS_QUERY_PER_CHAIN_MAX_IN_FLIGHT", None),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.datalens_query_concurrency,
+                DatalensQueryConcurrencyConfig::default()
+            );
+            assert!(!config.datalens_query_concurrency.is_limited());
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_accepts_datalens_query_concurrency_overrides() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT", Some("4")),
+            (
+                "DEGOV_INDEXER_DATALENS_QUERY_PER_CHAIN_MAX_IN_FLIGHT",
+                Some("2"),
+            ),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.datalens_query_concurrency,
+                DatalensQueryConcurrencyConfig {
+                    global_max_in_flight: Some(4),
+                    per_chain_max_in_flight: Some(2),
+                }
+            );
+            assert!(config.datalens_query_concurrency.is_limited());
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_rejects_zero_datalens_query_concurrency() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT", Some("0")),
+            ("DEGOV_INDEXER_DATALENS_QUERY_PER_CHAIN_MAX_IN_FLIGHT", None),
+        ],
+        || {
+            let error = IndexerRuntimeConfig::from_env().expect_err("zero global limit is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT")
+            );
         },
     );
 }
@@ -261,6 +330,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         checkpoint_stream_id: "datalens-native".to_owned(),
         data_source_version: "datalens-v1".to_owned(),
         query_max_attempts: 3,
+        datalens_query_concurrency: Default::default(),
         progress_refresh_lag_blocks: 100,
         adaptive_chunk_sizer: Default::default(),
         poll_interval: Duration::from_secs(10),
@@ -334,6 +404,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         checkpoint_stream_id: "datalens-native".to_owned(),
         data_source_version: "datalens-v1".to_owned(),
         query_max_attempts: 3,
+        datalens_query_concurrency: Default::default(),
         progress_refresh_lag_blocks: 100,
         adaptive_chunk_sizer: Default::default(),
         poll_interval: Duration::from_secs(10),
@@ -367,6 +438,7 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         checkpoint_stream_id: "datalens-native".to_owned(),
         data_source_version: "datalens-v1".to_owned(),
         query_max_attempts: 3,
+        datalens_query_concurrency: Default::default(),
         progress_refresh_lag_blocks: 100,
         adaptive_chunk_sizer: Default::default(),
         poll_interval: Duration::from_secs(10),

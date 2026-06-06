@@ -29,7 +29,9 @@ pub use crate::datalens::warmup::{
 };
 pub use crate::datalens::{
     DatalensLogQueryCacheOutcome, DatalensLogQueryCacheSummary, DatalensLogQueryResult,
-    DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields,
+    DatalensQueryConcurrencyConfig, DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey,
+    DatalensQueryErrorClass, DatalensWarmupEffectivenessAggregation,
+    DatalensWarmupEffectivenessLogFields, classify_datalens_query_error,
     datalens_selector_fingerprint,
 };
 pub use crate::decode::dao_event::{
