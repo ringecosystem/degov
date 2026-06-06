@@ -165,7 +165,7 @@ pub fn follow_query_request(
         range_kind: warmup_range_kind(&query.input.range.kind)?,
         start: start_block as u64,
         end: None,
-        mode: "follow_safe_height".to_owned(),
+        mode: "follow_query".to_owned(),
         finality: query.input.finality.clone(),
         chunk_policy: WarmupChunkPolicy {
             max_range_len: config.query_limits.block_range_limit,

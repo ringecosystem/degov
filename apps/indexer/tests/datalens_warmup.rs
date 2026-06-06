@@ -40,7 +40,7 @@ fn test_ensure_datalens_warmup_task_submits_follow_query_when_enabled() {
     assert_eq!(request.range_kind, "block");
     assert_eq!(request.start, 100);
     assert_eq!(request.end, None);
-    assert_eq!(request.mode, "follow_safe_height");
+    assert_eq!(request.mode, "follow_query");
     assert_eq!(request.selector.addresses.len(), 3);
     assert_eq!(request.selector.topics.len(), 1);
     assert_eq!(request.finality.as_deref(), Some("durable_only"));
