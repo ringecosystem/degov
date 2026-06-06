@@ -1,10 +1,15 @@
+use std::time::{Duration, Instant};
+
 use datalens_sdk::native::{
     ChainFamilyInput, ChainFamilyKindInput, ChainIdentityInput, DatasetKeyInput,
     EvmLogsSelectorInput, NetworkIdInput, QueryInput, QueryRangeInput, QueryRangeKindInput,
     QuerySelectorInput, SelectorKindInput,
 };
 
-use crate::{DatalensConfig, DatalensError, GovernanceTokenStandard};
+use crate::{
+    DatalensConfig, DatalensError, DatalensLogQueryCacheSummary, DatalensLogQueryResult,
+    GovernanceTokenStandard,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DaoContractAddresses {
@@ -39,10 +44,12 @@ pub struct DaoLogQueryPlan {
 pub struct DatalensLogPage {
     pub plan: DaoLogQueryPlan,
     pub rows: serde_json::Value,
+    pub cache: DatalensLogQueryCacheSummary,
+    pub query_duration: Duration,
 }
 
 pub trait DatalensLogQueryReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<serde_json::Value, DatalensError>;
+    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError>;
 }
 
 pub fn plan_dao_log_queries(
@@ -95,10 +102,13 @@ pub fn fetch_dao_log_pages(
 ) -> Result<Vec<DatalensLogPage>, DatalensError> {
     let mut pages = Vec::new();
     for plan in plans {
-        let rows = reader.query_logs(plan.input.clone())?;
+        let query_started_at = Instant::now();
+        let result = reader.query_logs(plan.input.clone())?;
         pages.push(DatalensLogPage {
             plan: plan.clone(),
-            rows,
+            rows: result.rows,
+            cache: result.cache,
+            query_duration: query_started_at.elapsed(),
         });
     }
 

@@ -103,11 +103,11 @@ fn test_datalens_log_query_retries_retryable_rate_limit_before_success() {
             .expect("client");
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
 
-    let rows = client
+    let result = client
         .query_logs(plans[0].input.clone())
         .expect("query retries and succeeds");
 
-    assert_eq!(rows, serde_json::json!([{ "block_number": 100 }]));
+    assert_eq!(result.rows, serde_json::json!([{ "block_number": 100 }]));
     let requests = server.join();
     assert_eq!(requests.len(), 2);
     assert!(
@@ -130,11 +130,11 @@ fn test_datalens_log_query_retries_provider_timeout_before_success() {
             .expect("client");
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
 
-    let rows = client
+    let result = client
         .query_logs(plans[0].input.clone())
         .expect("query retries and succeeds");
 
-    assert_eq!(rows, serde_json::json!([{ "block_number": 101 }]));
+    assert_eq!(result.rows, serde_json::json!([{ "block_number": 101 }]));
     let requests = server.join();
     assert_eq!(requests.len(), 2);
 }
@@ -153,11 +153,11 @@ fn test_datalens_log_query_retries_transport_failure_before_success() {
             .expect("client");
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
 
-    let rows = client
+    let result = client
         .query_logs(plans[0].input.clone())
         .expect("query retries and succeeds");
 
-    assert_eq!(rows, serde_json::json!([{ "block_number": 102 }]));
+    assert_eq!(result.rows, serde_json::json!([{ "block_number": 102 }]));
     let requests = server.join();
     assert_eq!(requests.len(), 2);
 }

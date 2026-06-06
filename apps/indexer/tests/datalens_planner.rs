@@ -4,8 +4,8 @@ use datalens_sdk::native::{QueryInput, QueryRangeKindInput, SelectorKindInput};
 use degov_datalens_indexer::{
     ChainFamily, ChainIdentityConfig, DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan,
     DaoLogSource, DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader,
-    DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig, SecretString, fetch_dao_log_pages,
-    plan_dao_log_queries,
+    DatalensLogQueryResult, DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig,
+    SecretString, fetch_dao_log_pages, plan_dao_log_queries,
 };
 
 #[test]
@@ -225,8 +225,10 @@ impl MockLogReader {
 }
 
 impl DatalensLogQueryReader for MockLogReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<serde_json::Value, DatalensError> {
+    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
         self.calls.push(input);
-        self.results.remove(0)
+        self.results
+            .remove(0)
+            .map(DatalensLogQueryResult::rows_only)
     }
 }

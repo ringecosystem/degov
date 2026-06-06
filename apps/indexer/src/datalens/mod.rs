@@ -1,10 +1,16 @@
 pub mod client;
+pub mod effectiveness;
 pub mod planner;
 pub mod warmup;
 
 pub use client::{
     DatalensDurableHeadReader, DatalensNativeClient, DatalensNativeReader, ServiceReadiness,
     verify_datalens_service,
+};
+pub use effectiveness::{
+    DatalensLogQueryCacheOutcome, DatalensLogQueryCacheSummary, DatalensLogQueryResult,
+    DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields,
+    datalens_selector_fingerprint,
 };
 pub use planner::{
     DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan, DaoLogSource, DatalensLogPage,

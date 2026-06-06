@@ -7,7 +7,8 @@ use thiserror::Error;
 
 use crate::{
     CheckpointBlockRange, CheckpointError, DaoContractAddresses, DaoEventDecodeError, DaoLogSource,
-    DatalensConfig, DatalensError, DatalensLogPage, DatalensLogQueryReader, DecodedDaoEvent,
+    DatalensConfig, DatalensError, DatalensLogPage, DatalensLogQueryReader,
+    DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields, DecodedDaoEvent,
     GovernanceTokenStandard, InMemoryProposalProjectionRepository,
     InMemoryTimelockProjectionRepository, InMemoryTokenProjectionRepository,
     InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -16,8 +17,8 @@ use crate::{
     TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
     TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository,
     VoteProjectionBatch, VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
-    decode_dao_log, fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries,
-    plan_next_checkpoint_range, project_proposal_events,
+    datalens_selector_fingerprint, decode_dao_log, fetch_dao_log_pages, normalize_evm_log_rows,
+    plan_dao_log_queries, plan_next_checkpoint_range, project_proposal_events,
     project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
 };
 
@@ -363,12 +364,14 @@ struct ProgressRateSample {
     processed_height: i64,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct ChunkProcessingMetrics {
     datalens_request_count: usize,
     returned_row_count: usize,
     decoded_count: usize,
     projection_event_counts: ProjectionEventCounts,
+    warmup_effectiveness: DatalensWarmupEffectivenessAggregation,
+    selector_fingerprint: String,
     read_duration: Duration,
     decode_duration: Duration,
     project_duration: Duration,
@@ -441,6 +444,7 @@ where
             ))?;
         let mut progress_rate = ProgressRateEstimator::default();
         let mut chunks_processed = 0;
+        let mut provider_limit_count_since_summary = 0;
         let mut checkpoint = self
             .store
             .read_or_create_checkpoint(&self.options.checkpoint_identity, self.options.start_block)
@@ -513,6 +517,7 @@ where
                 Err(error) => {
                     let failed_range_block_count = range_block_count(range);
                     if is_provider_limit_error(&error) && failed_range_block_count > 1 {
+                        provider_limit_count_since_summary += 1;
                         let sizing_decision =
                             chunk_sizer.record_provider_limit(failed_range_block_count);
                         let retry_to_block = range
@@ -628,6 +633,40 @@ where
                 sizing_decision.current_chunk_size,
                 sizing_decision.reason
             );
+            let mut warmup_effectiveness_aggregation =
+                processing.metrics.warmup_effectiveness.clone();
+            warmup_effectiveness_aggregation
+                .record_provider_limits(provider_limit_count_since_summary);
+            provider_limit_count_since_summary = 0;
+            let warmup_effectiveness = DatalensWarmupEffectivenessLogFields::from_aggregation(
+                &self.options.checkpoint_identity,
+                processing.metrics.selector_fingerprint.clone(),
+                Some(checkpoint_next_block_before),
+                Some(range.to_block),
+                &warmup_effectiveness_aggregation,
+            );
+            info!(
+                "Datalens follow_query warmup effectiveness summary dao_code={} chain_id={} contract_set_id={} selector_fingerprint={} query_watermark={} current_checkpoint={} warmup_task_id={} warmup_cursor={} warmup_lead_blocks={} full_hit_count={} partial_hit_count={} miss_count={} empty_count={} unavailable_count={} provider_fill_range_count={} provider_limit_count={} query_duration_min_ms={} query_duration_avg_ms={} query_duration_max_ms={}",
+                warmup_effectiveness.dao_code,
+                warmup_effectiveness.chain_id,
+                warmup_effectiveness.contract_set_id,
+                warmup_effectiveness.selector_fingerprint,
+                optional_i64_log_value(warmup_effectiveness.query_watermark),
+                optional_i64_log_value(warmup_effectiveness.current_checkpoint),
+                warmup_effectiveness.warmup_task_id,
+                warmup_effectiveness.warmup_cursor,
+                warmup_effectiveness.warmup_lead_blocks,
+                warmup_effectiveness.full_hit_count,
+                warmup_effectiveness.partial_hit_count,
+                warmup_effectiveness.miss_count,
+                warmup_effectiveness.empty_count,
+                warmup_effectiveness.unavailable_count,
+                warmup_effectiveness.provider_fill_range_count,
+                warmup_effectiveness.provider_limit_count,
+                optional_u128_log_value(warmup_effectiveness.query_duration_min_ms),
+                optional_u128_log_value(warmup_effectiveness.query_duration_avg_ms),
+                optional_u128_log_value(warmup_effectiveness.query_duration_max_ms)
+            );
             checkpoint = self
                 .store
                 .read_or_create_checkpoint(
@@ -651,8 +690,16 @@ where
             range.to_block,
         )?;
         let datalens_request_count = plans.len();
+        let selector_fingerprint = plans
+            .first()
+            .map(|plan| datalens_selector_fingerprint(&plan.input.selector))
+            .unwrap_or_else(|| "unavailable".to_owned());
         let pages = fetch_dao_log_pages(&mut self.reader, &plans)?;
         let read_duration = read_started_at.elapsed();
+        let mut warmup_effectiveness = DatalensWarmupEffectivenessAggregation::new();
+        for page in &pages {
+            warmup_effectiveness.record_query(page.cache.clone(), page.query_duration);
+        }
         let decode_started_at = Instant::now();
         let decoded = self.decode_pages(pages)?;
         let decode_duration = decode_started_at.elapsed();
@@ -669,6 +716,8 @@ where
                 returned_row_count,
                 decoded_count,
                 projection_event_counts: projected.event_counts,
+                warmup_effectiveness,
+                selector_fingerprint,
                 read_duration,
                 decode_duration,
                 project_duration,
@@ -923,6 +972,18 @@ fn optional_f64_log_value(value: Option<f64>) -> String {
     value
         .map(|value| format!("{value:.2}"))
         .unwrap_or_else(|| "null".to_owned())
+}
+
+fn optional_i64_log_value(value: Option<i64>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unavailable".to_owned())
+}
+
+fn optional_u128_log_value(value: Option<u128>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unavailable".to_owned())
 }
 
 fn to_checkpoint_error(error: impl fmt::Display) -> IndexerRunnerError {

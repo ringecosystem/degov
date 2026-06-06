@@ -6,7 +6,7 @@ use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
     BatchReadPlanConfig, ChainContracts, ChainFamily, ChainIdentityConfig, ChainReadMethod,
     DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensError, DatalensFinality,
-    DatalensLogQueryReader, DatasetKeyConfig, GovernanceTokenStandard,
+    DatalensLogQueryReader, DatalensLogQueryResult, DatasetKeyConfig, GovernanceTokenStandard,
     InMemoryProposalProjectionRepository, InMemoryTimelockProjectionRepository,
     InMemoryTokenProjectionRepository, InMemoryVoteProjectionRepository, IndexerCheckpoint,
     IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts,
@@ -287,10 +287,10 @@ struct ScriptedReader {
 }
 
 impl DatalensLogQueryReader for ScriptedReader {
-    fn query_logs(&mut self, _input: QueryInput) -> Result<Value, DatalensError> {
-        Ok(Value::Array(
+    fn query_logs(&mut self, _input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
+        Ok(DatalensLogQueryResult::rows_only(Value::Array(
             self.rows.pop_front().expect("scripted query response"),
-        ))
+        )))
     }
 }
 
