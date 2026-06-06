@@ -135,6 +135,7 @@ async fn ensure_warmup_on_startup(
         let contract_set_id = contract_set.contract_set_id.clone();
         let chain_id = contract_set.contract.chain_id;
         let start_block = contract_set.contract.start_block;
+        let warmup_required = config.warmup.required;
         let retry_config = retry_config.clone();
         let outcome = task::spawn_blocking(move || -> Result<_> {
             let mut client =
@@ -148,6 +149,16 @@ async fn ensure_warmup_on_startup(
 
         match outcome {
             DatalensWarmupEnsureOutcome::Disabled => {}
+            DatalensWarmupEnsureOutcome::Failed { error } => {
+                log::warn!(
+                    "Datalens follow_query warmup startup ensure failed; continuing indexing dao_code={} chain_id={} contract_set_id={} required={} error={}",
+                    dao_code,
+                    chain_id,
+                    contract_set_id,
+                    warmup_required,
+                    error
+                );
+            }
             DatalensWarmupEnsureOutcome::Submitted { task_id, created } => {
                 log::info!(
                     "Datalens follow_query warmup task ensured dao_code={} chain_id={} contract_set_id={} task_id={} created={}",

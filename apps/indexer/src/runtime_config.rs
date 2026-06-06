@@ -635,6 +635,8 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
 }
 
 fn load_datalens_query_concurrency_config() -> Result<DatalensQueryConcurrencyConfig> {
+    // These limits are process-local guards for this indexer instance, not
+    // distributed limits shared across pods or hosts.
     let config = DatalensQueryConcurrencyConfig {
         global_max_in_flight: optional_env_usize("DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT")?,
         per_chain_max_in_flight: optional_env_usize(
@@ -646,13 +648,17 @@ fn load_datalens_query_concurrency_config() -> Result<DatalensQueryConcurrencyCo
         .global_max_in_flight
         .is_some_and(|max_in_flight| max_in_flight == 0)
     {
-        bail!("DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT must be greater than zero");
+        bail!(
+            "DEGOV_INDEXER_DATALENS_QUERY_MAX_IN_FLIGHT process-local limit must be greater than zero"
+        );
     }
     if config
         .per_chain_max_in_flight
         .is_some_and(|max_in_flight| max_in_flight == 0)
     {
-        bail!("DEGOV_INDEXER_DATALENS_QUERY_PER_CHAIN_MAX_IN_FLIGHT must be greater than zero");
+        bail!(
+            "DEGOV_INDEXER_DATALENS_QUERY_PER_CHAIN_MAX_IN_FLIGHT process-local limit must be greater than zero"
+        );
     }
 
     Ok(config)

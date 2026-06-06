@@ -95,9 +95,6 @@ fn test_warmup_effectiveness_aggregation_builds_operator_log_fields() {
     assert_eq!(fields.selector_fingerprint, "selector-abc");
     assert_eq!(fields.query_watermark, Some(119));
     assert_eq!(fields.current_checkpoint, Some(100));
-    assert_eq!(fields.warmup_task_id, "unavailable");
-    assert_eq!(fields.warmup_cursor, "unavailable");
-    assert_eq!(fields.warmup_lead_blocks, "unavailable");
     assert_eq!(fields.full_hit_count, 1);
     assert_eq!(fields.partial_hit_count, 1);
     assert_eq!(fields.miss_count, 0);

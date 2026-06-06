@@ -46,6 +46,7 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint(
             ("DATALENS_DATASET_FAMILY", Some("evm")),
             ("DATALENS_DATASET_NAME", Some("logs")),
             ("DATALENS_QUERY_BLOCK_RANGE_LIMIT", Some("500")),
+            ("DATALENS_WARMUP_REQUIRED", Some("true")),
             ("DEGOV_INDEXER_DAO_CODE", Some("lisk-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("568752")),
             (
@@ -77,6 +78,7 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint(
             assert_eq!(config.chain.network_id, Some(1));
             assert_eq!(config.dataset.key(), "evm.logs");
             assert_eq!(config.query_limits.block_range_limit, 500);
+            assert_eq!(config.warmup.required, true);
             assert_eq!(
                 config.dao_contracts.as_ref().expect("contracts").governor,
                 "0x1111111111111111111111111111111111111111"
@@ -229,6 +231,7 @@ datalens:
   warmup:
     enabled: true
     ensureOnStartup: true
+    required: true
 chains:
   - chainId: 1
     networkName: ethereum
@@ -270,6 +273,7 @@ chains:
             );
             assert_eq!(config.warmup.enabled, true);
             assert_eq!(config.warmup.ensure_on_startup, true);
+            assert_eq!(config.warmup.required, true);
             assert_eq!(config.warmup.kind.as_str(), "follow_query");
             assert_eq!(config.query_limits.block_range_limit, 777);
             assert_eq!(config.chains.len(), 2);
@@ -322,6 +326,7 @@ chains:
 
             assert_eq!(config.warmup.enabled, false);
             assert_eq!(config.warmup.ensure_on_startup, false);
+            assert_eq!(config.warmup.required, false);
             assert_eq!(config.warmup.kind.as_str(), "follow_query");
         },
     );

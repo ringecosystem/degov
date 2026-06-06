@@ -50,12 +50,14 @@ impl DatalensQueryConcurrencyConfig {
     pub fn validate(self) -> Result<Self, DatalensError> {
         if self.global_max_in_flight.is_some_and(|limit| limit == 0) {
             return Err(DatalensError::Query(
-                "Datalens global query concurrency limit must be greater than zero".to_owned(),
+                "Datalens process-local query concurrency limit must be greater than zero"
+                    .to_owned(),
             ));
         }
         if self.per_chain_max_in_flight.is_some_and(|limit| limit == 0) {
             return Err(DatalensError::Query(
-                "Datalens per-chain query concurrency limit must be greater than zero".to_owned(),
+                "Datalens process-local per-chain query concurrency limit must be greater than zero"
+                    .to_owned(),
             ));
         }
         Ok(self)
@@ -409,7 +411,7 @@ impl DatalensLogQueryReader for DatalensNativeClient {
             .map(|gate| {
                 let permit = gate.acquire(&self.query_key)?;
                 info!(
-                    "Datalens query concurrency permit acquired chain_family={} chain_name={} chain_network_id={} wait_ms={} global_in_flight={} chain_in_flight={}",
+                    "Datalens process-local query concurrency permit acquired chain_family={} chain_name={} chain_network_id={} wait_ms={} process_in_flight={} chain_in_flight={}",
                     self.query_key.family,
                     self.query_key.configured_name,
                     self.query_key.log_network_id(),

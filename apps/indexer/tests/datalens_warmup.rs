@@ -1,9 +1,9 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use degov_datalens_indexer::{
-    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DatalensConfig, DatalensFinality,
-    DatalensWarmupEnsureOutcome, DatalensWarmupEnsurer, DatasetKeyConfig, GovernanceTokenStandard,
-    QueryLimitConfig, SecretString, ensure_datalens_warmup_task,
+    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DatalensConfig, DatalensError,
+    DatalensFinality, DatalensWarmupEnsureOutcome, DatalensWarmupEnsurer, DatasetKeyConfig,
+    GovernanceTokenStandard, QueryLimitConfig, SecretString, ensure_datalens_warmup_task,
 };
 
 #[test]
@@ -84,6 +84,36 @@ fn test_ensure_datalens_warmup_task_submits_distinct_task_for_selector_mismatch(
     assert_eq!(ensurer.created_tasks.len(), 2);
 }
 
+#[test]
+fn test_ensure_datalens_warmup_task_returns_failed_outcome_when_submit_fails_by_default() {
+    let config = config();
+    let mut ensurer = MockWarmupEnsurer::with_error("submit unavailable");
+
+    let outcome =
+        ensure_datalens_warmup_task(&mut ensurer, &config, &addresses(), 100).expect("ensure");
+
+    assert_eq!(
+        outcome,
+        DatalensWarmupEnsureOutcome::Failed {
+            error: "submit unavailable".to_owned()
+        }
+    );
+    assert_eq!(ensurer.requests.len(), 1);
+}
+
+#[test]
+fn test_ensure_datalens_warmup_task_returns_error_when_submit_fails_and_required() {
+    let mut config = config();
+    config.warmup.required = true;
+    let mut ensurer = MockWarmupEnsurer::with_error("submit unavailable");
+
+    let error = ensure_datalens_warmup_task(&mut ensurer, &config, &addresses(), 100)
+        .expect_err("required warmup fails fast");
+
+    assert!(error.to_string().contains("submit unavailable"));
+    assert_eq!(ensurer.requests.len(), 1);
+}
+
 fn config() -> DatalensConfig {
     let mut warmup = degov_datalens_indexer::DatalensWarmupConfig::default();
     warmup.enabled = true;
@@ -126,6 +156,16 @@ fn addresses() -> DaoContractAddresses {
 struct MockWarmupEnsurer {
     requests: Vec<degov_datalens_indexer::DatalensWarmupSubmitRequest>,
     created_tasks: BTreeMap<String, String>,
+    error: Option<String>,
+}
+
+impl MockWarmupEnsurer {
+    fn with_error(error: impl Into<String>) -> Self {
+        Self {
+            error: Some(error.into()),
+            ..Default::default()
+        }
+    }
 }
 
 impl DatalensWarmupEnsurer for MockWarmupEnsurer {
@@ -134,6 +174,9 @@ impl DatalensWarmupEnsurer for MockWarmupEnsurer {
         request: degov_datalens_indexer::DatalensWarmupSubmitRequest,
     ) -> Result<DatalensWarmupEnsureOutcome, degov_datalens_indexer::DatalensError> {
         self.requests.push(request.clone());
+        if let Some(error) = &self.error {
+            return Err(DatalensError::Warmup(error.clone()));
+        }
         let key = serde_json::to_string(&request).expect("request serializes");
         let (task_id, created) = match self.created_tasks.get(&key) {
             Some(task_id) => (task_id.clone(), false),
