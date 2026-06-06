@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use degov_datalens_indexer::checkpoint::configured_range_progress;
 use degov_datalens_indexer::{
     AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig, CheckpointBlockRange,
     IndexerCheckpoint, IndexerCheckpointIdentity, plan_next_checkpoint_range,
@@ -44,6 +45,43 @@ fn test_plan_next_checkpoint_range_returns_none_when_checkpoint_caught_up() {
     let range = plan_next_checkpoint_range(&checkpoint(111), 25, 110).expect("valid range");
 
     assert_eq!(range, None);
+}
+
+#[test]
+fn test_configured_range_progress_counts_from_start_block() {
+    let progress = configured_range_progress(Some(109), 100, 199);
+
+    assert_eq!(progress.remaining_blocks, 90);
+    assert_eq!(progress.synced_percentage, 10.0);
+}
+
+#[test]
+fn test_configured_range_progress_clamps_missing_and_below_start_progress() {
+    let missing = configured_range_progress(None, 100, 199);
+    let below_start = configured_range_progress(Some(99), 100, 199);
+
+    assert_eq!(missing.remaining_blocks, 100);
+    assert_eq!(missing.synced_percentage, 0.0);
+    assert_eq!(below_start.remaining_blocks, 100);
+    assert_eq!(below_start.synced_percentage, 0.0);
+}
+
+#[test]
+fn test_configured_range_progress_handles_invalid_ranges_as_complete() {
+    let progress = configured_range_progress(None, 200, 199);
+
+    assert_eq!(progress.remaining_blocks, 0);
+    assert_eq!(progress.synced_percentage, 100.0);
+}
+
+#[test]
+fn test_configured_range_progress_uses_updated_target_height() {
+    let first_target = configured_range_progress(Some(109), 100, 109);
+    let updated_target = configured_range_progress(Some(109), 100, 119);
+
+    assert_eq!(first_target.synced_percentage, 100.0);
+    assert_eq!(updated_target.remaining_blocks, 10);
+    assert_eq!(updated_target.synced_percentage, 50.0);
 }
 
 #[test]

@@ -21,6 +21,8 @@ use crate::{
     project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
 };
 
+use crate::checkpoint::configured_range_progress;
+
 #[derive(Clone, Debug)]
 pub struct IndexerRunnerOptions {
     pub datalens_config: DatalensConfig,
@@ -44,6 +46,11 @@ pub struct IndexerRunnerProgress {
     pub processed_height: Option<i64>,
     pub target_height: i64,
     pub synced_percentage: f64,
+    pub configured_start_block: i64,
+    pub remaining_blocks: i64,
+    pub configured_range_synced_percentage: f64,
+    pub current_rate_blocks_per_second: Option<f64>,
+    pub eta_seconds: Option<f64>,
     pub onchain_refresh_allowed: bool,
 }
 
@@ -202,6 +209,41 @@ impl AdaptiveChunkSizer {
     }
 }
 
+impl ProgressRateEstimator {
+    fn record(&mut self, processed_height: i64, recorded_at: Instant) {
+        self.samples.push_back(ProgressRateSample {
+            recorded_at,
+            processed_height,
+        });
+        while self.samples.len() > 2 {
+            self.samples.pop_front();
+        }
+    }
+
+    fn blocks_per_second(&self) -> Option<f64> {
+        let first = self.samples.front()?;
+        let last = self.samples.back()?;
+        if first.processed_height == last.processed_height {
+            return None;
+        }
+
+        let elapsed_seconds = last
+            .recorded_at
+            .duration_since(first.recorded_at)
+            .as_secs_f64();
+        if elapsed_seconds <= 0.0 {
+            return None;
+        }
+
+        let processed_blocks = last.processed_height.saturating_sub(first.processed_height);
+        if processed_blocks <= 0 {
+            return None;
+        }
+
+        Some(processed_blocks as f64 / elapsed_seconds)
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum IndexerRunnerError {
     #[error("Datalens runner checkpoint error: {0}")]
@@ -310,6 +352,17 @@ struct ChunkProcessingResult {
     metrics: ChunkProcessingMetrics,
 }
 
+#[derive(Clone, Debug, Default)]
+struct ProgressRateEstimator {
+    samples: VecDeque<ProgressRateSample>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ProgressRateSample {
+    recorded_at: Instant,
+    processed_height: i64,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct ChunkProcessingMetrics {
     datalens_request_count: usize,
@@ -386,6 +439,7 @@ where
             AdaptiveChunkSizer::new(AdaptiveChunkSizerConfig::for_max_chunk_size(
                 self.options.datalens_config.query_limits.block_range_limit,
             ))?;
+        let mut progress_rate = ProgressRateEstimator::default();
         let mut chunks_processed = 0;
         let mut checkpoint = self
             .store
@@ -419,6 +473,8 @@ where
                     last_progress: progress(
                         checkpoint.processed_height,
                         effective_target,
+                        self.options.start_block,
+                        progress_rate.blocks_per_second(),
                         self.options.progress_refresh_lag_blocks,
                     ),
                 });
@@ -431,6 +487,8 @@ where
                     last_progress: progress(
                         checkpoint.processed_height,
                         effective_target,
+                        self.options.start_block,
+                        progress_rate.blocks_per_second(),
                         self.options.progress_refresh_lag_blocks,
                     ),
                 });
@@ -525,18 +583,22 @@ where
                 returned_row_count: processing.metrics.returned_row_count,
                 local_processing_write_duration,
             });
+            progress_rate.record(range.to_block, Instant::now());
             let chunk_progress = progress(
                 Some(range.to_block),
                 effective_target,
+                self.options.start_block,
+                progress_rate.blocks_per_second(),
                 self.options.progress_refresh_lag_blocks,
             );
             info!(
-                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={}",
+                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
                 self.options.checkpoint_identity.contract_set_id,
                 self.options.checkpoint_identity.stream_id,
                 self.options.checkpoint_identity.data_source_version,
+                chunk_progress.configured_start_block,
                 range.from_block,
                 range.to_block,
                 effective_target,
@@ -558,6 +620,10 @@ where
                 range.to_block,
                 range.to_block + 1,
                 chunk_progress.synced_percentage,
+                chunk_progress.configured_range_synced_percentage,
+                chunk_progress.remaining_blocks,
+                optional_f64_log_value(chunk_progress.current_rate_blocks_per_second),
+                optional_f64_log_value(chunk_progress.eta_seconds),
                 sizing_decision.previous_chunk_size,
                 sizing_decision.current_chunk_size,
                 sizing_decision.reason
@@ -820,6 +886,8 @@ fn invalid_rows_payload_error(value: serde_json::Value) -> IndexerRunnerError {
 fn progress(
     processed_height: Option<i64>,
     target_height: i64,
+    configured_start_block: i64,
+    current_rate_blocks_per_second: Option<f64>,
     refresh_lag_blocks: i64,
 ) -> IndexerRunnerProgress {
     let synced_percentage = if target_height <= 0 {
@@ -829,6 +897,11 @@ fn progress(
             .map(|height| ((height as f64 / target_height as f64) * 100.0).min(100.0))
             .unwrap_or(0.0)
     };
+    let configured_progress =
+        configured_range_progress(processed_height, configured_start_block, target_height);
+    let eta_seconds = current_rate_blocks_per_second.and_then(|rate| {
+        (rate > 0.0).then_some(configured_progress.remaining_blocks as f64 / rate)
+    });
     let onchain_refresh_allowed = processed_height
         .map(|height| height.saturating_add(refresh_lag_blocks) >= target_height)
         .unwrap_or(false);
@@ -837,8 +910,19 @@ fn progress(
         processed_height,
         target_height,
         synced_percentage,
+        configured_start_block,
+        remaining_blocks: configured_progress.remaining_blocks,
+        configured_range_synced_percentage: configured_progress.synced_percentage,
+        current_rate_blocks_per_second,
+        eta_seconds,
         onchain_refresh_allowed,
     }
+}
+
+fn optional_f64_log_value(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("{value:.2}"))
+        .unwrap_or_else(|| "null".to_owned())
 }
 
 fn to_checkpoint_error(error: impl fmt::Display) -> IndexerRunnerError {
