@@ -1,0 +1,148 @@
+use std::{collections::BTreeMap, time::Duration};
+
+use degov_datalens_indexer::{
+    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DatalensConfig, DatalensFinality,
+    DatalensWarmupEnsureOutcome, DatalensWarmupEnsurer, DatasetKeyConfig, GovernanceTokenStandard,
+    QueryLimitConfig, SecretString, ensure_datalens_warmup_task,
+};
+
+#[test]
+fn test_ensure_datalens_warmup_task_skips_when_disabled() {
+    let mut config = config();
+    config.warmup.enabled = false;
+    config.warmup.ensure_on_startup = true;
+    let mut ensurer = MockWarmupEnsurer::default();
+
+    let outcome =
+        ensure_datalens_warmup_task(&mut ensurer, &config, &addresses(), 100).expect("ensure");
+
+    assert_eq!(outcome, DatalensWarmupEnsureOutcome::Disabled);
+    assert!(ensurer.requests.is_empty());
+}
+
+#[test]
+fn test_ensure_datalens_warmup_task_submits_follow_query_when_enabled() {
+    let config = config();
+    let mut ensurer = MockWarmupEnsurer::default();
+
+    let outcome =
+        ensure_datalens_warmup_task(&mut ensurer, &config, &addresses(), 100).expect("ensure");
+
+    assert!(matches!(
+        outcome,
+        DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
+    ));
+    assert_eq!(ensurer.requests.len(), 1);
+    let request = &ensurer.requests[0];
+    assert_eq!(request.chain.configured_name, "ethereum");
+    assert_eq!(request.chain.network_id, Some(1));
+    assert_eq!(request.dataset_key, "evm.logs");
+    assert_eq!(request.range_kind, "block");
+    assert_eq!(request.start, 100);
+    assert_eq!(request.end, None);
+    assert_eq!(request.mode, "follow_query");
+    assert_eq!(request.selector.addresses.len(), 3);
+    assert_eq!(request.selector.topics.len(), 1);
+}
+
+#[test]
+fn test_ensure_datalens_warmup_task_reuses_existing_matching_task() {
+    let config = config();
+    let mut ensurer = MockWarmupEnsurer::default();
+
+    let first =
+        ensure_datalens_warmup_task(&mut ensurer, &config, &addresses(), 100).expect("first");
+    let second =
+        ensure_datalens_warmup_task(&mut ensurer, &config, &addresses(), 100).expect("second");
+
+    assert!(matches!(
+        first,
+        DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
+    ));
+    assert!(matches!(
+        second,
+        DatalensWarmupEnsureOutcome::Submitted { created: false, .. }
+    ));
+    assert_eq!(ensurer.created_tasks.len(), 1);
+}
+
+#[test]
+fn test_ensure_datalens_warmup_task_submits_distinct_task_for_selector_mismatch() {
+    let config = config();
+    let mut ensurer = MockWarmupEnsurer::default();
+    let mut other_addresses = addresses();
+    other_addresses.timelock = "0x4444444444444444444444444444444444444444".to_owned();
+
+    ensure_datalens_warmup_task(&mut ensurer, &config, &addresses(), 100).expect("first");
+    let second =
+        ensure_datalens_warmup_task(&mut ensurer, &config, &other_addresses, 100).expect("second");
+
+    assert!(matches!(
+        second,
+        DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
+    ));
+    assert_eq!(ensurer.created_tasks.len(), 2);
+}
+
+fn config() -> DatalensConfig {
+    let mut warmup = degov_datalens_indexer::DatalensWarmupConfig::default();
+    warmup.enabled = true;
+    warmup.ensure_on_startup = true;
+
+    DatalensConfig {
+        endpoint: "https://datalens.ringdao.com".to_owned(),
+        application: "degov-live".to_owned(),
+        bearer_token: SecretString::new("redacted"),
+        timeout: Duration::from_secs(60),
+        finality: DatalensFinality::DurableOnly,
+        chain: ChainIdentityConfig {
+            family: ChainFamily::Evm,
+            configured_name: "ethereum".to_owned(),
+            network_id: Some(1),
+        },
+        dataset: DatasetKeyConfig {
+            family: "evm".to_owned(),
+            name: "logs".to_owned(),
+        },
+        query_limits: QueryLimitConfig {
+            block_range_limit: 1_000,
+        },
+        warmup,
+        dao_contracts: None,
+        chains: Vec::new(),
+    }
+}
+
+fn addresses() -> DaoContractAddresses {
+    DaoContractAddresses {
+        governor: "0x1111111111111111111111111111111111111111".to_owned(),
+        governor_token: "0x2222222222222222222222222222222222222222".to_owned(),
+        governor_token_standard: GovernanceTokenStandard::Erc20,
+        timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+    }
+}
+
+#[derive(Default)]
+struct MockWarmupEnsurer {
+    requests: Vec<degov_datalens_indexer::DatalensWarmupSubmitRequest>,
+    created_tasks: BTreeMap<String, String>,
+}
+
+impl DatalensWarmupEnsurer for MockWarmupEnsurer {
+    fn ensure_warmup_task(
+        &mut self,
+        request: degov_datalens_indexer::DatalensWarmupSubmitRequest,
+    ) -> Result<DatalensWarmupEnsureOutcome, degov_datalens_indexer::DatalensError> {
+        self.requests.push(request.clone());
+        let key = serde_json::to_string(&request).expect("request serializes");
+        let (task_id, created) = match self.created_tasks.get(&key) {
+            Some(task_id) => (task_id.clone(), false),
+            None => {
+                let task_id = format!("warmup-{}", self.created_tasks.len() + 1);
+                self.created_tasks.insert(key, task_id.clone());
+                (task_id, true)
+            }
+        };
+        Ok(DatalensWarmupEnsureOutcome::Submitted { task_id, created })
+    }
+}

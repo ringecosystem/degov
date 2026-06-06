@@ -24,6 +24,9 @@ struct RawDatalensEnvOverlay {
     datalens_dataset_family: Option<String>,
     datalens_dataset_name: Option<String>,
     datalens_query_block_range_limit: Option<u32>,
+    datalens_warmup_enabled: Option<bool>,
+    datalens_warmup_ensure_on_startup: Option<bool>,
+    datalens_warmup_kind: Option<String>,
     datalens_governor_address: Option<String>,
     datalens_governor_token_address: Option<String>,
     datalens_governor_token_standard: Option<String>,
@@ -52,6 +55,7 @@ struct RawDatalensFileConfig {
     chain_id: Option<i32>,
     dataset: Option<RawDatalensDatasetFileConfig>,
     query_limits: Option<RawDatalensQueryLimitFileConfig>,
+    warmup: Option<RawDatalensWarmupFileConfig>,
     governor_address: Option<String>,
     governor_token_address: Option<String>,
     governor_token_standard: Option<String>,
@@ -69,6 +73,14 @@ struct RawDatalensDatasetFileConfig {
 #[serde(rename_all = "camelCase")]
 struct RawDatalensQueryLimitFileConfig {
     block_range_limit: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawDatalensWarmupFileConfig {
+    enabled: Option<bool>,
+    ensure_on_startup: Option<bool>,
+    kind: Option<String>,
 }
 
 pub(super) fn load_raw_from_env() -> Result<RawDatalensConfig, ConfigError> {
@@ -94,6 +106,9 @@ fn load_env_overlay() -> Result<RawDatalensEnvOverlay, ConfigError> {
             "DATALENS_DATASET_FAMILY",
             "DATALENS_DATASET_NAME",
             "DATALENS_QUERY_BLOCK_RANGE_LIMIT",
+            "DATALENS_WARMUP_ENABLED",
+            "DATALENS_WARMUP_ENSURE_ON_STARTUP",
+            "DATALENS_WARMUP_KIND",
             "DATALENS_GOVERNOR_ADDRESS",
             "DATALENS_GOVERNOR_TOKEN_ADDRESS",
             "DATALENS_GOVERNOR_TOKEN_STANDARD",
@@ -172,6 +187,14 @@ impl RawDatalensConfig {
                     query_limits.block_range_limit,
                 );
             }
+            if let Some(warmup) = datalens.warmup {
+                assign_value_if_some(&mut self.datalens_warmup_enabled, warmup.enabled);
+                assign_value_if_some(
+                    &mut self.datalens_warmup_ensure_on_startup,
+                    warmup.ensure_on_startup,
+                );
+                assign_value_if_some(&mut self.datalens_warmup_kind, warmup.kind);
+            }
         }
 
         if let Some(chains) = file.chains {
@@ -205,6 +228,15 @@ impl RawDatalensConfig {
             &mut self.datalens_query_block_range_limit,
             env.datalens_query_block_range_limit,
         );
+        assign_value_if_some(
+            &mut self.datalens_warmup_enabled,
+            env.datalens_warmup_enabled,
+        );
+        assign_value_if_some(
+            &mut self.datalens_warmup_ensure_on_startup,
+            env.datalens_warmup_ensure_on_startup,
+        );
+        assign_value_if_some(&mut self.datalens_warmup_kind, env.datalens_warmup_kind);
         assign_if_some(
             &mut self.datalens_governor_address,
             env.datalens_governor_address,

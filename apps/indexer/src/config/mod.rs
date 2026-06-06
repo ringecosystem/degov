@@ -3,7 +3,10 @@ use std::{fmt, str::FromStr, time::Duration};
 use datalens_sdk::ClientConfig;
 use serde::{Deserialize, Serialize};
 
-use crate::{ConfigError, DaoContractAddresses, GovernanceTokenStandard};
+use crate::{
+    ConfigError, DaoContractAddresses, GovernanceTokenStandard,
+    datalens::warmup::{DatalensWarmupConfig, DatalensWarmupKind},
+};
 
 mod env;
 
@@ -177,6 +180,7 @@ pub struct DatalensConfig {
     pub chain: ChainIdentityConfig,
     pub dataset: DatasetKeyConfig,
     pub query_limits: QueryLimitConfig,
+    pub warmup: DatalensWarmupConfig,
     pub dao_contracts: Option<DaoContractAddresses>,
     pub chains: Vec<DatalensChainConfig>,
 }
@@ -194,6 +198,9 @@ struct RawDatalensConfig {
     datalens_dataset_family: String,
     datalens_dataset_name: String,
     datalens_query_block_range_limit: u32,
+    datalens_warmup_enabled: bool,
+    datalens_warmup_ensure_on_startup: bool,
+    datalens_warmup_kind: String,
     datalens_governor_address: Option<String>,
     datalens_governor_token_address: Option<String>,
     datalens_governor_token_standard: Option<String>,
@@ -244,6 +251,9 @@ impl Default for RawDatalensConfig {
             datalens_dataset_family: DEFAULT_DATALENS_DATASET_FAMILY.to_owned(),
             datalens_dataset_name: DEFAULT_DATALENS_DATASET_NAME.to_owned(),
             datalens_query_block_range_limit: DEFAULT_DATALENS_QUERY_BLOCK_RANGE_LIMIT,
+            datalens_warmup_enabled: DatalensWarmupConfig::default().enabled,
+            datalens_warmup_ensure_on_startup: DatalensWarmupConfig::default().ensure_on_startup,
+            datalens_warmup_kind: DatalensWarmupKind::default().as_str().to_owned(),
             datalens_governor_address: None,
             datalens_governor_token_address: None,
             datalens_governor_token_standard: None,
@@ -491,6 +501,11 @@ impl DatalensConfig {
             },
             query_limits: QueryLimitConfig {
                 block_range_limit: raw.datalens_query_block_range_limit,
+            },
+            warmup: DatalensWarmupConfig {
+                enabled: raw.datalens_warmup_enabled,
+                ensure_on_startup: raw.datalens_warmup_ensure_on_startup,
+                kind: raw.datalens_warmup_kind.parse()?,
             },
             dao_contracts,
             chains,

@@ -727,6 +727,7 @@ fn options() -> IndexerRunnerOptions {
             query_limits: QueryLimitConfig {
                 block_range_limit: 1,
             },
+            warmup: Default::default(),
             dao_contracts: Some(addresses()),
             chains: Vec::new(),
         },

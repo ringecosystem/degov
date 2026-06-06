@@ -158,6 +158,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         query_limits: degov_datalens_indexer::QueryLimitConfig {
             block_range_limit: 1_000,
         },
+        warmup: Default::default(),
         dao_contracts: None,
         chains: vec![degov_datalens_indexer::DatalensChainConfig {
             family: degov_datalens_indexer::ChainFamily::Evm,
@@ -228,6 +229,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         query_limits: degov_datalens_indexer::QueryLimitConfig {
             block_range_limit: 1_000,
         },
+        warmup: Default::default(),
         dao_contracts: None,
         chains: vec![degov_datalens_indexer::DatalensChainConfig {
             family: degov_datalens_indexer::ChainFamily::Evm,

@@ -20,6 +20,9 @@ datalens:
     name: logs
   queryLimits:
     blockRangeLimit: 1000
+  warmup:
+    enabled: true
+    ensureOnStartup: true
 
 rpc:
   chains:

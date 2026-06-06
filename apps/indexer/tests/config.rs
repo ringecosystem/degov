@@ -226,6 +226,9 @@ datalens:
     name: logs
   queryLimits:
     blockRangeLimit: 777
+  warmup:
+    enabled: true
+    ensureOnStartup: true
 chains:
   - chainId: 1
     networkName: ethereum
@@ -265,6 +268,9 @@ chains:
                 config.bearer_token.expose_secret(),
                 "unit-test-redacted-value"
             );
+            assert_eq!(config.warmup.enabled, true);
+            assert_eq!(config.warmup.ensure_on_startup, true);
+            assert_eq!(config.warmup.kind.as_str(), "follow_query");
             assert_eq!(config.query_limits.block_range_limit, 777);
             assert_eq!(config.chains.len(), 2);
             assert_eq!(config.chains[0].contracts[0].chain_id, 1);
@@ -273,6 +279,50 @@ chains:
                 config.chains[1].contracts[0].dao_code.as_deref(),
                 Some("lisk-dao")
             );
+        },
+    );
+
+    remove_config_file(path);
+}
+
+#[test]
+fn test_from_env_loads_warmup_disabled_for_local_development() {
+    let path = write_config_file(
+        "yml",
+        r#"
+datalens:
+  endpoint: https://datalens.ringdao.com
+  application: degov-live
+  warmup:
+    enabled: false
+    ensureOnStartup: false
+chains:
+  - chainId: 1
+    networkName: ethereum
+    contracts:
+      - daoCode: ens-dao
+        governor: "0x1111111111111111111111111111111111111111"
+        governorToken: "0x2222222222222222222222222222222222222222"
+        tokenStandard: ERC20
+        timelock: "0x3333333333333333333333333333333333333333"
+        startBlock: 13533418
+"#,
+    );
+
+    with_datalens_env(
+        &[
+            (
+                "DEGOV_INDEXER_CONFIG_FILE",
+                Some(path.to_str().expect("utf8 path")),
+            ),
+            ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+        ],
+        || {
+            let config = DatalensConfig::from_env().expect("load yaml config");
+
+            assert_eq!(config.warmup.enabled, false);
+            assert_eq!(config.warmup.ensure_on_startup, false);
+            assert_eq!(config.warmup.kind.as_str(), "follow_query");
         },
     );
 

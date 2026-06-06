@@ -405,6 +405,7 @@ fn datalens_config(endpoint: &str, finality: DatalensFinality) -> DatalensConfig
         query_limits: QueryLimitConfig {
             block_range_limit: 1_000,
         },
+        warmup: Default::default(),
         dao_contracts: None,
         chains: Vec::new(),
     }

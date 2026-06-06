@@ -43,6 +43,9 @@ pub enum DatalensError {
 
     #[error("Datalens log query failed: {0}")]
     Query(String),
+
+    #[error("Datalens warmup failed: {0}")]
+    Warmup(String),
 }
 
 #[derive(Debug, Error)]
