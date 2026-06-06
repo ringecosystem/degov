@@ -33,6 +33,221 @@ pub struct OnchainRefreshRunReport {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OnchainRefreshTickConfig {
+    pub enabled: bool,
+    pub max_tasks_per_tick: usize,
+    pub max_duration_per_tick: Duration,
+    pub min_blocks_between_ticks: i64,
+}
+
+impl Default for OnchainRefreshTickConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_tasks_per_tick: 10,
+            max_duration_per_tick: Duration::from_millis(500),
+            min_blocks_between_ticks: 100,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OnchainRefreshTickSkipReason {
+    Disabled,
+    EmptyQueue,
+    MinBlocks,
+    TaskBudgetZero,
+    DurationBudgetZero,
+}
+
+impl fmt::Display for OnchainRefreshTickSkipReason {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Disabled => formatter.write_str("disabled"),
+            Self::EmptyQueue => formatter.write_str("empty_queue"),
+            Self::MinBlocks => formatter.write_str("min_blocks"),
+            Self::TaskBudgetZero => formatter.write_str("task_budget_zero"),
+            Self::DurationBudgetZero => formatter.write_str("duration_budget_zero"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OnchainRefreshTickReport {
+    pub processed: usize,
+    pub claimed: usize,
+    pub completed: usize,
+    pub failed: usize,
+    pub duration: Duration,
+    pub task_budget_hit: bool,
+    pub duration_budget_hit: bool,
+    pub skipped: Option<OnchainRefreshTickSkipReason>,
+    pub backlog: Option<u64>,
+}
+
+pub trait OnchainRefreshTickClock {
+    fn reset(&mut self) {}
+
+    fn elapsed(&mut self) -> Duration;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SystemOnchainRefreshTickClock {
+    started_at: Option<std::time::Instant>,
+}
+
+impl OnchainRefreshTickClock for SystemOnchainRefreshTickClock {
+    fn reset(&mut self) {
+        self.started_at = Some(std::time::Instant::now());
+    }
+
+    fn elapsed(&mut self) -> Duration {
+        let started_at = self.started_at.get_or_insert_with(std::time::Instant::now);
+        started_at.elapsed()
+    }
+}
+
+pub trait OnchainRefreshTickRunner {
+    type Error: fmt::Display;
+
+    fn run_once(&mut self, max_tasks: usize) -> Result<OnchainRefreshRunReport, Self::Error>;
+
+    fn backlog(&mut self) -> Option<u64> {
+        None
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OnchainRefreshTickScheduler<C = SystemOnchainRefreshTickClock> {
+    config: OnchainRefreshTickConfig,
+    clock: C,
+    last_tick_block: Option<i64>,
+}
+
+impl OnchainRefreshTickScheduler<SystemOnchainRefreshTickClock> {
+    pub fn from_config(config: OnchainRefreshTickConfig) -> Self {
+        Self::new(config, SystemOnchainRefreshTickClock::default())
+    }
+}
+
+impl<C> OnchainRefreshTickScheduler<C>
+where
+    C: OnchainRefreshTickClock,
+{
+    pub fn new(config: OnchainRefreshTickConfig, clock: C) -> Self {
+        Self {
+            config,
+            clock,
+            last_tick_block: None,
+        }
+    }
+
+    pub fn run_tick<R>(
+        &mut self,
+        processed_block: i64,
+        runner: &mut R,
+    ) -> Result<OnchainRefreshTickReport, R::Error>
+    where
+        R: OnchainRefreshTickRunner,
+    {
+        if !self.config.enabled {
+            return Ok(self.skipped(OnchainRefreshTickSkipReason::Disabled, runner.backlog()));
+        }
+        if self.config.max_tasks_per_tick == 0 {
+            return Ok(self.skipped(
+                OnchainRefreshTickSkipReason::TaskBudgetZero,
+                runner.backlog(),
+            ));
+        }
+        if self.config.max_duration_per_tick.is_zero() {
+            return Ok(self.skipped(
+                OnchainRefreshTickSkipReason::DurationBudgetZero,
+                runner.backlog(),
+            ));
+        }
+        if self.last_tick_block.is_some_and(|last_tick_block| {
+            processed_block.saturating_sub(last_tick_block) < self.config.min_blocks_between_ticks
+        }) {
+            return Ok(self.skipped(OnchainRefreshTickSkipReason::MinBlocks, runner.backlog()));
+        }
+
+        let mut report = OnchainRefreshTickReport {
+            processed: 0,
+            claimed: 0,
+            completed: 0,
+            failed: 0,
+            duration: Duration::ZERO,
+            task_budget_hit: false,
+            duration_budget_hit: false,
+            skipped: None,
+            backlog: None,
+        };
+        self.clock.reset();
+
+        loop {
+            report.duration = self.clock.elapsed();
+            if report.duration >= self.config.max_duration_per_tick {
+                report.duration_budget_hit = true;
+                break;
+            }
+
+            let remaining = self
+                .config
+                .max_tasks_per_tick
+                .saturating_sub(report.processed);
+            if remaining == 0 {
+                report.task_budget_hit = true;
+                break;
+            }
+
+            let batch = runner.run_once(1)?;
+            if batch.claimed == 0 {
+                report.skipped =
+                    (report.processed == 0).then_some(OnchainRefreshTickSkipReason::EmptyQueue);
+                break;
+            }
+
+            let consumed = batch.claimed.min(remaining);
+            let completed = batch.completed.min(consumed);
+            let failed = batch.failed.min(consumed.saturating_sub(completed));
+            report.processed += consumed;
+            report.claimed += consumed;
+            report.completed += completed;
+            report.failed += failed;
+        }
+
+        report.duration = self.clock.elapsed();
+        report.backlog = runner.backlog();
+        if report.claimed > 0
+            || report.task_budget_hit
+            || (report.duration_budget_hit && report.claimed > 0)
+        {
+            self.last_tick_block = Some(processed_block);
+        }
+
+        Ok(report)
+    }
+
+    fn skipped(
+        &mut self,
+        reason: OnchainRefreshTickSkipReason,
+        backlog: Option<u64>,
+    ) -> OnchainRefreshTickReport {
+        OnchainRefreshTickReport {
+            processed: 0,
+            claimed: 0,
+            completed: 0,
+            failed: 0,
+            duration: Duration::ZERO,
+            task_budget_hit: false,
+            duration_budget_hit: false,
+            skipped: Some(reason),
+            backlog,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshTask {
     pub id: String,
     pub contract_set_id: String,
@@ -126,8 +341,15 @@ where
     }
 
     pub async fn run_once(&self) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
+        self.run_once_with_batch_size(self.config.batch_size).await
+    }
+
+    pub async fn run_once_with_batch_size(
+        &self,
+        batch_size: usize,
+    ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
         let now_ms = unix_time_millis();
-        let tasks = self.claim_tasks(now_ms).await?;
+        let tasks = self.claim_tasks(now_ms, batch_size).await?;
         if tasks.is_empty() {
             return Ok(OnchainRefreshRunReport::default());
         }
@@ -180,13 +402,42 @@ where
         Ok(report)
     }
 
+    pub async fn ready_backlog(&self) -> Result<u64, OnchainRefreshWorkerError> {
+        let now_ms = unix_time_millis();
+        let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
+        let row = sqlx::query(
+            "SELECT count(*)::BIGINT AS task_count
+             FROM onchain_refresh_task
+             WHERE (
+                status IN ('pending', 'failed')
+                OR (
+                    status = 'processing'
+                    AND locked_at IS NOT NULL
+                    AND locked_at <= $2::NUMERIC(78, 0)
+                )
+             )
+             AND next_run_at <= $1::NUMERIC(78, 0)
+             AND attempts < $3",
+        )
+        .bind(now_ms.to_string())
+        .bind(stale_before.to_string())
+        .bind(self.config.max_attempts)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let count: i64 = row.get("task_count");
+
+        Ok(count.try_into().unwrap_or_default())
+    }
+
     async fn claim_tasks(
         &self,
         now_ms: i64,
+        batch_size: usize,
     ) -> Result<Vec<OnchainRefreshTask>, OnchainRefreshWorkerError> {
         let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
-        let batch_size = i64::try_from(self.config.batch_size)
-            .map_err(|_| OnchainRefreshWorkerError::BatchSizeOverflow)?;
+        let batch_size =
+            i64::try_from(batch_size).map_err(|_| OnchainRefreshWorkerError::BatchSizeOverflow)?;
 
         let rows = sqlx::query(
             "WITH candidates AS (

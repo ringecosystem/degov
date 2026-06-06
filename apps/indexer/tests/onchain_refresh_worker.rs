@@ -9,7 +9,9 @@ use std::{
 use degov_datalens_indexer::{
     BatchReadPlanConfig, ChainReadExecutionReport, ChainReadMethod, ChainReadMetrics,
     ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool, MultiChainToolOnchainRefreshReader,
-    OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshTask,
+    OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
+    OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshTickClock, OnchainRefreshTickConfig,
+    OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason,
     OnchainRefreshWorker, OnchainRefreshWorkerConfig, PartialChainReadFailureReport,
     runtime::apply_migrations,
 };
@@ -18,6 +20,188 @@ use tokio::sync::{Mutex, MutexGuard};
 
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
+
+#[test]
+fn test_onchain_refresh_tick_skips_when_disabled() {
+    let mut runner = ScriptedTickRunner::new([OnchainRefreshRunReport {
+        claimed: 1,
+        completed: 1,
+        failed: 0,
+    }]);
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: false,
+            max_tasks_per_tick: 10,
+            max_duration_per_tick: Duration::from_millis(100),
+            min_blocks_between_ticks: 0,
+        },
+        FakeTickClock::default(),
+    );
+
+    let report = scheduler.run_tick(100, &mut runner).expect("tick runs");
+
+    assert_eq!(report.processed, 0);
+    assert_eq!(report.skipped, Some(OnchainRefreshTickSkipReason::Disabled));
+    assert_eq!(runner.calls, Vec::<usize>::new());
+}
+
+#[test]
+fn test_onchain_refresh_tick_reports_empty_queue() {
+    let mut runner = ScriptedTickRunner::new([OnchainRefreshRunReport::default()]);
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: true,
+            max_tasks_per_tick: 10,
+            max_duration_per_tick: Duration::from_millis(100),
+            min_blocks_between_ticks: 0,
+        },
+        FakeTickClock::default(),
+    );
+
+    let report = scheduler.run_tick(100, &mut runner).expect("tick runs");
+
+    assert_eq!(report.processed, 0);
+    assert_eq!(
+        report.skipped,
+        Some(OnchainRefreshTickSkipReason::EmptyQueue)
+    );
+    assert_eq!(runner.calls, vec![1]);
+}
+
+#[test]
+fn test_onchain_refresh_tick_empty_queue_does_not_advance_schedule() {
+    let mut empty_runner = ScriptedTickRunner::new([OnchainRefreshRunReport::default()]);
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: true,
+            max_tasks_per_tick: 10,
+            max_duration_per_tick: Duration::from_millis(100),
+            min_blocks_between_ticks: 10,
+        },
+        FakeTickClock::default(),
+    );
+
+    let empty_report = scheduler
+        .run_tick(100, &mut empty_runner)
+        .expect("empty tick runs");
+
+    assert_eq!(
+        empty_report.skipped,
+        Some(OnchainRefreshTickSkipReason::EmptyQueue)
+    );
+
+    let mut task_runner = ScriptedTickRunner::new([OnchainRefreshRunReport {
+        claimed: 1,
+        completed: 1,
+        failed: 0,
+    }]);
+    let task_report = scheduler
+        .run_tick(101, &mut task_runner)
+        .expect("next tick is not delayed by empty queue");
+
+    assert_eq!(task_report.processed, 1);
+    assert_eq!(task_report.skipped, None);
+    assert_eq!(task_runner.calls, vec![1, 1]);
+}
+
+#[test]
+fn test_onchain_refresh_tick_stops_at_task_budget() {
+    let mut runner = ScriptedTickRunner::new([
+        OnchainRefreshRunReport {
+            claimed: 1,
+            completed: 1,
+            failed: 0,
+        },
+        OnchainRefreshRunReport {
+            claimed: 1,
+            completed: 1,
+            failed: 0,
+        },
+        OnchainRefreshRunReport {
+            claimed: 1,
+            completed: 1,
+            failed: 0,
+        },
+    ]);
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: true,
+            max_tasks_per_tick: 3,
+            max_duration_per_tick: Duration::from_millis(100),
+            min_blocks_between_ticks: 0,
+        },
+        FakeTickClock::default(),
+    );
+
+    let report = scheduler.run_tick(100, &mut runner).expect("tick runs");
+
+    assert_eq!(report.processed, 3);
+    assert!(report.task_budget_hit);
+    assert!(!report.duration_budget_hit);
+    assert_eq!(runner.calls, vec![1, 1, 1]);
+}
+
+#[test]
+fn test_onchain_refresh_tick_stops_at_duration_budget_between_single_task_claims() {
+    let mut runner = ScriptedTickRunner::new([
+        OnchainRefreshRunReport {
+            claimed: 1,
+            completed: 1,
+            failed: 0,
+        },
+        OnchainRefreshRunReport {
+            claimed: 1,
+            completed: 1,
+            failed: 0,
+        },
+    ]);
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: true,
+            max_tasks_per_tick: 10,
+            max_duration_per_tick: Duration::from_millis(5),
+            min_blocks_between_ticks: 0,
+        },
+        FakeTickClock::with_step(Duration::from_millis(10)),
+    );
+
+    let report = scheduler.run_tick(100, &mut runner).expect("tick runs");
+
+    assert_eq!(report.processed, 1);
+    assert!(!report.task_budget_hit);
+    assert!(report.duration_budget_hit);
+    assert_eq!(runner.calls, vec![1]);
+}
+
+#[test]
+fn test_onchain_refresh_tick_failure_does_not_advance_schedule() {
+    let mut runner = FailingTickRunner::default();
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: true,
+            max_tasks_per_tick: 10,
+            max_duration_per_tick: Duration::from_millis(100),
+            min_blocks_between_ticks: 10,
+        },
+        FakeTickClock::default(),
+    );
+
+    let error = scheduler
+        .run_tick(100, &mut runner)
+        .expect_err("tick failure propagates");
+    assert_eq!(error, "mock tick failure");
+
+    let mut retry_runner = ScriptedTickRunner::new([OnchainRefreshRunReport::default()]);
+    let report = scheduler
+        .run_tick(101, &mut retry_runner)
+        .expect("tick retries before min block interval after failure");
+
+    assert_eq!(
+        report.skipped,
+        Some(OnchainRefreshTickSkipReason::EmptyQueue)
+    );
+    assert_eq!(retry_runner.calls, vec![1]);
+}
 
 struct TestDatabase {
     _guard: MutexGuard<'static, ()>,
@@ -1101,6 +1285,63 @@ fn unique_schema_name() -> String {
         millis,
         sequence
     )
+}
+
+#[derive(Default)]
+struct FakeTickClock {
+    elapsed: Duration,
+    step: Duration,
+}
+
+impl FakeTickClock {
+    fn with_step(step: Duration) -> Self {
+        Self {
+            elapsed: Duration::ZERO,
+            step,
+        }
+    }
+}
+
+impl OnchainRefreshTickClock for FakeTickClock {
+    fn elapsed(&mut self) -> Duration {
+        let elapsed = self.elapsed;
+        self.elapsed += self.step;
+        elapsed
+    }
+}
+
+struct ScriptedTickRunner {
+    reports: Vec<OnchainRefreshRunReport>,
+    calls: Vec<usize>,
+}
+
+impl ScriptedTickRunner {
+    fn new<const N: usize>(reports: [OnchainRefreshRunReport; N]) -> Self {
+        Self {
+            reports: reports.into_iter().rev().collect(),
+            calls: Vec::new(),
+        }
+    }
+}
+
+impl OnchainRefreshTickRunner for ScriptedTickRunner {
+    type Error = String;
+
+    fn run_once(&mut self, max_tasks: usize) -> Result<OnchainRefreshRunReport, Self::Error> {
+        self.calls.push(max_tasks);
+        Ok(self.reports.pop().unwrap_or_default())
+    }
+}
+
+#[derive(Default)]
+struct FailingTickRunner;
+
+impl OnchainRefreshTickRunner for FailingTickRunner {
+    type Error = String;
+
+    fn run_once(&mut self, _max_tasks: usize) -> Result<OnchainRefreshRunReport, Self::Error> {
+        Err("mock tick failure".to_owned())
+    }
 }
 
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";

@@ -1,12 +1,17 @@
+use std::collections::BTreeMap;
+
 use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
-use tokio::{task, time::sleep};
+use tokio::{runtime::Handle, task, time::sleep};
 
 use crate::{
     DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
-    DatalensNativeClient, DatalensWarmupEnsureOutcome, IndexerContractSetRuntimeConfig,
-    IndexerRunner, IndexerRunnerReport, IndexerRuntimeConfig, IndexerTargetHeight,
+    DatalensNativeClient, DatalensWarmupEnsureOutcome, EvmRpcChainTool,
+    IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner, IndexerRunnerReport,
+    IndexerRuntimeConfig, IndexerTargetHeight, MultiChainToolOnchainRefreshReader,
+    OnchainRefreshRuntimeConfig, OnchainRefreshTickReport, OnchainRefreshTickRunner,
+    OnchainRefreshTickScheduler, OnchainRefreshWorker, OnchainRefreshWorkerError,
     PostgresIndexerRunnerStore, datalens_retry_config, ensure_datalens_warmup_task, required_env,
 };
 
@@ -168,6 +173,8 @@ async fn run_contract_set_pass(
         runtime.target_height
     );
 
+    let onchain_refresh_tick = build_onchain_refresh_tick(&runtime, pool.clone())?;
+
     task::spawn_blocking(move || -> Result<_> {
         let client = DatalensNativeClient::from_config_with_retry_config(
             &config,
@@ -182,6 +189,9 @@ async fn run_contract_set_pass(
             store,
             DaoEventDecoder,
         );
+        if let Some(tick) = onchain_refresh_tick {
+            runner = runner.with_onchain_refresh_tick(tick);
+        }
         if let Some(chunks) = runtime.max_chunks_per_run {
             runner.request_shutdown_after_chunks(chunks);
         }
@@ -192,6 +202,95 @@ async fn run_contract_set_pass(
     })
     .await
     .context("join Datalens indexer runner task")?
+}
+
+fn build_onchain_refresh_tick(
+    runtime: &IndexerContractSetRuntimeConfig,
+    pool: sqlx::PgPool,
+) -> Result<Option<Box<dyn IndexerOnchainRefreshTick>>> {
+    if !runtime.onchain_refresh_tick.enabled {
+        return Ok(None);
+    }
+
+    let refresh_runtime = OnchainRefreshRuntimeConfig::from_env_for_indexer_tick()
+        .context("load onchain refresh tick runtime")?;
+    let chain_tools = refresh_runtime
+        .rpc_chains
+        .iter()
+        .map(|(chain_id, rpc)| {
+            let chain_tool = EvmRpcChainTool::new(
+                rpc.url.expose_secret().to_owned(),
+                refresh_runtime.request_timeout,
+            )
+            .with_context(|| {
+                format!("create onchain refresh tick RPC ChainTool for chain_id {chain_id}")
+            })?;
+
+            Ok((*chain_id, chain_tool))
+        })
+        .collect::<Result<BTreeMap<_, _>>>()?;
+    let reader = MultiChainToolOnchainRefreshReader::new(
+        chain_tools,
+        refresh_runtime.read_plan_config(),
+        refresh_runtime.current_power_method,
+    );
+    let mut worker_config = refresh_runtime.worker_config();
+    worker_config.lock_owner = format!("degov-indexer-onchain-refresh-tick:{}", std::process::id());
+    let worker = OnchainRefreshWorker::new(pool, worker_config, reader)
+        .with_current_power_method(refresh_runtime.current_power_method);
+    let runner = OnchainRefreshWorkerTickRunner {
+        worker,
+        handle: Handle::current(),
+    };
+    let tick = IndexerOnchainRefreshWorkerTick {
+        scheduler: OnchainRefreshTickScheduler::from_config(runtime.onchain_refresh_tick.clone()),
+        runner,
+    };
+
+    Ok(Some(Box::new(tick)))
+}
+
+struct IndexerOnchainRefreshWorkerTick<R> {
+    scheduler: OnchainRefreshTickScheduler,
+    runner: R,
+}
+
+impl<R> IndexerOnchainRefreshTick for IndexerOnchainRefreshWorkerTick<R>
+where
+    R: OnchainRefreshTickRunner + Send,
+{
+    fn run_after_chunk(
+        &mut self,
+        processed_block: i64,
+    ) -> std::result::Result<OnchainRefreshTickReport, String> {
+        self.scheduler
+            .run_tick(processed_block, &mut self.runner)
+            .map_err(|error| error.to_string())
+    }
+}
+
+struct OnchainRefreshWorkerTickRunner<R> {
+    worker: OnchainRefreshWorker<R>,
+    handle: Handle,
+}
+
+impl<R> OnchainRefreshTickRunner for OnchainRefreshWorkerTickRunner<R>
+where
+    R: crate::OnchainRefreshReader,
+{
+    type Error = OnchainRefreshWorkerError;
+
+    fn run_once(
+        &mut self,
+        max_tasks: usize,
+    ) -> std::result::Result<crate::OnchainRefreshRunReport, Self::Error> {
+        self.handle
+            .block_on(self.worker.run_once_with_batch_size(max_tasks))
+    }
+
+    fn backlog(&mut self) -> Option<u64> {
+        self.handle.block_on(self.worker.ready_backlog()).ok()
+    }
 }
 
 async fn resolve_contract_set_target_height(
@@ -242,6 +341,7 @@ mod tests {
             data_source_version: "datalens-v1".to_owned(),
             query_max_attempts: 1,
             progress_refresh_lag_blocks: 100,
+            onchain_refresh_tick: Default::default(),
         };
         let config = DatalensConfig {
             endpoint: "http://127.0.0.1:1".to_owned(),
