@@ -195,6 +195,7 @@ fn config(block_range_limit: u32, finality: DatalensFinality) -> DatalensConfig 
             name: "logs".to_owned(),
         },
         query_limits: QueryLimitConfig { block_range_limit },
+        warmup: Default::default(),
         dao_contracts: None,
         chains: Vec::new(),
     }

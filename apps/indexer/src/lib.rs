@@ -23,6 +23,10 @@ pub use crate::datalens::planner::{
     DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan, DaoLogSource, DatalensLogPage,
     DatalensLogQueryReader, fetch_dao_log_pages, plan_dao_log_queries,
 };
+pub use crate::datalens::warmup::{
+    DatalensWarmupConfig, DatalensWarmupEnsureOutcome, DatalensWarmupEnsurer, DatalensWarmupKind,
+    DatalensWarmupSubmitRequest, ensure_datalens_warmup_task, follow_query_request,
+};
 pub use crate::decode::dao_event::{
     CallExecutedEvent, CallSaltEvent, CallScheduledEvent, DaoEventDecodeError, DecodedDaoEvent,
     DecodedGovernorEvent, DecodedTimelockEvent, DecodedTokenEvent, DelegateChangedEvent,

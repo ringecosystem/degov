@@ -5,9 +5,9 @@ use tokio::{task, time::sleep};
 
 use crate::{
     DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
-    DatalensNativeClient, IndexerContractSetRuntimeConfig, IndexerRunner, IndexerRunnerReport,
-    IndexerRuntimeConfig, IndexerTargetHeight, PostgresIndexerRunnerStore, datalens_retry_config,
-    required_env,
+    DatalensNativeClient, DatalensWarmupEnsureOutcome, IndexerContractSetRuntimeConfig,
+    IndexerRunner, IndexerRunnerReport, IndexerRuntimeConfig, IndexerTargetHeight,
+    PostgresIndexerRunnerStore, datalens_retry_config, ensure_datalens_warmup_task, required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -33,6 +33,7 @@ pub async fn run_indexer() -> Result<()> {
         .await
         .context("connect to DeGov indexer Postgres")?;
     apply_migrations(&pool).await?;
+    ensure_warmup_on_startup(&runtime, &config).await?;
 
     loop {
         let contract_sets = runtime
@@ -92,6 +93,60 @@ pub async fn run_indexer() -> Result<()> {
 
         sleep(runtime.poll_interval).await;
     }
+}
+
+async fn ensure_warmup_on_startup(
+    runtime: &IndexerRuntimeConfig,
+    config: &DatalensConfig,
+) -> Result<()> {
+    if !config.warmup.enabled || !config.warmup.ensure_on_startup {
+        log::info!(
+            "Datalens follow_query warmup startup ensure disabled enabled={} ensure_on_startup={}",
+            config.warmup.enabled,
+            config.warmup.ensure_on_startup
+        );
+        return Ok(());
+    }
+
+    let contract_sets = runtime
+        .configured_contract_sets(config)
+        .context("select Datalens warmup contract sets")?;
+    let retry_config = datalens_retry_config(runtime.query_max_attempts);
+
+    for contract_set in contract_sets {
+        let config = contract_set.config.clone();
+        let addresses = contract_set.addresses.clone();
+        let dao_code = contract_set.dao_code.clone();
+        let contract_set_id = contract_set.contract_set_id.clone();
+        let chain_id = contract_set.contract.chain_id;
+        let start_block = contract_set.contract.start_block;
+        let retry_config = retry_config.clone();
+        let outcome = task::spawn_blocking(move || -> Result<_> {
+            let mut client =
+                DatalensNativeClient::from_config_with_retry_config(&config, retry_config)
+                    .context("create Datalens client")?;
+            ensure_datalens_warmup_task(&mut client, &config, &addresses, start_block)
+                .context("ensure Datalens follow_query warmup task")
+        })
+        .await
+        .context("join Datalens warmup ensure task")??;
+
+        match outcome {
+            DatalensWarmupEnsureOutcome::Disabled => {}
+            DatalensWarmupEnsureOutcome::Submitted { task_id, created } => {
+                log::info!(
+                    "Datalens follow_query warmup task ensured dao_code={} chain_id={} contract_set_id={} task_id={} created={}",
+                    dao_code,
+                    chain_id,
+                    contract_set_id,
+                    task_id,
+                    created
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 
 async fn run_contract_set_pass(
@@ -206,6 +261,7 @@ mod tests {
             query_limits: QueryLimitConfig {
                 block_range_limit: 1_000,
             },
+            warmup: Default::default(),
             dao_contracts: None,
             chains: Vec::new(),
         };

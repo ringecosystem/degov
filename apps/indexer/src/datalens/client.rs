@@ -24,6 +24,10 @@ pub struct ServiceReadiness {
 pub struct DatalensNativeClient {
     client: DatalensClient,
     retry_config: RetryConfig,
+    service_base_endpoint: String,
+    application: String,
+    bearer_token: crate::SecretString,
+    http: reqwest::blocking::Client,
 }
 
 impl DatalensNativeClient {
@@ -34,6 +38,14 @@ impl DatalensNativeClient {
         Ok(Self {
             client,
             retry_config,
+            service_base_endpoint: config.endpoint.clone(),
+            application: config.application.clone(),
+            bearer_token: config.bearer_token.clone(),
+            http: reqwest::blocking::Client::builder()
+                .timeout(config.timeout)
+                .user_agent(crate::config::DEGOV_DATALENS_USER_AGENT)
+                .build()
+                .map_err(|error| DatalensError::SdkConfig(error.to_string()))?,
         })
     }
 
@@ -58,7 +70,31 @@ impl DatalensNativeClient {
         Ok(Self {
             client,
             retry_config,
+            service_base_endpoint: config.endpoint.clone(),
+            application: config.application.clone(),
+            bearer_token: config.bearer_token.clone(),
+            http: reqwest::blocking::Client::builder()
+                .timeout(config.timeout)
+                .user_agent(crate::config::DEGOV_DATALENS_USER_AGENT)
+                .build()
+                .map_err(|error| DatalensError::SdkConfig(error.to_string()))?,
         })
+    }
+
+    pub(crate) fn service_base_endpoint(&self) -> &str {
+        &self.service_base_endpoint
+    }
+
+    pub(crate) fn application(&self) -> &str {
+        &self.application
+    }
+
+    pub(crate) fn bearer_token(&self) -> &str {
+        self.bearer_token.expose_secret()
+    }
+
+    pub(crate) fn blocking_http(&self) -> &reqwest::blocking::Client {
+        &self.http
     }
 
     fn query_with_transient_fallback(
