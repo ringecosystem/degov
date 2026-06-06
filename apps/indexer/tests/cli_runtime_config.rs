@@ -1,9 +1,10 @@
 use std::time::Duration;
 
 use degov_datalens_indexer::{
-    DatalensConfig, DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig, IndexerContractSetMode,
-    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshTickConfig, datalens_retry_config,
-    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
+    ContractSetConcurrencyLimit, DatalensConfig, DatalensQueryConcurrencyConfig,
+    GraphqlRuntimeConfig, IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight,
+    OnchainRefreshTickConfig, datalens_retry_config, onchain_refresh_worker_enabled,
+    parse_bool_env_value, parse_i64_env_value,
 };
 
 #[test]
@@ -199,6 +200,112 @@ fn test_indexer_runtime_config_rejects_zero_datalens_query_concurrency() {
 }
 
 #[test]
+fn test_indexer_runtime_config_defaults_contract_set_concurrency_to_bounded_limits() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_CONTRACT_SET_MAX_CONCURRENCY", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_PER_CHAIN_MAX_CONCURRENCY", None),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.contract_set_max_concurrency,
+                ContractSetConcurrencyLimit::Limited(4)
+            );
+            assert_eq!(
+                config.contract_set_per_chain_max_concurrency,
+                ContractSetConcurrencyLimit::Limited(2)
+            );
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_accepts_contract_set_unlimited_concurrency() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            (
+                "DEGOV_INDEXER_CONTRACT_SET_MAX_CONCURRENCY",
+                Some("unlimited"),
+            ),
+            (
+                "DEGOV_INDEXER_CONTRACT_SET_PER_CHAIN_MAX_CONCURRENCY",
+                Some("unbounded"),
+            ),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.contract_set_max_concurrency,
+                ContractSetConcurrencyLimit::Unlimited
+            );
+            assert_eq!(
+                config.contract_set_per_chain_max_concurrency,
+                ContractSetConcurrencyLimit::Unlimited
+            );
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_accepts_contract_set_bounded_concurrency() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_CONTRACT_SET_MAX_CONCURRENCY", Some("4")),
+            (
+                "DEGOV_INDEXER_CONTRACT_SET_PER_CHAIN_MAX_CONCURRENCY",
+                Some("2"),
+            ),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.contract_set_max_concurrency,
+                ContractSetConcurrencyLimit::Limited(4)
+            );
+            assert_eq!(
+                config.contract_set_per_chain_max_concurrency,
+                ContractSetConcurrencyLimit::Limited(2)
+            );
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_rejects_zero_contract_set_concurrency() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_CONTRACT_SET_MAX_CONCURRENCY", Some("0")),
+            ("DEGOV_INDEXER_CONTRACT_SET_PER_CHAIN_MAX_CONCURRENCY", None),
+        ],
+        || {
+            let error = IndexerRuntimeConfig::from_env().expect_err("zero limit is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_CONTRACT_SET_MAX_CONCURRENCY")
+            );
+        },
+    );
+}
+
+#[test]
 fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bounded() {
     temp_env::with_vars(
         [
@@ -331,6 +438,8 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         data_source_version: "datalens-v1".to_owned(),
         query_max_attempts: 3,
         datalens_query_concurrency: Default::default(),
+        contract_set_max_concurrency: ContractSetConcurrencyLimit::Unlimited,
+        contract_set_per_chain_max_concurrency: ContractSetConcurrencyLimit::Unlimited,
         progress_refresh_lag_blocks: 100,
         adaptive_chunk_sizer: Default::default(),
         poll_interval: Duration::from_secs(10),
@@ -405,6 +514,8 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         data_source_version: "datalens-v1".to_owned(),
         query_max_attempts: 3,
         datalens_query_concurrency: Default::default(),
+        contract_set_max_concurrency: ContractSetConcurrencyLimit::Unlimited,
+        contract_set_per_chain_max_concurrency: ContractSetConcurrencyLimit::Unlimited,
         progress_refresh_lag_blocks: 100,
         adaptive_chunk_sizer: Default::default(),
         poll_interval: Duration::from_secs(10),
@@ -439,6 +550,8 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         data_source_version: "datalens-v1".to_owned(),
         query_max_attempts: 3,
         datalens_query_concurrency: Default::default(),
+        contract_set_max_concurrency: ContractSetConcurrencyLimit::Unlimited,
+        contract_set_per_chain_max_concurrency: ContractSetConcurrencyLimit::Unlimited,
         progress_refresh_lag_blocks: 100,
         adaptive_chunk_sizer: Default::default(),
         poll_interval: Duration::from_secs(10),

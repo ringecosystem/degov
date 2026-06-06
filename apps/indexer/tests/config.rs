@@ -346,6 +346,22 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
                 "DEGOV_INDEXER_ADAPTIVE_CHUNK_HIGH_DURATION_MS",
                 Some("2500"),
             ),
+            (
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_CACHE_FILL_HIGH_DURATION_MS",
+                Some("1250"),
+            ),
+            (
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_STABLE_CHUNKS_TO_GROW",
+                Some("3"),
+            ),
+            (
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_UNSTABLE_CHUNKS_TO_SHRINK",
+                Some("4"),
+            ),
+            (
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_SHRINK_FACTOR_PERCENT",
+                Some("75"),
+            ),
         ],
         || {
             let runtime = IndexerRuntimeConfig::from_env().expect("load runtime config");
@@ -360,12 +376,28 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
                 runtime.adaptive_chunk_sizer.high_query_duration_threshold,
                 Duration::from_millis(2500)
             );
+            assert_eq!(
+                runtime
+                    .adaptive_chunk_sizer
+                    .cache_fill_high_duration_threshold,
+                Duration::from_millis(1250)
+            );
+            assert_eq!(runtime.adaptive_chunk_sizer.stable_chunks_to_grow, 3);
+            assert_eq!(runtime.adaptive_chunk_sizer.unstable_chunks_to_shrink, 4);
+            assert_eq!(runtime.adaptive_chunk_sizer.shrink_factor_percent, 75);
 
             let capped = runtime.adaptive_chunk_sizer.for_block_range_limit(300);
 
             assert_eq!(capped.initial_chunk_size, 300);
             assert_eq!(capped.max_chunk_size, 300);
             assert_eq!(capped.min_chunk_size, 25);
+            assert_eq!(
+                capped.cache_fill_high_duration_threshold,
+                Duration::from_millis(1250)
+            );
+            assert_eq!(capped.stable_chunks_to_grow, 3);
+            assert_eq!(capped.unstable_chunks_to_shrink, 4);
+            assert_eq!(capped.shrink_factor_percent, 75);
         },
     );
 }

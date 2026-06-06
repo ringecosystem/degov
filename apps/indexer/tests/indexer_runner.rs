@@ -400,7 +400,7 @@ fn test_adaptive_chunk_sizer_grows_after_consecutive_fast_chunks() {
 }
 
 #[test]
-fn test_adaptive_chunk_sizer_shrinks_after_repeated_partial_or_miss() {
+fn test_adaptive_chunk_sizer_fast_cache_fill_recovers_and_grows() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 
     let first = sizer.record_chunk(adaptive_feedback(
@@ -408,29 +408,79 @@ fn test_adaptive_chunk_sizer_shrinks_after_repeated_partial_or_miss() {
         Duration::from_millis(50),
     ));
     let second = sizer.record_chunk(adaptive_feedback(cache_miss(), Duration::from_millis(50)));
+    let third = sizer.record_chunk(adaptive_feedback(
+        cache_provider_fill(),
+        Duration::from_millis(50),
+    ));
+    let fourth = sizer.record_chunk(adaptive_feedback(
+        cache_provider_fill(),
+        Duration::from_millis(50),
+    ));
 
     assert_eq!(first.current_chunk_size, 100);
-    assert_eq!(first.reason, AdaptiveChunkSizingReason::CacheFillHold);
-    assert_eq!(second.previous_chunk_size, 100);
-    assert_eq!(second.current_chunk_size, 50);
-    assert_eq!(second.reason, AdaptiveChunkSizingReason::RepeatedCacheFill);
+    assert_eq!(first.reason, AdaptiveChunkSizingReason::FastCacheFill);
+    assert_eq!(second.current_chunk_size, 200);
+    assert_eq!(
+        second.reason,
+        AdaptiveChunkSizingReason::StableFastCacheFill
+    );
+    assert_eq!(third.current_chunk_size, 200);
+    assert_eq!(third.reason, AdaptiveChunkSizingReason::FastCacheFill);
+    assert_eq!(fourth.current_chunk_size, 400);
+    assert_eq!(
+        fourth.reason,
+        AdaptiveChunkSizingReason::StableFastCacheFill
+    );
 }
 
 #[test]
-fn test_adaptive_chunk_sizer_holds_on_single_cache_fill_and_high_duration() {
+fn test_adaptive_chunk_sizer_slow_cache_fill_shrinks_after_decay_window() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 
-    let cache_fill = sizer.record_chunk(adaptive_feedback(
+    let first = sizer.record_chunk(adaptive_feedback(
         cache_partial_hit(),
-        Duration::from_millis(50),
+        Duration::from_millis(800),
     ));
+    let second = sizer.record_chunk(adaptive_feedback(
+        cache_provider_fill(),
+        Duration::from_millis(800),
+    ));
+
+    assert_eq!(first.current_chunk_size, 100);
+    assert_eq!(first.reason, AdaptiveChunkSizingReason::SlowCacheFillHold);
+    assert_eq!(second.previous_chunk_size, 100);
+    assert_eq!(second.current_chunk_size, 50);
+    assert_eq!(
+        second.reason,
+        AdaptiveChunkSizingReason::RepeatedSlowCacheFill
+    );
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_medium_cache_fill_holds_without_shrinking() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let first = sizer.record_chunk(adaptive_feedback(
+        cache_partial_hit(),
+        Duration::from_millis(250),
+    ));
+    let second = sizer.record_chunk(adaptive_feedback(cache_miss(), Duration::from_millis(250)));
+
+    assert_eq!(first.previous_chunk_size, 100);
+    assert!(first.current_chunk_size >= first.previous_chunk_size);
+    assert_eq!(second.previous_chunk_size, first.current_chunk_size);
+    assert!(second.current_chunk_size >= second.previous_chunk_size);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_high_duration_shrinks_immediately() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
     let high_duration = sizer.record_chunk(adaptive_feedback(
-        cache_unavailable(),
+        cache_miss(),
         Duration::from_millis(1_500),
     ));
 
-    assert_eq!(cache_fill.current_chunk_size, 100);
-    assert_eq!(cache_fill.reason, AdaptiveChunkSizingReason::CacheFillHold);
     assert_eq!(high_duration.current_chunk_size, 50);
     assert_eq!(
         high_duration.reason,
@@ -451,7 +501,10 @@ fn test_adaptive_chunk_sizer_respects_min_and_max_caps() {
         Duration::from_millis(20),
     ));
     let shrunk = sizer.record_provider_limit(100);
-    let minned = sizer.record_chunk(adaptive_feedback(cache_miss(), Duration::from_millis(50)));
+    let minned = sizer.record_chunk(adaptive_feedback(
+        cache_miss(),
+        Duration::from_millis(1_500),
+    ));
 
     assert_eq!(maxed.current_chunk_size, 200);
     assert_eq!(shrunk.current_chunk_size, 50);
@@ -925,6 +978,7 @@ fn adaptive_config(initial_chunk_size: u32, max_chunk_size: u32) -> AdaptiveChun
         min_chunk_size: 50,
         fast_chunk_duration_threshold: Duration::from_millis(100),
         high_query_duration_threshold: Duration::from_millis(1_000),
+        cache_fill_high_duration_threshold: Duration::from_millis(500),
         ..AdaptiveChunkSizerConfig::for_max_chunk_size(max_chunk_size)
     }
 }
@@ -974,6 +1028,16 @@ fn cache_miss() -> DatalensWarmupEffectivenessAggregation {
         &json!({
             "hit_ranges": [],
             "missing_ranges": [{ "kind": "block", "start": 1, "end": 100 }],
+            "provider_fill_ranges": [{ "kind": "block", "start": 1, "end": 100 }]
+        }),
+    ))
+}
+
+fn cache_provider_fill() -> DatalensWarmupEffectivenessAggregation {
+    cache_aggregation(DatalensLogQueryCacheSummary::from_datalens_cache_json(
+        &json!({
+            "hit_ranges": [],
+            "missing_ranges": [],
             "provider_fill_ranges": [{ "kind": "block", "start": 1, "end": 100 }]
         }),
     ))

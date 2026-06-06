@@ -116,8 +116,9 @@ pub use runner::{
     IndexerRunnerStore, IndexerRunnerTransaction, page_rows,
 };
 pub use runtime_config::{
-    AdaptiveChunkSizerRuntimeConfig, GraphqlRuntimeConfig, IndexerContractSetMode,
-    IndexerContractSetRuntimeConfig, IndexerRuntimeConfig, IndexerTargetHeight,
-    OnchainRefreshRpcChainConfig, OnchainRefreshRuntimeConfig, datalens_retry_config,
-    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value, required_env,
+    AdaptiveChunkSizerRuntimeConfig, ContractSetConcurrencyLimit, GraphqlRuntimeConfig,
+    IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerRuntimeConfig,
+    IndexerTargetHeight, OnchainRefreshRpcChainConfig, OnchainRefreshRuntimeConfig,
+    datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
+    parse_i64_env_value, required_env,
 };
