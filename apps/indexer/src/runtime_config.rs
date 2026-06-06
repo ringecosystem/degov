@@ -126,6 +126,8 @@ pub struct IndexerRuntimeConfig {
     pub data_source_version: String,
     pub query_max_attempts: u32,
     pub datalens_query_concurrency: DatalensQueryConcurrencyConfig,
+    pub contract_set_max_concurrency: ContractSetConcurrencyLimit,
+    pub contract_set_per_chain_max_concurrency: ContractSetConcurrencyLimit,
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
@@ -141,6 +143,21 @@ pub enum IndexerContractSetMode {
 pub enum IndexerTargetHeight {
     Latest,
     Fixed(i64),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContractSetConcurrencyLimit {
+    Limited(usize),
+    Unlimited,
+}
+
+impl ContractSetConcurrencyLimit {
+    pub fn as_log_value(self) -> String {
+        match self {
+            Self::Limited(limit) => limit.to_string(),
+            Self::Unlimited => "unlimited".to_owned(),
+        }
+    }
 }
 
 pub fn datalens_retry_config(max_attempts: u32) -> RetryConfig {
@@ -197,6 +214,8 @@ pub struct IndexerContractSetRuntimeConfig {
     pub data_source_version: String,
     pub query_max_attempts: u32,
     pub datalens_query_concurrency: DatalensQueryConcurrencyConfig,
+    pub contract_set_max_concurrency: ContractSetConcurrencyLimit,
+    pub contract_set_per_chain_max_concurrency: ContractSetConcurrencyLimit,
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub max_chunks_per_run: Option<u64>,
@@ -209,15 +228,23 @@ pub struct AdaptiveChunkSizerRuntimeConfig {
     pub max_chunk_size: Option<u32>,
     pub fast_chunk_duration_threshold: Duration,
     pub high_query_duration_threshold: Duration,
+    pub cache_fill_high_duration_threshold: Duration,
+    pub stable_chunks_to_grow: u32,
+    pub unstable_chunks_to_shrink: u32,
+    pub shrink_factor_percent: u32,
 }
 
 impl Default for AdaptiveChunkSizerRuntimeConfig {
     fn default() -> Self {
         Self {
-            min_chunk_size: 1,
+            min_chunk_size: 100,
             max_chunk_size: None,
             fast_chunk_duration_threshold: Duration::from_secs(1),
             high_query_duration_threshold: Duration::from_secs(10),
+            cache_fill_high_duration_threshold: Duration::from_secs(3),
+            stable_chunks_to_grow: 2,
+            unstable_chunks_to_shrink: 2,
+            shrink_factor_percent: 50,
         }
     }
 }
@@ -234,6 +261,10 @@ impl AdaptiveChunkSizerRuntimeConfig {
             min_chunk_size: self.min_chunk_size.min(max_chunk_size),
             fast_chunk_duration_threshold: self.fast_chunk_duration_threshold,
             high_query_duration_threshold: self.high_query_duration_threshold,
+            cache_fill_high_duration_threshold: self.cache_fill_high_duration_threshold,
+            stable_chunks_to_grow: self.stable_chunks_to_grow,
+            unstable_chunks_to_shrink: self.unstable_chunks_to_shrink,
+            shrink_factor_percent: self.shrink_factor_percent,
             ..AdaptiveChunkSizerConfig::for_max_chunk_size(max_chunk_size)
         }
     }
@@ -274,6 +305,14 @@ impl IndexerRuntimeConfig {
                 .unwrap_or_else(|| "datalens-v1".to_owned()),
             query_max_attempts,
             datalens_query_concurrency: load_datalens_query_concurrency_config()?,
+            contract_set_max_concurrency: optional_env_contract_set_concurrency_limit(
+                "DEGOV_INDEXER_CONTRACT_SET_MAX_CONCURRENCY",
+            )?
+            .unwrap_or(ContractSetConcurrencyLimit::Limited(4)),
+            contract_set_per_chain_max_concurrency: optional_env_contract_set_concurrency_limit(
+                "DEGOV_INDEXER_CONTRACT_SET_PER_CHAIN_MAX_CONCURRENCY",
+            )?
+            .unwrap_or(ContractSetConcurrencyLimit::Limited(2)),
             progress_refresh_lag_blocks: optional_env_i64(
                 "DEGOV_INDEXER_PROGRESS_REFRESH_LAG_BLOCKS",
             )?
@@ -341,6 +380,8 @@ impl IndexerRuntimeConfig {
             data_source_version: self.data_source_version.clone(),
             query_max_attempts: self.query_max_attempts,
             datalens_query_concurrency: self.datalens_query_concurrency,
+            contract_set_max_concurrency: self.contract_set_max_concurrency,
+            contract_set_per_chain_max_concurrency: self.contract_set_per_chain_max_concurrency,
             progress_refresh_lag_blocks: self.progress_refresh_lag_blocks,
             adaptive_chunk_sizer: self.adaptive_chunk_sizer,
             max_chunks_per_run: self.max_chunks_per_run,
@@ -678,6 +719,24 @@ fn load_adaptive_chunk_sizer_runtime_config() -> Result<AdaptiveChunkSizerRuntim
             optional_env_u64("DEGOV_INDEXER_ADAPTIVE_CHUNK_HIGH_DURATION_MS")?
                 .unwrap_or(duration_millis_u64(defaults.high_query_duration_threshold)),
         ),
+        cache_fill_high_duration_threshold: Duration::from_millis(
+            optional_env_u64("DEGOV_INDEXER_ADAPTIVE_CHUNK_CACHE_FILL_HIGH_DURATION_MS")?
+                .unwrap_or(duration_millis_u64(
+                    defaults.cache_fill_high_duration_threshold,
+                )),
+        ),
+        stable_chunks_to_grow: optional_env_u32(
+            "DEGOV_INDEXER_ADAPTIVE_CHUNK_STABLE_CHUNKS_TO_GROW",
+        )?
+        .unwrap_or(defaults.stable_chunks_to_grow),
+        unstable_chunks_to_shrink: optional_env_u32(
+            "DEGOV_INDEXER_ADAPTIVE_CHUNK_UNSTABLE_CHUNKS_TO_SHRINK",
+        )?
+        .unwrap_or(defaults.unstable_chunks_to_shrink),
+        shrink_factor_percent: optional_env_u32(
+            "DEGOV_INDEXER_ADAPTIVE_CHUNK_SHRINK_FACTOR_PERCENT",
+        )?
+        .unwrap_or(defaults.shrink_factor_percent),
     };
 
     if config.min_chunk_size == 0 {
@@ -703,8 +762,46 @@ fn load_adaptive_chunk_sizer_runtime_config() -> Result<AdaptiveChunkSizerRuntim
     if config.high_query_duration_threshold.is_zero() {
         bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_HIGH_DURATION_MS must be greater than zero");
     }
+    if config.cache_fill_high_duration_threshold.is_zero() {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_CACHE_FILL_HIGH_DURATION_MS must be greater than zero");
+    }
+    if config.stable_chunks_to_grow == 0 {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_STABLE_CHUNKS_TO_GROW must be greater than zero");
+    }
+    if config.unstable_chunks_to_shrink == 0 {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_UNSTABLE_CHUNKS_TO_SHRINK must be greater than zero");
+    }
+    if config.shrink_factor_percent == 0 || config.shrink_factor_percent >= 100 {
+        bail!(
+            "DEGOV_INDEXER_ADAPTIVE_CHUNK_SHRINK_FACTOR_PERCENT must be greater than zero and less than 100"
+        );
+    }
 
     Ok(config)
+}
+
+fn optional_env_contract_set_concurrency_limit(
+    name: &'static str,
+) -> Result<Option<ContractSetConcurrencyLimit>> {
+    optional_env(name)?
+        .map(|value| parse_contract_set_concurrency_limit_env_value(name, &value))
+        .transpose()
+}
+
+fn parse_contract_set_concurrency_limit_env_value(
+    name: &'static str,
+    value: &str,
+) -> Result<ContractSetConcurrencyLimit> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "unlimited" | "unbounded" => Ok(ContractSetConcurrencyLimit::Unlimited),
+        _ => {
+            let limit = parse_usize_env_value(name, value)?;
+            if limit == 0 {
+                bail!("{name} must be a positive integer or unlimited");
+            }
+            Ok(ContractSetConcurrencyLimit::Limited(limit))
+        }
+    }
 }
 
 fn duration_millis_u64(duration: Duration) -> u64 {

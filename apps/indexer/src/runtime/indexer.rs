@@ -1,19 +1,19 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use anyhow as runtime_anyhow;
-use runtime_anyhow::{Context, Result};
+use runtime_anyhow::{Context, Result, bail};
 use sqlx::postgres::PgPoolOptions;
-use tokio::{runtime::Handle, task, time::sleep};
+use tokio::{runtime::Handle, sync::Semaphore, task, time::sleep};
 
 use crate::{
     DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
-    DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensWarmupEnsureOutcome,
-    EvmRpcChainTool, IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner,
-    IndexerRunnerReport, IndexerRuntimeConfig, IndexerTargetHeight,
-    MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTickReport,
-    OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshWorker,
-    OnchainRefreshWorkerError, PostgresIndexerRunnerStore, datalens_retry_config,
-    ensure_datalens_warmup_task, required_env,
+    DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensRuntimeContractSet,
+    DatalensWarmupEnsureOutcome, EvmRpcChainTool, IndexerContractSetMode,
+    IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner, IndexerRunnerReport,
+    IndexerRuntimeConfig, IndexerTargetHeight, MultiChainToolOnchainRefreshReader,
+    OnchainRefreshRuntimeConfig, OnchainRefreshTickReport, OnchainRefreshTickRunner,
+    OnchainRefreshTickScheduler, OnchainRefreshWorker, OnchainRefreshWorkerError,
+    PostgresIndexerRunnerStore, datalens_retry_config, ensure_datalens_warmup_task, required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -25,11 +25,15 @@ pub async fn run_indexer() -> Result<()> {
 
     verify_datalens(&config).await?;
     log::info!(
-        "Datalens indexer runtime boundary is ready contract_set_mode={} dao_filter={:?} dataset={} target_height={} database_url_configured={}",
+        "Datalens indexer runtime boundary is ready contract_set_mode={} dao_filter={:?} dataset={} target_height={} contract_set_max_concurrency={} contract_set_per_chain_max_concurrency={} database_url_configured={}",
         runtime.contract_set_mode.as_str(),
         runtime.dao_filter,
         config.dataset.key(),
         runtime.target_height.as_log_value(),
+        runtime.contract_set_max_concurrency.as_log_value(),
+        runtime
+            .contract_set_per_chain_max_concurrency
+            .as_log_value(),
         !database_url.is_empty()
     );
 
@@ -54,52 +58,27 @@ pub async fn run_indexer() -> Result<()> {
             .configured_contract_sets(&config)
             .context("select Datalens indexer contract sets")?;
 
-        for contract_set in contract_sets {
-            let target_height =
-                resolve_contract_set_target_height(&runtime, &contract_set.config).await?;
-            let contract_runtime = match runtime
-                .for_configured_contract_set_at_target(&contract_set, target_height)
-            {
-                Ok(contract_runtime) => contract_runtime,
-                Err(error)
-                    if runtime.should_skip_contract_set_start_after_resolved_target(
-                        contract_set.contract.start_block,
-                        target_height,
-                    ) =>
-                {
-                    log::warn!(
-                        "skipping Datalens indexer contract set because configured startBlock is above target dao_code={} chain_id={} contract_set_id={} start_block={} target_height={} error={}",
-                        contract_set.dao_code,
-                        contract_set.contract.chain_id,
-                        contract_set.contract_set_id,
-                        contract_set.contract.start_block,
-                        target_height,
-                        error
-                    );
-                    continue;
+        match runtime.contract_set_mode {
+            IndexerContractSetMode::Single => {
+                for contract_set in contract_sets {
+                    run_configured_contract_set_pass(
+                        &runtime,
+                        contract_set,
+                        pool.clone(),
+                        datalens_query_gate.clone(),
+                    )
+                    .await?;
                 }
-                Err(error) => return Err(error),
-            };
-            let report = run_contract_set_pass(
-                contract_runtime.clone(),
-                contract_set.config.clone(),
-                contract_set.addresses.clone(),
-                pool.clone(),
-                datalens_query_gate.clone(),
-            )
-            .await?;
-
-            log::info!(
-                "Datalens indexer run pass completed dao_code={} chain_id={} contract_set_id={} chunks_processed={} processed_height={:?} target_height={} synced_percentage={} onchain_refresh_allowed={}",
-                contract_runtime.dao_code,
-                contract_set.contract.chain_id,
-                contract_runtime.checkpoint_contract_set_id,
-                report.chunks_processed,
-                report.last_progress.processed_height,
-                report.last_progress.target_height,
-                report.last_progress.synced_percentage,
-                report.last_progress.onchain_refresh_allowed
-            );
+            }
+            IndexerContractSetMode::All => {
+                run_configured_contract_sets_pass(
+                    runtime.clone(),
+                    contract_sets,
+                    pool.clone(),
+                    datalens_query_gate.clone(),
+                )
+                .await?;
+            }
         }
 
         if runtime.run_once {
@@ -107,6 +86,177 @@ pub async fn run_indexer() -> Result<()> {
         }
 
         sleep(runtime.poll_interval).await;
+    }
+}
+
+async fn run_configured_contract_sets_pass(
+    runtime: IndexerRuntimeConfig,
+    contract_sets: Vec<DatalensRuntimeContractSet>,
+    pool: sqlx::PgPool,
+    datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
+) -> Result<()> {
+    let jobs = contract_sets
+        .into_iter()
+        .map(|contract_set| ContractSetConcurrencyJob {
+            chain_id: contract_set.contract.chain_id,
+            contract_set,
+        })
+        .collect();
+    let runtime = Arc::new(runtime);
+
+    run_contract_set_jobs(
+        jobs,
+        runtime.contract_set_max_concurrency,
+        runtime.contract_set_per_chain_max_concurrency,
+        move |contract_set| {
+            let runtime = runtime.clone();
+            let pool = pool.clone();
+            let datalens_query_gate = datalens_query_gate.clone();
+            async move {
+                run_configured_contract_set_pass(&runtime, contract_set, pool, datalens_query_gate)
+                    .await
+            }
+        },
+    )
+    .await
+}
+
+async fn run_configured_contract_set_pass(
+    runtime: &IndexerRuntimeConfig,
+    contract_set: DatalensRuntimeContractSet,
+    pool: sqlx::PgPool,
+    datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
+) -> Result<()> {
+    let target_height = resolve_contract_set_target_height(runtime, &contract_set.config).await?;
+    let contract_runtime = match runtime
+        .for_configured_contract_set_at_target(&contract_set, target_height)
+    {
+        Ok(contract_runtime) => contract_runtime,
+        Err(error)
+            if runtime.should_skip_contract_set_start_after_resolved_target(
+                contract_set.contract.start_block,
+                target_height,
+            ) =>
+        {
+            log::warn!(
+                "skipping Datalens indexer contract set because configured startBlock is above target dao_code={} chain_id={} contract_set_id={} start_block={} target_height={} error={}",
+                contract_set.dao_code,
+                contract_set.contract.chain_id,
+                contract_set.contract_set_id,
+                contract_set.contract.start_block,
+                target_height,
+                error
+            );
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    let report = run_contract_set_pass(
+        contract_runtime.clone(),
+        contract_set.config.clone(),
+        contract_set.addresses.clone(),
+        pool,
+        datalens_query_gate,
+    )
+    .await?;
+
+    log::info!(
+        "Datalens indexer run pass completed dao_code={} chain_id={} contract_set_id={} chunks_processed={} processed_height={:?} target_height={} synced_percentage={} onchain_refresh_allowed={}",
+        contract_runtime.dao_code,
+        contract_set.contract.chain_id,
+        contract_runtime.checkpoint_contract_set_id,
+        report.chunks_processed,
+        report.last_progress.processed_height,
+        report.last_progress.target_height,
+        report.last_progress.synced_percentage,
+        report.last_progress.onchain_refresh_allowed
+    );
+
+    Ok(())
+}
+
+struct ContractSetConcurrencyJob<T> {
+    chain_id: i32,
+    contract_set: T,
+}
+
+async fn run_contract_set_jobs<T, F, Fut>(
+    jobs: Vec<ContractSetConcurrencyJob<T>>,
+    global_limit: crate::ContractSetConcurrencyLimit,
+    per_chain_limit: crate::ContractSetConcurrencyLimit,
+    run: F,
+) -> Result<()>
+where
+    T: Send + 'static,
+    F: Fn(T) -> Fut + Clone + Send + Sync + 'static,
+    Fut: Future<Output = Result<()>> + Send + 'static,
+{
+    let global = semaphore_for_limit(global_limit);
+    let per_chain = per_chain_semaphores(&jobs, per_chain_limit);
+    let mut handles = Vec::with_capacity(jobs.len());
+
+    for job in jobs {
+        let global = global.clone();
+        let per_chain = per_chain
+            .as_ref()
+            .and_then(|semaphores| semaphores.get(&job.chain_id).cloned());
+        let run = run.clone();
+        handles.push(task::spawn(async move {
+            let _global_permit = acquire_semaphore(global).await?;
+            let _per_chain_permit = acquire_semaphore(per_chain).await?;
+            run(job.contract_set).await
+        }));
+    }
+
+    let mut errors = Vec::new();
+    for handle in handles {
+        match handle.await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => errors.push(error),
+            Err(error) => errors.push(error.into()),
+        }
+    }
+
+    if let Some(first_error) = errors.into_iter().next() {
+        bail!("Datalens indexer all-mode contract set pass failed: {first_error}");
+    }
+
+    Ok(())
+}
+
+fn semaphore_for_limit(limit: crate::ContractSetConcurrencyLimit) -> Option<Arc<Semaphore>> {
+    match limit {
+        crate::ContractSetConcurrencyLimit::Limited(limit) => Some(Arc::new(Semaphore::new(limit))),
+        crate::ContractSetConcurrencyLimit::Unlimited => None,
+    }
+}
+
+fn per_chain_semaphores<T>(
+    jobs: &[ContractSetConcurrencyJob<T>],
+    limit: crate::ContractSetConcurrencyLimit,
+) -> Option<BTreeMap<i32, Arc<Semaphore>>> {
+    let crate::ContractSetConcurrencyLimit::Limited(limit) = limit else {
+        return None;
+    };
+    let mut semaphores = BTreeMap::new();
+    for job in jobs {
+        semaphores
+            .entry(job.chain_id)
+            .or_insert_with(|| Arc::new(Semaphore::new(limit)));
+    }
+    Some(semaphores)
+}
+
+async fn acquire_semaphore(
+    semaphore: Option<Arc<Semaphore>>,
+) -> Result<Option<tokio::sync::OwnedSemaphorePermit>> {
+    match semaphore {
+        Some(semaphore) => semaphore
+            .acquire_owned()
+            .await
+            .map(Some)
+            .context("acquire Datalens contract set concurrency permit"),
+        None => Ok(None),
     }
 }
 
@@ -343,7 +493,13 @@ async fn resolve_contract_set_target_height(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
+    };
 
     use crate::{
         ChainFamily, ChainIdentityConfig, DatalensFinality, DatasetKeyConfig, QueryLimitConfig,
@@ -366,6 +522,8 @@ mod tests {
             data_source_version: "datalens-v1".to_owned(),
             query_max_attempts: 1,
             datalens_query_concurrency: Default::default(),
+            contract_set_max_concurrency: crate::ContractSetConcurrencyLimit::Unlimited,
+            contract_set_per_chain_max_concurrency: crate::ContractSetConcurrencyLimit::Unlimited,
             progress_refresh_lag_blocks: 100,
             adaptive_chunk_sizer: Default::default(),
             onchain_refresh_tick: Default::default(),
@@ -398,5 +556,103 @@ mod tests {
             .expect("fixed target height resolves without Datalens");
 
         assert_eq!(height, 568800);
+    }
+
+    #[tokio::test]
+    async fn test_contract_set_jobs_global_concurrency_is_honored() {
+        let observed = ObservedConcurrency::default();
+        let jobs = vec![
+            ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: observed.clone(),
+            },
+            ContractSetConcurrencyJob {
+                chain_id: 2,
+                contract_set: observed.clone(),
+            },
+            ContractSetConcurrencyJob {
+                chain_id: 3,
+                contract_set: observed.clone(),
+            },
+            ContractSetConcurrencyJob {
+                chain_id: 4,
+                contract_set: observed.clone(),
+            },
+        ];
+
+        run_contract_set_jobs(
+            jobs,
+            crate::ContractSetConcurrencyLimit::Limited(2),
+            crate::ContractSetConcurrencyLimit::Unlimited,
+            observed_job,
+        )
+        .await
+        .expect("jobs run");
+
+        assert_eq!(observed.max_seen(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_contract_set_jobs_per_chain_concurrency_is_honored() {
+        let observed = ObservedConcurrency::default();
+        let jobs = (0..4)
+            .map(|_| ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: observed.clone(),
+            })
+            .collect();
+
+        run_contract_set_jobs(
+            jobs,
+            crate::ContractSetConcurrencyLimit::Unlimited,
+            crate::ContractSetConcurrencyLimit::Limited(2),
+            observed_job,
+        )
+        .await
+        .expect("jobs run");
+
+        assert_eq!(observed.max_seen(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_contract_set_jobs_unlimited_allows_all_jobs_to_run_together() {
+        let observed = ObservedConcurrency::default();
+        let jobs = (0..4)
+            .map(|_| ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: observed.clone(),
+            })
+            .collect();
+
+        run_contract_set_jobs(
+            jobs,
+            crate::ContractSetConcurrencyLimit::Unlimited,
+            crate::ContractSetConcurrencyLimit::Unlimited,
+            observed_job,
+        )
+        .await
+        .expect("jobs run");
+
+        assert_eq!(observed.max_seen(), 4);
+    }
+
+    #[derive(Clone, Default)]
+    struct ObservedConcurrency {
+        current: Arc<AtomicUsize>,
+        max: Arc<AtomicUsize>,
+    }
+
+    impl ObservedConcurrency {
+        fn max_seen(&self) -> usize {
+            self.max.load(Ordering::SeqCst)
+        }
+    }
+
+    async fn observed_job(observed: ObservedConcurrency) -> Result<()> {
+        let current = observed.current.fetch_add(1, Ordering::SeqCst) + 1;
+        observed.max.fetch_max(current, Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        observed.current.fetch_sub(1, Ordering::SeqCst);
+        Ok(())
     }
 }

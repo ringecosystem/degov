@@ -74,10 +74,12 @@ pub struct AdaptiveChunkSizerConfig {
     pub local_processing_shrink_threshold: Duration,
     pub fast_chunk_duration_threshold: Duration,
     pub high_query_duration_threshold: Duration,
+    pub cache_fill_high_duration_threshold: Duration,
     pub dense_returned_row_threshold: usize,
     pub sparse_returned_row_threshold: usize,
     pub stable_chunks_to_grow: u32,
     pub unstable_chunks_to_shrink: u32,
+    pub shrink_factor_percent: u32,
 }
 
 impl AdaptiveChunkSizerConfig {
@@ -85,14 +87,16 @@ impl AdaptiveChunkSizerConfig {
         Self {
             initial_chunk_size: max_chunk_size,
             max_chunk_size,
-            min_chunk_size: 1,
+            min_chunk_size: 100,
             local_processing_shrink_threshold: Duration::from_secs(10),
             fast_chunk_duration_threshold: Duration::from_secs(1),
             high_query_duration_threshold: Duration::from_secs(10),
+            cache_fill_high_duration_threshold: Duration::from_secs(3),
             dense_returned_row_threshold: 5_000,
             sparse_returned_row_threshold: 100,
             stable_chunks_to_grow: 2,
             unstable_chunks_to_shrink: 2,
+            shrink_factor_percent: 50,
         }
     }
 
@@ -129,8 +133,10 @@ pub enum AdaptiveChunkSizingReason {
     StableSparseRange,
     StableFullHit,
     StableFastChunk,
-    CacheFillHold,
-    RepeatedCacheFill,
+    FastCacheFill,
+    StableFastCacheFill,
+    SlowCacheFillHold,
+    RepeatedSlowCacheFill,
     Hold,
 }
 
@@ -144,8 +150,10 @@ impl fmt::Display for AdaptiveChunkSizingReason {
             Self::StableSparseRange => formatter.write_str("stable_sparse_range"),
             Self::StableFullHit => formatter.write_str("stable_full_hit"),
             Self::StableFastChunk => formatter.write_str("stable_fast_chunk"),
-            Self::CacheFillHold => formatter.write_str("cache_fill_hold"),
-            Self::RepeatedCacheFill => formatter.write_str("repeated_cache_fill"),
+            Self::FastCacheFill => formatter.write_str("fast_cache_fill"),
+            Self::StableFastCacheFill => formatter.write_str("stable_fast_cache_fill"),
+            Self::SlowCacheFillHold => formatter.write_str("slow_cache_fill_hold"),
+            Self::RepeatedSlowCacheFill => formatter.write_str("repeated_slow_cache_fill"),
             Self::Hold => formatter.write_str("hold"),
         }
     }
@@ -176,6 +184,9 @@ impl AdaptiveChunkSizer {
             return Err(CheckpointError::InvalidRangeLimit);
         }
         if config.stable_chunks_to_grow == 0 || config.unstable_chunks_to_shrink == 0 {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
+        if config.shrink_factor_percent == 0 || config.shrink_factor_percent >= 100 {
             return Err(CheckpointError::InvalidRangeLimit);
         }
 
@@ -210,9 +221,9 @@ impl AdaptiveChunkSizer {
                 .warmup_effectiveness
                 .query_duration_max()
                 .is_some_and(|duration| duration > self.config.high_query_duration_threshold);
-        let cache_fill = feedback.warmup_effectiveness.partial_hit_count > 0
-            || feedback.warmup_effectiveness.miss_count > 0
-            || feedback.warmup_effectiveness.provider_fill_range_count > 0;
+        let cache_fill = feedback.has_cache_fill();
+        let fast_chunk = feedback.is_fast(&self.config);
+        let slow_cache_fill = cache_fill && feedback.is_slow_cache_fill(&self.config);
         let stable_growth_reason = feedback.stable_growth_reason(&self.config);
         let stable_growth_candidate = stable_growth_reason
             != AdaptiveChunkSizingReason::StableSparseRange
@@ -221,7 +232,7 @@ impl AdaptiveChunkSizer {
         let reason = if slow_local_processing || high_query_duration || dense_range {
             self.stable_chunks = 0;
             self.unstable_chunks = 0;
-            self.current_chunk_size = (self.current_chunk_size / 2).max(self.config.min_chunk_size);
+            self.shrink_current_chunk_size();
             if slow_local_processing {
                 AdaptiveChunkSizingReason::SlowLocalProcessing
             } else if high_query_duration {
@@ -229,16 +240,29 @@ impl AdaptiveChunkSizer {
             } else {
                 AdaptiveChunkSizingReason::DenseReturnedRows
             }
-        } else if cache_fill {
-            self.stable_chunks = 0;
+        } else if slow_cache_fill {
             self.unstable_chunks = self.unstable_chunks.saturating_add(1);
             if self.unstable_chunks >= self.config.unstable_chunks_to_shrink {
                 self.unstable_chunks = 0;
-                self.current_chunk_size =
-                    (self.current_chunk_size / 2).max(self.config.min_chunk_size);
-                AdaptiveChunkSizingReason::RepeatedCacheFill
+                self.stable_chunks = 0;
+                self.shrink_current_chunk_size();
+                AdaptiveChunkSizingReason::RepeatedSlowCacheFill
             } else {
-                AdaptiveChunkSizingReason::CacheFillHold
+                self.stable_chunks = 0;
+                AdaptiveChunkSizingReason::SlowCacheFillHold
+            }
+        } else if cache_fill && fast_chunk {
+            self.stable_chunks = self.stable_chunks.saturating_add(1);
+            self.unstable_chunks = 0;
+            if self.stable_chunks >= self.config.stable_chunks_to_grow {
+                self.stable_chunks = 0;
+                self.current_chunk_size = self
+                    .current_chunk_size
+                    .saturating_mul(2)
+                    .min(self.config.max_chunk_size);
+                AdaptiveChunkSizingReason::StableFastCacheFill
+            } else {
+                AdaptiveChunkSizingReason::FastCacheFill
             }
         } else if stable_growth_candidate {
             self.stable_chunks = self.stable_chunks.saturating_add(1);
@@ -273,15 +297,27 @@ impl AdaptiveChunkSizer {
         let previous_chunk_size = self.current_chunk_size;
         self.stable_chunks = 0;
         self.unstable_chunks = 0;
-        self.current_chunk_size = (failed_range_block_count / 2)
-            .max(self.config.min_chunk_size)
-            .min(previous_chunk_size);
+        self.current_chunk_size = shrink_chunk_size(
+            failed_range_block_count,
+            self.config.min_chunk_size,
+            self.config.shrink_factor_percent,
+        )
+        .max(self.config.min_chunk_size)
+        .min(previous_chunk_size);
 
         AdaptiveChunkSizingDecision {
             previous_chunk_size,
             current_chunk_size: self.current_chunk_size,
             reason: AdaptiveChunkSizingReason::ProviderLimit,
         }
+    }
+
+    fn shrink_current_chunk_size(&mut self) {
+        self.current_chunk_size = shrink_chunk_size(
+            self.current_chunk_size,
+            self.config.min_chunk_size,
+            self.config.shrink_factor_percent,
+        );
     }
 }
 
@@ -297,10 +333,7 @@ impl AdaptiveChunkFeedback {
     }
 
     fn has_full_cache_hit(&self) -> bool {
-        self.warmup_effectiveness.full_hit_count > 0
-            && self.warmup_effectiveness.partial_hit_count == 0
-            && self.warmup_effectiveness.miss_count == 0
-            && self.warmup_effectiveness.provider_fill_range_count == 0
+        self.warmup_effectiveness.full_hit_count > 0 && !self.has_cache_fill()
     }
 
     fn is_fast(&self, config: &AdaptiveChunkSizerConfig) -> bool {
@@ -311,6 +344,30 @@ impl AdaptiveChunkFeedback {
                 .query_duration_max()
                 .is_none_or(|duration| duration <= config.fast_chunk_duration_threshold)
     }
+
+    fn has_cache_fill(&self) -> bool {
+        self.warmup_effectiveness.partial_hit_count > 0
+            || self.warmup_effectiveness.miss_count > 0
+            || self.warmup_effectiveness.provider_fill_range_count > 0
+    }
+
+    fn is_slow_cache_fill(&self, config: &AdaptiveChunkSizerConfig) -> bool {
+        self.read_duration > config.cache_fill_high_duration_threshold
+            || self
+                .warmup_effectiveness
+                .query_duration_max()
+                .is_some_and(|duration| duration > config.cache_fill_high_duration_threshold)
+    }
+}
+
+fn shrink_chunk_size(chunk_size: u32, min_chunk_size: u32, shrink_factor_percent: u32) -> u32 {
+    if chunk_size <= min_chunk_size {
+        return min_chunk_size;
+    }
+    let shrunk = ((u64::from(chunk_size) * u64::from(shrink_factor_percent)) / 100)
+        .try_into()
+        .unwrap_or(u32::MAX);
+    shrunk.max(min_chunk_size).min(chunk_size.saturating_sub(1))
 }
 
 impl ProgressRateEstimator {
