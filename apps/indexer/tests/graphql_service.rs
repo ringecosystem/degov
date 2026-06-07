@@ -540,6 +540,47 @@ async fn test_graphql_schema_serves_indexer_accuracy_audit_queries() -> Result<(
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_power_fields_prefer_provisional_overlay_and_fallback_to_final()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_power_overlay_rows(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query LivePowerOverlay {
+              contributors(where: { id_in: ["0xvoter1", "0xvoter2"] }, orderBy: [id_ASC]) {
+                id
+                power
+              }
+              delegates(where: { toDelegate_eq: "0xdelegate" }) {
+                id
+                power
+              }
+            }
+            "#,
+    );
+    let response = schema.execute(request).await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = serde_json::to_value(response.data)?;
+    assert_eq!(data["contributors"][0]["id"], "0xvoter1");
+    assert_eq!(data["contributors"][0]["power"], "999");
+    assert_eq!(data["contributors"][1]["id"], "0xvoter2");
+    assert_eq!(data["contributors"][1]["power"], "25");
+    assert_eq!(data["delegates"][0]["power"], "888");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_schema_applies_implicit_scope_to_queries_and_connections()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1215,6 +1256,42 @@ async fn seed_other_scope_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         "#,
     )
     .bind(OTHER_CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_power_overlay_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_contributor_power_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address, token_address,
+          account, power, delegates_count_all, delegates_count_effective, source, status,
+          anchor_block_number, anchor_block_timestamp
+        ) VALUES (
+          'overlay:contributor:0xvoter1', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor', '0xtoken',
+          '0xvoter1', 999, 1, 1, 'live-onchain', 'available', 900, 1700000200
+        )
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_delegate_power_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address, token_address,
+          delegator, delegate, power, is_current, source, status, anchor_block_number,
+          anchor_block_timestamp
+        ) VALUES (
+          'overlay:delegate:0xdelegator:0xdelegate', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor', '0xtoken',
+          '0xdelegator', '0xdelegate', 888, TRUE, 'live-onchain', 'available', 900,
+          1700000200
+        )
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
     .execute(pool)
     .await?;
 

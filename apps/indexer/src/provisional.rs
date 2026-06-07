@@ -41,6 +41,76 @@ pub struct DatalensProvisionalSegmentWrite {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalContributorPowerOverlayWrite {
+    pub id: String,
+    pub segment_id: Option<String>,
+    pub dao_code: Option<String>,
+    pub contract_set_id: String,
+    pub chain_id: Option<i32>,
+    pub chain_name: Option<String>,
+    pub governor_address: Option<String>,
+    pub token_address: Option<String>,
+    pub account: String,
+    pub power: String,
+    pub balance: Option<String>,
+    pub delegates_count_all: i32,
+    pub delegates_count_effective: i32,
+    pub last_vote_block_number: Option<String>,
+    pub last_vote_timestamp: Option<String>,
+    pub source: String,
+    pub status: String,
+    pub anchor_block_number: Option<String>,
+    pub anchor_block_hash: Option<String>,
+    pub anchor_parent_hash: Option<String>,
+    pub anchor_block_timestamp: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalDelegatePowerOverlayWrite {
+    pub id: String,
+    pub segment_id: Option<String>,
+    pub dao_code: Option<String>,
+    pub contract_set_id: String,
+    pub chain_id: Option<i32>,
+    pub chain_name: Option<String>,
+    pub governor_address: Option<String>,
+    pub token_address: Option<String>,
+    pub delegator: String,
+    pub delegate: String,
+    pub power: String,
+    pub is_current: bool,
+    pub source: String,
+    pub status: String,
+    pub anchor_block_number: Option<String>,
+    pub anchor_block_hash: Option<String>,
+    pub anchor_parent_hash: Option<String>,
+    pub anchor_block_timestamp: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalPowerOverlayScope {
+    pub contract_set_id: String,
+    pub chain_id: i32,
+    pub dao_code: Option<String>,
+    pub governor_address: String,
+    pub token_address: String,
+    pub account: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalDelegatePowerOverlayRelation {
+    pub contract_set_id: String,
+    pub chain_id: Option<i32>,
+    pub chain_name: Option<String>,
+    pub dao_code: Option<String>,
+    pub governor_address: Option<String>,
+    pub token_address: Option<String>,
+    pub delegator: String,
+    pub delegate: String,
+    pub is_current: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProvisionalWorkerReport {
     pub segments_written: usize,
 }
@@ -60,6 +130,21 @@ pub trait DatalensProvisionalSegmentStore {
     fn write_provisional_segments(
         &mut self,
         segments: &[DatalensProvisionalSegmentWrite],
+    ) -> Result<(), Self::Error>;
+}
+
+pub trait ProvisionalPowerOverlayStore {
+    type Error: fmt::Display;
+
+    fn current_delegate_power_overlay_relations(
+        &mut self,
+        scopes: &[ProvisionalPowerOverlayScope],
+    ) -> Result<Vec<ProvisionalDelegatePowerOverlayRelation>, Self::Error>;
+
+    fn write_power_overlays(
+        &mut self,
+        contributors: &[ProvisionalContributorPowerOverlayWrite],
+        delegates: &[ProvisionalDelegatePowerOverlayWrite],
     ) -> Result<(), Self::Error>;
 }
 

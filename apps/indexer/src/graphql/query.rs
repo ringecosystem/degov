@@ -213,7 +213,27 @@ pub(super) async fn query_contributors(
           block_timestamp::text AS block_timestamp, transaction_hash,
           last_vote_timestamp::text AS last_vote_timestamp, power::text AS power,
           balance::text AS balance, delegates_count_all
-        FROM contributor
+        FROM (
+          SELECT contributor.id, contributor.contract_set_id, contributor.chain_id,
+            contributor.dao_code, contributor.governor_address, contributor.block_number,
+            contributor.block_timestamp, contributor.transaction_hash,
+            contributor.last_vote_timestamp,
+            COALESCE(contributor_power_overlay.power, contributor.power) AS power,
+            contributor.balance, contributor.delegates_count_all
+          FROM contributor
+          LEFT JOIN degov_provisional_contributor_power_overlay contributor_power_overlay
+            ON contributor_power_overlay.contract_set_id = contributor.contract_set_id
+           AND contributor_power_overlay.chain_id IS NOT DISTINCT FROM contributor.chain_id
+           AND contributor_power_overlay.dao_code IS NOT DISTINCT FROM contributor.dao_code
+           AND contributor_power_overlay.governor_address IS NOT DISTINCT FROM contributor.governor_address
+           AND (
+             contributor_power_overlay.token_address IS NOT DISTINCT FROM contributor.token_address
+             OR contributor.token_address IS NULL
+           )
+           AND contributor_power_overlay.account = contributor.id
+           AND contributor_power_overlay.source = 'live-onchain'
+           AND contributor_power_overlay.status = 'available'
+        ) contributor
         "#,
     );
     push_contributor_where(&mut query, implicit_scope, where_);
@@ -236,7 +256,27 @@ pub(super) async fn query_delegates(
         SELECT id, chain_id, dao_code, governor_address, from_delegate, to_delegate,
           block_number::text AS block_number, block_timestamp::text AS block_timestamp,
           transaction_hash, is_current, power::text AS power
-        FROM delegate
+        FROM (
+          SELECT delegate.id, delegate.contract_set_id, delegate.chain_id,
+            delegate.dao_code, delegate.governor_address, delegate.from_delegate,
+            delegate.to_delegate, delegate.block_number, delegate.block_timestamp,
+            delegate.transaction_hash, delegate.is_current,
+            COALESCE(delegate_power_overlay.power, delegate.power) AS power
+          FROM delegate
+          LEFT JOIN degov_provisional_delegate_power_overlay delegate_power_overlay
+            ON delegate_power_overlay.contract_set_id = delegate.contract_set_id
+           AND delegate_power_overlay.chain_id IS NOT DISTINCT FROM delegate.chain_id
+           AND delegate_power_overlay.dao_code IS NOT DISTINCT FROM delegate.dao_code
+           AND delegate_power_overlay.governor_address IS NOT DISTINCT FROM delegate.governor_address
+           AND (
+             delegate_power_overlay.token_address IS NOT DISTINCT FROM delegate.token_address
+             OR delegate.token_address IS NULL
+           )
+           AND delegate_power_overlay.delegator = delegate.from_delegate
+           AND delegate_power_overlay.delegate = delegate.to_delegate
+           AND delegate_power_overlay.source = 'live-onchain'
+           AND delegate_power_overlay.status = 'available'
+        ) delegate
         "#,
     );
     push_delegate_where(&mut query, implicit_scope, where_);
@@ -274,8 +314,30 @@ pub(super) async fn count_contributors(
     implicit_scope: &GraphqlScope,
     where_: Option<&ContributorWhereInput>,
 ) -> GraphqlResult<i64> {
-    let mut query =
-        QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM contributor");
+    let mut query = QueryBuilder::<Postgres>::new(
+        r#"
+        SELECT COUNT(*)::int8 AS total
+        FROM (
+          SELECT contributor.id, contributor.contract_set_id, contributor.chain_id,
+            contributor.dao_code, contributor.governor_address,
+            COALESCE(contributor_power_overlay.power, contributor.power) AS power,
+            contributor.last_vote_timestamp, contributor.delegates_count_all
+          FROM contributor
+          LEFT JOIN degov_provisional_contributor_power_overlay contributor_power_overlay
+            ON contributor_power_overlay.contract_set_id = contributor.contract_set_id
+           AND contributor_power_overlay.chain_id IS NOT DISTINCT FROM contributor.chain_id
+           AND contributor_power_overlay.dao_code IS NOT DISTINCT FROM contributor.dao_code
+           AND contributor_power_overlay.governor_address IS NOT DISTINCT FROM contributor.governor_address
+           AND (
+             contributor_power_overlay.token_address IS NOT DISTINCT FROM contributor.token_address
+             OR contributor.token_address IS NULL
+           )
+           AND contributor_power_overlay.account = contributor.id
+           AND contributor_power_overlay.source = 'live-onchain'
+           AND contributor_power_overlay.status = 'available'
+        ) contributor
+        "#,
+    );
     push_contributor_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
@@ -286,7 +348,31 @@ pub(super) async fn count_delegates(
     implicit_scope: &GraphqlScope,
     where_: Option<&DelegateWhereInput>,
 ) -> GraphqlResult<i64> {
-    let mut query = QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM delegate");
+    let mut query = QueryBuilder::<Postgres>::new(
+        r#"
+        SELECT COUNT(*)::int8 AS total
+        FROM (
+          SELECT delegate.id, delegate.contract_set_id, delegate.chain_id,
+            delegate.dao_code, delegate.governor_address, delegate.from_delegate,
+            delegate.to_delegate, delegate.is_current,
+            COALESCE(delegate_power_overlay.power, delegate.power) AS power
+          FROM delegate
+          LEFT JOIN degov_provisional_delegate_power_overlay delegate_power_overlay
+            ON delegate_power_overlay.contract_set_id = delegate.contract_set_id
+           AND delegate_power_overlay.chain_id IS NOT DISTINCT FROM delegate.chain_id
+           AND delegate_power_overlay.dao_code IS NOT DISTINCT FROM delegate.dao_code
+           AND delegate_power_overlay.governor_address IS NOT DISTINCT FROM delegate.governor_address
+           AND (
+             delegate_power_overlay.token_address IS NOT DISTINCT FROM delegate.token_address
+             OR delegate.token_address IS NULL
+           )
+           AND delegate_power_overlay.delegator = delegate.from_delegate
+           AND delegate_power_overlay.delegate = delegate.to_delegate
+           AND delegate_power_overlay.source = 'live-onchain'
+           AND delegate_power_overlay.status = 'available'
+        ) delegate
+        "#,
+    );
     push_delegate_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)

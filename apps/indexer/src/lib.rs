@@ -49,12 +49,13 @@ pub use crate::decode::evm_log::{
     EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows,
 };
 pub use crate::onchain::refresh::{
-    ChainToolOnchainRefreshReader, EvmRpcChainTool, MultiChainToolOnchainRefreshReader,
-    OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
-    OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshTickClock, OnchainRefreshTickConfig,
-    OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
-    OnchainRefreshTickSkipReason, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
-    OnchainRefreshWorkerError, SystemOnchainRefreshTickClock,
+    ChainToolOnchainRefreshReader, EvmRpcChainTool, LivePowerOverlayReader,
+    LivePowerOverlayRefreshError, MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue,
+    OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
+    OnchainRefreshTickClock, OnchainRefreshTickConfig, OnchainRefreshTickReport,
+    OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason,
+    OnchainRefreshWorker, OnchainRefreshWorkerConfig, OnchainRefreshWorkerError,
+    SystemOnchainRefreshTickClock, refresh_live_power_overlays,
 };
 pub use crate::projection::data_metric::DataMetricWrite;
 pub use crate::projection::power_reconcile::{
@@ -94,7 +95,7 @@ pub use crate::projection::vote::{
 };
 pub use crate::store::postgres::{
     PostgresIndexerRunnerStore, PostgresIndexerRunnerStoreError, PostgresIndexerRunnerTransaction,
-    PostgresProvisionalSegmentStore,
+    PostgresProvisionalPowerOverlayStore, PostgresProvisionalSegmentStore,
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -112,8 +113,11 @@ pub use datalens::{
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use graphql::IndexerGraphqlSchema;
 pub use provisional::{
-    DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, ProvisionalWorker,
-    ProvisionalWorkerError, ProvisionalWorkerOptions, ProvisionalWorkerReport,
+    DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite,
+    ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayRelation,
+    ProvisionalDelegatePowerOverlayWrite, ProvisionalPowerOverlayScope,
+    ProvisionalPowerOverlayStore, ProvisionalWorker, ProvisionalWorkerError,
+    ProvisionalWorkerOptions, ProvisionalWorkerReport,
 };
 pub use runner::{
     AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig,

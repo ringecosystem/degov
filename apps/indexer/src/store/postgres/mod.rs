@@ -14,12 +14,14 @@ use crate::{
     IndexerRunnerTransaction, PowerReconcileCandidate, ProposalActionWrite, ProposalCreatedWrite,
     ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
     ProposalProjectionBatch, ProposalQueuedWrite, ProposalStateEpochWrite, ProposalVoteTotalWrite,
-    ProposalWrite, TimelockCallWrite, TimelockMinDelayChangeWrite, TimelockOperationHintWrite,
-    TimelockOperationWrite, TimelockProjectionBatch, TimelockProjectionContext,
-    TimelockProjectionEvent, TimelockProposalActionLink, TimelockProposalLinkContext,
-    TimelockRoleEventWrite, TokenEventCommon, TokenProjectionBatch, TokenProjectionOperation,
-    TokenTransferWrite, VoteCastGroupWrite, VoteCastWithParamsWrite, VoteCastWrite,
-    VoteProjectionBatch,
+    ProposalWrite, ProvisionalContributorPowerOverlayWrite,
+    ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
+    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, TimelockCallWrite,
+    TimelockMinDelayChangeWrite, TimelockOperationHintWrite, TimelockOperationWrite,
+    TimelockProjectionBatch, TimelockProjectionContext, TimelockProjectionEvent,
+    TimelockProposalActionLink, TimelockProposalLinkContext, TimelockRoleEventWrite,
+    TokenEventCommon, TokenProjectionBatch, TokenProjectionOperation, TokenTransferWrite,
+    VoteCastGroupWrite, VoteCastWithParamsWrite, VoteCastWrite, VoteProjectionBatch,
 };
 
 #[derive(Clone)]

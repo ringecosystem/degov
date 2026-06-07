@@ -12,11 +12,15 @@ use std::{
 use degov_datalens_indexer::{
     BatchReadPlanConfig, BlockReadMode, ChainReadExecutionReport, ChainReadMethod,
     ChainReadMetrics, ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool,
-    MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue, OnchainRefreshReader,
-    OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
+    LivePowerOverlayReader, MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue,
+    OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
     OnchainRefreshTickClock, OnchainRefreshTickConfig, OnchainRefreshTickRunner,
     OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason, OnchainRefreshWorker,
-    OnchainRefreshWorkerConfig, PartialChainReadFailureReport, runtime::apply_migrations,
+    OnchainRefreshWorkerConfig, PartialChainReadFailureReport,
+    PostgresProvisionalPowerOverlayStore, ProvisionalContributorPowerOverlayWrite,
+    ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
+    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, refresh_live_power_overlays,
+    runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -687,6 +691,123 @@ fn test_multi_chain_reader_routes_tasks_to_matching_chain_tool() {
     }
 }
 
+#[test]
+fn test_live_power_overlay_reader_uses_latest_block_mode_and_dedupes_accounts() {
+    let chain_tool = StaticValueChainTool::new("19");
+    let reader = LivePowerOverlayReader::new(
+        chain_tool.clone(),
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+    let account = "0xabc0000000000000000000000000000000000000";
+
+    let writes = reader
+        .read_power_overlays(&[
+            task_for_chain("task-one", 46, account),
+            task_for_chain("task-two", 46, account),
+        ])
+        .expect("reads live overlays");
+
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].account, account);
+    assert_eq!(writes[0].power, "19");
+    assert_eq!(writes[0].source, "live-onchain");
+    assert_eq!(writes[0].status, "available");
+    assert_eq!(writes[0].segment_id, None);
+
+    let plans = chain_tool.captured_plans();
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].reads.len(), 1);
+    assert_eq!(plans[0].reads[0].key.block_mode, BlockReadMode::Latest);
+}
+
+#[test]
+fn test_refresh_live_power_overlays_writes_provisional_store_only() {
+    let chain_tool = StaticValueChainTool::new("23");
+    let reader = LivePowerOverlayReader::new(
+        chain_tool,
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+    let mut store =
+        RecordingPowerOverlayStore::with_relations([ProvisionalDelegatePowerOverlayRelation {
+            contract_set_id: "scope-46".to_owned(),
+            chain_id: Some(46),
+            chain_name: None,
+            dao_code: Some("dao-46".to_owned()),
+            governor_address: Some(GOVERNOR.to_owned()),
+            token_address: Some(TOKEN.to_owned()),
+            delegator: "0xabc0000000000000000000000000000000000000".to_owned(),
+            delegate: "0xdef0000000000000000000000000000000000000".to_owned(),
+            is_current: true,
+        }]);
+
+    let written = refresh_live_power_overlays(
+        &reader,
+        &mut store,
+        &[task_for_chain(
+            "task-one",
+            46,
+            "0xabc0000000000000000000000000000000000000",
+        )],
+    )
+    .expect("refresh writes overlay");
+
+    assert_eq!(written, 2);
+    assert_eq!(store.contributors.len(), 1);
+    assert_eq!(store.contributors[0].power, "23");
+    assert_eq!(store.delegates.len(), 1);
+    assert_eq!(store.delegates[0].delegator, store.contributors[0].account);
+    assert_eq!(
+        store.delegates[0].delegate,
+        "0xdef0000000000000000000000000000000000000"
+    );
+    assert_eq!(store.delegates[0].power, "23");
+    assert_eq!(store.delegates[0].source, "live-onchain");
+    assert_eq!(store.delegates[0].status, "available");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_refresh_live_power_overlays_writes_delegate_overlay_from_current_final_delegate()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_final_delegate(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "7").await?;
+    let reader = LivePowerOverlayReader::new(
+        StaticValueChainTool::new("23"),
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+    let mut store = PostgresProvisionalPowerOverlayStore::new(database.pool.clone());
+
+    let written = refresh_live_power_overlays(
+        &reader,
+        &mut store,
+        &[task_for_chain("task-one", 46, ACCOUNT_ONE)],
+    )
+    .expect("refresh writes overlay");
+
+    assert_eq!(written, 2);
+    assert_table_count(
+        &database.pool,
+        "degov_provisional_contributor_power_overlay",
+        1,
+    )
+    .await?;
+    assert_table_count(
+        &database.pool,
+        "degov_provisional_delegate_power_overlay",
+        1,
+    )
+    .await?;
+    assert_delegate_overlay(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "23").await?;
+    assert_table_count(&database.pool, "delegate", 1).await?;
+    assert_table_count(&database.pool, "vote_power_checkpoint", 0).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_fails_only_missing_rpc_chain_group()
 -> Result<(), Box<dyn Error>> {
@@ -802,6 +923,61 @@ struct StaticValueChainTool {
     plans: Arc<StdMutex<Vec<ChainReadPlan>>>,
 }
 
+#[derive(Default)]
+struct RecordingPowerOverlayStore {
+    relations: Vec<ProvisionalDelegatePowerOverlayRelation>,
+    contributors: Vec<ProvisionalContributorPowerOverlayWrite>,
+    delegates: Vec<ProvisionalDelegatePowerOverlayWrite>,
+}
+
+impl RecordingPowerOverlayStore {
+    fn with_relations<const N: usize>(
+        relations: [ProvisionalDelegatePowerOverlayRelation; N],
+    ) -> Self {
+        Self {
+            relations: Vec::from(relations),
+            contributors: Vec::new(),
+            delegates: Vec::new(),
+        }
+    }
+}
+
+impl ProvisionalPowerOverlayStore for RecordingPowerOverlayStore {
+    type Error = String;
+
+    fn current_delegate_power_overlay_relations(
+        &mut self,
+        scopes: &[ProvisionalPowerOverlayScope],
+    ) -> Result<Vec<ProvisionalDelegatePowerOverlayRelation>, Self::Error> {
+        Ok(self
+            .relations
+            .iter()
+            .filter(|relation| {
+                scopes.iter().any(|scope| {
+                    relation.contract_set_id == scope.contract_set_id
+                        && relation.chain_id == Some(scope.chain_id)
+                        && relation.dao_code == scope.dao_code
+                        && relation.governor_address.as_deref()
+                            == Some(scope.governor_address.as_str())
+                        && relation.token_address.as_deref() == Some(scope.token_address.as_str())
+                        && relation.delegator == scope.account
+                })
+            })
+            .cloned()
+            .collect())
+    }
+
+    fn write_power_overlays(
+        &mut self,
+        contributors: &[ProvisionalContributorPowerOverlayWrite],
+        delegates: &[ProvisionalDelegatePowerOverlayWrite],
+    ) -> Result<(), Self::Error> {
+        self.contributors.extend_from_slice(contributors);
+        self.delegates.extend_from_slice(delegates);
+        Ok(())
+    }
+}
+
 impl StaticValueChainTool {
     fn new(value: &str) -> Self {
         Self {
@@ -904,6 +1080,36 @@ async fn seed_contributor_with_scope(
     .bind(token)
     .bind(power)
     .bind(balance)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_final_delegate(
+    pool: &PgPool,
+    delegator: &str,
+    delegate: &str,
+    power: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO delegate (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            from_delegate, to_delegate, block_number, block_timestamp, transaction_hash,
+            is_current, power
+         )
+         VALUES (
+            $1, 'scope-46', 46, 'dao-46', $2, $3, $4, $5,
+            12::NUMERIC(78, 0), 12000::NUMERIC(78, 0), '0xdelegate', TRUE,
+            $6::NUMERIC(78, 0)
+         )",
+    )
+    .bind(format!("{delegator}_{delegate}"))
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(delegator)
+    .bind(delegate)
+    .bind(power)
     .execute(pool)
     .await?;
 
@@ -1268,6 +1474,44 @@ async fn assert_table_count(pool: &PgPool, table: &str, expected: i64) -> Result
         .get(0);
 
     assert_eq!(count, expected);
+
+    Ok(())
+}
+
+async fn assert_delegate_overlay(
+    pool: &PgPool,
+    delegator: &str,
+    delegate: &str,
+    power: &str,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT delegator, delegate, power::TEXT AS power, source, status,
+                segment_id, anchor_block_number::TEXT AS anchor_block_number,
+                anchor_block_timestamp::TEXT AS anchor_block_timestamp
+         FROM degov_provisional_delegate_power_overlay
+         WHERE contract_set_id = 'scope-46'
+           AND delegator = $1
+           AND delegate = $2",
+    )
+    .bind(delegator)
+    .bind(delegate)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("delegator"), delegator);
+    assert_eq!(row.get::<String, _>("delegate"), delegate);
+    assert_eq!(row.get::<String, _>("power"), power);
+    assert_eq!(row.get::<String, _>("source"), "live-onchain");
+    assert_eq!(row.get::<String, _>("status"), "available");
+    assert_eq!(row.get::<Option<String>, _>("segment_id"), None);
+    assert_eq!(
+        row.get::<Option<String>, _>("anchor_block_number"),
+        Some("12".to_owned())
+    );
+    assert_eq!(
+        row.get::<Option<String>, _>("anchor_block_timestamp"),
+        Some("12000".to_owned())
+    );
 
     Ok(())
 }

@@ -314,12 +314,45 @@ impl ChainReadPlanBuilder {
         reason: ChainReadReason,
         method: ChainReadMethod,
     ) {
+        self.add_account_power_refresh_with_method_and_block_mode(
+            account,
+            activity_block,
+            reason,
+            method,
+            BlockReadMode::Safe,
+        );
+    }
+
+    pub fn add_account_latest_power_refresh_with_method(
+        &mut self,
+        account: &str,
+        activity_block: u64,
+        reason: ChainReadReason,
+        method: ChainReadMethod,
+    ) {
+        self.add_account_power_refresh_with_method_and_block_mode(
+            account,
+            activity_block,
+            reason,
+            method,
+            BlockReadMode::Latest,
+        );
+    }
+
+    fn add_account_power_refresh_with_method_and_block_mode(
+        &mut self,
+        account: &str,
+        activity_block: u64,
+        reason: ChainReadReason,
+        method: ChainReadMethod,
+        block_mode: BlockReadMode,
+    ) {
         let account = normalize_identifier(account);
         self.add_required_read(ChainReadDraft {
             contract_address: self.contracts.governor_token.clone(),
             method,
             args: vec![account.clone()],
-            block_mode: BlockReadMode::Safe,
+            block_mode,
             account: Some(account),
             proposal_id: None,
             operation_id: None,
