@@ -151,14 +151,25 @@ async fn run_configured_contract_set_pass(
         }
         Err(error) => return Err(error),
     };
-    let report = run_contract_set_pass(
+    let report = match run_contract_set_pass(
         contract_runtime.clone(),
         contract_set.config.clone(),
         contract_set.addresses.clone(),
         pool,
         datalens_query_gate,
     )
-    .await?;
+    .await
+    {
+        Ok(report) => report,
+        Err(error) => {
+            return handle_contract_set_pass_failure(
+                runtime,
+                &contract_runtime,
+                &contract_set,
+                error,
+            );
+        }
+    };
 
     log::info!(
         "Datalens indexer run pass completed dao_code={} chain_id={} contract_set_id={} chunks_processed={} processed_height={:?} target_height={} synced_percentage={} onchain_refresh_allowed={}",
@@ -173,6 +184,66 @@ async fn run_configured_contract_set_pass(
     );
 
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ContractSetPassFailureAction {
+    Propagate,
+    Continue,
+}
+
+fn contract_set_pass_failure_action(
+    run_once: bool,
+    error: &ContractSetPassError,
+) -> ContractSetPassFailureAction {
+    if run_once || !matches!(error, ContractSetPassError::Runner(_)) {
+        ContractSetPassFailureAction::Propagate
+    } else {
+        ContractSetPassFailureAction::Continue
+    }
+}
+
+#[derive(Debug)]
+enum ContractSetPassError {
+    Setup(runtime_anyhow::Error),
+    Runner(runtime_anyhow::Error),
+}
+
+impl ContractSetPassError {
+    fn setup(error: runtime_anyhow::Error) -> Self {
+        Self::Setup(error)
+    }
+
+    fn runner(error: runtime_anyhow::Error) -> Self {
+        Self::Runner(error)
+    }
+
+    fn into_error(self) -> runtime_anyhow::Error {
+        match self {
+            Self::Setup(error) | Self::Runner(error) => error,
+        }
+    }
+}
+
+fn handle_contract_set_pass_failure(
+    runtime: &IndexerRuntimeConfig,
+    contract_runtime: &IndexerContractSetRuntimeConfig,
+    contract_set: &DatalensRuntimeContractSet,
+    error: ContractSetPassError,
+) -> Result<()> {
+    match contract_set_pass_failure_action(runtime.run_once, &error) {
+        ContractSetPassFailureAction::Propagate => Err(error.into_error()),
+        ContractSetPassFailureAction::Continue => {
+            log::error!(
+                "Datalens indexer contract set pass failed; continuing long-running indexer dao_code={} chain_id={} contract_set_id={} error={}",
+                contract_runtime.dao_code,
+                contract_set.contract.chain_id,
+                contract_runtime.checkpoint_contract_set_id,
+                error.into_error()
+            );
+            Ok(())
+        }
+    }
 }
 
 struct ContractSetConcurrencyJob<T> {
@@ -331,7 +402,7 @@ async fn run_contract_set_pass(
     contracts: DaoContractAddresses,
     pool: sqlx::PgPool,
     datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
-) -> Result<IndexerRunnerReport> {
+) -> std::result::Result<IndexerRunnerReport, ContractSetPassError> {
     log::info!(
         "Datalens indexer contract set pass is ready dao_code={} dao_chain={} chain_id={:?} contract_set_id={} governor={} token={} timelock={} start_block={} target_height={}",
         runtime.dao_code,
@@ -345,20 +416,25 @@ async fn run_contract_set_pass(
         runtime.target_height
     );
 
-    let onchain_refresh_tick = build_onchain_refresh_tick(&runtime, pool.clone())?;
+    let onchain_refresh_tick =
+        build_onchain_refresh_tick(&runtime, pool.clone()).map_err(ContractSetPassError::setup)?;
 
-    task::spawn_blocking(move || -> Result<_> {
+    task::spawn_blocking(move || -> std::result::Result<_, ContractSetPassError> {
         let mut client = DatalensNativeClient::from_config_with_retry_config(
             &config,
             datalens_retry_config(runtime.query_max_attempts),
         )
-        .context("create Datalens client")?;
+        .context("create Datalens client")
+        .map_err(ContractSetPassError::setup)?;
         if let Some(gate) = datalens_query_gate {
             client = client.with_query_concurrency_gate(gate);
         }
         let store = PostgresIndexerRunnerStore::new(pool);
+        let options = runtime
+            .options(&config, &contracts)
+            .map_err(ContractSetPassError::setup)?;
         let mut runner = IndexerRunner::new(
-            runtime.options(&config, &contracts)?,
+            options,
             runtime.contexts(&contracts),
             client,
             store,
@@ -374,9 +450,14 @@ async fn run_contract_set_pass(
         runner
             .run_to_target(runtime.target_height)
             .context("run Datalens indexer to target height")
+            .map_err(ContractSetPassError::runner)
     })
     .await
-    .context("join Datalens indexer runner task")?
+    .map_err(|error| {
+        ContractSetPassError::setup(
+            runtime_anyhow::Error::new(error).context("join Datalens indexer runner task"),
+        )
+    })?
 }
 
 fn build_onchain_refresh_tick(
@@ -634,6 +715,36 @@ mod tests {
         .expect("jobs run");
 
         assert_eq!(observed.max_seen(), 4);
+    }
+
+    #[test]
+    fn test_contract_set_pass_failure_action_keeps_long_running_indexer_alive() {
+        let error = ContractSetPassError::runner(runtime_anyhow::anyhow!("query failed"));
+
+        assert_eq!(
+            contract_set_pass_failure_action(false, &error),
+            ContractSetPassFailureAction::Continue
+        );
+    }
+
+    #[test]
+    fn test_contract_set_pass_failure_action_keeps_run_once_fail_fast() {
+        let error = ContractSetPassError::runner(runtime_anyhow::anyhow!("query failed"));
+
+        assert_eq!(
+            contract_set_pass_failure_action(true, &error),
+            ContractSetPassFailureAction::Propagate
+        );
+    }
+
+    #[test]
+    fn test_contract_set_pass_failure_action_propagates_setup_failure_in_long_running_mode() {
+        let error = ContractSetPassError::setup(runtime_anyhow::anyhow!("load tick runtime"));
+
+        assert_eq!(
+            contract_set_pass_failure_action(false, &error),
+            ContractSetPassFailureAction::Propagate
+        );
     }
 
     #[derive(Clone, Default)]
