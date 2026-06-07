@@ -32,7 +32,6 @@ impl PostgresProvisionalCleanupStore {
                 "degov_provisional_contributor_power_overlay",
                 identity,
                 source,
-                finalized_height,
                 &segment_ids,
             )
             .await?,
@@ -41,7 +40,6 @@ impl PostgresProvisionalCleanupStore {
                 "degov_provisional_delegate_power_overlay",
                 identity,
                 source,
-                finalized_height,
                 &segment_ids,
             )
             .await?,
@@ -50,7 +48,6 @@ impl PostgresProvisionalCleanupStore {
                 "degov_provisional_proposal_overlay",
                 identity,
                 source,
-                finalized_height,
                 &segment_ids,
             )
             .await?,
@@ -59,7 +56,6 @@ impl PostgresProvisionalCleanupStore {
                 "degov_provisional_timelock_operation_overlay",
                 identity,
                 source,
-                finalized_height,
                 &segment_ids,
             )
             .await?,
@@ -387,9 +383,12 @@ async fn mark_finalized_overlay_table(
     table: &str,
     identity: &IndexerCheckpointIdentity,
     source: Option<&str>,
-    finalized_height: i64,
     segment_ids: &[String],
 ) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    if segment_ids.is_empty() {
+        return Ok(0);
+    }
+
     let result = sqlx::query(&format!(
         "UPDATE {table}
          SET status = 'finalized',
@@ -399,19 +398,12 @@ async fn mark_finalized_overlay_table(
            AND chain_id IS NOT DISTINCT FROM $2
            AND contract_set_id = $3
            AND ($4::TEXT IS NULL OR source = $4)
-           AND (
-             (
-               anchor_block_number IS NOT NULL
-               AND anchor_block_number <= $5::NUMERIC(78, 0)
-             )
-             OR segment_id = ANY($6::TEXT[])
-           )"
+           AND segment_id = ANY($5::TEXT[])"
     ))
     .bind(&identity.dao_code)
     .bind(identity.chain_id)
     .bind(&identity.contract_set_id)
     .bind(source)
-    .bind(finalized_height)
     .bind(segment_ids)
     .execute(&mut **transaction)
     .await?;

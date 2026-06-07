@@ -253,6 +253,60 @@ async fn test_postgres_cleanup_after_finalized_checkpoint_hides_all_overlay_type
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_cleanup_keeps_live_onchain_overlays_without_segment_id()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 110).await?;
+    insert_available_live_onchain_overlay_rows(&database.pool, "demo-dao", "demo-set", 1).await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+
+    let report = cleanup_store
+        .cleanup_finalized_provisional_overlays(
+            &checkpoint_identity("demo-dao", "demo-set", 1),
+            None,
+        )
+        .await
+        .expect("cleanup succeeds");
+
+    assert_eq!(report.segments_marked_finalized, 0);
+    assert_eq!(report.contributor_overlays_marked_finalized, 0);
+    assert_eq!(report.delegate_overlays_marked_finalized, 0);
+    assert_eq!(report.proposal_overlays_marked_finalized, 0);
+    assert_eq!(report.timelock_overlays_marked_finalized, 0);
+    assert_eq!(
+        active_provisional_count(
+            &database.pool,
+            "degov_provisional_contributor_power_overlay"
+        )
+        .await?,
+        1
+    );
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_delegate_power_overlay")
+            .await?,
+        1
+    );
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_proposal_overlay").await?,
+        1
+    );
+    assert_eq!(
+        active_provisional_count(
+            &database.pool,
+            "degov_provisional_timelock_operation_overlay"
+        )
+        .await?,
+        1
+    );
+    assert_checkpoint_at(&database.pool, 110).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_rollback_invalidates_provisional_overlays_without_mutating_final_rows()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -290,6 +344,48 @@ async fn test_postgres_rollback_invalidates_provisional_overlays_without_mutatin
         "invalid"
     );
     assert_final_rows(&database.pool).await?;
+    assert_checkpoint_at(&database.pool, 10).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_rollback_invalidates_live_onchain_overlays_without_segment_id()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 10).await?;
+    insert_available_live_onchain_overlay_rows(&database.pool, "demo-dao", "demo-set", 1).await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+
+    let report = cleanup_store
+        .rollback_provisional_overlays(
+            &ProvisionalRollbackScope {
+                dao_code: "demo-dao".to_owned(),
+                contract_set_id: "demo-set".to_owned(),
+                chain_id: 1,
+                source: Some("live-onchain".to_owned()),
+            },
+            "test invalidation",
+        )
+        .await
+        .expect("rollback succeeds");
+
+    assert_eq!(report.segments_marked_invalid, 0);
+    assert_eq!(report.contributor_overlays_marked_invalid, 1);
+    assert_eq!(report.delegate_overlays_marked_invalid, 1);
+    assert_eq!(report.proposal_overlays_marked_invalid, 1);
+    assert_eq!(report.timelock_overlays_marked_invalid, 1);
+    assert_eq!(
+        active_provisional_count(
+            &database.pool,
+            "degov_provisional_contributor_power_overlay"
+        )
+        .await?,
+        0
+    );
     assert_checkpoint_at(&database.pool, 10).await?;
     database.cleanup().await?;
 
@@ -869,6 +965,65 @@ async fn insert_available_provisional_rows(
         chain_id,
     );
     timelock.segment_id = Some(segment_id);
+
+    power_store
+        .write_power_overlays(&[contributor], &[delegate])
+        .await?;
+    proposal_store
+        .write_proposal_overlays(&[proposal], &[timelock])
+        .await?;
+
+    Ok(())
+}
+
+async fn insert_available_live_onchain_overlay_rows(
+    pool: &PgPool,
+    dao_code: &str,
+    contract_set_id: &str,
+    chain_id: i32,
+) -> Result<(), Box<dyn Error>> {
+    let power_store = PostgresProvisionalPowerOverlayStore::new(pool.clone());
+    let proposal_store = PostgresProvisionalProposalOverlayStore::new(pool.clone());
+    let mut contributor = contributor_power_write("0xliveabc", "29");
+    set_overlay_scope(
+        &mut contributor.id,
+        &mut contributor.dao_code,
+        &mut contributor.contract_set_id,
+        &mut contributor.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    let mut delegate = delegate_power_write("0xliveabc", "0xlivedef", "29");
+    set_overlay_scope(
+        &mut delegate.id,
+        &mut delegate.dao_code,
+        &mut delegate.contract_set_id,
+        &mut delegate.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    let mut proposal = proposal_overlay_write("84", "Queued");
+    set_overlay_scope(
+        &mut proposal.id,
+        &mut proposal.dao_code,
+        &mut proposal.contract_set_id,
+        &mut proposal.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    let mut timelock = timelock_overlay_write("84", "0xliveoperation", "Ready");
+    set_overlay_scope(
+        &mut timelock.id,
+        &mut timelock.dao_code,
+        &mut timelock.contract_set_id,
+        &mut timelock.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
 
     power_store
         .write_power_overlays(&[contributor], &[delegate])
