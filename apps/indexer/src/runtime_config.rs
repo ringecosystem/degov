@@ -150,6 +150,7 @@ pub struct IndexerRuntimeConfig {
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+    pub provisional: ProvisionalRuntimeConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -338,6 +339,7 @@ impl IndexerRuntimeConfig {
             .unwrap_or(100),
             adaptive_chunk_sizer: load_adaptive_chunk_sizer_runtime_config()?,
             onchain_refresh_tick: load_onchain_refresh_tick_config()?,
+            provisional: ProvisionalRuntimeConfig::from_env()?,
             poll_interval,
             run_once,
             max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,
