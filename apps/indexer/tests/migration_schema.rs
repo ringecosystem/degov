@@ -51,6 +51,11 @@ const REQUIRED_TABLES: &[&str] = &[
     "delegate",
     "contributor",
     "delegate_mapping",
+    "degov_provisional_segment",
+    "degov_provisional_contributor_power_overlay",
+    "degov_provisional_delegate_power_overlay",
+    "degov_provisional_proposal_overlay",
+    "degov_provisional_timelock_operation_overlay",
 ];
 
 struct TestDatabase {
@@ -194,6 +199,69 @@ fn test_indexer_uses_a_single_fresh_init_migration() -> Result<(), Box<dyn Error
     assert!(init_migration.contains("reset or recreate"));
 
     Ok(())
+}
+
+#[test]
+fn test_fresh_init_declares_provisional_overlay_schema() {
+    let init_migration = include_str!("../migrations/0001_init.sql");
+
+    for table_name in [
+        "degov_provisional_segment",
+        "degov_provisional_contributor_power_overlay",
+        "degov_provisional_delegate_power_overlay",
+        "degov_provisional_proposal_overlay",
+        "degov_provisional_timelock_operation_overlay",
+    ] {
+        assert!(
+            init_migration.contains(&format!("CREATE TABLE IF NOT EXISTS {table_name}")),
+            "expected provisional table {table_name}"
+        );
+    }
+
+    for column_name in [
+        "chain_name TEXT",
+        "dataset_key TEXT NOT NULL",
+        "selector TEXT NOT NULL",
+        "range_start_block NUMERIC(78, 0) NOT NULL",
+        "range_end_block NUMERIC(78, 0) NOT NULL",
+        "segment_finality TEXT NOT NULL",
+        "source TEXT NOT NULL",
+        "status TEXT NOT NULL",
+        "anchor_block_number NUMERIC(78, 0)",
+        "anchor_block_hash TEXT",
+        "anchor_parent_hash TEXT",
+        "anchor_block_timestamp NUMERIC(78, 0)",
+    ] {
+        assert!(
+            init_migration.contains(column_name),
+            "expected provisional segment metadata column {column_name}"
+        );
+    }
+
+    for constraint_name in [
+        "degov_provisional_segment_scope_unique",
+        "degov_provisional_contributor_power_overlay_scope_unique",
+        "degov_provisional_delegate_power_overlay_scope_unique",
+        "degov_provisional_proposal_overlay_scope_unique",
+        "degov_provisional_timelock_operation_overlay_scope_unique",
+    ] {
+        assert!(
+            init_migration.contains(constraint_name),
+            "expected idempotent provisional uniqueness constraint {constraint_name}"
+        );
+    }
+
+    for unique_target in [
+        "account,\n    source",
+        "delegator,\n    delegate,\n    source",
+        "proposal_id,\n    source",
+        "operation_id,\n    source",
+    ] {
+        assert!(
+            init_migration.contains(unique_target),
+            "expected provisional overlay unique target {unique_target}"
+        );
+    }
 }
 
 async fn assert_table_exists(

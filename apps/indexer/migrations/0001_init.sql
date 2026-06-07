@@ -893,3 +893,236 @@ CREATE TABLE IF NOT EXISTS delegate_mapping (
 
 CREATE INDEX IF NOT EXISTS delegate_mapping_lookup_idx
   ON delegate_mapping (chain_id, contract_set_id, governor_address, "from");
+
+CREATE TABLE IF NOT EXISTS degov_provisional_segment (
+  id TEXT PRIMARY KEY,
+  dao_code TEXT,
+  contract_set_id TEXT NOT NULL,
+  chain_id INTEGER,
+  chain_name TEXT,
+  dataset_key TEXT NOT NULL,
+  selector TEXT NOT NULL,
+  selector_fingerprint TEXT,
+  range_start_block NUMERIC(78, 0) NOT NULL,
+  range_end_block NUMERIC(78, 0) NOT NULL,
+  segment_finality TEXT NOT NULL,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL,
+  anchor_block_number NUMERIC(78, 0),
+  anchor_block_hash TEXT,
+  anchor_parent_hash TEXT,
+  anchor_block_timestamp NUMERIC(78, 0),
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT degov_provisional_segment_scope_unique UNIQUE NULLS NOT DISTINCT (
+    chain_id,
+    chain_name,
+    contract_set_id,
+    dao_code,
+    dataset_key,
+    selector,
+    range_start_block,
+    range_end_block,
+    segment_finality,
+    source
+  )
+);
+
+CREATE INDEX IF NOT EXISTS degov_provisional_segment_scope_idx
+  ON degov_provisional_segment (chain_id, chain_name, contract_set_id, dao_code, dataset_key, selector);
+CREATE INDEX IF NOT EXISTS degov_provisional_segment_status_idx
+  ON degov_provisional_segment (status, segment_finality, range_end_block);
+
+CREATE TABLE IF NOT EXISTS degov_provisional_contributor_power_overlay (
+  id TEXT PRIMARY KEY,
+  segment_id TEXT REFERENCES degov_provisional_segment (id) ON UPDATE CASCADE ON DELETE SET NULL,
+  contract_set_id TEXT NOT NULL,
+  chain_id INTEGER,
+  chain_name TEXT,
+  dao_code TEXT,
+  governor_address TEXT,
+  token_address TEXT,
+  account TEXT NOT NULL,
+  power NUMERIC(78, 0) NOT NULL,
+  balance NUMERIC(78, 0),
+  delegates_count_all INTEGER NOT NULL,
+  delegates_count_effective INTEGER NOT NULL,
+  last_vote_block_number NUMERIC(78, 0),
+  last_vote_timestamp NUMERIC(78, 0),
+  source TEXT NOT NULL,
+  status TEXT NOT NULL,
+  anchor_block_number NUMERIC(78, 0),
+  anchor_block_hash TEXT,
+  anchor_parent_hash TEXT,
+  anchor_block_timestamp NUMERIC(78, 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT degov_provisional_contributor_power_overlay_scope_unique UNIQUE NULLS NOT DISTINCT (
+    chain_id,
+    chain_name,
+    contract_set_id,
+    dao_code,
+    governor_address,
+    token_address,
+    account,
+    source
+  )
+);
+
+CREATE INDEX IF NOT EXISTS degov_provisional_contributor_power_overlay_lookup_idx
+  ON degov_provisional_contributor_power_overlay (chain_id, chain_name, contract_set_id, dao_code, governor_address, token_address, account);
+CREATE INDEX IF NOT EXISTS degov_provisional_contributor_power_overlay_segment_idx
+  ON degov_provisional_contributor_power_overlay (segment_id);
+
+CREATE TABLE IF NOT EXISTS degov_provisional_delegate_power_overlay (
+  id TEXT PRIMARY KEY,
+  segment_id TEXT REFERENCES degov_provisional_segment (id) ON UPDATE CASCADE ON DELETE SET NULL,
+  contract_set_id TEXT NOT NULL,
+  chain_id INTEGER,
+  chain_name TEXT,
+  dao_code TEXT,
+  governor_address TEXT,
+  token_address TEXT,
+  delegator TEXT NOT NULL,
+  delegate TEXT NOT NULL,
+  power NUMERIC(78, 0) NOT NULL,
+  is_current BOOLEAN NOT NULL,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL,
+  anchor_block_number NUMERIC(78, 0),
+  anchor_block_hash TEXT,
+  anchor_parent_hash TEXT,
+  anchor_block_timestamp NUMERIC(78, 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT degov_provisional_delegate_power_overlay_scope_unique UNIQUE NULLS NOT DISTINCT (
+    chain_id,
+    chain_name,
+    contract_set_id,
+    dao_code,
+    governor_address,
+    token_address,
+    delegator,
+    delegate,
+    source
+  )
+);
+
+CREATE INDEX IF NOT EXISTS degov_provisional_delegate_power_overlay_lookup_idx
+  ON degov_provisional_delegate_power_overlay (chain_id, chain_name, contract_set_id, dao_code, governor_address, token_address, delegator);
+CREATE INDEX IF NOT EXISTS degov_provisional_delegate_power_overlay_segment_idx
+  ON degov_provisional_delegate_power_overlay (segment_id);
+
+CREATE TABLE IF NOT EXISTS degov_provisional_proposal_overlay (
+  id TEXT PRIMARY KEY,
+  segment_id TEXT REFERENCES degov_provisional_segment (id) ON UPDATE CASCADE ON DELETE SET NULL,
+  contract_set_id TEXT NOT NULL,
+  chain_id INTEGER,
+  chain_name TEXT,
+  dao_code TEXT,
+  governor_address TEXT,
+  contract_address TEXT,
+  proposal_id TEXT NOT NULL,
+  proposer TEXT,
+  targets TEXT[],
+  values TEXT[],
+  signatures TEXT[],
+  calldatas TEXT[],
+  vote_start NUMERIC(78, 0),
+  vote_end NUMERIC(78, 0),
+  description TEXT,
+  title TEXT,
+  state TEXT,
+  vote_start_timestamp NUMERIC(78, 0),
+  vote_end_timestamp NUMERIC(78, 0),
+  description_hash TEXT,
+  proposal_snapshot NUMERIC(78, 0),
+  proposal_deadline NUMERIC(78, 0),
+  proposal_eta NUMERIC(78, 0),
+  queue_ready_at NUMERIC(78, 0),
+  queue_expires_at NUMERIC(78, 0),
+  counting_mode TEXT,
+  timelock_address TEXT,
+  timelock_grace_period NUMERIC(78, 0),
+  clock_mode TEXT,
+  quorum NUMERIC(78, 0),
+  decimals NUMERIC(78, 0),
+  source TEXT NOT NULL,
+  status TEXT NOT NULL,
+  anchor_block_number NUMERIC(78, 0),
+  anchor_block_hash TEXT,
+  anchor_parent_hash TEXT,
+  anchor_block_timestamp NUMERIC(78, 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT degov_provisional_proposal_overlay_scope_unique UNIQUE NULLS NOT DISTINCT (
+    chain_id,
+    chain_name,
+    contract_set_id,
+    dao_code,
+    governor_address,
+    proposal_id,
+    source
+  )
+);
+
+CREATE INDEX IF NOT EXISTS degov_provisional_proposal_overlay_lookup_idx
+  ON degov_provisional_proposal_overlay (chain_id, chain_name, contract_set_id, dao_code, governor_address, proposal_id);
+CREATE INDEX IF NOT EXISTS degov_provisional_proposal_overlay_segment_idx
+  ON degov_provisional_proposal_overlay (segment_id);
+
+CREATE TABLE IF NOT EXISTS degov_provisional_timelock_operation_overlay (
+  id TEXT PRIMARY KEY,
+  segment_id TEXT REFERENCES degov_provisional_segment (id) ON UPDATE CASCADE ON DELETE SET NULL,
+  contract_set_id TEXT NOT NULL,
+  chain_id INTEGER,
+  chain_name TEXT,
+  dao_code TEXT,
+  governor_address TEXT,
+  timelock_address TEXT NOT NULL,
+  proposal_id TEXT,
+  operation_id TEXT NOT NULL,
+  timelock_type TEXT,
+  predecessor TEXT,
+  salt TEXT,
+  state TEXT NOT NULL,
+  call_count INTEGER,
+  executed_call_count INTEGER,
+  delay_seconds NUMERIC(78, 0),
+  ready_at NUMERIC(78, 0),
+  expires_at NUMERIC(78, 0),
+  queued_block_number NUMERIC(78, 0),
+  queued_block_timestamp NUMERIC(78, 0),
+  queued_transaction_hash TEXT,
+  cancelled_block_number NUMERIC(78, 0),
+  cancelled_block_timestamp NUMERIC(78, 0),
+  cancelled_transaction_hash TEXT,
+  executed_block_number NUMERIC(78, 0),
+  executed_block_timestamp NUMERIC(78, 0),
+  executed_transaction_hash TEXT,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL,
+  anchor_block_number NUMERIC(78, 0),
+  anchor_block_hash TEXT,
+  anchor_parent_hash TEXT,
+  anchor_block_timestamp NUMERIC(78, 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT degov_provisional_timelock_operation_overlay_scope_unique UNIQUE NULLS NOT DISTINCT (
+    chain_id,
+    chain_name,
+    contract_set_id,
+    dao_code,
+    governor_address,
+    timelock_address,
+    proposal_id,
+    operation_id,
+    source
+  )
+);
+
+CREATE INDEX IF NOT EXISTS degov_provisional_timelock_operation_overlay_lookup_idx
+  ON degov_provisional_timelock_operation_overlay (chain_id, chain_name, contract_set_id, dao_code, governor_address, timelock_address, proposal_id, operation_id);
+CREATE INDEX IF NOT EXISTS degov_provisional_timelock_operation_overlay_segment_idx
+  ON degov_provisional_timelock_operation_overlay (segment_id);
