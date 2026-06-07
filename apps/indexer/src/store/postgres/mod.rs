@@ -4,7 +4,7 @@ use std::{
     future::Future,
 };
 
-use sqlx::{PgPool, Postgres, Row, Transaction};
+use sqlx::{PgPool, Postgres, QueryBuilder, Row, Transaction};
 
 use crate::{
     CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite,
@@ -200,9 +200,7 @@ async fn write_projection_batch(
         refresh_vote_data_metric(transaction, &vote.contributor_vote_signals).await?;
     }
     if let Some(token) = &batch.token {
-        for candidate in &token.reconcile_plan.candidates {
-            upsert_onchain_refresh_task(transaction, candidate).await?;
-        }
+        upsert_onchain_refresh_tasks(transaction, &token.reconcile_plan.candidates).await?;
     }
     if let Some(batch) = &batch.timelock {
         write_timelock_batch(transaction, batch).await?;

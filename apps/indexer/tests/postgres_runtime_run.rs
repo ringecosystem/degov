@@ -709,6 +709,169 @@ async fn test_postgres_token_same_batch_mapping_mutations_remain_ordered()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    seed_refresh_task_for_account(
+        &database.pool,
+        DELEGATOR,
+        "failed",
+        3,
+        50,
+        Some("stale error"),
+        false,
+    )
+    .await?;
+    seed_refresh_task_for_account(
+        &database.pool,
+        SECOND_DELEGATE,
+        "processing",
+        5,
+        999,
+        Some("rpc still running"),
+        false,
+    )
+    .await?;
+
+    let mut token_batch = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000020-transfer", 20, 0, 1),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: DELEGATOR.to_owned(),
+                    to: RECEIVER.to_owned(),
+                    value: "40".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000022-delegator-votes", 22, 0, 2),
+                event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                    delegate: DELEGATOR.to_owned(),
+                    previous_votes: "0".to_owned(),
+                    new_votes: "100".to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000025-processing-votes", 25, 0, 3),
+                event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                    delegate: SECOND_DELEGATE.to_owned(),
+                    previous_votes: "0".to_owned(),
+                    new_votes: "80".to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("token projection failed: {error:?}"))?;
+    token_batch
+        .reconcile_plan
+        .candidates
+        .iter_mut()
+        .find(|candidate| candidate.account == RECEIVER)
+        .expect("receiver candidate")
+        .status
+        .reason
+        .clear();
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let rows = sqlx::query(
+        "SELECT id, account, refresh_balance, refresh_power, reason, status, attempts,
+                next_run_at::TEXT AS next_run_at, first_seen_block_number::TEXT AS first_seen_block_number,
+                last_seen_block_number::TEXT AS last_seen_block_number,
+                last_seen_block_timestamp::TEXT AS last_seen_block_timestamp,
+                last_seen_transaction_hash, processed_at::TEXT AS processed_at, error,
+                pending_after_lock, pending_after_lock_block_number::TEXT AS pending_after_lock_block_number,
+                pending_after_lock_block_timestamp::TEXT AS pending_after_lock_block_timestamp,
+                pending_after_lock_transaction_hash
+         FROM onchain_refresh_task
+         ORDER BY account ASC",
+    )
+    .fetch_all(&database.pool)
+    .await?;
+    assert_eq!(rows.len(), 3);
+
+    let pending = rows
+        .iter()
+        .find(|row| row.get::<String, _>("account") == DELEGATOR)
+        .expect("pending conflict row");
+    assert!(!pending.get::<bool, _>("refresh_balance"));
+    assert!(pending.get::<bool, _>("refresh_power"));
+    assert_eq!(
+        pending.get::<String, _>("reason"),
+        "delegate-votes-changed+transfer"
+    );
+    assert_eq!(pending.get::<String, _>("status"), "pending");
+    assert_eq!(pending.get::<i32, _>("attempts"), 0);
+    assert_eq!(pending.get::<String, _>("next_run_at"), "0");
+    assert_eq!(pending.get::<String, _>("first_seen_block_number"), "10");
+    assert_eq!(pending.get::<String, _>("last_seen_block_number"), "22");
+    assert_eq!(
+        pending.get::<String, _>("last_seen_block_timestamp"),
+        "1700000022000"
+    );
+    assert_eq!(
+        pending.get::<String, _>("last_seen_transaction_hash"),
+        "0xtx220"
+    );
+    assert_eq!(pending.get::<Option<String>, _>("processed_at"), None);
+    assert_eq!(pending.get::<Option<String>, _>("error"), None);
+    assert!(!pending.get::<bool, _>("pending_after_lock"));
+    assert_eq!(
+        pending.get::<Option<String>, _>("pending_after_lock_block_number"),
+        None
+    );
+
+    let inserted = rows
+        .iter()
+        .find(|row| row.get::<String, _>("account") == RECEIVER)
+        .expect("inserted row");
+    assert_eq!(inserted.get::<String, _>("id"), refresh_task_id(RECEIVER));
+    assert_eq!(inserted.get::<String, _>("reason"), "token-activity");
+    assert_eq!(inserted.get::<String, _>("first_seen_block_number"), "20");
+    assert_eq!(inserted.get::<String, _>("last_seen_block_number"), "20");
+    assert_eq!(inserted.get::<String, _>("status"), "pending");
+
+    let processing = rows
+        .iter()
+        .find(|row| row.get::<String, _>("account") == SECOND_DELEGATE)
+        .expect("processing conflict row");
+    assert_eq!(processing.get::<String, _>("status"), "processing");
+    assert_eq!(processing.get::<i32, _>("attempts"), 5);
+    assert_eq!(processing.get::<String, _>("next_run_at"), "999");
+    assert_eq!(
+        processing.get::<Option<String>, _>("error"),
+        Some("rpc still running".to_owned())
+    );
+    assert_eq!(processing.get::<String, _>("first_seen_block_number"), "10");
+    assert_eq!(processing.get::<String, _>("last_seen_block_number"), "25");
+    assert!(processing.get::<bool, _>("pending_after_lock"));
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_block_number"),
+        Some("25".to_owned())
+    );
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_block_timestamp"),
+        Some("1700000025000".to_owned())
+    );
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_transaction_hash"),
+        Some("0xtx250".to_owned())
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_projection_state_scopes_repeated_identifiers_by_contract_set_and_chain()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1802,6 +1965,49 @@ async fn seed_empty_global_metric(pool: &PgPool) -> Result<(), sqlx::Error> {
     .await?;
 
     Ok(())
+}
+
+async fn seed_refresh_task_for_account(
+    pool: &PgPool,
+    account: &str,
+    status: &str,
+    attempts: i32,
+    next_run_at: u64,
+    error: Option<&str>,
+    pending_after_lock: bool,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO onchain_refresh_task (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+            refresh_balance, refresh_power, reason, first_seen_block_number,
+            last_seen_block_number, last_seen_block_timestamp, last_seen_transaction_hash,
+            status, attempts, next_run_at, pending_after_lock, created_at, updated_at, error
+         )
+         VALUES (
+            $1, $2, 1, 'demo-dao', $3, $4, $5, false, true, 'seeded',
+            10::NUMERIC(78, 0), 12::NUMERIC(78, 0), 1700000012000::NUMERIC(78, 0),
+            '0xseed', $6, $7, $8::NUMERIC(78, 0), $9, 10::NUMERIC(78, 0),
+            12::NUMERIC(78, 0), $10
+         )",
+    )
+    .bind(refresh_task_id(account))
+    .bind(CONTRACT_SET_ID)
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(account)
+    .bind(status)
+    .bind(attempts)
+    .bind(next_run_at.to_string())
+    .bind(pending_after_lock)
+    .bind(error)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+fn refresh_task_id(account: &str) -> String {
+    format!("{CONTRACT_SET_ID}:demo-dao:1:{GOVERNOR}:{TOKEN}:{account}")
 }
 
 fn normalized_token_log(
