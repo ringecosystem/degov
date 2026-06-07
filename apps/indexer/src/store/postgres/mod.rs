@@ -14,15 +14,18 @@ use crate::{
     IndexerRunnerTransaction, PowerReconcileCandidate, ProposalActionWrite, ProposalCreatedWrite,
     ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
     ProposalProjectionBatch, ProposalQueuedWrite, ProposalStateEpochWrite, ProposalVoteTotalWrite,
-    ProposalWrite, ProvisionalContributorPowerOverlayWrite,
-    ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
-    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ProvisionalProposalOverlayStore,
-    ProvisionalProposalOverlayWrite, ProvisionalTimelockOperationOverlayWrite, TimelockCallWrite,
+    ProposalWrite, ProvisionalCleanupReport, ProvisionalCleanupStore,
+    ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayRelation,
+    ProvisionalDelegatePowerOverlayWrite, ProvisionalPowerOverlayScope,
+    ProvisionalPowerOverlayStore, ProvisionalProposalOverlayStore, ProvisionalProposalOverlayWrite,
+    ProvisionalRollbackReport, ProvisionalRollbackScope, ProvisionalSegmentCleanupCandidate,
+    ProvisionalSegmentCleanupDecision, ProvisionalTimelockOperationOverlayWrite, TimelockCallWrite,
     TimelockMinDelayChangeWrite, TimelockOperationHintWrite, TimelockOperationWrite,
     TimelockProjectionBatch, TimelockProjectionContext, TimelockProjectionEvent,
     TimelockProposalActionLink, TimelockProposalLinkContext, TimelockRoleEventWrite,
     TokenEventCommon, TokenProjectionBatch, TokenProjectionOperation, TokenTransferWrite,
     VoteCastGroupWrite, VoteCastWithParamsWrite, VoteCastWrite, VoteProjectionBatch,
+    plan_provisional_segment_cleanup,
 };
 
 #[derive(Clone)]

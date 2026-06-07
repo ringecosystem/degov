@@ -1,9 +1,13 @@
 use std::fmt;
 
+use datalens_sdk::safety::{
+    BlockAnchor, DataFinality, DataRange, PromotionDecision, plan_promotion,
+};
+
 use crate::{
     DaoContractAddresses, DatalensConfig, DatalensError, DatalensProvisionalCacheSegment,
-    DatalensProvisionalFinality, DatalensProvisionalLogQueryReader, datalens_selector_fingerprint,
-    fetch_provisional_dao_log_pages, plan_dao_log_queries,
+    DatalensProvisionalFinality, DatalensProvisionalLogQueryReader, IndexerCheckpointIdentity,
+    datalens_selector_fingerprint, fetch_provisional_dao_log_pages, plan_dao_log_queries,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -196,6 +200,47 @@ pub struct ProvisionalWorkerReport {
     pub segments_written: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalRollbackScope {
+    pub dao_code: String,
+    pub contract_set_id: String,
+    pub chain_id: i32,
+    pub source: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProvisionalCleanupReport {
+    pub segments_marked_finalized: usize,
+    pub contributor_overlays_marked_finalized: usize,
+    pub delegate_overlays_marked_finalized: usize,
+    pub proposal_overlays_marked_finalized: usize,
+    pub timelock_overlays_marked_finalized: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProvisionalRollbackReport {
+    pub segments_marked_invalid: usize,
+    pub contributor_overlays_marked_invalid: usize,
+    pub delegate_overlays_marked_invalid: usize,
+    pub proposal_overlays_marked_invalid: usize,
+    pub timelock_overlays_marked_invalid: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalSegmentCleanupCandidate {
+    pub range_start_block: i64,
+    pub range_end_block: i64,
+    pub segment_finality: String,
+    pub anchor_block_number: Option<i64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProvisionalSegmentCleanupDecision {
+    Finalize,
+    Keep,
+    Invalid,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProvisionalWorkerError {
     #[error("provisional Datalens query error: {0}")]
@@ -237,6 +282,81 @@ pub trait ProvisionalProposalOverlayStore {
         proposals: &[ProvisionalProposalOverlayWrite],
         timelocks: &[ProvisionalTimelockOperationOverlayWrite],
     ) -> Result<(), Self::Error>;
+}
+
+pub trait ProvisionalCleanupStore {
+    type Error: fmt::Display;
+
+    fn cleanup_finalized_provisional_overlays(
+        &mut self,
+        identity: &IndexerCheckpointIdentity,
+        source: Option<&str>,
+    ) -> Result<ProvisionalCleanupReport, Self::Error>;
+
+    fn rollback_provisional_overlays(
+        &mut self,
+        scope: &ProvisionalRollbackScope,
+        reason: &str,
+    ) -> Result<ProvisionalRollbackReport, Self::Error>;
+}
+
+pub fn plan_provisional_segment_cleanup(
+    finalized_height: i64,
+    candidate: &ProvisionalSegmentCleanupCandidate,
+) -> ProvisionalSegmentCleanupDecision {
+    if finalized_height < 0
+        || candidate.range_start_block < 0
+        || candidate.range_end_block < candidate.range_start_block
+    {
+        return ProvisionalSegmentCleanupDecision::Invalid;
+    }
+
+    let Ok(finalized_height) = u64::try_from(finalized_height) else {
+        return ProvisionalSegmentCleanupDecision::Invalid;
+    };
+    let Ok(range_start) = u64::try_from(candidate.range_start_block) else {
+        return ProvisionalSegmentCleanupDecision::Invalid;
+    };
+    let Ok(range_end) = u64::try_from(candidate.range_end_block) else {
+        return ProvisionalSegmentCleanupDecision::Invalid;
+    };
+    let anchor_height = candidate
+        .anchor_block_number
+        .and_then(|height| u64::try_from(height).ok())
+        .unwrap_or(range_end);
+    let durable_head = BlockAnchor {
+        range_kind: "block".to_owned(),
+        height: finalized_height,
+        block_hash: None,
+        parent_hash: None,
+        timestamp: None,
+        finality: DataFinality::Safe,
+    };
+    let provisional_range = DataRange::new("block", range_start, range_end);
+    let provisional_anchor = BlockAnchor {
+        range_kind: "block".to_owned(),
+        height: anchor_height,
+        block_hash: None,
+        parent_hash: None,
+        timestamp: None,
+        finality: DataFinality::from(candidate.segment_finality.as_str()),
+    };
+
+    match plan_promotion(
+        Some(&durable_head),
+        Some(&provisional_range),
+        Some(&provisional_anchor),
+    )
+    .decision
+    {
+        PromotionDecision::Promote { .. } => ProvisionalSegmentCleanupDecision::Finalize,
+        PromotionDecision::Rollback { .. } => ProvisionalSegmentCleanupDecision::Invalid,
+        PromotionDecision::KeepProvisional { .. } => ProvisionalSegmentCleanupDecision::Keep,
+        PromotionDecision::Recheck { .. } if finalized_height >= range_end => {
+            ProvisionalSegmentCleanupDecision::Finalize
+        }
+        PromotionDecision::Recheck { .. } => ProvisionalSegmentCleanupDecision::Keep,
+    }
 }
 
 pub struct ProvisionalWorker<'a, R, S> {

@@ -95,8 +95,8 @@ pub use crate::projection::vote::{
 };
 pub use crate::store::postgres::{
     PostgresIndexerRunnerStore, PostgresIndexerRunnerStoreError, PostgresIndexerRunnerTransaction,
-    PostgresProvisionalPowerOverlayStore, PostgresProvisionalProposalOverlayStore,
-    PostgresProvisionalSegmentStore,
+    PostgresProvisionalCleanupStore, PostgresProvisionalPowerOverlayStore,
+    PostgresProvisionalProposalOverlayStore, PostgresProvisionalSegmentStore,
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -114,12 +114,14 @@ pub use datalens::{
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use graphql::IndexerGraphqlSchema;
 pub use provisional::{
-    DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite,
-    ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayRelation,
-    ProvisionalDelegatePowerOverlayWrite, ProvisionalPowerOverlayScope,
-    ProvisionalPowerOverlayStore, ProvisionalProposalOverlayStore, ProvisionalProposalOverlayWrite,
+    DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, ProvisionalCleanupReport,
+    ProvisionalCleanupStore, ProvisionalContributorPowerOverlayWrite,
+    ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
+    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ProvisionalProposalOverlayStore,
+    ProvisionalProposalOverlayWrite, ProvisionalRollbackReport, ProvisionalRollbackScope,
+    ProvisionalSegmentCleanupCandidate, ProvisionalSegmentCleanupDecision,
     ProvisionalTimelockOperationOverlayWrite, ProvisionalWorker, ProvisionalWorkerError,
-    ProvisionalWorkerOptions, ProvisionalWorkerReport,
+    ProvisionalWorkerOptions, ProvisionalWorkerReport, plan_provisional_segment_cleanup,
 };
 pub use runner::{
     AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig,
