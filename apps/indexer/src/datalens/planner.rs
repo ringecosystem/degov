@@ -8,7 +8,7 @@ use datalens_sdk::native::{
 
 use crate::{
     DatalensConfig, DatalensError, DatalensLogQueryCacheSummary, DatalensLogQueryResult,
-    GovernanceTokenStandard,
+    DatalensProvisionalFinality, GovernanceTokenStandard,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,6 +50,48 @@ pub struct DatalensLogPage {
 
 pub trait DatalensLogQueryReader {
     fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError>;
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DatalensProvisionalLogPage {
+    pub plan: DaoLogQueryPlan,
+    pub rows: serde_json::Value,
+    pub segments: Vec<DatalensProvisionalCacheSegment>,
+    pub query_duration: Duration,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DatalensProvisionalCacheSegment {
+    pub source: String,
+    pub finality: String,
+    pub range_start_block: i64,
+    pub range_end_block: i64,
+    pub anchor_block_number: Option<i64>,
+    pub anchor_block_hash: Option<String>,
+    pub anchor_parent_hash: Option<String>,
+    pub anchor_block_timestamp: Option<i64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DatalensProvisionalLogQueryResult {
+    pub rows: serde_json::Value,
+    pub segments: Vec<DatalensProvisionalCacheSegment>,
+}
+
+impl DatalensProvisionalLogQueryResult {
+    pub fn rows_only(rows: serde_json::Value) -> Self {
+        Self {
+            rows,
+            segments: Vec::new(),
+        }
+    }
+}
+
+pub trait DatalensProvisionalLogQueryReader {
+    fn query_provisional_logs(
+        &mut self,
+        input: QueryInput,
+    ) -> Result<DatalensProvisionalLogQueryResult, DatalensError>;
 }
 
 pub fn plan_dao_log_queries(
@@ -108,6 +150,28 @@ pub fn fetch_dao_log_pages(
             plan: plan.clone(),
             rows: result.rows,
             cache: result.cache,
+            query_duration: query_started_at.elapsed(),
+        });
+    }
+
+    Ok(pages)
+}
+
+pub fn fetch_provisional_dao_log_pages(
+    reader: &mut impl DatalensProvisionalLogQueryReader,
+    plans: &[DaoLogQueryPlan],
+    finality: DatalensProvisionalFinality,
+) -> Result<Vec<DatalensProvisionalLogPage>, DatalensError> {
+    let mut pages = Vec::new();
+    for plan in plans {
+        let mut input = plan.input.clone();
+        input.finality = Some(finality.as_datalens_value().to_owned());
+        let query_started_at = Instant::now();
+        let result = reader.query_provisional_logs(input)?;
+        pages.push(DatalensProvisionalLogPage {
+            plan: plan.clone(),
+            rows: result.rows,
+            segments: result.segments,
             query_duration: query_started_at.elapsed(),
         });
     }

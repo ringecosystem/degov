@@ -583,8 +583,8 @@ mod tests {
     };
 
     use crate::{
-        ChainFamily, ChainIdentityConfig, DatalensFinality, DatasetKeyConfig, QueryLimitConfig,
-        SecretString,
+        ChainFamily, ChainIdentityConfig, DatalensFinality, DatalensProvisionalFinality,
+        DatasetKeyConfig, ProvisionalRuntimeConfig, QueryLimitConfig, SecretString,
     };
 
     use super::*;
@@ -608,6 +608,10 @@ mod tests {
             progress_refresh_lag_blocks: 100,
             adaptive_chunk_sizer: Default::default(),
             onchain_refresh_tick: Default::default(),
+            provisional: ProvisionalRuntimeConfig {
+                enabled: false,
+                finality: DatalensProvisionalFinality::SafeToLatest,
+            },
         };
         let config = DatalensConfig {
             endpoint: "http://127.0.0.1:1".to_owned(),

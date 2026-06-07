@@ -7,6 +7,7 @@ pub mod error;
 pub mod graphql;
 pub mod onchain;
 pub mod projection;
+pub mod provisional;
 pub mod runner;
 pub mod runtime;
 pub mod runtime_config;
@@ -21,7 +22,9 @@ pub use crate::chain::tool::{
 };
 pub use crate::datalens::planner::{
     DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan, DaoLogSource, DatalensLogPage,
-    DatalensLogQueryReader, fetch_dao_log_pages, plan_dao_log_queries,
+    DatalensLogQueryReader, DatalensProvisionalCacheSegment, DatalensProvisionalLogPage,
+    DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult, fetch_dao_log_pages,
+    fetch_provisional_dao_log_pages, plan_dao_log_queries,
 };
 pub use crate::datalens::warmup::{
     DatalensWarmupConfig, DatalensWarmupEnsureOutcome, DatalensWarmupEnsurer, DatalensWarmupKind,
@@ -91,6 +94,7 @@ pub use crate::projection::vote::{
 };
 pub use crate::store::postgres::{
     PostgresIndexerRunnerStore, PostgresIndexerRunnerStoreError, PostgresIndexerRunnerTransaction,
+    PostgresProvisionalSegmentStore,
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -98,8 +102,8 @@ pub use checkpoint::{
 };
 pub use config::{
     ChainFamily, ChainIdentityConfig, DatalensChainConfig, DatalensConfig,
-    DatalensContractSetConfig, DatalensFinality, DatalensRuntimeContractSet, DatasetKeyConfig,
-    QueryLimitConfig, SecretString,
+    DatalensContractSetConfig, DatalensFinality, DatalensProvisionalFinality,
+    DatalensRuntimeContractSet, DatasetKeyConfig, QueryLimitConfig, SecretString,
 };
 pub use datalens::{
     DatalensDurableHeadReader, DatalensNativeClient, DatalensNativeReader, ServiceReadiness,
@@ -107,6 +111,10 @@ pub use datalens::{
 };
 pub use error::{CheckpointError, ConfigError, DatalensError, IndexerError};
 pub use graphql::IndexerGraphqlSchema;
+pub use provisional::{
+    DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, ProvisionalWorker,
+    ProvisionalWorkerError, ProvisionalWorkerOptions, ProvisionalWorkerReport,
+};
 pub use runner::{
     AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig,
     AdaptiveChunkSizingDecision, AdaptiveChunkSizingReason, DaoEventDecoder,
@@ -119,6 +127,6 @@ pub use runtime_config::{
     AdaptiveChunkSizerRuntimeConfig, ContractSetConcurrencyLimit, GraphqlRuntimeConfig,
     IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerRuntimeConfig,
     IndexerTargetHeight, OnchainRefreshRpcChainConfig, OnchainRefreshRuntimeConfig,
-    datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
-    parse_i64_env_value, required_env,
+    ProvisionalRuntimeConfig, datalens_retry_config, onchain_refresh_worker_enabled,
+    parse_bool_env_value, parse_i64_env_value, required_env,
 };

@@ -16,7 +16,9 @@ pub use effectiveness::{
 };
 pub use planner::{
     DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan, DaoLogSource, DatalensLogPage,
-    DatalensLogQueryReader, fetch_dao_log_pages, plan_dao_log_queries,
+    DatalensLogQueryReader, DatalensProvisionalCacheSegment, DatalensProvisionalLogPage,
+    DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult, fetch_dao_log_pages,
+    fetch_provisional_dao_log_pages, plan_dao_log_queries,
 };
 pub use warmup::{
     DatalensWarmupConfig, DatalensWarmupEnsureOutcome, DatalensWarmupEnsurer, DatalensWarmupKind,

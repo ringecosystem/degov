@@ -7,10 +7,10 @@ use serde::Deserialize;
 
 use crate::{
     AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainReadMethod, DatalensConfig,
-    DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet, IndexerCheckpointIdentity,
-    IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshTickConfig,
-    OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString, TimelockProjectionContext,
-    TokenProjectionContext, VoteProjectionContext,
+    DatalensProvisionalFinality, DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet,
+    IndexerCheckpointIdentity, IndexerRunnerContexts, IndexerRunnerOptions,
+    OnchainRefreshTickConfig, OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString,
+    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18,6 +18,25 @@ pub struct GraphqlRuntimeConfig {
     pub bind_address: SocketAddr,
     pub public_endpoint: Option<String>,
     pub paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalRuntimeConfig {
+    pub enabled: bool,
+    pub finality: DatalensProvisionalFinality,
+}
+
+impl ProvisionalRuntimeConfig {
+    pub fn from_env() -> Result<Self> {
+        let enabled = optional_env_bool("DEGOV_PROVISIONAL_WORKER_ENABLED")?.unwrap_or(false);
+        let finality = optional_env("DEGOV_PROVISIONAL_FINALITY")?
+            .as_deref()
+            .map(str::parse)
+            .transpose()?
+            .unwrap_or(DatalensProvisionalFinality::SafeToLatest);
+
+        Ok(Self { enabled, finality })
+    }
 }
 
 impl GraphqlRuntimeConfig {
@@ -131,6 +150,7 @@ pub struct IndexerRuntimeConfig {
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+    pub provisional: ProvisionalRuntimeConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -319,6 +339,7 @@ impl IndexerRuntimeConfig {
             .unwrap_or(100),
             adaptive_chunk_sizer: load_adaptive_chunk_sizer_runtime_config()?,
             onchain_refresh_tick: load_onchain_refresh_tick_config()?,
+            provisional: ProvisionalRuntimeConfig::from_env()?,
             poll_interval,
             run_once,
             max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,

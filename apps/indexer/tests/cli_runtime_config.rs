@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use degov_datalens_indexer::{
-    ContractSetConcurrencyLimit, DatalensConfig, DatalensQueryConcurrencyConfig,
-    GraphqlRuntimeConfig, IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight,
-    OnchainRefreshTickConfig, datalens_retry_config, onchain_refresh_worker_enabled,
-    parse_bool_env_value, parse_i64_env_value,
+    ContractSetConcurrencyLimit, DatalensConfig, DatalensProvisionalFinality,
+    DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig, IndexerContractSetMode,
+    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshTickConfig, ProvisionalRuntimeConfig,
+    datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
+    parse_i64_env_value,
 };
 
 #[test]
@@ -88,12 +89,73 @@ fn test_indexer_runtime_config_defaults_to_latest_target_height() {
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("10")),
-            ("DEGOV_INDEXER_TARGET_HEIGHT", None),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", None::<&str>),
+            ("DEGOV_PROVISIONAL_WORKER_ENABLED", None::<&str>),
+            ("DEGOV_PROVISIONAL_FINALITY", None::<&str>),
         ],
         || {
             let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
 
             assert_eq!(config.target_height, IndexerTargetHeight::Latest);
+            assert!(!config.provisional.enabled);
+            assert_eq!(
+                config.provisional.finality,
+                DatalensProvisionalFinality::SafeToLatest
+            );
+        },
+    );
+}
+
+#[test]
+fn test_provisional_runtime_config_defaults_to_disabled_safe_to_latest() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_PROVISIONAL_WORKER_ENABLED", None::<&str>),
+            ("DEGOV_PROVISIONAL_FINALITY", None::<&str>),
+        ],
+        || {
+            let config = ProvisionalRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(!config.enabled);
+            assert_eq!(config.finality, DatalensProvisionalFinality::SafeToLatest);
+        },
+    );
+}
+
+#[test]
+fn test_provisional_runtime_config_rejects_final_finality() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_PROVISIONAL_WORKER_ENABLED", Some("true")),
+            ("DEGOV_PROVISIONAL_FINALITY", Some("durable_only")),
+        ],
+        || {
+            let error = ProvisionalRuntimeConfig::from_env()
+                .expect_err("durable finality is invalid for provisional worker");
+
+            assert!(error.to_string().contains("DEGOV_PROVISIONAL_FINALITY"));
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_accepts_provisional_worker_enablement() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_START_BLOCK", Some("10")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("latest")),
+            ("DEGOV_PROVISIONAL_WORKER_ENABLED", Some("true")),
+            ("DEGOV_PROVISIONAL_FINALITY", Some("latest_only")),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(config.provisional.enabled);
+            assert_eq!(
+                config.provisional.finality,
+                DatalensProvisionalFinality::LatestOnly
+            );
         },
     );
 }
@@ -447,6 +509,10 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        provisional: ProvisionalRuntimeConfig {
+            enabled: false,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        },
     };
     let selected = config
         .configured_contract_sets(Some("lisk-dao"))
@@ -523,6 +589,10 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        provisional: ProvisionalRuntimeConfig {
+            enabled: false,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        },
     };
     let selected = config
         .configured_contract_sets(Some("lisk-dao"))
@@ -559,6 +629,10 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        provisional: ProvisionalRuntimeConfig {
+            enabled: false,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        },
     };
 
     assert!(!runtime.should_skip_contract_set_start_after_target(568752));
