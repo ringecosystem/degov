@@ -11,10 +11,11 @@ use degov_datalens_indexer::{
     DatalensFinality, DatalensProvisionalCacheSegment, DatalensProvisionalFinality,
     DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult,
     DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, DatasetKeyConfig,
-    GovernanceTokenStandard, PostgresProvisionalPowerOverlayStore, PostgresProvisionalSegmentStore,
+    GovernanceTokenStandard, PostgresProvisionalPowerOverlayStore,
+    PostgresProvisionalProposalOverlayStore, PostgresProvisionalSegmentStore,
     ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayWrite,
-    ProvisionalWorker, ProvisionalWorkerOptions, QueryLimitConfig, SecretString,
-    runtime::apply_migrations,
+    ProvisionalProposalOverlayWrite, ProvisionalTimelockOperationOverlayWrite, ProvisionalWorker,
+    ProvisionalWorkerOptions, QueryLimitConfig, SecretString, runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -108,6 +109,50 @@ async fn test_postgres_live_power_overlay_upsert_is_idempotent_and_writes_no_fin
         table_count(&database.pool, "vote_power_checkpoint").await?,
         0
     );
+    assert_checkpoint(&database.pool).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_live_proposal_timelock_overlay_upsert_is_idempotent_and_writes_no_final_tables()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint(&database.pool).await?;
+    let store = PostgresProvisionalProposalOverlayStore::new(database.pool.clone());
+    let proposal = proposal_overlay_write("42", "Queued");
+    let timelock = timelock_overlay_write("42", "0xoperation", "Ready");
+
+    store
+        .write_proposal_overlays(&[proposal.clone()], &[timelock.clone()])
+        .await
+        .expect("first write succeeds");
+    store
+        .write_proposal_overlays(&[proposal], &[timelock])
+        .await
+        .expect("retry write succeeds");
+
+    assert_eq!(
+        table_count(&database.pool, "degov_provisional_proposal_overlay").await?,
+        1
+    );
+    assert_eq!(
+        table_count(
+            &database.pool,
+            "degov_provisional_timelock_operation_overlay"
+        )
+        .await?,
+        1
+    );
+    assert_eq!(table_count(&database.pool, "proposal").await?, 0);
+    assert_eq!(
+        table_count(&database.pool, "proposal_state_epoch").await?,
+        0
+    );
+    assert_eq!(table_count(&database.pool, "timelock_operation").await?, 0);
     assert_checkpoint(&database.pool).await?;
     database.cleanup().await?;
 
@@ -245,6 +290,93 @@ fn delegate_power_write(
         delegate: delegate.to_owned(),
         power: power.to_owned(),
         is_current: true,
+        source: "live-onchain".to_owned(),
+        status: "available".to_owned(),
+        anchor_block_number: Some("105".to_owned()),
+        anchor_block_hash: None,
+        anchor_parent_hash: None,
+        anchor_block_timestamp: Some("1700000000".to_owned()),
+    }
+}
+
+fn proposal_overlay_write(proposal_id: &str, state: &str) -> ProvisionalProposalOverlayWrite {
+    ProvisionalProposalOverlayWrite {
+        id: format!("demo-set:1:demo-dao:0xgovernor:{proposal_id}:live-onchain"),
+        segment_id: None,
+        dao_code: Some("demo-dao".to_owned()),
+        contract_set_id: "demo-set".to_owned(),
+        chain_id: Some(1),
+        chain_name: Some("ethereum".to_owned()),
+        governor_address: Some("0xgovernor".to_owned()),
+        contract_address: Some("0xgovernor".to_owned()),
+        proposal_id: proposal_id.to_owned(),
+        proposer: Some("0xproposer".to_owned()),
+        targets: Some(vec!["0xtarget".to_owned()]),
+        values: Some(vec!["0".to_owned()]),
+        signatures: Some(vec!["transfer(address,uint256)".to_owned()]),
+        calldatas: Some(vec!["0x".to_owned()]),
+        vote_start: Some("1000".to_owned()),
+        vote_end: Some("2000".to_owned()),
+        description: Some("Live proposal body".to_owned()),
+        title: Some("Live proposal title".to_owned()),
+        state: Some(state.to_owned()),
+        vote_start_timestamp: Some("1700001000".to_owned()),
+        vote_end_timestamp: Some("1700002000".to_owned()),
+        description_hash: None,
+        proposal_snapshot: Some("1000".to_owned()),
+        proposal_deadline: Some("2000".to_owned()),
+        proposal_eta: Some("1700000300".to_owned()),
+        queue_ready_at: Some("1700000300".to_owned()),
+        queue_expires_at: Some("1700000900".to_owned()),
+        counting_mode: None,
+        timelock_address: Some("0xtimelock".to_owned()),
+        timelock_grace_period: Some("600".to_owned()),
+        clock_mode: Some("mode=blocknumber&from=default".to_owned()),
+        quorum: Some("40".to_owned()),
+        decimals: Some("18".to_owned()),
+        source: "live-onchain".to_owned(),
+        status: "available".to_owned(),
+        anchor_block_number: Some("105".to_owned()),
+        anchor_block_hash: None,
+        anchor_parent_hash: None,
+        anchor_block_timestamp: Some("1700000000".to_owned()),
+    }
+}
+
+fn timelock_overlay_write(
+    proposal_id: &str,
+    operation_id: &str,
+    state: &str,
+) -> ProvisionalTimelockOperationOverlayWrite {
+    ProvisionalTimelockOperationOverlayWrite {
+        id: format!("demo-set:1:demo-dao:0xtimelock:{proposal_id}:{operation_id}:live-onchain"),
+        segment_id: None,
+        dao_code: Some("demo-dao".to_owned()),
+        contract_set_id: "demo-set".to_owned(),
+        chain_id: Some(1),
+        chain_name: Some("ethereum".to_owned()),
+        governor_address: Some("0xgovernor".to_owned()),
+        timelock_address: "0xtimelock".to_owned(),
+        proposal_id: Some(proposal_id.to_owned()),
+        operation_id: operation_id.to_owned(),
+        timelock_type: Some("single".to_owned()),
+        predecessor: None,
+        salt: None,
+        state: state.to_owned(),
+        call_count: Some(1),
+        executed_call_count: Some(0),
+        delay_seconds: Some("600".to_owned()),
+        ready_at: Some("1700000300".to_owned()),
+        expires_at: Some("1700000900".to_owned()),
+        queued_block_number: Some("105".to_owned()),
+        queued_block_timestamp: Some("1700000000".to_owned()),
+        queued_transaction_hash: Some("0xqueue".to_owned()),
+        cancelled_block_number: None,
+        cancelled_block_timestamp: None,
+        cancelled_transaction_hash: None,
+        executed_block_number: None,
+        executed_block_timestamp: None,
+        executed_transaction_hash: None,
         source: "live-onchain".to_owned(),
         status: "available".to_owned(),
         anchor_block_number: Some("105".to_owned()),

@@ -53,7 +53,44 @@ pub(super) async fn query_proposals(
           queue_ready_at::text AS queue_ready_at, queue_expires_at::text AS queue_expires_at,
           quorum::text AS quorum, decimals::text AS decimals, timelock_address,
           timelock_grace_period::text AS timelock_grace_period
-        FROM proposal
+        FROM (
+          SELECT proposal.id, proposal.contract_set_id, proposal.chain_id, proposal.dao_code,
+            proposal.governor_address, proposal.proposal_id,
+            COALESCE(proposal_overlay.proposer, proposal.proposer) AS proposer,
+            COALESCE(proposal_overlay.targets, proposal.targets) AS targets,
+            COALESCE(proposal_overlay.values, proposal.values) AS values,
+            COALESCE(proposal_overlay.signatures, proposal.signatures) AS signatures,
+            COALESCE(proposal_overlay.calldatas, proposal.calldatas) AS calldatas,
+            COALESCE(proposal_overlay.vote_start, proposal.vote_start) AS vote_start,
+            COALESCE(proposal_overlay.vote_end, proposal.vote_end) AS vote_end,
+            COALESCE(proposal_overlay.description, proposal.description) AS description,
+            proposal.block_number, proposal.block_timestamp, proposal.transaction_hash,
+            proposal.metrics_votes_count, proposal.metrics_votes_with_params_count,
+            proposal.metrics_votes_without_params_count, proposal.metrics_votes_weight_for_sum,
+            proposal.metrics_votes_weight_against_sum, proposal.metrics_votes_weight_abstain_sum,
+            COALESCE(proposal_overlay.title, proposal.title) AS title,
+            COALESCE(proposal_overlay.vote_start_timestamp, proposal.vote_start_timestamp) AS vote_start_timestamp,
+            COALESCE(proposal_overlay.vote_end_timestamp, proposal.vote_end_timestamp) AS vote_end_timestamp,
+            proposal.block_interval,
+            COALESCE(proposal_overlay.clock_mode, proposal.clock_mode) AS clock_mode,
+            COALESCE(proposal_overlay.proposal_deadline, proposal.proposal_deadline) AS proposal_deadline,
+            COALESCE(proposal_overlay.proposal_eta, proposal.proposal_eta) AS proposal_eta,
+            COALESCE(proposal_overlay.queue_ready_at, proposal.queue_ready_at) AS queue_ready_at,
+            COALESCE(proposal_overlay.queue_expires_at, proposal.queue_expires_at) AS queue_expires_at,
+            COALESCE(proposal_overlay.quorum, proposal.quorum) AS quorum,
+            COALESCE(proposal_overlay.decimals, proposal.decimals) AS decimals,
+            COALESCE(proposal_overlay.timelock_address, proposal.timelock_address) AS timelock_address,
+            COALESCE(proposal_overlay.timelock_grace_period, proposal.timelock_grace_period) AS timelock_grace_period
+          FROM proposal
+          LEFT JOIN degov_provisional_proposal_overlay proposal_overlay
+            ON proposal_overlay.contract_set_id = proposal.contract_set_id
+           AND proposal_overlay.chain_id IS NOT DISTINCT FROM proposal.chain_id
+           AND proposal_overlay.dao_code IS NOT DISTINCT FROM proposal.dao_code
+           AND proposal_overlay.governor_address IS NOT DISTINCT FROM proposal.governor_address
+           AND proposal_overlay.proposal_id = proposal.proposal_id
+           AND proposal_overlay.source = 'live-onchain'
+           AND proposal_overlay.status = 'available'
+        ) proposal
         "#,
     );
     push_proposal_where(&mut query, implicit_scope, where_);
@@ -68,7 +105,26 @@ pub(super) async fn count_proposals(
     implicit_scope: &GraphqlScope,
     where_: Option<&ProposalWhereInput>,
 ) -> GraphqlResult<i64> {
-    let mut query = QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM proposal");
+    let mut query = QueryBuilder::<Postgres>::new(
+        r#"
+        SELECT COUNT(*)::int8 AS total
+        FROM (
+          SELECT proposal.id, proposal.contract_set_id, proposal.chain_id,
+            proposal.dao_code, proposal.governor_address, proposal.proposal_id,
+            COALESCE(proposal_overlay.proposer, proposal.proposer) AS proposer,
+            COALESCE(proposal_overlay.description, proposal.description) AS description
+          FROM proposal
+          LEFT JOIN degov_provisional_proposal_overlay proposal_overlay
+            ON proposal_overlay.contract_set_id = proposal.contract_set_id
+           AND proposal_overlay.chain_id IS NOT DISTINCT FROM proposal.chain_id
+           AND proposal_overlay.dao_code IS NOT DISTINCT FROM proposal.dao_code
+           AND proposal_overlay.governor_address IS NOT DISTINCT FROM proposal.governor_address
+           AND proposal_overlay.proposal_id = proposal.proposal_id
+           AND proposal_overlay.source = 'live-onchain'
+           AND proposal_overlay.status = 'available'
+        ) proposal
+        "#,
+    );
     push_proposal_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
