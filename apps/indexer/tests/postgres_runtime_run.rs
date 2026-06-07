@@ -872,6 +872,80 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
+-> Result<(), Box<dyn Error>> {
+    const DENSE_CANDIDATE_COUNT: usize = 1_001;
+
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let token_batch = project_token_events(
+        &token_projection_context(),
+        (0..DENSE_CANDIDATE_COUNT)
+            .map(|index| TokenProjectionEvent {
+                log: normalized_token_log(
+                    &format!("0000000030-dense-votes-{index}"),
+                    30 + index as u64,
+                    0,
+                    1,
+                ),
+                event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                    delegate: indexed_account(index),
+                    previous_votes: "0".to_owned(),
+                    new_votes: "1".to_owned(),
+                }),
+            })
+            .collect(),
+    )
+    .map_err(|error| format!("dense token projection failed: {error:?}"))?;
+    assert_eq!(
+        token_batch.reconcile_plan.candidates.len(),
+        DENSE_CANDIDATE_COUNT
+    );
+
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let task_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
+         FROM onchain_refresh_task
+         WHERE contract_set_id = $1",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(task_count, DENSE_CANDIDATE_COUNT as i64);
+
+    for index in [0, DENSE_CANDIDATE_COUNT - 1] {
+        let account = indexed_account(index);
+        let row = sqlx::query(
+            "SELECT id, reason, status, last_seen_block_number::TEXT AS last_seen_block_number
+             FROM onchain_refresh_task
+             WHERE contract_set_id = $1 AND account = $2",
+        )
+        .bind(CONTRACT_SET_ID)
+        .bind(&account)
+        .fetch_one(&database.pool)
+        .await?;
+        assert_eq!(row.get::<String, _>("id"), refresh_task_id(&account));
+        assert_eq!(row.get::<String, _>("reason"), "delegate-votes-changed");
+        assert_eq!(row.get::<String, _>("status"), "pending");
+        assert_eq!(
+            row.get::<String, _>("last_seen_block_number"),
+            (30 + index as u64).to_string()
+        );
+    }
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_projection_state_scopes_repeated_identifiers_by_contract_set_and_chain()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -2008,6 +2082,10 @@ async fn seed_refresh_task_for_account(
 
 fn refresh_task_id(account: &str) -> String {
     format!("{CONTRACT_SET_ID}:demo-dao:1:{GOVERNOR}:{TOKEN}:{account}")
+}
+
+fn indexed_account(index: usize) -> String {
+    format!("0x{:040x}", 0x1000usize + index)
 }
 
 fn normalized_token_log(

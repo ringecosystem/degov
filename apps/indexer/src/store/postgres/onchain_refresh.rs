@@ -1,12 +1,21 @@
 // Onchain refresh task persistence.
+const MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS: usize = 1_000;
+
 async fn upsert_onchain_refresh_tasks(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[PowerReconcileCandidate],
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    if rows.is_empty() {
-        return Ok(());
+    for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
+        upsert_onchain_refresh_task_chunk(transaction, chunk).await?;
     }
 
+    Ok(())
+}
+
+async fn upsert_onchain_refresh_task_chunk(
+    transaction: &mut Transaction<'_, Postgres>,
+    rows: &[PowerReconcileCandidate],
+) -> Result<(), PostgresIndexerRunnerStoreError> {
     let mut query = QueryBuilder::<Postgres>::new(
         "INSERT INTO onchain_refresh_task (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, account, refresh_balance,
@@ -121,7 +130,7 @@ async fn upsert_onchain_refresh_tasks(
     query
         .build()
         .execute(&mut **transaction)
-    .await?;
+        .await?;
 
     Ok(())
 }
