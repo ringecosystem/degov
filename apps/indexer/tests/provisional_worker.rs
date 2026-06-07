@@ -286,7 +286,10 @@ async fn insert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
 
 async fn assert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
     let row = sqlx::query(
-        "SELECT next_block, processed_height, target_height
+        "SELECT
+           next_block::BIGINT AS next_block,
+           processed_height::BIGINT AS processed_height,
+           target_height::BIGINT AS target_height
          FROM degov_indexer_checkpoint
          WHERE dao_code = 'demo-dao'
            AND chain_id = 1
