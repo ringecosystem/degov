@@ -88,6 +88,87 @@ pub struct ProvisionalDelegatePowerOverlayWrite {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalProposalOverlayWrite {
+    pub id: String,
+    pub segment_id: Option<String>,
+    pub dao_code: Option<String>,
+    pub contract_set_id: String,
+    pub chain_id: Option<i32>,
+    pub chain_name: Option<String>,
+    pub governor_address: Option<String>,
+    pub contract_address: Option<String>,
+    pub proposal_id: String,
+    pub proposer: Option<String>,
+    pub targets: Option<Vec<String>>,
+    pub values: Option<Vec<String>>,
+    pub signatures: Option<Vec<String>>,
+    pub calldatas: Option<Vec<String>>,
+    pub vote_start: Option<String>,
+    pub vote_end: Option<String>,
+    pub description: Option<String>,
+    pub title: Option<String>,
+    pub state: Option<String>,
+    pub vote_start_timestamp: Option<String>,
+    pub vote_end_timestamp: Option<String>,
+    pub description_hash: Option<String>,
+    pub proposal_snapshot: Option<String>,
+    pub proposal_deadline: Option<String>,
+    pub proposal_eta: Option<String>,
+    pub queue_ready_at: Option<String>,
+    pub queue_expires_at: Option<String>,
+    pub counting_mode: Option<String>,
+    pub timelock_address: Option<String>,
+    pub timelock_grace_period: Option<String>,
+    pub clock_mode: Option<String>,
+    pub quorum: Option<String>,
+    pub decimals: Option<String>,
+    pub source: String,
+    pub status: String,
+    pub anchor_block_number: Option<String>,
+    pub anchor_block_hash: Option<String>,
+    pub anchor_parent_hash: Option<String>,
+    pub anchor_block_timestamp: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalTimelockOperationOverlayWrite {
+    pub id: String,
+    pub segment_id: Option<String>,
+    pub dao_code: Option<String>,
+    pub contract_set_id: String,
+    pub chain_id: Option<i32>,
+    pub chain_name: Option<String>,
+    pub governor_address: Option<String>,
+    pub timelock_address: String,
+    pub proposal_id: Option<String>,
+    pub operation_id: String,
+    pub timelock_type: Option<String>,
+    pub predecessor: Option<String>,
+    pub salt: Option<String>,
+    pub state: String,
+    pub call_count: Option<i32>,
+    pub executed_call_count: Option<i32>,
+    pub delay_seconds: Option<String>,
+    pub ready_at: Option<String>,
+    pub expires_at: Option<String>,
+    pub queued_block_number: Option<String>,
+    pub queued_block_timestamp: Option<String>,
+    pub queued_transaction_hash: Option<String>,
+    pub cancelled_block_number: Option<String>,
+    pub cancelled_block_timestamp: Option<String>,
+    pub cancelled_transaction_hash: Option<String>,
+    pub executed_block_number: Option<String>,
+    pub executed_block_timestamp: Option<String>,
+    pub executed_transaction_hash: Option<String>,
+    pub source: String,
+    pub status: String,
+    pub anchor_block_number: Option<String>,
+    pub anchor_block_hash: Option<String>,
+    pub anchor_parent_hash: Option<String>,
+    pub anchor_block_timestamp: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProvisionalPowerOverlayScope {
     pub contract_set_id: String,
     pub chain_id: i32,
@@ -145,6 +226,16 @@ pub trait ProvisionalPowerOverlayStore {
         &mut self,
         contributors: &[ProvisionalContributorPowerOverlayWrite],
         delegates: &[ProvisionalDelegatePowerOverlayWrite],
+    ) -> Result<(), Self::Error>;
+}
+
+pub trait ProvisionalProposalOverlayStore {
+    type Error: fmt::Display;
+
+    fn write_proposal_overlays(
+        &mut self,
+        proposals: &[ProvisionalProposalOverlayWrite],
+        timelocks: &[ProvisionalTimelockOperationOverlayWrite],
     ) -> Result<(), Self::Error>;
 }
 

@@ -581,6 +581,70 @@ async fn test_graphql_power_fields_prefer_provisional_overlay_and_fallback_to_fi
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to_final()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_proposal_overlay_rows(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query LiveProposalOverlay {
+              proposals(orderBy: [id_ASC]) {
+                proposalId
+                title
+                description
+                proposalEta
+                queueReadyAt
+                queueExpiresAt
+                timelockAddress
+                timelockGracePeriod
+              }
+              liveDetail: proposals(where: { proposalId_eq: "101" }) {
+                proposalId
+                title
+                proposalEta
+              }
+              fallbackDetail: proposals(where: { proposalId_eq: "102" }) {
+                proposalId
+                title
+                proposalEta
+              }
+            }
+            "#,
+    );
+    let response = schema.execute(request).await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["proposals"][0]["proposalId"], "101");
+    assert_eq!(data["proposals"][0]["title"], "Live launch title");
+    assert_eq!(
+        data["proposals"][0]["description"],
+        "Live launch description"
+    );
+    assert_eq!(data["proposals"][0]["proposalEta"], "1700000300");
+    assert_eq!(data["proposals"][0]["queueReadyAt"], "1700000300");
+    assert_eq!(data["proposals"][0]["queueExpiresAt"], "1700000900");
+    assert_eq!(data["proposals"][0]["timelockAddress"], "0xtimelock");
+    assert_eq!(data["proposals"][0]["timelockGracePeriod"], "600");
+    assert_eq!(data["proposals"][1]["proposalId"], "102");
+    assert_eq!(data["proposals"][1]["title"], "Unrelated");
+    assert_eq!(data["liveDetail"][0]["proposalEta"], "1700000300");
+    assert_eq!(data["fallbackDetail"][0]["title"], "Unrelated");
+    assert!(data["fallbackDetail"][0]["proposalEta"].is_null());
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_schema_applies_implicit_scope_to_queries_and_connections()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1288,6 +1352,35 @@ async fn seed_power_overlay_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           'overlay:delegate:0xdelegator:0xdelegate', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor', '0xtoken',
           '0xdelegator', '0xdelegate', 888, TRUE, 'live-onchain', 'available', 900,
           1700000200
+        )
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_proposal_overlay_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_proposal_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+          contract_address, proposal_id, proposer, targets, values, signatures, calldatas,
+          vote_start, vote_end, description, title, state, vote_start_timestamp,
+          vote_end_timestamp, proposal_snapshot, proposal_deadline, proposal_eta,
+          queue_ready_at, queue_expires_at, timelock_address, timelock_grace_period,
+          clock_mode, quorum, decimals, source, status, anchor_block_number,
+          anchor_block_timestamp
+        ) VALUES (
+          'overlay:proposal:101', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+          '0xgovernor', '101', '0xproposer', ARRAY['0xtarget'], ARRAY['0'],
+          ARRAY['transfer(address,uint256)'], ARRAY['0x'], 1000, 2000,
+          'Live launch description', 'Live launch title', 'Queued', 1700001000,
+          1700002000, 1000, 2000, 1700000300, 1700000300, 1700000900,
+          '0xtimelock', 600, 'mode=blocknumber&from=default', 40, 18,
+          'live-onchain', 'available', 900, 1700000200
         )
         "#,
     )

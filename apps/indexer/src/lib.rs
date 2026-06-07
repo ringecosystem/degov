@@ -95,7 +95,8 @@ pub use crate::projection::vote::{
 };
 pub use crate::store::postgres::{
     PostgresIndexerRunnerStore, PostgresIndexerRunnerStoreError, PostgresIndexerRunnerTransaction,
-    PostgresProvisionalPowerOverlayStore, PostgresProvisionalSegmentStore,
+    PostgresProvisionalPowerOverlayStore, PostgresProvisionalProposalOverlayStore,
+    PostgresProvisionalSegmentStore,
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -116,7 +117,8 @@ pub use provisional::{
     DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite,
     ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayRelation,
     ProvisionalDelegatePowerOverlayWrite, ProvisionalPowerOverlayScope,
-    ProvisionalPowerOverlayStore, ProvisionalWorker, ProvisionalWorkerError,
+    ProvisionalPowerOverlayStore, ProvisionalProposalOverlayStore, ProvisionalProposalOverlayWrite,
+    ProvisionalTimelockOperationOverlayWrite, ProvisionalWorker, ProvisionalWorkerError,
     ProvisionalWorkerOptions, ProvisionalWorkerReport,
 };
 pub use runner::{
