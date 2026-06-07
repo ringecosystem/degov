@@ -78,6 +78,37 @@ impl FromStr for DatalensFinality {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum DatalensProvisionalFinality {
+    SafeToLatest,
+    LatestOnly,
+}
+
+impl DatalensProvisionalFinality {
+    pub fn as_datalens_value(self) -> &'static str {
+        match self {
+            Self::SafeToLatest => "safe_to_latest",
+            Self::LatestOnly => "latest_only",
+        }
+    }
+}
+
+impl FromStr for DatalensProvisionalFinality {
+    type Err = ConfigError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim() {
+            "safe_to_latest" => Ok(Self::SafeToLatest),
+            "latest_only" => Ok(Self::LatestOnly),
+            value => Err(ConfigError::InvalidField {
+                field: "DEGOV_PROVISIONAL_FINALITY".to_owned(),
+                reason: format!("expected safe_to_latest or latest_only, got {value}"),
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ChainFamily {
     Evm,
 }

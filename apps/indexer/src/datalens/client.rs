@@ -7,10 +7,14 @@ use std::{
 use datalens_sdk::{
     ApiErrorKind, DatalensClient, Error as DatalensSdkError, RetryConfig,
     native::{ChainHeadFinalityInput, QueryInput},
+    safety::{CacheSegment, DataFinality, extract_cache_segments},
 };
 use log::{info, warn};
 
-use crate::{DatalensConfig, DatalensError, DatalensLogQueryReader};
+use crate::{
+    DatalensConfig, DatalensError, DatalensLogQueryReader, DatalensProvisionalCacheSegment,
+    DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult,
+};
 
 pub trait DatalensNativeReader {
     fn service_readiness(&self) -> Result<ServiceReadiness, DatalensError>;
@@ -340,6 +344,45 @@ impl DatalensNativeClient {
             }
         }
     }
+
+    fn query_provisional_with_transient_fallback(
+        &self,
+        input: QueryInput,
+    ) -> Result<DatalensProvisionalLogQueryResult, DatalensSdkError> {
+        let started_at = Instant::now();
+        let mut attempt = 1;
+        loop {
+            match self.client.native().query_provisional(input.clone()) {
+                Ok(response) => {
+                    let segments = extract_cache_segments(&response)
+                        .into_iter()
+                        .filter_map(provisional_cache_segment)
+                        .collect();
+                    return Ok(DatalensProvisionalLogQueryResult {
+                        rows: response.rows,
+                        segments,
+                    });
+                }
+                Err(error) => {
+                    let Some(delay) =
+                        fallback_retry_delay(&self.retry_config, &error, attempt, started_at)
+                    else {
+                        return Err(error);
+                    };
+                    warn!(
+                        "Datalens provisional query transient fallback retry scheduled attempt={} max_attempts={} delay_ms={} error_class={} error={}",
+                        attempt + 1,
+                        self.retry_config.max_attempts,
+                        delay.as_millis(),
+                        classify_datalens_query_error(&error.to_string()).as_str(),
+                        error
+                    );
+                    std::thread::sleep(delay);
+                    attempt += 1;
+                }
+            }
+        }
+    }
 }
 
 fn fallback_retry_delay(
@@ -436,6 +479,43 @@ impl DatalensLogQueryReader for DatalensNativeClient {
     }
 }
 
+impl DatalensProvisionalLogQueryReader for DatalensNativeClient {
+    fn query_provisional_logs(
+        &mut self,
+        input: QueryInput,
+    ) -> Result<DatalensProvisionalLogQueryResult, DatalensError> {
+        let _permit = self
+            .query_gate
+            .as_ref()
+            .map(|gate| {
+                let permit = gate.acquire(&self.query_key)?;
+                info!(
+                    "Datalens process-local provisional query concurrency permit acquired chain_family={} chain_name={} chain_network_id={} wait_ms={} process_in_flight={} chain_in_flight={}",
+                    self.query_key.family,
+                    self.query_key.configured_name,
+                    self.query_key.log_network_id(),
+                    permit.wait_duration.as_millis(),
+                    permit.global_in_flight,
+                    permit.chain_in_flight
+                );
+                Ok::<_, DatalensError>(permit)
+            })
+            .transpose()?;
+
+        self.query_provisional_with_transient_fallback(input)
+            .map_err(|error| {
+                let error_message = error.to_string();
+                warn!(
+                    "Datalens provisional query failed error_class={} max_attempts={} error={}",
+                    classify_datalens_query_error(&error_message).as_str(),
+                    self.retry_config.max_attempts,
+                    error_message
+                );
+                DatalensError::Query(error_message)
+            })
+    }
+}
+
 impl DatalensDurableHeadReader for DatalensNativeClient {
     fn durable_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
         let response = self
@@ -453,6 +533,38 @@ impl DatalensDurableHeadReader for DatalensNativeClient {
                 response.height
             ))
         })
+    }
+}
+
+fn provisional_cache_segment(segment: CacheSegment) -> Option<DatalensProvisionalCacheSegment> {
+    let range = segment.range?;
+    let anchor = segment.anchor;
+    Some(DatalensProvisionalCacheSegment {
+        source: segment.source.unwrap_or_else(|| "unknown".to_owned()),
+        finality: data_finality_value(segment.finality).to_owned(),
+        range_start_block: i64::try_from(range.start).ok()?,
+        range_end_block: i64::try_from(range.end).ok()?,
+        anchor_block_number: anchor
+            .as_ref()
+            .and_then(|anchor| i64::try_from(anchor.height).ok()),
+        anchor_block_hash: anchor.as_ref().and_then(|anchor| anchor.block_hash.clone()),
+        anchor_parent_hash: anchor
+            .as_ref()
+            .and_then(|anchor| anchor.parent_hash.clone()),
+        anchor_block_timestamp: anchor
+            .as_ref()
+            .and_then(|anchor| anchor.timestamp)
+            .and_then(|timestamp| i64::try_from(timestamp).ok()),
+    })
+}
+
+fn data_finality_value(finality: DataFinality) -> &'static str {
+    match finality {
+        DataFinality::Finalized => "finalized",
+        DataFinality::Safe => "safe",
+        DataFinality::Latest => "latest",
+        DataFinality::Provisional => "provisional",
+        DataFinality::Unknown => "unknown",
     }
 }
 

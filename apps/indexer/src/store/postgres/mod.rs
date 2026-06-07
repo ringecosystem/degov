@@ -7,7 +7,8 @@ use std::{
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
 use crate::{
-    CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite, DecodedTimelockEvent,
+    CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite,
+    DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, DecodedTimelockEvent,
     DelegateChangedWrite, DelegateRollingWrite, DelegateVotesChangedWrite, GovernanceTokenStandard,
     IndexerCheckpoint, IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
     IndexerRunnerTransaction, PowerReconcileCandidate, ProposalActionWrite, ProposalCreatedWrite,
@@ -210,3 +211,4 @@ include!("data_metric.rs");
 include!("token.rs");
 include!("onchain_refresh.rs");
 include!("timelock.rs");
+include!("provisional.rs");

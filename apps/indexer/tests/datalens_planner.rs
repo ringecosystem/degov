@@ -4,8 +4,9 @@ use datalens_sdk::native::{QueryInput, QueryRangeKindInput, SelectorKindInput};
 use degov_datalens_indexer::{
     ChainFamily, ChainIdentityConfig, DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan,
     DaoLogSource, DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader,
-    DatalensLogQueryResult, DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig,
-    SecretString, fetch_dao_log_pages, plan_dao_log_queries,
+    DatalensLogQueryResult, DatalensProvisionalFinality, DatalensProvisionalLogQueryReader,
+    DatalensProvisionalLogQueryResult, DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig,
+    SecretString, fetch_dao_log_pages, fetch_provisional_dao_log_pages, plan_dao_log_queries,
 };
 
 #[test]
@@ -93,6 +94,36 @@ fn test_plan_dao_log_queries_uses_durable_only_finality_for_final_indexing() {
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
 
     assert_eq!(plans[0].input.finality.as_deref(), Some("durable_only"));
+}
+
+#[test]
+fn test_fetch_provisional_dao_log_pages_uses_explicit_safe_to_latest_finality() {
+    let config = config(1_000, DatalensFinality::DurableOnly);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
+    let mut reader = MockProvisionalLogReader::new(vec![Ok(serde_json::json!([]))]);
+
+    let pages = fetch_provisional_dao_log_pages(
+        &mut reader,
+        &plans[..1],
+        DatalensProvisionalFinality::SafeToLatest,
+    )
+    .expect("pages");
+
+    assert_eq!(pages.len(), 1);
+    assert_eq!(reader.calls.len(), 1);
+    assert_eq!(reader.calls[0].finality.as_deref(), Some("safe_to_latest"));
+}
+
+#[test]
+fn test_fetch_dao_log_pages_keeps_final_path_on_safe_query_api() {
+    let config = config(1_000, DatalensFinality::DurableOnly);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
+    let mut reader = MockLogReader::new(vec![Ok(serde_json::json!([]))]);
+
+    fetch_dao_log_pages(&mut reader, &plans[..1]).expect("pages");
+
+    assert_eq!(reader.calls.len(), 1);
+    assert_eq!(reader.calls[0].finality.as_deref(), Some("durable_only"));
 }
 
 #[test]
@@ -230,5 +261,31 @@ impl DatalensLogQueryReader for MockLogReader {
         self.results
             .remove(0)
             .map(DatalensLogQueryResult::rows_only)
+    }
+}
+
+struct MockProvisionalLogReader {
+    calls: Vec<QueryInput>,
+    results: Vec<Result<serde_json::Value, DatalensError>>,
+}
+
+impl MockProvisionalLogReader {
+    fn new(results: Vec<Result<serde_json::Value, DatalensError>>) -> Self {
+        Self {
+            calls: Vec::new(),
+            results,
+        }
+    }
+}
+
+impl DatalensProvisionalLogQueryReader for MockProvisionalLogReader {
+    fn query_provisional_logs(
+        &mut self,
+        input: QueryInput,
+    ) -> Result<DatalensProvisionalLogQueryResult, DatalensError> {
+        self.calls.push(input);
+        self.results
+            .remove(0)
+            .map(DatalensProvisionalLogQueryResult::rows_only)
     }
 }

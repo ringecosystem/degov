@@ -7,10 +7,10 @@ use serde::Deserialize;
 
 use crate::{
     AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainReadMethod, DatalensConfig,
-    DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet, IndexerCheckpointIdentity,
-    IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshTickConfig,
-    OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString, TimelockProjectionContext,
-    TokenProjectionContext, VoteProjectionContext,
+    DatalensProvisionalFinality, DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet,
+    IndexerCheckpointIdentity, IndexerRunnerContexts, IndexerRunnerOptions,
+    OnchainRefreshTickConfig, OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString,
+    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18,6 +18,25 @@ pub struct GraphqlRuntimeConfig {
     pub bind_address: SocketAddr,
     pub public_endpoint: Option<String>,
     pub paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalRuntimeConfig {
+    pub enabled: bool,
+    pub finality: DatalensProvisionalFinality,
+}
+
+impl ProvisionalRuntimeConfig {
+    pub fn from_env() -> Result<Self> {
+        let enabled = optional_env_bool("DEGOV_PROVISIONAL_WORKER_ENABLED")?.unwrap_or(false);
+        let finality = optional_env("DEGOV_PROVISIONAL_FINALITY")?
+            .as_deref()
+            .map(str::parse)
+            .transpose()?
+            .unwrap_or(DatalensProvisionalFinality::SafeToLatest);
+
+        Ok(Self { enabled, finality })
+    }
 }
 
 impl GraphqlRuntimeConfig {

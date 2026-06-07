@@ -9,10 +9,11 @@ use datalens_sdk::RetryConfig;
 use degov_datalens_indexer::{
     ChainFamily, ChainIdentityConfig, DaoContractAddresses, DatalensConfig,
     DatalensDurableHeadReader, DatalensError, DatalensFinality, DatalensLogQueryReader,
-    DatalensNativeClient, DatalensNativeReader, DatalensQueryConcurrencyConfig,
-    DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey, DatalensQueryErrorClass,
-    DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig, SecretString, ServiceReadiness,
-    classify_datalens_query_error, plan_dao_log_queries, verify_datalens_service,
+    DatalensNativeClient, DatalensNativeReader, DatalensProvisionalLogQueryReader,
+    DatalensQueryConcurrencyConfig, DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey,
+    DatalensQueryErrorClass, DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig,
+    SecretString, ServiceReadiness, classify_datalens_query_error, plan_dao_log_queries,
+    verify_datalens_service,
 };
 use std::sync::mpsc;
 
@@ -276,6 +277,37 @@ fn test_datalens_log_query_does_not_retry_non_retryable_quota_error() {
     assert_eq!(requests.len(), 1);
 }
 
+#[test]
+fn test_datalens_provisional_log_query_uses_query_provisional_with_safe_to_latest_finality() {
+    let server = FakeQueryServer::start(vec![query_success_response_with_segment(
+        serde_json::json!([]),
+        "hot",
+        "latest",
+    )]);
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("client");
+    let mut input = plan_dao_log_queries(&config, &addresses(), 100, 105)
+        .expect("query plan builds")
+        .remove(0)
+        .input;
+    input.finality = Some("safe_to_latest".to_owned());
+
+    let result = client
+        .query_provisional_logs(input)
+        .expect("provisional query succeeds");
+
+    assert_eq!(result.segments.len(), 1);
+    assert_eq!(result.segments[0].source, "hot");
+    assert_eq!(result.segments[0].finality, "latest");
+    assert_eq!(result.segments[0].range_start_block, 100);
+    assert_eq!(result.segments[0].range_end_block, 105);
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].contains(r#""finality":"safe_to_latest""#));
+}
+
 struct FakeHeadServer {
     endpoint: String,
     handle: thread::JoinHandle<String>,
@@ -380,6 +412,44 @@ fn query_success_response(rows: serde_json::Value) -> String {
             "end": 100
         },
         "cache": {},
+        "rows": rows
+    });
+    http_response(200, body)
+}
+
+fn query_success_response_with_segment(
+    rows: serde_json::Value,
+    source: &str,
+    finality: &str,
+) -> String {
+    let body = serde_json::json!({
+        "chain": {
+            "configured_name": "ethereum"
+        },
+        "dataset_key": "evm.logs",
+        "range": {
+            "kind": "block",
+            "start": 100,
+            "end": 105
+        },
+        "cache": {
+            "segments": [{
+                "range": {
+                    "kind": "block",
+                    "start": 100,
+                    "end": 105
+                },
+                "source": source,
+                "finality": finality,
+                "anchor": {
+                    "range_kind": "block",
+                    "height": 105,
+                    "block_hash": "0xabc",
+                    "parent_hash": "0xdef",
+                    "timestamp": 1700000000
+                }
+            }]
+        },
         "rows": rows
     });
     http_response(200, body)

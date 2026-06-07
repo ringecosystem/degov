@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use degov_datalens_indexer::{
-    ContractSetConcurrencyLimit, DatalensConfig, DatalensQueryConcurrencyConfig,
-    GraphqlRuntimeConfig, IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight,
-    OnchainRefreshTickConfig, datalens_retry_config, onchain_refresh_worker_enabled,
-    parse_bool_env_value, parse_i64_env_value,
+    ContractSetConcurrencyLimit, DatalensConfig, DatalensProvisionalFinality,
+    DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig, IndexerContractSetMode,
+    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshTickConfig, ProvisionalRuntimeConfig,
+    datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
+    parse_i64_env_value,
 };
 
 #[test]
@@ -94,6 +95,38 @@ fn test_indexer_runtime_config_defaults_to_latest_target_height() {
             let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
 
             assert_eq!(config.target_height, IndexerTargetHeight::Latest);
+        },
+    );
+}
+
+#[test]
+fn test_provisional_runtime_config_defaults_to_disabled_safe_to_latest() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_PROVISIONAL_WORKER_ENABLED", None::<&str>),
+            ("DEGOV_PROVISIONAL_FINALITY", None::<&str>),
+        ],
+        || {
+            let config = ProvisionalRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(!config.enabled);
+            assert_eq!(config.finality, DatalensProvisionalFinality::SafeToLatest);
+        },
+    );
+}
+
+#[test]
+fn test_provisional_runtime_config_rejects_final_finality() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_PROVISIONAL_WORKER_ENABLED", Some("true")),
+            ("DEGOV_PROVISIONAL_FINALITY", Some("durable_only")),
+        ],
+        || {
+            let error = ProvisionalRuntimeConfig::from_env()
+                .expect_err("durable finality is invalid for provisional worker");
+
+            assert!(error.to_string().contains("DEGOV_PROVISIONAL_FINALITY"));
         },
     );
 }
