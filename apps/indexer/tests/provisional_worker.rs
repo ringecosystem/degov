@@ -11,8 +11,10 @@ use degov_datalens_indexer::{
     DatalensFinality, DatalensProvisionalCacheSegment, DatalensProvisionalFinality,
     DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult,
     DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, DatasetKeyConfig,
-    GovernanceTokenStandard, PostgresProvisionalSegmentStore, ProvisionalWorker,
-    ProvisionalWorkerOptions, QueryLimitConfig, SecretString, runtime::apply_migrations,
+    GovernanceTokenStandard, PostgresProvisionalPowerOverlayStore, PostgresProvisionalSegmentStore,
+    ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayWrite,
+    ProvisionalWorker, ProvisionalWorkerOptions, QueryLimitConfig, SecretString,
+    runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -61,6 +63,50 @@ async fn test_postgres_provisional_segment_upsert_is_idempotent_and_does_not_adv
     assert_eq!(
         table_count(&database.pool, "degov_provisional_segment").await?,
         1
+    );
+    assert_checkpoint(&database.pool).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_live_power_overlay_upsert_is_idempotent_and_writes_no_final_tables()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint(&database.pool).await?;
+    let store = PostgresProvisionalPowerOverlayStore::new(database.pool.clone());
+    let contributor = contributor_power_write("0xabc", "19");
+    let delegate = delegate_power_write("0xabc", "0xdef", "19");
+
+    store
+        .write_power_overlays(&[contributor.clone()], &[delegate.clone()])
+        .await
+        .expect("first write succeeds");
+    store
+        .write_power_overlays(&[contributor], &[delegate])
+        .await
+        .expect("retry write succeeds");
+
+    assert_eq!(
+        table_count(
+            &database.pool,
+            "degov_provisional_contributor_power_overlay"
+        )
+        .await?,
+        1
+    );
+    assert_eq!(
+        table_count(&database.pool, "degov_provisional_delegate_power_overlay").await?,
+        1
+    );
+    assert_eq!(table_count(&database.pool, "contributor").await?, 0);
+    assert_eq!(table_count(&database.pool, "delegate").await?, 0);
+    assert_eq!(
+        table_count(&database.pool, "vote_power_checkpoint").await?,
+        0
     );
     assert_checkpoint(&database.pool).await?;
     database.cleanup().await?;
@@ -152,6 +198,59 @@ fn segment_write(
         anchor_parent_hash: Some("0xdef".to_owned()),
         anchor_block_timestamp: Some(1_700_000_000),
         error: None,
+    }
+}
+
+fn contributor_power_write(account: &str, power: &str) -> ProvisionalContributorPowerOverlayWrite {
+    ProvisionalContributorPowerOverlayWrite {
+        id: format!("demo-set:1:demo-dao:0xgovernor:0xtoken:{account}:live-onchain"),
+        segment_id: None,
+        dao_code: Some("demo-dao".to_owned()),
+        contract_set_id: "demo-set".to_owned(),
+        chain_id: Some(1),
+        chain_name: Some("ethereum".to_owned()),
+        governor_address: Some("0xgovernor".to_owned()),
+        token_address: Some("0xtoken".to_owned()),
+        account: account.to_owned(),
+        power: power.to_owned(),
+        balance: None,
+        delegates_count_all: 0,
+        delegates_count_effective: 0,
+        last_vote_block_number: None,
+        last_vote_timestamp: None,
+        source: "live-onchain".to_owned(),
+        status: "available".to_owned(),
+        anchor_block_number: Some("105".to_owned()),
+        anchor_block_hash: None,
+        anchor_parent_hash: None,
+        anchor_block_timestamp: Some("1700000000".to_owned()),
+    }
+}
+
+fn delegate_power_write(
+    delegator: &str,
+    delegate: &str,
+    power: &str,
+) -> ProvisionalDelegatePowerOverlayWrite {
+    ProvisionalDelegatePowerOverlayWrite {
+        id: format!("demo-set:1:demo-dao:0xgovernor:0xtoken:{delegator}:{delegate}:live-onchain"),
+        segment_id: None,
+        dao_code: Some("demo-dao".to_owned()),
+        contract_set_id: "demo-set".to_owned(),
+        chain_id: Some(1),
+        chain_name: Some("ethereum".to_owned()),
+        governor_address: Some("0xgovernor".to_owned()),
+        token_address: Some("0xtoken".to_owned()),
+        delegator: delegator.to_owned(),
+        delegate: delegate.to_owned(),
+        power: power.to_owned(),
+        is_current: true,
+        source: "live-onchain".to_owned(),
+        status: "available".to_owned(),
+        anchor_block_number: Some("105".to_owned()),
+        anchor_block_hash: None,
+        anchor_parent_hash: None,
+        anchor_block_timestamp: Some("1700000000".to_owned()),
     }
 }
 

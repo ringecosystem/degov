@@ -13,7 +13,10 @@ use thiserror::Error;
 use crate::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadFailure,
     ChainReadFailureKind, ChainReadMethod, ChainReadMetrics, ChainReadPlan, ChainReadPlanBuilder,
-    ChainReadResult, ChainReadValue, ChainTool, PartialChainReadFailureReport, ReadRequirement,
+    ChainReadResult, ChainReadValue, ChainTool, PartialChainReadFailureReport,
+    ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayRelation,
+    ProvisionalDelegatePowerOverlayWrite, ProvisionalPowerOverlayScope,
+    ProvisionalPowerOverlayStore, ReadRequirement,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -312,6 +315,14 @@ pub enum OnchainRefreshWorkerError {
         task_id: String,
         field: &'static str,
     },
+}
+
+#[derive(Debug, Error)]
+pub enum LivePowerOverlayRefreshError {
+    #[error("live power overlay reader error: {0}")]
+    Reader(#[from] OnchainRefreshReaderError),
+    #[error("live power overlay store error: {0}")]
+    Store(String),
 }
 
 #[derive(Clone)]
@@ -804,6 +815,152 @@ where
 }
 
 #[derive(Clone)]
+pub struct LivePowerOverlayReader<T> {
+    chain_tool: T,
+    read_plan_config: BatchReadPlanConfig,
+    current_power_method: ChainReadMethod,
+}
+
+impl<T> LivePowerOverlayReader<T> {
+    pub fn new(
+        chain_tool: T,
+        read_plan_config: BatchReadPlanConfig,
+        current_power_method: ChainReadMethod,
+    ) -> Self {
+        Self {
+            chain_tool,
+            read_plan_config: read_plan_config.validated(),
+            current_power_method,
+        }
+    }
+}
+
+impl<T> LivePowerOverlayReader<T>
+where
+    T: ChainTool + Clone + Send + Sync + 'static,
+{
+    pub fn read_power_overlays(
+        &self,
+        tasks: &[OnchainRefreshTask],
+    ) -> Result<Vec<ProvisionalContributorPowerOverlayWrite>, OnchainRefreshReaderError> {
+        let mut groups = BTreeMap::<(i32, String, String), Vec<&OnchainRefreshTask>>::new();
+        for task in tasks.iter().filter(|task| task.refresh_power) {
+            groups
+                .entry((
+                    task.chain_id,
+                    task.governor_address.clone(),
+                    task.token_address.clone(),
+                ))
+                .or_default()
+                .push(task);
+        }
+
+        let mut writes = Vec::new();
+        for ((chain_id, governor_address, token_address), group_tasks) in groups {
+            let mut builder = ChainReadPlanBuilder::new(
+                chain_id,
+                ChainContracts {
+                    governor: governor_address.clone(),
+                    governor_token: token_address.clone(),
+                    timelock: String::new(),
+                },
+                self.read_plan_config,
+            );
+            let mut tasks_by_account = BTreeMap::<String, &OnchainRefreshTask>::new();
+            for task in group_tasks {
+                tasks_by_account
+                    .entry(normalize_identifier(&task.account))
+                    .or_insert(task);
+            }
+            for task in tasks_by_account.values() {
+                builder.add_account_latest_power_refresh_with_method(
+                    &task.account,
+                    parse_u64(&task.last_seen_block_number)?,
+                    crate::ChainReadReason::TokenActivityPowerRefresh,
+                    self.current_power_method,
+                );
+            }
+
+            let plan = builder.build();
+            let report = self
+                .chain_tool
+                .execute_read_plan(&plan)
+                .map_err(|failures| OnchainRefreshReaderError::new(format_failures(&failures)))?;
+
+            for result in report.results {
+                let Some(account) = result.key.args.first() else {
+                    continue;
+                };
+                let value = match result.value {
+                    ChainReadValue::Integer(value) => value,
+                    other => {
+                        return Err(OnchainRefreshReaderError::new(format!(
+                            "expected integer chain read for {:?}, got {:?}",
+                            result.key.method, other
+                        )));
+                    }
+                };
+                let Some(task) = tasks_by_account.get(account) else {
+                    continue;
+                };
+                writes.push(ProvisionalContributorPowerOverlayWrite {
+                    id: provisional_contributor_power_overlay_id(task),
+                    segment_id: None,
+                    dao_code: task.dao_code.clone(),
+                    contract_set_id: task.contract_set_id.clone(),
+                    chain_id: Some(task.chain_id),
+                    chain_name: None,
+                    governor_address: Some(normalize_identifier(&governor_address)),
+                    token_address: Some(normalize_identifier(&token_address)),
+                    account: normalize_identifier(&task.account),
+                    power: value,
+                    balance: None,
+                    delegates_count_all: 0,
+                    delegates_count_effective: 0,
+                    last_vote_block_number: None,
+                    last_vote_timestamp: None,
+                    source: "live-onchain".to_owned(),
+                    status: "available".to_owned(),
+                    anchor_block_number: Some(task.last_seen_block_number.clone()),
+                    anchor_block_hash: None,
+                    anchor_parent_hash: None,
+                    anchor_block_timestamp: Some(task.last_seen_block_timestamp.clone()),
+                });
+            }
+        }
+
+        Ok(writes)
+    }
+}
+
+pub fn refresh_live_power_overlays<T, S>(
+    reader: &LivePowerOverlayReader<T>,
+    store: &mut S,
+    tasks: &[OnchainRefreshTask],
+) -> Result<usize, LivePowerOverlayRefreshError>
+where
+    T: ChainTool + Clone + Send + Sync + 'static,
+    S: ProvisionalPowerOverlayStore,
+{
+    let contributors = reader.read_power_overlays(tasks)?;
+    let scopes = tasks
+        .iter()
+        .filter(|task| task.refresh_power)
+        .map(provisional_power_overlay_scope)
+        .collect::<Vec<_>>();
+    let relations = store
+        .current_delegate_power_overlay_relations(&scopes)
+        .map_err(|error| LivePowerOverlayRefreshError::Store(error.to_string()))?;
+    let delegates = provisional_delegate_power_overlay_writes(&contributors, &relations);
+    let writes = contributors.len() + delegates.len();
+    store
+        .write_power_overlays(&contributors, &delegates)
+        .map_err(|error| LivePowerOverlayRefreshError::Store(error.to_string()))?;
+
+    Ok(writes)
+}
+
+#[derive(Clone)]
 pub struct EvmRpcChainTool {
     rpc_url: String,
     client: reqwest::blocking::Client,
@@ -1188,6 +1345,101 @@ fn onchain_refresh_checkpoint_scope(task: &OnchainRefreshTask) -> String {
 
 fn contributor_ref(task: &OnchainRefreshTask) -> String {
     normalize_identifier(&task.account)
+}
+
+fn provisional_contributor_power_overlay_id(task: &OnchainRefreshTask) -> String {
+    format!(
+        "{}:{}:{}:{}:{}:{}:live-onchain",
+        task.contract_set_id,
+        task.chain_id,
+        task.dao_code.as_deref().unwrap_or_default(),
+        normalize_identifier(&task.governor_address),
+        normalize_identifier(&task.token_address),
+        normalize_identifier(&task.account),
+    )
+}
+
+fn provisional_power_overlay_scope(task: &OnchainRefreshTask) -> ProvisionalPowerOverlayScope {
+    ProvisionalPowerOverlayScope {
+        contract_set_id: task.contract_set_id.clone(),
+        chain_id: task.chain_id,
+        dao_code: task.dao_code.clone(),
+        governor_address: normalize_identifier(&task.governor_address),
+        token_address: normalize_identifier(&task.token_address),
+        account: normalize_identifier(&task.account),
+    }
+}
+
+fn provisional_delegate_power_overlay_writes(
+    contributors: &[ProvisionalContributorPowerOverlayWrite],
+    relations: &[ProvisionalDelegatePowerOverlayRelation],
+) -> Vec<ProvisionalDelegatePowerOverlayWrite> {
+    let contributors_by_scope = contributors
+        .iter()
+        .map(|contributor| {
+            (
+                (
+                    contributor.contract_set_id.clone(),
+                    contributor.chain_id,
+                    contributor.dao_code.clone(),
+                    contributor.governor_address.clone(),
+                    contributor.token_address.clone(),
+                    contributor.account.clone(),
+                ),
+                contributor,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    relations
+        .iter()
+        .filter_map(|relation| {
+            let contributor = contributors_by_scope.get(&(
+                relation.contract_set_id.clone(),
+                relation.chain_id,
+                relation.dao_code.clone(),
+                relation.governor_address.clone(),
+                relation.token_address.clone(),
+                relation.delegator.clone(),
+            ))?;
+
+            Some(ProvisionalDelegatePowerOverlayWrite {
+                id: provisional_delegate_power_overlay_id(relation),
+                segment_id: contributor.segment_id.clone(),
+                dao_code: relation.dao_code.clone(),
+                contract_set_id: relation.contract_set_id.clone(),
+                chain_id: relation.chain_id,
+                chain_name: relation.chain_name.clone(),
+                governor_address: relation.governor_address.clone(),
+                token_address: relation.token_address.clone(),
+                delegator: relation.delegator.clone(),
+                delegate: relation.delegate.clone(),
+                power: contributor.power.clone(),
+                is_current: relation.is_current,
+                source: contributor.source.clone(),
+                status: contributor.status.clone(),
+                anchor_block_number: contributor.anchor_block_number.clone(),
+                anchor_block_hash: contributor.anchor_block_hash.clone(),
+                anchor_parent_hash: contributor.anchor_parent_hash.clone(),
+                anchor_block_timestamp: contributor.anchor_block_timestamp.clone(),
+            })
+        })
+        .collect()
+}
+
+fn provisional_delegate_power_overlay_id(
+    relation: &ProvisionalDelegatePowerOverlayRelation,
+) -> String {
+    format!(
+        "{}:{}:{}:{}:{}:{}:{}:live-onchain",
+        relation.contract_set_id,
+        relation.chain_id.unwrap_or_default(),
+        relation.dao_code.as_deref().unwrap_or_default(),
+        relation.governor_address.as_deref().unwrap_or_default(),
+        relation.token_address.as_deref().unwrap_or_default(),
+        relation.delegator,
+        relation.delegate,
+    )
 }
 
 fn current_power_checkpoint_source(method: ChainReadMethod) -> &'static str {
