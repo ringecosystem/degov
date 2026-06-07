@@ -11,11 +11,14 @@ use degov_datalens_indexer::{
     DatalensFinality, DatalensProvisionalCacheSegment, DatalensProvisionalFinality,
     DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult,
     DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, DatasetKeyConfig,
-    GovernanceTokenStandard, PostgresProvisionalPowerOverlayStore,
-    PostgresProvisionalProposalOverlayStore, PostgresProvisionalSegmentStore,
-    ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayWrite,
-    ProvisionalProposalOverlayWrite, ProvisionalTimelockOperationOverlayWrite, ProvisionalWorker,
-    ProvisionalWorkerOptions, QueryLimitConfig, SecretString, runtime::apply_migrations,
+    GovernanceTokenStandard, IndexerCheckpointIdentity, PostgresProvisionalCleanupStore,
+    PostgresProvisionalPowerOverlayStore, PostgresProvisionalProposalOverlayStore,
+    PostgresProvisionalSegmentStore, ProvisionalContributorPowerOverlayWrite,
+    ProvisionalDelegatePowerOverlayWrite, ProvisionalProposalOverlayWrite,
+    ProvisionalRollbackScope, ProvisionalSegmentCleanupCandidate,
+    ProvisionalSegmentCleanupDecision, ProvisionalTimelockOperationOverlayWrite, ProvisionalWorker,
+    ProvisionalWorkerOptions, QueryLimitConfig, SecretString, plan_provisional_segment_cleanup,
+    runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -40,6 +43,36 @@ fn test_provisional_worker_writes_segments_without_final_checkpoint_boundary() {
     assert_eq!(reader.calls[0].finality.as_deref(), Some("safe_to_latest"));
     assert_eq!(store.writes.len(), 1);
     assert_eq!(store.writes[0].segment_finality, "latest");
+}
+
+#[test]
+fn test_provisional_cleanup_planner_finalizes_latest_segment_after_safe_checkpoint_covers_range() {
+    let decision = plan_provisional_segment_cleanup(
+        110,
+        &ProvisionalSegmentCleanupCandidate {
+            range_start_block: 100,
+            range_end_block: 105,
+            segment_finality: "latest".to_owned(),
+            anchor_block_number: Some(105),
+        },
+    );
+
+    assert_eq!(decision, ProvisionalSegmentCleanupDecision::Finalize);
+}
+
+#[test]
+fn test_provisional_cleanup_planner_keeps_segment_until_safe_checkpoint_covers_range() {
+    let decision = plan_provisional_segment_cleanup(
+        102,
+        &ProvisionalSegmentCleanupCandidate {
+            range_start_block: 100,
+            range_end_block: 105,
+            segment_finality: "latest".to_owned(),
+            anchor_block_number: Some(105),
+        },
+    );
+
+    assert_eq!(decision, ProvisionalSegmentCleanupDecision::Keep);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -154,6 +187,286 @@ async fn test_postgres_live_proposal_timelock_overlay_upsert_is_idempotent_and_w
     );
     assert_eq!(table_count(&database.pool, "timelock_operation").await?, 0);
     assert_checkpoint(&database.pool).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_cleanup_after_finalized_checkpoint_hides_all_overlay_types_without_mutating_final_rows()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 110).await?;
+    insert_final_rows(&database.pool).await?;
+    insert_available_provisional_rows(&database.pool, "demo-dao", "demo-set", 1).await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+
+    let report = cleanup_store
+        .cleanup_finalized_provisional_overlays(
+            &checkpoint_identity("demo-dao", "demo-set", 1),
+            None,
+        )
+        .await
+        .expect("cleanup succeeds");
+
+    assert_eq!(report.segments_marked_finalized, 1);
+    assert_eq!(report.contributor_overlays_marked_finalized, 1);
+    assert_eq!(report.delegate_overlays_marked_finalized, 1);
+    assert_eq!(report.proposal_overlays_marked_finalized, 1);
+    assert_eq!(report.timelock_overlays_marked_finalized, 1);
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_segment").await?,
+        0
+    );
+    assert_eq!(
+        active_provisional_count(
+            &database.pool,
+            "degov_provisional_contributor_power_overlay"
+        )
+        .await?,
+        0
+    );
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_delegate_power_overlay")
+            .await?,
+        0
+    );
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_proposal_overlay").await?,
+        0
+    );
+    assert_eq!(
+        active_provisional_count(
+            &database.pool,
+            "degov_provisional_timelock_operation_overlay"
+        )
+        .await?,
+        0
+    );
+    assert_final_rows(&database.pool).await?;
+    assert_checkpoint_at(&database.pool, 110).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_cleanup_keeps_live_onchain_overlays_without_segment_id()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 110).await?;
+    insert_available_live_onchain_overlay_rows(&database.pool, "demo-dao", "demo-set", 1).await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+
+    let report = cleanup_store
+        .cleanup_finalized_provisional_overlays(
+            &checkpoint_identity("demo-dao", "demo-set", 1),
+            None,
+        )
+        .await
+        .expect("cleanup succeeds");
+
+    assert_eq!(report.segments_marked_finalized, 0);
+    assert_eq!(report.contributor_overlays_marked_finalized, 0);
+    assert_eq!(report.delegate_overlays_marked_finalized, 0);
+    assert_eq!(report.proposal_overlays_marked_finalized, 0);
+    assert_eq!(report.timelock_overlays_marked_finalized, 0);
+    assert_eq!(
+        active_provisional_count(
+            &database.pool,
+            "degov_provisional_contributor_power_overlay"
+        )
+        .await?,
+        1
+    );
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_delegate_power_overlay")
+            .await?,
+        1
+    );
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_proposal_overlay").await?,
+        1
+    );
+    assert_eq!(
+        active_provisional_count(
+            &database.pool,
+            "degov_provisional_timelock_operation_overlay"
+        )
+        .await?,
+        1
+    );
+    assert_checkpoint_at(&database.pool, 110).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_rollback_invalidates_provisional_overlays_without_mutating_final_rows()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 10).await?;
+    insert_final_rows(&database.pool).await?;
+    insert_available_provisional_rows(&database.pool, "demo-dao", "demo-set", 1).await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+
+    let report = cleanup_store
+        .rollback_provisional_overlays(
+            &ProvisionalRollbackScope {
+                dao_code: "demo-dao".to_owned(),
+                contract_set_id: "demo-set".to_owned(),
+                chain_id: 1,
+                source: None,
+            },
+            "test invalidation",
+        )
+        .await
+        .expect("rollback succeeds");
+
+    assert_eq!(report.segments_marked_invalid, 1);
+    assert_eq!(report.contributor_overlays_marked_invalid, 1);
+    assert_eq!(report.delegate_overlays_marked_invalid, 1);
+    assert_eq!(report.proposal_overlays_marked_invalid, 1);
+    assert_eq!(report.timelock_overlays_marked_invalid, 1);
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_segment").await?,
+        0
+    );
+    assert_eq!(
+        provisional_status(&database.pool, "degov_provisional_segment").await?,
+        "invalid"
+    );
+    assert_final_rows(&database.pool).await?;
+    assert_checkpoint_at(&database.pool, 10).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_rollback_invalidates_live_onchain_overlays_without_segment_id()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 10).await?;
+    insert_available_live_onchain_overlay_rows(&database.pool, "demo-dao", "demo-set", 1).await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+
+    let report = cleanup_store
+        .rollback_provisional_overlays(
+            &ProvisionalRollbackScope {
+                dao_code: "demo-dao".to_owned(),
+                contract_set_id: "demo-set".to_owned(),
+                chain_id: 1,
+                source: Some("live-onchain".to_owned()),
+            },
+            "test invalidation",
+        )
+        .await
+        .expect("rollback succeeds");
+
+    assert_eq!(report.segments_marked_invalid, 0);
+    assert_eq!(report.contributor_overlays_marked_invalid, 1);
+    assert_eq!(report.delegate_overlays_marked_invalid, 1);
+    assert_eq!(report.proposal_overlays_marked_invalid, 1);
+    assert_eq!(report.timelock_overlays_marked_invalid, 1);
+    assert_eq!(
+        active_provisional_count(
+            &database.pool,
+            "degov_provisional_contributor_power_overlay"
+        )
+        .await?,
+        0
+    );
+    assert_checkpoint_at(&database.pool, 10).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_cleanup_scopes_by_contract_set_chain_and_dao() -> Result<(), Box<dyn Error>>
+{
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 110).await?;
+    insert_checkpoint_for(&database.pool, "other-dao", "other-set", 2, 110).await?;
+    insert_available_provisional_rows(&database.pool, "demo-dao", "demo-set", 1).await?;
+    insert_available_provisional_rows(&database.pool, "other-dao", "other-set", 2).await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+
+    cleanup_store
+        .cleanup_finalized_provisional_overlays(
+            &checkpoint_identity("demo-dao", "demo-set", 1),
+            None,
+        )
+        .await
+        .expect("cleanup succeeds");
+
+    assert_eq!(
+        active_provisional_count_for(&database.pool, "degov_provisional_segment", "demo-dao", 1)
+            .await?,
+        0
+    );
+    assert_eq!(
+        active_provisional_count_for(&database.pool, "degov_provisional_segment", "other-dao", 2)
+            .await?,
+        1
+    );
+    assert_eq!(
+        active_provisional_count_for(
+            &database.pool,
+            "degov_provisional_proposal_overlay",
+            "other-dao",
+            2
+        )
+        .await?,
+        1
+    );
+    assert_checkpoint_at(&database.pool, 110).await?;
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_cleanup_is_idempotent() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 110).await?;
+    insert_available_provisional_rows(&database.pool, "demo-dao", "demo-set", 1).await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+    let identity = checkpoint_identity("demo-dao", "demo-set", 1);
+
+    cleanup_store
+        .cleanup_finalized_provisional_overlays(&identity, None)
+        .await
+        .expect("first cleanup succeeds");
+    let retry_report = cleanup_store
+        .cleanup_finalized_provisional_overlays(&identity, None)
+        .await
+        .expect("retry cleanup succeeds");
+
+    assert_eq!(retry_report.segments_marked_finalized, 0);
+    assert_eq!(retry_report.contributor_overlays_marked_finalized, 0);
+    assert_eq!(retry_report.delegate_overlays_marked_finalized, 0);
+    assert_eq!(retry_report.proposal_overlays_marked_finalized, 0);
+    assert_eq!(retry_report.timelock_overlays_marked_finalized, 0);
+    assert_eq!(
+        active_provisional_count(&database.pool, "degov_provisional_segment").await?,
+        0
+    );
+    assert_checkpoint_at(&database.pool, 110).await?;
     database.cleanup().await?;
 
     Ok(())
@@ -502,13 +815,32 @@ fn database_url_with_search_path(database_url: &str, schema: &str) -> String {
 }
 
 async fn insert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
+    insert_checkpoint_at(pool, 10).await
+}
+
+async fn insert_checkpoint_at(pool: &PgPool, processed_height: i64) -> Result<(), sqlx::Error> {
+    insert_checkpoint_for(pool, "demo-dao", "demo-set", 1, processed_height).await
+}
+
+async fn insert_checkpoint_for(
+    pool: &PgPool,
+    dao_code: &str,
+    contract_set_id: &str,
+    chain_id: i32,
+    processed_height: i64,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO degov_indexer_checkpoint (
              dao_code, chain_id, contract_set_id, stream_id, data_source_version,
              next_block, processed_height, target_height
          )
-         VALUES ('demo-dao', 1, 'demo-set', 'datalens-native', 'datalens-v1', 11, 10, 10)",
+         VALUES ($1, $2, $3, 'datalens-native', 'datalens-v1',
+                 ($4 + 1)::NUMERIC(78, 0), $4::NUMERIC(78, 0), $4::NUMERIC(78, 0))",
     )
+    .bind(dao_code)
+    .bind(chain_id)
+    .bind(contract_set_id)
+    .bind(processed_height)
     .execute(pool)
     .await?;
 
@@ -516,6 +848,10 @@ async fn insert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
 }
 
 async fn assert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
+    assert_checkpoint_at(pool, 10).await
+}
+
+async fn assert_checkpoint_at(pool: &PgPool, processed_height: i64) -> Result<(), sqlx::Error> {
     let row = sqlx::query(
         "SELECT
            next_block::BIGINT AS next_block,
@@ -531,11 +867,302 @@ async fn assert_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
     .fetch_one(pool)
     .await?;
 
-    assert_eq!(row.get::<i64, _>("next_block"), 11);
-    assert_eq!(row.get::<Option<i64>, _>("processed_height"), Some(10));
-    assert_eq!(row.get::<Option<i64>, _>("target_height"), Some(10));
+    assert_eq!(row.get::<i64, _>("next_block"), processed_height + 1);
+    assert_eq!(
+        row.get::<Option<i64>, _>("processed_height"),
+        Some(processed_height)
+    );
+    assert_eq!(
+        row.get::<Option<i64>, _>("target_height"),
+        Some(processed_height)
+    );
 
     Ok(())
+}
+
+fn checkpoint_identity(
+    dao_code: &str,
+    contract_set_id: &str,
+    chain_id: i32,
+) -> IndexerCheckpointIdentity {
+    IndexerCheckpointIdentity {
+        dao_code: dao_code.to_owned(),
+        chain_id,
+        contract_set_id: contract_set_id.to_owned(),
+        stream_id: "datalens-native".to_owned(),
+        data_source_version: "datalens-v1".to_owned(),
+    }
+}
+
+async fn insert_available_provisional_rows(
+    pool: &PgPool,
+    dao_code: &str,
+    contract_set_id: &str,
+    chain_id: i32,
+) -> Result<(), Box<dyn Error>> {
+    let segment_id = format!("{dao_code}:{contract_set_id}:{chain_id}:segment");
+    sqlx::query(
+        "INSERT INTO degov_provisional_segment (
+             id, dao_code, contract_set_id, chain_id, chain_name, dataset_key, selector,
+             range_start_block, range_end_block, segment_finality, source, status,
+             anchor_block_number, anchor_block_timestamp
+         )
+         VALUES (
+             $1, $2, $3, $4, 'ethereum', 'evm.logs', 'selector',
+             100, 105, 'latest', 'provider', 'available', 105, 1700000000
+         )",
+    )
+    .bind(&segment_id)
+    .bind(dao_code)
+    .bind(contract_set_id)
+    .bind(chain_id)
+    .execute(pool)
+    .await?;
+
+    let power_store = PostgresProvisionalPowerOverlayStore::new(pool.clone());
+    let proposal_store = PostgresProvisionalProposalOverlayStore::new(pool.clone());
+    let mut contributor = contributor_power_write("0xabc", "19");
+    set_overlay_scope(
+        &mut contributor.id,
+        &mut contributor.dao_code,
+        &mut contributor.contract_set_id,
+        &mut contributor.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    contributor.segment_id = Some(segment_id.clone());
+    let mut delegate = delegate_power_write("0xabc", "0xdef", "19");
+    set_overlay_scope(
+        &mut delegate.id,
+        &mut delegate.dao_code,
+        &mut delegate.contract_set_id,
+        &mut delegate.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    delegate.segment_id = Some(segment_id.clone());
+    let mut proposal = proposal_overlay_write("42", "Queued");
+    set_overlay_scope(
+        &mut proposal.id,
+        &mut proposal.dao_code,
+        &mut proposal.contract_set_id,
+        &mut proposal.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    proposal.segment_id = Some(segment_id.clone());
+    let mut timelock = timelock_overlay_write("42", "0xoperation", "Ready");
+    set_overlay_scope(
+        &mut timelock.id,
+        &mut timelock.dao_code,
+        &mut timelock.contract_set_id,
+        &mut timelock.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    timelock.segment_id = Some(segment_id);
+
+    power_store
+        .write_power_overlays(&[contributor], &[delegate])
+        .await?;
+    proposal_store
+        .write_proposal_overlays(&[proposal], &[timelock])
+        .await?;
+
+    Ok(())
+}
+
+async fn insert_available_live_onchain_overlay_rows(
+    pool: &PgPool,
+    dao_code: &str,
+    contract_set_id: &str,
+    chain_id: i32,
+) -> Result<(), Box<dyn Error>> {
+    let power_store = PostgresProvisionalPowerOverlayStore::new(pool.clone());
+    let proposal_store = PostgresProvisionalProposalOverlayStore::new(pool.clone());
+    let mut contributor = contributor_power_write("0xliveabc", "29");
+    set_overlay_scope(
+        &mut contributor.id,
+        &mut contributor.dao_code,
+        &mut contributor.contract_set_id,
+        &mut contributor.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    let mut delegate = delegate_power_write("0xliveabc", "0xlivedef", "29");
+    set_overlay_scope(
+        &mut delegate.id,
+        &mut delegate.dao_code,
+        &mut delegate.contract_set_id,
+        &mut delegate.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    let mut proposal = proposal_overlay_write("84", "Queued");
+    set_overlay_scope(
+        &mut proposal.id,
+        &mut proposal.dao_code,
+        &mut proposal.contract_set_id,
+        &mut proposal.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+    let mut timelock = timelock_overlay_write("84", "0xliveoperation", "Ready");
+    set_overlay_scope(
+        &mut timelock.id,
+        &mut timelock.dao_code,
+        &mut timelock.contract_set_id,
+        &mut timelock.chain_id,
+        dao_code,
+        contract_set_id,
+        chain_id,
+    );
+
+    power_store
+        .write_power_overlays(&[contributor], &[delegate])
+        .await?;
+    proposal_store
+        .write_proposal_overlays(&[proposal], &[timelock])
+        .await?;
+
+    Ok(())
+}
+
+fn set_overlay_scope(
+    id: &mut String,
+    dao_code: &mut Option<String>,
+    contract_set_id: &mut String,
+    chain_id: &mut Option<i32>,
+    new_dao_code: &str,
+    new_contract_set_id: &str,
+    new_chain_id: i32,
+) {
+    *id = id
+        .replace("demo-dao", new_dao_code)
+        .replace("demo-set", new_contract_set_id)
+        .replace(":1:", &format!(":{new_chain_id}:"));
+    *dao_code = Some(new_dao_code.to_owned());
+    *contract_set_id = new_contract_set_id.to_owned();
+    *chain_id = Some(new_chain_id);
+}
+
+async fn insert_final_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO contributor (
+             id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+             block_number, block_timestamp, transaction_hash, power, delegates_count_all,
+             delegates_count_effective
+         )
+         VALUES (
+             '0xabc', 'demo-set', 1, 'demo-dao', '0xgovernor', '0xtoken',
+             10, 1700000010, '0xfinalcontributor', 5, 0, 0
+         )",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO delegate (
+             id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+             from_delegate, to_delegate, block_number, block_timestamp, transaction_hash,
+             is_current, power
+         )
+         VALUES (
+             'delegate-final', 'demo-set', 1, 'demo-dao', '0xgovernor', '0xtoken',
+             '0xabc', '0xdef', 10, 1700000010, '0xfinaldelegate', TRUE, 5
+         )",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO proposal (
+             id, contract_set_id, chain_id, dao_code, governor_address, contract_address,
+             proposal_id, proposer, targets, values, signatures, calldatas, vote_start,
+             vote_end, description, block_number, block_timestamp, transaction_hash, title,
+             vote_start_timestamp, vote_end_timestamp, clock_mode, quorum, decimals
+         )
+         VALUES (
+             'proposal-final', 'demo-set', 1, 'demo-dao', '0xgovernor', '0xgovernor',
+             '42', '0xproposer', ARRAY['0xtarget'], ARRAY['0'], ARRAY['transfer(address,uint256)'],
+             ARRAY['0x'], 1000, 2000, 'Final proposal body', 10, 1700000010,
+             '0xfinalproposal', 'Final proposal title', 1700001000, 1700002000,
+             'mode=blocknumber&from=default', 40, 18
+         )",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO timelock_operation (
+             id, contract_set_id, chain_id, dao_code, governor_address, timelock_address,
+             proposal_ref, proposal_id, operation_id, timelock_type, state
+         )
+         VALUES (
+             'timelock-final', 'demo-set', 1, 'demo-dao', '0xgovernor', '0xtimelock',
+             'proposal-final', '42', '0xoperation', 'single', 'Pending'
+         )",
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn assert_final_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    assert_eq!(table_count(pool, "contributor").await?, 1);
+    assert_eq!(table_count(pool, "delegate").await?, 1);
+    assert_eq!(table_count(pool, "proposal").await?, 1);
+    assert_eq!(table_count(pool, "timelock_operation").await?, 1);
+
+    let contributor_power: i64 =
+        sqlx::query_scalar("SELECT power::BIGINT FROM contributor WHERE id = '0xabc'")
+            .fetch_one(pool)
+            .await?;
+    let proposal_title: String =
+        sqlx::query_scalar("SELECT title FROM proposal WHERE id = 'proposal-final'")
+            .fetch_one(pool)
+            .await?;
+    assert_eq!(contributor_power, 5);
+    assert_eq!(proposal_title, "Final proposal title");
+
+    Ok(())
+}
+
+async fn active_provisional_count(pool: &PgPool, table: &str) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(&format!(
+        "SELECT count(*)::BIGINT FROM {table} WHERE status = 'available'"
+    ))
+    .fetch_one(pool)
+    .await
+}
+
+async fn active_provisional_count_for(
+    pool: &PgPool,
+    table: &str,
+    dao_code: &str,
+    chain_id: i32,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(&format!(
+        "SELECT count(*)::BIGINT FROM {table}
+         WHERE status = 'available'
+           AND dao_code = $1
+           AND chain_id = $2"
+    ))
+    .bind(dao_code)
+    .bind(chain_id)
+    .fetch_one(pool)
+    .await
+}
+
+async fn provisional_status(pool: &PgPool, table: &str) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar(&format!("SELECT status FROM {table} LIMIT 1"))
+        .fetch_one(pool)
+        .await
 }
 
 async fn table_count(pool: &PgPool, table: &str) -> Result<i64, sqlx::Error> {

@@ -13,7 +13,8 @@ use crate::{
     IndexerRuntimeConfig, IndexerTargetHeight, MultiChainToolOnchainRefreshReader,
     OnchainRefreshRuntimeConfig, OnchainRefreshTickReport, OnchainRefreshTickRunner,
     OnchainRefreshTickScheduler, OnchainRefreshWorker, OnchainRefreshWorkerError,
-    PostgresIndexerRunnerStore, datalens_retry_config, ensure_datalens_warmup_task, required_env,
+    PostgresIndexerRunnerStore, PostgresProvisionalCleanupStore, datalens_retry_config,
+    ensure_datalens_warmup_task, required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -155,7 +156,7 @@ async fn run_configured_contract_set_pass(
         contract_runtime.clone(),
         contract_set.config.clone(),
         contract_set.addresses.clone(),
-        pool,
+        pool.clone(),
         datalens_query_gate,
     )
     .await
@@ -170,6 +171,7 @@ async fn run_configured_contract_set_pass(
             );
         }
     };
+    cleanup_finalized_provisional_overlays(&contract_runtime, &contract_set, pool.clone()).await?;
 
     log::info!(
         "Datalens indexer run pass completed dao_code={} chain_id={} contract_set_id={} chunks_processed={} processed_height={:?} target_height={} synced_percentage={} onchain_refresh_allowed={}",
@@ -182,6 +184,58 @@ async fn run_configured_contract_set_pass(
         report.last_progress.synced_percentage,
         report.last_progress.onchain_refresh_allowed
     );
+
+    Ok(())
+}
+
+async fn cleanup_finalized_provisional_overlays(
+    runtime: &IndexerContractSetRuntimeConfig,
+    contract_set: &DatalensRuntimeContractSet,
+    pool: sqlx::PgPool,
+) -> Result<()> {
+    let identity = crate::IndexerCheckpointIdentity {
+        dao_code: runtime.dao_code.clone(),
+        chain_id: contract_set.contract.chain_id,
+        contract_set_id: runtime.checkpoint_contract_set_id.clone(),
+        stream_id: runtime.checkpoint_stream_id.clone(),
+        data_source_version: runtime.data_source_version.clone(),
+    };
+    let store = PostgresProvisionalCleanupStore::new(pool);
+    let report = match store
+        .cleanup_finalized_provisional_overlays(&identity, None)
+        .await
+    {
+        Ok(report) => report,
+        Err(error) => {
+            log::warn!(
+                "Datalens indexer provisional cleanup failed after final pass dao_code={} chain_id={} contract_set_id={} error={}",
+                identity.dao_code,
+                identity.chain_id,
+                identity.contract_set_id,
+                error
+            );
+            return Ok(());
+        }
+    };
+
+    if report.segments_marked_finalized > 0
+        || report.contributor_overlays_marked_finalized > 0
+        || report.delegate_overlays_marked_finalized > 0
+        || report.proposal_overlays_marked_finalized > 0
+        || report.timelock_overlays_marked_finalized > 0
+    {
+        log::info!(
+            "Datalens indexer provisional cleanup completed dao_code={} chain_id={} contract_set_id={} segments_marked_finalized={} contributor_overlays_marked_finalized={} delegate_overlays_marked_finalized={} proposal_overlays_marked_finalized={} timelock_overlays_marked_finalized={}",
+            identity.dao_code,
+            identity.chain_id,
+            identity.contract_set_id,
+            report.segments_marked_finalized,
+            report.contributor_overlays_marked_finalized,
+            report.delegate_overlays_marked_finalized,
+            report.proposal_overlays_marked_finalized,
+            report.timelock_overlays_marked_finalized
+        );
+    }
 
     Ok(())
 }

@@ -1,4 +1,141 @@
 #[derive(Clone)]
+pub struct PostgresProvisionalCleanupStore {
+    pool: PgPool,
+}
+
+impl PostgresProvisionalCleanupStore {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn cleanup_finalized_provisional_overlays(
+        &self,
+        identity: &IndexerCheckpointIdentity,
+        source: Option<&str>,
+    ) -> Result<ProvisionalCleanupReport, PostgresIndexerRunnerStoreError> {
+        let mut transaction = self.pool.begin().await?;
+        let Some(finalized_height) =
+            read_finalized_checkpoint_height(&mut transaction, identity).await?
+        else {
+            transaction.commit().await?;
+            return Ok(ProvisionalCleanupReport::default());
+        };
+        let segment_ids =
+            finalized_provisional_segment_ids(&mut transaction, identity, source, finalized_height)
+                .await?;
+
+        let report = ProvisionalCleanupReport {
+            segments_marked_finalized: mark_segments_finalized(&mut transaction, &segment_ids)
+                .await?,
+            contributor_overlays_marked_finalized: mark_finalized_overlay_table(
+                &mut transaction,
+                "degov_provisional_contributor_power_overlay",
+                identity,
+                source,
+                &segment_ids,
+            )
+            .await?,
+            delegate_overlays_marked_finalized: mark_finalized_overlay_table(
+                &mut transaction,
+                "degov_provisional_delegate_power_overlay",
+                identity,
+                source,
+                &segment_ids,
+            )
+            .await?,
+            proposal_overlays_marked_finalized: mark_finalized_overlay_table(
+                &mut transaction,
+                "degov_provisional_proposal_overlay",
+                identity,
+                source,
+                &segment_ids,
+            )
+            .await?,
+            timelock_overlays_marked_finalized: mark_finalized_overlay_table(
+                &mut transaction,
+                "degov_provisional_timelock_operation_overlay",
+                identity,
+                source,
+                &segment_ids,
+            )
+            .await?,
+        };
+        transaction.commit().await?;
+
+        Ok(report)
+    }
+
+    pub async fn rollback_provisional_overlays(
+        &self,
+        scope: &ProvisionalRollbackScope,
+        reason: &str,
+    ) -> Result<ProvisionalRollbackReport, PostgresIndexerRunnerStoreError> {
+        let mut transaction = self.pool.begin().await?;
+        let report = ProvisionalRollbackReport {
+            segments_marked_invalid: mark_available_segments_invalid(
+                &mut transaction,
+                scope,
+                reason,
+            )
+            .await?,
+            contributor_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                &mut transaction,
+                "degov_provisional_contributor_power_overlay",
+                scope,
+            )
+            .await?,
+            delegate_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                &mut transaction,
+                "degov_provisional_delegate_power_overlay",
+                scope,
+            )
+            .await?,
+            proposal_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                &mut transaction,
+                "degov_provisional_proposal_overlay",
+                scope,
+            )
+            .await?,
+            timelock_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                &mut transaction,
+                "degov_provisional_timelock_operation_overlay",
+                scope,
+            )
+            .await?,
+        };
+        transaction.commit().await?;
+
+        Ok(report)
+    }
+}
+
+impl ProvisionalCleanupStore for PostgresProvisionalCleanupStore {
+    type Error = PostgresIndexerRunnerStoreError;
+
+    fn cleanup_finalized_provisional_overlays(
+        &mut self,
+        identity: &IndexerCheckpointIdentity,
+        source: Option<&str>,
+    ) -> Result<ProvisionalCleanupReport, Self::Error> {
+        block_on_runtime(
+            PostgresProvisionalCleanupStore::cleanup_finalized_provisional_overlays(
+                self, identity, source,
+            ),
+        )
+    }
+
+    fn rollback_provisional_overlays(
+        &mut self,
+        scope: &ProvisionalRollbackScope,
+        reason: &str,
+    ) -> Result<ProvisionalRollbackReport, Self::Error> {
+        block_on_runtime(PostgresProvisionalCleanupStore::rollback_provisional_overlays(
+            self, scope, reason,
+        ))
+    }
+}
+
+#[derive(Clone)]
 pub struct PostgresProvisionalSegmentStore {
     pool: PgPool,
 }
@@ -142,6 +279,188 @@ impl ProvisionalProposalOverlayStore for PostgresProvisionalProposalOverlayStore
             self, proposals, timelocks,
         ))
     }
+}
+
+async fn read_finalized_checkpoint_height(
+    transaction: &mut Transaction<'_, Postgres>,
+    identity: &IndexerCheckpointIdentity,
+) -> Result<Option<i64>, PostgresIndexerRunnerStoreError> {
+    let row = sqlx::query(
+        "SELECT processed_height::BIGINT AS processed_height
+         FROM degov_indexer_checkpoint
+         WHERE dao_code = $1
+           AND chain_id = $2
+           AND contract_set_id = $3
+           AND stream_id = $4
+           AND data_source_version = $5",
+    )
+    .bind(&identity.dao_code)
+    .bind(identity.chain_id)
+    .bind(&identity.contract_set_id)
+    .bind(&identity.stream_id)
+    .bind(&identity.data_source_version)
+    .fetch_optional(&mut **transaction)
+    .await?;
+
+    Ok(row
+        .map(|row| row.try_get::<Option<i64>, _>("processed_height"))
+        .transpose()?
+        .flatten())
+}
+
+async fn finalized_provisional_segment_ids(
+    transaction: &mut Transaction<'_, Postgres>,
+    identity: &IndexerCheckpointIdentity,
+    source: Option<&str>,
+    finalized_height: i64,
+) -> Result<Vec<String>, PostgresIndexerRunnerStoreError> {
+    let rows = sqlx::query(
+        "SELECT
+             id,
+             range_start_block::BIGINT AS range_start_block,
+             range_end_block::BIGINT AS range_end_block,
+             segment_finality,
+             anchor_block_number::BIGINT AS anchor_block_number
+         FROM degov_provisional_segment
+         WHERE status = 'available'
+           AND dao_code = $1
+           AND chain_id IS NOT DISTINCT FROM $2
+           AND contract_set_id = $3
+           AND ($4::TEXT IS NULL OR source = $4)
+           AND range_end_block <= $5::NUMERIC(78, 0)
+           AND COALESCE(anchor_block_number, range_end_block) <= $5::NUMERIC(78, 0)",
+    )
+    .bind(&identity.dao_code)
+    .bind(identity.chain_id)
+    .bind(&identity.contract_set_id)
+    .bind(source)
+    .bind(finalized_height)
+    .fetch_all(&mut **transaction)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let candidate = ProvisionalSegmentCleanupCandidate {
+                range_start_block: row.get("range_start_block"),
+                range_end_block: row.get("range_end_block"),
+                segment_finality: row.get("segment_finality"),
+                anchor_block_number: row.get("anchor_block_number"),
+            };
+            match plan_provisional_segment_cleanup(finalized_height, &candidate) {
+                ProvisionalSegmentCleanupDecision::Finalize => Some(row.get("id")),
+                ProvisionalSegmentCleanupDecision::Keep
+                | ProvisionalSegmentCleanupDecision::Invalid => None,
+            }
+        })
+        .collect())
+}
+
+async fn mark_segments_finalized(
+    transaction: &mut Transaction<'_, Postgres>,
+    segment_ids: &[String],
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    if segment_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let result = sqlx::query(
+        "UPDATE degov_provisional_segment
+         SET status = 'finalized',
+             updated_at = now()
+         WHERE status = 'available'
+           AND id = ANY($1::TEXT[])",
+    )
+    .bind(segment_ids)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(result.rows_affected() as usize)
+}
+
+async fn mark_finalized_overlay_table(
+    transaction: &mut Transaction<'_, Postgres>,
+    table: &str,
+    identity: &IndexerCheckpointIdentity,
+    source: Option<&str>,
+    segment_ids: &[String],
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    if segment_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let result = sqlx::query(&format!(
+        "UPDATE {table}
+         SET status = 'finalized',
+             updated_at = now()
+         WHERE status = 'available'
+           AND dao_code = $1
+           AND chain_id IS NOT DISTINCT FROM $2
+           AND contract_set_id = $3
+           AND ($4::TEXT IS NULL OR source = $4)
+           AND segment_id = ANY($5::TEXT[])"
+    ))
+    .bind(&identity.dao_code)
+    .bind(identity.chain_id)
+    .bind(&identity.contract_set_id)
+    .bind(source)
+    .bind(segment_ids)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(result.rows_affected() as usize)
+}
+
+async fn mark_available_segments_invalid(
+    transaction: &mut Transaction<'_, Postgres>,
+    scope: &ProvisionalRollbackScope,
+    reason: &str,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    let result = sqlx::query(
+        "UPDATE degov_provisional_segment
+         SET status = 'invalid',
+             error = $5,
+             updated_at = now()
+         WHERE status = 'available'
+           AND dao_code = $1
+           AND chain_id IS NOT DISTINCT FROM $2
+           AND contract_set_id = $3
+           AND ($4::TEXT IS NULL OR source = $4)",
+    )
+    .bind(&scope.dao_code)
+    .bind(scope.chain_id)
+    .bind(&scope.contract_set_id)
+    .bind(scope.source.as_deref())
+    .bind(reason)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(result.rows_affected() as usize)
+}
+
+async fn mark_available_overlay_table_invalid(
+    transaction: &mut Transaction<'_, Postgres>,
+    table: &str,
+    scope: &ProvisionalRollbackScope,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    let result = sqlx::query(&format!(
+        "UPDATE {table}
+         SET status = 'invalid',
+             updated_at = now()
+         WHERE status = 'available'
+           AND dao_code = $1
+           AND chain_id IS NOT DISTINCT FROM $2
+           AND contract_set_id = $3
+           AND ($4::TEXT IS NULL OR source = $4)"
+    ))
+    .bind(&scope.dao_code)
+    .bind(scope.chain_id)
+    .bind(&scope.contract_set_id)
+    .bind(scope.source.as_deref())
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(result.rows_affected() as usize)
 }
 
 async fn upsert_provisional_segment(
