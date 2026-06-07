@@ -29,7 +29,7 @@ fn test_read_plan_dedupes_repeated_account_power_reads_in_large_datalens_batch()
         plan.reads[0].key.args,
         vec!["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
     );
-    assert_eq!(plan.reads[0].key.block_mode, BlockReadMode::Fresh);
+    assert_eq!(plan.reads[0].key.block_mode, BlockReadMode::Safe);
     assert_eq!(
         plan.reads[0].metadata.accounts,
         ["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()].into()
@@ -62,7 +62,7 @@ fn test_read_plan_dedupes_same_rpc_read_across_semantic_metadata() {
         contracts.governor_token.clone(),
         ChainReadMethod::GetVotes,
         vec!["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()],
-        BlockReadMode::Fresh,
+        BlockReadMode::Safe,
     );
 
     let plan = builder.build();
@@ -180,7 +180,7 @@ fn test_read_plan_keeps_distinct_power_reads_when_block_semantics_differ() {
     assert_eq!(keys.len(), 3);
     assert!(keys.contains(&(
         &ChainReadMethod::GetVotes,
-        &BlockReadMode::Fresh,
+        &BlockReadMode::Safe,
         &[ChainReadReason::TokenActivityPowerRefresh].into(),
     )));
     assert!(keys.contains(&(

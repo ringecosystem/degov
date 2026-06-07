@@ -2,18 +2,21 @@ use std::{
     collections::BTreeMap,
     env,
     error::Error,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc, Mutex as StdMutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use degov_datalens_indexer::{
-    BatchReadPlanConfig, ChainReadExecutionReport, ChainReadMethod, ChainReadMetrics,
-    ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool, MultiChainToolOnchainRefreshReader,
-    OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
-    OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshTickClock, OnchainRefreshTickConfig,
-    OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason,
-    OnchainRefreshWorker, OnchainRefreshWorkerConfig, PartialChainReadFailureReport,
-    runtime::apply_migrations,
+    BatchReadPlanConfig, BlockReadMode, ChainReadExecutionReport, ChainReadMethod,
+    ChainReadMetrics, ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool,
+    MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue, OnchainRefreshReader,
+    OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
+    OnchainRefreshTickClock, OnchainRefreshTickConfig, OnchainRefreshTickRunner,
+    OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason, OnchainRefreshWorker,
+    OnchainRefreshWorkerConfig, PartialChainReadFailureReport, runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -645,11 +648,10 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
 
 #[test]
 fn test_multi_chain_reader_routes_tasks_to_matching_chain_tool() {
+    let ethereum_tool = StaticValueChainTool::new("101");
+    let lisk_tool = StaticValueChainTool::new("202");
     let reader = MultiChainToolOnchainRefreshReader::new(
-        BTreeMap::from([
-            (1, StaticValueChainTool::new("101")),
-            (1135, StaticValueChainTool::new("202")),
-        ]),
+        BTreeMap::from([(1, ethereum_tool.clone()), (1135, lisk_tool.clone())]),
         BatchReadPlanConfig::default(),
         ChainReadMethod::GetVotes,
     );
@@ -673,6 +675,16 @@ fn test_multi_chain_reader_routes_tasks_to_matching_chain_tool() {
         values.get("task-two").expect("task-two").power.as_deref(),
         Some("202")
     );
+
+    for plan in ethereum_tool
+        .captured_plans()
+        .into_iter()
+        .chain(lisk_tool.captured_plans())
+    {
+        for read in plan.reads {
+            assert_eq!(read.key.block_mode, BlockReadMode::Safe);
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -787,13 +799,19 @@ impl OnchainRefreshReader for FailingOnchainRefreshReader {
 #[derive(Clone, Debug)]
 struct StaticValueChainTool {
     value: String,
+    plans: Arc<StdMutex<Vec<ChainReadPlan>>>,
 }
 
 impl StaticValueChainTool {
     fn new(value: &str) -> Self {
         Self {
             value: value.to_owned(),
+            plans: Arc::new(StdMutex::new(Vec::new())),
         }
+    }
+
+    fn captured_plans(&self) -> Vec<ChainReadPlan> {
+        self.plans.lock().expect("plans lock").clone()
     }
 }
 
@@ -802,6 +820,7 @@ impl ChainTool for StaticValueChainTool {
         &self,
         plan: &ChainReadPlan,
     ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        self.plans.lock().expect("plans lock").push(plan.clone());
         Ok(ChainReadExecutionReport {
             metrics: ChainReadMetrics {
                 requested_reads: plan.metrics.requested_reads,

@@ -181,7 +181,7 @@ fn test_plan_power_reconcile_emits_chaintool_get_votes_reads() {
         "0x2222222222222222222222222222222222222222"
     );
     assert_eq!(read.key.method, ChainReadMethod::GetVotes);
-    assert_eq!(read.key.block_mode, BlockReadMode::Fresh);
+    assert_eq!(read.key.block_mode, BlockReadMode::Safe);
     assert_eq!(read.key.args, vec![acct]);
     assert_eq!(
         read.metadata.reasons,

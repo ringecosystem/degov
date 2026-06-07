@@ -202,12 +202,10 @@ fn test_runner_reports_eta_after_enough_progress_samples() {
 
 #[test]
 fn test_runner_skips_removed_logs_before_decode_and_still_advances_checkpoint() {
-    let mut options = options();
-    options.datalens_config.finality = DatalensFinality::IncludePending;
     let mut runner = runner_with_decoder(
         vec![vec![removed_row(1, 0, 0)]],
         RejectRemovedDecoder,
-        options,
+        options(),
     );
 
     let report = runner.run_to_target(1).expect("runner succeeds");
@@ -710,12 +708,12 @@ impl IndexerOnchainRefreshTick for RecordingOnchainRefreshTick {
 }
 
 struct ProviderLimitDatalensReader {
-    max_successful_blocks: i32,
-    observed_ranges: Arc<Mutex<Vec<(i32, i32)>>>,
+    max_successful_blocks: u64,
+    observed_ranges: Arc<Mutex<Vec<(u64, u64)>>>,
 }
 
 impl ProviderLimitDatalensReader {
-    fn new(max_successful_blocks: i32, observed_ranges: Arc<Mutex<Vec<(i32, i32)>>>) -> Self {
+    fn new(max_successful_blocks: u64, observed_ranges: Arc<Mutex<Vec<(u64, u64)>>>) -> Self {
         Self {
             max_successful_blocks,
             observed_ranges,

@@ -59,7 +59,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -697,7 +697,7 @@ checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 [[package]]
 name = "datalens-sdk"
 version = "0.1.0"
-source = "git+https://github.com/ringecosystem/datalens?rev=86ac2e3cf26947659b85eb6a101ed2fd337520a6#86ac2e3cf26947659b85eb6a101ed2fd337520a6"
+source = "git+https://github.com/ringecosystem/datalens?rev=4eb2c85aa725a2141dd2fa5ae34a02da9043707c#4eb2c85aa725a2141dd2fa5ae34a02da9043707c"
 dependencies = [
  "reqwest",
  "serde",
@@ -3648,7 +3648,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

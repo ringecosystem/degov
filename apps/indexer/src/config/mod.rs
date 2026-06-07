@@ -53,14 +53,12 @@ impl fmt::Display for SecretString {
 #[serde(rename_all = "snake_case")]
 pub enum DatalensFinality {
     DurableOnly,
-    IncludePending,
 }
 
 impl DatalensFinality {
     pub fn as_datalens_value(self) -> &'static str {
         match self {
             Self::DurableOnly => "durable_only",
-            Self::IncludePending => "include_pending",
         }
     }
 }
@@ -71,7 +69,6 @@ impl FromStr for DatalensFinality {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim() {
             "durable_only" => Ok(Self::DurableOnly),
-            "include_pending" => Ok(Self::IncludePending),
             value => Err(ConfigError::InvalidFinality {
                 value: value.to_owned(),
             }),
