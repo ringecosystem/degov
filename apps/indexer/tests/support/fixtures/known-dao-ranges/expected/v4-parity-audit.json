@@ -17,7 +17,7 @@
         "table": "Proposal",
         "scope": "proposal rows",
         "row_count": 1,
-        "sha256": "4626d2b00398be1a9e2a8d8fa935188a96926d31a620c18d2b0e50fc1f0263b3"
+        "sha256": "2182c97bb845fc0a3936605cfc210f32bc7804f44b9b52bd07900c13475153bc"
       },
       {
         "table": "ProposalCreated",
@@ -29,7 +29,7 @@
         "table": "ProposalAction",
         "scope": "proposal actions",
         "row_count": 1,
-        "sha256": "107812c97f09042cdab1f88ed032c6cf9d02a5f2b7063344e1c3abb7b79e6094"
+        "sha256": "84221ade840376befd9a298fff153a87011b5b766cf9aef6f8527b5898c4d3c2"
       },
       {
         "table": "ProposalQueued",
@@ -41,7 +41,7 @@
         "table": "ProposalDeadlineExtension",
         "scope": "deadline extensions",
         "row_count": 1,
-        "sha256": "4acfbdd34df8c36418fd2262651aae20c0df0094ff4d98330c23f68ea3bc2ea9"
+        "sha256": "a4a16eeecc240623340c83494a14a03f2a7a926f370109de2f1b0203e79e6c59"
       },
       {
         "table": "ProposalExecuted",
@@ -52,8 +52,8 @@
       {
         "table": "ProposalStateEpoch",
         "scope": "proposal state epochs",
-        "row_count": 3,
-        "sha256": "a8dc043540521459e9027f9f8995eef3ad3dc09f95cd2921d21c8e23ce2432a7"
+        "row_count": 4,
+        "sha256": "99f2aa2d2a30fe93191aebafcc50d3e94b3f2fb3476a8c6ba02c9d04811c8c1b"
       },
       {
         "table": "VoteCast",
@@ -77,7 +77,7 @@
         "table": "ProposalVoteMetric",
         "scope": "proposal/global vote metrics",
         "row_count": 1,
-        "sha256": "4a98bbb1a889289f73666de5f6420361a39a04daff8dbd3d23aac42445e53e04"
+        "sha256": "1582c20d6468af5233361cb3bf7cccdedc291d99b48e03c86c7b5310fb881c1e"
       },
       {
         "table": "DataMetricVoteDelta",
@@ -143,13 +143,13 @@
         "table": "TimelockOperation",
         "scope": "timelock rows and proposal bindings",
         "row_count": 1,
-        "sha256": "dcd3de2146d890a7247b605990996504866c4989eb496d0699a87e99e0fc02ea"
+        "sha256": "2f05b97e712940e88261168a59b93ae75b2f9c46d0096fcc74cf976aa0a7aa21"
       },
       {
         "table": "TimelockCall",
         "scope": "timelock rows and proposal bindings",
         "row_count": 1,
-        "sha256": "52146dc91e19ce0abf78c7bd549b982bb37b2c1a584d573c44a69ba78851655a"
+        "sha256": "a5ac37d32420c00f0865766bc3f482abd27a270ae8af63ece2aa2558b08369b5"
       },
       {
         "table": "TimelockRoleEvent",
@@ -173,7 +173,7 @@
         "table": "ProposalGovernanceReadPlan",
         "scope": "governance parameter checkpoints",
         "row_count": 2,
-        "sha256": "1e2c84da5f43fb6c0f00893f913209597140f8ab63fa87b4d8aaaf79ab779d03"
+        "sha256": "d170d555e4ff7f3882e3006ed72a6cad6d7bcf02b589f72898a5106bd3d9e44d"
       },
       {
         "table": "TimelockRefreshReadPlan",
@@ -194,7 +194,7 @@
       "table": "Proposal",
       "scope": "proposal rows",
       "row_count": 1,
-      "sha256": "4626d2b00398be1a9e2a8d8fa935188a96926d31a620c18d2b0e50fc1f0263b3"
+      "sha256": "2182c97bb845fc0a3936605cfc210f32bc7804f44b9b52bd07900c13475153bc"
     },
     {
       "table": "ProposalCreated",
@@ -206,7 +206,7 @@
       "table": "ProposalAction",
       "scope": "proposal actions",
       "row_count": 1,
-      "sha256": "107812c97f09042cdab1f88ed032c6cf9d02a5f2b7063344e1c3abb7b79e6094"
+      "sha256": "84221ade840376befd9a298fff153a87011b5b766cf9aef6f8527b5898c4d3c2"
     },
     {
       "table": "ProposalQueued",
@@ -218,7 +218,7 @@
       "table": "ProposalDeadlineExtension",
       "scope": "deadline extensions",
       "row_count": 1,
-      "sha256": "4acfbdd34df8c36418fd2262651aae20c0df0094ff4d98330c23f68ea3bc2ea9"
+      "sha256": "a4a16eeecc240623340c83494a14a03f2a7a926f370109de2f1b0203e79e6c59"
     },
     {
       "table": "ProposalExecuted",
@@ -229,8 +229,8 @@
     {
       "table": "ProposalStateEpoch",
       "scope": "proposal state epochs",
-      "row_count": 3,
-      "sha256": "a8dc043540521459e9027f9f8995eef3ad3dc09f95cd2921d21c8e23ce2432a7"
+      "row_count": 4,
+      "sha256": "99f2aa2d2a30fe93191aebafcc50d3e94b3f2fb3476a8c6ba02c9d04811c8c1b"
     },
     {
       "table": "VoteCast",
@@ -254,7 +254,7 @@
       "table": "ProposalVoteMetric",
       "scope": "proposal/global vote metrics",
       "row_count": 1,
-      "sha256": "4a98bbb1a889289f73666de5f6420361a39a04daff8dbd3d23aac42445e53e04"
+      "sha256": "1582c20d6468af5233361cb3bf7cccdedc291d99b48e03c86c7b5310fb881c1e"
     },
     {
       "table": "DataMetricVoteDelta",
@@ -320,13 +320,13 @@
       "table": "TimelockOperation",
       "scope": "timelock rows and proposal bindings",
       "row_count": 1,
-      "sha256": "dcd3de2146d890a7247b605990996504866c4989eb496d0699a87e99e0fc02ea"
+      "sha256": "2f05b97e712940e88261168a59b93ae75b2f9c46d0096fcc74cf976aa0a7aa21"
     },
     {
       "table": "TimelockCall",
       "scope": "timelock rows and proposal bindings",
       "row_count": 1,
-      "sha256": "52146dc91e19ce0abf78c7bd549b982bb37b2c1a584d573c44a69ba78851655a"
+      "sha256": "a5ac37d32420c00f0865766bc3f482abd27a270ae8af63ece2aa2558b08369b5"
     },
     {
       "table": "TimelockRoleEvent",
@@ -350,7 +350,7 @@
       "table": "ProposalGovernanceReadPlan",
       "scope": "governance parameter checkpoints",
       "row_count": 2,
-      "sha256": "1e2c84da5f43fb6c0f00893f913209597140f8ab63fa87b4d8aaaf79ab779d03"
+      "sha256": "d170d555e4ff7f3882e3006ed72a6cad6d7bcf02b589f72898a5106bd3d9e44d"
     },
     {
       "table": "TimelockRefreshReadPlan",
