@@ -521,19 +521,19 @@ pub fn project_proposal_events(
                     context.contracts.governor.clone(),
                     ChainReadMethod::ClockMode,
                     vec![],
-                    crate::BlockReadMode::Fresh,
+                    crate::BlockReadMode::Safe,
                 );
                 builder.add_optional_enrichment_read(
                     context.contracts.governor.clone(),
                     ChainReadMethod::Quorum,
                     vec![event.vote_start.clone()],
-                    crate::BlockReadMode::Fresh,
+                    crate::BlockReadMode::Safe,
                 );
                 builder.add_optional_enrichment_read(
                     context.contracts.governor_token.clone(),
                     ChainReadMethod::Decimals,
                     vec![],
-                    crate::BlockReadMode::Fresh,
+                    crate::BlockReadMode::Safe,
                 );
                 proposals
                     .entry(proposal.id.clone())

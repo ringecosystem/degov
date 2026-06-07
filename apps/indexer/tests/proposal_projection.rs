@@ -667,7 +667,7 @@ fn test_apply_chain_read_execution_report_updates_enriched_fields() {
                     contract_address: "0x1111111111111111111111111111111111111111".to_owned(),
                     method: ChainReadMethod::Decimals,
                     args: vec![],
-                    block_mode: BlockReadMode::Fresh,
+                    block_mode: BlockReadMode::Safe,
                 },
                 value: ChainReadValue::Integer("18".to_owned()),
             },
@@ -808,7 +808,7 @@ fn read_result(
             contract_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
             method,
             args: vec![proposal_id.to_owned()],
-            block_mode: BlockReadMode::Fresh,
+            block_mode: BlockReadMode::Safe,
         },
         value,
     }
