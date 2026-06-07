@@ -165,9 +165,9 @@ fn test_datalens_durable_head_reader_uses_sdk_chain_head_safe_finality() {
 }
 
 #[test]
-fn test_datalens_durable_head_reader_uses_latest_finality_when_pending_enabled() {
-    let server = FakeHeadServer::start(568801, "latest");
-    let config = datalens_config(&server.endpoint, DatalensFinality::IncludePending);
+fn test_datalens_durable_head_reader_uses_safe_finality_for_durable_head() {
+    let server = FakeHeadServer::start(568801, "safe");
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
     let mut client = DatalensNativeClient::from_config(&config).expect("client");
 
     let height = client
@@ -177,7 +177,7 @@ fn test_datalens_durable_head_reader_uses_latest_finality_when_pending_enabled()
     assert_eq!(height, 568801);
     let request = server.join();
     assert!(
-        request.starts_with("GET /v1/chains/ethereum/head?finality=latest "),
+        request.starts_with("GET /v1/chains/ethereum/head?finality=safe "),
         "{request}"
     );
     assert!(!request.contains(r#""end":2147483647"#));

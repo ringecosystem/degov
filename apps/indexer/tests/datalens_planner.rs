@@ -88,11 +88,11 @@ fn test_plan_dao_log_queries_rejects_zero_chunk_limit() {
 }
 
 #[test]
-fn test_plan_dao_log_queries_uses_configured_finality() {
-    let config = config(1_000, DatalensFinality::IncludePending);
+fn test_plan_dao_log_queries_uses_durable_only_finality_for_final_indexing() {
+    let config = config(1_000, DatalensFinality::DurableOnly);
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
 
-    assert_eq!(plans[0].input.finality.as_deref(), Some("include_pending"));
+    assert_eq!(plans[0].input.finality.as_deref(), Some("durable_only"));
 }
 
 #[test]
@@ -155,8 +155,8 @@ fn assert_query(
     assert_eq!(plan.input.dataset_key.name, "logs");
     assert_eq!(plan.input.selector.kind, SelectorKindInput::EvmLogs);
     assert_eq!(plan.input.range.kind, QueryRangeKindInput::Block);
-    assert_eq!(plan.input.range.start, from_block);
-    assert_eq!(plan.input.range.end, to_block);
+    assert_eq!(plan.input.range.start, u64::try_from(from_block).unwrap());
+    assert_eq!(plan.input.range.end, u64::try_from(to_block).unwrap());
     assert_eq!(plan.input.finality.as_deref(), Some(finality));
 
     let evm_logs = plan.input.selector.evm_logs.as_ref().expect("evm logs");

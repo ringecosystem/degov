@@ -10,7 +10,7 @@ use datalens_sdk::{
 };
 use log::{info, warn};
 
-use crate::{DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader};
+use crate::{DatalensConfig, DatalensError, DatalensLogQueryReader};
 
 pub trait DatalensNativeReader {
     fn service_readiness(&self) -> Result<ServiceReadiness, DatalensError>;
@@ -438,14 +438,13 @@ impl DatalensLogQueryReader for DatalensNativeClient {
 
 impl DatalensDurableHeadReader for DatalensNativeClient {
     fn durable_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
-        let finality = match config.finality {
-            DatalensFinality::DurableOnly => ChainHeadFinalityInput::Safe,
-            DatalensFinality::IncludePending => ChainHeadFinalityInput::Latest,
-        };
         let response = self
             .client
             .native()
-            .chain_head(&config.chain.configured_name, Some(finality))
+            .chain_head(
+                &config.chain.configured_name,
+                Some(ChainHeadFinalityInput::Safe),
+            )
             .map_err(|error| DatalensError::Query(error.to_string()))?;
 
         i64::try_from(response.height).map_err(|_| {

@@ -176,8 +176,10 @@ fn query_plan(
             },
             range: QueryRangeInput {
                 kind: QueryRangeKindInput::Block,
-                start: from_block,
-                end: to_block,
+                start: from_block
+                    .try_into()
+                    .expect("query plan start is non-negative"),
+                end: to_block.try_into().expect("query plan end is non-negative"),
             },
             finality: Some(config.finality.as_datalens_value().to_owned()),
             fields: None,

@@ -129,6 +129,42 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint(
 }
 
 #[test]
+fn test_from_env_rejects_include_pending_finality_for_final_indexing() {
+    with_datalens_env(
+        &[
+            ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com/")),
+            ("DATALENS_APPLICATION", Some("degov-live")),
+            ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+            ("DATALENS_FINALITY", Some("include_pending")),
+            ("DATALENS_CHAIN_NAME", Some("ethereum")),
+            ("DATALENS_CHAIN_ID", Some("1")),
+            ("DATALENS_DATASET_FAMILY", Some("evm")),
+            ("DATALENS_DATASET_NAME", Some("logs")),
+            ("DEGOV_INDEXER_DAO_CODE", Some("lisk-dao")),
+            ("DEGOV_INDEXER_START_BLOCK", Some("568752")),
+            (
+                "DATALENS_GOVERNOR_ADDRESS",
+                Some("0x1111111111111111111111111111111111111111"),
+            ),
+            (
+                "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                Some("0x2222222222222222222222222222222222222222"),
+            ),
+            ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("ERC20")),
+            (
+                "DATALENS_TIMELOCK_ADDRESS",
+                Some("0x3333333333333333333333333333333333333333"),
+            ),
+        ],
+        || {
+            let error = DatalensConfig::from_env().expect_err("reject include_pending");
+
+            assert!(error.to_string().contains("include_pending"));
+        },
+    );
+}
+
+#[test]
 fn test_from_env_loads_multi_chain_contract_config_json() {
     with_datalens_env(
         &[
