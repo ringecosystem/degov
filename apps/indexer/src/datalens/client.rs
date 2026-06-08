@@ -220,12 +220,21 @@ pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
         || normalized.contains("request_rate_limit")
         || normalized.contains("rate_limit")
         || normalized.contains("transport")
+        || normalized.contains("send request")
+        || normalized.contains("sending request")
+        || normalized.contains("connection")
+        || normalized.contains("network")
         || normalized.contains("provider_failure")
         || normalized.contains("unavailable_head")
+        || normalized.contains("no available server")
         || normalized.contains("storage_read_failure")
         || normalized.contains("storage_write_failure")
         || normalized.contains("manifest_update_failure")
         || normalized.contains("internal")
+        || normalized.contains("502")
+        || normalized.contains("503")
+        || normalized.contains("504")
+        || normalized.contains("524")
     {
         return DatalensQueryErrorClass::Transient;
     }

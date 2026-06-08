@@ -7,14 +7,15 @@ use tokio::{runtime::Handle, sync::Semaphore, task, time::sleep};
 
 use crate::{
     DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
-    DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensRuntimeContractSet,
-    DatalensWarmupEnsureOutcome, EvmRpcChainTool, IndexerContractSetMode,
-    IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner, IndexerRunnerReport,
-    IndexerRuntimeConfig, IndexerTargetHeight, MultiChainToolOnchainRefreshReader,
-    OnchainRefreshRuntimeConfig, OnchainRefreshTickReport, OnchainRefreshTickRunner,
-    OnchainRefreshTickScheduler, OnchainRefreshWorker, OnchainRefreshWorkerError,
-    PostgresIndexerRunnerStore, PostgresProvisionalCleanupStore, datalens_retry_config,
-    ensure_datalens_warmup_task, required_env,
+    DatalensError, DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensQueryErrorClass,
+    DatalensRuntimeContractSet, DatalensWarmupEnsureOutcome, EvmRpcChainTool,
+    IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick,
+    IndexerRunner, IndexerRunnerReport, IndexerRuntimeConfig, IndexerTargetHeight,
+    MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTickReport,
+    OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshWorker,
+    OnchainRefreshWorkerError, PostgresIndexerRunnerStore, PostgresProvisionalCleanupStore,
+    classify_datalens_query_error, datalens_retry_config, ensure_datalens_warmup_task,
+    required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -363,8 +364,9 @@ where
                 backoff.reset();
                 sleep_for(poll_interval).await;
             }
-            Err(ContractSetPassError::Runner { error, .. }) => {
+            Err(error) if contract_set_pass_error_is_retryable(&error) => {
                 let delay = backoff.next_delay();
+                let error = error.into_error();
                 log::error!(
                     "Datalens indexer contract set pass failed; retrying long-running all-mode job after backoff {} retry_delay_ms={} error={}",
                     log_context,
@@ -387,6 +389,27 @@ fn contract_set_pass_failure_action(
     } else {
         ContractSetPassFailureAction::Continue
     }
+}
+
+fn contract_set_pass_error_is_retryable(error: &ContractSetPassError) -> bool {
+    matches!(error, ContractSetPassError::Runner { .. })
+        || matches!(
+            error,
+            ContractSetPassError::Setup(error)
+                if contains_recoverable_datalens_query_error(error)
+        )
+}
+
+fn contains_recoverable_datalens_query_error(error: &runtime_anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| match cause.downcast_ref::<DatalensError>() {
+            Some(DatalensError::Query(message)) => matches!(
+                classify_datalens_query_error(message),
+                DatalensQueryErrorClass::ProviderLimit | DatalensQueryErrorClass::Transient
+            ),
+            _ => false,
+        })
 }
 
 #[derive(Debug)]
@@ -979,6 +1002,81 @@ mod tests {
         .expect_err("job failure propagates");
 
         assert!(result.to_string().contains("setup failed"));
+    }
+
+    #[tokio::test]
+    async fn test_contract_set_jobs_retries_recoverable_all_mode_error_without_aborting_peers() {
+        #[derive(Clone, Copy)]
+        enum ScriptedJob {
+            Recovering,
+            Peer,
+        }
+
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let peer_started = Arc::new(AtomicUsize::new(0));
+        let jobs = vec![
+            ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: ScriptedJob::Recovering,
+            },
+            ContractSetConcurrencyJob {
+                chain_id: 2,
+                contract_set: ScriptedJob::Peer,
+            },
+        ];
+        let job_attempts = attempts.clone();
+        let job_peer_started = peer_started.clone();
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            run_contract_set_jobs(
+                jobs,
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                move |job| {
+                    let attempts = job_attempts.clone();
+                    let peer_started = job_peer_started.clone();
+                    async move {
+                        match job {
+                            ScriptedJob::Recovering => {
+                                run_recovering_contract_set_pass_loop(
+                                    "dao_code=demo-dao chain_id=1 contract_set_id=demo-scope",
+                                    Duration::from_secs(60),
+                                    move || {
+                                        let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                                        async move {
+                                            if attempt == 0 {
+                                                let error = runtime_anyhow::anyhow!(
+                                                    crate::DatalensError::Query(
+                                                        "503 no available server".to_owned()
+                                                    )
+                                                )
+                                                .context(
+                                                    "resolve latest Datalens durable head height",
+                                                );
+                                                return Err(ContractSetPassError::setup(error));
+                                            }
+                                            std::future::pending().await
+                                        }
+                                    },
+                                    |_| async {},
+                                )
+                                .await
+                            }
+                            ScriptedJob::Peer => {
+                                peer_started.fetch_add(1, Ordering::SeqCst);
+                                std::future::pending().await
+                            }
+                        }
+                    }
+                },
+            ),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(peer_started.load(Ordering::SeqCst), 1);
     }
 
     #[test]
