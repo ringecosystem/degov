@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, future::Future, sync::Arc};
+use std::{collections::BTreeMap, future::Future, sync::Arc, time::Duration};
 
 use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result, bail};
@@ -114,8 +114,23 @@ async fn run_configured_contract_sets_pass(
             let pool = pool.clone();
             let datalens_query_gate = datalens_query_gate.clone();
             async move {
-                run_configured_contract_set_pass(&runtime, contract_set, pool, datalens_query_gate)
+                if runtime.run_once {
+                    run_configured_contract_set_pass(
+                        &runtime,
+                        contract_set,
+                        pool,
+                        datalens_query_gate,
+                    )
                     .await
+                } else {
+                    run_recovering_configured_contract_set_pass(
+                        runtime,
+                        contract_set,
+                        pool,
+                        datalens_query_gate,
+                    )
+                    .await
+                }
             }
         },
     )
@@ -128,7 +143,28 @@ async fn run_configured_contract_set_pass(
     pool: sqlx::PgPool,
     datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
 ) -> Result<()> {
-    let target_height = resolve_contract_set_target_height(runtime, &contract_set.config).await?;
+    match run_configured_contract_set_pass_result(
+        runtime,
+        contract_set.clone(),
+        pool.clone(),
+        datalens_query_gate,
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(error) => handle_contract_set_pass_failure(runtime, &contract_set, error),
+    }
+}
+
+async fn run_configured_contract_set_pass_result(
+    runtime: &IndexerRuntimeConfig,
+    contract_set: DatalensRuntimeContractSet,
+    pool: sqlx::PgPool,
+    datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
+) -> std::result::Result<(), ContractSetPassError> {
+    let target_height = resolve_contract_set_target_height(runtime, &contract_set.config)
+        .await
+        .map_err(ContractSetPassError::setup)?;
     let contract_runtime = match runtime
         .for_configured_contract_set_at_target(&contract_set, target_height)
     {
@@ -150,7 +186,7 @@ async fn run_configured_contract_set_pass(
             );
             return Ok(());
         }
-        Err(error) => return Err(error),
+        Err(error) => return Err(ContractSetPassError::setup(error)),
     };
     let report = match run_contract_set_pass(
         contract_runtime.clone(),
@@ -162,16 +198,11 @@ async fn run_configured_contract_set_pass(
     .await
     {
         Ok(report) => report,
-        Err(error) => {
-            return handle_contract_set_pass_failure(
-                runtime,
-                &contract_runtime,
-                &contract_set,
-                error,
-            );
-        }
+        Err(error) => return Err(error.with_contract_runtime(contract_runtime.clone())),
     };
-    cleanup_finalized_provisional_overlays(&contract_runtime, &contract_set, pool.clone()).await?;
+    cleanup_finalized_provisional_overlays(&contract_runtime, &contract_set, pool.clone())
+        .await
+        .map_err(ContractSetPassError::setup)?;
 
     log::info!(
         "Datalens indexer run pass completed dao_code={} chain_id={} contract_set_id={} chunks_processed={} processed_height={:?} target_height={} synced_percentage={} onchain_refresh_allowed={}",
@@ -186,6 +217,40 @@ async fn run_configured_contract_set_pass(
     );
 
     Ok(())
+}
+
+async fn run_recovering_configured_contract_set_pass(
+    runtime: Arc<IndexerRuntimeConfig>,
+    contract_set: DatalensRuntimeContractSet,
+    pool: sqlx::PgPool,
+    datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
+) -> Result<()> {
+    let log_context = format!(
+        "dao_code={} chain_id={} contract_set_id={}",
+        contract_set.dao_code, contract_set.contract.chain_id, contract_set.contract_set_id
+    );
+
+    run_recovering_contract_set_pass_loop(
+        &log_context,
+        runtime.poll_interval,
+        move || {
+            let runtime = runtime.clone();
+            let contract_set = contract_set.clone();
+            let pool = pool.clone();
+            let datalens_query_gate = datalens_query_gate.clone();
+            async move {
+                run_configured_contract_set_pass_result(
+                    &runtime,
+                    contract_set,
+                    pool,
+                    datalens_query_gate,
+                )
+                .await
+            }
+        },
+        sleep,
+    )
+    .await
 }
 
 async fn cleanup_finalized_provisional_overlays(
@@ -246,11 +311,78 @@ enum ContractSetPassFailureAction {
     Continue,
 }
 
+const CONTRACT_SET_RETRY_INITIAL_BACKOFF: Duration = Duration::from_secs(1);
+const CONTRACT_SET_RETRY_MAX_BACKOFF: Duration = Duration::from_secs(60);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ContractSetRetryBackoff {
+    next_delay: Duration,
+}
+
+impl Default for ContractSetRetryBackoff {
+    fn default() -> Self {
+        Self {
+            next_delay: CONTRACT_SET_RETRY_INITIAL_BACKOFF,
+        }
+    }
+}
+
+impl ContractSetRetryBackoff {
+    fn next_delay(&mut self) -> Duration {
+        let delay = self.next_delay;
+        self.next_delay = self
+            .next_delay
+            .checked_mul(2)
+            .unwrap_or(CONTRACT_SET_RETRY_MAX_BACKOFF)
+            .min(CONTRACT_SET_RETRY_MAX_BACKOFF);
+        delay
+    }
+
+    fn reset(&mut self) {
+        self.next_delay = CONTRACT_SET_RETRY_INITIAL_BACKOFF;
+    }
+}
+
+async fn run_recovering_contract_set_pass_loop<Run, RunFuture, Sleep, SleepFuture>(
+    log_context: &str,
+    poll_interval: Duration,
+    mut run_pass: Run,
+    mut sleep_for: Sleep,
+) -> Result<()>
+where
+    Run: FnMut() -> RunFuture,
+    RunFuture: Future<Output = std::result::Result<(), ContractSetPassError>>,
+    Sleep: FnMut(Duration) -> SleepFuture,
+    SleepFuture: Future<Output = ()>,
+{
+    let mut backoff = ContractSetRetryBackoff::default();
+
+    loop {
+        match run_pass().await {
+            Ok(()) => {
+                backoff.reset();
+                sleep_for(poll_interval).await;
+            }
+            Err(ContractSetPassError::Runner { error, .. }) => {
+                let delay = backoff.next_delay();
+                log::error!(
+                    "Datalens indexer contract set pass failed; retrying long-running all-mode job after backoff {} retry_delay_ms={} error={}",
+                    log_context,
+                    delay.as_millis(),
+                    error
+                );
+                sleep_for(delay).await;
+            }
+            Err(error) => return Err(error.into_error()),
+        }
+    }
+}
+
 fn contract_set_pass_failure_action(
     run_once: bool,
     error: &ContractSetPassError,
 ) -> ContractSetPassFailureAction {
-    if run_once || !matches!(error, ContractSetPassError::Runner(_)) {
+    if run_once || !matches!(error, ContractSetPassError::Runner { .. }) {
         ContractSetPassFailureAction::Propagate
     } else {
         ContractSetPassFailureAction::Continue
@@ -260,7 +392,10 @@ fn contract_set_pass_failure_action(
 #[derive(Debug)]
 enum ContractSetPassError {
     Setup(runtime_anyhow::Error),
-    Runner(runtime_anyhow::Error),
+    Runner {
+        error: runtime_anyhow::Error,
+        contract_runtime: Option<IndexerContractSetRuntimeConfig>,
+    },
 }
 
 impl ContractSetPassError {
@@ -269,30 +404,56 @@ impl ContractSetPassError {
     }
 
     fn runner(error: runtime_anyhow::Error) -> Self {
-        Self::Runner(error)
+        Self::Runner {
+            error,
+            contract_runtime: None,
+        }
+    }
+
+    fn with_contract_runtime(self, contract_runtime: IndexerContractSetRuntimeConfig) -> Self {
+        match self {
+            Self::Runner { error, .. } => Self::Runner {
+                error,
+                contract_runtime: Some(contract_runtime),
+            },
+            error => error,
+        }
+    }
+
+    fn contract_runtime(&self) -> Option<&IndexerContractSetRuntimeConfig> {
+        match self {
+            Self::Setup(_) => None,
+            Self::Runner {
+                contract_runtime, ..
+            } => contract_runtime.as_ref(),
+        }
     }
 
     fn into_error(self) -> runtime_anyhow::Error {
         match self {
-            Self::Setup(error) | Self::Runner(error) => error,
+            Self::Setup(error) | Self::Runner { error, .. } => error,
         }
     }
 }
 
 fn handle_contract_set_pass_failure(
     runtime: &IndexerRuntimeConfig,
-    contract_runtime: &IndexerContractSetRuntimeConfig,
     contract_set: &DatalensRuntimeContractSet,
     error: ContractSetPassError,
 ) -> Result<()> {
     match contract_set_pass_failure_action(runtime.run_once, &error) {
         ContractSetPassFailureAction::Propagate => Err(error.into_error()),
         ContractSetPassFailureAction::Continue => {
+            let checkpoint_contract_set_id = error
+                .contract_runtime()
+                .map(|runtime| runtime.checkpoint_contract_set_id.as_str())
+                .unwrap_or(contract_set.contract_set_id.as_str())
+                .to_owned();
             log::error!(
                 "Datalens indexer contract set pass failed; continuing long-running indexer dao_code={} chain_id={} contract_set_id={} error={}",
-                contract_runtime.dao_code,
+                contract_set.dao_code,
                 contract_set.contract.chain_id,
-                contract_runtime.checkpoint_contract_set_id,
+                checkpoint_contract_set_id,
                 error.into_error()
             );
             Ok(())
@@ -318,7 +479,7 @@ where
 {
     let global = semaphore_for_limit(global_limit);
     let per_chain = per_chain_semaphores(&jobs, per_chain_limit);
-    let mut handles = Vec::with_capacity(jobs.len());
+    let mut handles = task::JoinSet::new();
 
     for job in jobs {
         let global = global.clone();
@@ -326,24 +487,26 @@ where
             .as_ref()
             .and_then(|semaphores| semaphores.get(&job.chain_id).cloned());
         let run = run.clone();
-        handles.push(task::spawn(async move {
+        handles.spawn(async move {
             let _global_permit = acquire_semaphore(global).await?;
             let _per_chain_permit = acquire_semaphore(per_chain).await?;
             run(job.contract_set).await
-        }));
+        });
     }
 
-    let mut errors = Vec::new();
-    for handle in handles {
-        match handle.await {
+    while let Some(result) = handles.join_next().await {
+        match result {
             Ok(Ok(())) => {}
-            Ok(Err(error)) => errors.push(error),
-            Err(error) => errors.push(error.into()),
+            Ok(Err(error)) => {
+                handles.abort_all();
+                bail!("Datalens indexer all-mode contract set pass failed: {error}");
+            }
+            Err(error) => {
+                handles.abort_all();
+                let error: runtime_anyhow::Error = error.into();
+                bail!("Datalens indexer all-mode contract set pass failed: {error}");
+            }
         }
-    }
-
-    if let Some(first_error) = errors.into_iter().next() {
-        bail!("Datalens indexer all-mode contract set pass failed: {first_error}");
     }
 
     Ok(())
@@ -630,7 +793,7 @@ async fn resolve_contract_set_target_height(
 mod tests {
     use std::{
         sync::{
-            Arc,
+            Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
         },
         time::Duration,
@@ -775,6 +938,49 @@ mod tests {
         assert_eq!(observed.max_seen(), 4);
     }
 
+    #[tokio::test]
+    async fn test_contract_set_jobs_returns_error_without_waiting_for_long_running_peer() {
+        #[derive(Clone, Copy)]
+        enum ScriptedJob {
+            LongRunning,
+            Fails,
+        }
+
+        let jobs = vec![
+            ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: ScriptedJob::LongRunning,
+            },
+            ContractSetConcurrencyJob {
+                chain_id: 2,
+                contract_set: ScriptedJob::Fails,
+            },
+        ];
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            run_contract_set_jobs(
+                jobs,
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                |job| async move {
+                    match job {
+                        ScriptedJob::LongRunning => {
+                            tokio::time::sleep(Duration::from_secs(60)).await;
+                            Ok(())
+                        }
+                        ScriptedJob::Fails => Err(runtime_anyhow::anyhow!("setup failed")),
+                    }
+                },
+            ),
+        )
+        .await
+        .expect("job error returns before long-running peer finishes")
+        .expect_err("job failure propagates");
+
+        assert!(result.to_string().contains("setup failed"));
+    }
+
     #[test]
     fn test_contract_set_pass_failure_action_keeps_long_running_indexer_alive() {
         let error = ContractSetPassError::runner(runtime_anyhow::anyhow!("query failed"));
@@ -802,6 +1008,52 @@ mod tests {
         assert_eq!(
             contract_set_pass_failure_action(false, &error),
             ContractSetPassFailureAction::Propagate
+        );
+    }
+
+    #[tokio::test]
+    async fn test_recovering_contract_set_pass_loop_retries_runner_error_and_polls_after_success() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let sleeps = Arc::new(Mutex::new(Vec::new()));
+        let run_attempts = attempts.clone();
+        let recorded_sleeps = sleeps.clone();
+
+        let result = run_recovering_contract_set_pass_loop(
+            "dao_code=demo-dao chain_id=1 contract_set_id=demo-scope",
+            Duration::from_millis(10),
+            move || {
+                let attempt = run_attempts.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    match attempt {
+                        0 | 2 => Err(ContractSetPassError::runner(runtime_anyhow::anyhow!(
+                            "query failed"
+                        ))),
+                        1 => Ok(()),
+                        _ => Err(ContractSetPassError::setup(runtime_anyhow::anyhow!(
+                            "stop loop"
+                        ))),
+                    }
+                }
+            },
+            move |duration| {
+                let sleeps = recorded_sleeps.clone();
+                async move {
+                    sleeps.lock().expect("sleep records").push(duration);
+                }
+            },
+        )
+        .await
+        .expect_err("setup failure stops loop");
+
+        assert!(result.to_string().contains("stop loop"));
+        assert_eq!(attempts.load(Ordering::SeqCst), 4);
+        assert_eq!(
+            sleeps.lock().expect("sleep records").as_slice(),
+            &[
+                CONTRACT_SET_RETRY_INITIAL_BACKOFF,
+                Duration::from_millis(10),
+                CONTRACT_SET_RETRY_INITIAL_BACKOFF
+            ]
         );
     }
 

@@ -352,11 +352,14 @@ impl AdaptiveChunkFeedback {
     }
 
     fn is_slow_cache_fill(&self, config: &AdaptiveChunkSizerConfig) -> bool {
-        self.read_duration > config.cache_fill_high_duration_threshold
+        let threshold = config
+            .cache_fill_high_duration_threshold
+            .max(config.high_query_duration_threshold);
+        self.read_duration > threshold
             || self
                 .warmup_effectiveness
                 .query_duration_max()
-                .is_some_and(|duration| duration > config.cache_fill_high_duration_threshold)
+                .is_some_and(|duration| duration > threshold)
     }
 }
 
