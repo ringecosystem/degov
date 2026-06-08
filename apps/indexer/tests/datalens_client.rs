@@ -144,6 +144,17 @@ fn test_classify_datalens_query_error_separates_provider_limit_from_timeout() {
         classify_datalens_query_error("request_rate_limit"),
         DatalensQueryErrorClass::Transient
     );
+    for error in [
+        "HTTP 502 bad gateway",
+        "503 no available server",
+        "524 a timeout occurred",
+        "error sending request for url",
+    ] {
+        assert_eq!(
+            classify_datalens_query_error(error),
+            DatalensQueryErrorClass::Transient
+        );
+    }
 }
 
 #[test]
