@@ -432,7 +432,24 @@ fn test_adaptive_chunk_sizer_fast_cache_fill_recovers_and_grows() {
 }
 
 #[test]
-fn test_adaptive_chunk_sizer_slow_cache_fill_shrinks_after_decay_window() {
+fn test_adaptive_chunk_sizer_cache_fill_above_high_duration_shrinks_immediately() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let high_cache_fill = sizer.record_chunk(adaptive_feedback(
+        cache_partial_hit(),
+        Duration::from_millis(1_500),
+    ));
+
+    assert_eq!(high_cache_fill.previous_chunk_size, 100);
+    assert_eq!(high_cache_fill.current_chunk_size, 50);
+    assert_eq!(
+        high_cache_fill.reason,
+        AdaptiveChunkSizingReason::HighQueryDuration
+    );
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_provider_fill_below_high_duration_grows() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 
     let first = sizer.record_chunk(adaptive_feedback(
@@ -444,30 +461,11 @@ fn test_adaptive_chunk_sizer_slow_cache_fill_shrinks_after_decay_window() {
         Duration::from_millis(800),
     ));
 
-    assert_eq!(first.current_chunk_size, 100);
-    assert_eq!(first.reason, AdaptiveChunkSizingReason::SlowCacheFillHold);
-    assert_eq!(second.previous_chunk_size, 100);
-    assert_eq!(second.current_chunk_size, 50);
-    assert_eq!(
-        second.reason,
-        AdaptiveChunkSizingReason::RepeatedSlowCacheFill
-    );
-}
-
-#[test]
-fn test_adaptive_chunk_sizer_medium_cache_fill_holds_without_shrinking() {
-    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
-
-    let first = sizer.record_chunk(adaptive_feedback(
-        cache_partial_hit(),
-        Duration::from_millis(250),
-    ));
-    let second = sizer.record_chunk(adaptive_feedback(cache_miss(), Duration::from_millis(250)));
-
     assert_eq!(first.previous_chunk_size, 100);
     assert!(first.current_chunk_size >= first.previous_chunk_size);
     assert_eq!(second.previous_chunk_size, first.current_chunk_size);
-    assert!(second.current_chunk_size >= second.previous_chunk_size);
+    assert_eq!(second.current_chunk_size, 200);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::StableSparseRange);
 }
 
 #[test]
@@ -483,6 +481,35 @@ fn test_adaptive_chunk_sizer_high_duration_shrinks_immediately() {
     assert_eq!(
         high_duration.reason,
         AdaptiveChunkSizingReason::HighQueryDuration
+    );
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_dense_rows_shrinks_immediately() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let dense = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit(),
+        Duration::from_millis(50),
+        5_000,
+    ));
+
+    assert_eq!(dense.current_chunk_size, 50);
+    assert_eq!(dense.reason, AdaptiveChunkSizingReason::DenseReturnedRows);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_slow_local_processing_shrinks_immediately() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+    let mut feedback = adaptive_feedback(cache_full_hit(), Duration::from_millis(50));
+    feedback.local_processing_write_duration = Duration::from_secs(11);
+
+    let slow_local = sizer.record_chunk(feedback);
+
+    assert_eq!(slow_local.current_chunk_size, 50);
+    assert_eq!(
+        slow_local.reason,
+        AdaptiveChunkSizingReason::SlowLocalProcessing
     );
 }
 
