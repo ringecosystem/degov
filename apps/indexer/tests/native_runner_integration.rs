@@ -5,17 +5,18 @@ use std::time::Duration;
 use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
     AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainFamily,
-    ChainIdentityConfig, ChainReadMethod, DaoContractAddresses, DaoEventDecoder, DatalensConfig,
+    ChainIdentityConfig, ChainReadExecutionReport, ChainReadMethod, ChainReadResult,
+    ChainReadValue, ChainTool, DaoContractAddresses, DaoEventDecoder, DatalensConfig,
     DatalensError, DatalensFinality, DatalensLogQueryReader, DatalensLogQueryResult,
     DatasetKeyConfig, GovernanceTokenStandard, InMemoryProposalProjectionRepository,
     InMemoryTimelockProjectionRepository, InMemoryTokenProjectionRepository,
     InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
     IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts, IndexerRunnerOptions,
-    IndexerRunnerStore, IndexerRunnerTransaction, ProposalProjectionBatch,
-    ProposalProjectionContext, ProposalProjectionRepository, QueryLimitConfig, SecretString,
-    TimelockProjectionContext, TimelockProjectionEvent, TimelockProjectionRepository,
-    TimelockProposalLinkContext, TokenProjectionContext, TokenProjectionRepository,
-    VoteProjectionContext, VoteProjectionRepository,
+    IndexerRunnerStore, IndexerRunnerTransaction, PartialChainReadFailureReport,
+    ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionRepository,
+    QueryLimitConfig, SecretString, TimelockProjectionContext, TimelockProjectionEvent,
+    TimelockProjectionRepository, TimelockProposalLinkContext, TokenProjectionContext,
+    TokenProjectionRepository, VoteProjectionContext, VoteProjectionRepository,
 };
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
@@ -159,6 +160,10 @@ fn assert_projected_domains(store: &CapturingStore) {
     assert_eq!(proposal.proposal_id, "42");
     assert_eq!(proposal.title, "Proposal title");
     assert_eq!(proposal.proposal_eta, Some("1234".to_owned()));
+    assert_eq!(proposal.current_state.as_deref(), Some("Queued"));
+    assert_eq!(proposal.quorum, "9000");
+    assert_eq!(proposal.decimals, "18");
+    assert_eq!(proposal.clock_mode, "timestamp");
 
     assert_eq!(
         store.vote_repository.data_metric().votes_weight_for_sum,
@@ -280,6 +285,49 @@ fn native_runner_with_options(
         store,
         DaoEventDecoder,
     )
+    .with_chain_tool(Box::new(ScriptedChainTool))
+}
+
+struct ScriptedChainTool;
+
+impl ChainTool for ScriptedChainTool {
+    fn execute_read_plan(
+        &self,
+        plan: &degov_datalens_indexer::ChainReadPlan,
+    ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        let results = plan
+            .reads
+            .iter()
+            .enumerate()
+            .filter_map(|(read_index, read)| {
+                let value = match read.key.method {
+                    ChainReadMethod::ClockMode => {
+                        ChainReadValue::String("mode=timestamp".to_owned())
+                    }
+                    ChainReadMethod::Decimals => ChainReadValue::Integer("18".to_owned()),
+                    ChainReadMethod::Quorum => ChainReadValue::Integer("9000".to_owned()),
+                    ChainReadMethod::ProposalSnapshot => ChainReadValue::Integer("100".to_owned()),
+                    ChainReadMethod::ProposalDeadline => ChainReadValue::Integer("200".to_owned()),
+                    ChainReadMethod::State => ChainReadValue::Integer("5".to_owned()),
+                    ChainReadMethod::TimelockOperationState => {
+                        ChainReadValue::Integer("3".to_owned())
+                    }
+                    _ => return None,
+                };
+
+                Some(ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value,
+                })
+            })
+            .collect();
+
+        Ok(ChainReadExecutionReport {
+            results,
+            ..ChainReadExecutionReport::default()
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

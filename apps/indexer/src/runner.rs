@@ -6,18 +6,18 @@ use log::{error, info, warn};
 use thiserror::Error;
 
 use crate::{
-    CheckpointBlockRange, CheckpointError, DaoContractAddresses, DaoEventDecodeError, DaoLogSource,
-    DatalensConfig, DatalensError, DatalensLogPage, DatalensLogQueryReader,
-    DatalensQueryErrorClass, DatalensWarmupEffectivenessAggregation,
-    DatalensWarmupEffectivenessLogFields, DecodedDaoEvent, GovernanceTokenStandard,
-    InMemoryProposalProjectionRepository, InMemoryTimelockProjectionRepository,
-    InMemoryTokenProjectionRepository, InMemoryVoteProjectionRepository, IndexerCheckpoint,
-    IndexerCheckpointIdentity, NormalizedEvmLog, ProposalProjectionBatch,
-    ProposalProjectionContext, ProposalProjectionEvent, ProposalProjectionRepository,
-    TimelockProjectionBatch, TimelockProjectionContext, TimelockProjectionEvent,
-    TimelockProjectionRepository, TimelockProposalLinkContext, TokenProjectionBatch,
-    TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository, VoteProjectionBatch,
-    VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
+    ChainReadExecutionReport, ChainReadPlan, ChainTool, CheckpointBlockRange, CheckpointError,
+    DaoContractAddresses, DaoEventDecodeError, DaoLogSource, DatalensConfig, DatalensError,
+    DatalensLogPage, DatalensLogQueryReader, DatalensQueryErrorClass,
+    DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields, DecodedDaoEvent,
+    GovernanceTokenStandard, InMemoryProposalProjectionRepository,
+    InMemoryTimelockProjectionRepository, InMemoryTokenProjectionRepository,
+    InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
+    NormalizedEvmLog, ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionEvent,
+    ProposalProjectionRepository, TimelockProjectionBatch, TimelockProjectionContext,
+    TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
+    TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository,
+    VoteProjectionBatch, VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
     classify_datalens_query_error, datalens_selector_fingerprint, decode_dao_log,
     fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries, plan_next_checkpoint_range,
     project_proposal_events, project_timelock_events_with_proposal_links, project_token_events,
@@ -510,6 +510,7 @@ pub struct IndexerRunner<R, S, D = DaoEventDecoder> {
     decoder: D,
     shutdown_after_chunks: Option<u64>,
     onchain_refresh_tick: Option<Box<dyn IndexerOnchainRefreshTick>>,
+    chain_tool: Option<Box<dyn ChainTool + Send + Sync>>,
 }
 
 pub trait IndexerOnchainRefreshTick: Send {
@@ -585,6 +586,7 @@ where
             decoder,
             shutdown_after_chunks: None,
             onchain_refresh_tick: None,
+            chain_tool: None,
         }
     }
 
@@ -602,6 +604,11 @@ where
 
     pub fn with_onchain_refresh_tick(mut self, tick: Box<dyn IndexerOnchainRefreshTick>) -> Self {
         self.onchain_refresh_tick = Some(tick);
+        self
+    }
+
+    pub fn with_chain_tool(mut self, chain_tool: Box<dyn ChainTool + Send + Sync>) -> Self {
+        self.chain_tool = Some(chain_tool);
         self
     }
 
@@ -1073,7 +1080,7 @@ where
             token: token_events.len(),
             timelock: timelock_events.len(),
         };
-        let proposal = self
+        let mut proposal = self
             .contexts
             .proposal
             .as_ref()
@@ -1081,10 +1088,21 @@ where
             .map(|context| project_proposal_events(context, proposal_events))
             .transpose()
             .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?;
+        if let Some(proposal) = proposal.as_mut()
+            && let Some(report) =
+                self.execute_chain_read_plan("proposal", &proposal.chain_read_plan)?
+        {
+            proposal.apply_chain_read_execution_report(&report);
+        }
+
         let vote = (!vote_events.is_empty())
             .then(|| project_vote_events(&self.contexts.vote, vote_events))
             .transpose()
             .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?;
+        if let Some(vote) = vote.as_ref() {
+            let _ = self.execute_chain_read_plan("vote", &vote.chain_read_plan)?;
+        }
+
         let token_context = TokenProjectionContext {
             from_block: u64::try_from(range.from_block).unwrap_or_default(),
             to_block: u64::try_from(range.to_block).unwrap_or_default(),
@@ -1095,7 +1113,7 @@ where
             .then(|| project_token_events(&token_context, token_events))
             .transpose()
             .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?;
-        let timelock = if let Some(context) = self
+        let mut timelock = if let Some(context) = self
             .contexts
             .timelock
             .as_ref()
@@ -1120,6 +1138,12 @@ where
         } else {
             None
         };
+        if let Some(timelock) = timelock.as_mut()
+            && let Some(report) =
+                self.execute_chain_read_plan("timelock", &timelock.chain_read_plan)?
+        {
+            timelock.apply_chain_read_execution_report(&report);
+        }
 
         Ok(ProjectedChunk {
             batch: IndexerProjectionBatch {
@@ -1130,6 +1154,32 @@ where
             },
             event_counts,
         })
+    }
+
+    fn execute_chain_read_plan(
+        &self,
+        domain: &str,
+        plan: &ChainReadPlan,
+    ) -> Result<Option<ChainReadExecutionReport>, IndexerRunnerError> {
+        if plan.reads.is_empty() {
+            return Ok(None);
+        }
+        let Some(chain_tool) = self.chain_tool.as_ref() else {
+            return Ok(None);
+        };
+
+        match chain_tool.execute_read_plan(plan) {
+            Ok(report) => Ok(Some(report)),
+            Err(failures) if failures.can_commit_projection_writes() => {
+                Ok(Some(ChainReadExecutionReport {
+                    partial_failures: failures,
+                    ..ChainReadExecutionReport::default()
+                }))
+            }
+            Err(failures) => Err(IndexerRunnerError::Projection(format!(
+                "{domain} chain reads failed: {failures:?}"
+            ))),
+        }
     }
 }
 
