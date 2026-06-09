@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use crate::{
     BatchReadPlanConfig, ChainContracts, ChainReadExecutionReport, ChainReadMethod, ChainReadPlan,
     ChainReadPlanBuilder, ChainReadReason, ChainReadValue, DataMetricWrite, DecodedGovernorEvent,
-    NormalizedEvmLog, ProposalCreatedEvent, ProposalExtendedEvent, ProposalQueuedEvent,
-    derive_proposal_metadata,
+    GovernanceTokenStandard, NormalizedEvmLog, ProposalCreatedEvent, ProposalExtendedEvent,
+    ProposalQueuedEvent, derive_proposal_metadata,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -13,6 +13,7 @@ pub struct ProposalProjectionContext {
     pub dao_code: String,
     pub governor_address: String,
     pub contracts: ChainContracts,
+    pub token_standard: GovernanceTokenStandard,
     pub read_plan_config: BatchReadPlanConfig,
 }
 
@@ -529,12 +530,14 @@ pub fn project_proposal_events(
                     vec![event.vote_start.clone()],
                     crate::BlockReadMode::Safe,
                 );
-                builder.add_optional_enrichment_read(
-                    context.contracts.governor_token.clone(),
-                    ChainReadMethod::Decimals,
-                    vec![],
-                    crate::BlockReadMode::Safe,
-                );
+                if context.token_standard == GovernanceTokenStandard::Erc20 {
+                    builder.add_optional_enrichment_read(
+                        context.contracts.governor_token.clone(),
+                        ChainReadMethod::Decimals,
+                        vec![],
+                        crate::BlockReadMode::Safe,
+                    );
+                }
                 proposals
                     .entry(proposal.id.clone())
                     .and_modify(|stored: &mut ProposalWrite| stored.merge(&proposal))

@@ -1,6 +1,8 @@
 use std::{
     collections::BTreeMap,
-    fmt, thread,
+    fmt,
+    sync::{Arc, Mutex},
+    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -13,11 +15,11 @@ use thiserror::Error;
 
 use crate::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadFailure,
-    ChainReadFailureKind, ChainReadMethod, ChainReadMetrics, ChainReadPlan, ChainReadPlanBuilder,
-    ChainReadResult, ChainReadValue, ChainTool, PartialChainReadFailureReport,
-    ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayRelation,
-    ProvisionalDelegatePowerOverlayWrite, ProvisionalPowerOverlayScope,
-    ProvisionalPowerOverlayStore, ReadRequirement,
+    ChainReadFailureKind, ChainReadKey, ChainReadMethod, ChainReadMetrics, ChainReadPlan,
+    ChainReadPlanBuilder, ChainReadResult, ChainReadValue, ChainTool,
+    PartialChainReadFailureReport, ProvisionalContributorPowerOverlayWrite,
+    ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
+    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -965,6 +967,7 @@ where
 pub struct EvmRpcChainTool {
     rpc_url: String,
     client: reqwest::Client,
+    cache: ChainReadCache,
 }
 
 impl EvmRpcChainTool {
@@ -974,7 +977,101 @@ impl EvmRpcChainTool {
             .build()
             .map_err(|error| OnchainRefreshReaderError::new(error.to_string()))?;
 
-        Ok(Self { rpc_url, client })
+        Ok(Self {
+            rpc_url,
+            client,
+            cache: ChainReadCache::default(),
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct ChainReadCache {
+    values: Arc<Mutex<BTreeMap<ChainReadCacheKey, CachedChainReadValue>>>,
+}
+
+impl ChainReadCache {
+    fn get(&self, key: &ChainReadKey) -> Option<ChainReadValue> {
+        let key = ChainReadCacheKey::from_read_key(key)?;
+        let mut values = self.values.lock().ok()?;
+        let cached = values.get(&key)?;
+        if cached.is_expired(&key) {
+            values.remove(&key);
+            return None;
+        }
+        Some(cached.value.clone())
+    }
+
+    fn insert(&self, key: &ChainReadKey, value: ChainReadValue) {
+        let Some(key) = ChainReadCacheKey::from_read_key(key) else {
+            return;
+        };
+        if let Ok(mut values) = self.values.lock() {
+            values.insert(
+                key,
+                CachedChainReadValue {
+                    value,
+                    inserted_at: SystemTime::now(),
+                },
+            );
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CachedChainReadValue {
+    value: ChainReadValue,
+    inserted_at: SystemTime,
+}
+
+impl CachedChainReadValue {
+    fn is_expired(&self, key: &ChainReadCacheKey) -> bool {
+        match key {
+            ChainReadCacheKey::Decimals { .. } => false,
+            ChainReadCacheKey::Quorum { .. } => self
+                .inserted_at
+                .elapsed()
+                .map(|elapsed| elapsed >= QUORUM_CACHE_DURATION)
+                .unwrap_or(true),
+        }
+    }
+}
+
+const QUORUM_CACHE_DURATION: Duration = Duration::from_secs(30 * 60);
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum ChainReadCacheKey {
+    Decimals {
+        chain_id: i32,
+        contract_address: String,
+    },
+    Quorum {
+        chain_id: i32,
+        contract_address: String,
+        args: Vec<String>,
+        block_mode: BlockReadMode,
+    },
+}
+
+impl ChainReadCacheKey {
+    fn from_read_key(key: &ChainReadKey) -> Option<Self> {
+        match key.method {
+            ChainReadMethod::Decimals => Some(Self::Decimals {
+                chain_id: key.chain_id,
+                contract_address: normalize_identifier(&key.contract_address),
+            }),
+            ChainReadMethod::Quorum => Some(Self::Quorum {
+                chain_id: key.chain_id,
+                contract_address: normalize_identifier(&key.contract_address),
+                args: key
+                    .args
+                    .iter()
+                    .map(|arg| normalize_identifier(arg))
+                    .collect(),
+                block_mode: key.block_mode,
+            }),
+            _ => None,
+        }
     }
 }
 
@@ -985,10 +1082,14 @@ impl ChainTool for EvmRpcChainTool {
     ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
         let mut results = Vec::new();
         let mut failures = PartialChainReadFailureReport::default();
+        let mut cache_hits = 0;
 
         for (read_index, read) in plan.reads.iter().enumerate() {
             match self.execute_read(read_index, read) {
-                Ok(result) => results.push(result),
+                Ok((result, cache_hit)) => {
+                    cache_hits += usize::from(cache_hit);
+                    results.push(result);
+                }
                 Err(message) => {
                     let failure = ChainReadFailure {
                         key: read.key.clone(),
@@ -1012,9 +1113,10 @@ impl ChainTool for EvmRpcChainTool {
             metrics: ChainReadMetrics {
                 requested_reads: plan.metrics.requested_reads,
                 deduped_reads: plan.metrics.deduped_reads,
-                executed_rpc_calls: results.len(),
+                executed_rpc_calls: results.len().saturating_sub(cache_hits),
                 multicall_batch_size: plan.metrics.multicall_batch_size,
                 failures: failures.optional_failures.len(),
+                cache_hits,
                 ..ChainReadMetrics::default()
             },
             results,
@@ -1029,20 +1131,37 @@ impl EvmRpcChainTool {
         &self,
         read_index: usize,
         read: &crate::ChainReadRequest,
-    ) -> Result<ChainReadResult, String> {
+    ) -> Result<(ChainReadResult, bool), String> {
         if read.key.method == ChainReadMethod::TimelockOperationState {
-            return self.execute_timelock_operation_state(read_index, read);
+            return self
+                .execute_timelock_operation_state(read_index, read)
+                .map(|result| (result, false));
+        }
+
+        if let Some(value) = self.cache.get(&read.key) {
+            return Ok((
+                ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value,
+                },
+                true,
+            ));
         }
 
         let data = encode_call_data(read.key.method, &read.key.args)?;
         let result = self.eth_call(&read.key.contract_address, &data, read.key.block_mode)?;
         let value = decode_call_value(read.key.method, &result)?;
+        self.cache.insert(&read.key, value.clone());
 
-        Ok(ChainReadResult {
-            read_index,
-            key: read.key.clone(),
-            value,
-        })
+        Ok((
+            ChainReadResult {
+                read_index,
+                key: read.key.clone(),
+                value,
+            },
+            false,
+        ))
     }
 
     fn execute_timelock_operation_state(
@@ -1767,5 +1886,81 @@ mod tests {
             .expect("hex proposal id encodes");
 
         assert_eq!(hex, decimal);
+    }
+
+    #[test]
+    fn test_chain_read_cache_keys_decimals_by_token_and_quorum_by_timepoint() {
+        let cache = ChainReadCache::default();
+        let decimals = ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+            method: ChainReadMethod::Decimals,
+            args: vec![],
+            block_mode: BlockReadMode::Safe,
+        };
+        let same_token_latest = ChainReadKey {
+            block_mode: BlockReadMode::Latest,
+            ..decimals.clone()
+        };
+        let quorum_10 = ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned(),
+            method: ChainReadMethod::Quorum,
+            args: vec!["10".to_owned()],
+            block_mode: BlockReadMode::Safe,
+        };
+        let quorum_11 = ChainReadKey {
+            args: vec!["11".to_owned()],
+            ..quorum_10.clone()
+        };
+
+        cache.insert(&decimals, ChainReadValue::Integer("18".to_owned()));
+        cache.insert(&quorum_10, ChainReadValue::Integer("100".to_owned()));
+
+        assert_eq!(
+            cache.get(&same_token_latest),
+            Some(ChainReadValue::Integer("18".to_owned()))
+        );
+        assert_eq!(cache.get(&quorum_11), None);
+    }
+
+    #[test]
+    fn test_chain_read_cache_expires_quorum_but_not_decimals() {
+        let cache = ChainReadCache::default();
+        let decimals = ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+            method: ChainReadMethod::Decimals,
+            args: vec![],
+            block_mode: BlockReadMode::Safe,
+        };
+        let quorum = ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned(),
+            method: ChainReadMethod::Quorum,
+            args: vec!["10".to_owned()],
+            block_mode: BlockReadMode::Safe,
+        };
+
+        cache.insert(&decimals, ChainReadValue::Integer("18".to_owned()));
+        cache.insert(&quorum, ChainReadValue::Integer("100".to_owned()));
+
+        let expired_at = SystemTime::now() - QUORUM_CACHE_DURATION - Duration::from_secs(1);
+        let mut values = cache.values.lock().expect("cache lock");
+        values
+            .get_mut(&ChainReadCacheKey::from_read_key(&decimals).expect("decimals key"))
+            .expect("decimals value")
+            .inserted_at = expired_at;
+        values
+            .get_mut(&ChainReadCacheKey::from_read_key(&quorum).expect("quorum key"))
+            .expect("quorum value")
+            .inserted_at = expired_at;
+        drop(values);
+
+        assert_eq!(
+            cache.get(&decimals),
+            Some(ChainReadValue::Integer("18".to_owned()))
+        );
+        assert_eq!(cache.get(&quorum), None);
     }
 }

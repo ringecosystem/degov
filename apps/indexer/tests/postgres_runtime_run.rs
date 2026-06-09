@@ -1952,6 +1952,7 @@ fn proposal_projection_context() -> ProposalProjectionContext {
             governor_token: TOKEN.to_owned(),
             timelock: TIMELOCK.to_owned(),
         },
+        token_standard: GovernanceTokenStandard::Erc20,
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
             multicall_batch_size: 10,
@@ -2011,6 +2012,7 @@ fn proposal_projection_context_with_scope(
             governor_token: token.to_owned(),
             timelock: timelock.to_owned(),
         },
+        token_standard: GovernanceTokenStandard::Erc20,
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
             multicall_batch_size: 10,

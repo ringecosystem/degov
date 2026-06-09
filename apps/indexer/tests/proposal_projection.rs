@@ -1,9 +1,10 @@
 use degov_datalens_indexer::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadKey,
-    ChainReadMethod, ChainReadResult, ChainReadValue, DecodedGovernorEvent, NormalizedEvmLog,
-    ProposalCreatedEvent, ProposalExtendedEvent, ProposalIdEvent, ProposalProjectionContext,
-    ProposalProjectionError, ProposalProjectionEvent, ProposalProjectionRepository,
-    ProposalQueuedEvent, ProposalStateWriteKind, ReadRequirement, project_proposal_events,
+    ChainReadMethod, ChainReadResult, ChainReadValue, DecodedGovernorEvent,
+    GovernanceTokenStandard, NormalizedEvmLog, ProposalCreatedEvent, ProposalExtendedEvent,
+    ProposalIdEvent, ProposalProjectionContext, ProposalProjectionError, ProposalProjectionEvent,
+    ProposalProjectionRepository, ProposalQueuedEvent, ProposalStateWriteKind, ReadRequirement,
+    project_proposal_events,
 };
 use serde_json::json;
 
@@ -125,6 +126,44 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
             ChainReadMethod::State,
             ChainReadMethod::Quorum,
         ]
+    );
+}
+
+#[test]
+fn test_project_proposal_created_keeps_erc20_decimals_enrichment_read() {
+    let batch = project_proposal_events(
+        &context_with_token_standard(GovernanceTokenStandard::Erc20),
+        vec![ProposalProjectionEvent {
+            log: log(10, 2, 7),
+            event: proposal_created("42", "# Proposal title\n\nProposal body"),
+        }],
+    )
+    .expect("projection succeeds");
+
+    assert!(batch.chain_read_plan.reads.iter().any(|read| {
+        read.key.method == ChainReadMethod::Decimals
+            && read.requirement == ReadRequirement::Optional
+    }));
+}
+
+#[test]
+fn test_project_proposal_created_skips_erc721_decimals_enrichment_read() {
+    let batch = project_proposal_events(
+        &context_with_token_standard(GovernanceTokenStandard::Erc721),
+        vec![ProposalProjectionEvent {
+            log: log(10, 2, 7),
+            event: proposal_created("42", "# Proposal title\n\nProposal body"),
+        }],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(batch.proposals[0].decimals, "0");
+    assert!(
+        !batch
+            .chain_read_plan
+            .reads
+            .iter()
+            .any(|read| read.key.method == ChainReadMethod::Decimals)
     );
 }
 
@@ -709,6 +748,12 @@ fn test_description_heading_single_newline_and_no_heading() {
 }
 
 fn context() -> ProposalProjectionContext {
+    context_with_token_standard(GovernanceTokenStandard::Erc20)
+}
+
+fn context_with_token_standard(
+    token_standard: GovernanceTokenStandard,
+) -> ProposalProjectionContext {
     ProposalProjectionContext {
         contract_set_id: "dao=unit-dao|chain=1|governor=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|token=0x1111111111111111111111111111111111111111".to_owned(),
         dao_code: "unit-dao".to_owned(),
@@ -718,6 +763,7 @@ fn context() -> ProposalProjectionContext {
             governor_token: "0x1111111111111111111111111111111111111111".to_owned(),
             timelock: "0x2222222222222222222222222222222222222222".to_owned(),
         },
+        token_standard,
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
             multicall_batch_size: 10,

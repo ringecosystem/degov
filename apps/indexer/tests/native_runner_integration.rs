@@ -614,6 +614,7 @@ fn contexts() -> IndexerRunnerContexts {
             dao_code: "demo-dao".to_owned(),
             governor_address: contracts.governor.clone(),
             contracts: contracts.clone(),
+            token_standard: GovernanceTokenStandard::Erc20,
             read_plan_config,
         }),
         timelock: Some(TimelockProjectionContext {

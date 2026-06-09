@@ -614,6 +614,7 @@ fn proposal_context() -> ProposalProjectionContext {
         dao_code: "demo-dao".to_owned(),
         governor_address: "0x1111111111111111111111111111111111111111".to_owned(),
         contracts: contracts("0x2222222222222222222222222222222222222222"),
+        token_standard: GovernanceTokenStandard::Erc20,
         read_plan_config: read_plan_config(),
     }
 }
