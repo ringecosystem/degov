@@ -11,11 +11,11 @@ use crate::{
     DatalensRuntimeContractSet, DatalensWarmupEnsureOutcome, EvmRpcChainTool,
     IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick,
     IndexerRunner, IndexerRunnerReport, IndexerRuntimeConfig, IndexerTargetHeight,
-    MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTickReport,
-    OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshWorker,
-    OnchainRefreshWorkerError, PostgresIndexerRunnerStore, PostgresProvisionalCleanupStore,
-    classify_datalens_query_error, datalens_retry_config, ensure_datalens_warmup_task,
-    onchain_refresh_debounce_from_env, required_env,
+    MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTaskScope,
+    OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
+    OnchainRefreshWorker, OnchainRefreshWorkerError, PostgresIndexerRunnerStore,
+    PostgresProvisionalCleanupStore, classify_datalens_query_error, datalens_retry_config,
+    ensure_datalens_warmup_task, onchain_refresh_debounce_from_env, required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -756,8 +756,8 @@ async fn run_contract_set_pass(
         runtime.target_height
     );
 
-    let onchain_refresh_tick =
-        build_onchain_refresh_tick(&runtime, pool.clone()).map_err(ContractSetPassError::setup)?;
+    let onchain_refresh_tick = build_onchain_refresh_tick(&runtime, &config, pool.clone())
+        .map_err(ContractSetPassError::setup)?;
     let projection_chain_tool =
         build_projection_chain_tool(&runtime, &config).map_err(ContractSetPassError::setup)?;
     let onchain_refresh_debounce =
@@ -843,6 +843,7 @@ fn build_projection_chain_tool(
 
 fn build_onchain_refresh_tick(
     runtime: &IndexerContractSetRuntimeConfig,
+    config: &DatalensConfig,
     pool: sqlx::PgPool,
 ) -> Result<Option<Box<dyn IndexerOnchainRefreshTick>>> {
     if !runtime.onchain_refresh_tick.enabled {
@@ -875,9 +876,20 @@ fn build_onchain_refresh_tick(
     worker_config.lock_owner = format!("degov-indexer-onchain-refresh-tick:{}", std::process::id());
     let worker = OnchainRefreshWorker::new(pool, worker_config, reader)
         .with_current_power_method(refresh_runtime.current_power_method);
+    let chain_id = config.chain.network_id.with_context(|| {
+        format!(
+            "missing onchain refresh tick chain id for dao_code={}",
+            runtime.dao_code
+        )
+    })?;
     let runner = OnchainRefreshWorkerTickRunner {
         worker,
         handle: Handle::current(),
+        scope: OnchainRefreshTaskScope {
+            chain_id,
+            contract_set_id: runtime.checkpoint_contract_set_id.clone(),
+            dao_code: runtime.dao_code.clone(),
+        },
     };
     let tick = IndexerOnchainRefreshWorkerTick {
         scheduler: OnchainRefreshTickScheduler::from_config(runtime.onchain_refresh_tick.clone()),
@@ -909,6 +921,7 @@ where
 struct OnchainRefreshWorkerTickRunner<R> {
     worker: OnchainRefreshWorker<R>,
     handle: Handle,
+    scope: OnchainRefreshTaskScope,
 }
 
 impl<R> OnchainRefreshTickRunner for OnchainRefreshWorkerTickRunner<R>
@@ -921,12 +934,16 @@ where
         &mut self,
         max_tasks: usize,
     ) -> std::result::Result<crate::OnchainRefreshRunReport, Self::Error> {
-        self.handle
-            .block_on(self.worker.run_once_with_batch_size(max_tasks))
+        self.handle.block_on(
+            self.worker
+                .run_once_with_batch_size_for_scope(max_tasks, &self.scope),
+        )
     }
 
     fn backlog(&mut self) -> Option<u64> {
-        self.handle.block_on(self.worker.ready_backlog()).ok()
+        self.handle
+            .block_on(self.worker.ready_backlog_for_scope(&self.scope))
+            .ok()
     }
 }
 

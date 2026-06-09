@@ -40,5 +40,25 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
     .await
     .context("ensure onchain refresh claim queue index")?;
 
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS onchain_refresh_task_scope_claim_queue_idx
+         ON onchain_refresh_task (
+            chain_id, contract_set_id, dao_code, status, next_run_at, updated_at, id
+         )",
+    )
+    .execute(pool)
+    .await
+    .context("ensure scoped onchain refresh claim queue index")?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx
+         ON onchain_refresh_deferred_candidate (
+            chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
+         )",
+    )
+    .execute(pool)
+    .await
+    .context("ensure scoped onchain refresh deferred drain index")?;
+
     Ok(())
 }
