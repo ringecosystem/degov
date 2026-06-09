@@ -774,7 +774,10 @@ async fn run_contract_set_pass(
             client = client.with_query_concurrency_gate(gate);
         }
         let store = PostgresIndexerRunnerStore::new(pool)
-            .with_onchain_refresh_debounce(onchain_refresh_debounce);
+            .with_onchain_refresh_debounce(onchain_refresh_debounce)
+            .with_onchain_refresh_deferred_drain_batch_size(
+                runtime.onchain_refresh_deferred_drain_batch_size,
+            );
         let options = runtime
             .options(&config, &contracts)
             .map_err(ContractSetPassError::setup)?;
@@ -986,6 +989,7 @@ mod tests {
             progress_refresh_lag_blocks: 100,
             adaptive_chunk_sizer: Default::default(),
             onchain_refresh_tick: Default::default(),
+            onchain_refresh_deferred_drain_batch_size: 100,
             provisional: ProvisionalRuntimeConfig {
                 enabled: false,
                 finality: DatalensProvisionalFinality::SafeToLatest,

@@ -455,6 +455,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
         OnchainRefreshWorkerConfig {
             batch_size: 10,
             max_attempts: 3,
+            deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
             lock_ttl: Duration::from_secs(60),
             retry_delay: Duration::from_secs(30),
@@ -523,6 +524,7 @@ async fn test_onchain_refresh_worker_uses_current_votes_checkpoint_source()
         OnchainRefreshWorkerConfig {
             batch_size: 10,
             max_attempts: 3,
+            deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
             lock_ttl: Duration::from_secs(60),
             retry_delay: Duration::from_secs(30),
@@ -564,6 +566,7 @@ async fn test_onchain_refresh_worker_marks_claimed_tasks_failed_when_reader_fail
         OnchainRefreshWorkerConfig {
             batch_size: 10,
             max_attempts: 3,
+            deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
             lock_ttl: Duration::from_secs(60),
             retry_delay: Duration::from_secs(30),
@@ -642,6 +645,7 @@ async fn test_onchain_refresh_worker_rolls_back_when_apply_fails() -> Result<(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
             max_attempts: 3,
+            deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
             lock_ttl: Duration::from_secs(60),
             retry_delay: Duration::from_secs(30),
@@ -720,6 +724,7 @@ async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<()
         OnchainRefreshWorkerConfig {
             batch_size: 10,
             max_attempts: 3,
+            deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
             lock_ttl: Duration::from_secs(60),
             retry_delay: Duration::from_secs(30),
@@ -798,6 +803,7 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
         OnchainRefreshWorkerConfig {
             batch_size: 10,
             max_attempts: 3,
+            deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
             lock_ttl: Duration::from_secs(60),
             retry_delay: Duration::from_secs(30),
@@ -865,6 +871,7 @@ async fn test_onchain_refresh_worker_reschedules_pending_after_lock_with_debounc
         OnchainRefreshWorkerConfig {
             batch_size: 10,
             max_attempts: 3,
+            deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
             lock_ttl: Duration::from_secs(60),
             retry_delay: Duration::from_secs(30),
@@ -1143,6 +1150,7 @@ async fn test_onchain_refresh_worker_fails_only_missing_rpc_chain_group()
         OnchainRefreshWorkerConfig {
             batch_size: 10,
             max_attempts: 3,
+            deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
             lock_ttl: Duration::from_secs(60),
             retry_delay: Duration::from_secs(30),

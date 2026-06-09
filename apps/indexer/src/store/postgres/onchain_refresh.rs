@@ -9,12 +9,13 @@ struct OnchainRefreshEnqueuePlan {
     ready_drain_count: usize,
 }
 
-fn plan_onchain_refresh_enqueue(
+fn plan_onchain_refresh_enqueue_with_drain_budget(
     deduped_count: usize,
     debounce: Duration,
+    deferred_drain_batch_size: usize,
 ) -> OnchainRefreshEnqueuePlan {
     let ready_drain_count = if debounce.is_zero() {
-        deduped_count.min(DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS)
+        deduped_count.min(deferred_drain_batch_size)
     } else {
         0
     };
@@ -30,6 +31,7 @@ async fn upsert_onchain_refresh_tasks(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[PowerReconcileCandidate],
     debounce: Duration,
+    deferred_drain_batch_size: usize,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let original_count = rows.len();
     let mut rows = dedupe_onchain_refresh_tasks(rows)
@@ -42,7 +44,8 @@ async fn upsert_onchain_refresh_tasks(
         row.next_run_at = next_run_at.to_string();
     }
 
-    let plan = plan_onchain_refresh_enqueue(rows.len(), debounce);
+    let plan =
+        plan_onchain_refresh_enqueue_with_drain_budget(rows.len(), debounce, deferred_drain_batch_size);
     for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
         upsert_deferred_onchain_refresh_candidate_chunk(transaction, chunk, now_ms, next_run_at)
             .await?;
@@ -58,12 +61,14 @@ async fn upsert_onchain_refresh_tasks(
     .await?;
 
     log::info!(
-        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} inline_upsert_count={} deferred_count={} rescheduled_materialized_count={} ready_drain_count={} materialized_count={}",
+        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} deduped_duplicate_count={} inline_upsert_count={} deferred_count={} rescheduled_materialized_count={} ready_drain_batch_size={} ready_drain_count={} materialized_count={}",
         original_count,
         rows.len(),
+        original_count.saturating_sub(rows.len()),
         plan.inline_upsert_count,
         plan.deferred_candidate_count,
         rescheduled_count,
+        deferred_drain_batch_size,
         plan.ready_drain_count,
         drained_count
     );
@@ -89,8 +94,9 @@ pub async fn drain_deferred_onchain_refresh_tasks(
 
     if drained_count > 0 {
         log::info!(
-            "onchain refresh deferred drain completed deferred_drain_count={} deferred_drain_duration_ms={}",
+            "onchain refresh deferred drain completed deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_duration_ms={}",
             drained_count,
+            max_rows,
             started_at.elapsed().as_millis()
         );
     }
@@ -610,15 +616,36 @@ mod tests {
 
     #[test]
     fn test_plan_onchain_refresh_enqueue_buffers_dense_candidates() {
-        let debounced = plan_onchain_refresh_enqueue(1_205, Duration::from_secs(120));
+        let debounced = plan_onchain_refresh_enqueue_with_drain_budget(
+            1_205,
+            Duration::from_secs(120),
+            DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
+        );
         assert_eq!(debounced.inline_upsert_count, 0);
         assert_eq!(debounced.deferred_candidate_count, 1_205);
         assert_eq!(debounced.ready_drain_count, 0);
 
-        let immediate = plan_onchain_refresh_enqueue(1_205, Duration::ZERO);
+        let immediate = plan_onchain_refresh_enqueue_with_drain_budget(
+            1_205,
+            Duration::ZERO,
+            DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
+        );
         assert_eq!(immediate.inline_upsert_count, 0);
         assert_eq!(immediate.deferred_candidate_count, 1_205);
         assert_eq!(immediate.ready_drain_count, DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS);
+    }
+
+    #[test]
+    fn test_plan_onchain_refresh_enqueue_uses_configured_ready_drain_budget() {
+        let immediate = plan_onchain_refresh_enqueue_with_drain_budget(
+            1_205,
+            Duration::ZERO,
+            1_000,
+        );
+
+        assert_eq!(immediate.inline_upsert_count, 0);
+        assert_eq!(immediate.deferred_candidate_count, 1_205);
+        assert_eq!(immediate.ready_drain_count, 1_000);
     }
 
     fn candidate(

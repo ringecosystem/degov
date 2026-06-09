@@ -34,6 +34,7 @@ pub struct PostgresIndexerRunnerStore {
     pool: PgPool,
     checkpoint_repository: CheckpointRepository,
     onchain_refresh_debounce: Duration,
+    onchain_refresh_deferred_drain_batch_size: usize,
 }
 
 impl PostgresIndexerRunnerStore {
@@ -42,11 +43,17 @@ impl PostgresIndexerRunnerStore {
             checkpoint_repository: CheckpointRepository::new(pool.clone()),
             pool,
             onchain_refresh_debounce: DEFAULT_ONCHAIN_REFRESH_DEBOUNCE,
+            onchain_refresh_deferred_drain_batch_size: DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
         }
     }
 
     pub fn with_onchain_refresh_debounce(mut self, debounce: Duration) -> Self {
         self.onchain_refresh_debounce = debounce;
+        self
+    }
+
+    pub fn with_onchain_refresh_deferred_drain_batch_size(mut self, batch_size: usize) -> Self {
+        self.onchain_refresh_deferred_drain_batch_size = batch_size;
         self
     }
 
@@ -83,6 +90,8 @@ impl IndexerRunnerStore for PostgresIndexerRunnerStore {
             transaction: Some(transaction),
             checkpoint_repository: self.checkpoint_repository.clone(),
             onchain_refresh_debounce: self.onchain_refresh_debounce,
+            onchain_refresh_deferred_drain_batch_size: self
+                .onchain_refresh_deferred_drain_batch_size,
         })
     }
 
@@ -109,6 +118,7 @@ pub struct PostgresIndexerRunnerTransaction<'a> {
     transaction: Option<Transaction<'a, Postgres>>,
     checkpoint_repository: CheckpointRepository,
     onchain_refresh_debounce: Duration,
+    onchain_refresh_deferred_drain_batch_size: usize,
 }
 
 impl IndexerRunnerTransaction for PostgresIndexerRunnerTransaction<'_> {
@@ -127,6 +137,7 @@ impl IndexerRunnerTransaction for PostgresIndexerRunnerTransaction<'_> {
             transaction,
             batch,
             self.onchain_refresh_debounce,
+            self.onchain_refresh_deferred_drain_batch_size,
         ))
     }
 
@@ -213,6 +224,7 @@ async fn write_projection_batch(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &IndexerProjectionBatch,
     onchain_refresh_debounce: Duration,
+    onchain_refresh_deferred_drain_batch_size: usize,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     if let Some(proposal) = &batch.proposal {
         write_proposal_batch_rows(transaction, proposal).await?;
@@ -244,6 +256,7 @@ async fn write_projection_batch(
             transaction,
             &token.reconcile_plan.candidates,
             onchain_refresh_debounce,
+            onchain_refresh_deferred_drain_batch_size,
         )
         .await?;
     }

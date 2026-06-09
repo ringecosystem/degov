@@ -20,9 +20,7 @@ use crate::{
     PartialChainReadFailureReport, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
-    store::postgres::{
-        DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS, drain_deferred_onchain_refresh_tasks,
-    },
+    store::postgres::drain_deferred_onchain_refresh_tasks,
 };
 
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = 1_000;
@@ -31,6 +29,7 @@ const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = 1_000;
 pub struct OnchainRefreshWorkerConfig {
     pub batch_size: usize,
     pub max_attempts: i32,
+    pub deferred_drain_batch_size: usize,
     pub debounce: Duration,
     pub lock_ttl: Duration,
     pub retry_delay: Duration,
@@ -436,16 +435,17 @@ where
         let started_at = Instant::now();
         let now_ms = unix_time_millis();
         let deferred_drain_started_at = Instant::now();
-        let deferred_drain_count = drain_deferred_onchain_refresh_tasks(
-            &self.pool,
-            DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
-        )
-        .await
-        .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
+        let deferred_drain_batch_size =
+            worker_deferred_drain_batch_size(self.config.deferred_drain_batch_size, batch_size);
+        let deferred_drain_count =
+            drain_deferred_onchain_refresh_tasks(&self.pool, deferred_drain_batch_size)
+                .await
+                .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
         if deferred_drain_count > 0 {
             log::info!(
-                "onchain refresh worker materialized deferred tasks deferred_drain_count={} deferred_drain_duration_ms={}",
+                "onchain refresh worker materialized deferred tasks deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_duration_ms={}",
                 deferred_drain_count,
+                deferred_drain_batch_size,
                 deferred_drain_started_at.elapsed().as_millis()
             );
         }
@@ -780,6 +780,13 @@ where
 
         Ok(())
     }
+}
+
+fn worker_deferred_drain_batch_size(
+    configured_batch_size: usize,
+    claim_batch_size: usize,
+) -> usize {
+    configured_batch_size.max(claim_batch_size)
 }
 
 #[derive(Clone)]
@@ -2646,6 +2653,12 @@ mod tests {
             .expect("hex proposal id encodes");
 
         assert_eq!(hex, decimal);
+    }
+
+    #[test]
+    fn test_worker_deferred_drain_batch_size_tracks_claim_budget() {
+        assert_eq!(worker_deferred_drain_batch_size(100, 1_000), 1_000);
+        assert_eq!(worker_deferred_drain_batch_size(2_000, 1_000), 2_000);
     }
 
     #[test]
