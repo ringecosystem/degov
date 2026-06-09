@@ -673,15 +673,16 @@ impl OnchainRefreshRuntimeConfig {
 
 fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     let defaults = OnchainRefreshTickConfig::default();
+    let max_tasks_per_tick = optional_env_usize("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS")?
+        .unwrap_or(defaults.max_tasks_per_tick);
     let config = OnchainRefreshTickConfig {
         enabled: optional_env_bool("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED")?
             .unwrap_or(defaults.enabled),
-        max_tasks_per_tick: optional_env_usize("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS")?
-            .unwrap_or(defaults.max_tasks_per_tick),
+        max_tasks_per_tick,
         max_tasks_per_run: optional_env_usize(
             "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN",
         )?
-        .unwrap_or(defaults.max_tasks_per_run),
+        .unwrap_or(max_tasks_per_tick),
         max_duration_per_tick: Duration::from_millis(
             optional_env_u64("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS")?
                 .unwrap_or(duration_millis_u64(defaults.max_duration_per_tick)),
