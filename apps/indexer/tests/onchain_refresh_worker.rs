@@ -40,6 +40,7 @@ fn test_onchain_refresh_tick_skips_when_disabled() {
         OnchainRefreshTickConfig {
             enabled: false,
             max_tasks_per_tick: 10,
+            max_tasks_per_run: 10,
             max_duration_per_tick: Duration::from_millis(100),
             min_blocks_between_ticks: 0,
         },
@@ -60,6 +61,7 @@ fn test_onchain_refresh_tick_reports_empty_queue() {
         OnchainRefreshTickConfig {
             enabled: true,
             max_tasks_per_tick: 10,
+            max_tasks_per_run: 10,
             max_duration_per_tick: Duration::from_millis(100),
             min_blocks_between_ticks: 0,
         },
@@ -83,6 +85,7 @@ fn test_onchain_refresh_tick_empty_queue_does_not_advance_schedule() {
         OnchainRefreshTickConfig {
             enabled: true,
             max_tasks_per_tick: 10,
+            max_tasks_per_run: 10,
             max_duration_per_tick: Duration::from_millis(100),
             min_blocks_between_ticks: 10,
         },
@@ -133,6 +136,7 @@ fn test_onchain_refresh_tick_claims_remaining_task_budget_per_call() {
         OnchainRefreshTickConfig {
             enabled: true,
             max_tasks_per_tick: 3,
+            max_tasks_per_run: 3,
             max_duration_per_tick: Duration::from_millis(100),
             min_blocks_between_ticks: 0,
         },
@@ -167,6 +171,7 @@ fn test_onchain_refresh_tick_stops_at_duration_budget_between_single_task_claims
         OnchainRefreshTickConfig {
             enabled: true,
             max_tasks_per_tick: 10,
+            max_tasks_per_run: 10,
             max_duration_per_tick: Duration::from_millis(5),
             min_blocks_between_ticks: 0,
         },
@@ -182,12 +187,48 @@ fn test_onchain_refresh_tick_stops_at_duration_budget_between_single_task_claims
 }
 
 #[test]
+fn test_onchain_refresh_tick_caps_each_runner_call_below_total_task_budget() {
+    let mut runner = ScriptedTickRunner::new([
+        OnchainRefreshRunReport {
+            claimed: 10,
+            completed: 10,
+            failed: 0,
+            ..OnchainRefreshRunReport::default()
+        },
+        OnchainRefreshRunReport {
+            claimed: 10,
+            completed: 10,
+            failed: 0,
+            ..OnchainRefreshRunReport::default()
+        },
+    ]);
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: true,
+            max_tasks_per_tick: 1000,
+            max_tasks_per_run: 10,
+            max_duration_per_tick: Duration::from_millis(100),
+            min_blocks_between_ticks: 0,
+        },
+        FakeTickClock::with_step(Duration::from_millis(60)),
+    );
+
+    let report = scheduler.run_tick(100, &mut runner).expect("tick runs");
+
+    assert_eq!(report.processed, 20);
+    assert!(report.duration_budget_hit);
+    assert!(!report.task_budget_hit);
+    assert_eq!(runner.calls, vec![10, 10]);
+}
+
+#[test]
 fn test_onchain_refresh_tick_failure_does_not_advance_schedule() {
     let mut runner = FailingTickRunner::default();
     let mut scheduler = OnchainRefreshTickScheduler::new(
         OnchainRefreshTickConfig {
             enabled: true,
             max_tasks_per_tick: 10,
+            max_tasks_per_run: 10,
             max_duration_per_tick: Duration::from_millis(100),
             min_blocks_between_ticks: 10,
         },

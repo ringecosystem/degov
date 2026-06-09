@@ -56,6 +56,7 @@ pub struct OnchainRefreshRunReport {
 pub struct OnchainRefreshTickConfig {
     pub enabled: bool,
     pub max_tasks_per_tick: usize,
+    pub max_tasks_per_run: usize,
     pub max_duration_per_tick: Duration,
     pub min_blocks_between_ticks: i64,
 }
@@ -65,6 +66,7 @@ impl Default for OnchainRefreshTickConfig {
         Self {
             enabled: false,
             max_tasks_per_tick: 10,
+            max_tasks_per_run: 10,
             max_duration_per_tick: Duration::from_millis(500),
             min_blocks_between_ticks: 100,
         }
@@ -220,14 +222,15 @@ where
                 break;
             }
 
-            let batch = runner.run_once(remaining)?;
+            let run_budget = remaining.min(self.config.max_tasks_per_run);
+            let batch = runner.run_once(run_budget)?;
             if batch.claimed == 0 {
                 report.skipped =
                     (report.processed == 0).then_some(OnchainRefreshTickSkipReason::EmptyQueue);
                 break;
             }
 
-            let consumed = batch.claimed.min(remaining);
+            let consumed = batch.claimed.min(run_budget);
             let completed = batch.completed.min(consumed);
             let failed = batch.failed.min(consumed.saturating_sub(completed));
             report.processed += consumed;
