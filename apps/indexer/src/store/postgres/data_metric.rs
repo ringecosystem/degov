@@ -17,8 +17,12 @@ async fn write_data_metric_timeline(
         .map(|(contract_set_id, id)| (contract_set_id.as_str(), id.as_str()))
         .collect::<HashSet<_>>();
     let mut delegate_mapping_cache = DelegateMappingCache::default();
+    let mut contributor_ensure_cache = ContributorEnsureCache::default();
     let mut items = Vec::new();
     if let Some(token) = token {
+        contributor_ensure_cache
+            .preload_batch(transaction, token, &inserted_operation_keys)
+            .await?;
         items.extend(token.operations.iter().map(DataMetricTimelineItem::Token));
     }
     if let Some(proposal) = proposal {
@@ -38,8 +42,13 @@ async fn write_data_metric_timeline(
         match item {
             DataMetricTimelineItem::Token(operation) => {
                 if inserted_operation_keys.contains(&token_operation_key(operation)) {
-                    apply_token_operation(transaction, &mut delegate_mapping_cache, operation)
-                        .await?;
+                    apply_token_operation(
+                        transaction,
+                        &mut delegate_mapping_cache,
+                        &mut contributor_ensure_cache,
+                        operation,
+                    )
+                    .await?;
                 }
             }
             DataMetricTimelineItem::Proposal(row) | DataMetricTimelineItem::Vote(row) => {
