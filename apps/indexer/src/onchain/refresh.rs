@@ -1,12 +1,13 @@
 use std::{
     collections::BTreeMap,
-    fmt,
+    fmt, thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use ethabi::{ParamType, Token, decode};
+use ethabi::{ParamType, Token, decode, encode, ethereum_types::U256};
 use serde::Deserialize;
 use serde_json::json;
+use sha3::{Digest, Keccak256};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use thiserror::Error;
 
@@ -963,12 +964,12 @@ where
 #[derive(Clone)]
 pub struct EvmRpcChainTool {
     rpc_url: String,
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
 }
 
 impl EvmRpcChainTool {
     pub fn new(rpc_url: String, timeout: Duration) -> Result<Self, OnchainRefreshReaderError> {
-        let client = reqwest::blocking::Client::builder()
+        let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
             .map_err(|error| OnchainRefreshReaderError::new(error.to_string()))?;
@@ -1029,15 +1030,72 @@ impl EvmRpcChainTool {
         read_index: usize,
         read: &crate::ChainReadRequest,
     ) -> Result<ChainReadResult, String> {
+        if read.key.method == ChainReadMethod::TimelockOperationState {
+            return self.execute_timelock_operation_state(read_index, read);
+        }
+
         let data = encode_call_data(read.key.method, &read.key.args)?;
         let result = self.eth_call(&read.key.contract_address, &data, read.key.block_mode)?;
-        let value = decode_uint256(&result)?;
+        let value = decode_call_value(read.key.method, &result)?;
 
         Ok(ChainReadResult {
             read_index,
             key: read.key.clone(),
-            value: ChainReadValue::Integer(value),
+            value,
         })
+    }
+
+    fn execute_timelock_operation_state(
+        &self,
+        read_index: usize,
+        read: &crate::ChainReadRequest,
+    ) -> Result<ChainReadResult, String> {
+        let operation_id =
+            read.key.args.first().ok_or_else(|| {
+                "missing operation id argument for TimelockOperationState".to_owned()
+            })?;
+        let state = if self.eth_call_bool(
+            &read.key.contract_address,
+            "isOperationDone(bytes32)",
+            operation_id,
+            read.key.block_mode,
+        )? {
+            "3"
+        } else if self.eth_call_bool(
+            &read.key.contract_address,
+            "isOperationReady(bytes32)",
+            operation_id,
+            read.key.block_mode,
+        )? {
+            "2"
+        } else if self.eth_call_bool(
+            &read.key.contract_address,
+            "isOperationPending(bytes32)",
+            operation_id,
+            read.key.block_mode,
+        )? {
+            "1"
+        } else {
+            "0"
+        };
+
+        Ok(ChainReadResult {
+            read_index,
+            key: read.key.clone(),
+            value: ChainReadValue::Integer(state.to_owned()),
+        })
+    }
+
+    fn eth_call_bool(
+        &self,
+        contract_address: &str,
+        signature: &str,
+        operation_id: &str,
+        block_mode: BlockReadMode,
+    ) -> Result<bool, String> {
+        let data = encode_function_call(signature, vec![bytes32_argument(operation_id)?])?;
+        let result = self.eth_call(contract_address, &data, block_mode)?;
+        decode_bool(&result)
     }
 
     fn eth_call(
@@ -1046,41 +1104,55 @@ impl EvmRpcChainTool {
         data: &str,
         block_mode: BlockReadMode,
     ) -> Result<String, String> {
-        let response = self
-            .client
-            .post(&self.rpc_url)
-            .json(&json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "eth_call",
-                "params": [
-                    {
-                        "to": contract_address,
-                        "data": data,
-                    },
-                    block_tag(block_mode),
-                ],
-            }))
-            .send()
-            .map_err(|error| error.to_string())?;
+        let client = self.client.clone();
+        let rpc_url = self.rpc_url.clone();
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_call",
+            "params": [
+                {
+                    "to": contract_address,
+                    "data": data,
+                },
+                block_tag(block_mode),
+            ],
+        });
+        thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())?;
+            runtime.block_on(async move {
+                let response = client
+                    .post(&rpc_url)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|error| error.to_string())?;
 
-        if !response.status().is_success() {
-            return Err(format!(
-                "RPC eth_call failed with HTTP {}",
-                response.status()
-            ));
-        }
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "RPC eth_call failed with HTTP {}",
+                        response.status()
+                    ));
+                }
 
-        let payload = response
-            .json::<JsonRpcResponse>()
-            .map_err(|error| error.to_string())?;
-        if let Some(error) = payload.error {
-            return Err(error.message);
-        }
+                let payload = response
+                    .json::<JsonRpcResponse>()
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if let Some(error) = payload.error {
+                    return Err(error.message);
+                }
 
-        payload
-            .result
-            .ok_or_else(|| "RPC eth_call returned no result".to_owned())
+                payload
+                    .result
+                    .ok_or_else(|| "RPC eth_call returned no result".to_owned())
+            })
+        })
+        .join()
+        .map_err(|_| "RPC eth_call worker thread panicked".to_owned())?
     }
 }
 
@@ -1470,29 +1542,128 @@ fn format_failures(failures: &PartialChainReadFailureReport) -> String {
 }
 
 fn encode_call_data(method: ChainReadMethod, args: &[String]) -> Result<String, String> {
-    let selector = match method {
-        ChainReadMethod::BalanceOf => "0x70a08231",
-        ChainReadMethod::GetVotes => "0x9ab24eb0",
-        ChainReadMethod::CurrentVotes => "0xb58131b0",
-        method => return Err(format!("unsupported onchain refresh method {method:?}")),
+    let (signature, tokens) = match method {
+        ChainReadMethod::CountingMode => ("COUNTING_MODE()", vec![]),
+        ChainReadMethod::ClockMode => ("CLOCK_MODE()", vec![]),
+        ChainReadMethod::Decimals => ("decimals()", vec![]),
+        ChainReadMethod::Delegates => (
+            "delegates(address)",
+            vec![address_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::BalanceOf => (
+            "balanceOf(address)",
+            vec![address_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::GetVotes => (
+            "getVotes(address)",
+            vec![address_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::CurrentVotes => (
+            "getCurrentVotes(address)",
+            vec![address_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::GetPastVotes => (
+            "getPastVotes(address,uint256)",
+            vec![
+                address_argument(required_arg(method, args, 0)?)?,
+                uint_argument(required_arg(method, args, 1)?)?,
+            ],
+        ),
+        ChainReadMethod::GetPriorVotes => (
+            "getPriorVotes(address,uint256)",
+            vec![
+                address_argument(required_arg(method, args, 0)?)?,
+                uint_argument(required_arg(method, args, 1)?)?,
+            ],
+        ),
+        ChainReadMethod::ProposalSnapshot => (
+            "proposalSnapshot(uint256)",
+            vec![uint_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::ProposalDeadline => (
+            "proposalDeadline(uint256)",
+            vec![uint_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::State => (
+            "state(uint256)",
+            vec![uint_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::Quorum => (
+            "quorum(uint256)",
+            vec![uint_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::TimelockEta => (
+            "getTimestamp(bytes32)",
+            vec![bytes32_argument(required_arg(method, args, 0)?)?],
+        ),
+        ChainReadMethod::TimelockOperationState => {
+            return Err("TimelockOperationState uses derived timelock calls".to_owned());
+        }
     };
-    let account = args
-        .first()
-        .ok_or_else(|| format!("missing account argument for {method:?}"))?;
 
-    Ok(format!(
-        "{selector}{}",
-        encode_address_argument(account)?.trim_start_matches("0x")
-    ))
+    encode_function_call(signature, tokens)
 }
 
-fn encode_address_argument(address: &str) -> Result<String, String> {
-    let value = address.trim_start_matches("0x");
-    if value.len() != 40 || !value.chars().all(|character| character.is_ascii_hexdigit()) {
-        return Err(format!("invalid address argument {address}"));
+fn encode_function_call(signature: &str, tokens: Vec<Token>) -> Result<String, String> {
+    let selector = function_selector(signature);
+    let args = encode(&tokens);
+
+    Ok(format!("0x{}{}", hex::encode(selector), hex::encode(args)))
+}
+
+fn function_selector(signature: &str) -> [u8; 4] {
+    let digest = Keccak256::digest(signature.as_bytes());
+    [digest[0], digest[1], digest[2], digest[3]]
+}
+
+fn required_arg<'a>(
+    method: ChainReadMethod,
+    args: &'a [String],
+    index: usize,
+) -> Result<&'a str, String> {
+    args.get(index)
+        .map(String::as_str)
+        .ok_or_else(|| format!("missing argument {index} for {method:?}"))
+}
+
+fn address_argument(address: &str) -> Result<Token, String> {
+    address
+        .parse()
+        .map(Token::Address)
+        .map_err(|error| format!("invalid address argument {address}: {error}"))
+}
+
+fn uint_argument(value: &str) -> Result<Token, String> {
+    let uint = if let Some(hex_value) = value.trim().strip_prefix("0x") {
+        if hex_value.len() > 64
+            || !hex_value
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+        {
+            return Err(format!("invalid uint argument {value}"));
+        }
+        let bytes = hex::decode(format!("{hex_value:0>64}")).map_err(|error| error.to_string())?;
+        U256::from_big_endian(&bytes)
+    } else {
+        U256::from_dec_str(value)
+            .map_err(|error| format!("invalid uint argument {value}: {error}"))?
+    };
+
+    Ok(Token::Uint(uint))
+}
+
+fn bytes32_argument(value: &str) -> Result<Token, String> {
+    let value = value
+        .trim()
+        .strip_prefix("0x")
+        .ok_or_else(|| format!("invalid bytes32 argument {value}"))?;
+    if value.len() != 64 || !value.chars().all(|character| character.is_ascii_hexdigit()) {
+        return Err(format!("invalid bytes32 argument 0x{value}"));
     }
 
-    Ok(format!("{value:0>64}"))
+    hex::decode(value)
+        .map(Token::FixedBytes)
+        .map_err(|error| error.to_string())
 }
 
 fn block_tag(block_mode: BlockReadMode) -> String {
@@ -1521,6 +1692,58 @@ fn decode_uint256(value: &str) -> Result<String, String> {
     }
 }
 
+fn decode_string(value: &str) -> Result<String, String> {
+    let bytes = decode_hex_result(value)?;
+    let tokens = decode(&[ParamType::String], &bytes).map_err(|error| error.to_string())?;
+
+    match tokens.first() {
+        Some(Token::String(value)) => Ok(value.clone()),
+        _ => Err("eth_call result did not decode as string".to_owned()),
+    }
+}
+
+fn decode_bool(value: &str) -> Result<bool, String> {
+    let bytes = decode_hex_result(value)?;
+    let tokens = decode(&[ParamType::Bool], &bytes).map_err(|error| error.to_string())?;
+
+    match tokens.first() {
+        Some(Token::Bool(value)) => Ok(*value),
+        _ => Err("eth_call result did not decode as bool".to_owned()),
+    }
+}
+
+fn decode_address(value: &str) -> Result<String, String> {
+    let bytes = decode_hex_result(value)?;
+    let tokens = decode(&[ParamType::Address], &bytes).map_err(|error| error.to_string())?;
+
+    match tokens.first() {
+        Some(Token::Address(value)) => Ok(format!("0x{}", hex::encode(value.as_bytes()))),
+        _ => Err("eth_call result did not decode as address".to_owned()),
+    }
+}
+
+fn decode_call_value(method: ChainReadMethod, value: &str) -> Result<ChainReadValue, String> {
+    match method {
+        ChainReadMethod::CountingMode | ChainReadMethod::ClockMode => {
+            decode_string(value).map(ChainReadValue::String)
+        }
+        ChainReadMethod::Delegates => decode_address(value).map(ChainReadValue::String),
+        _ => decode_uint256(value).map(ChainReadValue::Integer),
+    }
+}
+
+fn decode_hex_result(value: &str) -> Result<Vec<u8>, String> {
+    let value = value
+        .trim()
+        .strip_prefix("0x")
+        .ok_or_else(|| "eth_call result must be hex".to_owned())?;
+    if value.is_empty() {
+        return Err("eth_call returned empty data".to_owned());
+    }
+
+    hex::decode(value).map_err(|error| error.to_string())
+}
+
 #[derive(Debug, Deserialize)]
 struct JsonRpcResponse {
     result: Option<String>,
@@ -1530,4 +1753,19 @@ struct JsonRpcResponse {
 #[derive(Debug, Deserialize)]
 struct JsonRpcError {
     message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encode_call_data_accepts_hex_uint_arguments() {
+        let decimal = encode_call_data(ChainReadMethod::State, &["42".to_owned()])
+            .expect("decimal proposal id encodes");
+        let hex = encode_call_data(ChainReadMethod::State, &["0x2a".to_owned()])
+            .expect("hex proposal id encodes");
+
+        assert_eq!(hex, decimal);
+    }
 }

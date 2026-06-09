@@ -1119,6 +1119,7 @@ async fn run_indexer_command(
     database_url: &str,
     datalens_endpoint: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let rpc = FakeRpcServer::start();
     let mut child = Command::new(env!("CARGO_BIN_EXE_degov-datalens-indexer"))
         .arg("run")
         .env("DEGOV_INDEXER_DATABASE_URL", database_url)
@@ -1139,6 +1140,7 @@ async fn run_indexer_command(
         .env("DATALENS_GOVERNOR_TOKEN_ADDRESS", TOKEN)
         .env("DATALENS_GOVERNOR_TOKEN_STANDARD", "ERC20")
         .env("DATALENS_TIMELOCK_ADDRESS", TIMELOCK)
+        .env("DEGOV_ONCHAIN_REFRESH_RPC_URL", &rpc.endpoint)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -1178,6 +1180,7 @@ async fn run_indexer_all_contract_sets_command(
     database_url: &str,
     datalens_endpoint: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let rpc = FakeRpcServer::start();
     let chains_json = json!([
         {
             "chainId": 1,
@@ -1224,6 +1227,7 @@ async fn run_indexer_all_contract_sets_command(
         .env("DATALENS_DATASET_NAME", "logs")
         .env("DATALENS_QUERY_BLOCK_RANGE_LIMIT", "10")
         .env("DATALENS_CHAINS_JSON", chains_json)
+        .env("DEGOV_ONCHAIN_REFRESH_RPC_URL", &rpc.endpoint)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -1293,6 +1297,83 @@ impl FakeDatalensServer {
             query_count,
         }
     }
+}
+
+struct FakeRpcServer {
+    endpoint: String,
+}
+
+impl FakeRpcServer {
+    fn start() -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake RPC server");
+        let endpoint = format!("http://{}", listener.local_addr().expect("local addr"));
+
+        thread::spawn(move || {
+            for stream in listener.incoming().take(64).flatten() {
+                handle_rpc_request(stream);
+            }
+        });
+
+        Self { endpoint }
+    }
+}
+
+fn handle_rpc_request(mut stream: TcpStream) {
+    let request = read_http_request(&mut stream);
+    let body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
+    let request_body = serde_json::from_str::<Value>(body).unwrap_or_else(|_| json!({}));
+    let data = request_body
+        .pointer("/params/0/data")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let result = fake_rpc_result(data);
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": request_body.get("id").cloned().unwrap_or_else(|| json!(1)),
+        "result": result,
+    })
+    .to_string();
+    let response = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    stream
+        .write_all(response.as_bytes())
+        .expect("write fake RPC response");
+}
+
+fn fake_rpc_result(data: &str) -> String {
+    let value = if data.starts_with(selector("CLOCK_MODE()").as_str()) {
+        Token::String("mode=blocknumber".to_owned())
+    } else if data.starts_with(selector("decimals()").as_str()) {
+        uint(18)
+    } else if data.starts_with(selector("quorum(uint256)").as_str()) {
+        uint(9000)
+    } else if data.starts_with(selector("proposalSnapshot(uint256)").as_str()) {
+        uint(100)
+    } else if data.starts_with(selector("proposalDeadline(uint256)").as_str()) {
+        uint(200)
+    } else if data.starts_with(selector("state(uint256)").as_str()) {
+        uint(5)
+    } else if data.starts_with(selector("isOperationDone(bytes32)").as_str()) {
+        Token::Bool(true)
+    } else if data.starts_with(selector("isOperationReady(bytes32)").as_str())
+        || data.starts_with(selector("isOperationPending(bytes32)").as_str())
+    {
+        Token::Bool(false)
+    } else {
+        uint(0)
+    };
+
+    format!("0x{}", hex::encode(encode(&[value])))
+}
+
+fn selector(signature: &str) -> String {
+    use sha3::{Digest, Keccak256};
+
+    let digest = Keccak256::digest(signature.as_bytes());
+    format!("0x{}", hex::encode(&digest[..4]))
 }
 
 fn handle_datalens_request(
@@ -1512,8 +1593,8 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
     assert_eq!(proposal.get::<String, _>("vote_end_timestamp"), "200");
     assert_eq!(proposal.get::<String, _>("proposal_eta"), "1234");
     assert_eq!(proposal.get::<String, _>("clock_mode"), "blocknumber");
-    assert_eq!(proposal.get::<String, _>("quorum"), "0");
-    assert_eq!(proposal.get::<String, _>("decimals"), "0");
+    assert_eq!(proposal.get::<String, _>("quorum"), "9000");
+    assert_eq!(proposal.get::<String, _>("decimals"), "18");
     assert_eq!(
         proposal.get::<Option<i32>, _>("metrics_votes_count"),
         Some(1)

@@ -11,7 +11,7 @@ use std::{
 
 use degov_datalens_indexer::{
     BatchReadPlanConfig, BlockReadMode, ChainReadExecutionReport, ChainReadMethod,
-    ChainReadMetrics, ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool,
+    ChainReadMetrics, ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool, EvmRpcChainTool,
     LivePowerOverlayReader, MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue,
     OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
     OnchainRefreshTickClock, OnchainRefreshTickConfig, OnchainRefreshTickRunner,
@@ -208,6 +208,12 @@ fn test_onchain_refresh_tick_failure_does_not_advance_schedule() {
         Some(OnchainRefreshTickSkipReason::EmptyQueue)
     );
     assert_eq!(retry_runner.calls, vec![1]);
+}
+
+#[tokio::test]
+async fn test_evm_rpc_chain_tool_can_be_created_inside_tokio_runtime() {
+    EvmRpcChainTool::new("http://127.0.0.1:1".to_owned(), Duration::from_millis(100))
+        .expect("chain tool construction is runtime safe");
 }
 
 struct TestDatabase {

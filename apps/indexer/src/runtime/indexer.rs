@@ -6,7 +6,7 @@ use sqlx::postgres::PgPoolOptions;
 use tokio::{runtime::Handle, sync::Semaphore, task, time::sleep};
 
 use crate::{
-    DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
+    ChainTool, DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
     DatalensError, DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensQueryErrorClass,
     DatalensRuntimeContractSet, DatalensWarmupEnsureOutcome, EvmRpcChainTool,
     IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick,
@@ -658,6 +658,8 @@ async fn run_contract_set_pass(
 
     let onchain_refresh_tick =
         build_onchain_refresh_tick(&runtime, pool.clone()).map_err(ContractSetPassError::setup)?;
+    let projection_chain_tool =
+        build_projection_chain_tool(&runtime, &config).map_err(ContractSetPassError::setup)?;
 
     task::spawn_blocking(move || -> std::result::Result<_, ContractSetPassError> {
         let mut client = DatalensNativeClient::from_config_with_retry_config(
@@ -683,6 +685,9 @@ async fn run_contract_set_pass(
         if let Some(tick) = onchain_refresh_tick {
             runner = runner.with_onchain_refresh_tick(tick);
         }
+        if let Some(chain_tool) = projection_chain_tool {
+            runner = runner.with_chain_tool(chain_tool);
+        }
         if let Some(chunks) = runtime.max_chunks_per_run {
             runner.request_shutdown_after_chunks(chunks);
         }
@@ -698,6 +703,36 @@ async fn run_contract_set_pass(
             runtime_anyhow::Error::new(error).context("join Datalens indexer runner task"),
         )
     })?
+}
+
+fn build_projection_chain_tool(
+    runtime: &IndexerContractSetRuntimeConfig,
+    config: &DatalensConfig,
+) -> Result<Option<Box<dyn ChainTool + Send + Sync>>> {
+    let Some(chain_id) = config.chain.network_id else {
+        return Ok(None);
+    };
+    let refresh_runtime = OnchainRefreshRuntimeConfig::from_env_for_indexer_tick()
+        .context("load projection chain read runtime")?;
+    let Some(rpc) = refresh_runtime.rpc_chains.get(&chain_id) else {
+        bail!(
+            "missing projection chain read RPC config for dao_code={} chain_id={}",
+            runtime.dao_code,
+            chain_id
+        );
+    };
+    let chain_tool = EvmRpcChainTool::new(
+        rpc.url.expose_secret().to_owned(),
+        refresh_runtime.request_timeout,
+    )
+    .with_context(|| {
+        format!(
+            "create projection RPC ChainTool for dao_code={} chain_id={chain_id}",
+            runtime.dao_code
+        )
+    })?;
+
+    Ok(Some(Box::new(chain_tool)))
 }
 
 fn build_onchain_refresh_tick(
