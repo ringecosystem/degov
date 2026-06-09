@@ -32,6 +32,14 @@ use tokio::time::{sleep, timeout};
 
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
+const DEFAULT_ONCHAIN_REFRESH_DEBOUNCE_MS: i64 = 120_000;
+
+fn onchain_refresh_debounce_ms() -> i64 {
+    env::var("DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(DEFAULT_ONCHAIN_REFRESH_DEBOUNCE_MS)
+}
 
 struct TestDatabase {
     _guard: MutexGuard<'static, ()>,
@@ -814,8 +822,9 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
     assert_eq!(pending.get::<String, _>("status"), "pending");
     assert_eq!(pending.get::<i32, _>("attempts"), 0);
     let pending_next_run_at = pending.get::<String, _>("next_run_at").parse::<i64>()?;
-    assert!(pending_next_run_at >= before + 120_000);
-    assert!(pending_next_run_at <= after + 120_000);
+    let debounce_ms = onchain_refresh_debounce_ms();
+    assert!(pending_next_run_at >= before + debounce_ms);
+    assert!(pending_next_run_at <= after + debounce_ms);
     assert_eq!(pending.get::<String, _>("first_seen_block_number"), "10");
     assert_eq!(pending.get::<String, _>("last_seen_block_number"), "22");
     assert_eq!(
@@ -844,8 +853,8 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
     assert_eq!(inserted.get::<String, _>("last_seen_block_number"), "20");
     assert_eq!(inserted.get::<String, _>("status"), "pending");
     let inserted_next_run_at = inserted.get::<String, _>("next_run_at").parse::<i64>()?;
-    assert!(inserted_next_run_at >= before + 120_000);
-    assert!(inserted_next_run_at <= after + 120_000);
+    assert!(inserted_next_run_at >= before + debounce_ms);
+    assert!(inserted_next_run_at <= after + debounce_ms);
 
     let processing = rows
         .iter()
