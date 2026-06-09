@@ -237,6 +237,9 @@ impl ProposalQueued {
 
 pub(super) fn proposal_id_compat_values(value: &str) -> Vec<String> {
     let mut values = vec![value.to_owned()];
+    if let Some(decimal) = normalize_decimal(value) {
+        push_unique(&mut values, decimal);
+    }
     if let Some(hex) = decimal_to_hex(value) {
         push_unique(&mut values, hex);
     }
@@ -267,13 +270,11 @@ fn normalize_hex(value: &str) -> Option<String> {
 }
 
 fn decimal_to_hex(value: &str) -> Option<String> {
-    let mut digits = value.as_bytes().to_vec();
-    if digits.is_empty() || !digits.iter().all(|byte| byte.is_ascii_digit()) {
-        return None;
+    let decimal = normalize_decimal(value)?;
+    if decimal == "0" {
+        return Some("0x0".to_owned());
     }
-    while digits.len() > 1 && digits.first() == Some(&b'0') {
-        digits.remove(0);
-    }
+    let mut digits = decimal.into_bytes();
 
     let mut hex = Vec::new();
     while !(digits.len() == 1 && digits[0] == b'0') {
@@ -297,6 +298,18 @@ fn decimal_to_hex(value: &str) -> Option<String> {
 
     hex.reverse();
     Some(format!("0x{}", hex.into_iter().collect::<String>()))
+}
+
+fn normalize_decimal(value: &str) -> Option<String> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let trimmed = value.trim_start_matches('0');
+    Some(if trimmed.is_empty() {
+        "0".to_owned()
+    } else {
+        trimmed.to_owned()
+    })
 }
 
 fn hex_to_decimal(value: &str) -> Option<String> {
@@ -565,4 +578,21 @@ pub enum DelegateMappingOrderByInput {
     PowerDesc,
     #[graphql(name = "blockNumber_DESC")]
     BlockNumberDesc,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{graphql_proposal_id, proposal_id_compat_values};
+
+    #[test]
+    fn test_graphql_proposal_id_formats_zero_decimal_as_hex() {
+        assert_eq!(graphql_proposal_id("0"), "0x0");
+        assert_eq!(graphql_proposal_id("000"), "0x0");
+    }
+
+    #[test]
+    fn test_proposal_id_compat_values_include_canonical_zero_forms() {
+        assert_eq!(proposal_id_compat_values("000"), vec!["000", "0", "0x0"]);
+        assert_eq!(proposal_id_compat_values("0x0"), vec!["0x0", "0"]);
+    }
 }

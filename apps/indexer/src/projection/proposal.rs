@@ -41,6 +41,18 @@ pub struct ProposalProjectionBatch {
 
 impl ProposalProjectionBatch {
     pub fn apply_chain_read_execution_report(&mut self, report: &ChainReadExecutionReport) {
+        let block_timestamps = report
+            .results
+            .iter()
+            .filter_map(|result| {
+                if result.key.method != ChainReadMethod::BlockTimestamp {
+                    return None;
+                }
+                let block_number = result.key.args.first()?;
+                let timestamp = chain_read_scalar(&result.value)?;
+                Some(((result.key.chain_id, block_number.clone()), timestamp))
+            })
+            .collect::<BTreeMap<_, _>>();
         let proposal_indexes = self
             .proposals
             .iter()
@@ -69,27 +81,14 @@ impl ProposalProjectionBatch {
 
         for result in results {
             if result.key.method == ChainReadMethod::BlockTimestamp {
-                let Some(block_number) = result.key.args.first() else {
-                    continue;
-                };
-                let Some(timestamp) = chain_read_scalar(&result.value) else {
-                    continue;
-                };
-                for proposal in &mut self.proposals {
-                    if &proposal.vote_start == block_number {
-                        proposal.vote_start_timestamp = timestamp.clone();
-                    }
-                    if &proposal.vote_end == block_number {
-                        proposal.vote_end_timestamp = timestamp.clone();
-                    }
-                }
                 continue;
             }
             if result.key.method == ChainReadMethod::ClockMode {
                 if let Some(value) = chain_read_clock_mode(&result.value) {
                     for proposal in &mut self.proposals {
                         proposal.clock_mode = value.clone();
-                        proposal.block_interval = block_interval(&proposal.clock_mode);
+                        proposal.block_interval =
+                            block_interval(proposal.chain_id, &proposal.clock_mode);
                         proposal.vote_start_timestamp =
                             timepoint_timestamp_for_proposal(proposal, &proposal.vote_start);
                         proposal.vote_end_timestamp =
@@ -148,6 +147,23 @@ impl ProposalProjectionBatch {
                 }
                 _ => {}
             }
+        }
+        apply_block_timestamps(&mut self.proposals, &block_timestamps);
+    }
+}
+
+fn apply_block_timestamps(
+    proposals: &mut [ProposalWrite],
+    block_timestamps: &BTreeMap<(i32, String), String>,
+) {
+    for proposal in proposals {
+        let start_key = (proposal.chain_id, proposal.vote_start.clone());
+        if let Some(timestamp) = block_timestamps.get(&start_key) {
+            proposal.vote_start_timestamp = timestamp.clone();
+        }
+        let end_key = (proposal.chain_id, proposal.vote_end.clone());
+        if let Some(timestamp) = block_timestamps.get(&end_key) {
+            proposal.vote_end_timestamp = timestamp.clone();
         }
     }
 }
@@ -849,7 +865,7 @@ fn proposal_write(
 ) -> ProposalWrite {
     let metadata = derive_proposal_metadata(&event.description);
     let clock_mode = infer_clock_mode(&event.vote_start, &event.vote_end);
-    let block_interval = block_interval(&clock_mode);
+    let block_interval = block_interval(common.chain_id, &clock_mode);
 
     ProposalWrite {
         contract_set_id: common.contract_set_id.clone(),
@@ -1011,6 +1027,7 @@ fn deadline_extension_write(
 fn lifecycle_stub(common: &ProposalEventCommon, proposal_ref: &str, state: &str) -> ProposalWrite {
     let metadata = derive_proposal_metadata("");
     let clock_mode = "blocknumber".to_owned();
+    let block_interval = block_interval(common.chain_id, &clock_mode);
 
     ProposalWrite {
         contract_set_id: common.contract_set_id.clone(),
@@ -1044,7 +1061,7 @@ fn lifecycle_stub(common: &ProposalEventCommon, proposal_ref: &str, state: &str)
         proposal_eta: None,
         queue_ready_at: None,
         queue_expires_at: None,
-        block_interval: Some("12".to_owned()),
+        block_interval,
         clock_mode,
         quorum: "0".to_owned(),
         decimals: "0".to_owned(),
@@ -1383,8 +1400,10 @@ fn estimate_blocknumber_timestamp(
     (estimated >= 0).then(|| estimated.to_string())
 }
 
-fn block_interval(clock_mode: &str) -> Option<String> {
-    (clock_mode == "blocknumber").then(|| "12".to_owned())
+fn block_interval(chain_id: i32, clock_mode: &str) -> Option<String> {
+    const ETHEREUM_MAINNET_CHAIN_ID: i32 = 1;
+
+    (chain_id == ETHEREUM_MAINNET_CHAIN_ID && clock_mode == "blocknumber").then(|| "12".to_owned())
 }
 
 fn timepoint_timestamp_for_proposal(proposal: &ProposalWrite, timepoint: &str) -> String {
