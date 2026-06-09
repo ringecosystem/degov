@@ -297,6 +297,10 @@ mod tests {
             candidate("demo-set", 2, "demo-dao", "0xabc", 10, 20, 1, "transfer"),
             candidate("demo-set", 1, "other-dao", "0xabc", 10, 20, 1, "transfer"),
             candidate("demo-set", 1, "demo-dao", "0xdef", 10, 20, 1, "transfer"),
+            candidate("demo-set", 1, "demo-dao", "0xabc", 10, 20, 1, "transfer")
+                .with_governor("0x3333333333333333333333333333333333333333"),
+            candidate("demo-set", 1, "demo-dao", "0xabc", 10, 20, 1, "transfer")
+                .with_governor_token("0x4444444444444444444444444444444444444444"),
         ];
 
         let deduped = dedupe_onchain_refresh_tasks(&rows);
@@ -348,6 +352,25 @@ mod tests {
                 last_seen_transaction_index: 0,
                 last_seen_log_index: log_index,
             },
+        }
+    }
+
+    trait CandidateTestExt {
+        fn with_governor(self, governor: &str) -> Self;
+        fn with_governor_token(self, governor_token: &str) -> Self;
+    }
+
+    impl CandidateTestExt for PowerReconcileCandidate {
+        fn with_governor(mut self, governor: &str) -> Self {
+            self.governor = governor.to_owned();
+            self.status.governor = governor.to_owned();
+            self
+        }
+
+        fn with_governor_token(mut self, governor_token: &str) -> Self {
+            self.governor_token = governor_token.to_owned();
+            self.status.governor_token = governor_token.to_owned();
+            self
         }
     }
 }
