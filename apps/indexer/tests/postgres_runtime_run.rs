@@ -1193,6 +1193,66 @@ async fn test_postgres_token_reconcile_tasks_dedupe_duplicate_accounts_before_sq
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_deferred_refresh_reschedules_ready_materialized_task()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())
+        .with_onchain_refresh_debounce(Duration::from_secs(120));
+    seed_refresh_task_for_account(&database.pool, DELEGATE, "pending", 0, 0, None, false).await?;
+
+    let before = unix_time_millis_for_test();
+    let token_batch = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000000030-ready-pending-repeat", 30, 0, 1),
+            event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                delegate: DELEGATE.to_owned(),
+                previous_votes: "0".to_owned(),
+                new_votes: "1".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    let after = unix_time_millis_for_test();
+
+    let pending = sqlx::query(
+        "SELECT status, next_run_at::TEXT AS next_run_at
+         FROM onchain_refresh_task
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(pending.get::<String, _>("status"), "pending");
+    let next_run_at = pending.get::<String, _>("next_run_at").parse::<i64>()?;
+    assert!(next_run_at >= before + 120_000);
+    assert!(next_run_at <= after + 120_000);
+
+    let deferred_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
+         FROM onchain_refresh_deferred_candidate
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(deferred_count, 1);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
 -> Result<(), Box<dyn Error>> {
     const DENSE_EVENT_COUNT: usize = 1_205;

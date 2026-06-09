@@ -47,6 +47,9 @@ async fn upsert_onchain_refresh_tasks(
         upsert_deferred_onchain_refresh_candidate_chunk(transaction, chunk, now_ms, next_run_at)
             .await?;
     }
+    let rescheduled_count =
+        reschedule_materialized_onchain_refresh_tasks(transaction, &rows, next_run_at, now_ms)
+            .await?;
     let drained_count = drain_deferred_onchain_refresh_tasks_in_transaction(
         transaction,
         plan.ready_drain_count,
@@ -55,11 +58,12 @@ async fn upsert_onchain_refresh_tasks(
     .await?;
 
     log::info!(
-        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} inline_upsert_count={} deferred_count={} ready_drain_count={} materialized_count={}",
+        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} inline_upsert_count={} deferred_count={} rescheduled_materialized_count={} ready_drain_count={} materialized_count={}",
         original_count,
         rows.len(),
         plan.inline_upsert_count,
         plan.deferred_candidate_count,
+        rescheduled_count,
         plan.ready_drain_count,
         drained_count
     );
@@ -92,6 +96,38 @@ pub async fn drain_deferred_onchain_refresh_tasks(
     }
 
     Ok(drained_count)
+}
+
+async fn reschedule_materialized_onchain_refresh_tasks(
+    transaction: &mut Transaction<'_, Postgres>,
+    rows: &[OnchainRefreshTaskWrite],
+    next_run_at: i64,
+    now_ms: i64,
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
+    if rows.is_empty() {
+        return Ok(0);
+    }
+
+    let mut rescheduled_count = 0;
+    for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
+        let ids = chunk.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
+        let result = sqlx::query(
+            "UPDATE onchain_refresh_task
+             SET next_run_at = GREATEST(next_run_at, $2::NUMERIC(78, 0)),
+                 updated_at = $3::NUMERIC(78, 0)
+             WHERE id = ANY($1)
+               AND status IN ('pending', 'failed')
+               AND next_run_at < $2::NUMERIC(78, 0)",
+        )
+        .bind(&ids)
+        .bind(next_run_at.to_string())
+        .bind(now_ms.to_string())
+        .execute(&mut **transaction)
+        .await?;
+        rescheduled_count += result.rows_affected();
+    }
+
+    Ok(rescheduled_count)
 }
 
 async fn drain_deferred_onchain_refresh_tasks_in_transaction(
