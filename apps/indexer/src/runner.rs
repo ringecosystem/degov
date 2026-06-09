@@ -915,7 +915,7 @@ where
 
         match tick.run_after_chunk(processed_block) {
             Ok(report) => info!(
-                "Datalens indexer onchain refresh tick completed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} processed_block={} processed={} claimed={} completed={} failed={} skipped_reason={} duration_ms={} task_budget_hit={} duration_budget_hit={} backlog={}",
+                "Datalens indexer onchain refresh tick completed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} processed_block={} processed={} claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} cache_hits={} debounced_tasks={} skipped_reason={} duration_ms={} task_budget_hit={} duration_budget_hit={} backlog={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
                 self.options.checkpoint_identity.contract_set_id,
@@ -926,6 +926,12 @@ where
                 report.claimed,
                 report.completed,
                 report.failed,
+                report.skipped_tasks,
+                report.rpc_error_failures,
+                report.validation_failures,
+                report.db_update_failures,
+                report.cache_hits,
+                report.debounced_tasks,
                 report
                     .skipped
                     .map(|reason| reason.to_string())

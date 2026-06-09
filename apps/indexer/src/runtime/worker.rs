@@ -64,6 +64,12 @@ pub async fn run_worker() -> Result<()> {
         let mut poll_claimed = 0;
         let mut poll_completed = 0;
         let mut poll_failed = 0;
+        let mut poll_skipped_tasks = 0;
+        let mut poll_rpc_error_failures = 0;
+        let mut poll_validation_failures = 0;
+        let mut poll_db_update_failures = 0;
+        let mut poll_cache_hits = 0;
+        let mut poll_debounced_tasks = 0;
 
         for _ in 0..runtime.max_batches_per_poll {
             let report = worker
@@ -73,6 +79,12 @@ pub async fn run_worker() -> Result<()> {
             poll_claimed += report.claimed;
             poll_completed += report.completed;
             poll_failed += report.failed;
+            poll_skipped_tasks += report.skipped_tasks;
+            poll_rpc_error_failures += report.rpc_error_failures;
+            poll_validation_failures += report.validation_failures;
+            poll_db_update_failures += report.db_update_failures;
+            poll_cache_hits += report.cache_hits;
+            poll_debounced_tasks += report.debounced_tasks;
 
             if report.claimed == 0 {
                 break;
@@ -80,10 +92,16 @@ pub async fn run_worker() -> Result<()> {
         }
 
         log::info!(
-            "onchain refresh worker pass completed claimed={} completed={} failed={}",
+            "onchain refresh worker pass completed claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} cache_hits={} debounced_tasks={}",
             poll_claimed,
             poll_completed,
-            poll_failed
+            poll_failed,
+            poll_skipped_tasks,
+            poll_rpc_error_failures,
+            poll_validation_failures,
+            poll_db_update_failures,
+            poll_cache_hits,
+            poll_debounced_tasks
         );
 
         if runtime.run_once {

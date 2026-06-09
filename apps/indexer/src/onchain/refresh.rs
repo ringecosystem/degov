@@ -42,6 +42,10 @@ pub struct OnchainRefreshRunReport {
     pub claimed: usize,
     pub completed: usize,
     pub failed: usize,
+    pub skipped_tasks: usize,
+    pub rpc_error_failures: usize,
+    pub validation_failures: usize,
+    pub db_update_failures: usize,
     pub unique_accounts: usize,
     pub rpc_reads_requested: usize,
     pub rpc_reads_deduped: usize,
@@ -100,6 +104,12 @@ pub struct OnchainRefreshTickReport {
     pub claimed: usize,
     pub completed: usize,
     pub failed: usize,
+    pub skipped_tasks: usize,
+    pub rpc_error_failures: usize,
+    pub validation_failures: usize,
+    pub db_update_failures: usize,
+    pub cache_hits: usize,
+    pub debounced_tasks: usize,
     pub duration: Duration,
     pub task_budget_hit: bool,
     pub duration_budget_hit: bool,
@@ -207,6 +217,12 @@ where
             duration: Duration::ZERO,
             task_budget_hit: false,
             duration_budget_hit: false,
+            skipped_tasks: 0,
+            rpc_error_failures: 0,
+            validation_failures: 0,
+            db_update_failures: 0,
+            cache_hits: 0,
+            debounced_tasks: 0,
             skipped: None,
             backlog: None,
         };
@@ -243,6 +259,12 @@ where
             report.claimed += consumed;
             report.completed += completed;
             report.failed += failed;
+            report.skipped_tasks += batch.skipped_tasks;
+            report.rpc_error_failures += batch.rpc_error_failures;
+            report.validation_failures += batch.validation_failures;
+            report.db_update_failures += batch.db_update_failures;
+            report.cache_hits += batch.cache_hits;
+            report.debounced_tasks += batch.debounced_tasks;
         }
 
         report.duration = self.clock.elapsed();
@@ -267,6 +289,12 @@ where
             claimed: 0,
             completed: 0,
             failed: 0,
+            skipped_tasks: 0,
+            rpc_error_failures: 0,
+            validation_failures: 0,
+            db_update_failures: 0,
+            cache_hits: 0,
+            debounced_tasks: 0,
             duration: Duration::ZERO,
             task_budget_hit: false,
             duration_budget_hit: false,
@@ -446,6 +474,7 @@ where
                     let message = error.to_string();
                     self.mark_tasks_failed(&tasks, &message, now_ms).await?;
                     report.failed += tasks.len();
+                    report.rpc_error_failures += tasks.len();
 
                     continue;
                 }
@@ -469,12 +498,14 @@ where
                             let message = error.to_string();
                             self.mark_task_failed(&task.id, &message, now_ms).await?;
                             report.failed += 1;
+                            report.validation_failures += 1;
                         }
                     },
                     None => {
                         self.mark_task_failed(&task.id, "missing reader result", now_ms)
                             .await?;
                         report.failed += 1;
+                        report.validation_failures += 1;
                     }
                 }
             }
@@ -483,6 +514,7 @@ where
                     Ok(batch_report) => {
                         report.completed += batch_report.completed;
                         report.debounced_tasks += batch_report.debounced_tasks;
+                        report.skipped_tasks += batch_report.debounced_tasks;
                         report.data_metric_refreshes += batch_report.data_metric_refreshes;
                     }
                     Err(error) => {
@@ -494,6 +526,7 @@ where
                         self.mark_tasks_failed(&failed_tasks, &message, now_ms)
                             .await?;
                         report.failed += failed_tasks.len();
+                        report.db_update_failures += failed_tasks.len();
                     }
                 }
             }
@@ -503,10 +536,14 @@ where
         report.backlog = self.ready_backlog().await.ok();
 
         log::info!(
-            "onchain refresh batch completed claimed={} completed={} failed={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} duration_ms={} backlog={}",
+            "onchain refresh batch completed claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} duration_ms={} backlog={}",
             report.claimed,
             report.completed,
             report.failed,
+            report.skipped_tasks,
+            report.rpc_error_failures,
+            report.validation_failures,
+            report.db_update_failures,
             report.unique_accounts,
             report.rpc_reads_requested,
             report.rpc_reads_deduped,
@@ -657,7 +694,7 @@ where
         }
 
         Ok(OnchainRefreshApplyBatchReport {
-            completed: successes.len(),
+            completed: successes.len().saturating_sub(debounced_tasks),
             debounced_tasks,
             data_metric_refreshes,
         })

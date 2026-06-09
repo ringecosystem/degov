@@ -659,41 +659,16 @@ async fn apply_delegate_delta(
             .unwrap_or_else(|| "0".to_owned());
     let next_mapping_power = add_signed_decimal(&previous_mapping_power, delta);
 
-    let result = sqlx::query(
-        r#"UPDATE delegate_mapping
-           SET chain_id = $3, dao_code = $4, governor_address = $5, token_address = $6,
-               contract_address = $7, log_index = $8, transaction_index = $9,
-               power = $10::NUMERIC(78, 0), block_number = $11::NUMERIC(78, 0),
-               block_timestamp = $12::NUMERIC(78, 0), transaction_hash = $13
-           WHERE contract_set_id = $1 AND id = $2 AND "to" = $14"#,
-    )
-    .bind(&common.contract_set_id)
-    .bind(delegate_mapping_ref(common, from_delegate))
-    .bind(common.chain_id)
-    .bind(&common.dao_code)
-    .bind(&common.governor_address)
-    .bind(&common.token_address)
-    .bind(&common.contract_address)
-    .bind(u64_to_i32(common.log_index, "delegate_mapping.log_index")?)
-    .bind(u64_to_i32(
-        common.transaction_index,
-        "delegate_mapping.transaction_index",
-    )?)
-    .bind(&next_mapping_power)
-    .bind(&common.block_number)
-    .bind(required_numeric(
-        &common.block_timestamp,
-        "delegate_mapping.block_timestamp",
-    )?)
-    .bind(&common.transaction_hash)
-    .bind(to_delegate)
-    .execute(&mut **transaction)
-    .await?;
-    if result.rows_affected() > 0 {
-        delegate_mapping_cache.set(
+    if previous_mapping_power != "0"
+        || read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, from_delegate)
+            .await?
+            .is_some_and(|mapping| mapping.to == to_delegate)
+    {
+        delegate_mapping_cache.stage(
             common,
             from_delegate,
             Some(DelegateMappingSnapshot {
+                common: common.clone(),
                 from: from_delegate.to_owned(),
                 to: to_delegate.to_owned(),
                 power: next_mapping_power.clone(),
@@ -801,65 +776,18 @@ async fn upsert_delegate_snapshot(
 }
 
 async fn upsert_delegate_mapping(
-    transaction: &mut Transaction<'_, Postgres>,
+    _transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
     common: &TokenEventCommon,
     from: &str,
     to: &str,
     power: &str,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    sqlx::query(
-        r#"INSERT INTO delegate_mapping (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
-            log_index, transaction_index, "from", "to", power, block_number, block_timestamp,
-            transaction_hash
-         )
-         VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
-            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
-         )
-         ON CONFLICT (contract_set_id, id) DO UPDATE
-         SET chain_id = EXCLUDED.chain_id,
-             dao_code = EXCLUDED.dao_code,
-             governor_address = EXCLUDED.governor_address,
-             token_address = EXCLUDED.token_address,
-             contract_address = EXCLUDED.contract_address,
-             log_index = EXCLUDED.log_index,
-             transaction_index = EXCLUDED.transaction_index,
-             "from" = EXCLUDED."from",
-             "to" = EXCLUDED."to",
-             power = EXCLUDED.power,
-             block_number = EXCLUDED.block_number,
-             block_timestamp = EXCLUDED.block_timestamp,
-             transaction_hash = EXCLUDED.transaction_hash"#,
-    )
-    .bind(delegate_mapping_ref(common, from))
-    .bind(&common.contract_set_id)
-    .bind(common.chain_id)
-    .bind(&common.dao_code)
-    .bind(&common.governor_address)
-    .bind(&common.token_address)
-    .bind(&common.contract_address)
-    .bind(u64_to_i32(common.log_index, "delegate_mapping.log_index")?)
-    .bind(u64_to_i32(
-        common.transaction_index,
-        "delegate_mapping.transaction_index",
-    )?)
-    .bind(from)
-    .bind(to)
-    .bind(power)
-    .bind(&common.block_number)
-    .bind(required_numeric(
-        &common.block_timestamp,
-        "delegate_mapping.block_timestamp",
-    )?)
-    .bind(&common.transaction_hash)
-    .execute(&mut **transaction)
-    .await?;
-    delegate_mapping_cache.set(
+    delegate_mapping_cache.stage(
         common,
         from,
         Some(DelegateMappingSnapshot {
+            common: common.clone(),
             from: from.to_owned(),
             to: to.to_owned(),
             power: power.to_owned(),
@@ -870,17 +798,12 @@ async fn upsert_delegate_mapping(
 }
 
 async fn delete_delegate_mapping(
-    transaction: &mut Transaction<'_, Postgres>,
+    _transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
     common: &TokenEventCommon,
     from: &str,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    sqlx::query("DELETE FROM delegate_mapping WHERE contract_set_id = $1 AND id = $2")
-        .bind(&common.contract_set_id)
-        .bind(delegate_mapping_ref(common, from))
-        .execute(&mut **transaction)
-        .await?;
-    delegate_mapping_cache.set(common, from, None);
+    delegate_mapping_cache.stage(common, from, None);
 
     Ok(())
 }
@@ -1007,6 +930,32 @@ struct ContributorEnsureInsert {
 struct ContributorEnsureCache {
     ensured: HashSet<(String, String)>,
     pending_member_count_increments: HashMap<(String, String), TokenEventCommon>,
+    member_count_increments: HashMap<DataMetricIncrementScope, DataMetricIncrement>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct DataMetricIncrementScope {
+    contract_set_id: String,
+    chain_id: i32,
+    dao_code: String,
+    governor_address: String,
+}
+
+impl From<&TokenEventCommon> for DataMetricIncrementScope {
+    fn from(common: &TokenEventCommon) -> Self {
+        Self {
+            contract_set_id: common.contract_set_id.clone(),
+            chain_id: common.chain_id,
+            dao_code: common.dao_code.clone(),
+            governor_address: common.governor_address.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DataMetricIncrement {
+    common: TokenEventCommon,
+    count: i32,
 }
 
 impl ContributorEnsureCache {
@@ -1140,7 +1089,7 @@ impl ContributorEnsureCache {
                 candidate.common.contract_set_id.clone(),
                 candidate.account.clone(),
             )) {
-                increment_member_count(transaction, &common).await?;
+                self.stage_member_count_increment(&common);
             }
             return Ok(());
         }
@@ -1171,6 +1120,28 @@ impl ContributorEnsureCache {
                     .or_insert_with(|| candidate.common.clone());
             }
         }
+    }
+
+    fn stage_member_count_increment(&mut self, common: &TokenEventCommon) {
+        let key = DataMetricIncrementScope::from(common);
+        self.member_count_increments
+            .entry(key)
+            .and_modify(|increment| increment.count += 1)
+            .or_insert_with(|| DataMetricIncrement {
+                common: common.clone(),
+                count: 1,
+            });
+    }
+
+    async fn flush_member_count_increments(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        for (_, increment) in std::mem::take(&mut self.member_count_increments) {
+            increment_member_count_by(transaction, &increment.common, increment.count).await?;
+        }
+
+        Ok(())
     }
 }
 
@@ -1208,14 +1179,22 @@ async fn increment_member_count(
     transaction: &mut Transaction<'_, Postgres>,
     common: &TokenEventCommon,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    increment_member_count_by(transaction, common, 1).await
+}
+
+async fn increment_member_count_by(
+    transaction: &mut Transaction<'_, Postgres>,
+    common: &TokenEventCommon,
+    increment: i32,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO data_metric (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, member_count
          )
-         VALUES ($1, $2, $3, $4, $5, $6, 1)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
-             member_count = COALESCE(data_metric.member_count, 0) + 1",
+             member_count = COALESCE(data_metric.member_count, 0) + EXCLUDED.member_count",
     )
     .bind(data_metric_id(
         common.chain_id,
@@ -1227,6 +1206,7 @@ async fn increment_member_count(
     .bind(&common.dao_code)
     .bind(&common.governor_address)
     .bind(&common.token_address)
+    .bind(increment)
     .execute(&mut **transaction)
     .await?;
 
@@ -1246,8 +1226,9 @@ fn normalize_identifier(value: &str) -> String {
     value.to_ascii_lowercase()
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct DelegateMappingSnapshot {
+    common: TokenEventCommon,
     from: String,
     to: String,
     power: String,
@@ -1256,6 +1237,7 @@ struct DelegateMappingSnapshot {
 #[derive(Debug, Default)]
 struct DelegateMappingCache {
     mappings: HashMap<(String, String), Option<DelegateMappingSnapshot>>,
+    dirty: HashMap<(String, String), Option<DelegateMappingSnapshot>>,
 }
 
 impl DelegateMappingCache {
@@ -1276,11 +1258,104 @@ impl DelegateMappingCache {
         self.mappings.insert(self.key(common, from), snapshot);
     }
 
+    fn stage(
+        &mut self,
+        common: &TokenEventCommon,
+        from: &str,
+        snapshot: Option<DelegateMappingSnapshot>,
+    ) {
+        let key = self.key(common, from);
+        self.mappings.insert(key.clone(), snapshot.clone());
+        self.dirty.insert(key, snapshot);
+    }
+
     fn key(&self, common: &TokenEventCommon, from: &str) -> (String, String) {
         (
             common.contract_set_id.clone(),
             delegate_mapping_ref(common, from),
         )
+    }
+
+    async fn flush(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let dirty = std::mem::take(&mut self.dirty);
+        if dirty.is_empty() {
+            return Ok(());
+        }
+
+        let mut deletes = Vec::new();
+        let mut upserts = Vec::new();
+        for ((contract_set_id, id), snapshot) in dirty {
+            match snapshot {
+                Some(snapshot) => upserts.push(snapshot),
+                None => deletes.push((contract_set_id, id)),
+            }
+        }
+
+        for rows in deletes.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+            let mut query =
+                QueryBuilder::<Postgres>::new("DELETE FROM delegate_mapping WHERE (contract_set_id, id) IN ");
+            query.push_tuples(rows, |mut tuple, (contract_set_id, id)| {
+                tuple.push_bind(contract_set_id).push_bind(id);
+            });
+            query.build().execute(&mut **transaction).await?;
+        }
+
+        for row in upserts {
+            let common = &row.common;
+            sqlx::query(
+                r#"INSERT INTO delegate_mapping (
+                    id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
+                    log_index, transaction_index, "from", "to", power, block_number, block_timestamp,
+                    transaction_hash
+                 )
+                 VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
+                    $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
+                 )
+                 ON CONFLICT (contract_set_id, id) DO UPDATE
+                 SET chain_id = EXCLUDED.chain_id,
+                     dao_code = EXCLUDED.dao_code,
+                     governor_address = EXCLUDED.governor_address,
+                     token_address = EXCLUDED.token_address,
+                     contract_address = EXCLUDED.contract_address,
+                     log_index = EXCLUDED.log_index,
+                     transaction_index = EXCLUDED.transaction_index,
+                     "from" = EXCLUDED."from",
+                     "to" = EXCLUDED."to",
+                     power = EXCLUDED.power,
+                     block_number = EXCLUDED.block_number,
+                     block_timestamp = EXCLUDED.block_timestamp,
+                     transaction_hash = EXCLUDED.transaction_hash"#,
+            )
+            .bind(delegate_mapping_ref(common, &row.from))
+            .bind(&common.contract_set_id)
+            .bind(common.chain_id)
+            .bind(&common.dao_code)
+            .bind(&common.governor_address)
+            .bind(&common.token_address)
+            .bind(&common.contract_address)
+            .bind(u64_to_i32(common.log_index, "delegate_mapping.log_index")?)
+            .bind(u64_to_i32(
+                common.transaction_index,
+                "delegate_mapping.transaction_index",
+            )?)
+            .bind(&row.from)
+            .bind(&row.to)
+            .bind(&row.power)
+            .bind(&common.block_number)
+            .bind(required_numeric(
+                &common.block_timestamp,
+                "delegate_mapping.block_timestamp",
+            )?)
+            .bind(&common.transaction_hash)
+            .execute(&mut **transaction)
+            .await?;
+        }
+
+        Ok(())
     }
 }
 
@@ -1527,6 +1602,7 @@ async fn read_delegate_mapping(
     .await?;
 
     Ok(row.map(|row| DelegateMappingSnapshot {
+        common: common.clone(),
         from: row.get("from"),
         to: row.get("to"),
         power: row.get("power"),
@@ -1922,6 +1998,63 @@ mod token_store_tests {
 
         assert_eq!(first_match.side, RollingSide::To);
         assert!(second_match.is_none());
+    }
+
+    #[test]
+    fn test_delegate_mapping_cache_keeps_only_final_dirty_state_per_account() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let mut cache = DelegateMappingCache::default();
+
+        cache.stage(
+            &common,
+            "0xdelegator",
+            Some(DelegateMappingSnapshot {
+                common: common.clone(),
+                from: "0xdelegator".to_owned(),
+                to: "0xdelegate1".to_owned(),
+                power: "10".to_owned(),
+            }),
+        );
+        cache.stage(
+            &common,
+            "0xdelegator",
+            Some(DelegateMappingSnapshot {
+                common: common.clone(),
+                from: "0xdelegator".to_owned(),
+                to: "0xdelegate2".to_owned(),
+                power: "25".to_owned(),
+            }),
+        );
+
+        assert_eq!(cache.dirty.len(), 1);
+        assert_eq!(
+            cache.get(&common, "0xdelegator"),
+            Some(Some(DelegateMappingSnapshot {
+                common: common.clone(),
+                from: "0xdelegator".to_owned(),
+                to: "0xdelegate2".to_owned(),
+                power: "25".to_owned(),
+            }))
+        );
+    }
+
+    #[test]
+    fn test_contributor_ensure_cache_accumulates_member_count_by_scope() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let other_common = token_common("other-scope", "0xtx2", 11, 6);
+        let mut cache = ContributorEnsureCache::default();
+
+        cache.stage_member_count_increment(&common);
+        cache.stage_member_count_increment(&common);
+        cache.stage_member_count_increment(&other_common);
+
+        assert_eq!(
+            cache.member_count_increments
+                .get(&DataMetricIncrementScope::from(&common))
+                .map(|increment| increment.count),
+            Some(2)
+        );
+        assert_eq!(cache.member_count_increments.len(), 2);
     }
 
     #[test]

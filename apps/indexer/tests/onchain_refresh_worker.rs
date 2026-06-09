@@ -181,6 +181,44 @@ fn test_onchain_refresh_tick_claims_remaining_task_budget_per_call() {
 }
 
 #[test]
+fn test_onchain_refresh_tick_aggregates_outcome_buckets() {
+    let mut runner = ScriptedTickRunner::new([OnchainRefreshRunReport {
+        claimed: 3,
+        completed: 1,
+        failed: 2,
+        skipped_tasks: 1,
+        rpc_error_failures: 1,
+        validation_failures: 1,
+        db_update_failures: 0,
+        cache_hits: 2,
+        debounced_tasks: 1,
+        ..OnchainRefreshRunReport::default()
+    }]);
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: true,
+            max_tasks_per_tick: 3,
+            max_tasks_per_run: 3,
+            max_duration_per_tick: Duration::from_millis(100),
+            min_blocks_between_ticks: 0,
+        },
+        FakeTickClock::default(),
+    );
+
+    let report = scheduler.run_tick(100, &mut runner).expect("tick runs");
+
+    assert_eq!(report.claimed, 3);
+    assert_eq!(report.completed, 1);
+    assert_eq!(report.failed, 2);
+    assert_eq!(report.skipped_tasks, 1);
+    assert_eq!(report.rpc_error_failures, 1);
+    assert_eq!(report.validation_failures, 1);
+    assert_eq!(report.db_update_failures, 0);
+    assert_eq!(report.cache_hits, 2);
+    assert_eq!(report.debounced_tasks, 1);
+}
+
+#[test]
 fn test_onchain_refresh_tick_stops_at_duration_budget_between_single_task_claims() {
     let mut runner = ScriptedTickRunner::new([
         OnchainRefreshRunReport {
@@ -797,7 +835,9 @@ async fn test_onchain_refresh_worker_reschedules_pending_after_lock_with_debounc
     let report = worker.run_once().await?;
     let after = unix_time_millis_for_test();
 
-    assert_eq!(report.completed, 1);
+    assert_eq!(report.completed, 0);
+    assert_eq!(report.debounced_tasks, 1);
+    assert_eq!(report.skipped_tasks, 1);
     let row = sqlx::query(
         "SELECT status, next_run_at::TEXT AS next_run_at, processed_at::TEXT AS processed_at,
                 last_seen_block_number::TEXT AS last_seen_block_number,
