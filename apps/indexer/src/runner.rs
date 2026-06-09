@@ -500,6 +500,8 @@ pub trait IndexerRunnerTransaction {
     ) -> Result<(), Self::Error>;
 
     fn commit(self) -> Result<(), Self::Error>;
+
+    fn rollback(self) -> Result<(), Self::Error>;
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -759,16 +761,26 @@ where
                 .store
                 .begin_transaction()
                 .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
-            transaction
-                .apply_projection_batch(&processing.batch)
-                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
-            transaction
-                .advance_checkpoint(
-                    &self.options.checkpoint_identity,
-                    range.to_block,
-                    Some(effective_target),
-                )
-                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
+            if let Err(error) = transaction.apply_projection_batch(&processing.batch) {
+                return Err(rollback_transaction_after_error(
+                    &checkpoint_identity,
+                    range,
+                    transaction,
+                    error,
+                ));
+            }
+            if let Err(error) = transaction.advance_checkpoint(
+                &self.options.checkpoint_identity,
+                range.to_block,
+                Some(effective_target),
+            ) {
+                return Err(rollback_transaction_after_error(
+                    &checkpoint_identity,
+                    range,
+                    transaction,
+                    error,
+                ));
+            }
             transaction
                 .commit()
                 .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
@@ -1332,6 +1344,38 @@ fn transaction_error(
     IndexerRunnerError::Transaction(error.to_string())
 }
 
+fn rollback_transaction_after_error<T>(
+    identity: &IndexerCheckpointIdentity,
+    range: CheckpointBlockRange,
+    transaction: T,
+    error: impl fmt::Display,
+) -> IndexerRunnerError
+where
+    T: IndexerRunnerTransaction,
+    T::Error: fmt::Display,
+{
+    let message = error.to_string();
+    if let Err(rollback_error) = transaction.rollback() {
+        error!(
+            "Datalens indexer chunk transaction rollback failed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} error={} rollback_error={}",
+            identity.dao_code,
+            identity.chain_id,
+            identity.contract_set_id,
+            identity.stream_id,
+            identity.data_source_version,
+            range.from_block,
+            range.to_block,
+            message,
+            rollback_error
+        );
+        return IndexerRunnerError::Transaction(format!(
+            "{message}; rollback failed: {rollback_error}"
+        ));
+    }
+
+    transaction_error(identity, range, message)
+}
+
 fn range_block_count(range: CheckpointBlockRange) -> u32 {
     range
         .to_block
@@ -1372,6 +1416,8 @@ pub struct InMemoryIndexerRunnerStore {
     token_repository: InMemoryTokenProjectionRepository,
     timelock_repository: InMemoryTimelockProjectionRepository,
     commit_count: u64,
+    rollback_count: u64,
+    apply_failures: VecDeque<String>,
     commit_failures: VecDeque<String>,
 }
 
@@ -1384,6 +1430,8 @@ impl InMemoryIndexerRunnerStore {
             token_repository: InMemoryTokenProjectionRepository::default(),
             timelock_repository: InMemoryTimelockProjectionRepository::default(),
             commit_count: 0,
+            rollback_count: 0,
+            apply_failures: VecDeque::new(),
             commit_failures: VecDeque::new(),
         }
     }
@@ -1394,6 +1442,14 @@ impl InMemoryIndexerRunnerStore {
 
     pub fn commit_count(&self) -> u64 {
         self.commit_count
+    }
+
+    pub fn rollback_count(&self) -> u64 {
+        self.rollback_count
+    }
+
+    pub fn fail_next_apply(&mut self, message: impl Into<String>) {
+        self.apply_failures.push_back(message.into());
     }
 
     pub fn fail_next_commit(&mut self, message: impl Into<String>) {
@@ -1488,6 +1544,9 @@ impl IndexerRunnerTransaction for InMemoryIndexerRunnerTransaction<'_> {
         &mut self,
         batch: &IndexerProjectionBatch,
     ) -> Result<(), Self::Error> {
+        if let Some(message) = self.store.apply_failures.pop_front() {
+            return Err(InMemoryIndexerRunnerStoreError::new(message));
+        }
         if let Some(batch) = &batch.proposal {
             let repository = self
                 .proposal_repository
@@ -1576,6 +1635,11 @@ impl IndexerRunnerTransaction for InMemoryIndexerRunnerTransaction<'_> {
             self.store.checkpoint = Some(checkpoint);
         }
         self.store.commit_count += 1;
+        Ok(())
+    }
+
+    fn rollback(self) -> Result<(), Self::Error> {
+        self.store.rollback_count += 1;
         Ok(())
     }
 }

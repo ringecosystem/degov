@@ -244,6 +244,30 @@ fn test_runner_keeps_checkpoint_unchanged_when_transaction_fails() {
 }
 
 #[test]
+fn test_runner_rolls_back_when_projection_write_fails() {
+    let tick_blocks = Arc::new(Mutex::new(Vec::new()));
+    let tick = RecordingOnchainRefreshTick {
+        blocks: Arc::clone(&tick_blocks),
+    };
+    let mut runner =
+        runner(vec![vec![row(1, 0, 0)]], ScriptedDecoder).with_onchain_refresh_tick(Box::new(tick));
+    runner
+        .store_mut()
+        .fail_next_apply("projection write failed");
+
+    let error = runner.run_to_target(1).expect_err("projection write fails");
+
+    assert!(error.to_string().contains("projection write failed"));
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        1
+    );
+    assert_eq!(runner.store().commit_count(), 0);
+    assert_eq!(runner.store().rollback_count(), 1);
+    assert_eq!(*tick_blocks.lock().expect("tick blocks"), Vec::<i64>::new());
+}
+
+#[test]
 fn test_runner_runs_onchain_refresh_tick_after_chunk_commit() {
     let tick_blocks = Arc::new(Mutex::new(Vec::new()));
     let tick = RecordingOnchainRefreshTick {

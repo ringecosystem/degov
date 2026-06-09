@@ -158,6 +158,15 @@ impl IndexerRunnerTransaction for PostgresIndexerRunnerTransaction<'_> {
 
         block_on_runtime(transaction.commit()).map_err(PostgresIndexerRunnerStoreError::from)
     }
+
+    fn rollback(mut self) -> Result<(), Self::Error> {
+        let transaction = self
+            .transaction
+            .take()
+            .ok_or_else(|| PostgresIndexerRunnerStoreError::new("transaction is closed"))?;
+
+        block_on_runtime(transaction.rollback()).map_err(PostgresIndexerRunnerStoreError::from)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

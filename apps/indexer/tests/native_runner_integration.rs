@@ -528,6 +528,10 @@ impl IndexerRunnerTransaction for CapturingTransaction<'_> {
 
         Ok(())
     }
+
+    fn rollback(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
