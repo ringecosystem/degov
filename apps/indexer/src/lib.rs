@@ -140,5 +140,6 @@ pub use runtime_config::{
     IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerRuntimeConfig,
     IndexerTargetHeight, OnchainRefreshRpcChainConfig, OnchainRefreshRuntimeConfig,
     ProvisionalRuntimeConfig, datalens_retry_config, onchain_refresh_debounce_from_env,
-    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value, required_env,
+    onchain_refresh_deferred_drain_batch_size_from_env, onchain_refresh_worker_enabled,
+    parse_bool_env_value, parse_i64_env_value, required_env,
 };

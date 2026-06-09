@@ -11,6 +11,7 @@ use crate::{
     IndexerCheckpointIdentity, IndexerRunnerContexts, IndexerRunnerOptions,
     OnchainRefreshTickConfig, OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString,
     TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
+    store::postgres::DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -150,6 +151,7 @@ pub struct IndexerRuntimeConfig {
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+    pub onchain_refresh_deferred_drain_batch_size: usize,
     pub provisional: ProvisionalRuntimeConfig,
 }
 
@@ -240,6 +242,7 @@ pub struct IndexerContractSetRuntimeConfig {
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub max_chunks_per_run: Option<u64>,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+    pub onchain_refresh_deferred_drain_batch_size: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -339,6 +342,8 @@ impl IndexerRuntimeConfig {
             .unwrap_or(100),
             adaptive_chunk_sizer: load_adaptive_chunk_sizer_runtime_config()?,
             onchain_refresh_tick: load_onchain_refresh_tick_config()?,
+            onchain_refresh_deferred_drain_batch_size:
+                onchain_refresh_deferred_drain_batch_size_from_env()?,
             provisional: ProvisionalRuntimeConfig::from_env()?,
             poll_interval,
             run_once,
@@ -407,6 +412,8 @@ impl IndexerRuntimeConfig {
             adaptive_chunk_sizer: self.adaptive_chunk_sizer,
             max_chunks_per_run: self.max_chunks_per_run,
             onchain_refresh_tick: self.onchain_refresh_tick.clone(),
+            onchain_refresh_deferred_drain_batch_size: self
+                .onchain_refresh_deferred_drain_batch_size,
         };
 
         Ok(runtime
@@ -474,6 +481,8 @@ impl IndexerContractSetRuntimeConfig {
             adaptive_chunk_sizer: self
                 .adaptive_chunk_sizer
                 .for_block_range_limit(config.query_limits.block_range_limit),
+            onchain_refresh_deferred_drain_batch_size: self
+                .onchain_refresh_deferred_drain_batch_size,
         })
     }
 
@@ -533,6 +542,7 @@ pub struct OnchainRefreshRuntimeConfig {
     pub batch_size: usize,
     pub max_attempts: i32,
     pub max_batches_per_poll: usize,
+    pub deferred_drain_batch_size: usize,
     pub poll_interval: Duration,
     pub run_once: bool,
     pub debounce: Duration,
@@ -595,6 +605,7 @@ impl OnchainRefreshRuntimeConfig {
         if max_batches_per_poll == 0 {
             bail!("DEGOV_ONCHAIN_REFRESH_MAX_BATCHES_PER_POLL must be greater than zero");
         }
+        let deferred_drain_batch_size = onchain_refresh_deferred_drain_batch_size_from_env()?;
 
         let poll_interval = Duration::from_millis(
             optional_env_u64("DEGOV_ONCHAIN_REFRESH_POLL_INTERVAL_MS")?.unwrap_or(10_000),
@@ -638,6 +649,7 @@ impl OnchainRefreshRuntimeConfig {
             batch_size,
             max_attempts,
             max_batches_per_poll,
+            deferred_drain_batch_size,
             poll_interval,
             run_once,
             debounce,
@@ -663,6 +675,7 @@ impl OnchainRefreshRuntimeConfig {
         OnchainRefreshWorkerConfig {
             batch_size: self.batch_size,
             max_attempts: self.max_attempts,
+            deferred_drain_batch_size: self.deferred_drain_batch_size,
             debounce: self.debounce,
             lock_ttl: self.lock_ttl,
             retry_delay: self.retry_delay,
@@ -1079,6 +1092,16 @@ pub fn onchain_refresh_debounce_from_env() -> Result<Duration> {
     Ok(Duration::from_millis(
         optional_env_u64("DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS")?.unwrap_or(120_000),
     ))
+}
+
+pub fn onchain_refresh_deferred_drain_batch_size_from_env() -> Result<usize> {
+    let batch_size = optional_env_usize("DEGOV_ONCHAIN_REFRESH_DEFERRED_DRAIN_BATCH_SIZE")?
+        .unwrap_or(DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS);
+    if batch_size == 0 {
+        bail!("DEGOV_ONCHAIN_REFRESH_DEFERRED_DRAIN_BATCH_SIZE must be greater than zero");
+    }
+
+    Ok(batch_size)
 }
 
 fn parse_current_power_method(value: &str) -> Result<ChainReadMethod> {

@@ -65,6 +65,45 @@ fn test_onchain_refresh_runtime_config_accepts_debounce_override() {
 }
 
 #[test]
+fn test_onchain_refresh_runtime_config_accepts_deferred_drain_batch_override() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            (
+                "DEGOV_ONCHAIN_REFRESH_DEFERRED_DRAIN_BATCH_SIZE",
+                Some("1000"),
+            ),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.deferred_drain_batch_size, 1000);
+            assert_eq!(config.worker_config().deferred_drain_batch_size, 1000);
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_rejects_zero_deferred_drain_batch() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            ("DEGOV_ONCHAIN_REFRESH_DEFERRED_DRAIN_BATCH_SIZE", Some("0")),
+        ],
+        || {
+            let error = OnchainRefreshRuntimeConfig::from_env()
+                .expect_err("zero deferred drain batch is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_ONCHAIN_REFRESH_DEFERRED_DRAIN_BATCH_SIZE")
+            );
+        },
+    );
+}
+
+#[test]
 fn test_parse_bool_env_value_accepts_runtime_flag_values() {
     assert!(parse_bool_env_value("DEGOV_INDEXER_RUN_ONCE", "yes").expect("yes parses"));
     assert!(!parse_bool_env_value("DEGOV_INDEXER_RUN_ONCE", "0").expect("0 parses"));
@@ -599,6 +638,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_batch_size: 100,
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
             finality: DatalensProvisionalFinality::SafeToLatest,
@@ -679,6 +719,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_batch_size: 100,
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
             finality: DatalensProvisionalFinality::SafeToLatest,
@@ -719,6 +760,7 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_batch_size: 100,
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
             finality: DatalensProvisionalFinality::SafeToLatest,

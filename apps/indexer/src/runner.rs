@@ -26,7 +26,6 @@ use crate::{
 
 use crate::OnchainRefreshTickReport;
 use crate::checkpoint::configured_range_progress;
-use crate::store::postgres::DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS;
 
 #[derive(Clone, Debug)]
 pub struct IndexerRunnerOptions {
@@ -37,6 +36,7 @@ pub struct IndexerRunnerOptions {
     pub safe_height: Option<i64>,
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerConfig,
+    pub onchain_refresh_deferred_drain_batch_size: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -786,10 +786,9 @@ where
                 .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             let write_duration = write_started_at.elapsed();
             let deferred_drain_started_at = Instant::now();
-            let deferred_drain_count = match self
-                .store
-                .drain_deferred_onchain_refresh_tasks(DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS)
-            {
+            let deferred_drain_count = match self.store.drain_deferred_onchain_refresh_tasks(
+                self.options.onchain_refresh_deferred_drain_batch_size,
+            ) {
                 Ok(count) => count,
                 Err(error) => {
                     warn!(
@@ -828,7 +827,7 @@ where
                 self.options.progress_refresh_lag_blocks,
             );
             info!(
-                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={} adaptive_cache_full_hit_count={} adaptive_cache_partial_hit_count={} adaptive_cache_miss_count={} adaptive_cache_provider_fill_range_count={} adaptive_query_duration_max_ms={} onchain_refresh_deferred_drain_count={} onchain_refresh_deferred_drain_duration_ms={}",
+                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={} adaptive_cache_full_hit_count={} adaptive_cache_partial_hit_count={} adaptive_cache_miss_count={} adaptive_cache_provider_fill_range_count={} adaptive_query_duration_max_ms={} onchain_refresh_deferred_drain_batch_size={} onchain_refresh_deferred_drain_count={} onchain_refresh_deferred_drain_duration_ms={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
                 self.options.checkpoint_identity.contract_set_id,
@@ -876,6 +875,7 @@ where
                         .warmup_effectiveness
                         .query_duration_max_ms()
                 ),
+                self.options.onchain_refresh_deferred_drain_batch_size,
                 deferred_drain_count,
                 deferred_drain_duration.as_millis()
             );
@@ -1417,6 +1417,7 @@ pub struct InMemoryIndexerRunnerStore {
     timelock_repository: InMemoryTimelockProjectionRepository,
     commit_count: u64,
     rollback_count: u64,
+    deferred_drain_requests: Vec<usize>,
     apply_failures: VecDeque<String>,
     commit_failures: VecDeque<String>,
 }
@@ -1431,6 +1432,7 @@ impl InMemoryIndexerRunnerStore {
             timelock_repository: InMemoryTimelockProjectionRepository::default(),
             commit_count: 0,
             rollback_count: 0,
+            deferred_drain_requests: Vec::new(),
             apply_failures: VecDeque::new(),
             commit_failures: VecDeque::new(),
         }
@@ -1446,6 +1448,10 @@ impl InMemoryIndexerRunnerStore {
 
     pub fn rollback_count(&self) -> u64 {
         self.rollback_count
+    }
+
+    pub fn deferred_drain_requests(&self) -> &[usize] {
+        &self.deferred_drain_requests
     }
 
     pub fn fail_next_apply(&mut self, message: impl Into<String>) {
@@ -1525,6 +1531,14 @@ impl IndexerRunnerStore for InMemoryIndexerRunnerStore {
             ));
         }
         Ok(links)
+    }
+
+    fn drain_deferred_onchain_refresh_tasks(
+        &mut self,
+        max_rows: usize,
+    ) -> Result<usize, Self::Error> {
+        self.deferred_drain_requests.push(max_rows);
+        Ok(0)
     }
 }
 
