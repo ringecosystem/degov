@@ -413,6 +413,7 @@ fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bound
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", None),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN", None),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS", None),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS", None),
         ],
@@ -425,6 +426,7 @@ fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bound
             );
             assert!(!config.onchain_refresh_tick.enabled);
             assert_eq!(config.onchain_refresh_tick.max_tasks_per_tick, 10);
+            assert_eq!(config.onchain_refresh_tick.max_tasks_per_run, 10);
             assert_eq!(
                 config.onchain_refresh_tick.max_duration_per_tick,
                 Duration::from_millis(500)
@@ -443,6 +445,10 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", Some("true")),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", Some("3")),
             (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN",
+                Some("2"),
+            ),
+            (
                 "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS",
                 Some("25"),
             ),
@@ -453,6 +459,7 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
 
             assert!(config.onchain_refresh_tick.enabled);
             assert_eq!(config.onchain_refresh_tick.max_tasks_per_tick, 3);
+            assert_eq!(config.onchain_refresh_tick.max_tasks_per_run, 2);
             assert_eq!(
                 config.onchain_refresh_tick.max_duration_per_tick,
                 Duration::from_millis(25)
@@ -463,7 +470,7 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
 }
 
 #[test]
-fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_budget() {
+fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_total_budget() {
     temp_env::with_vars(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
@@ -478,6 +485,30 @@ fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_budget(
                 error
                     .to_string()
                     .contains("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS")
+            );
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_run_budget() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", Some("true")),
+            (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN",
+                Some("0"),
+            ),
+        ],
+        || {
+            let error = IndexerRuntimeConfig::from_env().expect_err("zero run budget is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN")
             );
         },
     );
