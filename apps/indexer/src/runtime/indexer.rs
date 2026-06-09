@@ -1467,6 +1467,96 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_recovering_contract_set_jobs_do_not_hold_permit_after_datalens_timeout() {
+        #[derive(Clone, Copy)]
+        enum ScriptedJob {
+            Timeout,
+            Pending,
+        }
+
+        let timeout_attempts = Arc::new(AtomicUsize::new(0));
+        let pending_started = Arc::new(AtomicUsize::new(0));
+        let timeout_failed = Arc::new(tokio::sync::Notify::new());
+        let jobs = vec![
+            ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: ScriptedJob::Timeout,
+            },
+            ContractSetConcurrencyJob {
+                chain_id: 2,
+                contract_set: ScriptedJob::Pending,
+            },
+        ];
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            run_recovering_contract_set_jobs(
+                jobs,
+                crate::ContractSetConcurrencyLimit::Limited(1),
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                {
+                    let timeout_attempts = timeout_attempts.clone();
+                    let pending_started = pending_started.clone();
+                    let timeout_failed = timeout_failed.clone();
+                    move |job, permit_scope| {
+                        let timeout_attempts = timeout_attempts.clone();
+                        let pending_started = pending_started.clone();
+                        let timeout_failed = timeout_failed.clone();
+                        async move {
+                            run_recovering_contract_set_pass_loop(
+                                "dao_code=ens-dao chain_id=1 contract_set_id=ens",
+                                Duration::from_secs(60),
+                                move || {
+                                    let permit_scope = permit_scope.clone();
+                                    let timeout_attempts = timeout_attempts.clone();
+                                    let pending_started = pending_started.clone();
+                                    let timeout_failed = timeout_failed.clone();
+                                    async move {
+                                        if matches!(job, ScriptedJob::Pending) {
+                                            timeout_failed.notified().await;
+                                        }
+                                        let _permits = permit_scope
+                                            .acquire()
+                                            .await
+                                            .map_err(ContractSetPassError::setup)?;
+                                        match job {
+                                            ScriptedJob::Timeout => {
+                                                timeout_attempts.fetch_add(1, Ordering::SeqCst);
+                                                timeout_failed.notify_one();
+                                                Err(ContractSetPassError::runner(
+                                                    runtime_anyhow::anyhow!(
+                                                        crate::DatalensError::Query(
+                                                            "Datalens query timed out after 60s"
+                                                                .to_owned()
+                                                        )
+                                                    ),
+                                                ))
+                                            }
+                                            ScriptedJob::Pending => {
+                                                pending_started.fetch_add(1, Ordering::SeqCst);
+                                                Ok(())
+                                            }
+                                        }
+                                    }
+                                },
+                                |_| async {
+                                    std::future::pending::<()>().await;
+                                },
+                            )
+                            .await
+                        }
+                    }
+                },
+            ),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(timeout_attempts.load(Ordering::SeqCst), 1);
+        assert_eq!(pending_started.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn test_recovering_contract_set_jobs_unlimited_runs_every_job_without_permit_wait() {
         let started = Arc::new(AtomicUsize::new(0));
         let jobs = (0..5)

@@ -15,7 +15,10 @@ use degov_datalens_indexer::{
     SecretString, ServiceReadiness, classify_datalens_query_error, plan_dao_log_queries,
     verify_datalens_service,
 };
-use std::sync::mpsc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    mpsc,
+};
 
 struct MockDatalensReader {
     readiness: Result<ServiceReadiness, DatalensError>,
@@ -371,6 +374,57 @@ fn test_datalens_log_query_rejects_new_client_while_sdk_query_is_still_in_flight
     );
     let requests = server.join();
     assert_eq!(requests.len(), 1);
+}
+
+#[test]
+fn test_datalens_log_query_times_out_while_waiting_for_query_gate() {
+    let mut config = datalens_config("http://127.0.0.1:9", DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(50);
+    let gate = DatalensQueryConcurrencyGate::new(DatalensQueryConcurrencyConfig {
+        global_max_in_flight: Some(1),
+        per_chain_max_in_flight: None,
+    })
+    .expect("gate");
+    let held_permit = gate
+        .acquire(&DatalensQueryConcurrencyKey::from_config(&config))
+        .expect("held permit");
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("client")
+            .with_query_concurrency_gate(gate);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+    let (sender, receiver) = mpsc::channel();
+
+    let handle = thread::spawn(move || {
+        let started_at = std::time::Instant::now();
+        let error = client
+            .query_logs(plans[0].input.clone())
+            .expect_err("query gate wait times out");
+        sender
+            .send((started_at.elapsed(), error.to_string()))
+            .expect("send timeout result");
+    });
+
+    let result = receiver.recv_timeout(Duration::from_millis(200));
+    drop(held_permit);
+    handle.join().expect("query thread joins");
+    let (elapsed, error) = result.expect("query should timeout while waiting for gate");
+    assert!(
+        elapsed < Duration::from_millis(150),
+        "query gate wait should be bounded by the configured timeout"
+    );
+    assert!(
+        error.contains("Datalens query timed out after 50ms"),
+        "{error}"
+    );
+    assert!(
+        error.contains("waiting for query concurrency permit"),
+        "{error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&error),
+        DatalensQueryErrorClass::Transient
+    );
 }
 
 #[test]
@@ -745,9 +799,12 @@ fn addresses() -> DaoContractAddresses {
 }
 
 fn datalens_config(endpoint: &str, finality: DatalensFinality) -> DatalensConfig {
+    static NEXT_APPLICATION_ID: AtomicUsize = AtomicUsize::new(0);
+    let application_id = NEXT_APPLICATION_ID.fetch_add(1, Ordering::SeqCst);
+
     DatalensConfig {
         endpoint: endpoint.to_owned(),
-        application: "degov-test".to_owned(),
+        application: format!("degov-test-{application_id}"),
         bearer_token: SecretString::new("unit-test-redacted-value"),
         timeout: Duration::from_secs(5),
         finality,
