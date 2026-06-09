@@ -131,6 +131,11 @@ struct DatalensQueryConcurrencyGateState {
     per_chain_in_flight: HashMap<DatalensQueryConcurrencyKey, usize>,
 }
 
+enum DatalensQueryConcurrencyAcquire {
+    Acquired(Option<DatalensQueryConcurrencyPermit>),
+    TimedOut,
+}
+
 pub struct DatalensQueryConcurrencyPermit {
     gate: DatalensQueryConcurrencyGate,
     key: DatalensQueryConcurrencyKey,
@@ -155,13 +160,84 @@ impl DatalensQueryConcurrencyGate {
         &self,
         key: &DatalensQueryConcurrencyKey,
     ) -> Result<DatalensQueryConcurrencyPermit, DatalensError> {
+        self.acquire_with_deadline(key, None).map(|permit| {
+            permit.expect("unbounded query concurrency gate acquire does not time out")
+        })
+    }
+
+    fn acquire_timeout(
+        &self,
+        key: &DatalensQueryConcurrencyKey,
+        timeout: Duration,
+    ) -> Result<Option<DatalensQueryConcurrencyPermit>, DatalensError> {
+        self.acquire_with_deadline(key, Some(timeout))
+    }
+
+    fn acquire_with_deadline(
+        &self,
+        key: &DatalensQueryConcurrencyKey,
+        timeout: Option<Duration>,
+    ) -> Result<Option<DatalensQueryConcurrencyPermit>, DatalensError> {
         let started_at = Instant::now();
         let mut state = self.inner.state.lock().map_err(|_| {
             DatalensError::Query("Datalens query concurrency gate lock poisoned".to_owned())
         })?;
 
-        while self
-            .inner
+        while self.is_limited(&state, key) {
+            match timeout {
+                Some(timeout) => {
+                    let elapsed = started_at.elapsed();
+                    if elapsed >= timeout {
+                        return Ok(None);
+                    }
+                    let remaining = timeout.saturating_sub(elapsed);
+                    let (next_state, wait_result) = self
+                        .inner
+                        .available
+                        .wait_timeout(state, remaining)
+                        .map_err(|_| {
+                            DatalensError::Query(
+                                "Datalens query concurrency gate lock poisoned".to_owned(),
+                            )
+                        })?;
+                    state = next_state;
+                    if wait_result.timed_out() && self.is_limited(&state, key) {
+                        return Ok(None);
+                    }
+                }
+                None => {
+                    state = self.inner.available.wait(state).map_err(|_| {
+                        DatalensError::Query(
+                            "Datalens query concurrency gate lock poisoned".to_owned(),
+                        )
+                    })?;
+                }
+            }
+        }
+
+        state.global_in_flight += 1;
+        let chain_in_flight = {
+            let chain_in_flight = state.per_chain_in_flight.entry(key.clone()).or_default();
+            *chain_in_flight += 1;
+            *chain_in_flight
+        };
+        let global_in_flight = state.global_in_flight;
+
+        Ok(Some(DatalensQueryConcurrencyPermit {
+            gate: self.clone(),
+            key: key.clone(),
+            wait_duration: started_at.elapsed(),
+            global_in_flight,
+            chain_in_flight,
+        }))
+    }
+
+    fn is_limited(
+        &self,
+        state: &DatalensQueryConcurrencyGateState,
+        key: &DatalensQueryConcurrencyKey,
+    ) -> bool {
+        self.inner
             .config
             .global_max_in_flight
             .is_some_and(|limit| state.global_in_flight >= limit)
@@ -177,27 +253,6 @@ impl DatalensQueryConcurrencyGate {
                         .unwrap_or_default()
                         >= limit
                 })
-        {
-            state = self.inner.available.wait(state).map_err(|_| {
-                DatalensError::Query("Datalens query concurrency gate lock poisoned".to_owned())
-            })?;
-        }
-
-        state.global_in_flight += 1;
-        let chain_in_flight = {
-            let chain_in_flight = state.per_chain_in_flight.entry(key.clone()).or_default();
-            *chain_in_flight += 1;
-            *chain_in_flight
-        };
-        let global_in_flight = state.global_in_flight;
-
-        Ok(DatalensQueryConcurrencyPermit {
-            gate: self.clone(),
-            key: key.clone(),
-            wait_duration: started_at.elapsed(),
-            global_in_flight,
-            chain_in_flight,
-        })
     }
 }
 
@@ -442,25 +497,50 @@ impl DatalensNativeClient {
     where
         F: FnOnce(DatalensClient) -> Result<QueryResponse, DatalensSdkError> + Send + 'static,
     {
+        let started_at = Instant::now();
         if self
             .blocking_query_in_flight
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            return Err(datalens_query_timeout_error(
+            let error = datalens_query_timeout_error(
                 operation,
                 self.query_timeout,
                 Some("previous SDK query is still in flight"),
-            ));
+            );
+            self.warn_query_timeout(operation, &error);
+            return Err(error);
         }
 
         let permit = match self.acquire_query_concurrency_permit(operation) {
-            Ok(permit) => permit,
+            Ok(DatalensQueryConcurrencyAcquire::Acquired(permit)) => permit,
+            Ok(DatalensQueryConcurrencyAcquire::TimedOut) => {
+                self.blocking_query_in_flight
+                    .store(false, Ordering::Release);
+                let error = datalens_query_timeout_error(
+                    operation,
+                    self.query_timeout,
+                    Some("waiting for query concurrency permit"),
+                );
+                self.warn_query_timeout(operation, &error);
+                return Err(error);
+            }
             Err(error) => {
                 self.blocking_query_in_flight
                     .store(false, Ordering::Release);
                 return Err(DatalensSdkError::Transport(error.to_string()));
             }
+        };
+        let Some(remaining_timeout) = self.query_timeout.checked_sub(started_at.elapsed()) else {
+            self.blocking_query_in_flight
+                .store(false, Ordering::Release);
+            let error = datalens_query_timeout_error(
+                operation,
+                self.query_timeout,
+                Some("waiting for query concurrency permit"),
+            );
+            self.warn_query_timeout(operation, &error);
+            return Err(error);
         };
         let (sender, receiver) = mpsc::sync_channel(1);
         let client = self.client.clone();
@@ -482,13 +562,13 @@ impl DatalensNativeClient {
             )));
         }
 
-        match receiver.recv_timeout(self.query_timeout) {
+        match receiver.recv_timeout(remaining_timeout) {
             Ok(result) => result,
-            Err(mpsc::RecvTimeoutError::Timeout) => Err(datalens_query_timeout_error(
-                operation,
-                self.query_timeout,
-                None,
-            )),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let error = datalens_query_timeout_error(operation, self.query_timeout, None);
+                self.warn_query_timeout(operation, &error);
+                Err(error)
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(DatalensSdkError::Transport(format!(
                 "Datalens {operation} worker stopped before returning a response"
             ))),
@@ -498,23 +578,42 @@ impl DatalensNativeClient {
     fn acquire_query_concurrency_permit(
         &self,
         operation: &str,
-    ) -> Result<Option<DatalensQueryConcurrencyPermit>, DatalensError> {
-        self.query_gate
-            .as_ref()
-            .map(|gate| {
-                let permit = gate.acquire(&self.query_key)?;
-                info!(
-                    "Datalens process-local {operation} concurrency permit acquired chain_family={} chain_name={} chain_network_id={} wait_ms={} process_in_flight={} chain_in_flight={}",
-                    self.query_key.family,
-                    self.query_key.configured_name,
-                    self.query_key.log_network_id(),
-                    permit.wait_duration.as_millis(),
-                    permit.global_in_flight,
-                    permit.chain_in_flight
-                );
-                Ok::<_, DatalensError>(permit)
-            })
-            .transpose()
+    ) -> Result<DatalensQueryConcurrencyAcquire, DatalensError> {
+        let Some(gate) = self.query_gate.as_ref() else {
+            return Ok(DatalensQueryConcurrencyAcquire::Acquired(None));
+        };
+
+        let Some(permit) = gate.acquire_timeout(&self.query_key, self.query_timeout)? else {
+            warn!(
+                "Datalens process-local {operation} concurrency permit timed out chain_family={} chain_name={} chain_network_id={} timeout_ms={}",
+                self.query_key.family,
+                self.query_key.configured_name,
+                self.query_key.log_network_id(),
+                self.query_timeout.as_millis()
+            );
+            return Ok(DatalensQueryConcurrencyAcquire::TimedOut);
+        };
+        info!(
+            "Datalens process-local {operation} concurrency permit acquired chain_family={} chain_name={} chain_network_id={} wait_ms={} process_in_flight={} chain_in_flight={}",
+            self.query_key.family,
+            self.query_key.configured_name,
+            self.query_key.log_network_id(),
+            permit.wait_duration.as_millis(),
+            permit.global_in_flight,
+            permit.chain_in_flight
+        );
+        Ok(DatalensQueryConcurrencyAcquire::Acquired(Some(permit)))
+    }
+
+    fn warn_query_timeout(&self, operation: &str, error: &DatalensSdkError) {
+        warn!(
+            "Datalens {operation} deadline fired chain_family={} chain_name={} chain_network_id={} timeout_ms={} error={}",
+            self.query_key.family,
+            self.query_key.configured_name,
+            self.query_key.log_network_id(),
+            self.query_timeout.as_millis(),
+            error
+        );
     }
 }
 
