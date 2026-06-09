@@ -1,4 +1,6 @@
 // Token projection writes and delegate relation maintenance.
+const CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE: usize = 2_000;
+
 async fn write_token_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &TokenProjectionBatch,
@@ -298,6 +300,7 @@ async fn insert_vote_power_checkpoint(
 async fn apply_token_operation(
     transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
+    contributor_ensure_cache: &mut ContributorEnsureCache,
     operation: &TokenProjectionOperation,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     match operation {
@@ -315,6 +318,7 @@ async fn apply_token_operation(
                 delegator,
                 from_delegate,
                 to_delegate,
+                contributor_ensure_cache,
             )
             .await
         }
@@ -332,6 +336,7 @@ async fn apply_token_operation(
                 delegate,
                 previous_votes,
                 new_votes,
+                contributor_ensure_cache,
             )
             .await
         }
@@ -351,6 +356,7 @@ async fn apply_token_operation(
                 to,
                 value,
                 *standard,
+                contributor_ensure_cache,
             )
             .await
         }
@@ -364,9 +370,12 @@ async fn apply_delegate_changed_operation(
     delegator: &str,
     from_delegate: &str,
     to_delegate: &str,
+    contributor_ensure_cache: &mut ContributorEnsureCache,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     if !is_zero_address(to_delegate) {
-        ensure_contributor(transaction, to_delegate, common).await?;
+        contributor_ensure_cache
+            .ensure(transaction, to_delegate, common)
+            .await?;
     }
     let previous_mapping =
         read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, delegator)
@@ -398,6 +407,7 @@ async fn apply_delegate_changed_operation(
             } else {
                 0
             },
+            contributor_ensure_cache,
         )
         .await?;
         delete_delegate_mapping(transaction, delegate_mapping_cache, common, delegator).await?;
@@ -407,7 +417,15 @@ async fn apply_delegate_changed_operation(
         return Ok(());
     }
 
-    apply_delegate_count_delta(transaction, common, to_delegate, 1, 0).await?;
+    apply_delegate_count_delta(
+        transaction,
+        common,
+        to_delegate,
+        1,
+        0,
+        contributor_ensure_cache,
+    )
+    .await?;
     upsert_delegate_mapping(
         transaction,
         delegate_mapping_cache,
@@ -428,6 +446,7 @@ async fn apply_delegate_votes_changed_operation(
     delegate: &str,
     previous_votes: &str,
     new_votes: &str,
+    contributor_ensure_cache: &mut ContributorEnsureCache,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let delta = signed_decimal_delta(transaction, new_votes, previous_votes).await?;
     let rollings = transaction_rollings(transaction, common).await?;
@@ -458,6 +477,7 @@ async fn apply_delegate_votes_changed_operation(
                 &rolling_match.delegator,
                 &rolling_match.from_delegate,
                 &delta,
+                contributor_ensure_cache,
             )
             .await
         }
@@ -481,6 +501,7 @@ async fn apply_delegate_votes_changed_operation(
                 &rolling_match.delegator,
                 &rolling_match.to_delegate,
                 &delta,
+                contributor_ensure_cache,
             )
             .await
         }
@@ -495,6 +516,7 @@ async fn apply_transfer_operation(
     to: &str,
     value: &str,
     standard: GovernanceTokenStandard,
+    contributor_ensure_cache: &mut ContributorEnsureCache,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let value = transfer_units(value, standard);
     if let Some(mapping) =
@@ -507,6 +529,7 @@ async fn apply_transfer_operation(
             &mapping.from,
             &mapping.to,
             &format!("-{value}"),
+            contributor_ensure_cache,
         )
         .await?;
     }
@@ -520,6 +543,7 @@ async fn apply_transfer_operation(
             &mapping.from,
             &mapping.to,
             &value,
+            contributor_ensure_cache,
         )
         .await?;
     }
@@ -534,6 +558,7 @@ async fn apply_delegate_delta(
     from_delegate: &str,
     to_delegate: &str,
     delta: &str,
+    contributor_ensure_cache: &mut ContributorEnsureCache,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     if is_zero_address(to_delegate) {
         return Ok(());
@@ -599,6 +624,7 @@ async fn apply_delegate_delta(
             to_delegate,
             0,
             if next_effective { 1 } else { -1 },
+            contributor_ensure_cache,
         )
         .await?;
     }
@@ -779,11 +805,14 @@ async fn apply_delegate_count_delta(
     delegate: &str,
     all_delta: i64,
     effective_delta: i64,
+    contributor_ensure_cache: &mut ContributorEnsureCache,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     if is_zero_address(delegate) {
         return Ok(());
     }
-    ensure_contributor(transaction, delegate, common).await?;
+    contributor_ensure_cache
+        .ensure(transaction, delegate, common)
+        .await?;
 
     sqlx::query(
         "UPDATE contributor
@@ -872,18 +901,250 @@ async fn ensure_contributor(
     Ok(())
 }
 
+#[derive(Clone, Debug)]
+struct ContributorEnsureCandidate {
+    operation_id: String,
+    account: String,
+    common: TokenEventCommon,
+}
+
+#[derive(Clone, Debug)]
+struct ContributorEnsureInsert {
+    account: String,
+    common: TokenEventCommon,
+    log_index: i32,
+    transaction_index: i32,
+    block_timestamp: String,
+}
+
+#[derive(Debug, Default)]
+struct ContributorEnsureCache {
+    ensured: HashSet<(String, String)>,
+}
+
+impl ContributorEnsureCache {
+    async fn preload_batch(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+        batch: &TokenProjectionBatch,
+        inserted_operation_keys: &HashSet<(&str, &str)>,
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let candidates = collect_contributor_ensure_candidates(batch)
+            .into_iter()
+            .filter(|candidate| {
+                inserted_operation_keys.contains(&(
+                    candidate.common.contract_set_id.as_str(),
+                    candidate.operation_id.as_str(),
+                ))
+            })
+            .collect::<Vec<_>>();
+        self.ensure_batch(transaction, &candidates).await
+    }
+
+    async fn ensure_batch(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+        candidates: &[ContributorEnsureCandidate],
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let candidates = candidates
+            .iter()
+            .filter(|candidate| self.insert_cache_key(candidate))
+            .cloned()
+            .collect::<Vec<_>>();
+        if candidates.is_empty() {
+            return Ok(());
+        }
+        let rows = candidates
+            .iter()
+            .map(|candidate| {
+                let common = &candidate.common;
+                Ok(ContributorEnsureInsert {
+                    account: candidate.account.clone(),
+                    common: common.clone(),
+                    log_index: u64_to_i32(common.log_index, "contributor.log_index")?,
+                    transaction_index: u64_to_i32(
+                        common.transaction_index,
+                        "contributor.transaction_index",
+                    )?,
+                    block_timestamp: required_numeric(
+                        &common.block_timestamp,
+                        "contributor.block_timestamp",
+                    )?
+                    .to_owned(),
+                })
+            })
+            .collect::<Result<Vec<_>, PostgresIndexerRunnerStoreError>>()?;
+
+        for rows in rows.chunks(CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO contributor (
+                    id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+                    contract_address, log_index, transaction_index, block_number, block_timestamp,
+                    transaction_hash, power, balance, delegates_count_all, delegates_count_effective
+                 ) VALUES ",
+            );
+            for (index, row) in rows.iter().enumerate() {
+                if index > 0 {
+                    query.push(", ");
+                }
+                let common = &row.common;
+                query
+                    .push("(")
+                    .push_bind(&row.account)
+                    .push(", ")
+                    .push_bind(&common.contract_set_id)
+                    .push(", ")
+                    .push_bind(common.chain_id)
+                    .push(", ")
+                    .push_bind(&common.dao_code)
+                    .push(", ")
+                    .push_bind(&common.governor_address)
+                    .push(", ")
+                    .push_bind(&common.token_address)
+                    .push(", ")
+                    .push_bind(&common.contract_address)
+                    .push(", ")
+                    .push_bind(row.log_index)
+                    .push(", ")
+                    .push_bind(row.transaction_index)
+                    .push(", ")
+                    .push_bind(&common.block_number)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(&row.block_timestamp)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(&common.transaction_hash)
+                    .push(", 0::NUMERIC(78, 0), NULL::NUMERIC(78, 0), 0::INTEGER, 0::INTEGER)");
+            }
+            query.push(
+                " ON CONFLICT (contract_set_id, id) DO NOTHING RETURNING contract_set_id, id",
+            );
+
+            let inserted = query
+                .build()
+                .fetch_all(&mut **transaction)
+                .await?
+                .into_iter()
+                .map(|row| {
+                    (
+                        row.get::<String, _>("contract_set_id"),
+                        row.get::<String, _>("id"),
+                    )
+                })
+                .collect::<Vec<_>>();
+            increment_member_count_by_scope(transaction, rows, &inserted).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn ensure(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+        account: &str,
+        common: &TokenEventCommon,
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let candidate = ContributorEnsureCandidate {
+            operation_id: String::new(),
+            account: contributor_ref(account),
+            common: common.clone(),
+        };
+        if !self.insert_cache_key(&candidate) {
+            return Ok(());
+        }
+        ensure_contributor(transaction, account, common).await
+    }
+
+    fn insert_cache_key(&mut self, candidate: &ContributorEnsureCandidate) -> bool {
+        self.ensured.insert((
+            candidate.common.contract_set_id.clone(),
+            candidate.account.clone(),
+        ))
+    }
+}
+
+fn collect_contributor_ensure_candidates(
+    batch: &TokenProjectionBatch,
+) -> Vec<ContributorEnsureCandidate> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for operation in &batch.operations {
+        let TokenProjectionOperation::DelegateChanged {
+            id,
+            common,
+            to_delegate,
+            ..
+        } = operation
+        else {
+            continue;
+        };
+        if is_zero_address(to_delegate) {
+            continue;
+        }
+        let account = contributor_ref(to_delegate);
+        if seen.insert((common.contract_set_id.clone(), account.clone())) {
+            candidates.push(ContributorEnsureCandidate {
+                operation_id: id.clone(),
+                account,
+                common: common.clone(),
+            });
+        }
+    }
+    candidates
+}
+
+async fn increment_member_count_by_scope(
+    transaction: &mut Transaction<'_, Postgres>,
+    candidates: &[ContributorEnsureInsert],
+    inserted: &[(String, String)],
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let inserted = inserted.iter().cloned().collect::<HashSet<_>>();
+    let mut counts = HashMap::<(String, i32, String, String, String), (TokenEventCommon, i64)>::new();
+    for candidate in candidates {
+        if !inserted.contains(&(candidate.common.contract_set_id.clone(), candidate.account.clone()))
+        {
+            continue;
+        }
+        let common = &candidate.common;
+        let key = (
+            common.contract_set_id.clone(),
+            common.chain_id,
+            common.dao_code.clone(),
+            common.governor_address.clone(),
+            common.token_address.clone(),
+        );
+        counts
+            .entry(key)
+            .and_modify(|(_, count)| *count += 1)
+            .or_insert_with(|| (common.clone(), 1));
+    }
+
+    for (common, count) in counts.into_values() {
+        increment_member_count_by(transaction, &common, count).await?;
+    }
+
+    Ok(())
+}
+
 async fn increment_member_count(
     transaction: &mut Transaction<'_, Postgres>,
     common: &TokenEventCommon,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    increment_member_count_by(transaction, common, 1).await
+}
+
+async fn increment_member_count_by(
+    transaction: &mut Transaction<'_, Postgres>,
+    common: &TokenEventCommon,
+    count: i64,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO data_metric (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, member_count
          )
-         VALUES ($1, $2, $3, $4, $5, $6, 1)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
-             member_count = COALESCE(data_metric.member_count, 0) + 1",
+             member_count = COALESCE(data_metric.member_count, 0) + EXCLUDED.member_count",
     )
     .bind(data_metric_id(
         common.chain_id,
@@ -895,6 +1156,7 @@ async fn increment_member_count(
     .bind(&common.dao_code)
     .bind(&common.governor_address)
     .bind(&common.token_address)
+    .bind(i64_to_i32(count, "data_metric.member_count_delta")?)
     .execute(&mut **transaction)
     .await?;
 
@@ -1184,6 +1446,85 @@ fn normalize_scope_value(value: &str) -> String {
 
 fn is_zero_address(value: &str) -> bool {
     value.eq_ignore_ascii_case("0x0000000000000000000000000000000000000000")
+}
+
+#[cfg(test)]
+mod token_store_tests {
+    use super::*;
+    use crate::{
+        BatchReadPlanConfig, ChainContracts, ChainReadMethod, PowerReconcileContext,
+        plan_power_reconcile,
+    };
+
+    #[test]
+    fn test_collect_contributor_ensure_candidates_dedupes_delegate_changed_targets() {
+        let common = TokenEventCommon {
+            contract_set_id: "scope".to_owned(),
+            chain_id: 1,
+            dao_code: "demo-dao".to_owned(),
+            governor_address: "0xgovernor".to_owned(),
+            token_address: "0xtoken".to_owned(),
+            contract_address: "0xtoken".to_owned(),
+            log_index: 1,
+            transaction_index: 0,
+            block_number: "10".to_owned(),
+            block_timestamp: Some("1000".to_owned()),
+            transaction_hash: "0xtx".to_owned(),
+        };
+        let batch = TokenProjectionBatch {
+            event_order: Vec::new(),
+            delegate_changed: Vec::new(),
+            delegate_votes_changed: Vec::new(),
+            token_transfers: Vec::new(),
+            delegate_rollings: Vec::new(),
+            operations: vec![
+                TokenProjectionOperation::DelegateChanged {
+                    id: "a".to_owned(),
+                    common: common.clone(),
+                    delegator: "0xdelegator1".to_owned(),
+                    from_delegate: "0x0000000000000000000000000000000000000000".to_owned(),
+                    to_delegate: "0x00000000000000000000000000000000000000AA".to_owned(),
+                },
+                TokenProjectionOperation::DelegateChanged {
+                    id: "b".to_owned(),
+                    common: common.clone(),
+                    delegator: "0xdelegator2".to_owned(),
+                    from_delegate: "0x0000000000000000000000000000000000000000".to_owned(),
+                    to_delegate: "0x00000000000000000000000000000000000000aa".to_owned(),
+                },
+                TokenProjectionOperation::DelegateChanged {
+                    id: "c".to_owned(),
+                    common,
+                    delegator: "0xdelegator3".to_owned(),
+                    from_delegate: "0x0000000000000000000000000000000000000000".to_owned(),
+                    to_delegate: "0x0000000000000000000000000000000000000000".to_owned(),
+                },
+            ],
+            reconcile_plan: plan_power_reconcile(
+                &PowerReconcileContext {
+                    contract_set_id: "scope".to_owned(),
+                    dao_code: "demo-dao".to_owned(),
+                    chain_id: 1,
+                    contracts: ChainContracts {
+                        governor: "0xgovernor".to_owned(),
+                        governor_token: "0xtoken".to_owned(),
+                        timelock: "0xtimelock".to_owned(),
+                    },
+                    from_block: 10,
+                    to_block: 10,
+                    target_height: Some(10),
+                    read_plan_config: BatchReadPlanConfig::default().validated(),
+                    current_power_method: ChainReadMethod::GetVotes,
+                },
+                &[],
+            ),
+        };
+
+        let candidates = collect_contributor_ensure_candidates(&batch);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].account, "0x00000000000000000000000000000000000000aa");
+    }
 }
 
 fn u64_to_i32(value: u64, field: &str) -> Result<i32, PostgresIndexerRunnerStoreError> {
