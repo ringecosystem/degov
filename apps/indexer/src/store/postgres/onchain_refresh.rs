@@ -57,6 +57,7 @@ async fn upsert_onchain_refresh_tasks(
         transaction,
         plan.ready_drain_count,
         now_ms,
+        None,
     )
     .await?;
 
@@ -80,6 +81,22 @@ pub async fn drain_deferred_onchain_refresh_tasks(
     pool: &PgPool,
     max_rows: usize,
 ) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    drain_deferred_onchain_refresh_tasks_with_scope(pool, max_rows, None).await
+}
+
+pub async fn drain_deferred_onchain_refresh_tasks_for_scope(
+    pool: &PgPool,
+    max_rows: usize,
+    scope: &crate::OnchainRefreshTaskScope,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    drain_deferred_onchain_refresh_tasks_with_scope(pool, max_rows, Some(scope)).await
+}
+
+async fn drain_deferred_onchain_refresh_tasks_with_scope(
+    pool: &PgPool,
+    max_rows: usize,
+    scope: Option<&crate::OnchainRefreshTaskScope>,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
     if max_rows == 0 {
         return Ok(0);
     }
@@ -88,13 +105,27 @@ pub async fn drain_deferred_onchain_refresh_tasks(
     let mut transaction = pool.begin().await?;
     let now_ms = unix_time_millis();
     let drained_count =
-        drain_deferred_onchain_refresh_tasks_in_transaction(&mut transaction, max_rows, now_ms)
-            .await?;
+        drain_deferred_onchain_refresh_tasks_in_transaction(
+            &mut transaction,
+            max_rows,
+            now_ms,
+            scope,
+        )
+        .await?;
     transaction.commit().await?;
 
     if drained_count > 0 {
         log::info!(
-            "onchain refresh deferred drain completed deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_duration_ms={}",
+            "onchain refresh deferred drain completed dao_code={} chain_id={} contract_set_id={} deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_duration_ms={}",
+            scope
+                .map(|scope| scope.dao_code.as_str())
+                .unwrap_or("global"),
+            scope
+                .map(|scope| scope.chain_id.to_string())
+                .unwrap_or_else(|| "global".to_owned()),
+            scope
+                .map(|scope| scope.contract_set_id.as_str())
+                .unwrap_or("global"),
             drained_count,
             max_rows,
             started_at.elapsed().as_millis()
@@ -140,12 +171,14 @@ async fn drain_deferred_onchain_refresh_tasks_in_transaction(
     transaction: &mut Transaction<'_, Postgres>,
     max_rows: usize,
     now_ms: i64,
+    scope: Option<&crate::OnchainRefreshTaskScope>,
 ) -> Result<usize, PostgresIndexerRunnerStoreError> {
     if max_rows == 0 {
         return Ok(0);
     }
 
-    let rows = read_deferred_onchain_refresh_candidates(transaction, max_rows, now_ms).await?;
+    let rows =
+        read_deferred_onchain_refresh_candidates(transaction, max_rows, now_ms, scope).await?;
     if rows.is_empty() {
         return Ok(0);
     }
@@ -508,10 +541,11 @@ async fn read_deferred_onchain_refresh_candidates(
     transaction: &mut Transaction<'_, Postgres>,
     max_rows: usize,
     now_ms: i64,
+    scope: Option<&crate::OnchainRefreshTaskScope>,
 ) -> Result<Vec<OnchainRefreshTaskWrite>, PostgresIndexerRunnerStoreError> {
     let max_rows = i64::try_from(max_rows)
         .map_err(|_| PostgresIndexerRunnerStoreError::new("deferred drain batch size exceeds i64"))?;
-    let rows = sqlx::query(
+    let mut query = QueryBuilder::<Postgres>::new(
         "SELECT id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
                 refresh_balance, refresh_power, reason,
                 first_seen_block_number::TEXT AS first_seen_block_number,
@@ -520,17 +554,21 @@ async fn read_deferred_onchain_refresh_candidates(
                 last_seen_transaction_hash,
                 next_run_at::TEXT AS next_run_at
          FROM onchain_refresh_deferred_candidate
-         WHERE next_run_at <= $2::NUMERIC(78, 0)
+         WHERE next_run_at <= ",
+    );
+    query.push_bind(now_ms.to_string()).push("::NUMERIC(78, 0)");
+    push_deferred_onchain_refresh_scope_filter(&mut query, scope);
+    query
+        .push(
+            "
          ORDER BY onchain_refresh_deferred_candidate.next_run_at,
                   onchain_refresh_deferred_candidate.updated_at,
                   onchain_refresh_deferred_candidate.id
-         LIMIT $1
-         FOR UPDATE SKIP LOCKED",
-    )
-    .bind(max_rows)
-    .bind(now_ms)
-    .fetch_all(&mut **transaction)
-    .await?;
+         LIMIT ",
+        )
+        .push_bind(max_rows)
+        .push(" FOR UPDATE SKIP LOCKED");
+    let rows = query.build().fetch_all(&mut **transaction).await?;
 
     Ok(rows
         .into_iter()
@@ -552,6 +590,21 @@ async fn read_deferred_onchain_refresh_candidates(
             next_run_at: row.get("next_run_at"),
         })
         .collect())
+}
+
+fn push_deferred_onchain_refresh_scope_filter<'args>(
+    query: &mut QueryBuilder<'args, Postgres>,
+    scope: Option<&'args crate::OnchainRefreshTaskScope>,
+) {
+    if let Some(scope) = scope {
+        query
+            .push(" AND chain_id = ")
+            .push_bind(scope.chain_id)
+            .push(" AND contract_set_id = ")
+            .push_bind(&scope.contract_set_id)
+            .push(" AND dao_code IS NOT DISTINCT FROM ")
+            .push_bind(&scope.dao_code);
+    }
 }
 
 #[cfg(test)]

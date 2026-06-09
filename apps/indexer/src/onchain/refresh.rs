@@ -20,7 +20,9 @@ use crate::{
     PartialChainReadFailureReport, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
-    store::postgres::drain_deferred_onchain_refresh_tasks,
+    store::postgres::{
+        drain_deferred_onchain_refresh_tasks, drain_deferred_onchain_refresh_tasks_for_scope,
+    },
 };
 
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = 1_000;
@@ -53,6 +55,13 @@ pub struct OnchainRefreshRunReport {
     pub data_metric_refreshes: usize,
     pub duration_ms: u128,
     pub backlog: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OnchainRefreshTaskScope {
+    pub chain_id: i32,
+    pub contract_set_id: String,
+    pub dao_code: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -432,24 +441,61 @@ where
         &self,
         batch_size: usize,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
+        self.run_once_with_batch_size_and_scope(batch_size, None)
+            .await
+    }
+
+    pub async fn run_once_with_batch_size_for_scope(
+        &self,
+        batch_size: usize,
+        scope: &OnchainRefreshTaskScope,
+    ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope))
+            .await
+    }
+
+    async fn run_once_with_batch_size_and_scope(
+        &self,
+        batch_size: usize,
+        scope: Option<&OnchainRefreshTaskScope>,
+    ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
         let started_at = Instant::now();
         let now_ms = unix_time_millis();
         let deferred_drain_started_at = Instant::now();
         let deferred_drain_batch_size =
             worker_deferred_drain_batch_size(self.config.deferred_drain_batch_size, batch_size);
-        let deferred_drain_count =
-            drain_deferred_onchain_refresh_tasks(&self.pool, deferred_drain_batch_size)
+        let deferred_drain_count = match scope {
+            Some(scope) => {
+                drain_deferred_onchain_refresh_tasks_for_scope(
+                    &self.pool,
+                    deferred_drain_batch_size,
+                    scope,
+                )
                 .await
-                .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
+            }
+            None => {
+                drain_deferred_onchain_refresh_tasks(&self.pool, deferred_drain_batch_size).await
+            }
+        }
+        .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
         if deferred_drain_count > 0 {
             log::info!(
-                "onchain refresh worker materialized deferred tasks deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_duration_ms={}",
+                "onchain refresh worker materialized deferred tasks dao_code={} chain_id={} contract_set_id={} deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_duration_ms={}",
+                scope
+                    .map(|scope| scope.dao_code.as_str())
+                    .unwrap_or("global"),
+                scope
+                    .map(|scope| scope.chain_id.to_string())
+                    .unwrap_or_else(|| "global".to_owned()),
+                scope
+                    .map(|scope| scope.contract_set_id.as_str())
+                    .unwrap_or("global"),
                 deferred_drain_count,
                 deferred_drain_batch_size,
                 deferred_drain_started_at.elapsed().as_millis()
             );
         }
-        let tasks = self.claim_tasks(now_ms, batch_size).await?;
+        let tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
         if tasks.is_empty() {
             return Ok(OnchainRefreshRunReport::default());
         }
@@ -496,13 +542,13 @@ where
                         Ok(()) => successes.push((task.clone(), value.clone())),
                         Err(error) => {
                             let message = error.to_string();
-                            self.mark_task_failed(&task.id, &message, now_ms).await?;
+                            self.mark_task_failed(task, &message, now_ms).await?;
                             report.failed += 1;
                             report.validation_failures += 1;
                         }
                     },
                     None => {
-                        self.mark_task_failed(&task.id, "missing reader result", now_ms)
+                        self.mark_task_failed(task, "missing reader result", now_ms)
                             .await?;
                         report.failed += 1;
                         report.validation_failures += 1;
@@ -533,10 +579,22 @@ where
         }
 
         report.duration_ms = started_at.elapsed().as_millis();
-        report.backlog = self.ready_backlog().await.ok();
+        report.backlog = match scope {
+            Some(scope) => self.ready_backlog_for_scope(scope).await.ok(),
+            None => self.ready_backlog().await.ok(),
+        };
 
         log::info!(
-            "onchain refresh batch completed claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} duration_ms={} backlog={}",
+            "onchain refresh batch completed dao_code={} chain_id={} contract_set_id={} claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} duration_ms={} backlog={}",
+            scope
+                .map(|scope| scope.dao_code.as_str())
+                .unwrap_or("global"),
+            scope
+                .map(|scope| scope.chain_id.to_string())
+                .unwrap_or_else(|| "global".to_owned()),
+            scope
+                .map(|scope| scope.contract_set_id.as_str())
+                .unwrap_or("global"),
             report.claimed,
             report.completed,
             report.failed,
@@ -561,9 +619,23 @@ where
     }
 
     pub async fn ready_backlog(&self) -> Result<u64, OnchainRefreshWorkerError> {
+        self.ready_backlog_with_scope(None).await
+    }
+
+    pub async fn ready_backlog_for_scope(
+        &self,
+        scope: &OnchainRefreshTaskScope,
+    ) -> Result<u64, OnchainRefreshWorkerError> {
+        self.ready_backlog_with_scope(Some(scope)).await
+    }
+
+    async fn ready_backlog_with_scope(
+        &self,
+        scope: Option<&OnchainRefreshTaskScope>,
+    ) -> Result<u64, OnchainRefreshWorkerError> {
         let now_ms = unix_time_millis();
         let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
-        let row = sqlx::query(
+        let mut query = QueryBuilder::<Postgres>::new(
             "SELECT count(*)::BIGINT AS task_count
              FROM onchain_refresh_task
              WHERE (
@@ -571,17 +643,21 @@ where
                 OR (
                     status = 'processing'
                     AND locked_at IS NOT NULL
-                    AND locked_at <= $2::NUMERIC(78, 0)
+                    AND locked_at <= ",
+        );
+        query
+            .push_bind(stale_before.to_string())
+            .push(
+                "::NUMERIC(78, 0)
                 )
              )
-             AND next_run_at <= $1::NUMERIC(78, 0)
-             AND attempts < $3",
-        )
-        .bind(now_ms.to_string())
-        .bind(stale_before.to_string())
-        .bind(self.config.max_attempts)
-        .fetch_one(&self.pool)
-        .await?;
+             AND next_run_at <= ",
+            )
+            .push_bind(now_ms.to_string())
+            .push("::NUMERIC(78, 0) AND attempts < ")
+            .push_bind(self.config.max_attempts);
+        push_onchain_refresh_scope_filter(&mut query, scope);
+        let row = query.build().fetch_one(&self.pool).await?;
 
         let count: i64 = row.get("task_count");
 
@@ -592,12 +668,13 @@ where
         &self,
         now_ms: i64,
         batch_size: usize,
+        scope: Option<&OnchainRefreshTaskScope>,
     ) -> Result<Vec<OnchainRefreshTask>, OnchainRefreshWorkerError> {
         let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
         let batch_size =
             i64::try_from(batch_size).map_err(|_| OnchainRefreshWorkerError::BatchSizeOverflow)?;
 
-        let rows = sqlx::query(
+        let mut query = QueryBuilder::<Postgres>::new(
             "WITH candidates AS (
                 SELECT id
                 FROM onchain_refresh_task
@@ -606,22 +683,47 @@ where
                     OR (
                         status = 'processing'
                         AND locked_at IS NOT NULL
-                        AND locked_at <= $2::NUMERIC(78, 0)
+                        AND locked_at <= ",
+        );
+        query
+            .push_bind(stale_before.to_string())
+            .push(
+                "::NUMERIC(78, 0)
                     )
                 )
-                AND next_run_at <= $1::NUMERIC(78, 0)
-                AND attempts < $4
+                AND next_run_at <= ",
+            )
+            .push_bind(now_ms.to_string())
+            .push("::NUMERIC(78, 0) AND attempts < ")
+            .push_bind(self.config.max_attempts);
+        push_onchain_refresh_scope_filter(&mut query, scope);
+        query
+            .push(
+                "
                 ORDER BY next_run_at ASC, updated_at ASC, id ASC
-                LIMIT $3
+                LIMIT ",
+            )
+            .push_bind(batch_size)
+            .push(
+                "
                 FOR UPDATE SKIP LOCKED
              )
              UPDATE onchain_refresh_task
              SET status = 'processing',
                  attempts = attempts + 1,
-                 locked_at = $1::NUMERIC(78, 0),
-                 locked_by = $5,
+                 locked_at = ",
+            )
+            .push_bind(now_ms.to_string())
+            .push("::NUMERIC(78, 0), locked_by = ")
+            .push_bind(&self.config.lock_owner)
+            .push(
+                ",
                  error = NULL,
-                 updated_at = $1::NUMERIC(78, 0)
+                 updated_at = ",
+            )
+            .push_bind(now_ms.to_string())
+            .push(
+                "::NUMERIC(78, 0)
              FROM candidates
              WHERE onchain_refresh_task.id = candidates.id
              RETURNING
@@ -638,14 +740,8 @@ where
                  onchain_refresh_task.last_seen_block_timestamp::TEXT AS last_seen_block_timestamp,
                  onchain_refresh_task.last_seen_transaction_hash,
                  onchain_refresh_task.attempts",
-        )
-        .bind(now_ms.to_string())
-        .bind(stale_before.to_string())
-        .bind(batch_size)
-        .bind(self.config.max_attempts)
-        .bind(&self.config.lock_owner)
-        .fetch_all(&self.pool)
-        .await?;
+            );
+        let rows = query.build().fetch_all(&self.pool).await?;
 
         Ok(rows
             .into_iter()
@@ -746,7 +842,7 @@ where
         now_ms: i64,
     ) -> Result<(), OnchainRefreshWorkerError> {
         for task in tasks {
-            self.mark_task_failed(&task.id, error, now_ms).await?;
+            self.mark_task_failed(task, error, now_ms).await?;
         }
 
         Ok(())
@@ -754,11 +850,13 @@ where
 
     async fn mark_task_failed(
         &self,
-        task_id: &str,
+        task: &OnchainRefreshTask,
         error: &str,
         now_ms: i64,
     ) -> Result<(), OnchainRefreshWorkerError> {
-        let next_run_at = now_ms.saturating_add(duration_millis_i64(self.config.retry_delay));
+        let next_run_at = now_ms.saturating_add(duration_millis_i64(
+            onchain_refresh_retry_backoff_delay(self.config.retry_delay, task.attempts),
+        ));
 
         sqlx::query(
             "UPDATE onchain_refresh_task
@@ -771,7 +869,7 @@ where
                  updated_at = $4::NUMERIC(78, 0)
              WHERE id = $1",
         )
-        .bind(task_id)
+        .bind(&task.id)
         .bind(next_run_at.to_string())
         .bind(truncate_error(error))
         .bind(now_ms.to_string())
@@ -787,6 +885,28 @@ fn worker_deferred_drain_batch_size(
     claim_batch_size: usize,
 ) -> usize {
     configured_batch_size.max(claim_batch_size)
+}
+
+fn onchain_refresh_retry_backoff_delay(base_delay: Duration, attempts: i32) -> Duration {
+    let exponent = attempts.saturating_sub(1).clamp(0, 5) as u32;
+    let multiplier = 1u32.checked_shl(exponent).unwrap_or(32);
+
+    base_delay.saturating_mul(multiplier)
+}
+
+fn push_onchain_refresh_scope_filter<'args>(
+    query: &mut QueryBuilder<'args, Postgres>,
+    scope: Option<&'args OnchainRefreshTaskScope>,
+) {
+    if let Some(scope) = scope {
+        query
+            .push(" AND chain_id = ")
+            .push_bind(scope.chain_id)
+            .push(" AND contract_set_id = ")
+            .push_bind(&scope.contract_set_id)
+            .push(" AND dao_code IS NOT DISTINCT FROM ")
+            .push_bind(&scope.dao_code);
+    }
 }
 
 #[derive(Clone)]

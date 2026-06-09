@@ -14,9 +14,9 @@ use degov_datalens_indexer::{
     ChainReadMetrics, ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool, EvmRpcChainTool,
     LivePowerOverlayReader, MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue,
     OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
-    OnchainRefreshTickClock, OnchainRefreshTickConfig, OnchainRefreshTickRunner,
-    OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason, OnchainRefreshWorker,
-    OnchainRefreshWorkerConfig, PartialChainReadFailureReport,
+    OnchainRefreshTaskScope, OnchainRefreshTickClock, OnchainRefreshTickConfig,
+    OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason,
+    OnchainRefreshWorker, OnchainRefreshWorkerConfig, PartialChainReadFailureReport,
     PostgresProvisionalPowerOverlayStore, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, refresh_live_power_overlays,
@@ -612,6 +612,138 @@ async fn test_onchain_refresh_worker_marks_claimed_tasks_failed_when_reader_fail
     assert_eq!(row.get::<Option<String>, _>("processed_at"), None);
     assert!(row.get::<String, _>("next_run_at").parse::<i64>()? > 0);
     assert_data_metric(&database.pool, "7", 1, 7).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_scoped_run_claims_only_matching_contract_set()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task_with_contract_set(
+        &database.pool,
+        "ens-task",
+        SCOPE_ONE,
+        1,
+        "ens-dao",
+        GOVERNOR,
+        TOKEN,
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+    seed_task_with_contract_set(
+        &database.pool,
+        "lisk-task",
+        SCOPE_TWO,
+        1135,
+        "lisk-dao",
+        GOVERNOR_TWO,
+        TOKEN_TWO,
+        ACCOUNT_TWO,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([(
+            "lisk-task",
+            OnchainRefreshReadValue {
+                task_id: "lisk-task".to_owned(),
+                balance: None,
+                power: Some("13".to_owned()),
+            },
+        )]),
+    );
+
+    let report = worker
+        .run_once_with_batch_size_for_scope(
+            10,
+            &OnchainRefreshTaskScope {
+                chain_id: 1135,
+                contract_set_id: SCOPE_TWO.to_owned(),
+                dao_code: "lisk-dao".to_owned(),
+            },
+        )
+        .await?;
+
+    assert_eq!(report.claimed, 1);
+    assert_eq!(report.completed, 1);
+    assert_task_status(&database.pool, "lisk-task", "completed", 1).await?;
+    assert_task_status(&database.pool, "ens-task", "pending", 0).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_failed_task_uses_attempt_backoff() -> Result<(), Box<dyn Error>>
+{
+    let database = TestDatabase::connect().await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        2,
+        false,
+        true,
+    )
+    .await?;
+    let before = unix_time_millis_for_test();
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            max_attempts: 5,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        FailingOnchainRefreshReader,
+    );
+
+    let report = worker.run_once().await?;
+    let after = unix_time_millis_for_test();
+
+    assert_eq!(report.claimed, 1);
+    assert_eq!(report.failed, 1);
+    let row = sqlx::query(
+        "SELECT status, attempts, next_run_at::TEXT AS next_run_at
+         FROM onchain_refresh_task
+         WHERE id = 'task-one'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    let next_run_at = row.get::<String, _>("next_run_at").parse::<i64>()?;
+    assert_eq!(row.get::<String, _>("status"), "failed");
+    assert_eq!(row.get::<i32, _>("attempts"), 3);
+    assert!(next_run_at >= before + 120_000);
+    assert!(next_run_at <= after + 120_000);
+
+    let retry_report = worker.run_once().await?;
+    assert_eq!(retry_report.claimed, 0);
 
     database.cleanup().await?;
 
@@ -1675,6 +1807,27 @@ async fn assert_failed_task_error_contains(
             .expect("error")
             .contains(expected_error)
     );
+
+    Ok(())
+}
+
+async fn assert_task_status(
+    pool: &PgPool,
+    task_id: &str,
+    expected_status: &str,
+    expected_attempts: i32,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT status, attempts
+         FROM onchain_refresh_task
+         WHERE id = $1",
+    )
+    .bind(task_id)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("status"), expected_status);
+    assert_eq!(row.get::<i32, _>("attempts"), expected_attempts);
 
     Ok(())
 }

@@ -52,10 +52,11 @@ pub use crate::onchain::refresh::{
     ChainToolOnchainRefreshReader, EvmRpcChainTool, LivePowerOverlayReader,
     LivePowerOverlayRefreshError, MultiChainToolOnchainRefreshReader, OnchainRefreshReadReport,
     OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
-    OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshTickClock, OnchainRefreshTickConfig,
-    OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
-    OnchainRefreshTickSkipReason, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
-    OnchainRefreshWorkerError, SystemOnchainRefreshTickClock, refresh_live_power_overlays,
+    OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshTaskScope, OnchainRefreshTickClock,
+    OnchainRefreshTickConfig, OnchainRefreshTickReport, OnchainRefreshTickRunner,
+    OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason, OnchainRefreshWorker,
+    OnchainRefreshWorkerConfig, OnchainRefreshWorkerError, SystemOnchainRefreshTickClock,
+    refresh_live_power_overlays,
 };
 pub use crate::projection::data_metric::DataMetricWrite;
 pub use crate::projection::power_reconcile::{
