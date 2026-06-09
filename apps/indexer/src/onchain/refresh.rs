@@ -1586,13 +1586,14 @@ impl ChainTool for EvmRpcChainTool {
         let mut covered_reads = vec![false; plan.reads.len()];
 
         let max_concurrency = plan.execution.max_concurrency.max(1);
+        let shared_plan = Arc::new(plan.clone());
         for group_chunk in plan.execution.multicall_groups.chunks(max_concurrency) {
             let handles = group_chunk
                 .iter()
                 .cloned()
                 .map(|group| {
                     let tool = self.clone();
-                    let plan = plan.clone();
+                    let plan = Arc::clone(&shared_plan);
                     thread::spawn(move || tool.execute_multicall_group(&plan, &group))
                 })
                 .collect::<Vec<_>>();
@@ -1600,15 +1601,12 @@ impl ChainTool for EvmRpcChainTool {
             for handle in handles {
                 let group_report = match handle.join() {
                     Ok(report) => report,
-                    Err(_) => EvmRpcGroupExecutionReport {
-                        failures: vec![ReadFailure {
-                            read_index: 0,
-                            message: "multicall worker thread panicked".to_owned(),
-                            kind: ChainReadFailureKind::Internal,
-                            retryable: true,
-                        }],
-                        ..EvmRpcGroupExecutionReport::default()
-                    },
+                    Err(_) => {
+                        log::warn!(
+                            "multicall worker thread panicked; falling back to per-read execution"
+                        );
+                        EvmRpcGroupExecutionReport::default()
+                    }
                 };
                 cache_hits += group_report.cache_hits;
                 executed_rpc_calls += group_report.executed_rpc_calls;
