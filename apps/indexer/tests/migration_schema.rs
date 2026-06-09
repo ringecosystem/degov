@@ -264,6 +264,15 @@ fn test_fresh_init_declares_provisional_overlay_schema() {
     }
 }
 
+#[test]
+fn test_fresh_init_declares_onchain_refresh_ready_claim_index() {
+    let init_migration = include_str!("../migrations/0001_init.sql");
+
+    assert!(init_migration.contains("onchain_refresh_task_ready_claim_idx"));
+    assert!(init_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));
+    assert!(init_migration.contains("WHERE status IN ('pending', 'failed')"));
+}
+
 async fn assert_table_exists(
     pool: &PgPool,
     schema: &str,

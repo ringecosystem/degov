@@ -4,9 +4,12 @@ const MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS: usize = 1_000;
 async fn upsert_onchain_refresh_tasks(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[PowerReconcileCandidate],
+    debounce: Duration,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let now_ms = unix_time_millis();
+    let next_run_at = now_ms.saturating_add(duration_millis_i64(debounce));
     for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
-        upsert_onchain_refresh_task_chunk(transaction, chunk).await?;
+        upsert_onchain_refresh_task_chunk(transaction, chunk, now_ms, next_run_at).await?;
     }
 
     Ok(())
@@ -15,6 +18,8 @@ async fn upsert_onchain_refresh_tasks(
 async fn upsert_onchain_refresh_task_chunk(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[PowerReconcileCandidate],
+    now_ms: i64,
+    next_run_at: i64,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let mut query = QueryBuilder::<Postgres>::new(
         "INSERT INTO onchain_refresh_task (
@@ -65,11 +70,12 @@ async fn upsert_onchain_refresh_task_chunk(
             .push_bind(&status.last_seen_transaction_hash)
             .push("'pending'")
             .push("0")
-            .push("0::NUMERIC(78, 0)")
-            .push("false")
-            .push_bind(last_seen_block_number.clone())
+            .push_bind(next_run_at.to_string())
             .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(last_seen_block_number)
+            .push("false")
+            .push_bind(now_ms.to_string())
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(now_ms.to_string())
             .push_unseparated("::NUMERIC(78, 0)");
     });
     query.push(
@@ -88,7 +94,7 @@ async fn upsert_onchain_refresh_task_chunk(
              END,
              next_run_at = CASE
                WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.next_run_at
-               ELSE 0::NUMERIC(78, 0)
+               ELSE EXCLUDED.next_run_at
              END,
              processed_at = CASE
                WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.processed_at
