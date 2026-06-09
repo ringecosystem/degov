@@ -232,6 +232,37 @@ CREATE INDEX IF NOT EXISTS onchain_refresh_task_ready_claim_idx
   ON onchain_refresh_task (next_run_at, updated_at, id)
   WHERE status IN ('pending', 'failed');
 
+CREATE TABLE IF NOT EXISTS onchain_refresh_deferred_candidate (
+  id TEXT PRIMARY KEY,
+  contract_set_id TEXT NOT NULL,
+  chain_id INTEGER NOT NULL,
+  dao_code TEXT,
+  governor_address TEXT NOT NULL,
+  token_address TEXT NOT NULL,
+  account TEXT NOT NULL,
+  refresh_balance BOOLEAN NOT NULL,
+  refresh_power BOOLEAN NOT NULL,
+  reason TEXT NOT NULL,
+  first_seen_block_number NUMERIC(78, 0) NOT NULL,
+  last_seen_block_number NUMERIC(78, 0) NOT NULL,
+  last_seen_block_timestamp NUMERIC(78, 0) NOT NULL,
+  last_seen_transaction_hash TEXT NOT NULL,
+  next_run_at NUMERIC(78, 0) NOT NULL,
+  created_at NUMERIC(78, 0) NOT NULL,
+  updated_at NUMERIC(78, 0) NOT NULL,
+  CONSTRAINT onchain_refresh_deferred_candidate_account_unique UNIQUE NULLS NOT DISTINCT (
+    chain_id,
+    contract_set_id,
+    dao_code,
+    governor_address,
+    token_address,
+    account
+  )
+);
+
+CREATE INDEX IF NOT EXISTS onchain_refresh_deferred_candidate_drain_idx
+  ON onchain_refresh_deferred_candidate (next_run_at, updated_at, id);
+
 CREATE TABLE IF NOT EXISTS proposal_canceled (
   id TEXT PRIMARY KEY,
   chain_id INTEGER,

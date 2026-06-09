@@ -476,6 +476,13 @@ pub trait IndexerRunnerStore {
     ) -> Result<TimelockProposalLinkContext, Self::Error> {
         Ok(TimelockProposalLinkContext::default())
     }
+
+    fn drain_deferred_onchain_refresh_tasks(
+        &mut self,
+        _max_rows: usize,
+    ) -> Result<usize, Self::Error> {
+        Ok(0)
+    }
 }
 
 pub trait IndexerRunnerTransaction {
@@ -765,6 +772,26 @@ where
                 .commit()
                 .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             let write_duration = write_started_at.elapsed();
+            let deferred_drain_started_at = Instant::now();
+            let deferred_drain_count = match self.store.drain_deferred_onchain_refresh_tasks(1_000)
+            {
+                Ok(count) => count,
+                Err(error) => {
+                    warn!(
+                        "Datalens indexer deferred onchain refresh drain failed after checkpoint commit dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} to_block={} error={}",
+                        self.options.checkpoint_identity.dao_code,
+                        self.options.checkpoint_identity.chain_id,
+                        self.options.checkpoint_identity.contract_set_id,
+                        self.options.checkpoint_identity.stream_id,
+                        self.options.checkpoint_identity.data_source_version,
+                        range.from_block,
+                        range.to_block,
+                        error
+                    );
+                    0
+                }
+            };
+            let deferred_drain_duration = deferred_drain_started_at.elapsed();
             self.run_onchain_refresh_tick(range.to_block);
 
             chunks_processed += 1;
@@ -786,7 +813,7 @@ where
                 self.options.progress_refresh_lag_blocks,
             );
             info!(
-                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={} adaptive_cache_full_hit_count={} adaptive_cache_partial_hit_count={} adaptive_cache_miss_count={} adaptive_cache_provider_fill_range_count={} adaptive_query_duration_max_ms={}",
+                "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={} adaptive_cache_full_hit_count={} adaptive_cache_partial_hit_count={} adaptive_cache_miss_count={} adaptive_cache_provider_fill_range_count={} adaptive_query_duration_max_ms={} onchain_refresh_deferred_drain_count={} onchain_refresh_deferred_drain_duration_ms={}",
                 self.options.checkpoint_identity.dao_code,
                 self.options.checkpoint_identity.chain_id,
                 self.options.checkpoint_identity.contract_set_id,
@@ -833,7 +860,9 @@ where
                         .metrics
                         .warmup_effectiveness
                         .query_duration_max_ms()
-                )
+                ),
+                deferred_drain_count,
+                deferred_drain_duration.as_millis()
             );
             let mut warmup_effectiveness_aggregation =
                 processing.metrics.warmup_effectiveness.clone();

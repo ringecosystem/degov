@@ -20,6 +20,9 @@ use crate::{
     PartialChainReadFailureReport, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
+    store::postgres::{
+        DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS, drain_deferred_onchain_refresh_tasks,
+    },
 };
 
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = 1_000;
@@ -338,6 +341,8 @@ pub trait OnchainRefreshReader: Clone + Send + Sync + 'static {
 pub enum OnchainRefreshWorkerError {
     #[error("onchain refresh database error: {0}")]
     Database(#[from] sqlx::Error),
+    #[error("onchain refresh deferred drain error: {0}")]
+    DeferredDrain(String),
     #[error("onchain refresh reader error: {0}")]
     Reader(#[from] OnchainRefreshReaderError),
     #[error("onchain refresh batch size exceeds i64")]
@@ -393,6 +398,20 @@ where
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
         let started_at = Instant::now();
         let now_ms = unix_time_millis();
+        let deferred_drain_started_at = Instant::now();
+        let deferred_drain_count = drain_deferred_onchain_refresh_tasks(
+            &self.pool,
+            DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
+        )
+        .await
+        .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
+        if deferred_drain_count > 0 {
+            log::info!(
+                "onchain refresh worker materialized deferred tasks deferred_drain_count={} deferred_drain_duration_ms={}",
+                deferred_drain_count,
+                deferred_drain_started_at.elapsed().as_millis()
+            );
+        }
         let tasks = self.claim_tasks(now_ms, batch_size).await?;
         if tasks.is_empty() {
             return Ok(OnchainRefreshRunReport::default());
@@ -1141,11 +1160,17 @@ impl CachedChainReadValue {
                 .elapsed()
                 .map(|elapsed| elapsed >= QUORUM_CACHE_DURATION)
                 .unwrap_or(true),
+            ChainReadCacheKey::AccountCurrentValue { .. } => self
+                .inserted_at
+                .elapsed()
+                .map(|elapsed| elapsed >= ACCOUNT_CURRENT_VALUE_CACHE_DURATION)
+                .unwrap_or(true),
         }
     }
 }
 
 const QUORUM_CACHE_DURATION: Duration = Duration::from_secs(30 * 60);
+const ACCOUNT_CURRENT_VALUE_CACHE_DURATION: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum ChainReadCacheKey {
@@ -1156,6 +1181,13 @@ enum ChainReadCacheKey {
     Quorum {
         chain_id: i32,
         contract_address: String,
+        args: Vec<String>,
+        block_mode: BlockReadMode,
+    },
+    AccountCurrentValue {
+        chain_id: i32,
+        contract_address: String,
+        method: ChainReadMethod,
         args: Vec<String>,
         block_mode: BlockReadMode,
     },
@@ -1171,6 +1203,19 @@ impl ChainReadCacheKey {
             ChainReadMethod::Quorum => Some(Self::Quorum {
                 chain_id: key.chain_id,
                 contract_address: normalize_identifier(&key.contract_address),
+                args: key
+                    .args
+                    .iter()
+                    .map(|arg| normalize_identifier(arg))
+                    .collect(),
+                block_mode: key.block_mode,
+            }),
+            ChainReadMethod::BalanceOf
+            | ChainReadMethod::GetVotes
+            | ChainReadMethod::CurrentVotes => Some(Self::AccountCurrentValue {
+                chain_id: key.chain_id,
+                contract_address: normalize_identifier(&key.contract_address),
+                method: key.method,
                 args: key
                     .args
                     .iter()
@@ -2563,6 +2608,60 @@ mod tests {
             Some(ChainReadValue::Integer("18".to_owned()))
         );
         assert_eq!(cache.get(&quorum_11), None);
+    }
+
+    #[test]
+    fn test_chain_read_cache_dedupes_current_account_reads_briefly() {
+        let cache = ChainReadCache::default();
+        let power = ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+            method: ChainReadMethod::GetVotes,
+            args: vec!["0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned()],
+            block_mode: BlockReadMode::Safe,
+        };
+        let same_account_latest = ChainReadKey {
+            block_mode: BlockReadMode::Latest,
+            ..power.clone()
+        };
+        let other_account = ChainReadKey {
+            args: vec!["0xcccccccccccccccccccccccccccccccccccccccc".to_owned()],
+            ..power.clone()
+        };
+
+        cache.insert(&power, ChainReadValue::Integer("100".to_owned()));
+
+        assert_eq!(
+            cache.get(&power),
+            Some(ChainReadValue::Integer("100".to_owned()))
+        );
+        assert_eq!(cache.get(&same_account_latest), None);
+        assert_eq!(cache.get(&other_account), None);
+    }
+
+    #[test]
+    fn test_chain_read_cache_expires_current_account_reads() {
+        let cache = ChainReadCache::default();
+        let balance = ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+            method: ChainReadMethod::BalanceOf,
+            args: vec!["0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned()],
+            block_mode: BlockReadMode::Safe,
+        };
+
+        cache.insert(&balance, ChainReadValue::Integer("100".to_owned()));
+
+        let expired_at =
+            SystemTime::now() - ACCOUNT_CURRENT_VALUE_CACHE_DURATION - Duration::from_secs(1);
+        let mut values = cache.values.lock().expect("cache lock");
+        values
+            .get_mut(&ChainReadCacheKey::from_read_key(&balance).expect("balance key"))
+            .expect("balance value")
+            .inserted_at = expired_at;
+        drop(values);
+
+        assert_eq!(cache.get(&balance), None);
     }
 
     #[test]

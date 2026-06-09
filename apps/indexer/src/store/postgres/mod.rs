@@ -49,6 +49,13 @@ impl PostgresIndexerRunnerStore {
         self.onchain_refresh_debounce = debounce;
         self
     }
+
+    pub async fn drain_deferred_onchain_refresh_tasks(
+        &self,
+        max_rows: usize,
+    ) -> Result<usize, PostgresIndexerRunnerStoreError> {
+        drain_deferred_onchain_refresh_tasks(&self.pool, max_rows).await
+    }
 }
 
 const DEFAULT_ONCHAIN_REFRESH_DEBOUNCE: Duration = Duration::from_millis(120_000);
@@ -88,6 +95,13 @@ impl IndexerRunnerStore for PostgresIndexerRunnerStore {
         block_on_runtime(read_timelock_proposal_link_context(
             &self.pool, context, events, proposal,
         ))
+    }
+
+    fn drain_deferred_onchain_refresh_tasks(
+        &mut self,
+        max_rows: usize,
+    ) -> Result<usize, Self::Error> {
+        block_on_runtime(drain_deferred_onchain_refresh_tasks(&self.pool, max_rows))
     }
 }
 
