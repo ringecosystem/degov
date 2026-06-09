@@ -1575,7 +1575,7 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
                 vote_start_timestamp::TEXT AS vote_start_timestamp,
                 vote_end_timestamp::TEXT AS vote_end_timestamp,
                 proposal_eta::TEXT AS proposal_eta, clock_mode, quorum::TEXT AS quorum,
-                decimals::TEXT AS decimals, metrics_votes_count,
+                decimals::TEXT AS decimals, block_interval, timelock_address, metrics_votes_count,
                 metrics_votes_weight_for_sum::TEXT AS metrics_votes_weight_for_sum
          FROM proposal",
     )
@@ -1589,12 +1589,26 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
         proposal.get::<String, _>("block_timestamp"),
         "1700000002000"
     );
-    assert_eq!(proposal.get::<String, _>("vote_start_timestamp"), "100");
-    assert_eq!(proposal.get::<String, _>("vote_end_timestamp"), "200");
+    assert_eq!(
+        proposal.get::<String, _>("vote_start_timestamp"),
+        "1700001178000"
+    );
+    assert_eq!(
+        proposal.get::<String, _>("vote_end_timestamp"),
+        "1700002378000"
+    );
     assert_eq!(proposal.get::<String, _>("proposal_eta"), "1234");
     assert_eq!(proposal.get::<String, _>("clock_mode"), "blocknumber");
     assert_eq!(proposal.get::<String, _>("quorum"), "9000");
     assert_eq!(proposal.get::<String, _>("decimals"), "18");
+    assert_eq!(
+        proposal.get::<Option<String>, _>("block_interval"),
+        Some("12".to_owned())
+    );
+    assert_eq!(
+        proposal.get::<Option<String>, _>("timelock_address"),
+        Some(TIMELOCK.to_owned())
+    );
     assert_eq!(
         proposal.get::<Option<i32>, _>("metrics_votes_count"),
         Some(1)

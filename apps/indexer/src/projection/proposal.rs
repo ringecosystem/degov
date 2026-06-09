@@ -68,14 +68,32 @@ impl ProposalProjectionBatch {
         });
 
         for result in results {
+            if result.key.method == ChainReadMethod::BlockTimestamp {
+                let Some(block_number) = result.key.args.first() else {
+                    continue;
+                };
+                let Some(timestamp) = chain_read_scalar(&result.value) else {
+                    continue;
+                };
+                for proposal in &mut self.proposals {
+                    if &proposal.vote_start == block_number {
+                        proposal.vote_start_timestamp = timestamp.clone();
+                    }
+                    if &proposal.vote_end == block_number {
+                        proposal.vote_end_timestamp = timestamp.clone();
+                    }
+                }
+                continue;
+            }
             if result.key.method == ChainReadMethod::ClockMode {
                 if let Some(value) = chain_read_clock_mode(&result.value) {
                     for proposal in &mut self.proposals {
                         proposal.clock_mode = value.clone();
+                        proposal.block_interval = block_interval(&proposal.clock_mode);
                         proposal.vote_start_timestamp =
-                            timepoint_timestamp(&proposal.vote_start, &proposal.clock_mode);
+                            timepoint_timestamp_for_proposal(proposal, &proposal.vote_start);
                         proposal.vote_end_timestamp =
-                            timepoint_timestamp(&proposal.vote_end, &proposal.clock_mode);
+                            timepoint_timestamp_for_proposal(proposal, &proposal.vote_end);
                     }
                 }
                 continue;
@@ -240,9 +258,11 @@ pub struct ProposalWrite {
     pub proposal_eta: Option<String>,
     pub queue_ready_at: Option<String>,
     pub queue_expires_at: Option<String>,
+    pub block_interval: Option<String>,
     pub clock_mode: String,
     pub quorum: String,
     pub decimals: String,
+    pub timelock_address: Option<String>,
     pub queued_block_number: Option<String>,
     pub queued_block_timestamp: Option<String>,
     pub queued_transaction_hash: Option<String>,
@@ -491,7 +511,7 @@ pub fn project_proposal_events(
                 let metric = proposal_data_metric(&input.log.id, &common);
                 data_metrics.insert(metric.id.clone(), metric);
 
-                let proposal = proposal_write(common.clone(), event);
+                let proposal = proposal_write(common.clone(), event, &context.contracts.timelock);
                 proposal_refs.insert(proposal_lookup_key(&common), proposal.id.clone());
                 for action in proposal_action_writes(&common, &proposal, event) {
                     proposal_actions.insert(action.id.clone(), action);
@@ -530,6 +550,10 @@ pub fn project_proposal_events(
                     vec![event.vote_start.clone()],
                     crate::BlockReadMode::Safe,
                 );
+                if proposal.clock_mode == "blocknumber" {
+                    builder.add_optional_block_timestamp_read(&event.vote_start);
+                    builder.add_optional_block_timestamp_read(&event.vote_end);
+                }
                 if context.token_standard == GovernanceTokenStandard::Erc20 {
                     builder.add_optional_enrichment_read(
                         context.contracts.governor_token.clone(),
@@ -818,9 +842,14 @@ fn proposal_data_metric(log_id: &str, common: &ProposalEventCommon) -> DataMetri
     }
 }
 
-fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> ProposalWrite {
+fn proposal_write(
+    common: ProposalEventCommon,
+    event: &ProposalCreatedEvent,
+    timelock_address: &str,
+) -> ProposalWrite {
     let metadata = derive_proposal_metadata(&event.description);
     let clock_mode = infer_clock_mode(&event.vote_start, &event.vote_end);
+    let block_interval = block_interval(&clock_mode);
 
     ProposalWrite {
         contract_set_id: common.contract_set_id.clone(),
@@ -843,8 +872,20 @@ fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> 
         calldatas: event.calldatas.clone(),
         vote_start: event.vote_start.clone(),
         vote_end: event.vote_end.clone(),
-        vote_start_timestamp: timepoint_timestamp(&event.vote_start, &clock_mode),
-        vote_end_timestamp: timepoint_timestamp(&event.vote_end, &clock_mode),
+        vote_start_timestamp: timepoint_timestamp(
+            &event.vote_start,
+            &clock_mode,
+            common.block_number.as_str(),
+            common.block_timestamp.as_deref(),
+            block_interval.as_deref(),
+        ),
+        vote_end_timestamp: timepoint_timestamp(
+            &event.vote_end,
+            &clock_mode,
+            common.block_number.as_str(),
+            common.block_timestamp.as_deref(),
+            block_interval.as_deref(),
+        ),
         description: metadata.description,
         title: metadata.title,
         description_body: metadata.description_body,
@@ -858,9 +899,11 @@ fn proposal_write(common: ProposalEventCommon, event: &ProposalCreatedEvent) -> 
         proposal_eta: Some("0".to_owned()),
         queue_ready_at: None,
         queue_expires_at: None,
+        block_interval,
         clock_mode,
         quorum: "0".to_owned(),
         decimals: "0".to_owned(),
+        timelock_address: Some(normalize_identifier(timelock_address)),
         queued_block_number: None,
         queued_block_timestamp: None,
         queued_transaction_hash: None,
@@ -1001,9 +1044,11 @@ fn lifecycle_stub(common: &ProposalEventCommon, proposal_ref: &str, state: &str)
         proposal_eta: None,
         queue_ready_at: None,
         queue_expires_at: None,
+        block_interval: Some("12".to_owned()),
         clock_mode,
         quorum: "0".to_owned(),
         decimals: "0".to_owned(),
+        timelock_address: None,
         queued_block_number: None,
         queued_block_timestamp: None,
         queued_transaction_hash: None,
@@ -1026,6 +1071,7 @@ impl ProposalWrite {
             merged.proposal_eta = self.proposal_eta.clone().or(merged.proposal_eta);
             merged.queue_ready_at = self.queue_ready_at.clone().or(merged.queue_ready_at);
             merged.queue_expires_at = self.queue_expires_at.clone().or(merged.queue_expires_at);
+            merged.block_interval = self.block_interval.clone().or(merged.block_interval);
             if merged.clock_mode == "blocknumber" && self.clock_mode != "blocknumber" {
                 merged.clock_mode = self.clock_mode.clone();
             }
@@ -1035,6 +1081,7 @@ impl ProposalWrite {
             if merged.decimals == "0" {
                 merged.decimals = self.decimals.clone();
             }
+            merged.timelock_address = self.timelock_address.clone().or(merged.timelock_address);
             merged.queued_block_number = self
                 .queued_block_number
                 .clone()
@@ -1088,6 +1135,7 @@ impl ProposalWrite {
                 .queue_expires_at
                 .clone()
                 .or(self.queue_expires_at.clone());
+            self.block_interval = next.block_interval.clone().or(self.block_interval.clone());
             if self.clock_mode == "blocknumber" && next.clock_mode != "blocknumber" {
                 self.clock_mode = next.clock_mode.clone();
             }
@@ -1097,6 +1145,10 @@ impl ProposalWrite {
             if self.decimals == "0" {
                 self.decimals = next.decimals.clone();
             }
+            self.timelock_address = next
+                .timelock_address
+                .clone()
+                .or(self.timelock_address.clone());
             self.queued_block_number = next
                 .queued_block_number
                 .clone()
@@ -1296,12 +1348,53 @@ fn is_unix_seconds_timepoint(value: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn timepoint_timestamp(timepoint: &str, clock_mode: &str) -> String {
+fn timepoint_timestamp(
+    timepoint: &str,
+    clock_mode: &str,
+    anchor_block_number: &str,
+    anchor_block_timestamp: Option<&str>,
+    block_interval: Option<&str>,
+) -> String {
     if clock_mode == "timestamp" {
-        seconds_to_millis(timepoint).unwrap_or_else(|| timepoint.to_owned())
-    } else {
-        timepoint.to_owned()
+        return seconds_to_millis(timepoint).unwrap_or_else(|| timepoint.to_owned());
     }
+
+    estimate_blocknumber_timestamp(
+        timepoint,
+        anchor_block_number,
+        anchor_block_timestamp,
+        block_interval,
+    )
+    .unwrap_or_else(|| timepoint.to_owned())
+}
+
+fn estimate_blocknumber_timestamp(
+    timepoint: &str,
+    anchor_block_number: &str,
+    anchor_block_timestamp: Option<&str>,
+    block_interval: Option<&str>,
+) -> Option<String> {
+    let target = timepoint.parse::<i128>().ok()?;
+    let anchor = anchor_block_number.parse::<i128>().ok()?;
+    let timestamp = anchor_block_timestamp?.parse::<i128>().ok()?;
+    let interval_ms = block_interval?.parse::<i128>().ok()? * 1_000;
+    let estimated = timestamp.checked_add(target.checked_sub(anchor)?.checked_mul(interval_ms)?)?;
+
+    (estimated >= 0).then(|| estimated.to_string())
+}
+
+fn block_interval(clock_mode: &str) -> Option<String> {
+    (clock_mode == "blocknumber").then(|| "12".to_owned())
+}
+
+fn timepoint_timestamp_for_proposal(proposal: &ProposalWrite, timepoint: &str) -> String {
+    timepoint_timestamp(
+        timepoint,
+        &proposal.clock_mode,
+        &proposal.block_number,
+        proposal.block_timestamp.as_deref(),
+        proposal.block_interval.as_deref(),
+    )
 }
 
 fn seconds_to_millis(seconds: &str) -> Option<String> {

@@ -42,15 +42,19 @@ pub(super) async fn query_proposals(
         SELECT id, contract_set_id, chain_id, dao_code, governor_address, proposal_id, proposer,
           targets, values, signatures, calldatas, vote_start::text AS vote_start,
           vote_end::text AS vote_end, description, block_number::text AS block_number,
-          block_timestamp::text AS block_timestamp, transaction_hash, metrics_votes_count,
+          (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
+          transaction_hash, metrics_votes_count,
           metrics_votes_with_params_count, metrics_votes_without_params_count,
           metrics_votes_weight_for_sum::text AS metrics_votes_weight_for_sum,
           metrics_votes_weight_against_sum::text AS metrics_votes_weight_against_sum,
           metrics_votes_weight_abstain_sum::text AS metrics_votes_weight_abstain_sum,
-          title, vote_start_timestamp::text AS vote_start_timestamp,
-          vote_end_timestamp::text AS vote_end_timestamp, block_interval, clock_mode,
+          title,
+          (CASE WHEN vote_start_timestamp < 1000000000000 THEN vote_start_timestamp * 1000 ELSE vote_start_timestamp END)::text AS vote_start_timestamp,
+          (CASE WHEN vote_end_timestamp < 1000000000000 THEN vote_end_timestamp * 1000 ELSE vote_end_timestamp END)::text AS vote_end_timestamp,
+          block_interval, clock_mode,
           proposal_deadline::text AS proposal_deadline, proposal_eta::text AS proposal_eta,
-          queue_ready_at::text AS queue_ready_at, queue_expires_at::text AS queue_expires_at,
+          (CASE WHEN queue_ready_at IS NULL THEN NULL WHEN queue_ready_at < 1000000000000 THEN queue_ready_at * 1000 ELSE queue_ready_at END)::text AS queue_ready_at,
+          (CASE WHEN queue_expires_at IS NULL THEN NULL WHEN queue_expires_at < 1000000000000 THEN queue_expires_at * 1000 ELSE queue_expires_at END)::text AS queue_expires_at,
           quorum::text AS quorum, decimals::text AS decimals, timelock_address,
           timelock_grace_period::text AS timelock_grace_period
         FROM (
@@ -206,7 +210,8 @@ where
     let mut query = QueryBuilder::<Postgres>::new(format!(
         r#"
         SELECT id, proposal_id, block_number::text AS block_number,
-          block_timestamp::text AS block_timestamp, transaction_hash
+          (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
+          transaction_hash
         FROM {table}
         "#
     ));
@@ -266,8 +271,10 @@ pub(super) async fn query_contributors(
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
         SELECT id, chain_id, dao_code, governor_address, block_number::text AS block_number,
-          block_timestamp::text AS block_timestamp, transaction_hash,
-          last_vote_timestamp::text AS last_vote_timestamp, power::text AS power,
+          (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
+          transaction_hash,
+          (CASE WHEN last_vote_timestamp IS NULL THEN NULL WHEN last_vote_timestamp < 1000000000000 THEN last_vote_timestamp * 1000 ELSE last_vote_timestamp END)::text AS last_vote_timestamp,
+          power::text AS power,
           balance::text AS balance, delegates_count_all
         FROM (
           SELECT contributor.id, contributor.contract_set_id, contributor.chain_id,
@@ -310,7 +317,8 @@ pub(super) async fn query_delegates(
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
         SELECT id, chain_id, dao_code, governor_address, from_delegate, to_delegate,
-          block_number::text AS block_number, block_timestamp::text AS block_timestamp,
+          block_number::text AS block_number,
+          (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
           transaction_hash, is_current, power::text AS power
         FROM (
           SELECT delegate.id, delegate.contract_set_id, delegate.chain_id,
@@ -353,7 +361,8 @@ pub(super) async fn query_delegate_mappings(
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
         SELECT id, chain_id, dao_code, governor_address, "from", "to", power::text AS power,
-          block_number::text AS block_number, block_timestamp::text AS block_timestamp,
+          block_number::text AS block_number,
+          (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
           transaction_hash
         FROM delegate_mapping
         "#,

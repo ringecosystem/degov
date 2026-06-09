@@ -43,6 +43,7 @@ pub enum BlockReadMode {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ChainReadMethod {
+    BlockTimestamp,
     CountingMode,
     ClockMode,
     Decimals,
@@ -470,6 +471,26 @@ impl ChainReadPlanBuilder {
         );
     }
 
+    pub fn add_optional_block_timestamp_read(&mut self, block_number: &str) {
+        let Ok(block_number_value) = block_number.parse::<u64>() else {
+            return;
+        };
+        self.add_read(
+            ChainReadDraft {
+                contract_address: self.contracts.governor.clone(),
+                method: ChainReadMethod::BlockTimestamp,
+                args: vec![block_number.to_owned()],
+                block_mode: BlockReadMode::AtBlock(block_number_value),
+                account: None,
+                proposal_id: None,
+                operation_id: None,
+                reason: ChainReadReason::OptionalEnrichment,
+                activity_block: None,
+            },
+            ReadRequirement::Optional,
+        );
+    }
+
     pub fn build(self) -> ChainReadPlan {
         let reads = self
             .reads
@@ -639,6 +660,9 @@ fn build_multicall_groups(
 
     let mut grouped = BTreeMap::<(i32, String, BlockReadMode), Vec<usize>>::new();
     for (index, read) in reads.iter().enumerate() {
+        if read.key.method == ChainReadMethod::BlockTimestamp {
+            continue;
+        }
         grouped
             .entry((
                 read.key.chain_id,

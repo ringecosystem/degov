@@ -35,13 +35,7 @@ pub(super) fn push_proposal_filters<'a>(
 ) {
     push_scope_filters(query, has_condition, &where_.scope, table_alias);
     if let Some(proposal_id) = &where_.proposal_id_eq {
-        push_column_eq(
-            query,
-            has_condition,
-            table_alias,
-            "proposal_id",
-            proposal_id,
-        );
+        push_proposal_id_eq(query, has_condition, table_alias, proposal_id);
     }
     if let Some(proposer) = &where_.proposer_eq {
         push_column_eq(query, has_condition, table_alias, "proposer", proposer);
@@ -112,7 +106,7 @@ pub(super) fn push_event_where<'a>(
         if let Some(where_) = where_ {
             push_scope_filters(query, &mut has_condition, where_.scope(), "");
             if let Some(proposal_id) = where_.proposal_id_eq() {
-                push_column_eq(query, &mut has_condition, "", "proposal_id", proposal_id);
+                push_proposal_id_eq(query, &mut has_condition, "", proposal_id);
             }
         }
         if !has_condition {
@@ -482,6 +476,36 @@ pub(super) fn push_numeric_column_eq<'a>(
     push_and(query, has_condition);
     push_qualified_column(query, table_alias, column);
     query.push(" = ").push_bind(value).push("::numeric");
+}
+
+fn push_proposal_id_eq<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    proposal_id: &'a str,
+) {
+    let values = proposal_id_compat_values(proposal_id);
+    if values.len() == 1 {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "proposal_id",
+            proposal_id,
+        );
+        return;
+    }
+
+    push_and(query, has_condition);
+    query.push("(");
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            query.push(" OR ");
+        }
+        push_qualified_column(query, table_alias, "proposal_id");
+        query.push(" = ").push_bind(value.clone());
+    }
+    query.push(")");
 }
 
 pub(super) fn push_qualified_column(

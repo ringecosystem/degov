@@ -1137,6 +1137,11 @@ impl EvmRpcChainTool {
                 .execute_timelock_operation_state(read_index, read)
                 .map(|result| (result, false));
         }
+        if read.key.method == ChainReadMethod::BlockTimestamp {
+            return self
+                .execute_block_timestamp(read_index, read)
+                .map(|result| (result, false));
+        }
 
         if let Some(value) = self.cache.get(&read.key) {
             return Ok((
@@ -1162,6 +1167,30 @@ impl EvmRpcChainTool {
             },
             false,
         ))
+    }
+
+    fn execute_block_timestamp(
+        &self,
+        read_index: usize,
+        read: &crate::ChainReadRequest,
+    ) -> Result<ChainReadResult, String> {
+        let block_number = read
+            .key
+            .args
+            .first()
+            .ok_or_else(|| "missing block number argument for BlockTimestamp".to_owned())?;
+        let timestamp_seconds = self.eth_get_block_timestamp(block_number)?;
+
+        Ok(ChainReadResult {
+            read_index,
+            key: read.key.clone(),
+            value: ChainReadValue::Integer(
+                timestamp_seconds
+                    .checked_mul(1_000)
+                    .ok_or_else(|| "block timestamp overflow".to_owned())?
+                    .to_string(),
+            ),
+        })
     }
 
     fn execute_timelock_operation_state(
@@ -1272,6 +1301,64 @@ impl EvmRpcChainTool {
         })
         .join()
         .map_err(|_| "RPC eth_call worker thread panicked".to_owned())?
+    }
+
+    fn eth_get_block_timestamp(&self, block_number: &str) -> Result<u128, String> {
+        let block_number = block_number
+            .parse::<u64>()
+            .map_err(|error| format!("parse block number {block_number}: {error}"))?;
+        let client = self.client.clone();
+        let rpc_url = self.rpc_url.clone();
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_getBlockByNumber",
+            "params": [
+                format!("0x{block_number:x}"),
+                false,
+            ],
+        });
+        thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())?;
+            runtime.block_on(async move {
+                let response = client
+                    .post(&rpc_url)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|error| error.to_string())?;
+
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "RPC eth_getBlockByNumber failed with HTTP {}",
+                        response.status()
+                    ));
+                }
+
+                let payload = response
+                    .json::<JsonRpcBlockResponse>()
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if let Some(error) = payload.error {
+                    return Err(error.message);
+                }
+
+                let block = payload
+                    .result
+                    .ok_or_else(|| "RPC eth_getBlockByNumber returned no result".to_owned())?;
+                let timestamp = block
+                    .timestamp
+                    .strip_prefix("0x")
+                    .ok_or_else(|| "block timestamp must be hex".to_owned())?;
+                u128::from_str_radix(timestamp, 16)
+                    .map_err(|error| format!("parse block timestamp: {error}"))
+            })
+        })
+        .join()
+        .map_err(|_| "RPC eth_getBlockByNumber worker thread panicked".to_owned())?
     }
 }
 
@@ -1662,6 +1749,9 @@ fn format_failures(failures: &PartialChainReadFailureReport) -> String {
 
 fn encode_call_data(method: ChainReadMethod, args: &[String]) -> Result<String, String> {
     let (signature, tokens) = match method {
+        ChainReadMethod::BlockTimestamp => {
+            return Err("BlockTimestamp uses eth_getBlockByNumber".to_owned());
+        }
         ChainReadMethod::CountingMode => ("COUNTING_MODE()", vec![]),
         ChainReadMethod::ClockMode => ("CLOCK_MODE()", vec![]),
         ChainReadMethod::Decimals => ("decimals()", vec![]),
@@ -1867,6 +1957,17 @@ fn decode_hex_result(value: &str) -> Result<Vec<u8>, String> {
 struct JsonRpcResponse {
     result: Option<String>,
     error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct JsonRpcBlockResponse {
+    result: Option<JsonRpcBlock>,
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct JsonRpcBlock {
+    timestamp: String,
 }
 
 #[derive(Debug, Deserialize)]
