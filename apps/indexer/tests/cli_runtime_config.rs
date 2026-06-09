@@ -470,6 +470,27 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
 }
 
 #[test]
+fn test_indexer_runtime_config_inherits_onchain_refresh_tick_run_budget_from_total_budget() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", Some("true")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", Some("1000")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS", None),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.onchain_refresh_tick.max_tasks_per_tick, 1000);
+            assert_eq!(config.onchain_refresh_tick.max_tasks_per_run, 1000);
+        },
+    );
+}
+
+#[test]
 fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_total_budget() {
     temp_env::with_vars(
         [
