@@ -1,12 +1,12 @@
 use degov_datalens_indexer::{
     BatchReadPlanConfig, CallExecutedEvent, CallSaltEvent, CallScheduledEvent, ChainContracts,
     ChainReadExecutionReport, ChainReadKey, ChainReadMethod, ChainReadResult, ChainReadValue,
-    DecodedGovernorEvent, DecodedTimelockEvent, NormalizedEvmLog, ParameterChangeEvent,
-    ProposalCreatedEvent, ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
-    ReadRequirement, RoleAccountEvent, RoleAdminChangedEvent, TimelockOperationIdEvent,
-    TimelockProjectionContext, TimelockProjectionError, TimelockProjectionEvent,
-    TimelockProjectionRepository, TimelockProposalLinkContext, project_proposal_events,
-    project_timelock_events, project_timelock_events_with_proposal_links,
+    DecodedGovernorEvent, DecodedTimelockEvent, GovernanceTokenStandard, NormalizedEvmLog,
+    ParameterChangeEvent, ProposalCreatedEvent, ProposalProjectionContext, ProposalProjectionEvent,
+    ProposalQueuedEvent, ReadRequirement, RoleAccountEvent, RoleAdminChangedEvent,
+    TimelockOperationIdEvent, TimelockProjectionContext, TimelockProjectionError,
+    TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
+    project_proposal_events, project_timelock_events, project_timelock_events_with_proposal_links,
 };
 use serde_json::json;
 use sha3::{Digest, Keccak256};
@@ -641,6 +641,7 @@ fn proposal_context() -> ProposalProjectionContext {
             governor_token: "0x1111111111111111111111111111111111111111".to_owned(),
             timelock: "0x2222222222222222222222222222222222222222".to_owned(),
         },
+        token_standard: GovernanceTokenStandard::Erc20,
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
             multicall_batch_size: 10,

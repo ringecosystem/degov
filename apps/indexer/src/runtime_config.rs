@@ -511,6 +511,7 @@ impl IndexerContractSetRuntimeConfig {
                 dao_code: self.dao_code.clone(),
                 governor_address: contracts.governor.clone(),
                 contracts: chain_contracts.clone(),
+                token_standard: contracts.governor_token_standard,
                 read_plan_config,
             }),
             timelock: Some(TimelockProjectionContext {
