@@ -26,6 +26,7 @@ use crate::{
 
 use crate::OnchainRefreshTickReport;
 use crate::checkpoint::configured_range_progress;
+use crate::store::postgres::DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS;
 
 #[derive(Clone, Debug)]
 pub struct IndexerRunnerOptions {
@@ -773,7 +774,9 @@ where
                 .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
             let write_duration = write_started_at.elapsed();
             let deferred_drain_started_at = Instant::now();
-            let deferred_drain_count = match self.store.drain_deferred_onchain_refresh_tasks(1_000)
+            let deferred_drain_count = match self
+                .store
+                .drain_deferred_onchain_refresh_tasks(DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS)
             {
                 Ok(count) => count,
                 Err(error) => {

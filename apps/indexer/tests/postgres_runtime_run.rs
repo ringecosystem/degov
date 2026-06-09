@@ -14,10 +14,11 @@ use std::{
 
 use degov_datalens_indexer::{
     BatchReadPlanConfig, CallExecutedEvent, CallScheduledEvent, ChainContracts, ChainReadMethod,
-    DecodedGovernorEvent, DecodedTimelockEvent, DecodedTokenEvent, DelegateChangedEvent,
-    DelegateVotesChangedEvent, GovernanceTokenStandard, IndexerProjectionBatch, IndexerRunnerStore,
-    IndexerRunnerTransaction, NormalizedEvmLog, PostgresIndexerRunnerStore, ProposalCreatedEvent,
-    ProposalExtendedEvent, ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
+    DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS, DecodedGovernorEvent, DecodedTimelockEvent,
+    DecodedTokenEvent, DelegateChangedEvent, DelegateVotesChangedEvent, GovernanceTokenStandard,
+    IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction, NormalizedEvmLog,
+    PostgresIndexerRunnerStore, ProposalCreatedEvent, ProposalExtendedEvent,
+    ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
     TimelockProjectionContext, TimelockProjectionEvent, TimelockProposalLinkContext,
     TokenProjectionContext, TokenProjectionEvent, TokenTransferEvent, VoteCastEvent,
     VoteProjectionContext, VoteProjectionEvent, project_proposal_events, project_timelock_events,
@@ -32,14 +33,6 @@ use tokio::time::{sleep, timeout};
 
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
 static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
-const DEFAULT_ONCHAIN_REFRESH_DEBOUNCE_MS: i64 = 120_000;
-
-fn onchain_refresh_debounce_ms() -> i64 {
-    env::var("DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS")
-        .ok()
-        .and_then(|value| value.parse::<i64>().ok())
-        .unwrap_or(DEFAULT_ONCHAIN_REFRESH_DEBOUNCE_MS)
-}
 
 struct TestDatabase {
     _guard: MutexGuard<'static, ()>,
@@ -878,7 +871,7 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())
-        .with_onchain_refresh_debounce(Duration::from_secs(120));
+        .with_onchain_refresh_debounce(Duration::ZERO);
     seed_refresh_task_for_account(
         &database.pool,
         DELEGATOR,
@@ -979,7 +972,7 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
     assert_eq!(pending.get::<String, _>("status"), "pending");
     assert_eq!(pending.get::<i32, _>("attempts"), 0);
     let pending_next_run_at = pending.get::<String, _>("next_run_at").parse::<i64>()?;
-    let debounce_ms = onchain_refresh_debounce_ms();
+    let debounce_ms = 0;
     assert!(pending_next_run_at >= before + debounce_ms);
     assert!(pending_next_run_at <= after + debounce_ms);
     assert_eq!(pending.get::<String, _>("first_seen_block_number"), "10");
@@ -1050,7 +1043,7 @@ async fn test_postgres_token_reconcile_tasks_dedupe_duplicate_accounts_before_sq
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())
-        .with_onchain_refresh_debounce(Duration::from_secs(120));
+        .with_onchain_refresh_debounce(Duration::ZERO);
     seed_refresh_task_for_account(
         &database.pool,
         SECOND_DELEGATE,
@@ -1201,26 +1194,79 @@ async fn test_postgres_token_reconcile_tasks_dedupe_duplicate_accounts_before_sq
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
+async fn test_postgres_token_deferred_refresh_reschedules_ready_materialized_task()
 -> Result<(), Box<dyn Error>> {
-    const DENSE_CANDIDATE_COUNT: usize = 1_001;
-
     let database = TestDatabase::connect().await?;
-    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
-    let deferred_processing_account = indexed_account(DENSE_CANDIDATE_COUNT - 1);
-    seed_refresh_task_for_account(
-        &database.pool,
-        &deferred_processing_account,
-        "processing",
-        5,
-        999,
-        Some("rpc still running"),
-        false,
-    )
-    .await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())
+        .with_onchain_refresh_debounce(Duration::from_secs(120));
+    seed_refresh_task_for_account(&database.pool, DELEGATE, "pending", 0, 0, None, false).await?;
+
+    let before = unix_time_millis_for_test();
     let token_batch = project_token_events(
         &token_projection_context(),
-        (0..DENSE_CANDIDATE_COUNT)
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000000030-ready-pending-repeat", 30, 0, 1),
+            event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                delegate: DELEGATE.to_owned(),
+                previous_votes: "0".to_owned(),
+                new_votes: "1".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    let after = unix_time_millis_for_test();
+
+    let pending = sqlx::query(
+        "SELECT status, next_run_at::TEXT AS next_run_at
+         FROM onchain_refresh_task
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(pending.get::<String, _>("status"), "pending");
+    let next_run_at = pending.get::<String, _>("next_run_at").parse::<i64>()?;
+    assert!(next_run_at >= before + 120_000);
+    assert!(next_run_at <= after + 120_000);
+
+    let deferred_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
+         FROM onchain_refresh_deferred_candidate
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(deferred_count, 1);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
+-> Result<(), Box<dyn Error>> {
+    const DENSE_EVENT_COUNT: usize = 1_205;
+    const DENSE_UNIQUE_ACCOUNT_COUNT: usize = 150;
+    const EXPECTED_MATERIALIZED_BATCH: i64 = DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS as i64;
+
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())
+        .with_onchain_refresh_debounce(Duration::from_secs(120));
+    let deferred_account = indexed_account(DENSE_UNIQUE_ACCOUNT_COUNT - 1);
+    let token_batch = project_token_events(
+        &token_projection_context(),
+        (0..DENSE_EVENT_COUNT)
             .map(|index| TokenProjectionEvent {
                 log: normalized_token_log(
                     &format!("0000000030-dense-votes-{index}"),
@@ -1229,7 +1275,7 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
                     1,
                 ),
                 event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
-                    delegate: indexed_account(index),
+                    delegate: indexed_account(index % DENSE_UNIQUE_ACCOUNT_COUNT),
                     previous_votes: "0".to_owned(),
                     new_votes: "1".to_owned(),
                 }),
@@ -1239,7 +1285,7 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
     .map_err(|error| format!("dense token projection failed: {error:?}"))?;
     assert_eq!(
         token_batch.reconcile_plan.candidates.len(),
-        DENSE_CANDIDATE_COUNT
+        DENSE_UNIQUE_ACCOUNT_COUNT
     );
 
     apply_projection_batch(
@@ -1258,7 +1304,17 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
     .bind(CONTRACT_SET_ID)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(task_count, 1_001);
+    assert_eq!(task_count, 0);
+
+    let pending_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
+         FROM onchain_refresh_task
+         WHERE contract_set_id = $1 AND status = 'pending'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(pending_count, 0);
 
     let deferred_count: i64 = sqlx::query_scalar(
         "SELECT count(*)::BIGINT
@@ -1268,65 +1324,83 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
     .bind(CONTRACT_SET_ID)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(deferred_count, 1);
+    assert_eq!(deferred_count, DENSE_UNIQUE_ACCOUNT_COUNT as i64);
 
-    let inline_account = indexed_account(999);
-    let missing_inline_task_count: i64 = sqlx::query_scalar(
-        "SELECT count(*)::BIGINT
-         FROM onchain_refresh_task
+    let deferred = sqlx::query(
+        "SELECT account, reason, last_seen_block_number::TEXT AS last_seen_block_number,
+                next_run_at::TEXT AS next_run_at
+         FROM onchain_refresh_deferred_candidate
          WHERE contract_set_id = $1 AND account = $2",
     )
     .bind(CONTRACT_SET_ID)
-    .bind(&inline_account)
+    .bind(&deferred_account)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(missing_inline_task_count, 1);
-
-    for index in [0, 999] {
-        let account = indexed_account(index);
-        let row = sqlx::query(
-            "SELECT id, reason, status, next_run_at::TEXT AS next_run_at,
-                    last_seen_block_number::TEXT AS last_seen_block_number
-             FROM onchain_refresh_task
-             WHERE contract_set_id = $1 AND account = $2",
-        )
-        .bind(CONTRACT_SET_ID)
-        .bind(&account)
-        .fetch_one(&database.pool)
-        .await?;
-        assert_eq!(row.get::<String, _>("id"), refresh_task_id(&account));
-        assert_eq!(row.get::<String, _>("reason"), "delegate-votes-changed");
-        assert_eq!(row.get::<String, _>("status"), "pending");
-        assert_eq!(
-            row.get::<String, _>("last_seen_block_number"),
-            (30 + index as u64).to_string()
-        );
-        assert!(row.get::<String, _>("next_run_at").parse::<i64>()? > 0);
-    }
-
-    let deferred = sqlx::query(
-        "SELECT account, reason, last_seen_block_number::TEXT AS last_seen_block_number
-         FROM onchain_refresh_deferred_candidate
-         WHERE contract_set_id = $1",
-    )
-    .bind(CONTRACT_SET_ID)
-    .fetch_one(&database.pool)
-    .await?;
-    assert_eq!(
-        deferred.get::<String, _>("account"),
-        deferred_processing_account
-    );
+    assert_eq!(deferred.get::<String, _>("account"), deferred_account);
     assert_eq!(
         deferred.get::<String, _>("reason"),
         "delegate-votes-changed"
     );
+    assert_eq!(deferred.get::<String, _>("last_seen_block_number"), "1229");
+    let first_next_run_at = deferred.get::<String, _>("next_run_at").parse::<i64>()?;
+
+    let second_batch = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000002000-dense-votes-repeat", 2_000, 0, 1),
+            event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                delegate: deferred_account.clone(),
+                previous_votes: "1".to_owned(),
+                new_votes: "2".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("repeat token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(second_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let updated_deferred = sqlx::query(
+        "SELECT last_seen_block_number::TEXT AS last_seen_block_number,
+                next_run_at::TEXT AS next_run_at
+         FROM onchain_refresh_deferred_candidate
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(&deferred_account)
+    .fetch_one(&database.pool)
+    .await?;
     assert_eq!(
-        deferred.get::<String, _>("last_seen_block_number"),
-        (30 + (DENSE_CANDIDATE_COUNT - 1) as u64).to_string()
+        updated_deferred.get::<String, _>("last_seen_block_number"),
+        "2000"
+    );
+    assert!(
+        updated_deferred
+            .get::<String, _>("next_run_at")
+            .parse::<i64>()?
+            >= first_next_run_at
     );
 
     let drained = store.drain_deferred_onchain_refresh_tasks(1).await?;
-    assert_eq!(drained, 1);
+    assert_eq!(drained, 0);
+
+    sqlx::query(
+        "UPDATE onchain_refresh_deferred_candidate
+         SET next_run_at = 0
+         WHERE contract_set_id = $1",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+
+    let drained = store
+        .drain_deferred_onchain_refresh_tasks(EXPECTED_MATERIALIZED_BATCH as usize)
+        .await?;
+    assert_eq!(drained, EXPECTED_MATERIALIZED_BATCH as usize);
 
     let deferred_count_after_drain: i64 = sqlx::query_scalar(
         "SELECT count(*)::BIGINT
@@ -1336,45 +1410,20 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
     .bind(CONTRACT_SET_ID)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(deferred_count_after_drain, 0);
+    assert_eq!(
+        deferred_count_after_drain,
+        DENSE_UNIQUE_ACCOUNT_COUNT as i64 - EXPECTED_MATERIALIZED_BATCH
+    );
 
-    let processing = sqlx::query(
-        "SELECT status, attempts, next_run_at::TEXT AS next_run_at, error,
-                last_seen_block_number::TEXT AS last_seen_block_number, pending_after_lock,
-                pending_after_lock_block_number::TEXT AS pending_after_lock_block_number,
-                pending_after_lock_block_timestamp::TEXT AS pending_after_lock_block_timestamp,
-                pending_after_lock_transaction_hash
+    let pending_count_after_drain: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
          FROM onchain_refresh_task
-         WHERE contract_set_id = $1 AND account = $2",
+         WHERE contract_set_id = $1 AND status = 'pending'",
     )
     .bind(CONTRACT_SET_ID)
-    .bind(&deferred_processing_account)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(processing.get::<String, _>("status"), "processing");
-    assert_eq!(processing.get::<i32, _>("attempts"), 5);
-    assert_eq!(processing.get::<String, _>("next_run_at"), "999");
-    assert_eq!(
-        processing.get::<Option<String>, _>("error"),
-        Some("rpc still running".to_owned())
-    );
-    assert_eq!(
-        processing.get::<String, _>("last_seen_block_number"),
-        (30 + (DENSE_CANDIDATE_COUNT - 1) as u64).to_string()
-    );
-    assert!(processing.get::<bool, _>("pending_after_lock"));
-    assert_eq!(
-        processing.get::<Option<String>, _>("pending_after_lock_block_number"),
-        Some((30 + (DENSE_CANDIDATE_COUNT - 1) as u64).to_string())
-    );
-    assert_eq!(
-        processing.get::<Option<String>, _>("pending_after_lock_block_timestamp"),
-        Some((1_700_000_000_000 + (30 + (DENSE_CANDIDATE_COUNT - 1) as u64) * 1_000).to_string())
-    );
-    assert_eq!(
-        processing.get::<Option<String>, _>("pending_after_lock_transaction_hash"),
-        Some(format!("0xtx{}0", 30 + (DENSE_CANDIDATE_COUNT - 1) as u64))
-    );
+    assert_eq!(pending_count_after_drain, EXPECTED_MATERIALIZED_BATCH);
 
     database.cleanup().await?;
 

@@ -1,7 +1,30 @@
 // Onchain refresh task persistence.
 const MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS: usize = 1_000;
-const MAX_INLINE_ONCHAIN_REFRESH_TASK_UPSERT_ROWS: usize = 1_000;
-pub const DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS: usize = 1_000;
+pub const DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS: usize = 100;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct OnchainRefreshEnqueuePlan {
+    inline_upsert_count: usize,
+    deferred_candidate_count: usize,
+    ready_drain_count: usize,
+}
+
+fn plan_onchain_refresh_enqueue(
+    deduped_count: usize,
+    debounce: Duration,
+) -> OnchainRefreshEnqueuePlan {
+    let ready_drain_count = if debounce.is_zero() {
+        deduped_count.min(DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS)
+    } else {
+        0
+    };
+
+    OnchainRefreshEnqueuePlan {
+        inline_upsert_count: 0,
+        deferred_candidate_count: deduped_count,
+        ready_drain_count,
+    }
+}
 
 async fn upsert_onchain_refresh_tasks(
     transaction: &mut Transaction<'_, Postgres>,
@@ -19,22 +42,30 @@ async fn upsert_onchain_refresh_tasks(
         row.next_run_at = next_run_at.to_string();
     }
 
-    let inline_count = rows.len().min(MAX_INLINE_ONCHAIN_REFRESH_TASK_UPSERT_ROWS);
-    let (inline_rows, deferred_rows) = rows.split_at(inline_count);
-    for chunk in inline_rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
-        upsert_onchain_refresh_task_chunk(transaction, chunk, now_ms).await?;
-    }
-    for chunk in deferred_rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
+    let plan = plan_onchain_refresh_enqueue(rows.len(), debounce);
+    for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
         upsert_deferred_onchain_refresh_candidate_chunk(transaction, chunk, now_ms, next_run_at)
             .await?;
     }
+    let rescheduled_count =
+        reschedule_materialized_onchain_refresh_tasks(transaction, &rows, next_run_at, now_ms)
+            .await?;
+    let drained_count = drain_deferred_onchain_refresh_tasks_in_transaction(
+        transaction,
+        plan.ready_drain_count,
+        now_ms,
+    )
+    .await?;
 
     log::info!(
-        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} inline_upsert_count={} deferred_count={}",
+        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} inline_upsert_count={} deferred_count={} rescheduled_materialized_count={} ready_drain_count={} materialized_count={}",
         original_count,
         rows.len(),
-        inline_rows.len(),
-        deferred_rows.len()
+        plan.inline_upsert_count,
+        plan.deferred_candidate_count,
+        rescheduled_count,
+        plan.ready_drain_count,
+        drained_count
     );
 
     Ok(())
@@ -50,28 +81,77 @@ pub async fn drain_deferred_onchain_refresh_tasks(
 
     let started_at = std::time::Instant::now();
     let mut transaction = pool.begin().await?;
-    let rows = read_deferred_onchain_refresh_candidates(&mut transaction, max_rows).await?;
+    let now_ms = unix_time_millis();
+    let drained_count =
+        drain_deferred_onchain_refresh_tasks_in_transaction(&mut transaction, max_rows, now_ms)
+            .await?;
+    transaction.commit().await?;
+
+    if drained_count > 0 {
+        log::info!(
+            "onchain refresh deferred drain completed deferred_drain_count={} deferred_drain_duration_ms={}",
+            drained_count,
+            started_at.elapsed().as_millis()
+        );
+    }
+
+    Ok(drained_count)
+}
+
+async fn reschedule_materialized_onchain_refresh_tasks(
+    transaction: &mut Transaction<'_, Postgres>,
+    rows: &[OnchainRefreshTaskWrite],
+    next_run_at: i64,
+    now_ms: i64,
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
     if rows.is_empty() {
-        transaction.commit().await?;
+        return Ok(0);
+    }
+
+    let mut rescheduled_count = 0;
+    for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
+        let ids = chunk.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
+        let result = sqlx::query(
+            "UPDATE onchain_refresh_task
+             SET next_run_at = GREATEST(next_run_at, $2::NUMERIC(78, 0)),
+                 updated_at = $3::NUMERIC(78, 0)
+             WHERE id = ANY($1)
+               AND status IN ('pending', 'failed')
+               AND next_run_at < $2::NUMERIC(78, 0)",
+        )
+        .bind(&ids)
+        .bind(next_run_at.to_string())
+        .bind(now_ms.to_string())
+        .execute(&mut **transaction)
+        .await?;
+        rescheduled_count += result.rows_affected();
+    }
+
+    Ok(rescheduled_count)
+}
+
+async fn drain_deferred_onchain_refresh_tasks_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    max_rows: usize,
+    now_ms: i64,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    if max_rows == 0 {
+        return Ok(0);
+    }
+
+    let rows = read_deferred_onchain_refresh_candidates(transaction, max_rows, now_ms).await?;
+    if rows.is_empty() {
         return Ok(0);
     }
 
     let ids = rows.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
-    let now_ms = unix_time_millis();
     for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
-        upsert_onchain_refresh_task_chunk(&mut transaction, chunk, now_ms).await?;
+        upsert_onchain_refresh_task_chunk(transaction, chunk, now_ms).await?;
     }
     sqlx::query("DELETE FROM onchain_refresh_deferred_candidate WHERE id = ANY($1)")
         .bind(&ids)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
-    transaction.commit().await?;
-
-    log::info!(
-        "onchain refresh deferred drain completed deferred_drain_count={} deferred_drain_duration_ms={}",
-        ids.len(),
-        started_at.elapsed().as_millis()
-    );
 
     Ok(ids.len())
 }
@@ -421,6 +501,7 @@ async fn upsert_deferred_onchain_refresh_candidate_chunk(
 async fn read_deferred_onchain_refresh_candidates(
     transaction: &mut Transaction<'_, Postgres>,
     max_rows: usize,
+    now_ms: i64,
 ) -> Result<Vec<OnchainRefreshTaskWrite>, PostgresIndexerRunnerStoreError> {
     let max_rows = i64::try_from(max_rows)
         .map_err(|_| PostgresIndexerRunnerStoreError::new("deferred drain batch size exceeds i64"))?;
@@ -433,6 +514,7 @@ async fn read_deferred_onchain_refresh_candidates(
                 last_seen_transaction_hash,
                 next_run_at::TEXT AS next_run_at
          FROM onchain_refresh_deferred_candidate
+         WHERE next_run_at <= $2::NUMERIC(78, 0)
          ORDER BY onchain_refresh_deferred_candidate.next_run_at,
                   onchain_refresh_deferred_candidate.updated_at,
                   onchain_refresh_deferred_candidate.id
@@ -440,6 +522,7 @@ async fn read_deferred_onchain_refresh_candidates(
          FOR UPDATE SKIP LOCKED",
     )
     .bind(max_rows)
+    .bind(now_ms)
     .fetch_all(&mut **transaction)
     .await?;
 
@@ -523,6 +606,19 @@ mod tests {
         let deduped = dedupe_onchain_refresh_tasks(&rows);
 
         assert_eq!(deduped.len(), rows.len());
+    }
+
+    #[test]
+    fn test_plan_onchain_refresh_enqueue_buffers_dense_candidates() {
+        let debounced = plan_onchain_refresh_enqueue(1_205, Duration::from_secs(120));
+        assert_eq!(debounced.inline_upsert_count, 0);
+        assert_eq!(debounced.deferred_candidate_count, 1_205);
+        assert_eq!(debounced.ready_drain_count, 0);
+
+        let immediate = plan_onchain_refresh_enqueue(1_205, Duration::ZERO);
+        assert_eq!(immediate.inline_upsert_count, 0);
+        assert_eq!(immediate.deferred_candidate_count, 1_205);
+        assert_eq!(immediate.ready_drain_count, DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS);
     }
 
     fn candidate(

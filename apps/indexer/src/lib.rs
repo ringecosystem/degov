@@ -97,7 +97,8 @@ pub use crate::projection::vote::{
     VoteProjectionEvent, VoteProjectionRepository, VoteRepositoryWriteError, project_vote_events,
 };
 pub use crate::store::postgres::{
-    PostgresIndexerRunnerStore, PostgresIndexerRunnerStoreError, PostgresIndexerRunnerTransaction,
+    DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS, PostgresIndexerRunnerStore,
+    PostgresIndexerRunnerStoreError, PostgresIndexerRunnerTransaction,
     PostgresProvisionalCleanupStore, PostgresProvisionalPowerOverlayStore,
     PostgresProvisionalProposalOverlayStore, PostgresProvisionalSegmentStore,
 };
