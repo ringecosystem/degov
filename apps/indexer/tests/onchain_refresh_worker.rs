@@ -578,6 +578,54 @@ async fn test_onchain_refresh_worker_marks_claimed_tasks_failed_when_reader_fail
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_rolls_back_when_apply_fails() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+
+    let reader = MockOnchainRefreshReader::new([(
+        "task-one",
+        OnchainRefreshReadValue {
+            task_id: "task-one".to_owned(),
+            balance: None,
+            power: Some("not-a-number".to_owned()),
+        },
+    )]);
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            max_attempts: 3,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 1);
+    assert_eq!(report.completed, 0);
+    assert_eq!(report.failed, 1);
+    assert_failed_task_error_contains(&database.pool, "task-one", "invalid input syntax").await?;
+    assert_eq!(idle_transaction_count(&database.pool).await?, 0);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_task_with_scope(
@@ -1581,6 +1629,29 @@ async fn assert_failed_task_error_contains(
     );
 
     Ok(())
+}
+
+async fn idle_transaction_count(_pool: &PgPool) -> Result<i64, sqlx::Error> {
+    let database_url = env::var("DEGOV_INDEXER_TEST_DATABASE_URL").map_err(|error| {
+        sqlx::Error::Configuration(
+            format!("DEGOV_INDEXER_TEST_DATABASE_URL is required: {error}").into(),
+        )
+    })?;
+    let probe_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await?;
+    let row = sqlx::query(
+        "SELECT count(*)::BIGINT AS count
+         FROM pg_stat_activity
+         WHERE datname = current_database()
+           AND pid <> pg_backend_pid()
+           AND state = 'idle in transaction'",
+    )
+    .fetch_one(&probe_pool)
+    .await?;
+
+    Ok(row.get("count"))
 }
 
 async fn assert_data_metric(

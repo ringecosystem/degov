@@ -637,18 +637,37 @@ where
     ) -> Result<OnchainRefreshApplyBatchReport, OnchainRefreshWorkerError> {
         let mut transaction = self.pool.begin().await?;
 
-        let previous_values = read_contributor_refresh_values(&mut transaction, successes).await?;
-        upsert_contributor_refresh(&mut transaction, successes).await?;
-        insert_refresh_checkpoints(
-            &mut transaction,
-            successes,
-            &previous_values,
-            self.current_power_method,
-        )
-        .await?;
-        let data_metric_refreshes = refresh_data_metrics(&mut transaction, successes).await?;
-        let debounced_tasks =
-            complete_tasks(&mut transaction, successes, now_ms, self.config.debounce).await?;
+        let result = async {
+            let previous_values =
+                read_contributor_refresh_values(&mut transaction, successes).await?;
+            upsert_contributor_refresh(&mut transaction, successes).await?;
+            insert_refresh_checkpoints(
+                &mut transaction,
+                successes,
+                &previous_values,
+                self.current_power_method,
+            )
+            .await?;
+            let data_metric_refreshes = refresh_data_metrics(&mut transaction, successes).await?;
+            let debounced_tasks =
+                complete_tasks(&mut transaction, successes, now_ms, self.config.debounce).await?;
+
+            Ok::<_, OnchainRefreshWorkerError>((data_metric_refreshes, debounced_tasks))
+        }
+        .await;
+        let (data_metric_refreshes, debounced_tasks) = match result {
+            Ok(report) => report,
+            Err(error) => {
+                if let Err(rollback_error) = transaction.rollback().await {
+                    log::warn!(
+                        "onchain refresh success batch rollback failed error={} rollback_error={}",
+                        error,
+                        rollback_error
+                    );
+                }
+                return Err(error);
+            }
+        };
 
         transaction.commit().await?;
 
@@ -668,7 +687,16 @@ where
         successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
     ) -> Result<(), OnchainRefreshWorkerError> {
         let mut transaction = self.pool.begin().await?;
-        upsert_live_power_overlays(&mut transaction, successes).await?;
+        if let Err(error) = upsert_live_power_overlays(&mut transaction, successes).await {
+            if let Err(rollback_error) = transaction.rollback().await {
+                log::warn!(
+                    "onchain refresh live power overlay rollback failed error={} rollback_error={}",
+                    error,
+                    rollback_error
+                );
+            }
+            return Err(error.into());
+        }
         transaction.commit().await?;
 
         Ok(())
