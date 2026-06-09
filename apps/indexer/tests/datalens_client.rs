@@ -333,6 +333,47 @@ fn test_datalens_log_query_rejects_second_call_while_sdk_query_is_still_in_fligh
 }
 
 #[test]
+fn test_datalens_log_query_rejects_new_client_while_sdk_query_is_still_in_flight() {
+    let server = FakeHangingQueryServer::start(Duration::from_millis(500));
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(50);
+    let mut first_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("first client");
+    let mut second_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("second client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+
+    let first_error = first_client
+        .query_logs(plans[0].input.clone())
+        .expect_err("first stalled query times out");
+    assert!(first_error.to_string().contains("timed out"));
+
+    let started_at = std::time::Instant::now();
+    let second_error = second_client
+        .query_logs(plans[0].input.clone())
+        .expect_err("new client fails without spawning another SDK worker");
+
+    assert!(
+        started_at.elapsed() < Duration::from_millis(150),
+        "new client should fail fast while the first SDK worker is still blocked"
+    );
+    assert!(
+        second_error
+            .to_string()
+            .contains("previous SDK query is still in flight"),
+        "{second_error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&second_error.to_string()),
+        DatalensQueryErrorClass::Transient
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
 fn test_datalens_log_query_does_not_retry_non_retryable_quota_error() {
     let server = FakeQueryServer::start(vec![api_error_response(
         429,

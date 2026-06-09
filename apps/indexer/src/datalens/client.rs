@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Condvar, Mutex,
+        Arc, Condvar, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -94,6 +94,23 @@ impl DatalensQueryConcurrencyKey {
         self.network_id
             .map(|network_id| network_id.to_string())
             .unwrap_or_else(|| "none".to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct DatalensBlockingQueryKey {
+    endpoint: String,
+    application: String,
+    query_key: DatalensQueryConcurrencyKey,
+}
+
+impl DatalensBlockingQueryKey {
+    fn from_config(config: &DatalensConfig) -> Self {
+        Self {
+            endpoint: config.endpoint.clone(),
+            application: config.application.clone(),
+            query_key: DatalensQueryConcurrencyKey::from_config(config),
+        }
     }
 }
 
@@ -267,7 +284,7 @@ impl DatalensNativeClient {
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
-            blocking_query_in_flight: Arc::new(AtomicBool::new(false)),
+            blocking_query_in_flight: blocking_query_guard_for_config(config)?,
         })
     }
 
@@ -303,7 +320,7 @@ impl DatalensNativeClient {
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
-            blocking_query_in_flight: Arc::new(AtomicBool::new(false)),
+            blocking_query_in_flight: blocking_query_guard_for_config(config)?,
         })
     }
 
@@ -430,7 +447,11 @@ impl DatalensNativeClient {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            return Err(datalens_query_timeout_error(operation, self.query_timeout));
+            return Err(datalens_query_timeout_error(
+                operation,
+                self.query_timeout,
+                Some("previous SDK query is still in flight"),
+            ));
         }
 
         let permit = match self.acquire_query_concurrency_permit(operation) {
@@ -463,9 +484,11 @@ impl DatalensNativeClient {
 
         match receiver.recv_timeout(self.query_timeout) {
             Ok(result) => result,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                Err(datalens_query_timeout_error(operation, self.query_timeout))
-            }
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(datalens_query_timeout_error(
+                operation,
+                self.query_timeout,
+                None,
+            )),
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(DatalensSdkError::Transport(format!(
                 "Datalens {operation} worker stopped before returning a response"
             ))),
@@ -526,11 +549,38 @@ fn fallback_retry_delay(
     Some(delay)
 }
 
-fn datalens_query_timeout_error(operation: &str, timeout: Duration) -> DatalensSdkError {
-    DatalensSdkError::Transport(format!(
+fn blocking_query_guard_for_config(
+    config: &DatalensConfig,
+) -> Result<Arc<AtomicBool>, DatalensError> {
+    static BLOCKING_QUERY_GUARDS: OnceLock<
+        Mutex<HashMap<DatalensBlockingQueryKey, Arc<AtomicBool>>>,
+    > = OnceLock::new();
+
+    let key = DatalensBlockingQueryKey::from_config(config);
+    let guards = BLOCKING_QUERY_GUARDS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guards = guards.lock().map_err(|_| {
+        DatalensError::Query("Datalens blocking query guard lock poisoned".to_owned())
+    })?;
+    Ok(guards
+        .entry(key)
+        .or_insert_with(|| Arc::new(AtomicBool::new(false)))
+        .clone())
+}
+
+fn datalens_query_timeout_error(
+    operation: &str,
+    timeout: Duration,
+    context: Option<&str>,
+) -> DatalensSdkError {
+    let mut message = format!(
         "Datalens {operation} timed out after {}ms",
         timeout.as_millis()
-    ))
+    );
+    if let Some(context) = context {
+        message.push_str(": ");
+        message.push_str(context);
+    }
+    DatalensSdkError::Transport(message)
 }
 
 fn is_transient_sdk_api_error(error: &DatalensSdkError) -> bool {
