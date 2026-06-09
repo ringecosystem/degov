@@ -1575,10 +1575,20 @@ fn signed_decimal_delta(next: &str, previous: &str) -> String {
 }
 
 fn add_signed_decimal(value: &str, delta: &str) -> String {
-    if let Some(delta) = delta.strip_prefix('-') {
-        subtract_decimal_strings(value, delta)
+    let (value_negative, value) = split_decimal_sign(value);
+    let (delta_negative, delta) = split_decimal_sign(delta);
+    if value_negative == delta_negative {
+        format_signed_decimal(value_negative, add_decimal_strings(&value, &delta))
     } else {
-        add_decimal_strings(value, delta)
+        match compare_decimal_strings(&value, &delta) {
+            std::cmp::Ordering::Less => {
+                format_signed_decimal(delta_negative, subtract_decimal_strings(&delta, &value))
+            }
+            std::cmp::Ordering::Equal => "0".to_owned(),
+            std::cmp::Ordering::Greater => {
+                format_signed_decimal(value_negative, subtract_decimal_strings(&value, &delta))
+            }
+        }
     }
 }
 
@@ -1658,6 +1668,23 @@ fn compare_decimal_strings(left: &str, right: &str) -> std::cmp::Ordering {
     left.len()
         .cmp(&right.len())
         .then_with(|| left.as_str().cmp(right.as_str()))
+}
+
+fn split_decimal_sign(value: &str) -> (bool, String) {
+    let value = value.trim();
+    if let Some(value) = value.strip_prefix('-') {
+        (true, normalize_decimal(value))
+    } else {
+        (false, normalize_decimal(value))
+    }
+}
+
+fn format_signed_decimal(is_negative: bool, value: String) -> String {
+    if is_negative && value != "0" {
+        format!("-{value}")
+    } else {
+        value
+    }
 }
 
 fn normalize_decimal(value: &str) -> String {
@@ -1904,7 +1931,9 @@ mod token_store_tests {
         assert_eq!(signed_decimal_delta("00040", "40"), "0");
         assert_eq!(add_signed_decimal("100", "60"), "160");
         assert_eq!(add_signed_decimal("100", "-60"), "40");
-        assert_eq!(add_signed_decimal("40", "-100"), "0");
+        assert_eq!(add_signed_decimal("40", "-100"), "-60");
+        assert_eq!(add_signed_decimal("-40", "100"), "60");
+        assert_eq!(add_signed_decimal("-40", "-100"), "-140");
     }
 
     fn token_common(

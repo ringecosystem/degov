@@ -787,7 +787,8 @@ async fn test_postgres_token_repeated_delegate_ensure_keeps_member_count_once()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_postgres_token_bulk_writes_dense_duplicate_events() -> Result<(), Box<dyn Error>> {
+async fn test_postgres_token_bulk_writes_dense_events_across_chunks() -> Result<(), Box<dyn Error>>
+{
     let database = TestDatabase::connect().await?;
     let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
     let empty_token_batch = project_token_events(&token_projection_context(), Vec::new())
