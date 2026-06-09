@@ -1,4 +1,3 @@
-use anyhow::Context;
 use serde::Deserialize;
 use serde_json::json;
 use sha3::{Digest, Keccak256};
@@ -8,20 +7,39 @@ const OPENROUTER_CHAT_COMPLETIONS_URL: &str = "https://openrouter.ai/api/v1/chat
 const OPENROUTER_DEFAULT_MODEL: &str = "google/gemini-2.5-flash-preview";
 
 pub trait ProposalTitleExtractor {
-    fn extract_title(&self, description: &str) -> anyhow::Result<Option<String>>;
+    fn extract_title(
+        &self,
+        description: &str,
+    ) -> Result<Option<String>, ProposalTitleExtractionError>;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ProposalTitleExtractionError {
+    #[error("send OpenRouter title extraction request")]
+    SendRequest(#[source] reqwest::Error),
+    #[error("OpenRouter title extraction response status")]
+    ResponseStatus(#[source] reqwest::Error),
+    #[error("decode OpenRouter title extraction response")]
+    DecodeResponse(#[source] reqwest::Error),
+    #[error("decode OpenRouter title JSON content: {content}")]
+    DecodeTitleJson {
+        content: String,
+        #[source]
+        source: serde_json::Error,
+    },
 }
 
 pub struct OpenRouterProposalTitleExtractor {
-    api_key: Option<String>,
+    api_key: String,
     model: String,
     http: reqwest::blocking::Client,
 }
 
 impl OpenRouterProposalTitleExtractor {
-    pub fn from_env() -> Self {
+    pub fn from_env() -> Option<Self> {
         let api_key = std::env::var("OPENROUTER_API_KEY")
             .ok()
-            .filter(|value| !value.trim().is_empty());
+            .filter(|value| !value.trim().is_empty())?;
         let model = std::env::var("OPENROUTER_DEFAULT_MODEL")
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -34,27 +52,25 @@ impl OpenRouterProposalTitleExtractor {
                 reqwest::blocking::Client::new()
             });
 
-        Self {
+        Some(Self {
             api_key,
             model,
             http,
-        }
+        })
     }
 }
 
 impl ProposalTitleExtractor for OpenRouterProposalTitleExtractor {
-    fn extract_title(&self, description: &str) -> anyhow::Result<Option<String>> {
-        let Some(api_key) = &self.api_key else {
-            log::warn!("textplus.ai disabled: missing OPENROUTER_API_KEY");
-            return Ok(None);
-        };
-
+    fn extract_title(
+        &self,
+        description: &str,
+    ) -> Result<Option<String>, ProposalTitleExtractionError> {
         let response = self
             .http
             .post(OPENROUTER_CHAT_COMPLETIONS_URL)
-            .bearer_auth(api_key)
+            .bearer_auth(&self.api_key)
             .json(&json!({
-                "model": self.model,
+                "model": &self.model,
                 "messages": [
                     {
                         "role": "system",
@@ -70,11 +86,11 @@ impl ProposalTitleExtractor for OpenRouterProposalTitleExtractor {
                 }
             }))
             .send()
-            .context("send OpenRouter title extraction request")?
+            .map_err(ProposalTitleExtractionError::SendRequest)?
             .error_for_status()
-            .context("OpenRouter title extraction response status")?
+            .map_err(ProposalTitleExtractionError::ResponseStatus)?
             .json::<OpenRouterChatCompletionResponse>()
-            .context("decode OpenRouter title extraction response")?;
+            .map_err(ProposalTitleExtractionError::DecodeResponse)?;
 
         let Some(content) = response
             .choices
@@ -84,8 +100,12 @@ impl ProposalTitleExtractor for OpenRouterProposalTitleExtractor {
         else {
             return Ok(None);
         };
-        let parsed = serde_json::from_str::<OpenRouterTitleObject>(content)
-            .with_context(|| format!("decode OpenRouter title JSON content: {content}"))?;
+        let parsed = serde_json::from_str::<OpenRouterTitleObject>(content).map_err(|source| {
+            ProposalTitleExtractionError::DecodeTitleJson {
+                content: content.to_owned(),
+                source,
+            }
+        })?;
         let title = parsed.title.trim();
 
         if title.is_empty() {
@@ -127,10 +147,11 @@ pub struct ProposalTextMetadata {
 }
 
 pub fn derive_proposal_metadata(description: &str) -> ProposalTextMetadata {
-    derive_proposal_metadata_with_title_extractor(
-        description,
-        &OpenRouterProposalTitleExtractor::from_env(),
-    )
+    if let Some(title_extractor) = OpenRouterProposalTitleExtractor::from_env() {
+        derive_proposal_metadata_with_title_extractor(description, &title_extractor)
+    } else {
+        derive_proposal_metadata_without_title_extractor(description)
+    }
 }
 
 pub fn derive_proposal_metadata_with_title_extractor(
@@ -138,7 +159,26 @@ pub fn derive_proposal_metadata_with_title_extractor(
     title_extractor: &dyn ProposalTitleExtractor,
 ) -> ProposalTextMetadata {
     let (title, description_body) = extract_title_and_body(description);
-    let title = extract_ai_title(title_extractor, description).unwrap_or(title);
+    let title = if description.trim().is_empty() || title.trim().is_empty() {
+        title
+    } else {
+        extract_ai_title(title_extractor, description).unwrap_or(title)
+    };
+    let (description_body, discussion, signature_content) =
+        extract_description_tags(&description_body);
+
+    ProposalTextMetadata {
+        description: description.to_owned(),
+        title,
+        description_body,
+        description_hash: description_hash(description),
+        discussion,
+        signature_content,
+    }
+}
+
+fn derive_proposal_metadata_without_title_extractor(description: &str) -> ProposalTextMetadata {
+    let (title, description_body) = extract_title_and_body(description);
     let (description_body, discussion, signature_content) =
         extract_description_tags(&description_body);
 
@@ -231,7 +271,7 @@ fn clean_fullback_line(line: &str) -> String {
 fn strip_heading_prefix(line: &str) -> Option<&str> {
     let trimmed = line.trim_start();
     let rest = trimmed.trim_start_matches('#');
-    if rest == trimmed || !rest.starts_with(char::is_whitespace) {
+    if rest == trimmed || !starts_with_whitespace(rest) {
         return None;
     }
 
@@ -241,7 +281,7 @@ fn strip_heading_prefix(line: &str) -> Option<&str> {
 fn strip_line_prefix(line: &str, marker: char) -> Option<&str> {
     let trimmed = line.trim_start();
     let rest = trimmed.strip_prefix(marker)?;
-    if !rest.starts_with(char::is_whitespace) {
+    if !starts_with_whitespace(rest) {
         return None;
     }
 
@@ -254,11 +294,14 @@ fn strip_blockquote_prefix(line: &str) -> &str {
         return line;
     };
 
-    if let Some(rest) = rest.strip_prefix(char::is_whitespace) {
-        rest
-    } else {
-        rest
-    }
+    rest.trim_start()
+}
+
+fn starts_with_whitespace(value: &str) -> bool {
+    value
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_whitespace())
 }
 
 fn is_horizontal_rule(line: &str) -> bool {

@@ -1,6 +1,6 @@
-use anyhow::anyhow;
 use degov_datalens_indexer::{
-    ProposalTitleExtractor, derive_proposal_metadata, derive_proposal_metadata_with_title_extractor,
+    ProposalTitleExtractionError, ProposalTitleExtractor, derive_proposal_metadata,
+    derive_proposal_metadata_with_title_extractor,
 };
 
 struct StaticTitleExtractor {
@@ -8,7 +8,10 @@ struct StaticTitleExtractor {
 }
 
 impl ProposalTitleExtractor for StaticTitleExtractor {
-    fn extract_title(&self, _description: &str) -> anyhow::Result<Option<String>> {
+    fn extract_title(
+        &self,
+        _description: &str,
+    ) -> Result<Option<String>, ProposalTitleExtractionError> {
         Ok(self.title.clone())
     }
 }
@@ -16,7 +19,10 @@ impl ProposalTitleExtractor for StaticTitleExtractor {
 struct DisabledTitleExtractor;
 
 impl ProposalTitleExtractor for DisabledTitleExtractor {
-    fn extract_title(&self, _description: &str) -> anyhow::Result<Option<String>> {
+    fn extract_title(
+        &self,
+        _description: &str,
+    ) -> Result<Option<String>, ProposalTitleExtractionError> {
         Ok(None)
     }
 }
@@ -24,8 +30,15 @@ impl ProposalTitleExtractor for DisabledTitleExtractor {
 struct FailingTitleExtractor;
 
 impl ProposalTitleExtractor for FailingTitleExtractor {
-    fn extract_title(&self, _description: &str) -> anyhow::Result<Option<String>> {
-        Err(anyhow!("provider unavailable"))
+    fn extract_title(
+        &self,
+        _description: &str,
+    ) -> Result<Option<String>, ProposalTitleExtractionError> {
+        Err(ProposalTitleExtractionError::DecodeTitleJson {
+            content: "not json".to_owned(),
+            source: serde_json::from_str::<serde_json::Value>("not json")
+                .expect_err("invalid JSON should fail"),
+        })
     }
 }
 
@@ -171,4 +184,17 @@ fn test_derive_proposal_metadata_falls_back_when_ai_fails_or_returns_empty_title
     assert_eq!(failure_metadata.description_body, "Body");
     assert_eq!(empty_metadata.title, "Local title");
     assert_eq!(empty_metadata.description_body, "Body");
+}
+
+#[test]
+fn test_derive_proposal_metadata_skips_ai_for_empty_description() {
+    let metadata = derive_proposal_metadata_with_title_extractor(
+        "",
+        &StaticTitleExtractor {
+            title: Some("Fabricated title".to_owned()),
+        },
+    );
+
+    assert_eq!(metadata.title, "");
+    assert_eq!(metadata.description_body, "");
 }

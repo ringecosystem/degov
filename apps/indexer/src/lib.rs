@@ -72,8 +72,8 @@ pub use crate::projection::proposal::{
     project_proposal_events,
 };
 pub use crate::projection::proposal_metadata::{
-    ProposalTextMetadata, ProposalTitleExtractor, derive_proposal_metadata,
-    derive_proposal_metadata_with_title_extractor,
+    ProposalTextMetadata, ProposalTitleExtractionError, ProposalTitleExtractor,
+    derive_proposal_metadata, derive_proposal_metadata_with_title_extractor,
 };
 pub use crate::projection::timelock::{
     InMemoryTimelockProjectionRepository, TIMELOCK_POSTGRES_ADAPTER_GAP, TimelockCallWrite,
