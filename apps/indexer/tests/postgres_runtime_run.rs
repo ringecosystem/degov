@@ -793,6 +793,87 @@ async fn test_postgres_token_repeated_delegate_ensure_keeps_member_count_once()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_preload_does_not_advance_member_count_before_timeline()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_global_metric(&database.pool).await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let proposal_batch = project_proposal_events(
+        &proposal_projection_context(),
+        vec![ProposalProjectionEvent {
+            log: normalized_log("0000000010-proposal-before-token", 10, 0, 0),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Proposal title\n\nProposal body".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+    let token_batch = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000010-first-delegate", 10, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000011-second-delegate", 10, 0, 2),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: RECEIVER.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(proposal_batch),
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let proposal_member_count: Option<i32> = sqlx::query_scalar(
+        "SELECT member_count
+         FROM data_metric
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind("0000000010-proposal-before-token")
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(proposal_member_count, Some(2));
+
+    let global_member_count: Option<i32> = sqlx::query_scalar(
+        "SELECT member_count
+         FROM data_metric
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(global_member_count, Some(3));
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;

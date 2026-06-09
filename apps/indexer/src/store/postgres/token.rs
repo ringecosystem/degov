@@ -920,6 +920,7 @@ struct ContributorEnsureInsert {
 #[derive(Debug, Default)]
 struct ContributorEnsureCache {
     ensured: HashSet<(String, String)>,
+    pending_member_count_increments: HashMap<(String, String), TokenEventCommon>,
 }
 
 impl ContributorEnsureCache {
@@ -1031,7 +1032,7 @@ impl ContributorEnsureCache {
                     )
                 })
                 .collect::<Vec<_>>();
-            increment_member_count_by_scope(transaction, rows, &inserted).await?;
+            self.stage_member_count_increments(rows, &inserted);
         }
 
         Ok(())
@@ -1049,6 +1050,12 @@ impl ContributorEnsureCache {
             common: common.clone(),
         };
         if !self.insert_cache_key(&candidate) {
+            if let Some(common) = self.pending_member_count_increments.remove(&(
+                candidate.common.contract_set_id.clone(),
+                candidate.account.clone(),
+            )) {
+                increment_member_count(transaction, &common).await?;
+            }
             return Ok(());
         }
         ensure_contributor(transaction, account, common).await
@@ -1059,6 +1066,25 @@ impl ContributorEnsureCache {
             candidate.common.contract_set_id.clone(),
             candidate.account.clone(),
         ))
+    }
+
+    fn stage_member_count_increments(
+        &mut self,
+        candidates: &[ContributorEnsureInsert],
+        inserted: &[(String, String)],
+    ) {
+        let inserted = inserted.iter().cloned().collect::<HashSet<_>>();
+        for candidate in candidates {
+            let key = (
+                candidate.common.contract_set_id.clone(),
+                candidate.account.clone(),
+            );
+            if inserted.contains(&key) {
+                self.pending_member_count_increments
+                    .entry(key)
+                    .or_insert_with(|| candidate.common.clone());
+            }
+        }
     }
 }
 
@@ -1092,59 +1118,18 @@ fn collect_contributor_ensure_candidates(
     candidates
 }
 
-async fn increment_member_count_by_scope(
-    transaction: &mut Transaction<'_, Postgres>,
-    candidates: &[ContributorEnsureInsert],
-    inserted: &[(String, String)],
-) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let inserted = inserted.iter().cloned().collect::<HashSet<_>>();
-    let mut counts = HashMap::<(String, i32, String, String, String), (TokenEventCommon, i64)>::new();
-    for candidate in candidates {
-        if !inserted.contains(&(candidate.common.contract_set_id.clone(), candidate.account.clone()))
-        {
-            continue;
-        }
-        let common = &candidate.common;
-        let key = (
-            common.contract_set_id.clone(),
-            common.chain_id,
-            common.dao_code.clone(),
-            common.governor_address.clone(),
-            common.token_address.clone(),
-        );
-        counts
-            .entry(key)
-            .and_modify(|(_, count)| *count += 1)
-            .or_insert_with(|| (common.clone(), 1));
-    }
-
-    for (common, count) in counts.into_values() {
-        increment_member_count_by(transaction, &common, count).await?;
-    }
-
-    Ok(())
-}
-
 async fn increment_member_count(
     transaction: &mut Transaction<'_, Postgres>,
     common: &TokenEventCommon,
-) -> Result<(), PostgresIndexerRunnerStoreError> {
-    increment_member_count_by(transaction, common, 1).await
-}
-
-async fn increment_member_count_by(
-    transaction: &mut Transaction<'_, Postgres>,
-    common: &TokenEventCommon,
-    count: i64,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO data_metric (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, member_count
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         VALUES ($1, $2, $3, $4, $5, $6, 1)
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
-             member_count = COALESCE(data_metric.member_count, 0) + EXCLUDED.member_count",
+             member_count = COALESCE(data_metric.member_count, 0) + 1",
     )
     .bind(data_metric_id(
         common.chain_id,
@@ -1156,7 +1141,6 @@ async fn increment_member_count_by(
     .bind(&common.dao_code)
     .bind(&common.governor_address)
     .bind(&common.token_address)
-    .bind(i64_to_i32(count, "data_metric.member_count_delta")?)
     .execute(&mut **transaction)
     .await?;
 
