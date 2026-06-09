@@ -22,6 +22,8 @@ use crate::{
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
 };
 
+const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = 1_000;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshWorkerConfig {
     pub batch_size: usize,
@@ -616,18 +618,32 @@ where
             self.current_power_method,
         )
         .await?;
-        upsert_live_power_overlays(&mut transaction, successes).await?;
         let data_metric_refreshes = refresh_data_metrics(&mut transaction, successes).await?;
         let debounced_tasks =
             complete_tasks(&mut transaction, successes, now_ms, self.config.debounce).await?;
 
         transaction.commit().await?;
 
+        if let Err(error) = self.write_live_power_overlays(successes).await {
+            log::warn!("onchain refresh live power overlay write failed error={error}");
+        }
+
         Ok(OnchainRefreshApplyBatchReport {
             completed: successes.len(),
             debounced_tasks,
             data_metric_refreshes,
         })
+    }
+
+    async fn write_live_power_overlays(
+        &self,
+        successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+    ) -> Result<(), OnchainRefreshWorkerError> {
+        let mut transaction = self.pool.begin().await?;
+        upsert_live_power_overlays(&mut transaction, successes).await?;
+        transaction.commit().await?;
+
+        Ok(())
     }
 
     async fn mark_tasks_failed(
@@ -1580,30 +1596,35 @@ async fn read_contributor_refresh_values(
     transaction: &mut Transaction<'_, Postgres>,
     successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
 ) -> Result<BTreeMap<(String, String), ContributorRefreshValues>, sqlx::Error> {
-    let mut query = QueryBuilder::<Postgres>::new(
-        "SELECT contract_set_id, id, power::TEXT AS power, balance::TEXT AS balance
-         FROM contributor
-         WHERE (contract_set_id, id) IN ",
-    );
-    query.push_tuples(successes, |mut values, (task, _value)| {
-        values
-            .push_bind(&task.contract_set_id)
-            .push_bind(contributor_ref(task));
-    });
-    let rows = query.build().fetch_all(&mut **transaction).await?;
+    if successes.is_empty() {
+        return Ok(BTreeMap::new());
+    }
 
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            (
+    let mut values = BTreeMap::new();
+    for chunk in successes.chunks(MAX_ONCHAIN_REFRESH_APPLY_ROWS) {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "SELECT contract_set_id, id, power::TEXT AS power, balance::TEXT AS balance
+             FROM contributor
+             WHERE (contract_set_id, id) IN ",
+        );
+        query.push_tuples(chunk, |mut tuple, (task, _value)| {
+            tuple
+                .push_bind(&task.contract_set_id)
+                .push_bind(contributor_ref(task));
+        });
+
+        for row in query.build().fetch_all(&mut **transaction).await? {
+            values.insert(
                 (row.get("contract_set_id"), row.get("id")),
                 ContributorRefreshValues {
                     power: row.get("power"),
                     balance: row.get("balance"),
                 },
-            )
-        })
-        .collect())
+            );
+        }
+    }
+
+    Ok(values)
 }
 
 async fn insert_refresh_checkpoints(
