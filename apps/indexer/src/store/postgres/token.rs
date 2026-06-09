@@ -320,11 +320,14 @@ async fn insert_vote_power_checkpoint(
     row: &DelegateVotesChangedWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let delta = signed_decimal_delta(&row.new_votes, &row.previous_votes);
-    let rollings = metadata_cache.rollings(&row.common);
     let transfers_count = metadata_cache.transfer_count(&row.common);
-    let rolling_match =
-        find_rolling_match_from_rows(rollings, &row.delegate, &delta, row.common.log_index);
-    let cause = vote_power_checkpoint_cause(!rollings.is_empty(), transfers_count > 0);
+    let rolling_match = metadata_cache.find_rolling_match(
+        &row.common,
+        &row.delegate,
+        &delta,
+        row.common.log_index,
+    );
+    let cause = vote_power_checkpoint_cause(metadata_cache.has_rollings(&row.common), transfers_count > 0);
 
     sqlx::query(
         "INSERT INTO vote_power_checkpoint (
@@ -535,8 +538,8 @@ async fn apply_delegate_votes_changed_operation(
     metadata_cache: &mut BatchTokenMetadataCache,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let delta = signed_decimal_delta(new_votes, previous_votes);
-    let rollings = metadata_cache.rollings(common);
-    let Some(rolling_match) = find_rolling_match_from_rows(rollings, delegate, &delta, common.log_index)
+    let Some(rolling_match) =
+        metadata_cache.find_rolling_match(common, delegate, &delta, common.log_index)
     else {
         return Ok(());
     };
@@ -1370,7 +1373,7 @@ struct DelegateRollingSnapshot {
     to_new_votes: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum RollingSide {
     From,
     To,
@@ -1378,6 +1381,7 @@ enum RollingSide {
 
 #[derive(Clone, Debug)]
 struct DelegateRollingMatch {
+    index: usize,
     id: String,
     delegator: String,
     from_delegate: String,
@@ -1401,9 +1405,40 @@ impl TransactionMetadataKey {
 }
 
 #[derive(Debug, Default)]
+struct RollingSideIndex {
+    from: HashMap<String, Vec<usize>>,
+    to: HashMap<String, Vec<usize>>,
+}
+
+impl RollingSideIndex {
+    fn insert(&mut self, delegate: String, side: RollingSide, index: usize) {
+        self.by_side_mut(side).entry(delegate).or_default().push(index);
+    }
+
+    fn get(&self, delegate: &str, side: RollingSide) -> Option<&[usize]> {
+        self.by_side(side).get(delegate).map(Vec::as_slice)
+    }
+
+    fn by_side(&self, side: RollingSide) -> &HashMap<String, Vec<usize>> {
+        match side {
+            RollingSide::From => &self.from,
+            RollingSide::To => &self.to,
+        }
+    }
+
+    fn by_side_mut(&mut self, side: RollingSide) -> &mut HashMap<String, Vec<usize>> {
+        match side {
+            RollingSide::From => &mut self.from,
+            RollingSide::To => &mut self.to,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
 struct BatchTokenMetadataCache {
     transfer_counts: HashMap<TransactionMetadataKey, i64>,
     rollings: HashMap<TransactionMetadataKey, Vec<DelegateRollingSnapshot>>,
+    rolling_index: HashMap<TransactionMetadataKey, RollingSideIndex>,
 }
 
 impl BatchTokenMetadataCache {
@@ -1425,11 +1460,64 @@ impl BatchTokenMetadataCache {
             .unwrap_or_default()
     }
 
-    fn rollings(&self, common: &TokenEventCommon) -> &[DelegateRollingSnapshot] {
+    fn has_rollings(&self, common: &TokenEventCommon) -> bool {
         self.rollings
             .get(&TransactionMetadataKey::new(common))
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+            .is_some_and(|rollings| !rollings.is_empty())
+    }
+
+    fn find_rolling_match(
+        &self,
+        common: &TokenEventCommon,
+        delegate: &str,
+        delta: &str,
+        before_log_index: u64,
+    ) -> Option<DelegateRollingMatch> {
+        let before_log_index = u64_to_i32(before_log_index, "delegate_rolling.match_log_index").ok()?;
+        let metadata_key = TransactionMetadataKey::new(common);
+
+        if is_negative_decimal(delta) {
+            self.find_rolling_match_by_side(&metadata_key, delegate, RollingSide::From, before_log_index)
+                .or_else(|| {
+                    self.find_rolling_match_by_side(
+                        &metadata_key,
+                        delegate,
+                        RollingSide::To,
+                        before_log_index,
+                    )
+                })
+        } else {
+            self.find_rolling_match_by_side(&metadata_key, delegate, RollingSide::To, before_log_index)
+                .or_else(|| {
+                    self.find_rolling_match_by_side(
+                        &metadata_key,
+                        delegate,
+                        RollingSide::From,
+                        before_log_index,
+                    )
+                })
+        }
+    }
+
+    fn find_rolling_match_by_side(
+        &self,
+        metadata_key: &TransactionMetadataKey,
+        delegate: &str,
+        side: RollingSide,
+        before_log_index: i32,
+    ) -> Option<DelegateRollingMatch> {
+        let indices = self.rolling_index.get(metadata_key)?.get(delegate, side)?;
+        let rollings = self.rollings.get(metadata_key)?;
+        indices
+            .iter()
+            .filter_map(|index| rollings.get(*index).map(|rolling| (*index, rolling)))
+            .filter(|rolling| rolling.1.log_index < before_log_index)
+            .filter(|rolling| match side {
+                RollingSide::From => rolling.1.from_new_votes.is_none(),
+                RollingSide::To => rolling.1.to_new_votes.is_none(),
+            })
+            .map(|(index, rolling)| rolling_match(index, rolling, side))
+            .next()
     }
 
     fn mark_rolling_match(
@@ -1441,12 +1529,12 @@ impl BatchTokenMetadataCache {
         let Some(rollings) = self.rollings.get_mut(&TransactionMetadataKey::new(common)) else {
             return;
         };
-        let Some(rolling) = rollings
-            .iter_mut()
-            .find(|rolling| rolling.id == rolling_match.id)
-        else {
+        let Some(rolling) = rollings.get_mut(rolling_match.index) else {
             return;
         };
+        if rolling.id != rolling_match.id {
+            return;
+        }
         match rolling_match.side {
             RollingSide::From => {
                 rolling.from_new_votes = Some(new_votes.to_owned());
@@ -1513,24 +1601,37 @@ impl BatchTokenMetadataCache {
             .fetch_all(&mut **transaction)
             .await?;
             for row in rows {
-                self.rollings
-                    .entry(TransactionMetadataKey {
-                        contract_set_id: contract_set_id.clone(),
-                        transaction_hash: row.get("transaction_hash"),
-                    })
-                    .or_default()
-                    .push(DelegateRollingSnapshot {
-                        id: row.get("id"),
-                        log_index: row.get("log_index"),
-                        delegator: row.get("delegator"),
-                        from_delegate: row.get("from_delegate"),
-                        to_delegate: row.get("to_delegate"),
-                        from_new_votes: row.get("from_new_votes"),
-                        to_new_votes: row.get("to_new_votes"),
-                    });
+                let key = TransactionMetadataKey {
+                    contract_set_id: contract_set_id.clone(),
+                    transaction_hash: row.get("transaction_hash"),
+                };
+                let rolling = DelegateRollingSnapshot {
+                    id: row.get("id"),
+                    log_index: row.get("log_index"),
+                    delegator: row.get("delegator"),
+                    from_delegate: row.get("from_delegate"),
+                    to_delegate: row.get("to_delegate"),
+                    from_new_votes: row.get("from_new_votes"),
+                    to_new_votes: row.get("to_new_votes"),
+                };
+                self.push_rolling(key, rolling);
             }
         }
         Ok(())
+    }
+
+    fn push_rolling(&mut self, key: TransactionMetadataKey, rolling: DelegateRollingSnapshot) {
+        let rollings = self.rollings.entry(key.clone()).or_default();
+        let index = rollings.len();
+        self.rolling_index
+            .entry(key.clone())
+            .or_default()
+            .insert(rolling.from_delegate.clone(), RollingSide::From, index);
+        self.rolling_index
+            .entry(key)
+            .or_default()
+            .insert(rolling.to_delegate.clone(), RollingSide::To, index);
+        rollings.push(rolling);
     }
 }
 
@@ -1609,35 +1710,13 @@ async fn read_delegate_mapping(
     }))
 }
 
-fn find_rolling_match_from_rows(
-    rollings: &[DelegateRollingSnapshot],
-    delegate: &str,
-    delta: &str,
-    before_log_index: u64,
-) -> Option<DelegateRollingMatch> {
-    let before_log_index = u64_to_i32(before_log_index, "delegate_rolling.match_log_index").ok()?;
-    let from = rollings
-        .iter()
-        .filter(|rolling| rolling.log_index < before_log_index)
-        .filter(|rolling| rolling.from_new_votes.is_none())
-        .find(|rolling| rolling.from_delegate == delegate)
-        .map(|rolling| rolling_match(rolling, RollingSide::From));
-    let to = rollings
-        .iter()
-        .filter(|rolling| rolling.log_index < before_log_index)
-        .filter(|rolling| rolling.to_new_votes.is_none())
-        .find(|rolling| rolling.to_delegate == delegate)
-        .map(|rolling| rolling_match(rolling, RollingSide::To));
-
-    if is_negative_decimal(delta) {
-        from.or(to)
-    } else {
-        to.or(from)
-    }
-}
-
-fn rolling_match(rolling: &DelegateRollingSnapshot, side: RollingSide) -> DelegateRollingMatch {
+fn rolling_match(
+    index: usize,
+    rolling: &DelegateRollingSnapshot,
+    side: RollingSide,
+) -> DelegateRollingMatch {
     DelegateRollingMatch {
+        index,
         id: rolling.id.clone(),
         delegator: rolling.delegator.clone(),
         from_delegate: rolling.from_delegate.clone(),
@@ -1975,29 +2054,69 @@ mod token_store_tests {
     fn test_batch_token_metadata_cache_marks_repeated_delegate_rolling_match_consumed() {
         let common = token_common("scope", "0xtx1", 10, 5);
         let key = TransactionMetadataKey::new(&common);
-        let mut cache = BatchTokenMetadataCache {
-            transfer_counts: HashMap::new(),
-            rollings: HashMap::from([(
-                key,
-                vec![DelegateRollingSnapshot {
-                    id: "rolling-1".to_owned(),
-                    log_index: 4,
-                    delegator: "0xdelegator".to_owned(),
-                    from_delegate: "0xfrom".to_owned(),
-                    to_delegate: "0xto".to_owned(),
-                    from_new_votes: None,
-                    to_new_votes: None,
-                }],
-            )]),
-        };
-        let first_match = find_rolling_match_from_rows(cache.rollings(&common), "0xto", "1", 5)
+        let mut cache = BatchTokenMetadataCache::default();
+        cache.push_rolling(
+            key,
+            DelegateRollingSnapshot {
+                id: "rolling-1".to_owned(),
+                log_index: 4,
+                delegator: "0xdelegator".to_owned(),
+                from_delegate: "0xfrom".to_owned(),
+                to_delegate: "0xto".to_owned(),
+                from_new_votes: None,
+                to_new_votes: None,
+            },
+        );
+        let first_match = cache
+            .find_rolling_match(&common, "0xto", "1", 5)
             .expect("first match should use the to side");
 
         cache.mark_rolling_match(&common, &first_match, "9");
-        let second_match = find_rolling_match_from_rows(cache.rollings(&common), "0xto", "1", 6);
+        let second_match = cache.find_rolling_match(&common, "0xto", "1", 6);
 
         assert_eq!(first_match.side, RollingSide::To);
         assert!(second_match.is_none());
+    }
+
+    #[test]
+    fn test_batch_token_metadata_cache_uses_delegate_specific_rolling_candidates() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let key = TransactionMetadataKey::new(&common);
+        let mut cache = BatchTokenMetadataCache::default();
+        for index in 0..100 {
+            cache.push_rolling(
+                key.clone(),
+                DelegateRollingSnapshot {
+                    id: format!("unrelated-{index}"),
+                    log_index: 9 - index % 3,
+                    delegator: format!("0xdelegator{index}"),
+                    from_delegate: format!("0xfrom{index}"),
+                    to_delegate: format!("0xto{index}"),
+                    from_new_votes: None,
+                    to_new_votes: None,
+                },
+            );
+        }
+        cache.push_rolling(
+            key,
+            DelegateRollingSnapshot {
+                id: "rolling-target".to_owned(),
+                log_index: 8,
+                delegator: "0xdelegator".to_owned(),
+                from_delegate: "0xfrom".to_owned(),
+                to_delegate: "0xtarget".to_owned(),
+                from_new_votes: None,
+                to_new_votes: None,
+            },
+        );
+
+        let rolling_match = cache
+            .find_rolling_match(&common, "0xtarget", "1", 10)
+            .expect("target delegate should match");
+
+        assert_eq!(rolling_match.id, "rolling-target");
+        assert_eq!(rolling_match.side, RollingSide::To);
+        assert!(cache.find_rolling_match(&common, "0xtarget", "1", 8).is_none());
     }
 
     #[test]
