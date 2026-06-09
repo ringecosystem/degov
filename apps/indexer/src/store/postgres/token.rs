@@ -1,5 +1,6 @@
 // Token projection writes and delegate relation maintenance.
 const CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE: usize = 2_000;
+const TOKEN_EVENT_BULK_CHUNK_SIZE: usize = 1_000;
 
 async fn write_token_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
@@ -7,24 +8,12 @@ async fn write_token_batch_rows(
 ) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
     let mut inserted_operation_keys = Vec::new();
 
-    for row in &batch.delegate_changed {
-        if insert_delegate_changed(transaction, row).await? {
-            inserted_operation_keys.push((row.common.contract_set_id.clone(), row.id.clone()));
-        }
-    }
-    for row in &batch.delegate_votes_changed {
-        if insert_delegate_votes_changed(transaction, row).await? {
-            inserted_operation_keys.push((row.common.contract_set_id.clone(), row.id.clone()));
-        }
-    }
-    for row in &batch.token_transfers {
-        if insert_token_transfer(transaction, row).await? {
-            inserted_operation_keys.push((row.common.contract_set_id.clone(), row.id.clone()));
-        }
-    }
-    for row in &batch.delegate_rollings {
-        upsert_delegate_rolling(transaction, row).await?;
-    }
+    inserted_operation_keys.extend(insert_delegate_changed_batch(transaction, &batch.delegate_changed).await?);
+    inserted_operation_keys.extend(
+        insert_delegate_votes_changed_batch(transaction, &batch.delegate_votes_changed).await?,
+    );
+    inserted_operation_keys.extend(insert_token_transfer_batch(transaction, &batch.token_transfers).await?);
+    upsert_delegate_rolling_batch(transaction, &batch.delegate_rollings).await?;
     let mut metadata_cache = BatchTokenMetadataCache::preload(transaction, batch).await?;
     for row in &batch.delegate_votes_changed {
         insert_vote_power_checkpoint(transaction, &mut metadata_cache, row).await?;
@@ -32,194 +21,295 @@ async fn write_token_batch_rows(
     Ok(inserted_operation_keys)
 }
 
-async fn insert_delegate_changed(
+async fn insert_delegate_changed_batch(
     transaction: &mut Transaction<'_, Postgres>,
-    row: &DelegateChangedWrite,
-) -> Result<bool, PostgresIndexerRunnerStoreError> {
-    let result = sqlx::query(
-        "INSERT INTO delegate_changed (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
-            log_index, transaction_index, delegator, from_delegate, to_delegate, block_number,
-            block_timestamp, transaction_hash
-         )
-         VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::NUMERIC(78, 0),
-            $14::NUMERIC(78, 0), $15
-         )
-         ON CONFLICT (contract_set_id, id) DO NOTHING",
-    )
-    .bind(&row.id)
-    .bind(&row.common.contract_set_id)
-    .bind(row.common.chain_id)
-    .bind(&row.common.dao_code)
-    .bind(&row.common.governor_address)
-    .bind(&row.common.token_address)
-    .bind(&row.common.contract_address)
-    .bind(u64_to_i32(
-        row.common.log_index,
-        "delegate_changed.log_index",
-    )?)
-    .bind(u64_to_i32(
-        row.common.transaction_index,
-        "delegate_changed.transaction_index",
-    )?)
-    .bind(&row.delegator)
-    .bind(&row.from_delegate)
-    .bind(&row.to_delegate)
-    .bind(&row.common.block_number)
-    .bind(required_numeric(
-        &row.common.block_timestamp,
-        "delegate_changed.block_timestamp",
-    )?)
-    .bind(&row.common.transaction_hash)
-    .execute(&mut **transaction)
-    .await?;
+    rows: &[DelegateChangedWrite],
+) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
+    let mut inserted = Vec::new();
+    for rows in rows.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "INSERT INTO delegate_changed (
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+                contract_address, log_index, transaction_index, delegator, from_delegate,
+                to_delegate, block_number, block_timestamp, transaction_hash
+             ) VALUES ",
+        );
+        for (index, row) in rows.iter().enumerate() {
+            if index > 0 {
+                query.push(", ");
+            }
+            let common = &row.common;
+            query
+                .push("(")
+                .push_bind(&row.id)
+                .push(", ")
+                .push_bind(&common.contract_set_id)
+                .push(", ")
+                .push_bind(common.chain_id)
+                .push(", ")
+                .push_bind(&common.dao_code)
+                .push(", ")
+                .push_bind(&common.governor_address)
+                .push(", ")
+                .push_bind(&common.token_address)
+                .push(", ")
+                .push_bind(&common.contract_address)
+                .push(", ")
+                .push_bind(u64_to_i32(common.log_index, "delegate_changed.log_index")?)
+                .push(", ")
+                .push_bind(u64_to_i32(
+                    common.transaction_index,
+                    "delegate_changed.transaction_index",
+                )?)
+                .push(", ")
+                .push_bind(&row.delegator)
+                .push(", ")
+                .push_bind(&row.from_delegate)
+                .push(", ")
+                .push_bind(&row.to_delegate)
+                .push(", ")
+                .push_bind(&common.block_number)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(required_numeric(
+                    &common.block_timestamp,
+                    "delegate_changed.block_timestamp",
+                )?)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&common.transaction_hash)
+                .push(")");
+        }
+        query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING RETURNING contract_set_id, id");
+        inserted.extend(fetch_inserted_operation_keys(transaction, query).await?);
+    }
 
-    Ok(result.rows_affected() > 0)
+    Ok(inserted)
 }
 
-async fn insert_delegate_votes_changed(
+async fn insert_delegate_votes_changed_batch(
     transaction: &mut Transaction<'_, Postgres>,
-    row: &DelegateVotesChangedWrite,
-) -> Result<bool, PostgresIndexerRunnerStoreError> {
-    let result = sqlx::query(
-        "INSERT INTO delegate_votes_changed (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
-            log_index, transaction_index, delegate, previous_votes, new_votes, block_number,
-            block_timestamp, transaction_hash
-         )
-         VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::NUMERIC(78, 0), $12::NUMERIC(78, 0),
-            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
-         )
-         ON CONFLICT (contract_set_id, id) DO NOTHING",
-    )
-    .bind(&row.id)
-    .bind(&row.common.contract_set_id)
-    .bind(row.common.chain_id)
-    .bind(&row.common.dao_code)
-    .bind(&row.common.governor_address)
-    .bind(&row.common.token_address)
-    .bind(&row.common.contract_address)
-    .bind(u64_to_i32(
-        row.common.log_index,
-        "delegate_votes_changed.log_index",
-    )?)
-    .bind(u64_to_i32(
-        row.common.transaction_index,
-        "delegate_votes_changed.transaction_index",
-    )?)
-    .bind(&row.delegate)
-    .bind(&row.previous_votes)
-    .bind(&row.new_votes)
-    .bind(&row.common.block_number)
-    .bind(required_numeric(
-        &row.common.block_timestamp,
-        "delegate_votes_changed.block_timestamp",
-    )?)
-    .bind(&row.common.transaction_hash)
-    .execute(&mut **transaction)
-    .await?;
+    rows: &[DelegateVotesChangedWrite],
+) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
+    let mut inserted = Vec::new();
+    for rows in rows.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "INSERT INTO delegate_votes_changed (
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+                contract_address, log_index, transaction_index, delegate, previous_votes,
+                new_votes, block_number, block_timestamp, transaction_hash
+             ) VALUES ",
+        );
+        for (index, row) in rows.iter().enumerate() {
+            if index > 0 {
+                query.push(", ");
+            }
+            let common = &row.common;
+            query
+                .push("(")
+                .push_bind(&row.id)
+                .push(", ")
+                .push_bind(&common.contract_set_id)
+                .push(", ")
+                .push_bind(common.chain_id)
+                .push(", ")
+                .push_bind(&common.dao_code)
+                .push(", ")
+                .push_bind(&common.governor_address)
+                .push(", ")
+                .push_bind(&common.token_address)
+                .push(", ")
+                .push_bind(&common.contract_address)
+                .push(", ")
+                .push_bind(u64_to_i32(
+                    common.log_index,
+                    "delegate_votes_changed.log_index",
+                )?)
+                .push(", ")
+                .push_bind(u64_to_i32(
+                    common.transaction_index,
+                    "delegate_votes_changed.transaction_index",
+                )?)
+                .push(", ")
+                .push_bind(&row.delegate)
+                .push(", ")
+                .push_bind(&row.previous_votes)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&row.new_votes)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&common.block_number)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(required_numeric(
+                    &common.block_timestamp,
+                    "delegate_votes_changed.block_timestamp",
+                )?)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&common.transaction_hash)
+                .push(")");
+        }
+        query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING RETURNING contract_set_id, id");
+        inserted.extend(fetch_inserted_operation_keys(transaction, query).await?);
+    }
 
-    Ok(result.rows_affected() > 0)
+    Ok(inserted)
 }
 
-async fn insert_token_transfer(
+async fn insert_token_transfer_batch(
     transaction: &mut Transaction<'_, Postgres>,
-    row: &TokenTransferWrite,
-) -> Result<bool, PostgresIndexerRunnerStoreError> {
-    let result = sqlx::query(
-        "INSERT INTO token_transfer (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
-            log_index, transaction_index, \"from\", \"to\", value, standard, block_number,
-            block_timestamp, transaction_hash
-         )
-         VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0), $13,
-            $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16
-         )
-         ON CONFLICT (contract_set_id, id) DO NOTHING",
-    )
-    .bind(&row.id)
-    .bind(&row.common.contract_set_id)
-    .bind(row.common.chain_id)
-    .bind(&row.common.dao_code)
-    .bind(&row.common.governor_address)
-    .bind(&row.common.token_address)
-    .bind(&row.common.contract_address)
-    .bind(u64_to_i32(
-        row.common.log_index,
-        "token_transfer.log_index",
-    )?)
-    .bind(u64_to_i32(
-        row.common.transaction_index,
-        "token_transfer.transaction_index",
-    )?)
-    .bind(&row.from)
-    .bind(&row.to)
-    .bind(&row.value)
-    .bind(&row.standard)
-    .bind(&row.common.block_number)
-    .bind(required_numeric(
-        &row.common.block_timestamp,
-        "token_transfer.block_timestamp",
-    )?)
-    .bind(&row.common.transaction_hash)
-    .execute(&mut **transaction)
-    .await?;
+    rows: &[TokenTransferWrite],
+) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
+    let mut inserted = Vec::new();
+    for rows in rows.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "INSERT INTO token_transfer (
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+                contract_address, log_index, transaction_index, \"from\", \"to\", value, standard,
+                block_number, block_timestamp, transaction_hash
+             ) VALUES ",
+        );
+        for (index, row) in rows.iter().enumerate() {
+            if index > 0 {
+                query.push(", ");
+            }
+            let common = &row.common;
+            query
+                .push("(")
+                .push_bind(&row.id)
+                .push(", ")
+                .push_bind(&common.contract_set_id)
+                .push(", ")
+                .push_bind(common.chain_id)
+                .push(", ")
+                .push_bind(&common.dao_code)
+                .push(", ")
+                .push_bind(&common.governor_address)
+                .push(", ")
+                .push_bind(&common.token_address)
+                .push(", ")
+                .push_bind(&common.contract_address)
+                .push(", ")
+                .push_bind(u64_to_i32(common.log_index, "token_transfer.log_index")?)
+                .push(", ")
+                .push_bind(u64_to_i32(
+                    common.transaction_index,
+                    "token_transfer.transaction_index",
+                )?)
+                .push(", ")
+                .push_bind(&row.from)
+                .push(", ")
+                .push_bind(&row.to)
+                .push(", ")
+                .push_bind(&row.value)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&row.standard)
+                .push(", ")
+                .push_bind(&common.block_number)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(required_numeric(
+                    &common.block_timestamp,
+                    "token_transfer.block_timestamp",
+                )?)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&common.transaction_hash)
+                .push(")");
+        }
+        query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING RETURNING contract_set_id, id");
+        inserted.extend(fetch_inserted_operation_keys(transaction, query).await?);
+    }
 
-    Ok(result.rows_affected() > 0)
+    Ok(inserted)
 }
 
-async fn upsert_delegate_rolling(
+async fn fetch_inserted_operation_keys(
     transaction: &mut Transaction<'_, Postgres>,
-    row: &DelegateRollingWrite,
+    mut query: QueryBuilder<'_, Postgres>,
+) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
+    Ok(query
+        .build()
+        .fetch_all(&mut **transaction)
+        .await?
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<String, _>("contract_set_id"),
+                row.get::<String, _>("id"),
+            )
+        })
+        .collect())
+}
+
+async fn upsert_delegate_rolling_batch(
+    transaction: &mut Transaction<'_, Postgres>,
+    rows: &[DelegateRollingWrite],
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    sqlx::query(
-        "INSERT INTO delegate_rolling (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
-            log_index, transaction_index, delegator, from_delegate, to_delegate, block_number,
-            block_timestamp, transaction_hash, from_previous_votes, from_new_votes,
-            to_previous_votes, to_new_votes
-         )
-         VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::NUMERIC(78, 0),
-            $14::NUMERIC(78, 0), $15, $16::NUMERIC(78, 0), $17::NUMERIC(78, 0),
-            $18::NUMERIC(78, 0), $19::NUMERIC(78, 0)
-         )
-         ON CONFLICT (contract_set_id, id) DO UPDATE
-         SET from_previous_votes = COALESCE(EXCLUDED.from_previous_votes, delegate_rolling.from_previous_votes),
-             from_new_votes = COALESCE(EXCLUDED.from_new_votes, delegate_rolling.from_new_votes),
-             to_previous_votes = COALESCE(EXCLUDED.to_previous_votes, delegate_rolling.to_previous_votes),
-             to_new_votes = COALESCE(EXCLUDED.to_new_votes, delegate_rolling.to_new_votes)",
-    )
-    .bind(&row.id)
-    .bind(&row.common.contract_set_id)
-    .bind(row.common.chain_id)
-    .bind(&row.common.dao_code)
-    .bind(&row.common.governor_address)
-    .bind(&row.common.token_address)
-    .bind(&row.common.contract_address)
-    .bind(u64_to_i32(row.common.log_index, "delegate_rolling.log_index")?)
-    .bind(u64_to_i32(
-        row.common.transaction_index,
-        "delegate_rolling.transaction_index",
-    )?)
-    .bind(&row.delegator)
-    .bind(&row.from_delegate)
-    .bind(&row.to_delegate)
-    .bind(&row.common.block_number)
-    .bind(required_numeric(
-        &row.common.block_timestamp,
-        "delegate_rolling.block_timestamp",
-    )?)
-    .bind(&row.common.transaction_hash)
-    .bind(row.from_previous_votes.as_deref())
-    .bind(row.from_new_votes.as_deref())
-    .bind(row.to_previous_votes.as_deref())
-    .bind(row.to_new_votes.as_deref())
-    .execute(&mut **transaction)
-    .await?;
+    for rows in rows.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "INSERT INTO delegate_rolling (
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+                contract_address, log_index, transaction_index, delegator, from_delegate,
+                to_delegate, block_number, block_timestamp, transaction_hash, from_previous_votes,
+                from_new_votes, to_previous_votes, to_new_votes
+             ) VALUES ",
+        );
+        for (index, row) in rows.iter().enumerate() {
+            if index > 0 {
+                query.push(", ");
+            }
+            let common = &row.common;
+            query
+                .push("(")
+                .push_bind(&row.id)
+                .push(", ")
+                .push_bind(&common.contract_set_id)
+                .push(", ")
+                .push_bind(common.chain_id)
+                .push(", ")
+                .push_bind(&common.dao_code)
+                .push(", ")
+                .push_bind(&common.governor_address)
+                .push(", ")
+                .push_bind(&common.token_address)
+                .push(", ")
+                .push_bind(&common.contract_address)
+                .push(", ")
+                .push_bind(u64_to_i32(common.log_index, "delegate_rolling.log_index")?)
+                .push(", ")
+                .push_bind(u64_to_i32(
+                    common.transaction_index,
+                    "delegate_rolling.transaction_index",
+                )?)
+                .push(", ")
+                .push_bind(&row.delegator)
+                .push(", ")
+                .push_bind(&row.from_delegate)
+                .push(", ")
+                .push_bind(&row.to_delegate)
+                .push(", ")
+                .push_bind(&common.block_number)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(required_numeric(
+                    &common.block_timestamp,
+                    "delegate_rolling.block_timestamp",
+                )?)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&common.transaction_hash)
+                .push(", ")
+                .push_bind(row.from_previous_votes.as_deref())
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(row.from_new_votes.as_deref())
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(row.to_previous_votes.as_deref())
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(row.to_new_votes.as_deref())
+                .push("::NUMERIC(78, 0))");
+        }
+        query.push(
+            " ON CONFLICT (contract_set_id, id) DO UPDATE
+              SET from_previous_votes = COALESCE(EXCLUDED.from_previous_votes, delegate_rolling.from_previous_votes),
+                  from_new_votes = COALESCE(EXCLUDED.from_new_votes, delegate_rolling.from_new_votes),
+                  to_previous_votes = COALESCE(EXCLUDED.to_previous_votes, delegate_rolling.to_previous_votes),
+                  to_new_votes = COALESCE(EXCLUDED.to_new_votes, delegate_rolling.to_new_votes)",
+        );
+        query.build().execute(&mut **transaction).await?;
+    }
 
     Ok(())
 }
@@ -229,7 +319,7 @@ async fn insert_vote_power_checkpoint(
     metadata_cache: &mut BatchTokenMetadataCache,
     row: &DelegateVotesChangedWrite,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let delta = signed_decimal_delta(transaction, &row.new_votes, &row.previous_votes).await?;
+    let delta = signed_decimal_delta(&row.new_votes, &row.previous_votes);
     let rollings = metadata_cache.rollings(&row.common);
     let transfers_count = metadata_cache.transfer_count(&row.common);
     let rolling_match =
@@ -444,7 +534,7 @@ async fn apply_delegate_votes_changed_operation(
     contributor_ensure_cache: &mut ContributorEnsureCache,
     metadata_cache: &mut BatchTokenMetadataCache,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let delta = signed_decimal_delta(transaction, new_votes, previous_votes).await?;
+    let delta = signed_decimal_delta(new_votes, previous_votes);
     let rollings = metadata_cache.rollings(common);
     let Some(rolling_match) = find_rolling_match_from_rows(rollings, delegate, &delta, common.log_index)
     else {
@@ -567,8 +657,7 @@ async fn apply_delegate_delta(
             .filter(|mapping| mapping.to == to_delegate)
             .map(|mapping| mapping.power)
             .unwrap_or_else(|| "0".to_owned());
-    let next_mapping_power =
-        add_signed_decimal(transaction, &previous_mapping_power, delta).await?;
+    let next_mapping_power = add_signed_decimal(&previous_mapping_power, delta);
 
     let result = sqlx::query(
         r#"UPDATE delegate_mapping
@@ -1481,32 +1570,26 @@ fn rolling_match(rolling: &DelegateRollingSnapshot, side: RollingSide) -> Delega
     }
 }
 
-async fn signed_decimal_delta(
-    transaction: &mut Transaction<'_, Postgres>,
-    next: &str,
-    previous: &str,
-) -> Result<String, PostgresIndexerRunnerStoreError> {
-    let row = sqlx::query("SELECT ($1::NUMERIC(78, 0) - $2::NUMERIC(78, 0))::TEXT AS delta")
-        .bind(next)
-        .bind(previous)
-        .fetch_one(&mut **transaction)
-        .await?;
-
-    Ok(row.get("delta"))
+fn signed_decimal_delta(next: &str, previous: &str) -> String {
+    subtract_decimal_signed(next, previous)
 }
 
-async fn add_signed_decimal(
-    transaction: &mut Transaction<'_, Postgres>,
-    value: &str,
-    delta: &str,
-) -> Result<String, PostgresIndexerRunnerStoreError> {
-    let row = sqlx::query("SELECT ($1::NUMERIC(78, 0) + $2::NUMERIC(78, 0))::TEXT AS value")
-        .bind(value)
-        .bind(delta)
-        .fetch_one(&mut **transaction)
-        .await?;
-
-    Ok(row.get("value"))
+fn add_signed_decimal(value: &str, delta: &str) -> String {
+    let (value_negative, value) = split_decimal_sign(value);
+    let (delta_negative, delta) = split_decimal_sign(delta);
+    if value_negative == delta_negative {
+        format_signed_decimal(value_negative, add_decimal_strings(&value, &delta))
+    } else {
+        match compare_decimal_strings(&value, &delta) {
+            std::cmp::Ordering::Less => {
+                format_signed_decimal(delta_negative, subtract_decimal_strings(&delta, &value))
+            }
+            std::cmp::Ordering::Equal => "0".to_owned(),
+            std::cmp::Ordering::Greater => {
+                format_signed_decimal(value_negative, subtract_decimal_strings(&value, &delta))
+            }
+        }
+    }
 }
 
 fn is_negative_decimal(value: &str) -> bool {
@@ -1519,6 +1602,98 @@ fn is_nonzero_decimal(value: &str) -> bool {
         .trim_start_matches('-')
         .trim_start_matches('0')
         .is_empty()
+}
+
+fn subtract_decimal_signed(left: &str, right: &str) -> String {
+    match compare_decimal_strings(left, right) {
+        std::cmp::Ordering::Less => format!("-{}", subtract_decimal_strings(right, left)),
+        std::cmp::Ordering::Equal => "0".to_owned(),
+        std::cmp::Ordering::Greater => subtract_decimal_strings(left, right),
+    }
+}
+
+fn add_decimal_strings(left: &str, right: &str) -> String {
+    let mut carry = 0u8;
+    let mut output = Vec::new();
+    let mut left = left.as_bytes().iter().rev();
+    let mut right = right.as_bytes().iter().rev();
+
+    loop {
+        let left_digit = left.next().map(|digit| digit - b'0');
+        let right_digit = right.next().map(|digit| digit - b'0');
+        if left_digit.is_none() && right_digit.is_none() && carry == 0 {
+            break;
+        }
+        let sum = left_digit.unwrap_or_default() + right_digit.unwrap_or_default() + carry;
+        output.push(b'0' + (sum % 10));
+        carry = sum / 10;
+    }
+
+    output.reverse();
+    normalize_decimal(&String::from_utf8(output).expect("decimal digits"))
+}
+
+fn subtract_decimal_strings(left: &str, right: &str) -> String {
+    if compare_decimal_strings(left, right) == std::cmp::Ordering::Less {
+        return "0".to_owned();
+    }
+
+    let mut borrow = 0i16;
+    let mut output = Vec::new();
+    let mut left = left.as_bytes().iter().rev();
+    let mut right = right.as_bytes().iter().rev();
+
+    while let Some(left_digit) = left.next().map(|digit| (digit - b'0') as i16) {
+        let right_digit = right
+            .next()
+            .map(|digit| (digit - b'0') as i16)
+            .unwrap_or_default();
+        let mut diff = left_digit - borrow - right_digit;
+        if diff < 0 {
+            diff += 10;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        output.push(b'0' + diff as u8);
+    }
+
+    output.reverse();
+    normalize_decimal(&String::from_utf8(output).expect("decimal digits"))
+}
+
+fn compare_decimal_strings(left: &str, right: &str) -> std::cmp::Ordering {
+    let left = normalize_decimal(left.trim_start_matches('-'));
+    let right = normalize_decimal(right.trim_start_matches('-'));
+    left.len()
+        .cmp(&right.len())
+        .then_with(|| left.as_str().cmp(right.as_str()))
+}
+
+fn split_decimal_sign(value: &str) -> (bool, String) {
+    let value = value.trim();
+    if let Some(value) = value.strip_prefix('-') {
+        (true, normalize_decimal(value))
+    } else {
+        (false, normalize_decimal(value))
+    }
+}
+
+fn format_signed_decimal(is_negative: bool, value: String) -> String {
+    if is_negative && value != "0" {
+        format!("-{value}")
+    } else {
+        value
+    }
+}
+
+fn normalize_decimal(value: &str) -> String {
+    let trimmed = value.trim_start_matches('0');
+    if trimmed.is_empty() {
+        "0".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 fn vote_power_checkpoint_cause(has_delegate_change: bool, has_transfer: bool) -> &'static str {
@@ -1747,6 +1922,18 @@ mod token_store_tests {
 
         assert_eq!(first_match.side, RollingSide::To);
         assert!(second_match.is_none());
+    }
+
+    #[test]
+    fn test_token_decimal_helpers_match_postgres_numeric_shape() {
+        assert_eq!(signed_decimal_delta("100", "40"), "60");
+        assert_eq!(signed_decimal_delta("40", "100"), "-60");
+        assert_eq!(signed_decimal_delta("00040", "40"), "0");
+        assert_eq!(add_signed_decimal("100", "60"), "160");
+        assert_eq!(add_signed_decimal("100", "-60"), "40");
+        assert_eq!(add_signed_decimal("40", "-100"), "-60");
+        assert_eq!(add_signed_decimal("-40", "100"), "60");
+        assert_eq!(add_signed_decimal("-40", "-100"), "-140");
     }
 
     fn token_common(
