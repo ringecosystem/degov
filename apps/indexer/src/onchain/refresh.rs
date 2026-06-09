@@ -1776,7 +1776,7 @@ impl EvmRpcChainTool {
                 }
             }
             Err(message) => {
-                self.execute_multicall_fallback(calls, &mut report, message);
+                fail_multicall_group(calls, &mut report, message);
             }
         }
 
@@ -1939,6 +1939,22 @@ impl EvmRpcChainTool {
 
     fn eth_get_block_timestamp(&self, block_number: &str) -> Result<u128, String> {
         self.rpc_client.eth_get_block_timestamp(block_number)
+    }
+}
+
+fn fail_multicall_group(
+    calls: Vec<EvmMulticallRead>,
+    report: &mut EvmRpcGroupExecutionReport,
+    multicall_error: String,
+) {
+    for call in calls {
+        report.covered_read_indexes.push(call.read_index);
+        report.failures.push(ReadFailure {
+            read_index: call.read_index,
+            message: format!("multicall failed: {multicall_error}"),
+            kind: ChainReadFailureKind::Transport,
+            retryable: true,
+        });
     }
 }
 
@@ -3399,6 +3415,27 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct TransportFailureMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for TransportFailureMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            _data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            Err("transport unavailable".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
     #[test]
     fn test_evm_rpc_chain_tool_executes_multicall_groups_once() {
         let rpc = MockEvmRpcClient::default();
@@ -3516,5 +3553,47 @@ mod tests {
         );
         assert_eq!(report.partial_failures.required_failures.len(), 0);
         assert_eq!(report.partial_failures.optional_failures.len(), 1);
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_fallback_per_read_on_multicall_transport_failure() {
+        let rpc = TransportFailureMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: String::new(),
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failure = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("required multicall transport failure fails the plan");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(failure.required_failures.len(), 2);
+        assert!(
+            failure
+                .required_failures
+                .iter()
+                .all(|failure| failure.retryable)
+        );
     }
 }
