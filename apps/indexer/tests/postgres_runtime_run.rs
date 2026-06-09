@@ -20,8 +20,9 @@ use degov_datalens_indexer::{
     PostgresIndexerRunnerStore, ProposalCreatedEvent, ProposalExtendedEvent,
     ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
     TimelockProjectionContext, TimelockProjectionEvent, TimelockProposalLinkContext,
-    TokenProjectionContext, TokenProjectionEvent, TokenTransferEvent, VoteCastEvent,
-    VoteProjectionContext, VoteProjectionEvent, project_proposal_events, project_timelock_events,
+    TokenEventCommon, TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent,
+    TokenTransferEvent, TokenTransferWrite, VoteCastEvent, VoteProjectionContext,
+    VoteProjectionEvent, project_proposal_events, project_timelock_events,
     project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
     runtime::apply_migrations,
 };
@@ -779,6 +780,58 @@ async fn test_postgres_token_repeated_delegate_ensure_keeps_member_count_once()
     .fetch_one(&database.pool)
     .await?;
     assert_eq!(member_count, Some(1));
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_bulk_writes_dense_duplicate_events() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let empty_token_batch = project_token_events(&token_projection_context(), Vec::new())
+        .map_err(|error| format!("token projection failed: {error:?}"))?;
+    let token_transfers = (0..2_501)
+        .map(|index| {
+            let common = dense_token_common(index);
+            TokenTransferWrite {
+                id: format!("dense-transfer-{index:04}"),
+                common,
+                from: DELEGATOR.to_owned(),
+                to: RECEIVER.to_owned(),
+                value: "1".to_owned(),
+                standard: "erc20".to_owned(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let token_batch = TokenProjectionBatch {
+        event_order: token_transfers.iter().map(|row| row.id.clone()).collect(),
+        delegate_changed: Vec::new(),
+        delegate_votes_changed: Vec::new(),
+        token_transfers,
+        delegate_rollings: Vec::new(),
+        operations: Vec::new(),
+        reconcile_plan: empty_token_batch.reconcile_plan,
+    };
+
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let transfer_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
+         FROM token_transfer
+         WHERE contract_set_id = $1",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(transfer_count, 2_501);
 
     database.cleanup().await?;
 
@@ -2687,6 +2740,22 @@ fn normalized_token_log(
     NormalizedEvmLog {
         address: TOKEN.to_owned(),
         ..normalized_log(id, block_number, transaction_index, log_index)
+    }
+}
+
+fn dense_token_common(index: usize) -> TokenEventCommon {
+    TokenEventCommon {
+        contract_set_id: CONTRACT_SET_ID.to_owned(),
+        chain_id: 1,
+        dao_code: "demo-dao".to_owned(),
+        governor_address: GOVERNOR.to_owned(),
+        token_address: TOKEN.to_owned(),
+        contract_address: TOKEN.to_owned(),
+        log_index: index as u64,
+        transaction_index: 0,
+        block_number: (10 + index).to_string(),
+        block_timestamp: Some((1_700_000_000 + index).to_string()),
+        transaction_hash: format!("0xdensetx{index:04}"),
     }
 }
 
