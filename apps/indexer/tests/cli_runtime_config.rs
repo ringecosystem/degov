@@ -157,6 +157,54 @@ fn test_onchain_refresh_runtime_config_rejects_zero_apply_batch() {
 }
 
 #[test]
+fn test_onchain_refresh_runtime_config_accepts_max_apply_batch() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE",
+                Some("1000"),
+            ),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.apply_batch_size,
+                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+            );
+            assert_eq!(
+                config.worker_config().apply_batch_size,
+                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+            );
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_rejects_oversized_apply_batch() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE",
+                Some("1001"),
+            ),
+        ],
+        || {
+            let error = OnchainRefreshRuntimeConfig::from_env()
+                .expect_err("oversized apply batch is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE")
+            );
+        },
+    );
+}
+
+#[test]
 fn test_onchain_refresh_runtime_config_rejects_zero_deferred_drain_batch() {
     with_env_vars!(
         [

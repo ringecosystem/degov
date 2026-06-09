@@ -2663,8 +2663,7 @@ fn onchain_refresh_apply_chunks<T>(
     items: &[T],
     apply_batch_size: usize,
 ) -> std::slice::Chunks<'_, T> {
-    debug_assert!(apply_batch_size > 0);
-    items.chunks(apply_batch_size)
+    items.chunks(apply_batch_size.max(1))
 }
 
 fn truncate_error(error: &str) -> String {
@@ -3236,6 +3235,16 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(chunks, vec![vec![1, 2], vec![3, 4], vec![5]]);
+    }
+
+    #[test]
+    fn test_onchain_refresh_apply_chunks_treats_zero_size_as_one() {
+        let items = vec![1, 2, 3];
+        let chunks = onchain_refresh_apply_chunks(&items, 0)
+            .map(|chunk| chunk.to_vec())
+            .collect::<Vec<_>>();
+
+        assert_eq!(chunks, vec![vec![1], vec![2], vec![3]]);
     }
 
     #[test]

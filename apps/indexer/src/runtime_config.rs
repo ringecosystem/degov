@@ -690,14 +690,15 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     let defaults = OnchainRefreshTickConfig::default();
     let max_tasks_per_tick = optional_env_usize("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS")?
         .unwrap_or(defaults.max_tasks_per_tick);
+    let apply_batch_size = onchain_refresh_apply_batch_size_from_env()?;
+    let max_tasks_per_run =
+        optional_env_usize("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN")?
+            .unwrap_or(max_tasks_per_tick.min(apply_batch_size));
     let config = OnchainRefreshTickConfig {
         enabled: optional_env_bool("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED")?
             .unwrap_or(defaults.enabled),
         max_tasks_per_tick,
-        max_tasks_per_run: optional_env_usize(
-            "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN",
-        )?
-        .unwrap_or(max_tasks_per_tick),
+        max_tasks_per_run,
         max_duration_per_tick: Duration::from_millis(
             optional_env_u64("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS")?
                 .unwrap_or(duration_millis_u64(defaults.max_duration_per_tick)),
@@ -713,6 +714,11 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     }
     if config.enabled && config.max_tasks_per_run == 0 {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN must be greater than zero");
+    }
+    if config.enabled && config.max_tasks_per_run > apply_batch_size {
+        bail!(
+            "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN must be less than or equal to DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE"
+        );
     }
     if config.enabled && config.max_duration_per_tick.is_zero() {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS must be greater than zero");
@@ -1120,6 +1126,12 @@ pub fn onchain_refresh_apply_batch_size_from_env() -> Result<usize> {
         .unwrap_or(DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE);
     if batch_size == 0 {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE must be greater than zero");
+    }
+    if batch_size > DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE {
+        bail!(
+            "DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE must be less than or equal to {}",
+            DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+        );
     }
 
     Ok(batch_size)
