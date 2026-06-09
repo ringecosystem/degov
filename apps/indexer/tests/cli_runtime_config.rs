@@ -675,7 +675,7 @@ fn test_indexer_runtime_config_bounds_large_onchain_refresh_tick_run_budget_by_a
 }
 
 #[test]
-fn test_indexer_runtime_config_rejects_onchain_refresh_tick_run_budget_above_apply_batch() {
+fn test_indexer_runtime_config_accepts_tick_run_budget_above_apply_batch() {
     with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
@@ -690,14 +690,10 @@ fn test_indexer_runtime_config_rejects_onchain_refresh_tick_run_budget_above_app
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS", None),
         ],
         || {
-            let error =
-                IndexerRuntimeConfig::from_env().expect_err("oversized run budget is invalid");
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
 
-            assert!(
-                error
-                    .to_string()
-                    .contains("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN")
-            );
+            assert_eq!(config.onchain_refresh_tick.max_tasks_per_tick, 5000);
+            assert_eq!(config.onchain_refresh_tick.max_tasks_per_run, 5000);
         },
     );
 }

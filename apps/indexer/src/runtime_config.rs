@@ -715,11 +715,6 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     if config.enabled && config.max_tasks_per_run == 0 {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN must be greater than zero");
     }
-    if config.enabled && config.max_tasks_per_run > apply_batch_size {
-        bail!(
-            "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN must be less than or equal to DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE"
-        );
-    }
     if config.enabled && config.max_duration_per_tick.is_zero() {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS must be greater than zero");
     }
