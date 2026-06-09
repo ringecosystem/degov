@@ -26,6 +26,19 @@ pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
         .run(pool)
         .await
         .context("apply Datalens-native DeGov indexer init migration")?;
+    ensure_runtime_indexes(pool).await?;
+
+    Ok(())
+}
+
+async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS onchain_refresh_task_claim_queue_idx
+         ON onchain_refresh_task (status, next_run_at, updated_at, id)",
+    )
+    .execute(pool)
+    .await
+    .context("ensure onchain refresh claim queue index")?;
 
     Ok(())
 }
