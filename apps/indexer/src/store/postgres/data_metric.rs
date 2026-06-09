@@ -18,11 +18,13 @@ async fn write_data_metric_timeline(
         .collect::<HashSet<_>>();
     let mut delegate_mapping_cache = DelegateMappingCache::default();
     let mut contributor_ensure_cache = ContributorEnsureCache::default();
+    let mut token_metadata_cache = BatchTokenMetadataCache::default();
     let mut items = Vec::new();
     if let Some(token) = token {
         contributor_ensure_cache
             .preload_batch(transaction, token, &inserted_operation_keys)
             .await?;
+        token_metadata_cache = BatchTokenMetadataCache::preload(transaction, token).await?;
         items.extend(token.operations.iter().map(DataMetricTimelineItem::Token));
     }
     if let Some(proposal) = proposal {
@@ -46,6 +48,7 @@ async fn write_data_metric_timeline(
                         transaction,
                         &mut delegate_mapping_cache,
                         &mut contributor_ensure_cache,
+                        &mut token_metadata_cache,
                         operation,
                     )
                     .await?;
