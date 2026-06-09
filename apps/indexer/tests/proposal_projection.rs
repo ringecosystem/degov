@@ -120,6 +120,8 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
         methods,
         vec![
             ChainReadMethod::Decimals,
+            ChainReadMethod::BlockTimestamp,
+            ChainReadMethod::BlockTimestamp,
             ChainReadMethod::ClockMode,
             ChainReadMethod::ProposalSnapshot,
             ChainReadMethod::ProposalDeadline,
@@ -257,6 +259,105 @@ fn test_project_proposal_created_uses_raw_log_id_and_timestamp_clock_enrichment(
 }
 
 #[test]
+fn test_project_proposal_created_estimates_blocknumber_vote_timestamps_from_proposal_block() {
+    let mut batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: production_log(
+                "0022339715-afd3c-000054",
+                22_339_715,
+                0,
+                84,
+                1_745_507_987_000,
+            ),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id:
+                    "7402631996988205717047317892914463120232263405485409023912445691668825031406"
+                        .to_owned(),
+                proposer: "0x1d5460f896521ad685ea4c3f2c679ec0b6806359".to_owned(),
+                targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+                values: vec!["0".to_owned()],
+                signatures: vec!["".to_owned()],
+                calldatas: vec!["0x".to_owned()],
+                vote_start: "22339716".to_owned(),
+                vote_end: "22385534".to_owned(),
+                description: "ENS blocknumber proposal".to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+    let report = ChainReadExecutionReport {
+        results: vec![
+            read_result(
+                ChainReadMethod::ClockMode,
+                "",
+                ChainReadValue::String("mode=blocknumber&from=default".to_owned()),
+            ),
+            read_result(
+                ChainReadMethod::BlockTimestamp,
+                "22339716",
+                ChainReadValue::Integer("1745507999000".to_owned()),
+            ),
+            read_result(
+                ChainReadMethod::BlockTimestamp,
+                "22385534",
+                ChainReadValue::Integer("1746060503000".to_owned()),
+            ),
+        ],
+        ..ChainReadExecutionReport::default()
+    };
+
+    batch.apply_chain_read_execution_report(&report);
+
+    let proposal = &batch.proposals[0];
+    assert_eq!(proposal.clock_mode, "blocknumber");
+    assert_eq!(proposal.vote_start_timestamp, "1745507999000");
+    assert_eq!(proposal.vote_end_timestamp, "1746060503000");
+    assert_eq!(proposal.block_interval.as_deref(), Some("12"));
+    assert_eq!(
+        proposal.timelock_address.as_deref(),
+        Some("0x2222222222222222222222222222222222222222")
+    );
+}
+
+#[test]
+fn test_project_proposal_created_omits_block_interval_for_non_ethereum_blocknumber() {
+    let mut event_log = production_log(
+        "0022339715-afd3c-000054",
+        22_339_715,
+        0,
+        84,
+        1_745_507_987_000,
+    );
+    event_log.chain_id = 8453;
+    let batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: event_log,
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: "0x1d5460f896521ad685ea4c3f2c679ec0b6806359".to_owned(),
+                targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+                values: vec!["0".to_owned()],
+                signatures: vec!["".to_owned()],
+                calldatas: vec!["0x".to_owned()],
+                vote_start: "22339716".to_owned(),
+                vote_end: "22385534".to_owned(),
+                description: "Base blocknumber proposal".to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+
+    let proposal = &batch.proposals[0];
+    assert_eq!(proposal.chain_id, 8453);
+    assert_eq!(proposal.clock_mode, "blocknumber");
+    assert_eq!(proposal.block_interval, None);
+    assert_eq!(proposal.vote_start_timestamp, "22339716");
+    assert_eq!(proposal.vote_end_timestamp, "22385534");
+}
+
+#[test]
 fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
     let batch = project_proposal_events(
         &context(),
@@ -329,6 +430,28 @@ fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
 
     assert_eq!(batch.chain_read_plan.metrics.requested_reads, 12);
     assert_eq!(batch.chain_read_plan.reads.len(), 6);
+}
+
+#[test]
+fn test_project_proposal_lifecycle_stub_omits_block_interval_for_non_ethereum_chain() {
+    let mut event_log = log(13, 0, 1);
+    event_log.chain_id = 8453;
+    let batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: event_log,
+            event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                proposal_id: "42".to_owned(),
+                eta_seconds: "1700000400".to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+
+    let proposal = &batch.proposals[0];
+    assert_eq!(proposal.chain_id, 8453);
+    assert_eq!(proposal.clock_mode, "blocknumber");
+    assert_eq!(proposal.block_interval, None);
 }
 
 #[test]

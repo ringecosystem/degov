@@ -222,16 +222,16 @@ async fn upsert_proposal(
             transaction_index, proposal_id, proposer, targets, values, signatures, calldatas,
             vote_start, vote_end, description, block_number, block_timestamp, transaction_hash,
             title, vote_start_timestamp, vote_end_timestamp, description_hash, proposal_snapshot,
-            proposal_deadline, proposal_eta, queue_ready_at, queue_expires_at, clock_mode, quorum,
-            decimals
+            proposal_deadline, proposal_eta, queue_ready_at, queue_expires_at, block_interval,
+            clock_mode, quorum, decimals, timelock_address
          )
          VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
             $15::NUMERIC(78, 0), $16::NUMERIC(78, 0), $17, $18::NUMERIC(78, 0),
             $19::NUMERIC(78, 0), $20, $21, $22::NUMERIC(78, 0), $23::NUMERIC(78, 0),
             $24, $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27::NUMERIC(78, 0),
-            $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30, $31::NUMERIC(78, 0),
-            $32::NUMERIC(78, 0)
+            $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30, $31, $32::NUMERIC(78, 0),
+            $33::NUMERIC(78, 0), $34
          )
          ON CONFLICT (id) DO UPDATE
          SET proposer = CASE WHEN EXCLUDED.proposer = '' THEN proposal.proposer ELSE EXCLUDED.proposer END,
@@ -249,9 +249,11 @@ async fn upsert_proposal(
              proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta),
              queue_ready_at = COALESCE(EXCLUDED.queue_ready_at, proposal.queue_ready_at),
              queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
+             block_interval = COALESCE(EXCLUDED.block_interval, proposal.block_interval),
              clock_mode = EXCLUDED.clock_mode,
              quorum = EXCLUDED.quorum,
-             decimals = EXCLUDED.decimals",
+             decimals = EXCLUDED.decimals,
+             timelock_address = COALESCE(EXCLUDED.timelock_address, proposal.timelock_address)",
     )
     .bind(&row.id)
     .bind(&row.contract_set_id)
@@ -288,9 +290,11 @@ async fn upsert_proposal(
     .bind(row.proposal_eta.as_deref())
     .bind(row.queue_ready_at.as_deref())
     .bind(row.queue_expires_at.as_deref())
+    .bind(row.block_interval.as_deref())
     .bind(&row.clock_mode)
     .bind(&row.quorum)
     .bind(&row.decimals)
+    .bind(row.timelock_address.as_deref())
     .execute(&mut **transaction)
     .await?;
 

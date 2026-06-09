@@ -1,4 +1,4 @@
-use async_graphql::{Enum, InputObject, SimpleObject};
+use async_graphql::{ComplexObject, Enum, InputObject, SimpleObject};
 use sqlx::FromRow;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -42,6 +42,7 @@ pub struct Proposal {
     pub(super) chain_id: Option<i32>,
     pub(super) dao_code: Option<String>,
     pub(super) governor_address: Option<String>,
+    #[graphql(skip)]
     pub(super) proposal_id: String,
     pub(super) proposer: String,
     pub(super) targets: Vec<String>,
@@ -91,9 +92,10 @@ pub struct VoteCastGroup {
 }
 
 #[derive(Clone, Debug, FromRow, SimpleObject)]
-#[graphql(rename_fields = "camelCase")]
+#[graphql(rename_fields = "camelCase", complex)]
 pub struct ProposalCanceled {
     pub(super) id: String,
+    #[graphql(skip)]
     pub(super) proposal_id: String,
     pub(super) block_number: String,
     pub(super) block_timestamp: String,
@@ -101,9 +103,10 @@ pub struct ProposalCanceled {
 }
 
 #[derive(Clone, Debug, FromRow, SimpleObject)]
-#[graphql(rename_fields = "camelCase")]
+#[graphql(rename_fields = "camelCase", complex)]
 pub struct ProposalExecuted {
     pub(super) id: String,
+    #[graphql(skip)]
     pub(super) proposal_id: String,
     pub(super) block_number: String,
     pub(super) block_timestamp: String,
@@ -111,9 +114,10 @@ pub struct ProposalExecuted {
 }
 
 #[derive(Clone, Debug, FromRow, SimpleObject)]
-#[graphql(rename_fields = "camelCase")]
+#[graphql(rename_fields = "camelCase", complex)]
 pub struct ProposalQueued {
     pub(super) id: String,
+    #[graphql(skip)]
     pub(super) proposal_id: String,
     pub(super) eta_seconds: String,
     pub(super) block_number: String,
@@ -208,6 +212,154 @@ pub struct IndexerStatus {
 #[graphql(rename_fields = "camelCase")]
 pub struct Connection {
     pub(super) total_count: i64,
+}
+
+#[ComplexObject(rename_fields = "camelCase")]
+impl ProposalCanceled {
+    async fn proposal_id(&self) -> String {
+        graphql_proposal_id(&self.proposal_id)
+    }
+}
+
+#[ComplexObject(rename_fields = "camelCase")]
+impl ProposalExecuted {
+    async fn proposal_id(&self) -> String {
+        graphql_proposal_id(&self.proposal_id)
+    }
+}
+
+#[ComplexObject(rename_fields = "camelCase")]
+impl ProposalQueued {
+    async fn proposal_id(&self) -> String {
+        graphql_proposal_id(&self.proposal_id)
+    }
+}
+
+pub(super) fn proposal_id_compat_values(value: &str) -> Vec<String> {
+    let mut values = vec![value.to_owned()];
+    if let Some(decimal) = normalize_decimal(value) {
+        push_unique(&mut values, decimal);
+    }
+    if let Some(hex) = decimal_to_hex(value) {
+        push_unique(&mut values, hex);
+    }
+    if let Some(decimal) = hex_to_decimal(value) {
+        push_unique(&mut values, decimal);
+    }
+    values
+}
+
+pub(super) fn graphql_proposal_id(value: &str) -> String {
+    decimal_to_hex(value)
+        .unwrap_or_else(|| normalize_hex(value).unwrap_or_else(|| value.to_owned()))
+}
+
+fn normalize_hex(value: &str) -> Option<String> {
+    let hex = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))?;
+    if hex.is_empty() || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let hex = hex.to_ascii_lowercase();
+    let trimmed = hex.trim_start_matches('0');
+    Some(format!(
+        "0x{}",
+        if trimmed.is_empty() { "0" } else { trimmed }
+    ))
+}
+
+fn decimal_to_hex(value: &str) -> Option<String> {
+    let decimal = normalize_decimal(value)?;
+    if decimal == "0" {
+        return Some("0x0".to_owned());
+    }
+    let mut digits = decimal.into_bytes();
+
+    let mut hex = Vec::new();
+    while !(digits.len() == 1 && digits[0] == b'0') {
+        let mut quotient = Vec::new();
+        let mut remainder = 0u8;
+        for digit in digits {
+            let value = remainder as u16 * 10 + (digit - b'0') as u16;
+            let next = (value / 16) as u8;
+            remainder = (value % 16) as u8;
+            if !quotient.is_empty() || next != 0 {
+                quotient.push(next + b'0');
+            }
+        }
+        hex.push(char::from_digit(remainder as u32, 16)?);
+        digits = if quotient.is_empty() {
+            vec![b'0']
+        } else {
+            quotient
+        };
+    }
+
+    hex.reverse();
+    Some(format!("0x{}", hex.into_iter().collect::<String>()))
+}
+
+fn normalize_decimal(value: &str) -> Option<String> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let trimmed = value.trim_start_matches('0');
+    Some(if trimmed.is_empty() {
+        "0".to_owned()
+    } else {
+        trimmed.to_owned()
+    })
+}
+
+fn hex_to_decimal(value: &str) -> Option<String> {
+    let hex = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))?;
+    if hex.is_empty() || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+
+    let mut digits = vec![0u8];
+    for nibble in hex.bytes().map(hex_nibble) {
+        let nibble = nibble?;
+        let mut carry = nibble;
+        for digit in digits.iter_mut().rev() {
+            let value = (*digit as u16) * 16 + carry as u16;
+            *digit = (value % 10) as u8;
+            carry = (value / 10) as u8;
+        }
+        while carry > 0 {
+            digits.insert(0, carry % 10);
+            carry /= 10;
+        }
+    }
+
+    let decimal = digits
+        .into_iter()
+        .skip_while(|digit| *digit == 0)
+        .map(|digit| (digit + b'0') as char)
+        .collect::<String>();
+    Some(if decimal.is_empty() {
+        "0".to_owned()
+    } else {
+        decimal
+    })
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.contains(&value) {
+        values.push(value);
+    }
 }
 
 #[derive(Clone, Debug, Default, InputObject)]
@@ -426,4 +578,21 @@ pub enum DelegateMappingOrderByInput {
     PowerDesc,
     #[graphql(name = "blockNumber_DESC")]
     BlockNumberDesc,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{graphql_proposal_id, proposal_id_compat_values};
+
+    #[test]
+    fn test_graphql_proposal_id_formats_zero_decimal_as_hex() {
+        assert_eq!(graphql_proposal_id("0"), "0x0");
+        assert_eq!(graphql_proposal_id("000"), "0x0");
+    }
+
+    #[test]
+    fn test_proposal_id_compat_values_include_canonical_zero_forms() {
+        assert_eq!(proposal_id_compat_values("000"), vec!["000", "0", "0x0"]);
+        assert_eq!(proposal_id_compat_values("0x0"), vec!["0x0", "0"]);
+    }
 }

@@ -114,6 +114,12 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 title
                 proposer
                 blockTimestamp
+                voteStartTimestamp
+                voteEndTimestamp
+                blockInterval
+                quorum
+                decimals
+                timelockAddress
                 chainId
                 daoCode
                 governorAddress
@@ -190,14 +196,30 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     );
 
     let data = response.data.into_json()?;
-    assert_eq!(data["proposals"][0]["proposalId"], "101");
-    assert_eq!(data["proposals"][0]["blockTimestamp"], "1700000100");
+    assert_eq!(data["proposals"][0]["proposalId"], "0x65");
+    assert_eq!(data["proposals"][0]["blockTimestamp"], "1700000100000");
+    assert_eq!(data["proposals"][0]["voteStartTimestamp"], "1700001000000");
+    assert_eq!(data["proposals"][0]["voteEndTimestamp"], "1700002000000");
+    assert_eq!(data["proposals"][0]["blockInterval"], "12");
+    assert_eq!(data["proposals"][0]["quorum"], "40");
+    assert_eq!(data["proposals"][0]["decimals"], "18");
+    assert_eq!(data["proposals"][0]["timelockAddress"], "0xtimelock");
     assert_eq!(data["proposals"][0]["metricsVotesWeightForSum"], "100");
     // PR #768 changes proposal id/FK semantics; keep this nested voter assertion
     // in the revalidation set after that branch lands.
     assert_eq!(data["proposals"][0]["voters"][0]["voter"], "0xvoter1");
     assert_eq!(data["proposals"][0]["voters"][0]["weight"], "100");
+    assert_eq!(
+        data["proposals"][0]["voters"][0]["blockTimestamp"],
+        "1700000110000"
+    );
     assert_eq!(data["proposalQueueds"][0]["etaSeconds"], "1700000200");
+    assert_eq!(data["proposalCanceleds"][0]["proposalId"], "0x65");
+    assert_eq!(
+        data["proposalCanceleds"][0]["blockTimestamp"],
+        "1700000130000"
+    );
+    assert_eq!(data["proposalExecuteds"][0]["proposalId"], "0x65");
     assert_eq!(data["dataMetrics"][0]["powerSum"], "150");
     assert_eq!(data["dataMetricsConnection"]["totalCount"], 1);
     assert_eq!(data["contributors"][0]["id"], "0xvoter1");
@@ -235,9 +257,9 @@ async fn test_graphql_schema_accepts_current_web_event_where_type_names()
                 "#,
             )
             .variables(async_graphql::Variables::from_json(json!({
-                "canceledWhere": { "proposalId_eq": "101" },
-                "executedWhere": { "proposalId_eq": "101" },
-                "queuedWhere": { "proposalId_eq": "101" }
+                "canceledWhere": { "proposalId_eq": "0x65" },
+                "executedWhere": { "proposalId_eq": "0x65" },
+                "queuedWhere": { "proposalId_eq": "0x65" }
             }))),
         )
         .await;
@@ -249,8 +271,8 @@ async fn test_graphql_schema_accepts_current_web_event_where_type_names()
     );
 
     let data = response.data.into_json()?;
-    assert_eq!(data["proposalCanceleds"][0]["proposalId"], "101");
-    assert_eq!(data["proposalExecuteds"][0]["proposalId"], "101");
+    assert_eq!(data["proposalCanceleds"][0]["proposalId"], "0x65");
+    assert_eq!(data["proposalExecuteds"][0]["proposalId"], "0x65");
     assert_eq!(data["proposalQueueds"][0]["etaSeconds"], "1700000200");
 
     database.cleanup().await?;
@@ -622,18 +644,18 @@ async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to
     );
 
     let data = response.data.into_json()?;
-    assert_eq!(data["proposals"][0]["proposalId"], "101");
+    assert_eq!(data["proposals"][0]["proposalId"], "0x65");
     assert_eq!(data["proposals"][0]["title"], "Live launch title");
     assert_eq!(
         data["proposals"][0]["description"],
         "Live launch description"
     );
     assert_eq!(data["proposals"][0]["proposalEta"], "1700000300");
-    assert_eq!(data["proposals"][0]["queueReadyAt"], "1700000300");
-    assert_eq!(data["proposals"][0]["queueExpiresAt"], "1700000900");
+    assert_eq!(data["proposals"][0]["queueReadyAt"], "1700000300000");
+    assert_eq!(data["proposals"][0]["queueExpiresAt"], "1700000900000");
     assert_eq!(data["proposals"][0]["timelockAddress"], "0xtimelock");
     assert_eq!(data["proposals"][0]["timelockGracePeriod"], "600");
-    assert_eq!(data["proposals"][1]["proposalId"], "102");
+    assert_eq!(data["proposals"][1]["proposalId"], "0x66");
     assert_eq!(data["proposals"][1]["title"], "Unrelated");
     assert_eq!(data["liveDetail"][0]["proposalEta"], "1700000300");
     assert_eq!(data["fallbackDetail"][0]["title"], "Unrelated");
@@ -1091,19 +1113,22 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           description, block_number, block_timestamp, transaction_hash,
           metrics_votes_count, metrics_votes_with_params_count, metrics_votes_without_params_count,
           metrics_votes_weight_for_sum, metrics_votes_weight_against_sum, metrics_votes_weight_abstain_sum,
-          title, vote_start_timestamp, vote_end_timestamp, clock_mode, quorum, decimals
+          title, vote_start_timestamp, vote_end_timestamp, block_interval, timelock_address,
+          clock_mode, quorum, decimals
         ) VALUES
         (
           'proposal:1135:0xgovernor:101', $1, 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 1, 0,
           '101', '0xproposer', ARRAY['0xtarget'], ARRAY['0'], ARRAY['transfer(address,uint256)'], ARRAY['0x'],
           1000, 2000, 'Launch treasury program', 800, 1700000100, '0xproposal',
-          2, 1, 1, 100, 25, 0, 'Launch treasury program', 1700001000, 1700002000, 'mode=blocknumber&from=default', 40, 18
+          2, 1, 1, 100, 25, 0, 'Launch treasury program', 1700001000, 1700002000,
+          '12', '0xtimelock', 'mode=blocknumber&from=default', 40, 18
         ),
         (
           'proposal:1135:0xgovernor:102', $1, 1135, 'lisk-dao', '0xgovernor', '0xgovernor', 2, 0,
           '102', '0xother', ARRAY[]::TEXT[], ARRAY[]::TEXT[], ARRAY[]::TEXT[], ARRAY[]::TEXT[],
           1000, 2000, 'Unrelated', 801, 1700000200, '0xproposal2',
-          0, 0, 0, 0, 0, 0, 'Unrelated', 1700001000, 1700002000, 'mode=blocknumber&from=default', 40, 18
+          0, 0, 0, 0, 0, 0, 'Unrelated', 1700001000, 1700002000,
+          '12', '0xtimelock', 'mode=blocknumber&from=default', 40, 18
         )
         "#,
     )

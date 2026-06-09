@@ -85,7 +85,8 @@ impl QueryRoot {
         let mut query = QueryBuilder::<Postgres>::new(
             r#"
             SELECT id, proposal_id, eta_seconds::text AS eta_seconds,
-              block_number::text AS block_number, block_timestamp::text AS block_timestamp,
+              block_number::text AS block_number,
+              (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
               transaction_hash
             FROM proposal_queued
             "#,
@@ -244,6 +245,10 @@ impl QueryRoot {
 
 #[ComplexObject(rename_fields = "camelCase")]
 impl Proposal {
+    async fn proposal_id(&self) -> String {
+        graphql_proposal_id(&self.proposal_id)
+    }
+
     async fn voters(
         &self,
         ctx: &Context<'_>,
@@ -256,7 +261,8 @@ impl Proposal {
         let mut query = QueryBuilder::<Postgres>::new(
             r#"
             SELECT id, type, params, voter, support, weight::text AS weight, reason,
-              block_number::text AS block_number, block_timestamp::text AS block_timestamp,
+              block_number::text AS block_number,
+              (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
               transaction_hash
             FROM vote_cast_group
             "#,
