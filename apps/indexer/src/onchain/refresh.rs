@@ -181,6 +181,12 @@ where
                 runner.backlog(),
             ));
         }
+        if self.config.max_tasks_per_run == 0 {
+            return Ok(self.skipped(
+                OnchainRefreshTickSkipReason::TaskBudgetZero,
+                runner.backlog(),
+            ));
+        }
         if self.config.max_duration_per_tick.is_zero() {
             return Ok(self.skipped(
                 OnchainRefreshTickSkipReason::DurationBudgetZero,

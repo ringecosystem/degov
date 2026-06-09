@@ -79,6 +79,35 @@ fn test_onchain_refresh_tick_reports_empty_queue() {
 }
 
 #[test]
+fn test_onchain_refresh_tick_skips_when_per_run_budget_is_zero() {
+    let mut runner = ScriptedTickRunner::new([OnchainRefreshRunReport {
+        claimed: 1,
+        completed: 1,
+        failed: 0,
+        ..OnchainRefreshRunReport::default()
+    }]);
+    let mut scheduler = OnchainRefreshTickScheduler::new(
+        OnchainRefreshTickConfig {
+            enabled: true,
+            max_tasks_per_tick: 10,
+            max_tasks_per_run: 0,
+            max_duration_per_tick: Duration::from_millis(100),
+            min_blocks_between_ticks: 0,
+        },
+        FakeTickClock::default(),
+    );
+
+    let report = scheduler.run_tick(100, &mut runner).expect("tick runs");
+
+    assert_eq!(report.processed, 0);
+    assert_eq!(
+        report.skipped,
+        Some(OnchainRefreshTickSkipReason::TaskBudgetZero)
+    );
+    assert_eq!(runner.calls, Vec::<usize>::new());
+}
+
+#[test]
 fn test_onchain_refresh_tick_empty_queue_does_not_advance_schedule() {
     let mut empty_runner = ScriptedTickRunner::new([OnchainRefreshRunReport::default()]);
     let mut scheduler = OnchainRefreshTickScheduler::new(
