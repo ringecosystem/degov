@@ -106,16 +106,16 @@ async fn run_configured_contract_sets_pass(
         .collect();
     let runtime = Arc::new(runtime);
 
-    run_contract_set_jobs(
-        jobs,
-        runtime.contract_set_max_concurrency,
-        runtime.contract_set_per_chain_max_concurrency,
-        move |contract_set| {
-            let runtime = runtime.clone();
-            let pool = pool.clone();
-            let datalens_query_gate = datalens_query_gate.clone();
-            async move {
-                if runtime.run_once {
+    if runtime.run_once {
+        run_contract_set_jobs(
+            jobs,
+            runtime.contract_set_max_concurrency,
+            runtime.contract_set_per_chain_max_concurrency,
+            move |contract_set| {
+                let runtime = runtime.clone();
+                let pool = pool.clone();
+                let datalens_query_gate = datalens_query_gate.clone();
+                async move {
                     run_configured_contract_set_pass(
                         &runtime,
                         contract_set,
@@ -123,19 +123,33 @@ async fn run_configured_contract_sets_pass(
                         datalens_query_gate,
                     )
                     .await
-                } else {
+                }
+            },
+        )
+        .await
+    } else {
+        run_recovering_contract_set_jobs(
+            jobs,
+            runtime.contract_set_max_concurrency,
+            runtime.contract_set_per_chain_max_concurrency,
+            move |contract_set, permit_scope| {
+                let runtime = runtime.clone();
+                let pool = pool.clone();
+                let datalens_query_gate = datalens_query_gate.clone();
+                async move {
                     run_recovering_configured_contract_set_pass(
                         runtime,
                         contract_set,
                         pool,
                         datalens_query_gate,
+                        permit_scope,
                     )
                     .await
                 }
-            }
-        },
-    )
-    .await
+            },
+        )
+        .await
+    }
 }
 
 async fn run_configured_contract_set_pass(
@@ -225,6 +239,7 @@ async fn run_recovering_configured_contract_set_pass(
     contract_set: DatalensRuntimeContractSet,
     pool: sqlx::PgPool,
     datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
+    permit_scope: ContractSetConcurrencyPermitScope,
 ) -> Result<()> {
     let log_context = format!(
         "dao_code={} chain_id={} contract_set_id={}",
@@ -239,7 +254,12 @@ async fn run_recovering_configured_contract_set_pass(
             let contract_set = contract_set.clone();
             let pool = pool.clone();
             let datalens_query_gate = datalens_query_gate.clone();
+            let permit_scope = permit_scope.clone();
             async move {
+                let _permits = permit_scope
+                    .acquire()
+                    .await
+                    .map_err(ContractSetPassError::setup)?;
                 run_configured_contract_set_pass_result(
                     &runtime,
                     contract_set,
@@ -489,6 +509,31 @@ struct ContractSetConcurrencyJob<T> {
     contract_set: T,
 }
 
+struct ContractSetScopedJob<T> {
+    contract_set: T,
+    permit_scope: ContractSetConcurrencyPermitScope,
+}
+
+#[derive(Clone)]
+struct ContractSetConcurrencyPermitScope {
+    global: Option<Arc<Semaphore>>,
+    per_chain: Option<Arc<Semaphore>>,
+}
+
+struct ContractSetConcurrencyPermits {
+    _global: Option<tokio::sync::OwnedSemaphorePermit>,
+    _per_chain: Option<tokio::sync::OwnedSemaphorePermit>,
+}
+
+impl ContractSetConcurrencyPermitScope {
+    async fn acquire(&self) -> Result<ContractSetConcurrencyPermits> {
+        Ok(ContractSetConcurrencyPermits {
+            _per_chain: acquire_semaphore(self.per_chain.clone()).await?,
+            _global: acquire_semaphore(self.global.clone()).await?,
+        })
+    }
+}
+
 async fn run_contract_set_jobs<T, F, Fut>(
     jobs: Vec<ContractSetConcurrencyJob<T>>,
     global_limit: crate::ContractSetConcurrencyLimit,
@@ -500,19 +545,13 @@ where
     F: Fn(T) -> Fut + Clone + Send + Sync + 'static,
     Fut: Future<Output = Result<()>> + Send + 'static,
 {
-    let global = semaphore_for_limit(global_limit);
-    let per_chain = per_chain_semaphores(&jobs, per_chain_limit);
+    let jobs = scoped_contract_set_jobs(jobs, global_limit, per_chain_limit);
     let mut handles = task::JoinSet::new();
 
     for job in jobs {
-        let global = global.clone();
-        let per_chain = per_chain
-            .as_ref()
-            .and_then(|semaphores| semaphores.get(&job.chain_id).cloned());
         let run = run.clone();
         handles.spawn(async move {
-            let _global_permit = acquire_semaphore(global).await?;
-            let _per_chain_permit = acquire_semaphore(per_chain).await?;
+            let _permits = job.permit_scope.acquire().await?;
             run(job.contract_set).await
         });
     }
@@ -533,6 +572,67 @@ where
     }
 
     Ok(())
+}
+
+async fn run_recovering_contract_set_jobs<T, F, Fut>(
+    jobs: Vec<ContractSetConcurrencyJob<T>>,
+    global_limit: crate::ContractSetConcurrencyLimit,
+    per_chain_limit: crate::ContractSetConcurrencyLimit,
+    run: F,
+) -> Result<()>
+where
+    T: Send + 'static,
+    F: Fn(T, ContractSetConcurrencyPermitScope) -> Fut + Clone + Send + Sync + 'static,
+    Fut: Future<Output = Result<()>> + Send + 'static,
+{
+    let jobs = scoped_contract_set_jobs(jobs, global_limit, per_chain_limit);
+    let mut handles = task::JoinSet::new();
+
+    for job in jobs {
+        let run = run.clone();
+        handles.spawn(async move { run(job.contract_set, job.permit_scope).await });
+    }
+
+    while let Some(result) = handles.join_next().await {
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                handles.abort_all();
+                bail!("Datalens indexer all-mode contract set pass failed: {error}");
+            }
+            Err(error) => {
+                handles.abort_all();
+                let error: runtime_anyhow::Error = error.into();
+                bail!("Datalens indexer all-mode contract set pass failed: {error}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn scoped_contract_set_jobs<T>(
+    jobs: Vec<ContractSetConcurrencyJob<T>>,
+    global_limit: crate::ContractSetConcurrencyLimit,
+    per_chain_limit: crate::ContractSetConcurrencyLimit,
+) -> Vec<ContractSetScopedJob<T>> {
+    let global = semaphore_for_limit(global_limit);
+    let per_chain = per_chain_semaphores(&jobs, per_chain_limit);
+
+    jobs.into_iter()
+        .map(|job| {
+            let per_chain = per_chain
+                .as_ref()
+                .and_then(|semaphores| semaphores.get(&job.chain_id).cloned());
+            ContractSetScopedJob {
+                contract_set: job.contract_set,
+                permit_scope: ContractSetConcurrencyPermitScope {
+                    global: global.clone(),
+                    per_chain,
+                },
+            }
+        })
+        .collect()
 }
 
 fn semaphore_for_limit(limit: crate::ContractSetConcurrencyLimit) -> Option<Arc<Semaphore>> {
@@ -997,6 +1097,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_contract_set_permit_scope_does_not_hold_global_while_waiting_for_per_chain() {
+        let global = Arc::new(Semaphore::new(2));
+        let chain_one = Arc::new(Semaphore::new(1));
+        let chain_two = Arc::new(Semaphore::new(1));
+        let chain_one_scope = ContractSetConcurrencyPermitScope {
+            global: Some(global.clone()),
+            per_chain: Some(chain_one),
+        };
+        let chain_two_scope = ContractSetConcurrencyPermitScope {
+            global: Some(global.clone()),
+            per_chain: Some(chain_two),
+        };
+        let _active_chain_one_pass = chain_one_scope
+            .acquire()
+            .await
+            .expect("first chain one pass acquires permits");
+        let waiting_chain_one_scope = chain_one_scope.clone();
+        let waiting_chain_one =
+            tokio::spawn(async move { waiting_chain_one_scope.acquire().await });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let chain_two_permits =
+            tokio::time::timeout(Duration::from_millis(20), chain_two_scope.acquire())
+                .await
+                .expect("chain two can acquire global while chain one waits for per-chain")
+                .expect("chain two permits");
+
+        drop(chain_two_permits);
+        waiting_chain_one.abort();
+    }
+
+    #[tokio::test]
     async fn test_contract_set_jobs_returns_error_without_waiting_for_long_running_peer() {
         #[derive(Clone, Copy)]
         enum ScriptedJob {
@@ -1112,6 +1245,276 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
         assert_eq!(peer_started.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_recovering_contract_set_jobs_release_global_permit_between_passes() {
+        let started = Arc::new(AtomicUsize::new(0));
+        let jobs = (0..5)
+            .map(|job_id| ContractSetConcurrencyJob {
+                chain_id: job_id,
+                contract_set: job_id,
+            })
+            .collect();
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(200),
+            run_recovering_contract_set_jobs(
+                jobs,
+                crate::ContractSetConcurrencyLimit::Limited(4),
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                {
+                    let started = started.clone();
+                    move |job_id, permit_scope| {
+                        let started = started.clone();
+                        async move {
+                            run_recovering_contract_set_pass_loop(
+                                &format!(
+                                    "dao_code=demo-dao-{job_id} chain_id={job_id} contract_set_id=demo-scope"
+                                ),
+                                Duration::from_secs(60),
+                                move || {
+                                    let permit_scope = permit_scope.clone();
+                                    let started = started.clone();
+                                    async move {
+                                        let _permits = permit_scope
+                                            .acquire()
+                                            .await
+                                            .map_err(ContractSetPassError::setup)?;
+                                        started.fetch_add(1, Ordering::SeqCst);
+                                        tokio::time::sleep(Duration::from_millis(10)).await;
+                                        Ok(())
+                                    }
+                                },
+                                |_| async {
+                                    std::future::pending::<()>().await;
+                                },
+                            )
+                            .await
+                        }
+                    }
+                },
+            ),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(started.load(Ordering::SeqCst), 5);
+    }
+
+    #[tokio::test]
+    async fn test_recovering_contract_set_jobs_do_not_hold_permit_while_caught_up_job_sleeps() {
+        #[derive(Clone, Copy)]
+        enum ScriptedJob {
+            CaughtUp,
+            Pending,
+        }
+
+        let pending_started = Arc::new(AtomicUsize::new(0));
+        let caught_up_passed = Arc::new(tokio::sync::Notify::new());
+        let jobs = vec![
+            ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: ScriptedJob::CaughtUp,
+            },
+            ContractSetConcurrencyJob {
+                chain_id: 2,
+                contract_set: ScriptedJob::Pending,
+            },
+        ];
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            run_recovering_contract_set_jobs(
+                jobs,
+                crate::ContractSetConcurrencyLimit::Limited(1),
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                {
+                    let pending_started = pending_started.clone();
+                    let caught_up_passed = caught_up_passed.clone();
+                    move |job, permit_scope| {
+                        let pending_started = pending_started.clone();
+                        let caught_up_passed = caught_up_passed.clone();
+                        async move {
+                            run_recovering_contract_set_pass_loop(
+                                "dao_code=demo-dao chain_id=1 contract_set_id=demo-scope",
+                                Duration::from_secs(60),
+                                move || {
+                                    let permit_scope = permit_scope.clone();
+                                    let pending_started = pending_started.clone();
+                                    let caught_up_passed = caught_up_passed.clone();
+                                    async move {
+                                        if matches!(job, ScriptedJob::Pending) {
+                                            caught_up_passed.notified().await;
+                                        }
+                                        let _permits = permit_scope
+                                            .acquire()
+                                            .await
+                                            .map_err(ContractSetPassError::setup)?;
+                                        match job {
+                                            ScriptedJob::CaughtUp => {
+                                                caught_up_passed.notify_one();
+                                            }
+                                            ScriptedJob::Pending => {
+                                                pending_started.fetch_add(1, Ordering::SeqCst);
+                                            }
+                                        }
+                                        Ok(())
+                                    }
+                                },
+                                |_| async {
+                                    std::future::pending::<()>().await;
+                                },
+                            )
+                            .await
+                        }
+                    }
+                },
+            ),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(pending_started.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_recovering_contract_set_jobs_do_not_hold_permit_during_retry_backoff() {
+        #[derive(Clone, Copy)]
+        enum ScriptedJob {
+            Retrying,
+            Pending,
+        }
+
+        let pending_started = Arc::new(AtomicUsize::new(0));
+        let retry_attempts = Arc::new(AtomicUsize::new(0));
+        let retry_failed = Arc::new(tokio::sync::Notify::new());
+        let jobs = vec![
+            ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: ScriptedJob::Retrying,
+            },
+            ContractSetConcurrencyJob {
+                chain_id: 2,
+                contract_set: ScriptedJob::Pending,
+            },
+        ];
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            run_recovering_contract_set_jobs(
+                jobs,
+                crate::ContractSetConcurrencyLimit::Limited(1),
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                {
+                    let pending_started = pending_started.clone();
+                    let retry_attempts = retry_attempts.clone();
+                    let retry_failed = retry_failed.clone();
+                    move |job, permit_scope| {
+                        let pending_started = pending_started.clone();
+                        let retry_attempts = retry_attempts.clone();
+                        let retry_failed = retry_failed.clone();
+                        async move {
+                            run_recovering_contract_set_pass_loop(
+                                "dao_code=demo-dao chain_id=1 contract_set_id=demo-scope",
+                                Duration::from_secs(60),
+                                move || {
+                                    let permit_scope = permit_scope.clone();
+                                    let pending_started = pending_started.clone();
+                                    let retry_attempts = retry_attempts.clone();
+                                    let retry_failed = retry_failed.clone();
+                                    async move {
+                                        if matches!(job, ScriptedJob::Pending) {
+                                            retry_failed.notified().await;
+                                        }
+                                        let _permits = permit_scope
+                                            .acquire()
+                                            .await
+                                            .map_err(ContractSetPassError::setup)?;
+                                        match job {
+                                            ScriptedJob::Retrying => {
+                                                retry_attempts.fetch_add(1, Ordering::SeqCst);
+                                                retry_failed.notify_one();
+                                                Err(ContractSetPassError::runner(
+                                                    runtime_anyhow::anyhow!("query failed"),
+                                                ))
+                                            }
+                                            ScriptedJob::Pending => {
+                                                pending_started.fetch_add(1, Ordering::SeqCst);
+                                                Ok(())
+                                            }
+                                        }
+                                    }
+                                },
+                                |_| async {
+                                    std::future::pending::<()>().await;
+                                },
+                            )
+                            .await
+                        }
+                    }
+                },
+            ),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(retry_attempts.load(Ordering::SeqCst), 1);
+        assert_eq!(pending_started.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_recovering_contract_set_jobs_unlimited_runs_every_job_without_permit_wait() {
+        let started = Arc::new(AtomicUsize::new(0));
+        let jobs = (0..5)
+            .map(|job_id| ContractSetConcurrencyJob {
+                chain_id: 1,
+                contract_set: job_id,
+            })
+            .collect();
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            run_recovering_contract_set_jobs(
+                jobs,
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                crate::ContractSetConcurrencyLimit::Unlimited,
+                {
+                    let started = started.clone();
+                    move |job_id, permit_scope| {
+                        let started = started.clone();
+                        async move {
+                            run_recovering_contract_set_pass_loop(
+                                &format!(
+                                    "dao_code=demo-dao-{job_id} chain_id=1 contract_set_id=demo-scope"
+                                ),
+                                Duration::from_secs(60),
+                                move || {
+                                    let permit_scope = permit_scope.clone();
+                                    let started = started.clone();
+                                    async move {
+                                        let _permits = permit_scope
+                                            .acquire()
+                                            .await
+                                            .map_err(ContractSetPassError::setup)?;
+                                        started.fetch_add(1, Ordering::SeqCst);
+                                        Ok(())
+                                    }
+                                },
+                                |_| async {
+                                    std::future::pending::<()>().await;
+                                },
+                            )
+                            .await
+                        }
+                    }
+                },
+            ),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(started.load(Ordering::SeqCst), 5);
     }
 
     #[test]
