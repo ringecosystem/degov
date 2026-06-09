@@ -712,7 +712,8 @@ async fn test_postgres_token_same_batch_mapping_mutations_remain_ordered()
 async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
-    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())
+        .with_onchain_refresh_debounce(Duration::from_secs(120));
     seed_refresh_task_for_account(
         &database.pool,
         DELEGATOR,
@@ -774,6 +775,7 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
         .status
         .reason
         .clear();
+    let before = unix_time_millis_for_test();
     apply_projection_batch(
         &mut store,
         IndexerProjectionBatch {
@@ -781,6 +783,7 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
             ..IndexerProjectionBatch::default()
         },
     )?;
+    let after = unix_time_millis_for_test();
 
     let rows = sqlx::query(
         "SELECT id, account, refresh_balance, refresh_power, reason, status, attempts,
@@ -810,7 +813,9 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
     );
     assert_eq!(pending.get::<String, _>("status"), "pending");
     assert_eq!(pending.get::<i32, _>("attempts"), 0);
-    assert_eq!(pending.get::<String, _>("next_run_at"), "0");
+    let pending_next_run_at = pending.get::<String, _>("next_run_at").parse::<i64>()?;
+    assert!(pending_next_run_at >= before + 120_000);
+    assert!(pending_next_run_at <= after + 120_000);
     assert_eq!(pending.get::<String, _>("first_seen_block_number"), "10");
     assert_eq!(pending.get::<String, _>("last_seen_block_number"), "22");
     assert_eq!(
@@ -838,6 +843,9 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
     assert_eq!(inserted.get::<String, _>("first_seen_block_number"), "20");
     assert_eq!(inserted.get::<String, _>("last_seen_block_number"), "20");
     assert_eq!(inserted.get::<String, _>("status"), "pending");
+    let inserted_next_run_at = inserted.get::<String, _>("next_run_at").parse::<i64>()?;
+    assert!(inserted_next_run_at >= before + 120_000);
+    assert!(inserted_next_run_at <= after + 120_000);
 
     let processing = rows
         .iter()
@@ -923,7 +931,8 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
     for index in [0, DENSE_CANDIDATE_COUNT - 1] {
         let account = indexed_account(index);
         let row = sqlx::query(
-            "SELECT id, reason, status, last_seen_block_number::TEXT AS last_seen_block_number
+            "SELECT id, reason, status, next_run_at::TEXT AS next_run_at,
+                    last_seen_block_number::TEXT AS last_seen_block_number
              FROM onchain_refresh_task
              WHERE contract_set_id = $1 AND account = $2",
         )
@@ -938,6 +947,7 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
             row.get::<String, _>("last_seen_block_number"),
             (30 + index as u64).to_string()
         );
+        assert!(row.get::<String, _>("next_run_at").parse::<i64>()? > 0);
     }
 
     database.cleanup().await?;
@@ -2179,6 +2189,14 @@ async fn seed_refresh_task_for_account(
 
 fn refresh_task_id(account: &str) -> String {
     format!("{CONTRACT_SET_ID}:demo-dao:1:{GOVERNOR}:{TOKEN}:{account}")
+}
+
+fn unix_time_millis_for_test() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_millis()
+        .min(i64::MAX as u128) as i64
 }
 
 fn indexed_account(index: usize) -> String {

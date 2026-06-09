@@ -3,14 +3,14 @@ use std::{
     fmt,
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use ethabi::{ParamType, Token, decode, encode, ethereum_types::U256};
 use serde::Deserialize;
 use serde_json::json;
 use sha3::{Digest, Keccak256};
-use sqlx::{PgPool, Postgres, Row, Transaction};
+use sqlx::{PgPool, Postgres, QueryBuilder, Row, Transaction};
 use thiserror::Error;
 
 use crate::{
@@ -26,6 +26,7 @@ use crate::{
 pub struct OnchainRefreshWorkerConfig {
     pub batch_size: usize,
     pub max_attempts: i32,
+    pub debounce: Duration,
     pub lock_ttl: Duration,
     pub retry_delay: Duration,
     pub lock_owner: String,
@@ -36,6 +37,14 @@ pub struct OnchainRefreshRunReport {
     pub claimed: usize,
     pub completed: usize,
     pub failed: usize,
+    pub unique_accounts: usize,
+    pub rpc_reads_requested: usize,
+    pub rpc_reads_deduped: usize,
+    pub cache_hits: usize,
+    pub debounced_tasks: usize,
+    pub data_metric_refreshes: usize,
+    pub duration_ms: u128,
+    pub backlog: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -206,7 +215,7 @@ where
                 break;
             }
 
-            let batch = runner.run_once(1)?;
+            let batch = runner.run_once(remaining)?;
             if batch.claimed == 0 {
                 report.skipped =
                     (report.processed == 0).then_some(OnchainRefreshTickSkipReason::EmptyQueue);
@@ -277,6 +286,14 @@ pub struct OnchainRefreshReadValue {
     pub power: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct OnchainRefreshReadReport {
+    pub values: Vec<OnchainRefreshReadValue>,
+    pub rpc_reads_requested: usize,
+    pub rpc_reads_deduped: usize,
+    pub cache_hits: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshReaderError {
     message: String,
@@ -303,6 +320,16 @@ pub trait OnchainRefreshReader: Clone + Send + Sync + 'static {
         &self,
         tasks: &[OnchainRefreshTask],
     ) -> Result<Vec<OnchainRefreshReadValue>, OnchainRefreshReaderError>;
+
+    fn read_tasks_with_report(
+        &self,
+        tasks: &[OnchainRefreshTask],
+    ) -> Result<OnchainRefreshReadReport, OnchainRefreshReaderError> {
+        Ok(OnchainRefreshReadReport {
+            values: self.read_tasks(tasks)?,
+            ..OnchainRefreshReadReport::default()
+        })
+    }
 }
 
 #[derive(Debug, Error)]
@@ -362,6 +389,7 @@ where
         &self,
         batch_size: usize,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
+        let started_at = Instant::now();
         let now_ms = unix_time_millis();
         let tasks = self.claim_tasks(now_ms, batch_size).await?;
         if tasks.is_empty() {
@@ -370,8 +398,10 @@ where
 
         let mut report = OnchainRefreshRunReport {
             claimed: tasks.len(),
+            unique_accounts: unique_account_count(&tasks),
             completed: 0,
             failed: 0,
+            ..OnchainRefreshRunReport::default()
         };
 
         let mut tasks_by_chain = BTreeMap::<i32, Vec<OnchainRefreshTask>>::new();
@@ -380,11 +410,8 @@ where
         }
 
         for (_chain_id, tasks) in tasks_by_chain {
-            let values = match self.reader.read_tasks(&tasks) {
-                Ok(values) => values
-                    .into_iter()
-                    .map(|value| (value.task_id.clone(), value))
-                    .collect::<BTreeMap<_, _>>(),
+            let read_report = match self.reader.read_tasks_with_report(&tasks) {
+                Ok(report) => report,
                 Err(error) => {
                     let message = error.to_string();
                     self.mark_tasks_failed(&tasks, &message, now_ms).await?;
@@ -393,11 +420,21 @@ where
                     continue;
                 }
             };
+            report.rpc_reads_requested += read_report.rpc_reads_requested;
+            report.rpc_reads_deduped += read_report.rpc_reads_deduped;
+            report.cache_hits += read_report.cache_hits;
 
-            for task in tasks {
+            let values = read_report
+                .values
+                .into_iter()
+                .map(|value| (value.task_id.clone(), value))
+                .collect::<BTreeMap<_, _>>();
+            let mut successes = Vec::new();
+
+            for task in &tasks {
                 match values.get(&task.id) {
-                    Some(value) => match self.apply_success(&task, value, now_ms).await {
-                        Ok(()) => report.completed += 1,
+                    Some(value) => match validate_read_value(task, value) {
+                        Ok(()) => successes.push((task.clone(), value.clone())),
                         Err(error) => {
                             let message = error.to_string();
                             self.mark_task_failed(&task.id, &message, now_ms).await?;
@@ -411,7 +448,47 @@ where
                     }
                 }
             }
+            if !successes.is_empty() {
+                match self.apply_success_batch(&successes, now_ms).await {
+                    Ok(batch_report) => {
+                        report.completed += batch_report.completed;
+                        report.debounced_tasks += batch_report.debounced_tasks;
+                        report.data_metric_refreshes += batch_report.data_metric_refreshes;
+                    }
+                    Err(error) => {
+                        let message = error.to_string();
+                        let failed_tasks = successes
+                            .iter()
+                            .map(|(task, _value)| task.clone())
+                            .collect::<Vec<_>>();
+                        self.mark_tasks_failed(&failed_tasks, &message, now_ms)
+                            .await?;
+                        report.failed += failed_tasks.len();
+                    }
+                }
+            }
         }
+
+        report.duration_ms = started_at.elapsed().as_millis();
+        report.backlog = self.ready_backlog().await.ok();
+
+        log::info!(
+            "onchain refresh batch completed claimed={} completed={} failed={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} duration_ms={} backlog={}",
+            report.claimed,
+            report.completed,
+            report.failed,
+            report.unique_accounts,
+            report.rpc_reads_requested,
+            report.rpc_reads_deduped,
+            report.cache_hits,
+            report.debounced_tasks,
+            report.data_metric_refreshes,
+            report.duration_ms,
+            report
+                .backlog
+                .map(|backlog| backlog.to_string())
+                .unwrap_or_else(|| "unknown".to_owned())
+        );
 
         Ok(report)
     }
@@ -523,43 +600,34 @@ where
             .collect())
     }
 
-    async fn apply_success(
+    async fn apply_success_batch(
         &self,
-        task: &OnchainRefreshTask,
-        value: &OnchainRefreshReadValue,
+        successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
         now_ms: i64,
-    ) -> Result<(), OnchainRefreshWorkerError> {
-        if task.refresh_power && value.power.is_none() {
-            return Err(OnchainRefreshWorkerError::MissingReadValue {
-                task_id: task.id.clone(),
-                field: "power",
-            });
-        }
-        if task.refresh_balance && value.balance.is_none() {
-            return Err(OnchainRefreshWorkerError::MissingReadValue {
-                task_id: task.id.clone(),
-                field: "balance",
-            });
-        }
-
+    ) -> Result<OnchainRefreshApplyBatchReport, OnchainRefreshWorkerError> {
         let mut transaction = self.pool.begin().await?;
 
-        let previous = read_contributor_refresh_values(&mut transaction, task).await?;
-        upsert_contributor_refresh(&mut transaction, task, value).await?;
+        let previous_values = read_contributor_refresh_values(&mut transaction, successes).await?;
+        upsert_contributor_refresh(&mut transaction, successes).await?;
         insert_refresh_checkpoints(
             &mut transaction,
-            task,
-            value,
-            previous,
+            successes,
+            &previous_values,
             self.current_power_method,
         )
         .await?;
-        refresh_data_metric(&mut transaction, task).await?;
-        complete_task(&mut transaction, &task.id, now_ms).await?;
+        upsert_live_power_overlays(&mut transaction, successes).await?;
+        let data_metric_refreshes = refresh_data_metrics(&mut transaction, successes).await?;
+        let debounced_tasks =
+            complete_tasks(&mut transaction, successes, now_ms, self.config.debounce).await?;
 
         transaction.commit().await?;
 
-        Ok(())
+        Ok(OnchainRefreshApplyBatchReport {
+            completed: successes.len(),
+            debounced_tasks,
+            data_metric_refreshes,
+        })
     }
 
     async fn mark_tasks_failed(
@@ -634,6 +702,13 @@ where
         &self,
         tasks: &[OnchainRefreshTask],
     ) -> Result<Vec<OnchainRefreshReadValue>, OnchainRefreshReaderError> {
+        Ok(self.read_tasks_with_report(tasks)?.values)
+    }
+
+    fn read_tasks_with_report(
+        &self,
+        tasks: &[OnchainRefreshTask],
+    ) -> Result<OnchainRefreshReadReport, OnchainRefreshReaderError> {
         let mut tasks_by_chain = BTreeMap::<i32, Vec<OnchainRefreshTask>>::new();
         for task in tasks {
             tasks_by_chain
@@ -642,7 +717,7 @@ where
                 .push(task.clone());
         }
 
-        let mut values = Vec::new();
+        let mut read_report = OnchainRefreshReadReport::default();
         for (chain_id, tasks) in tasks_by_chain {
             let chain_tool = self.chain_tools.get(&chain_id).ok_or_else(|| {
                 OnchainRefreshReaderError::new(format!(
@@ -654,10 +729,14 @@ where
                 self.read_plan_config,
                 self.current_power_method,
             );
-            values.extend(reader.read_tasks(&tasks)?);
+            let chain_report = reader.read_tasks_with_report(&tasks)?;
+            read_report.rpc_reads_requested += chain_report.rpc_reads_requested;
+            read_report.rpc_reads_deduped += chain_report.rpc_reads_deduped;
+            read_report.cache_hits += chain_report.cache_hits;
+            read_report.values.extend(chain_report.values);
         }
 
-        Ok(values)
+        Ok(read_report)
     }
 }
 
@@ -690,6 +769,13 @@ where
         &self,
         tasks: &[OnchainRefreshTask],
     ) -> Result<Vec<OnchainRefreshReadValue>, OnchainRefreshReaderError> {
+        Ok(self.read_tasks_with_report(tasks)?.values)
+    }
+
+    fn read_tasks_with_report(
+        &self,
+        tasks: &[OnchainRefreshTask],
+    ) -> Result<OnchainRefreshReadReport, OnchainRefreshReaderError> {
         let mut groups = BTreeMap::<(i32, String, String), Vec<&OnchainRefreshTask>>::new();
         for task in tasks {
             groups
@@ -703,6 +789,7 @@ where
         }
 
         let mut values_by_key = BTreeMap::<(i32, String, String, ChainReadMethod), String>::new();
+        let mut read_report = OnchainRefreshReadReport::default();
         for ((chain_id, governor_address, token_address), group_tasks) in groups {
             let mut builder = ChainReadPlanBuilder::new(
                 chain_id,
@@ -737,6 +824,9 @@ where
                 .chain_tool
                 .execute_read_plan(&plan)
                 .map_err(|failures| OnchainRefreshReaderError::new(format_failures(&failures)))?;
+            read_report.rpc_reads_requested += report.metrics.requested_reads;
+            read_report.rpc_reads_deduped += report.metrics.deduped_reads;
+            read_report.cache_hits += report.metrics.cache_hits;
 
             for result in report.results {
                 let Some(account) = result.key.args.first() else {
@@ -763,7 +853,7 @@ where
             }
         }
 
-        tasks
+        read_report.values = tasks
             .iter()
             .map(|task| {
                 let power = if task.refresh_power {
@@ -813,7 +903,9 @@ where
                     power,
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>, OnchainRefreshReaderError>>()?;
+
+        Ok(read_report)
     }
 }
 
@@ -1362,23 +1454,101 @@ impl EvmRpcChainTool {
     }
 }
 
-async fn upsert_contributor_refresh(
-    transaction: &mut Transaction<'_, Postgres>,
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct OnchainRefreshApplyBatchReport {
+    completed: usize,
+    debounced_tasks: usize,
+    data_metric_refreshes: usize,
+}
+
+fn validate_read_value(
     task: &OnchainRefreshTask,
     value: &OnchainRefreshReadValue,
+) -> Result<(), OnchainRefreshWorkerError> {
+    if task.refresh_power && value.power.is_none() {
+        return Err(OnchainRefreshWorkerError::MissingReadValue {
+            task_id: task.id.clone(),
+            field: "power",
+        });
+    }
+    if task.refresh_balance && value.balance.is_none() {
+        return Err(OnchainRefreshWorkerError::MissingReadValue {
+            task_id: task.id.clone(),
+            field: "balance",
+        });
+    }
+
+    Ok(())
+}
+
+async fn upsert_contributor_refresh(
+    transaction: &mut Transaction<'_, Postgres>,
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
+    for refresh_power in [false, true] {
+        for refresh_balance in [false, true] {
+            let group = successes
+                .iter()
+                .filter(|(task, _value)| {
+                    task.refresh_power == refresh_power && task.refresh_balance == refresh_balance
+                })
+                .collect::<Vec<_>>();
+            if group.is_empty() {
+                continue;
+            }
+            upsert_contributor_refresh_group(transaction, &group, refresh_power, refresh_balance)
+                .await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn upsert_contributor_refresh_group(
+    transaction: &mut Transaction<'_, Postgres>,
+    successes: &[&(OnchainRefreshTask, OnchainRefreshReadValue)],
+    refresh_power: bool,
+    refresh_balance: bool,
+) -> Result<(), sqlx::Error> {
+    let mut query = QueryBuilder::<Postgres>::new(
         "INSERT INTO contributor (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, block_number, block_timestamp, transaction_hash,
             power, balance, delegates_count_all, delegates_count_effective
          )
-         VALUES (
-            $1, $2, $3, $4, $5, $6, $6, 0, 0, $7::NUMERIC(78, 0), $8::NUMERIC(78, 0), $9,
-            CASE WHEN $10 THEN $11::NUMERIC(78, 0) ELSE 0::NUMERIC(78, 0) END,
-            CASE WHEN $12 THEN $13::NUMERIC(78, 0) ELSE NULL END,
-            0, 0
-         )
+         ",
+    );
+    query.push_values(successes, |mut values, (task, value)| {
+        values
+            .push_bind(contributor_ref(task))
+            .push_bind(&task.contract_set_id)
+            .push_bind(task.chain_id)
+            .push_bind(&task.dao_code)
+            .push_bind(&task.governor_address)
+            .push_bind(&task.token_address)
+            .push_bind(&task.token_address)
+            .push("0")
+            .push("0")
+            .push_bind(&task.last_seen_block_number)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(&task.last_seen_block_timestamp)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(&task.last_seen_transaction_hash)
+            .push("CASE WHEN ")
+            .push_bind_unseparated(task.refresh_power)
+            .push_unseparated(" THEN ")
+            .push_bind_unseparated(value.power.as_deref())
+            .push_unseparated("::NUMERIC(78, 0) ELSE 0::NUMERIC(78, 0) END")
+            .push("CASE WHEN ")
+            .push_bind_unseparated(task.refresh_balance)
+            .push_unseparated(" THEN ")
+            .push_bind_unseparated(value.balance.as_deref())
+            .push_unseparated("::NUMERIC(78, 0) ELSE NULL END")
+            .push("0")
+            .push("0");
+    });
+    query.push(
+        "
          ON CONFLICT (contract_set_id, id) DO UPDATE
          SET chain_id = EXCLUDED.chain_id,
              dao_code = EXCLUDED.dao_code,
@@ -1388,24 +1558,14 @@ async fn upsert_contributor_refresh(
              block_number = GREATEST(contributor.block_number, EXCLUDED.block_number),
              block_timestamp = GREATEST(contributor.block_timestamp, EXCLUDED.block_timestamp),
              transaction_hash = EXCLUDED.transaction_hash,
-             power = CASE WHEN $10 THEN EXCLUDED.power ELSE contributor.power END,
-             balance = CASE WHEN $12 THEN EXCLUDED.balance ELSE contributor.balance END",
-    )
-    .bind(contributor_ref(task))
-    .bind(&task.contract_set_id)
-    .bind(task.chain_id)
-    .bind(&task.dao_code)
-    .bind(&task.governor_address)
-    .bind(&task.token_address)
-    .bind(&task.last_seen_block_number)
-    .bind(&task.last_seen_block_timestamp)
-    .bind(&task.last_seen_transaction_hash)
-    .bind(task.refresh_power)
-    .bind(value.power.as_deref())
-    .bind(task.refresh_balance)
-    .bind(value.balance.as_deref())
-    .execute(&mut **transaction)
-    .await?;
+             power = CASE WHEN ",
+    );
+    query
+        .push_bind(refresh_power)
+        .push(" THEN EXCLUDED.power ELSE contributor.power END, balance = CASE WHEN ")
+        .push_bind(refresh_balance)
+        .push(" THEN EXCLUDED.balance ELSE contributor.balance END");
+    query.build().execute(&mut **transaction).await?;
 
     Ok(())
 }
@@ -1418,114 +1578,445 @@ struct ContributorRefreshValues {
 
 async fn read_contributor_refresh_values(
     transaction: &mut Transaction<'_, Postgres>,
-    task: &OnchainRefreshTask,
-) -> Result<ContributorRefreshValues, sqlx::Error> {
-    let row = sqlx::query(
-        "SELECT power::TEXT AS power, balance::TEXT AS balance
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+) -> Result<BTreeMap<(String, String), ContributorRefreshValues>, sqlx::Error> {
+    let mut query = QueryBuilder::<Postgres>::new(
+        "SELECT contract_set_id, id, power::TEXT AS power, balance::TEXT AS balance
          FROM contributor
-         WHERE contract_set_id = $1 AND id = $2",
-    )
-    .bind(&task.contract_set_id)
-    .bind(contributor_ref(task))
-    .fetch_optional(&mut **transaction)
-    .await?;
+         WHERE (contract_set_id, id) IN ",
+    );
+    query.push_tuples(successes, |mut values, (task, _value)| {
+        values
+            .push_bind(&task.contract_set_id)
+            .push_bind(contributor_ref(task));
+    });
+    let rows = query.build().fetch_all(&mut **transaction).await?;
 
-    Ok(row
-        .map(|row| ContributorRefreshValues {
-            power: row.get("power"),
-            balance: row.get("balance"),
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                (row.get("contract_set_id"), row.get("id")),
+                ContributorRefreshValues {
+                    power: row.get("power"),
+                    balance: row.get("balance"),
+                },
+            )
         })
-        .unwrap_or_default())
+        .collect())
 }
 
 async fn insert_refresh_checkpoints(
     transaction: &mut Transaction<'_, Postgres>,
-    task: &OnchainRefreshTask,
-    value: &OnchainRefreshReadValue,
-    previous: ContributorRefreshValues,
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+    previous_values: &BTreeMap<(String, String), ContributorRefreshValues>,
     current_power_method: ChainReadMethod,
 ) -> Result<(), sqlx::Error> {
-    if task.refresh_balance {
-        let previous_balance = previous.balance.as_deref().unwrap_or("0");
-        let new_balance = value.balance.as_deref().unwrap_or("0");
-        sqlx::query(
+    let balance_successes = successes
+        .iter()
+        .filter(|(task, _value)| task.refresh_balance)
+        .collect::<Vec<_>>();
+    if !balance_successes.is_empty() {
+        let mut query = QueryBuilder::<Postgres>::new(
             "INSERT INTO token_balance_checkpoint (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
                 account, previous_balance, new_balance, delta, source, cause, block_number,
                 block_timestamp, transaction_hash
              )
-             VALUES (
-                $1, $2, $3, $4, $5, $6, $6, $7, $8::NUMERIC(78, 0), $9::NUMERIC(78, 0),
-                ($9::NUMERIC(78, 0) - $8::NUMERIC(78, 0)), 'balanceOf', 'onchain-refresh',
-                $10::NUMERIC(78, 0), $11::NUMERIC(78, 0), 'onchain-refresh'
-             )
-             ON CONFLICT (contract_set_id, id) DO NOTHING",
-        )
-        .bind(format!(
-            "onchain-refresh-balance-{}",
-            onchain_refresh_checkpoint_scope(task)
-        ))
-        .bind(&task.contract_set_id)
-        .bind(task.chain_id)
-        .bind(&task.dao_code)
-        .bind(&task.governor_address)
-        .bind(&task.token_address)
-        .bind(&task.account)
-        .bind(previous_balance)
-        .bind(new_balance)
-        .bind(&task.last_seen_block_number)
-        .bind(&task.last_seen_block_timestamp)
-        .execute(&mut **transaction)
-        .await?;
+             ",
+        );
+        query.push_values(balance_successes, |mut values, (task, value)| {
+            let previous = previous_values
+                .get(&(task.contract_set_id.clone(), contributor_ref(task)))
+                .cloned()
+                .unwrap_or_default();
+            let previous_balance = previous.balance.unwrap_or_else(|| "0".to_owned());
+            let new_balance = value.balance.as_deref().unwrap_or("0");
+            values
+                .push_bind(format!(
+                    "onchain-refresh-balance-{}",
+                    onchain_refresh_checkpoint_scope(task)
+                ))
+                .push_bind(&task.contract_set_id)
+                .push_bind(task.chain_id)
+                .push_bind(&task.dao_code)
+                .push_bind(&task.governor_address)
+                .push_bind(&task.token_address)
+                .push_bind(&task.token_address)
+                .push_bind(&task.account)
+                .push_bind(previous_balance.clone())
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push_bind(new_balance)
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push("(")
+                .push_bind_unseparated(new_balance)
+                .push_unseparated("::NUMERIC(78, 0) - ")
+                .push_bind_unseparated(previous_balance)
+                .push_unseparated("::NUMERIC(78, 0))")
+                .push("'balanceOf'")
+                .push("'onchain-refresh'")
+                .push_bind(&task.last_seen_block_number)
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push_bind(&task.last_seen_block_timestamp)
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push("'onchain-refresh'");
+        });
+        query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING");
+        query.build().execute(&mut **transaction).await?;
     }
 
-    if task.refresh_power {
-        let previous_power = previous.power.as_deref().unwrap_or("0");
-        let new_power = value.power.as_deref().unwrap_or("0");
-        sqlx::query(
+    let power_successes = successes
+        .iter()
+        .filter(|(task, _value)| task.refresh_power)
+        .collect::<Vec<_>>();
+    if !power_successes.is_empty() {
+        let source = current_power_checkpoint_source(current_power_method);
+        let mut query = QueryBuilder::<Postgres>::new(
             "INSERT INTO vote_power_checkpoint (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
                 account, clock_mode, timepoint, previous_power, new_power, delta, source, cause,
                 block_number, block_timestamp, transaction_hash
              )
-             VALUES (
-                $1, $2, $3, $4, $5, $6, $6, $7, 'blocknumber', $8::NUMERIC(78, 0),
-                $9::NUMERIC(78, 0), $10::NUMERIC(78, 0),
-                ($10::NUMERIC(78, 0) - $9::NUMERIC(78, 0)), $11, 'onchain-refresh',
-                $8::NUMERIC(78, 0), $12::NUMERIC(78, 0), 'onchain-refresh'
-             )
-             ON CONFLICT (contract_set_id, id) DO NOTHING",
-        )
-        .bind(format!(
-            "onchain-refresh-power-{}",
-            onchain_refresh_checkpoint_scope(task)
-        ))
-        .bind(&task.contract_set_id)
-        .bind(task.chain_id)
-        .bind(&task.dao_code)
-        .bind(&task.governor_address)
-        .bind(&task.token_address)
-        .bind(&task.account)
-        .bind(&task.last_seen_block_number)
-        .bind(previous_power)
-        .bind(new_power)
-        .bind(current_power_checkpoint_source(current_power_method))
-        .bind(&task.last_seen_block_timestamp)
-        .execute(&mut **transaction)
-        .await?;
+             ",
+        );
+        query.push_values(power_successes, |mut values, (task, value)| {
+            let previous = previous_values
+                .get(&(task.contract_set_id.clone(), contributor_ref(task)))
+                .cloned()
+                .unwrap_or_default();
+            let previous_power = previous.power.unwrap_or_else(|| "0".to_owned());
+            let new_power = value.power.as_deref().unwrap_or("0");
+            values
+                .push_bind(format!(
+                    "onchain-refresh-power-{}",
+                    onchain_refresh_checkpoint_scope(task)
+                ))
+                .push_bind(&task.contract_set_id)
+                .push_bind(task.chain_id)
+                .push_bind(&task.dao_code)
+                .push_bind(&task.governor_address)
+                .push_bind(&task.token_address)
+                .push_bind(&task.token_address)
+                .push_bind(&task.account)
+                .push("'blocknumber'")
+                .push_bind(&task.last_seen_block_number)
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push_bind(previous_power.clone())
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push_bind(new_power)
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push("(")
+                .push_bind_unseparated(new_power)
+                .push_unseparated("::NUMERIC(78, 0) - ")
+                .push_bind_unseparated(previous_power)
+                .push_unseparated("::NUMERIC(78, 0))")
+                .push_bind(source)
+                .push("'onchain-refresh'")
+                .push_bind(&task.last_seen_block_number)
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push_bind(&task.last_seen_block_timestamp)
+                .push_unseparated("::NUMERIC(78, 0)")
+                .push("'onchain-refresh'");
+        });
+        query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING");
+        query.build().execute(&mut **transaction).await?;
     }
 
     Ok(())
 }
 
-async fn refresh_data_metric(
+async fn upsert_live_power_overlays(
     transaction: &mut Transaction<'_, Postgres>,
-    task: &OnchainRefreshTask,
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+) -> Result<(), sqlx::Error> {
+    let contributors = live_contributor_power_overlay_writes(successes);
+    if contributors.is_empty() {
+        return Ok(());
+    }
+
+    upsert_live_contributor_power_overlays(transaction, &contributors).await?;
+    let relations = read_live_delegate_power_overlay_relations(transaction, &contributors).await?;
+    let delegates = provisional_delegate_power_overlay_writes(&contributors, &relations);
+    upsert_live_delegate_power_overlays(transaction, &delegates).await?;
+
+    Ok(())
+}
+
+fn live_contributor_power_overlay_writes(
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+) -> Vec<ProvisionalContributorPowerOverlayWrite> {
+    successes
+        .iter()
+        .filter_map(|(task, value)| {
+            let power = value.power.as_ref()?;
+            task.refresh_power
+                .then(|| ProvisionalContributorPowerOverlayWrite {
+                    id: provisional_contributor_power_overlay_id(task),
+                    segment_id: None,
+                    dao_code: task.dao_code.clone(),
+                    contract_set_id: task.contract_set_id.clone(),
+                    chain_id: Some(task.chain_id),
+                    chain_name: None,
+                    governor_address: Some(normalize_identifier(&task.governor_address)),
+                    token_address: Some(normalize_identifier(&task.token_address)),
+                    account: normalize_identifier(&task.account),
+                    power: power.clone(),
+                    balance: value.balance.clone(),
+                    delegates_count_all: 0,
+                    delegates_count_effective: 0,
+                    last_vote_block_number: None,
+                    last_vote_timestamp: None,
+                    source: "live-onchain".to_owned(),
+                    status: "available".to_owned(),
+                    anchor_block_number: Some(task.last_seen_block_number.clone()),
+                    anchor_block_hash: None,
+                    anchor_parent_hash: None,
+                    anchor_block_timestamp: Some(task.last_seen_block_timestamp.clone()),
+                })
+        })
+        .collect()
+}
+
+async fn upsert_live_contributor_power_overlays(
+    transaction: &mut Transaction<'_, Postgres>,
+    contributors: &[ProvisionalContributorPowerOverlayWrite],
+) -> Result<(), sqlx::Error> {
+    let mut query = QueryBuilder::<Postgres>::new(
+        "INSERT INTO degov_provisional_contributor_power_overlay (
+             id, segment_id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+             token_address, account, power, balance, delegates_count_all,
+             delegates_count_effective, last_vote_block_number, last_vote_timestamp, source,
+             status, anchor_block_number, anchor_block_hash, anchor_parent_hash,
+             anchor_block_timestamp
+         )
+         ",
+    );
+    query.push_values(contributors, |mut values, contributor| {
+        values
+            .push_bind(&contributor.id)
+            .push_bind(&contributor.segment_id)
+            .push_bind(&contributor.contract_set_id)
+            .push_bind(contributor.chain_id)
+            .push_bind(&contributor.chain_name)
+            .push_bind(&contributor.dao_code)
+            .push_bind(&contributor.governor_address)
+            .push_bind(&contributor.token_address)
+            .push_bind(&contributor.account)
+            .push_bind(&contributor.power)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(&contributor.balance)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(contributor.delegates_count_all)
+            .push_bind(contributor.delegates_count_effective)
+            .push_bind(&contributor.last_vote_block_number)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(&contributor.last_vote_timestamp)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(&contributor.source)
+            .push_bind(&contributor.status)
+            .push_bind(&contributor.anchor_block_number)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(&contributor.anchor_block_hash)
+            .push_bind(&contributor.anchor_parent_hash)
+            .push_bind(&contributor.anchor_block_timestamp)
+            .push_unseparated("::NUMERIC(78, 0)");
+    });
+    query.push(
+        "
+         ON CONFLICT ON CONSTRAINT degov_provisional_contributor_power_overlay_scope_unique
+         DO UPDATE SET
+             id = EXCLUDED.id,
+             segment_id = EXCLUDED.segment_id,
+             power = EXCLUDED.power,
+             balance = EXCLUDED.balance,
+             delegates_count_all = EXCLUDED.delegates_count_all,
+             delegates_count_effective = EXCLUDED.delegates_count_effective,
+             last_vote_block_number = EXCLUDED.last_vote_block_number,
+             last_vote_timestamp = EXCLUDED.last_vote_timestamp,
+             status = EXCLUDED.status,
+             anchor_block_number = EXCLUDED.anchor_block_number,
+             anchor_block_hash = EXCLUDED.anchor_block_hash,
+             anchor_parent_hash = EXCLUDED.anchor_parent_hash,
+             anchor_block_timestamp = EXCLUDED.anchor_block_timestamp,
+             updated_at = now()",
+    );
+    query.build().execute(&mut **transaction).await?;
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct LiveDelegateRelationScope {
+    contract_set_id: String,
+    chain_id: Option<i32>,
+    dao_code: Option<String>,
+    governor_address: Option<String>,
+    token_address: Option<String>,
+}
+
+async fn read_live_delegate_power_overlay_relations(
+    transaction: &mut Transaction<'_, Postgres>,
+    contributors: &[ProvisionalContributorPowerOverlayWrite],
+) -> Result<Vec<ProvisionalDelegatePowerOverlayRelation>, sqlx::Error> {
+    let mut accounts_by_scope = BTreeMap::<LiveDelegateRelationScope, Vec<String>>::new();
+    for contributor in contributors {
+        accounts_by_scope
+            .entry(LiveDelegateRelationScope {
+                contract_set_id: contributor.contract_set_id.clone(),
+                chain_id: contributor.chain_id,
+                dao_code: contributor.dao_code.clone(),
+                governor_address: contributor.governor_address.clone(),
+                token_address: contributor.token_address.clone(),
+            })
+            .or_default()
+            .push(contributor.account.clone());
+    }
+
+    let mut relations = Vec::new();
+    for (scope, mut accounts) in accounts_by_scope {
+        accounts.sort();
+        accounts.dedup();
+        let rows = sqlx::query(
+            "SELECT
+                 contract_set_id, chain_id, dao_code, governor_address, token_address,
+                 from_delegate, to_delegate, is_current
+             FROM delegate
+             WHERE contract_set_id = $1
+               AND chain_id IS NOT DISTINCT FROM $2
+               AND dao_code IS NOT DISTINCT FROM $3
+               AND governor_address IS NOT DISTINCT FROM $4
+               AND (token_address IS NOT DISTINCT FROM $5 OR token_address IS NULL)
+               AND from_delegate = ANY($6)
+               AND is_current = TRUE",
+        )
+        .bind(&scope.contract_set_id)
+        .bind(scope.chain_id)
+        .bind(&scope.dao_code)
+        .bind(&scope.governor_address)
+        .bind(&scope.token_address)
+        .bind(&accounts)
+        .fetch_all(&mut **transaction)
+        .await?;
+
+        relations.extend(rows.into_iter().map(|row| {
+            ProvisionalDelegatePowerOverlayRelation {
+                contract_set_id: row.get("contract_set_id"),
+                chain_id: row.get("chain_id"),
+                chain_name: None,
+                dao_code: row.get("dao_code"),
+                governor_address: row.get("governor_address"),
+                token_address: row
+                    .get::<Option<String>, _>("token_address")
+                    .or_else(|| scope.token_address.clone()),
+                delegator: row.get("from_delegate"),
+                delegate: row.get("to_delegate"),
+                is_current: row.get("is_current"),
+            }
+        }));
+    }
+
+    Ok(relations)
+}
+
+async fn upsert_live_delegate_power_overlays(
+    transaction: &mut Transaction<'_, Postgres>,
+    delegates: &[ProvisionalDelegatePowerOverlayWrite],
+) -> Result<(), sqlx::Error> {
+    if delegates.is_empty() {
+        return Ok(());
+    }
+
+    let mut query = QueryBuilder::<Postgres>::new(
+        "INSERT INTO degov_provisional_delegate_power_overlay (
+             id, segment_id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+             token_address, delegator, delegate, power, is_current, source, status,
+             anchor_block_number, anchor_block_hash, anchor_parent_hash, anchor_block_timestamp
+         )
+         ",
+    );
+    query.push_values(delegates, |mut values, delegate| {
+        values
+            .push_bind(&delegate.id)
+            .push_bind(&delegate.segment_id)
+            .push_bind(&delegate.contract_set_id)
+            .push_bind(delegate.chain_id)
+            .push_bind(&delegate.chain_name)
+            .push_bind(&delegate.dao_code)
+            .push_bind(&delegate.governor_address)
+            .push_bind(&delegate.token_address)
+            .push_bind(&delegate.delegator)
+            .push_bind(&delegate.delegate)
+            .push_bind(&delegate.power)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(delegate.is_current)
+            .push_bind(&delegate.source)
+            .push_bind(&delegate.status)
+            .push_bind(&delegate.anchor_block_number)
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(&delegate.anchor_block_hash)
+            .push_bind(&delegate.anchor_parent_hash)
+            .push_bind(&delegate.anchor_block_timestamp)
+            .push_unseparated("::NUMERIC(78, 0)");
+    });
+    query.push(
+        "
+         ON CONFLICT ON CONSTRAINT degov_provisional_delegate_power_overlay_scope_unique
+         DO UPDATE SET
+             id = EXCLUDED.id,
+             segment_id = EXCLUDED.segment_id,
+             power = EXCLUDED.power,
+             is_current = EXCLUDED.is_current,
+             status = EXCLUDED.status,
+             anchor_block_number = EXCLUDED.anchor_block_number,
+             anchor_block_hash = EXCLUDED.anchor_block_hash,
+             anchor_parent_hash = EXCLUDED.anchor_parent_hash,
+             anchor_block_timestamp = EXCLUDED.anchor_block_timestamp,
+             updated_at = now()",
+    );
+    query.build().execute(&mut **transaction).await?;
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct DataMetricRefreshScope {
+    contract_set_id: String,
+    chain_id: i32,
+    dao_code: Option<String>,
+    governor_address: String,
+    token_address: String,
+}
+
+async fn refresh_data_metrics(
+    transaction: &mut Transaction<'_, Postgres>,
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+) -> Result<usize, sqlx::Error> {
+    let scopes = successes
+        .iter()
+        .map(|(task, _value)| DataMetricRefreshScope {
+            contract_set_id: task.contract_set_id.clone(),
+            chain_id: task.chain_id,
+            dao_code: task.dao_code.clone(),
+            governor_address: task.governor_address.clone(),
+            token_address: task.token_address.clone(),
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+
+    for scope in &scopes {
+        refresh_data_metric_scope(transaction, scope).await?;
+    }
+
+    Ok(scopes.len())
+}
+
+async fn refresh_data_metric_scope(
+    transaction: &mut Transaction<'_, Postgres>,
+    scope: &DataMetricRefreshScope,
 ) -> Result<(), sqlx::Error> {
     let metric_id = data_metric_id(
-        task.chain_id,
-        &task.governor_address,
-        task.dao_code.as_deref(),
+        scope.chain_id,
+        &scope.governor_address,
+        scope.dao_code.as_deref(),
     );
 
     sqlx::query(
@@ -1544,29 +2035,35 @@ async fn refresh_data_metric(
              member_count = EXCLUDED.member_count",
     )
     .bind(metric_id)
-    .bind(&task.contract_set_id)
-    .bind(task.chain_id)
-    .bind(&task.dao_code)
-    .bind(&task.governor_address)
-    .bind(&task.token_address)
+    .bind(&scope.contract_set_id)
+    .bind(scope.chain_id)
+    .bind(&scope.dao_code)
+    .bind(&scope.governor_address)
+    .bind(&scope.token_address)
     .execute(&mut **transaction)
     .await?;
 
     Ok(())
 }
 
-async fn complete_task(
+async fn complete_tasks(
     transaction: &mut Transaction<'_, Postgres>,
-    task_id: &str,
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
     now_ms: i64,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
+    debounce: Duration,
+) -> Result<usize, sqlx::Error> {
+    let task_ids = successes
+        .iter()
+        .map(|(task, _value)| task.id.clone())
+        .collect::<Vec<_>>();
+    let next_run_at = now_ms.saturating_add(duration_millis_i64(debounce));
+    let rows = sqlx::query(
         "UPDATE onchain_refresh_task
          SET status = CASE WHEN pending_after_lock THEN 'pending' ELSE 'completed' END,
              next_run_at = CASE WHEN pending_after_lock THEN $2::NUMERIC(78, 0) ELSE next_run_at END,
              locked_at = NULL,
              locked_by = NULL,
-             processed_at = CASE WHEN pending_after_lock THEN processed_at ELSE $2::NUMERIC(78, 0) END,
+             processed_at = CASE WHEN pending_after_lock THEN processed_at ELSE $3::NUMERIC(78, 0) END,
              error = NULL,
              last_seen_block_number = COALESCE(pending_after_lock_block_number, last_seen_block_number),
              last_seen_block_timestamp = COALESCE(pending_after_lock_block_timestamp, last_seen_block_timestamp),
@@ -1575,15 +2072,20 @@ async fn complete_task(
              pending_after_lock_block_number = NULL,
              pending_after_lock_block_timestamp = NULL,
              pending_after_lock_transaction_hash = NULL,
-             updated_at = $2::NUMERIC(78, 0)
-         WHERE id = $1",
+             updated_at = $3::NUMERIC(78, 0)
+         WHERE id = ANY($1)
+         RETURNING status",
     )
-    .bind(task_id)
+    .bind(&task_ids)
+    .bind(next_run_at.to_string())
     .bind(now_ms.to_string())
-    .execute(&mut **transaction)
+    .fetch_all(&mut **transaction)
     .await?;
 
-    Ok(())
+    Ok(rows
+        .into_iter()
+        .filter(|row| row.get::<String, _>("status") == "pending")
+        .count())
 }
 
 fn unix_time_millis() -> i64 {
@@ -1596,6 +2098,23 @@ fn unix_time_millis() -> i64 {
 
 fn duration_millis_i64(duration: Duration) -> i64 {
     duration.as_millis().min(i64::MAX as u128) as i64
+}
+
+fn unique_account_count(tasks: &[OnchainRefreshTask]) -> usize {
+    tasks
+        .iter()
+        .map(|task| {
+            (
+                task.chain_id,
+                task.contract_set_id.clone(),
+                task.dao_code.clone(),
+                normalize_identifier(&task.governor_address),
+                normalize_identifier(&task.token_address),
+                normalize_identifier(&task.account),
+            )
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
 }
 
 fn truncate_error(error: &str) -> String {

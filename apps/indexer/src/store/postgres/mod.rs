@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     future::Future,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use sqlx::{PgPool, Postgres, QueryBuilder, Row, Transaction};
@@ -32,6 +33,7 @@ use crate::{
 pub struct PostgresIndexerRunnerStore {
     pool: PgPool,
     checkpoint_repository: CheckpointRepository,
+    onchain_refresh_debounce: Duration,
 }
 
 impl PostgresIndexerRunnerStore {
@@ -39,9 +41,17 @@ impl PostgresIndexerRunnerStore {
         Self {
             checkpoint_repository: CheckpointRepository::new(pool.clone()),
             pool,
+            onchain_refresh_debounce: DEFAULT_ONCHAIN_REFRESH_DEBOUNCE,
         }
     }
+
+    pub fn with_onchain_refresh_debounce(mut self, debounce: Duration) -> Self {
+        self.onchain_refresh_debounce = debounce;
+        self
+    }
 }
+
+const DEFAULT_ONCHAIN_REFRESH_DEBOUNCE: Duration = Duration::from_millis(120_000);
 
 impl IndexerRunnerStore for PostgresIndexerRunnerStore {
     type Error = PostgresIndexerRunnerStoreError;
@@ -65,6 +75,7 @@ impl IndexerRunnerStore for PostgresIndexerRunnerStore {
         Ok(PostgresIndexerRunnerTransaction {
             transaction: Some(transaction),
             checkpoint_repository: self.checkpoint_repository.clone(),
+            onchain_refresh_debounce: self.onchain_refresh_debounce,
         })
     }
 
@@ -83,6 +94,7 @@ impl IndexerRunnerStore for PostgresIndexerRunnerStore {
 pub struct PostgresIndexerRunnerTransaction<'a> {
     transaction: Option<Transaction<'a, Postgres>>,
     checkpoint_repository: CheckpointRepository,
+    onchain_refresh_debounce: Duration,
 }
 
 impl IndexerRunnerTransaction for PostgresIndexerRunnerTransaction<'_> {
@@ -97,7 +109,11 @@ impl IndexerRunnerTransaction for PostgresIndexerRunnerTransaction<'_> {
             .as_mut()
             .ok_or_else(|| PostgresIndexerRunnerStoreError::new("transaction is closed"))?;
 
-        block_on_runtime(write_projection_batch(transaction, batch))
+        block_on_runtime(write_projection_batch(
+            transaction,
+            batch,
+            self.onchain_refresh_debounce,
+        ))
     }
 
     fn advance_checkpoint(
@@ -173,6 +189,7 @@ where
 async fn write_projection_batch(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &IndexerProjectionBatch,
+    onchain_refresh_debounce: Duration,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     if let Some(proposal) = &batch.proposal {
         write_proposal_batch_rows(transaction, proposal).await?;
@@ -200,13 +217,30 @@ async fn write_projection_batch(
         refresh_vote_data_metric(transaction, &vote.contributor_vote_signals).await?;
     }
     if let Some(token) = &batch.token {
-        upsert_onchain_refresh_tasks(transaction, &token.reconcile_plan.candidates).await?;
+        upsert_onchain_refresh_tasks(
+            transaction,
+            &token.reconcile_plan.candidates,
+            onchain_refresh_debounce,
+        )
+        .await?;
     }
     if let Some(batch) = &batch.timelock {
         write_timelock_batch(transaction, batch).await?;
     }
 
     Ok(())
+}
+
+fn unix_time_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(i64::MAX as u128) as i64
+}
+
+fn duration_millis_i64(duration: Duration) -> i64 {
+    duration.as_millis().min(i64::MAX as u128) as i64
 }
 
 include!("proposal.rs");

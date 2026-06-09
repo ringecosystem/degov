@@ -535,6 +535,7 @@ pub struct OnchainRefreshRuntimeConfig {
     pub max_batches_per_poll: usize,
     pub poll_interval: Duration,
     pub run_once: bool,
+    pub debounce: Duration,
     pub lock_ttl: Duration,
     pub retry_delay: Duration,
     pub request_timeout: Duration,
@@ -601,6 +602,7 @@ impl OnchainRefreshRuntimeConfig {
         let run_once = optional_env_bool("DEGOV_ONCHAIN_REFRESH_RUN_ONCE")?
             .or(optional_env_bool("DEGOV_INDEXER_RUN_ONCE")?)
             .unwrap_or(false);
+        let debounce = onchain_refresh_debounce_from_env()?;
         let lock_ttl = Duration::from_millis(
             optional_env_u64("DEGOV_ONCHAIN_REFRESH_LOCK_TTL_MS")?.unwrap_or(300_000),
         );
@@ -638,6 +640,7 @@ impl OnchainRefreshRuntimeConfig {
             max_batches_per_poll,
             poll_interval,
             run_once,
+            debounce,
             lock_ttl,
             retry_delay,
             request_timeout,
@@ -660,6 +663,7 @@ impl OnchainRefreshRuntimeConfig {
         OnchainRefreshWorkerConfig {
             batch_size: self.batch_size,
             max_attempts: self.max_attempts,
+            debounce: self.debounce,
             lock_ttl: self.lock_ttl,
             retry_delay: self.retry_delay,
             lock_owner: format!("degov-onchain-refresh-worker:{}", std::process::id()),
@@ -1061,6 +1065,12 @@ pub fn parse_bool_env_value(name: &'static str, value: &str) -> Result<bool> {
 
 pub fn onchain_refresh_worker_enabled(value: &str) -> Result<bool> {
     parse_bool_env_value("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", value)
+}
+
+pub fn onchain_refresh_debounce_from_env() -> Result<Duration> {
+    Ok(Duration::from_millis(
+        optional_env_u64("DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS")?.unwrap_or(120_000),
+    ))
 }
 
 fn parse_current_power_method(value: &str) -> Result<ChainReadMethod> {

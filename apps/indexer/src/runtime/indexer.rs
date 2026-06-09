@@ -15,7 +15,7 @@ use crate::{
     OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshWorker,
     OnchainRefreshWorkerError, PostgresIndexerRunnerStore, PostgresProvisionalCleanupStore,
     classify_datalens_query_error, datalens_retry_config, ensure_datalens_warmup_task,
-    required_env,
+    onchain_refresh_debounce_from_env, required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -760,6 +760,8 @@ async fn run_contract_set_pass(
         build_onchain_refresh_tick(&runtime, pool.clone()).map_err(ContractSetPassError::setup)?;
     let projection_chain_tool =
         build_projection_chain_tool(&runtime, &config).map_err(ContractSetPassError::setup)?;
+    let onchain_refresh_debounce =
+        onchain_refresh_debounce_from_env().map_err(ContractSetPassError::setup)?;
 
     task::spawn_blocking(move || -> std::result::Result<_, ContractSetPassError> {
         let mut client = DatalensNativeClient::from_config_with_retry_config(
@@ -771,7 +773,8 @@ async fn run_contract_set_pass(
         if let Some(gate) = datalens_query_gate {
             client = client.with_query_concurrency_gate(gate);
         }
-        let store = PostgresIndexerRunnerStore::new(pool);
+        let store = PostgresIndexerRunnerStore::new(pool)
+            .with_onchain_refresh_debounce(onchain_refresh_debounce);
         let options = runtime
             .options(&config, &contracts)
             .map_err(ContractSetPassError::setup)?;

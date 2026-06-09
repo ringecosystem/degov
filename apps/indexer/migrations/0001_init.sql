@@ -228,6 +228,9 @@ CREATE TABLE IF NOT EXISTS onchain_refresh_task (
 
 CREATE INDEX IF NOT EXISTS onchain_refresh_task_status_idx
   ON onchain_refresh_task (status, next_run_at);
+CREATE INDEX IF NOT EXISTS onchain_refresh_task_ready_claim_idx
+  ON onchain_refresh_task (next_run_at, updated_at, id)
+  WHERE status IN ('pending', 'failed');
 
 CREATE TABLE IF NOT EXISTS proposal_canceled (
   id TEXT PRIMARY KEY,

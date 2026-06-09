@@ -3,9 +3,9 @@ use std::time::Duration;
 use degov_datalens_indexer::{
     ContractSetConcurrencyLimit, DatalensConfig, DatalensProvisionalFinality,
     DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig, IndexerContractSetMode,
-    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshTickConfig, ProvisionalRuntimeConfig,
-    datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
-    parse_i64_env_value,
+    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRuntimeConfig,
+    OnchainRefreshTickConfig, ProvisionalRuntimeConfig, datalens_retry_config,
+    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
 };
 
 #[test]
@@ -23,6 +23,44 @@ fn test_onchain_refresh_worker_enabled_rejects_ambiguous_values() {
         error
             .to_string()
             .contains("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED")
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_defaults_debounce() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            ("DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS", None::<&str>),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.debounce, Duration::from_millis(120_000));
+            assert_eq!(
+                config.worker_config().debounce,
+                Duration::from_millis(120_000)
+            );
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_accepts_debounce_override() {
+    temp_env::with_vars(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            ("DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS", Some("2500")),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.debounce, Duration::from_millis(2_500));
+            assert_eq!(
+                config.worker_config().debounce,
+                Duration::from_millis(2_500)
+            );
+        },
     );
 }
 
