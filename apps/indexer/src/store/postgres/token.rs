@@ -825,45 +825,12 @@ async fn apply_delegate_count_delta(
     contributor_ensure_cache
         .ensure(transaction, delegate, common)
         .await?;
-
-    sqlx::query(
-        "UPDATE contributor
-         SET chain_id = $3, dao_code = $4, governor_address = $5, token_address = $6,
-             contract_address = $7, log_index = $8, transaction_index = $9,
-             block_number = $10::NUMERIC(78, 0), block_timestamp = $11::NUMERIC(78, 0),
-             transaction_hash = $12,
-             delegates_count_all = GREATEST(delegates_count_all + $13, 0),
-             delegates_count_effective = GREATEST(delegates_count_effective + $14, 0)
-         WHERE contract_set_id = $1 AND id = $2",
-    )
-    .bind(&common.contract_set_id)
-    .bind(contributor_ref(delegate))
-    .bind(common.chain_id)
-    .bind(&common.dao_code)
-    .bind(&common.governor_address)
-    .bind(&common.token_address)
-    .bind(&common.contract_address)
-    .bind(u64_to_i32(common.log_index, "contributor.log_index")?)
-    .bind(u64_to_i32(
-        common.transaction_index,
-        "contributor.transaction_index",
-    )?)
-    .bind(&common.block_number)
-    .bind(required_numeric(
-        &common.block_timestamp,
-        "contributor.block_timestamp",
-    )?)
-    .bind(&common.transaction_hash)
-    .bind(i64_to_i32(
+    contributor_ensure_cache.stage_contributor_count_delta(
+        common,
+        delegate,
         all_delta,
-        "contributor.delegates_count_all_delta",
-    )?)
-    .bind(i64_to_i32(
         effective_delta,
-        "contributor.delegates_count_effective_delta",
-    )?)
-    .execute(&mut **transaction)
-    .await?;
+    );
 
     Ok(())
 }
@@ -933,10 +900,12 @@ struct ContributorEnsureInsert {
 struct ContributorEnsureCache {
     ensured: HashSet<(String, String)>,
     pending_member_count_increments: HashMap<(String, String), TokenEventCommon>,
-    member_count_increments: HashMap<DataMetricIncrementScope, DataMetricIncrement>,
+    member_count_increments: std::collections::BTreeMap<DataMetricIncrementScope, DataMetricIncrement>,
+    contributor_count_deltas:
+        std::collections::BTreeMap<ContributorCountDeltaKey, ContributorCountDelta>,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct DataMetricIncrementScope {
     contract_set_id: String,
     chain_id: i32,
@@ -959,6 +928,19 @@ impl From<&TokenEventCommon> for DataMetricIncrementScope {
 struct DataMetricIncrement {
     common: TokenEventCommon,
     count: i32,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ContributorCountDeltaKey {
+    contract_set_id: String,
+    account: String,
+}
+
+#[derive(Clone, Debug)]
+struct ContributorCountDelta {
+    common: TokenEventCommon,
+    all_delta: i64,
+    effective_delta: i64,
 }
 
 impl ContributorEnsureCache {
@@ -1136,6 +1118,122 @@ impl ContributorEnsureCache {
             });
     }
 
+    fn stage_contributor_count_delta(
+        &mut self,
+        common: &TokenEventCommon,
+        delegate: &str,
+        all_delta: i64,
+        effective_delta: i64,
+    ) {
+        let key = ContributorCountDeltaKey {
+            contract_set_id: common.contract_set_id.clone(),
+            account: contributor_ref(delegate),
+        };
+        self.contributor_count_deltas
+            .entry(key)
+            .and_modify(|delta| {
+                delta.common = common.clone();
+                delta.all_delta += all_delta;
+                delta.effective_delta += effective_delta;
+            })
+            .or_insert_with(|| ContributorCountDelta {
+                common: common.clone(),
+                all_delta,
+                effective_delta,
+            });
+    }
+
+    async fn flush_contributor_count_deltas(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let deltas = std::mem::take(&mut self.contributor_count_deltas)
+            .into_iter()
+            .collect::<Vec<_>>();
+        if deltas.is_empty() {
+            return Ok(());
+        }
+
+        for rows in deltas.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "UPDATE contributor
+                 SET chain_id = delta.chain_id,
+                     dao_code = delta.dao_code,
+                     governor_address = delta.governor_address,
+                     token_address = delta.token_address,
+                     contract_address = delta.contract_address,
+                     log_index = delta.log_index,
+                     transaction_index = delta.transaction_index,
+                     block_number = delta.block_number,
+                     block_timestamp = delta.block_timestamp,
+                     transaction_hash = delta.transaction_hash,
+                     delegates_count_all = GREATEST(contributor.delegates_count_all + delta.all_delta, 0),
+                     delegates_count_effective = GREATEST(contributor.delegates_count_effective + delta.effective_delta, 0)
+                 FROM (VALUES ",
+            );
+            for (index, (key, delta)) in rows.iter().enumerate() {
+                if index > 0 {
+                    query.push(", ");
+                }
+                let common = &delta.common;
+                query
+                    .push("(")
+                    .push_bind(&key.contract_set_id)
+                    .push(", ")
+                    .push_bind(&key.account)
+                    .push(", ")
+                    .push_bind(common.chain_id)
+                    .push(", ")
+                    .push_bind(&common.dao_code)
+                    .push(", ")
+                    .push_bind(&common.governor_address)
+                    .push(", ")
+                    .push_bind(&common.token_address)
+                    .push(", ")
+                    .push_bind(&common.contract_address)
+                    .push(", ")
+                    .push_bind(u64_to_i32(common.log_index, "contributor.log_index")?)
+                    .push(", ")
+                    .push_bind(u64_to_i32(
+                        common.transaction_index,
+                        "contributor.transaction_index",
+                    )?)
+                    .push(", ")
+                    .push_bind(&common.block_number)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(required_numeric(
+                        &common.block_timestamp,
+                        "contributor.block_timestamp",
+                    )?)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(&common.transaction_hash)
+                    .push(", ")
+                    .push_bind(i64_to_i32(
+                        delta.all_delta,
+                        "contributor.delegates_count_all_delta",
+                    )?)
+                    .push(", ")
+                    .push_bind(i64_to_i32(
+                        delta.effective_delta,
+                        "contributor.delegates_count_effective_delta",
+                    )?)
+                    .push(")");
+            }
+            query.push(
+                ") AS delta(
+                    contract_set_id, id, chain_id, dao_code, governor_address, token_address,
+                    contract_address, log_index, transaction_index, block_number, block_timestamp,
+                    transaction_hash, all_delta, effective_delta
+                 )
+                 WHERE contributor.contract_set_id = delta.contract_set_id
+                   AND contributor.id = delta.id",
+            );
+            query.build().execute(&mut **transaction).await?;
+        }
+
+        Ok(())
+    }
+
     async fn flush_member_count_increments(
         &mut self,
         transaction: &mut Transaction<'_, Postgres>,
@@ -1240,7 +1338,7 @@ struct DelegateMappingSnapshot {
 #[derive(Debug, Default)]
 struct DelegateMappingCache {
     mappings: HashMap<(String, String), Option<DelegateMappingSnapshot>>,
-    dirty: HashMap<(String, String), Option<DelegateMappingSnapshot>>,
+    dirty: std::collections::BTreeMap<(String, String), Option<DelegateMappingSnapshot>>,
 }
 
 impl DelegateMappingCache {

@@ -63,6 +63,9 @@ async fn write_data_metric_timeline(
         }
     }
     delegate_mapping_cache.flush(transaction).await?;
+    contributor_ensure_cache
+        .flush_contributor_count_deltas(transaction)
+        .await?;
     contributor_ensure_cache.flush_member_count_increments(transaction).await?;
 
     Ok(())

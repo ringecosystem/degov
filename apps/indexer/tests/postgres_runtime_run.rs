@@ -787,6 +787,128 @@ async fn test_postgres_token_repeated_delegate_ensure_keeps_member_count_once()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_dense_delegate_count_deltas_are_batched() -> Result<(), Box<dyn Error>>
+{
+    const DENSE_EVENT_COUNT: usize = 1_205;
+
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let token_batch = project_token_events(
+        &token_projection_context(),
+        (0..DENSE_EVENT_COUNT)
+            .map(|index| TokenProjectionEvent {
+                log: normalized_token_log(
+                    &format!("0000000010-dense-delegate-{index}"),
+                    10 + index as u64,
+                    0,
+                    1,
+                ),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: indexed_account(index),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            })
+            .collect(),
+    )
+    .map_err(|error| format!("dense token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let delegate_counts = sqlx::query(
+        "SELECT delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        delegate_counts.get::<i32, _>("delegates_count_all"),
+        DENSE_EVENT_COUNT as i32
+    );
+    assert_eq!(
+        delegate_counts.get::<i32, _>("delegates_count_effective"),
+        0
+    );
+
+    let member_count: Option<i32> = sqlx::query_scalar(
+        "SELECT member_count
+         FROM data_metric
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(member_count, Some(1));
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_zero_net_delegate_count_delta_updates_metadata()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let token_batch = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000010-delegate", 10, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000011-undelegate", 11, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: DELEGATE.to_owned(),
+                    to_delegate: ZERO_ADDRESS.to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let contributor = sqlx::query(
+        "SELECT block_number::TEXT AS block_number, transaction_hash,
+                delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(contributor.get::<String, _>("block_number"), "11");
+    assert_eq!(contributor.get::<String, _>("transaction_hash"), "0xtx110");
+    assert_eq!(contributor.get::<i32, _>("delegates_count_all"), 0);
+    assert_eq!(contributor.get::<i32, _>("delegates_count_effective"), 0);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_bulk_writes_dense_events_across_chunks() -> Result<(), Box<dyn Error>>
 {
     let database = TestDatabase::connect().await?;
