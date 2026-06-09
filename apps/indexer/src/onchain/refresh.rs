@@ -694,7 +694,7 @@ where
         }
 
         Ok(OnchainRefreshApplyBatchReport {
-            completed: successes.len(),
+            completed: successes.len().saturating_sub(debounced_tasks),
             debounced_tasks,
             data_metric_refreshes,
         })

@@ -835,7 +835,9 @@ async fn test_onchain_refresh_worker_reschedules_pending_after_lock_with_debounc
     let report = worker.run_once().await?;
     let after = unix_time_millis_for_test();
 
-    assert_eq!(report.completed, 1);
+    assert_eq!(report.completed, 0);
+    assert_eq!(report.debounced_tasks, 1);
+    assert_eq!(report.skipped_tasks, 1);
     let row = sqlx::query(
         "SELECT status, next_run_at::TEXT AS next_run_at, processed_at::TEXT AS processed_at,
                 last_seen_block_number::TEXT AS last_seen_block_number,
