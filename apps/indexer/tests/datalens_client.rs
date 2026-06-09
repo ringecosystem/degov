@@ -267,6 +267,72 @@ fn test_datalens_log_query_retries_transport_failure_before_success() {
 }
 
 #[test]
+fn test_datalens_log_query_returns_degov_timeout_for_stalled_sdk_query() {
+    let server = FakeHangingQueryServer::start(Duration::from_millis(500));
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(50);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(2))
+            .expect("client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+    let started_at = std::time::Instant::now();
+
+    let error = client
+        .query_logs(plans[0].input.clone())
+        .expect_err("stalled query times out");
+
+    assert!(
+        started_at.elapsed() < Duration::from_millis(300),
+        "outer timeout should bound the stalled SDK call"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("Datalens query timed out after 50ms"),
+        "{error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&error.to_string()),
+        DatalensQueryErrorClass::Transient
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
+fn test_datalens_log_query_rejects_second_call_while_sdk_query_is_still_in_flight() {
+    let server = FakeHangingQueryServer::start(Duration::from_millis(500));
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(50);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("client");
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+
+    let first_error = client
+        .query_logs(plans[0].input.clone())
+        .expect_err("first stalled query times out");
+    assert!(first_error.to_string().contains("timed out"));
+
+    let started_at = std::time::Instant::now();
+    let second_error = client
+        .query_logs(plans[0].input.clone())
+        .expect_err("second query fails without spawning another SDK worker");
+
+    assert!(
+        started_at.elapsed() < Duration::from_millis(150),
+        "second query should fail fast while the first SDK worker is still blocked"
+    );
+    assert!(second_error.to_string().contains("timed out"));
+    assert_eq!(
+        classify_datalens_query_error(&second_error.to_string()),
+        DatalensQueryErrorClass::Transient
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
 fn test_datalens_log_query_does_not_retry_non_retryable_quota_error() {
     let server = FakeQueryServer::start(vec![api_error_response(
         429,
@@ -319,6 +385,43 @@ fn test_datalens_provisional_log_query_uses_query_provisional_with_safe_to_lates
     assert!(requests[0].contains(r#""finality":"safe_to_latest""#));
 }
 
+#[test]
+fn test_datalens_provisional_log_query_returns_degov_timeout_for_stalled_sdk_query() {
+    let server = FakeHangingQueryServer::start(Duration::from_millis(500));
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(50);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(2))
+            .expect("client");
+    let mut input = plan_dao_log_queries(&config, &addresses(), 100, 105)
+        .expect("query plan builds")
+        .remove(0)
+        .input;
+    input.finality = Some("safe_to_latest".to_owned());
+    let started_at = std::time::Instant::now();
+
+    let error = client
+        .query_provisional_logs(input)
+        .expect_err("stalled provisional query times out");
+
+    assert!(
+        started_at.elapsed() < Duration::from_millis(300),
+        "outer timeout should bound the stalled SDK call"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("Datalens provisional query timed out after 50ms"),
+        "{error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&error.to_string()),
+        DatalensQueryErrorClass::Transient
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+}
+
 struct FakeHeadServer {
     endpoint: String,
     handle: thread::JoinHandle<String>,
@@ -346,6 +449,35 @@ impl FakeHeadServer {
 struct FakeQueryServer {
     endpoint: String,
     handle: thread::JoinHandle<Vec<String>>,
+}
+
+struct FakeHangingQueryServer {
+    endpoint: String,
+    handle: thread::JoinHandle<Vec<String>>,
+}
+
+impl FakeHangingQueryServer {
+    fn start(hold_open_for: Duration) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake Datalens query server");
+        let endpoint = format!("http://{}", listener.local_addr().expect("local addr"));
+        let handle = thread::spawn(move || {
+            let mut requests = Vec::new();
+            let (mut stream, _) = listener
+                .accept()
+                .expect("accept fake Datalens query request");
+            requests.push(read_http_request(&mut stream));
+            thread::sleep(hold_open_for);
+            requests
+        });
+
+        Self { endpoint, handle }
+    }
+
+    fn join(self) -> Vec<String> {
+        self.handle
+            .join()
+            .expect("fake hanging Datalens query server joins")
+    }
 }
 
 enum FakeQueryResponse {
