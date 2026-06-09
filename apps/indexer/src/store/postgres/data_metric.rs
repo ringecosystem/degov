@@ -55,10 +55,15 @@ async fn write_data_metric_timeline(
                 }
             }
             DataMetricTimelineItem::Proposal(row) | DataMetricTimelineItem::Vote(row) => {
+                contributor_ensure_cache
+                    .flush_member_count_increments(transaction)
+                    .await?;
                 upsert_event_data_metric(transaction, row).await?;
             }
         }
     }
+    delegate_mapping_cache.flush(transaction).await?;
+    contributor_ensure_cache.flush_member_count_increments(transaction).await?;
 
     Ok(())
 }
