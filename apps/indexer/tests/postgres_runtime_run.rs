@@ -889,6 +889,157 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_reconcile_tasks_dedupe_duplicate_accounts_before_sql()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())
+        .with_onchain_refresh_debounce(Duration::from_secs(120));
+    seed_refresh_task_for_account(
+        &database.pool,
+        SECOND_DELEGATE,
+        "processing",
+        5,
+        999,
+        Some("rpc still running"),
+        false,
+    )
+    .await?;
+
+    let mut token_batch = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000020-transfer", 20, 0, 1),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: DELEGATOR.to_owned(),
+                    to: RECEIVER.to_owned(),
+                    value: "40".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000022-delegator-votes", 22, 0, 2),
+                event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                    delegate: DELEGATOR.to_owned(),
+                    previous_votes: "0".to_owned(),
+                    new_votes: "100".to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000025-processing-votes", 25, 0, 3),
+                event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                    delegate: SECOND_DELEGATE.to_owned(),
+                    previous_votes: "0".to_owned(),
+                    new_votes: "80".to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("token projection failed: {error:?}"))?;
+
+    let mut duplicate_delegator = token_batch
+        .reconcile_plan
+        .candidates
+        .iter()
+        .find(|candidate| candidate.account == DELEGATOR)
+        .expect("delegator candidate")
+        .clone();
+    duplicate_delegator.status.last_seen_activity_block = 40;
+    duplicate_delegator.status.last_seen_block_timestamp_ms = Some(1_700_000_040_000);
+    duplicate_delegator.status.last_seen_transaction_hash = "0xtx400".to_owned();
+    duplicate_delegator.latest_activity_block = 40;
+    duplicate_delegator.latest_transaction_index = 0;
+    duplicate_delegator.latest_log_index = 4;
+    let mut duplicate_processing = token_batch
+        .reconcile_plan
+        .candidates
+        .iter()
+        .find(|candidate| candidate.account == SECOND_DELEGATE)
+        .expect("processing candidate")
+        .clone();
+    duplicate_processing.status.last_seen_activity_block = 42;
+    duplicate_processing.status.last_seen_block_timestamp_ms = Some(1_700_000_042_000);
+    duplicate_processing.status.last_seen_transaction_hash = "0xtx420".to_owned();
+    duplicate_processing.latest_activity_block = 42;
+    duplicate_processing.latest_transaction_index = 0;
+    duplicate_processing.latest_log_index = 5;
+    token_batch
+        .reconcile_plan
+        .candidates
+        .push(duplicate_delegator);
+    token_batch
+        .reconcile_plan
+        .candidates
+        .push(duplicate_processing);
+
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let rows = sqlx::query(
+        "SELECT account, reason, status,
+                first_seen_block_number::TEXT AS first_seen_block_number,
+                last_seen_block_number::TEXT AS last_seen_block_number,
+                last_seen_block_timestamp::TEXT AS last_seen_block_timestamp,
+                last_seen_transaction_hash, pending_after_lock,
+                pending_after_lock_block_number::TEXT AS pending_after_lock_block_number,
+                pending_after_lock_block_timestamp::TEXT AS pending_after_lock_block_timestamp,
+                pending_after_lock_transaction_hash
+         FROM onchain_refresh_task
+         ORDER BY account ASC",
+    )
+    .fetch_all(&database.pool)
+    .await?;
+    assert_eq!(rows.len(), 3);
+
+    let deduped = rows
+        .iter()
+        .find(|row| row.get::<String, _>("account") == DELEGATOR)
+        .expect("deduped delegator row");
+    assert_eq!(
+        deduped.get::<String, _>("reason"),
+        "delegate-votes-changed+transfer"
+    );
+    assert_eq!(deduped.get::<String, _>("first_seen_block_number"), "20");
+    assert_eq!(deduped.get::<String, _>("last_seen_block_number"), "40");
+    assert_eq!(
+        deduped.get::<String, _>("last_seen_block_timestamp"),
+        "1700000040000"
+    );
+    assert_eq!(
+        deduped.get::<String, _>("last_seen_transaction_hash"),
+        "0xtx400"
+    );
+
+    let processing = rows
+        .iter()
+        .find(|row| row.get::<String, _>("account") == SECOND_DELEGATE)
+        .expect("processing row");
+    assert_eq!(processing.get::<String, _>("status"), "processing");
+    assert!(processing.get::<bool, _>("pending_after_lock"));
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_block_number"),
+        Some("42".to_owned())
+    );
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_block_timestamp"),
+        Some("1700000042000".to_owned())
+    );
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_transaction_hash"),
+        Some("0xtx420".to_owned())
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
 -> Result<(), Box<dyn Error>> {
     const DENSE_CANDIDATE_COUNT: usize = 1_001;
