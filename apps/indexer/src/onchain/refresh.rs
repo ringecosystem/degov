@@ -16,8 +16,8 @@ use thiserror::Error;
 use crate::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadFailure,
     ChainReadFailureKind, ChainReadKey, ChainReadMethod, ChainReadMetrics, ChainReadPlan,
-    ChainReadPlanBuilder, ChainReadResult, ChainReadValue, ChainTool,
-    PartialChainReadFailureReport, ProvisionalContributorPowerOverlayWrite,
+    ChainReadPlanBuilder, ChainReadRequest, ChainReadResult, ChainReadValue, ChainTool,
+    MulticallReadGroup, PartialChainReadFailureReport, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
     store::postgres::{
@@ -26,6 +26,7 @@ use crate::{
 };
 
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = 1_000;
+const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshWorkerConfig {
@@ -1293,8 +1294,7 @@ where
 
 #[derive(Clone)]
 pub struct EvmRpcChainTool {
-    rpc_url: String,
-    client: reqwest::Client,
+    rpc_client: Arc<dyn EvmRpcClient>,
     cache: ChainReadCache,
 }
 
@@ -1306,10 +1306,155 @@ impl EvmRpcChainTool {
             .map_err(|error| OnchainRefreshReaderError::new(error.to_string()))?;
 
         Ok(Self {
-            rpc_url,
-            client,
+            rpc_client: Arc::new(ReqwestEvmRpcClient { rpc_url, client }),
             cache: ChainReadCache::default(),
         })
+    }
+
+    #[cfg(test)]
+    fn from_rpc_client<C>(rpc_client: C) -> Self
+    where
+        C: EvmRpcClient + 'static,
+    {
+        Self {
+            rpc_client: Arc::new(rpc_client),
+            cache: ChainReadCache::default(),
+        }
+    }
+}
+
+trait EvmRpcClient: Send + Sync {
+    fn eth_call(
+        &self,
+        contract_address: &str,
+        data: &str,
+        block_mode: BlockReadMode,
+    ) -> Result<String, String>;
+
+    fn eth_get_block_timestamp(&self, block_number: &str) -> Result<u128, String>;
+}
+
+struct ReqwestEvmRpcClient {
+    rpc_url: String,
+    client: reqwest::Client,
+}
+
+impl EvmRpcClient for ReqwestEvmRpcClient {
+    fn eth_call(
+        &self,
+        contract_address: &str,
+        data: &str,
+        block_mode: BlockReadMode,
+    ) -> Result<String, String> {
+        let client = self.client.clone();
+        let rpc_url = self.rpc_url.clone();
+        let contract_address = contract_address.to_owned();
+        let data = data.to_owned();
+        thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())?;
+            runtime.block_on(async move {
+                let body = json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "eth_call",
+                    "params": [
+                        {
+                            "to": contract_address,
+                            "data": data,
+                        },
+                        block_tag(block_mode),
+                    ],
+                });
+                let response = client
+                    .post(&rpc_url)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|error| error.to_string())?;
+
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "RPC eth_call failed with HTTP {}",
+                        response.status()
+                    ));
+                }
+
+                let payload = response
+                    .json::<JsonRpcResponse>()
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if let Some(error) = payload.error {
+                    return Err(error.message);
+                }
+
+                payload
+                    .result
+                    .ok_or_else(|| "RPC eth_call returned no result".to_owned())
+            })
+        })
+        .join()
+        .map_err(|_| "RPC eth_call worker thread panicked".to_owned())?
+    }
+
+    fn eth_get_block_timestamp(&self, block_number: &str) -> Result<u128, String> {
+        let block_number = block_number
+            .parse::<u64>()
+            .map_err(|error| format!("parse block number {block_number}: {error}"))?;
+        let client = self.client.clone();
+        let rpc_url = self.rpc_url.clone();
+        thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())?;
+            runtime.block_on(async move {
+                let body = json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "eth_getBlockByNumber",
+                    "params": [
+                        format!("0x{block_number:x}"),
+                        false,
+                    ],
+                });
+                let response = client
+                    .post(&rpc_url)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|error| error.to_string())?;
+
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "RPC eth_getBlockByNumber failed with HTTP {}",
+                        response.status()
+                    ));
+                }
+
+                let payload = response
+                    .json::<JsonRpcBlockResponse>()
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if let Some(error) = payload.error {
+                    return Err(error.message);
+                }
+
+                let block = payload
+                    .result
+                    .ok_or_else(|| "RPC eth_getBlockByNumber returned no result".to_owned())?;
+                let timestamp = block
+                    .timestamp
+                    .strip_prefix("0x")
+                    .ok_or_else(|| "block timestamp must be hex".to_owned())?;
+                u128::from_str_radix(timestamp, 16)
+                    .map_err(|error| format!("parse block timestamp: {error}"))
+            })
+        })
+        .join()
+        .map_err(|_| "RPC eth_getBlockByNumber worker thread panicked".to_owned())?
     }
 }
 
@@ -1437,11 +1582,54 @@ impl ChainTool for EvmRpcChainTool {
         let mut results = Vec::new();
         let mut failures = PartialChainReadFailureReport::default();
         let mut cache_hits = 0;
+        let mut executed_rpc_calls = 0;
+        let mut covered_reads = vec![false; plan.reads.len()];
+
+        let max_concurrency = plan.execution.max_concurrency.max(1);
+        for group_chunk in plan.execution.multicall_groups.chunks(max_concurrency) {
+            let handles = group_chunk
+                .iter()
+                .cloned()
+                .map(|group| {
+                    let tool = self.clone();
+                    let plan = plan.clone();
+                    thread::spawn(move || tool.execute_multicall_group(&plan, &group))
+                })
+                .collect::<Vec<_>>();
+
+            for handle in handles {
+                let group_report = match handle.join() {
+                    Ok(report) => report,
+                    Err(_) => EvmRpcGroupExecutionReport {
+                        failures: vec![ReadFailure {
+                            read_index: 0,
+                            message: "multicall worker thread panicked".to_owned(),
+                            kind: ChainReadFailureKind::Internal,
+                            retryable: true,
+                        }],
+                        ..EvmRpcGroupExecutionReport::default()
+                    },
+                };
+                cache_hits += group_report.cache_hits;
+                executed_rpc_calls += group_report.executed_rpc_calls;
+                for read_index in group_report.covered_read_indexes {
+                    if let Some(covered) = covered_reads.get_mut(read_index) {
+                        *covered = true;
+                    }
+                }
+                results.extend(group_report.results);
+                push_read_failures(plan, &mut failures, group_report.failures);
+            }
+        }
 
         for (read_index, read) in plan.reads.iter().enumerate() {
+            if covered_reads.get(read_index).copied().unwrap_or(false) {
+                continue;
+            }
             match self.execute_read(read_index, read) {
                 Ok((result, cache_hit)) => {
                     cache_hits += usize::from(cache_hit);
+                    executed_rpc_calls += usize::from(!cache_hit);
                     results.push(result);
                 }
                 Err(message) => {
@@ -1467,9 +1655,9 @@ impl ChainTool for EvmRpcChainTool {
             metrics: ChainReadMetrics {
                 requested_reads: plan.metrics.requested_reads,
                 deduped_reads: plan.metrics.deduped_reads,
-                executed_rpc_calls: results.len().saturating_sub(cache_hits),
+                executed_rpc_calls,
                 multicall_batch_size: plan.metrics.multicall_batch_size,
-                failures: failures.optional_failures.len(),
+                failures: failures.required_failures.len() + failures.optional_failures.len(),
                 cache_hits,
                 ..ChainReadMetrics::default()
             },
@@ -1481,6 +1669,146 @@ impl ChainTool for EvmRpcChainTool {
 }
 
 impl EvmRpcChainTool {
+    fn execute_multicall_group(
+        &self,
+        plan: &ChainReadPlan,
+        group: &MulticallReadGroup,
+    ) -> EvmRpcGroupExecutionReport {
+        let mut report = EvmRpcGroupExecutionReport::default();
+        let mut calls = Vec::new();
+
+        for read_index in &group.read_indexes {
+            let Some(read) = plan.reads.get(*read_index) else {
+                continue;
+            };
+            if !is_multicall_eligible(read) {
+                continue;
+            }
+
+            if let Some(value) = self.cache.get(&read.key) {
+                report.cache_hits += 1;
+                report.covered_read_indexes.push(*read_index);
+                report.results.push(ChainReadResult {
+                    read_index: *read_index,
+                    key: read.key.clone(),
+                    value,
+                });
+                continue;
+            }
+
+            match encode_call_data(read.key.method, &read.key.args) {
+                Ok(call_data) => calls.push(EvmMulticallRead {
+                    read_index: *read_index,
+                    read: read.clone(),
+                    call_data,
+                }),
+                Err(message) => {
+                    report.covered_read_indexes.push(*read_index);
+                    report.failures.push(ReadFailure {
+                        read_index: *read_index,
+                        message,
+                        kind: ChainReadFailureKind::Internal,
+                        retryable: false,
+                    });
+                }
+            }
+        }
+
+        if calls.is_empty() {
+            return report;
+        }
+
+        let call_data = match encode_aggregate3_call_data(&calls) {
+            Ok(call_data) => call_data,
+            Err(message) => {
+                for call in calls {
+                    report.covered_read_indexes.push(call.read_index);
+                    report.failures.push(ReadFailure {
+                        read_index: call.read_index,
+                        message: message.clone(),
+                        kind: ChainReadFailureKind::Internal,
+                        retryable: false,
+                    });
+                }
+                return report;
+            }
+        };
+
+        match self.eth_call(MULTICALL3_ADDRESS, &call_data, group.block_mode) {
+            Ok(value) => {
+                report.executed_rpc_calls += 1;
+                match decode_aggregate3_results(&value, calls.len()) {
+                    Ok(results) => {
+                        for (call, result) in calls.into_iter().zip(results) {
+                            report.covered_read_indexes.push(call.read_index);
+                            if !result.success {
+                                report.failures.push(ReadFailure {
+                                    read_index: call.read_index,
+                                    message: "multicall subcall reverted".to_owned(),
+                                    kind: ChainReadFailureKind::Reverted,
+                                    retryable: false,
+                                });
+                                continue;
+                            }
+
+                            match decode_call_value(call.read.key.method, &result.return_data) {
+                                Ok(value) => {
+                                    self.cache.insert(&call.read.key, value.clone());
+                                    report.results.push(ChainReadResult {
+                                        read_index: call.read_index,
+                                        key: call.read.key,
+                                        value,
+                                    });
+                                }
+                                Err(message) => report.failures.push(ReadFailure {
+                                    read_index: call.read_index,
+                                    message,
+                                    kind: ChainReadFailureKind::Decode,
+                                    retryable: false,
+                                }),
+                            }
+                        }
+                    }
+                    Err(message) => {
+                        report.executed_rpc_calls = report.executed_rpc_calls.saturating_sub(1);
+                        self.execute_multicall_fallback(calls, &mut report, message);
+                    }
+                }
+            }
+            Err(message) => {
+                self.execute_multicall_fallback(calls, &mut report, message);
+            }
+        }
+
+        report
+    }
+
+    fn execute_multicall_fallback(
+        &self,
+        calls: Vec<EvmMulticallRead>,
+        report: &mut EvmRpcGroupExecutionReport,
+        multicall_error: String,
+    ) {
+        for call in calls {
+            report.covered_read_indexes.push(call.read_index);
+            match self.execute_read(call.read_index, &call.read) {
+                Ok((result, cache_hit)) => {
+                    report.cache_hits += usize::from(cache_hit);
+                    report.executed_rpc_calls += usize::from(!cache_hit);
+                    report.results.push(result);
+                }
+                Err(message) => report.failures.push(ReadFailure {
+                    read_index: call.read_index,
+                    message: format!(
+                        "multicall failed: {multicall_error}; fallback failed: {message}"
+                    ),
+                    kind: ChainReadFailureKind::Transport,
+                    retryable: true,
+                }),
+            }
+        }
+    }
+
     fn execute_read(
         &self,
         read_index: usize,
@@ -1606,114 +1934,36 @@ impl EvmRpcChainTool {
         data: &str,
         block_mode: BlockReadMode,
     ) -> Result<String, String> {
-        let client = self.client.clone();
-        let rpc_url = self.rpc_url.clone();
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "eth_call",
-            "params": [
-                {
-                    "to": contract_address,
-                    "data": data,
-                },
-                block_tag(block_mode),
-            ],
-        });
-        thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|error| error.to_string())?;
-            runtime.block_on(async move {
-                let response = client
-                    .post(&rpc_url)
-                    .json(&body)
-                    .send()
-                    .await
-                    .map_err(|error| error.to_string())?;
-
-                if !response.status().is_success() {
-                    return Err(format!(
-                        "RPC eth_call failed with HTTP {}",
-                        response.status()
-                    ));
-                }
-
-                let payload = response
-                    .json::<JsonRpcResponse>()
-                    .await
-                    .map_err(|error| error.to_string())?;
-                if let Some(error) = payload.error {
-                    return Err(error.message);
-                }
-
-                payload
-                    .result
-                    .ok_or_else(|| "RPC eth_call returned no result".to_owned())
-            })
-        })
-        .join()
-        .map_err(|_| "RPC eth_call worker thread panicked".to_owned())?
+        self.rpc_client.eth_call(contract_address, data, block_mode)
     }
 
     fn eth_get_block_timestamp(&self, block_number: &str) -> Result<u128, String> {
-        let block_number = block_number
-            .parse::<u64>()
-            .map_err(|error| format!("parse block number {block_number}: {error}"))?;
-        let client = self.client.clone();
-        let rpc_url = self.rpc_url.clone();
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "eth_getBlockByNumber",
-            "params": [
-                format!("0x{block_number:x}"),
-                false,
-            ],
-        });
-        thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|error| error.to_string())?;
-            runtime.block_on(async move {
-                let response = client
-                    .post(&rpc_url)
-                    .json(&body)
-                    .send()
-                    .await
-                    .map_err(|error| error.to_string())?;
-
-                if !response.status().is_success() {
-                    return Err(format!(
-                        "RPC eth_getBlockByNumber failed with HTTP {}",
-                        response.status()
-                    ));
-                }
-
-                let payload = response
-                    .json::<JsonRpcBlockResponse>()
-                    .await
-                    .map_err(|error| error.to_string())?;
-                if let Some(error) = payload.error {
-                    return Err(error.message);
-                }
-
-                let block = payload
-                    .result
-                    .ok_or_else(|| "RPC eth_getBlockByNumber returned no result".to_owned())?;
-                let timestamp = block
-                    .timestamp
-                    .strip_prefix("0x")
-                    .ok_or_else(|| "block timestamp must be hex".to_owned())?;
-                u128::from_str_radix(timestamp, 16)
-                    .map_err(|error| format!("parse block timestamp: {error}"))
-            })
-        })
-        .join()
-        .map_err(|_| "RPC eth_getBlockByNumber worker thread panicked".to_owned())?
+        self.rpc_client.eth_get_block_timestamp(block_number)
     }
+}
+
+#[derive(Clone, Debug)]
+struct EvmMulticallRead {
+    read_index: usize,
+    read: ChainReadRequest,
+    call_data: String,
+}
+
+#[derive(Clone, Debug, Default)]
+struct EvmRpcGroupExecutionReport {
+    results: Vec<ChainReadResult>,
+    failures: Vec<ReadFailure>,
+    covered_read_indexes: Vec<usize>,
+    cache_hits: usize,
+    executed_rpc_calls: usize,
+}
+
+#[derive(Clone, Debug)]
+struct ReadFailure {
+    read_index: usize,
+    message: String,
+    kind: ChainReadFailureKind,
+    retryable: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2533,6 +2783,47 @@ fn format_failures(failures: &PartialChainReadFailureReport) -> String {
         .join("; ")
 }
 
+fn push_read_failures(
+    plan: &ChainReadPlan,
+    failures: &mut PartialChainReadFailureReport,
+    read_failures: Vec<ReadFailure>,
+) {
+    for read_failure in read_failures {
+        let Some(read) = plan.reads.get(read_failure.read_index) else {
+            failures.required_failures.push(ChainReadFailure {
+                key: ChainReadKey {
+                    chain_id: 0,
+                    contract_address: String::new(),
+                    method: ChainReadMethod::BalanceOf,
+                    args: Vec::new(),
+                    block_mode: BlockReadMode::Latest,
+                },
+                kind: read_failure.kind,
+                retryable: read_failure.retryable,
+                message: read_failure.message,
+            });
+            continue;
+        };
+        let failure = ChainReadFailure {
+            key: read.key.clone(),
+            kind: read_failure.kind,
+            retryable: read_failure.retryable,
+            message: read_failure.message,
+        };
+        match read.requirement {
+            ReadRequirement::Required => failures.required_failures.push(failure),
+            ReadRequirement::Optional => failures.optional_failures.push(failure),
+        }
+    }
+}
+
+fn is_multicall_eligible(read: &ChainReadRequest) -> bool {
+    !matches!(
+        read.key.method,
+        ChainReadMethod::BlockTimestamp | ChainReadMethod::TimelockOperationState
+    )
+}
+
 fn encode_call_data(method: ChainReadMethod, args: &[String]) -> Result<String, String> {
     let (signature, tokens) = match method {
         ChainReadMethod::BlockTimestamp => {
@@ -2597,6 +2888,128 @@ fn encode_call_data(method: ChainReadMethod, args: &[String]) -> Result<String, 
     };
 
     encode_function_call(signature, tokens)
+}
+
+fn encode_aggregate3_call_data(calls: &[EvmMulticallRead]) -> Result<String, String> {
+    let call_tokens = calls
+        .iter()
+        .map(|call| {
+            let call_data = decode_hex_result(&call.call_data)?;
+            let target = call.read.key.contract_address.parse().map_err(|error| {
+                format!(
+                    "invalid multicall target {}: {error}",
+                    call.read.key.contract_address
+                )
+            })?;
+            Ok(Token::Tuple(vec![
+                Token::Address(target),
+                Token::Bool(true),
+                Token::Bytes(call_data),
+            ]))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    encode_function_call(
+        "aggregate3((address,bool,bytes)[])",
+        vec![Token::Array(call_tokens)],
+    )
+}
+
+#[cfg(test)]
+fn decode_aggregate3_call_data(data: &str) -> Result<Vec<Aggregate3Call>, String> {
+    let bytes = decode_hex_result(data)?;
+    if bytes.len() < 4 || bytes[..4] != function_selector("aggregate3((address,bool,bytes)[])") {
+        return Err("multicall data selector mismatch".to_owned());
+    }
+    let tokens = decode(
+        &[ParamType::Array(Box::new(ParamType::Tuple(vec![
+            ParamType::Address,
+            ParamType::Bool,
+            ParamType::Bytes,
+        ])))],
+        &bytes[4..],
+    )
+    .map_err(|error| error.to_string())?;
+
+    let Some(Token::Array(calls)) = tokens.first() else {
+        return Err("multicall data did not decode as aggregate3 calls".to_owned());
+    };
+
+    calls
+        .iter()
+        .map(|token| {
+            let Token::Tuple(values) = token else {
+                return Err("multicall call did not decode as tuple".to_owned());
+            };
+            let [
+                Token::Address(target),
+                Token::Bool(allow_failure),
+                Token::Bytes(call_data),
+            ] = values.as_slice()
+            else {
+                return Err("multicall call tuple shape mismatch".to_owned());
+            };
+            Ok(Aggregate3Call {
+                target: format!("0x{}", hex::encode(target.as_bytes())),
+                allow_failure: *allow_failure,
+                call_data: format!("0x{}", hex::encode(call_data)),
+            })
+        })
+        .collect()
+}
+
+fn decode_aggregate3_results(
+    value: &str,
+    expected_count: usize,
+) -> Result<Vec<Aggregate3Result>, String> {
+    let bytes = decode_hex_result(value)?;
+    let tokens = decode(
+        &[ParamType::Array(Box::new(ParamType::Tuple(vec![
+            ParamType::Bool,
+            ParamType::Bytes,
+        ])))],
+        &bytes,
+    )
+    .map_err(|error| error.to_string())?;
+    let Some(Token::Array(results)) = tokens.first() else {
+        return Err("multicall result did not decode as aggregate3 results".to_owned());
+    };
+    if results.len() != expected_count {
+        return Err(format!(
+            "multicall result count mismatch expected={expected_count} actual={}",
+            results.len()
+        ));
+    }
+
+    results
+        .iter()
+        .map(|token| {
+            let Token::Tuple(values) = token else {
+                return Err("multicall result did not decode as tuple".to_owned());
+            };
+            let [Token::Bool(success), Token::Bytes(return_data)] = values.as_slice() else {
+                return Err("multicall result tuple shape mismatch".to_owned());
+            };
+            Ok(Aggregate3Result {
+                success: *success,
+                return_data: format!("0x{}", hex::encode(return_data)),
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Aggregate3Call {
+    target: String,
+    allow_failure: bool,
+    call_data: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Aggregate3Result {
+    success: bool,
+    return_data: String,
 }
 
 fn encode_function_call(signature: &str, tokens: Vec<Token>) -> Result<String, String> {
@@ -2764,6 +3177,7 @@ struct JsonRpcError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn test_encode_call_data_accepts_hex_uint_arguments() {
@@ -2909,5 +3323,198 @@ mod tests {
             Some(ChainReadValue::Integer("18".to_owned()))
         );
         assert_eq!(cache.get(&quorum), None);
+    }
+
+    #[derive(Clone, Default)]
+    struct MockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for MockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+            let return_data = calls
+                .into_iter()
+                .enumerate()
+                .map(|(index, _call)| {
+                    let value = U256::from(index + 100);
+                    Token::Tuple(vec![
+                        Token::Bool(true),
+                        Token::Bytes(encode(&[Token::Uint(value)])),
+                    ])
+                })
+                .collect::<Vec<_>>();
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Array(return_data)]))
+            ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct PartialFailureMockEvmRpcClient;
+
+    impl EvmRpcClient for PartialFailureMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+            let decimals_selector = format!("0x{}", hex::encode(function_selector("decimals()")));
+            let return_data = calls
+                .into_iter()
+                .map(|call| {
+                    if call.call_data.starts_with(&decimals_selector) {
+                        Token::Tuple(vec![Token::Bool(false), Token::Bytes(Vec::new())])
+                    } else {
+                        Token::Tuple(vec![
+                            Token::Bool(true),
+                            Token::Bytes(encode(&[Token::Uint(U256::from(100))])),
+                        ])
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Array(return_data)]))
+            ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_executes_multicall_groups_once() {
+        let rpc = MockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: String::new(),
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("multicall reads succeed");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(report.metrics.executed_rpc_calls, 1);
+        assert_eq!(report.results.len(), 2);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("100".to_owned())
+        );
+        assert_eq!(
+            report.results[1].value,
+            ChainReadValue::Integer("101".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_uses_cache_before_multicall() {
+        let rpc = MockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: String::new(),
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        let plan = builder.build();
+
+        tool.execute_read_plan(&plan).expect("first read succeeds");
+        let cached = tool.execute_read_plan(&plan).expect("second read succeeds");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(cached.metrics.executed_rpc_calls, 0);
+        assert_eq!(cached.metrics.cache_hits, 1);
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_keeps_successes_when_optional_multicall_item_fails() {
+        let tool = EvmRpcChainTool::from_rpc_client(PartialFailureMockEvmRpcClient);
+        let contracts = ChainContracts {
+            governor: "0x1000000000000000000000000000000000000000".to_owned(),
+            governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+            timelock: String::new(),
+        };
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            contracts.clone(),
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_optional_enrichment_read(
+            contracts.governor_token,
+            ChainReadMethod::Decimals,
+            vec![],
+            BlockReadMode::Safe,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("required read survives optional multicall failure");
+
+        assert_eq!(report.metrics.executed_rpc_calls, 1);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("100".to_owned())
+        );
+        assert_eq!(report.partial_failures.required_failures.len(), 0);
+        assert_eq!(report.partial_failures.optional_failures.len(), 1);
     }
 }
