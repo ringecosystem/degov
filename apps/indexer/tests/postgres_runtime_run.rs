@@ -950,6 +950,8 @@ async fn test_postgres_token_reconcile_tasks_dedupe_duplicate_accounts_before_sq
     duplicate_delegator.latest_activity_block = 40;
     duplicate_delegator.latest_transaction_index = 0;
     duplicate_delegator.latest_log_index = 4;
+    duplicate_delegator.status.last_seen_transaction_index = 0;
+    duplicate_delegator.status.last_seen_log_index = 4;
     let mut duplicate_processing = token_batch
         .reconcile_plan
         .candidates
@@ -963,6 +965,8 @@ async fn test_postgres_token_reconcile_tasks_dedupe_duplicate_accounts_before_sq
     duplicate_processing.latest_activity_block = 42;
     duplicate_processing.latest_transaction_index = 0;
     duplicate_processing.latest_log_index = 5;
+    duplicate_processing.status.last_seen_transaction_index = 0;
+    duplicate_processing.status.last_seen_log_index = 5;
     token_batch
         .reconcile_plan
         .candidates
