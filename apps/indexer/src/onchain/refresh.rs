@@ -1235,6 +1235,7 @@ enum ChainReadCacheKey {
         contract_address: String,
         method: ChainReadMethod,
         args: Vec<String>,
+        block_mode: BlockReadMode,
     },
 }
 
@@ -1266,6 +1267,7 @@ impl ChainReadCacheKey {
                     .iter()
                     .map(|arg| normalize_identifier(arg))
                     .collect(),
+                block_mode: key.block_mode,
             }),
             _ => None,
         }
@@ -2679,10 +2681,7 @@ mod tests {
             cache.get(&power),
             Some(ChainReadValue::Integer("100".to_owned()))
         );
-        assert_eq!(
-            cache.get(&same_account_latest),
-            Some(ChainReadValue::Integer("100".to_owned()))
-        );
+        assert_eq!(cache.get(&same_account_latest), None);
         assert_eq!(cache.get(&other_account), None);
     }
 
