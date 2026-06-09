@@ -1050,6 +1050,17 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
 
     let database = TestDatabase::connect().await?;
     let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let deferred_processing_account = indexed_account(DENSE_CANDIDATE_COUNT - 1);
+    seed_refresh_task_for_account(
+        &database.pool,
+        &deferred_processing_account,
+        "processing",
+        5,
+        999,
+        Some("rpc still running"),
+        false,
+    )
+    .await?;
     let token_batch = project_token_events(
         &token_projection_context(),
         (0..DENSE_CANDIDATE_COUNT)
@@ -1090,9 +1101,31 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
     .bind(CONTRACT_SET_ID)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(task_count, DENSE_CANDIDATE_COUNT as i64);
+    assert_eq!(task_count, 1_001);
 
-    for index in [0, DENSE_CANDIDATE_COUNT - 1] {
+    let deferred_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
+         FROM onchain_refresh_deferred_candidate
+         WHERE contract_set_id = $1",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(deferred_count, 1);
+
+    let inline_account = indexed_account(999);
+    let missing_inline_task_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
+         FROM onchain_refresh_task
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(&inline_account)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(missing_inline_task_count, 1);
+
+    for index in [0, 999] {
         let account = indexed_account(index);
         let row = sqlx::query(
             "SELECT id, reason, status, next_run_at::TEXT AS next_run_at,
@@ -1113,6 +1146,78 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
         );
         assert!(row.get::<String, _>("next_run_at").parse::<i64>()? > 0);
     }
+
+    let deferred = sqlx::query(
+        "SELECT account, reason, last_seen_block_number::TEXT AS last_seen_block_number
+         FROM onchain_refresh_deferred_candidate
+         WHERE contract_set_id = $1",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        deferred.get::<String, _>("account"),
+        deferred_processing_account
+    );
+    assert_eq!(
+        deferred.get::<String, _>("reason"),
+        "delegate-votes-changed"
+    );
+    assert_eq!(
+        deferred.get::<String, _>("last_seen_block_number"),
+        (30 + (DENSE_CANDIDATE_COUNT - 1) as u64).to_string()
+    );
+
+    let drained = store.drain_deferred_onchain_refresh_tasks(1).await?;
+    assert_eq!(drained, 1);
+
+    let deferred_count_after_drain: i64 = sqlx::query_scalar(
+        "SELECT count(*)::BIGINT
+         FROM onchain_refresh_deferred_candidate
+         WHERE contract_set_id = $1",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(deferred_count_after_drain, 0);
+
+    let processing = sqlx::query(
+        "SELECT status, attempts, next_run_at::TEXT AS next_run_at, error,
+                last_seen_block_number::TEXT AS last_seen_block_number, pending_after_lock,
+                pending_after_lock_block_number::TEXT AS pending_after_lock_block_number,
+                pending_after_lock_block_timestamp::TEXT AS pending_after_lock_block_timestamp,
+                pending_after_lock_transaction_hash
+         FROM onchain_refresh_task
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(&deferred_processing_account)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(processing.get::<String, _>("status"), "processing");
+    assert_eq!(processing.get::<i32, _>("attempts"), 5);
+    assert_eq!(processing.get::<String, _>("next_run_at"), "999");
+    assert_eq!(
+        processing.get::<Option<String>, _>("error"),
+        Some("rpc still running".to_owned())
+    );
+    assert_eq!(
+        processing.get::<String, _>("last_seen_block_number"),
+        (30 + (DENSE_CANDIDATE_COUNT - 1) as u64).to_string()
+    );
+    assert!(processing.get::<bool, _>("pending_after_lock"));
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_block_number"),
+        Some((30 + (DENSE_CANDIDATE_COUNT - 1) as u64).to_string())
+    );
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_block_timestamp"),
+        Some((1_700_000_000_000 + (30 + (DENSE_CANDIDATE_COUNT - 1) as u64) * 1_000).to_string())
+    );
+    assert_eq!(
+        processing.get::<Option<String>, _>("pending_after_lock_transaction_hash"),
+        Some(format!("0xtx{}0", 30 + (DENSE_CANDIDATE_COUNT - 1) as u64))
+    );
 
     database.cleanup().await?;
 
