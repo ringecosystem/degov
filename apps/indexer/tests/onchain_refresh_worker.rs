@@ -454,6 +454,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -470,7 +471,9 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_eq!(report.completed, 2);
     assert_eq!(report.failed, 0);
     assert_eq!(report.unique_accounts, 2);
-    assert_eq!(report.data_metric_refreshes, 1);
+    assert_eq!(report.apply_chunks, 2);
+    assert_eq!(report.apply_batch_size, 1);
+    assert_eq!(report.data_metric_refreshes, 2);
     assert_eq!(
         contributor_values(&database.pool, ACCOUNT_ONE).await?,
         ("11".to_owned(), Some("17".to_owned()))
@@ -523,6 +526,7 @@ async fn test_onchain_refresh_worker_uses_current_votes_checkpoint_source()
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1_000,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -565,6 +569,7 @@ async fn test_onchain_refresh_worker_marks_claimed_tasks_failed_when_reader_fail
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1_000,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -657,6 +662,7 @@ async fn test_onchain_refresh_worker_scoped_run_claims_only_matching_contract_se
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1_000,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -714,6 +720,7 @@ async fn test_onchain_refresh_worker_failed_task_uses_attempt_backoff() -> Resul
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1_000,
             max_attempts: 5,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -763,19 +770,40 @@ async fn test_onchain_refresh_worker_rolls_back_when_apply_fails() -> Result<(),
         true,
     )
     .await?;
+    seed_task(
+        &database.pool,
+        "task-two",
+        ACCOUNT_TWO,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
 
-    let reader = MockOnchainRefreshReader::new([(
-        "task-one",
-        OnchainRefreshReadValue {
-            task_id: "task-one".to_owned(),
-            balance: None,
-            power: Some("not-a-number".to_owned()),
-        },
-    )]);
+    let reader = MockOnchainRefreshReader::new([
+        (
+            "task-one",
+            OnchainRefreshReadValue {
+                task_id: "task-one".to_owned(),
+                balance: None,
+                power: Some("not-a-number".to_owned()),
+            },
+        ),
+        (
+            "task-two",
+            OnchainRefreshReadValue {
+                task_id: "task-two".to_owned(),
+                balance: None,
+                power: Some("5".to_owned()),
+            },
+        ),
+    ]);
     let worker = OnchainRefreshWorker::new(
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -788,10 +816,17 @@ async fn test_onchain_refresh_worker_rolls_back_when_apply_fails() -> Result<(),
 
     let report = worker.run_once().await?;
 
-    assert_eq!(report.claimed, 1);
-    assert_eq!(report.completed, 0);
+    assert_eq!(report.claimed, 2);
+    assert_eq!(report.completed, 1);
     assert_eq!(report.failed, 1);
+    assert_eq!(report.apply_chunks, 2);
+    assert_eq!(report.db_update_failures, 1);
     assert_failed_task_error_contains(&database.pool, "task-one", "invalid input syntax").await?;
+    assert_completed_task(&database.pool, "task-two", 1).await?;
+    assert_eq!(
+        contributor_values(&database.pool, ACCOUNT_TWO).await?,
+        ("5".to_owned(), None)
+    );
     assert_eq!(idle_transaction_count(&database.pool).await?, 0);
 
     database.cleanup().await?;
@@ -855,6 +890,7 @@ async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<()
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1_000,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -934,6 +970,7 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1_000,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -1002,6 +1039,7 @@ async fn test_onchain_refresh_worker_reschedules_pending_after_lock_with_debounc
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1_000,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),
@@ -1281,6 +1319,7 @@ async fn test_onchain_refresh_worker_fails_only_missing_rpc_chain_group()
         database.pool.clone(),
         OnchainRefreshWorkerConfig {
             batch_size: 10,
+            apply_batch_size: 1_000,
             max_attempts: 3,
             deferred_drain_batch_size: 100,
             debounce: Duration::from_secs(120),

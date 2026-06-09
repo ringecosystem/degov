@@ -49,14 +49,14 @@ pub use crate::decode::evm_log::{
     EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows,
 };
 pub use crate::onchain::refresh::{
-    ChainToolOnchainRefreshReader, EvmRpcChainTool, LivePowerOverlayReader,
-    LivePowerOverlayRefreshError, MultiChainToolOnchainRefreshReader, OnchainRefreshReadReport,
-    OnchainRefreshReadValue, OnchainRefreshReader, OnchainRefreshReaderError,
-    OnchainRefreshRunReport, OnchainRefreshTask, OnchainRefreshTaskScope, OnchainRefreshTickClock,
-    OnchainRefreshTickConfig, OnchainRefreshTickReport, OnchainRefreshTickRunner,
-    OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason, OnchainRefreshWorker,
-    OnchainRefreshWorkerConfig, OnchainRefreshWorkerError, SystemOnchainRefreshTickClock,
-    refresh_live_power_overlays,
+    ChainToolOnchainRefreshReader, DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, EvmRpcChainTool,
+    LivePowerOverlayReader, LivePowerOverlayRefreshError, MultiChainToolOnchainRefreshReader,
+    OnchainRefreshReadReport, OnchainRefreshReadValue, OnchainRefreshReader,
+    OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
+    OnchainRefreshTaskScope, OnchainRefreshTickClock, OnchainRefreshTickConfig,
+    OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
+    OnchainRefreshTickSkipReason, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
+    OnchainRefreshWorkerError, SystemOnchainRefreshTickClock, refresh_live_power_overlays,
 };
 pub use crate::projection::data_metric::DataMetricWrite;
 pub use crate::projection::power_reconcile::{
@@ -140,7 +140,7 @@ pub use runtime_config::{
     AdaptiveChunkSizerRuntimeConfig, ContractSetConcurrencyLimit, GraphqlRuntimeConfig,
     IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerRuntimeConfig,
     IndexerTargetHeight, OnchainRefreshRpcChainConfig, OnchainRefreshRuntimeConfig,
-    ProvisionalRuntimeConfig, datalens_retry_config, onchain_refresh_debounce_from_env,
-    onchain_refresh_deferred_drain_batch_size_from_env, onchain_refresh_worker_enabled,
-    parse_bool_env_value, parse_i64_env_value, required_env,
+    ProvisionalRuntimeConfig, datalens_retry_config, onchain_refresh_apply_batch_size_from_env,
+    onchain_refresh_debounce_from_env, onchain_refresh_deferred_drain_batch_size_from_env,
+    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value, required_env,
 };

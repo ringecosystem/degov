@@ -25,12 +25,14 @@ use crate::{
     },
 };
 
-const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = 1_000;
+pub const DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
+const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshWorkerConfig {
     pub batch_size: usize,
+    pub apply_batch_size: usize,
     pub max_attempts: i32,
     pub deferred_drain_batch_size: usize,
     pub debounce: Duration,
@@ -54,6 +56,8 @@ pub struct OnchainRefreshRunReport {
     pub cache_hits: usize,
     pub debounced_tasks: usize,
     pub data_metric_refreshes: usize,
+    pub apply_chunks: usize,
+    pub apply_batch_size: usize,
     pub duration_ms: u128,
     pub backlog: Option<u64>,
 }
@@ -504,6 +508,7 @@ where
         let mut report = OnchainRefreshRunReport {
             claimed: tasks.len(),
             unique_accounts: unique_account_count(&tasks),
+            apply_batch_size: self.config.apply_batch_size,
             completed: 0,
             failed: 0,
             ..OnchainRefreshRunReport::default()
@@ -557,23 +562,27 @@ where
                 }
             }
             if !successes.is_empty() {
-                match self.apply_success_batch(&successes, now_ms).await {
-                    Ok(batch_report) => {
-                        report.completed += batch_report.completed;
-                        report.debounced_tasks += batch_report.debounced_tasks;
-                        report.skipped_tasks += batch_report.debounced_tasks;
-                        report.data_metric_refreshes += batch_report.data_metric_refreshes;
-                    }
-                    Err(error) => {
-                        let message = error.to_string();
-                        let failed_tasks = successes
-                            .iter()
-                            .map(|(task, _value)| task.clone())
-                            .collect::<Vec<_>>();
-                        self.mark_tasks_failed(&failed_tasks, &message, now_ms)
-                            .await?;
-                        report.failed += failed_tasks.len();
-                        report.db_update_failures += failed_tasks.len();
+                for chunk in onchain_refresh_apply_chunks(&successes, self.config.apply_batch_size)
+                {
+                    report.apply_chunks += 1;
+                    match self.apply_success_batch(chunk, now_ms).await {
+                        Ok(batch_report) => {
+                            report.completed += batch_report.completed;
+                            report.debounced_tasks += batch_report.debounced_tasks;
+                            report.skipped_tasks += batch_report.debounced_tasks;
+                            report.data_metric_refreshes += batch_report.data_metric_refreshes;
+                        }
+                        Err(error) => {
+                            let message = error.to_string();
+                            let failed_tasks = chunk
+                                .iter()
+                                .map(|(task, _value)| task.clone())
+                                .collect::<Vec<_>>();
+                            self.mark_tasks_failed(&failed_tasks, &message, now_ms)
+                                .await?;
+                            report.failed += failed_tasks.len();
+                            report.db_update_failures += failed_tasks.len();
+                        }
                     }
                 }
             }
@@ -586,7 +595,7 @@ where
         };
 
         log::info!(
-            "onchain refresh batch completed dao_code={} chain_id={} contract_set_id={} claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} duration_ms={} backlog={}",
+            "onchain refresh batch completed dao_code={} chain_id={} contract_set_id={} claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} apply_chunks={} apply_batch_size={} duration_ms={} backlog={}",
             scope
                 .map(|scope| scope.dao_code.as_str())
                 .unwrap_or("global"),
@@ -609,6 +618,8 @@ where
             report.cache_hits,
             report.debounced_tasks,
             report.data_metric_refreshes,
+            report.apply_chunks,
+            report.apply_batch_size,
             report.duration_ms,
             report
                 .backlog
@@ -2648,6 +2659,13 @@ fn unique_account_count(tasks: &[OnchainRefreshTask]) -> usize {
         .len()
 }
 
+fn onchain_refresh_apply_chunks<T>(
+    items: &[T],
+    apply_batch_size: usize,
+) -> std::slice::Chunks<'_, T> {
+    items.chunks(apply_batch_size.max(1))
+}
+
 fn truncate_error(error: &str) -> String {
     const MAX_ERROR_LENGTH: usize = 2048;
     error.chars().take(MAX_ERROR_LENGTH).collect()
@@ -3207,6 +3225,26 @@ mod tests {
     fn test_worker_deferred_drain_batch_size_tracks_claim_budget() {
         assert_eq!(worker_deferred_drain_batch_size(100, 1_000), 1_000);
         assert_eq!(worker_deferred_drain_batch_size(2_000, 1_000), 2_000);
+    }
+
+    #[test]
+    fn test_onchain_refresh_apply_chunks_uses_configured_size() {
+        let items = vec![1, 2, 3, 4, 5];
+        let chunks = onchain_refresh_apply_chunks(&items, 2)
+            .map(|chunk| chunk.to_vec())
+            .collect::<Vec<_>>();
+
+        assert_eq!(chunks, vec![vec![1, 2], vec![3, 4], vec![5]]);
+    }
+
+    #[test]
+    fn test_onchain_refresh_apply_chunks_treats_zero_size_as_one() {
+        let items = vec![1, 2, 3];
+        let chunks = onchain_refresh_apply_chunks(&items, 0)
+            .map(|chunk| chunk.to_vec())
+            .collect::<Vec<_>>();
+
+        assert_eq!(chunks, vec![vec![1], vec![2], vec![3]]);
     }
 
     #[test]

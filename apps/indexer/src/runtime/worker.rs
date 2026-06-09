@@ -24,10 +24,11 @@ pub async fn run_worker() -> Result<()> {
     }
 
     log::info!(
-        "onchain refresh worker runtime is ready enabled={} database_url_configured={} batch_size={} max_batches_per_poll={} run_once={}",
+        "onchain refresh worker runtime is ready enabled={} database_url_configured={} batch_size={} apply_batch_size={} max_batches_per_poll={} run_once={}",
         runtime.enabled,
         !database_url.is_empty(),
         runtime.batch_size,
+        runtime.apply_batch_size,
         runtime.max_batches_per_poll,
         runtime.run_once
     );
