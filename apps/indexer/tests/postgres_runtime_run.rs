@@ -14,10 +14,11 @@ use std::{
 
 use degov_datalens_indexer::{
     BatchReadPlanConfig, CallExecutedEvent, CallScheduledEvent, ChainContracts, ChainReadMethod,
-    DecodedGovernorEvent, DecodedTimelockEvent, DecodedTokenEvent, DelegateChangedEvent,
-    DelegateVotesChangedEvent, GovernanceTokenStandard, IndexerProjectionBatch, IndexerRunnerStore,
-    IndexerRunnerTransaction, NormalizedEvmLog, PostgresIndexerRunnerStore, ProposalCreatedEvent,
-    ProposalExtendedEvent, ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
+    DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS, DecodedGovernorEvent, DecodedTimelockEvent,
+    DecodedTokenEvent, DelegateChangedEvent, DelegateVotesChangedEvent, GovernanceTokenStandard,
+    IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction, NormalizedEvmLog,
+    PostgresIndexerRunnerStore, ProposalCreatedEvent, ProposalExtendedEvent,
+    ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
     TimelockProjectionContext, TimelockProjectionEvent, TimelockProposalLinkContext,
     TokenProjectionContext, TokenProjectionEvent, TokenTransferEvent, VoteCastEvent,
     VoteProjectionContext, VoteProjectionEvent, project_proposal_events, project_timelock_events,
@@ -1257,7 +1258,7 @@ async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
 -> Result<(), Box<dyn Error>> {
     const DENSE_EVENT_COUNT: usize = 1_205;
     const DENSE_UNIQUE_ACCOUNT_COUNT: usize = 150;
-    const EXPECTED_MATERIALIZED_BATCH: i64 = 100;
+    const EXPECTED_MATERIALIZED_BATCH: i64 = DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS as i64;
 
     let database = TestDatabase::connect().await?;
     let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())

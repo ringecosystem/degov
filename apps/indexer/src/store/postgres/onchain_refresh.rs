@@ -522,7 +522,7 @@ async fn read_deferred_onchain_refresh_candidates(
          FOR UPDATE SKIP LOCKED",
     )
     .bind(max_rows)
-    .bind(now_ms.to_string())
+    .bind(now_ms)
     .fetch_all(&mut **transaction)
     .await?;
 
