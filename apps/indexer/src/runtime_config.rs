@@ -6,11 +6,12 @@ use runtime_anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use crate::{
-    AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainReadMethod, DatalensConfig,
-    DatalensProvisionalFinality, DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet,
-    IndexerCheckpointIdentity, IndexerRunnerContexts, IndexerRunnerOptions,
-    OnchainRefreshTickConfig, OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString,
-    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
+    AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainReadMethod,
+    DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig, DatalensProvisionalFinality,
+    DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet, IndexerCheckpointIdentity,
+    IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshTickConfig,
+    OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString, TimelockProjectionContext,
+    TokenProjectionContext, VoteProjectionContext,
     store::postgres::DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
 };
 
@@ -540,6 +541,7 @@ pub struct OnchainRefreshRuntimeConfig {
     pub enabled: bool,
     pub rpc_chains: BTreeMap<i32, OnchainRefreshRpcChainConfig>,
     pub batch_size: usize,
+    pub apply_batch_size: usize,
     pub max_attempts: i32,
     pub max_batches_per_poll: usize,
     pub deferred_drain_batch_size: usize,
@@ -590,10 +592,8 @@ impl OnchainRefreshRuntimeConfig {
 
     fn from_env_with_enabled(enabled: bool) -> Result<Self> {
         let rpc_chains = load_onchain_refresh_rpc_chains(enabled)?;
-        let batch_size = optional_env_usize("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE")?.unwrap_or(100);
-        if batch_size == 0 {
-            bail!("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE must be greater than zero");
-        }
+        let batch_size = onchain_refresh_batch_size_from_env()?;
+        let apply_batch_size = onchain_refresh_apply_batch_size_from_env()?;
 
         let max_attempts = optional_env_i32("DEGOV_ONCHAIN_REFRESH_MAX_ATTEMPTS")?.unwrap_or(3);
         if max_attempts <= 0 {
@@ -647,6 +647,7 @@ impl OnchainRefreshRuntimeConfig {
             enabled,
             rpc_chains,
             batch_size,
+            apply_batch_size,
             max_attempts,
             max_batches_per_poll,
             deferred_drain_batch_size,
@@ -674,6 +675,7 @@ impl OnchainRefreshRuntimeConfig {
     pub fn worker_config(&self) -> OnchainRefreshWorkerConfig {
         OnchainRefreshWorkerConfig {
             batch_size: self.batch_size,
+            apply_batch_size: self.apply_batch_size,
             max_attempts: self.max_attempts,
             deferred_drain_batch_size: self.deferred_drain_batch_size,
             debounce: self.debounce,
@@ -1099,6 +1101,25 @@ pub fn onchain_refresh_deferred_drain_batch_size_from_env() -> Result<usize> {
         .unwrap_or(DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS);
     if batch_size == 0 {
         bail!("DEGOV_ONCHAIN_REFRESH_DEFERRED_DRAIN_BATCH_SIZE must be greater than zero");
+    }
+
+    Ok(batch_size)
+}
+
+fn onchain_refresh_batch_size_from_env() -> Result<usize> {
+    let batch_size = optional_env_usize("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE")?.unwrap_or(100);
+    if batch_size == 0 {
+        bail!("DEGOV_ONCHAIN_REFRESH_BATCH_SIZE must be greater than zero");
+    }
+
+    Ok(batch_size)
+}
+
+pub fn onchain_refresh_apply_batch_size_from_env() -> Result<usize> {
+    let batch_size = optional_env_usize("DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE")?
+        .unwrap_or(DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE);
+    if batch_size == 0 {
+        bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE must be greater than zero");
     }
 
     Ok(batch_size)

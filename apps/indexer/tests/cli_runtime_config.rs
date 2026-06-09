@@ -1,12 +1,21 @@
-use std::time::Duration;
+use std::{sync::Mutex, time::Duration};
 
 use degov_datalens_indexer::{
-    ContractSetConcurrencyLimit, DatalensConfig, DatalensProvisionalFinality,
-    DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig, IndexerContractSetMode,
-    IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRuntimeConfig,
+    ContractSetConcurrencyLimit, DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig,
+    DatalensProvisionalFinality, DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig,
+    IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRuntimeConfig,
     OnchainRefreshTickConfig, ProvisionalRuntimeConfig, datalens_retry_config,
     onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
 };
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+macro_rules! with_env_vars {
+    ($vars:expr, $body:expr $(,)?) => {{
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        temp_env::with_vars($vars, $body)
+    }};
+}
 
 #[test]
 fn test_onchain_refresh_worker_enabled_accepts_disabled_values() {
@@ -28,7 +37,7 @@ fn test_onchain_refresh_worker_enabled_rejects_ambiguous_values() {
 
 #[test]
 fn test_onchain_refresh_runtime_config_defaults_debounce() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
             ("DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS", None::<&str>),
@@ -47,7 +56,7 @@ fn test_onchain_refresh_runtime_config_defaults_debounce() {
 
 #[test]
 fn test_onchain_refresh_runtime_config_accepts_debounce_override() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
             ("DEGOV_ONCHAIN_REFRESH_DEBOUNCE_MS", Some("2500")),
@@ -66,7 +75,7 @@ fn test_onchain_refresh_runtime_config_accepts_debounce_override() {
 
 #[test]
 fn test_onchain_refresh_runtime_config_accepts_deferred_drain_batch_override() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
             (
@@ -84,8 +93,72 @@ fn test_onchain_refresh_runtime_config_accepts_deferred_drain_batch_override() {
 }
 
 #[test]
+fn test_onchain_refresh_runtime_config_defaults_apply_batch_size() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE",
+                None::<&str>,
+            ),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.apply_batch_size,
+                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+            );
+            assert_eq!(
+                config.worker_config().apply_batch_size,
+                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+            );
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_accepts_apply_batch_override() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE",
+                Some("250"),
+            ),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.apply_batch_size, 250);
+            assert_eq!(config.worker_config().apply_batch_size, 250);
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_rejects_zero_apply_batch() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE", Some("0")),
+        ],
+        || {
+            let error =
+                OnchainRefreshRuntimeConfig::from_env().expect_err("zero apply batch is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE")
+            );
+        },
+    );
+}
+
+#[test]
 fn test_onchain_refresh_runtime_config_rejects_zero_deferred_drain_batch() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
             ("DEGOV_ONCHAIN_REFRESH_DEFERRED_DRAIN_BATCH_SIZE", Some("0")),
@@ -119,7 +192,7 @@ fn test_parse_i64_env_value_reports_field_name() {
 
 #[test]
 fn test_graphql_runtime_config_keeps_public_endpoint_separate_from_bind_address() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             (
                 "DEGOV_INDEXER_GRAPHQL_ENDPOINT",
@@ -145,7 +218,7 @@ fn test_graphql_runtime_config_keeps_public_endpoint_separate_from_bind_address(
 
 #[test]
 fn test_graphql_runtime_config_accepts_legacy_bind_endpoint() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_GRAPHQL_ENDPOINT", Some("127.0.0.1:4350")),
             ("DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS", None),
@@ -162,7 +235,7 @@ fn test_graphql_runtime_config_accepts_legacy_bind_endpoint() {
 
 #[test]
 fn test_indexer_runtime_config_defaults_to_latest_target_height() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("10")),
@@ -185,7 +258,7 @@ fn test_indexer_runtime_config_defaults_to_latest_target_height() {
 
 #[test]
 fn test_provisional_runtime_config_defaults_to_disabled_safe_to_latest() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_PROVISIONAL_WORKER_ENABLED", None::<&str>),
             ("DEGOV_PROVISIONAL_FINALITY", None::<&str>),
@@ -201,7 +274,7 @@ fn test_provisional_runtime_config_defaults_to_disabled_safe_to_latest() {
 
 #[test]
 fn test_provisional_runtime_config_rejects_final_finality() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_PROVISIONAL_WORKER_ENABLED", Some("true")),
             ("DEGOV_PROVISIONAL_FINALITY", Some("durable_only")),
@@ -217,7 +290,7 @@ fn test_provisional_runtime_config_rejects_final_finality() {
 
 #[test]
 fn test_indexer_runtime_config_accepts_provisional_worker_enablement() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("10")),
@@ -239,7 +312,7 @@ fn test_indexer_runtime_config_accepts_provisional_worker_enablement() {
 
 #[test]
 fn test_indexer_runtime_config_accepts_latest_target_height() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("10")),
@@ -255,7 +328,7 @@ fn test_indexer_runtime_config_accepts_latest_target_height() {
 
 #[test]
 fn test_indexer_runtime_config_keeps_numeric_target_height_for_debug_runs() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("10")),
@@ -271,7 +344,7 @@ fn test_indexer_runtime_config_keeps_numeric_target_height_for_debug_runs() {
 
 #[test]
 fn test_indexer_runtime_config_defaults_datalens_query_concurrency_to_unbounded() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
@@ -292,7 +365,7 @@ fn test_indexer_runtime_config_defaults_datalens_query_concurrency_to_unbounded(
 
 #[test]
 fn test_indexer_runtime_config_accepts_datalens_query_concurrency_overrides() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
@@ -319,7 +392,7 @@ fn test_indexer_runtime_config_accepts_datalens_query_concurrency_overrides() {
 
 #[test]
 fn test_indexer_runtime_config_rejects_zero_datalens_query_concurrency() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
@@ -340,7 +413,7 @@ fn test_indexer_runtime_config_rejects_zero_datalens_query_concurrency() {
 
 #[test]
 fn test_indexer_runtime_config_defaults_contract_set_concurrency_to_bounded_limits() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", None),
             ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
@@ -365,7 +438,7 @@ fn test_indexer_runtime_config_defaults_contract_set_concurrency_to_bounded_limi
 
 #[test]
 fn test_indexer_runtime_config_accepts_contract_set_unlimited_concurrency() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", None),
             ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
@@ -396,7 +469,7 @@ fn test_indexer_runtime_config_accepts_contract_set_unlimited_concurrency() {
 
 #[test]
 fn test_indexer_runtime_config_accepts_contract_set_bounded_concurrency() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", None),
             ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
@@ -424,7 +497,7 @@ fn test_indexer_runtime_config_accepts_contract_set_bounded_concurrency() {
 
 #[test]
 fn test_indexer_runtime_config_rejects_zero_contract_set_concurrency() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", None),
             ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
@@ -446,7 +519,7 @@ fn test_indexer_runtime_config_rejects_zero_contract_set_concurrency() {
 
 #[test]
 fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bounded() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
@@ -477,7 +550,7 @@ fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bound
 
 #[test]
 fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
@@ -510,7 +583,7 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
 
 #[test]
 fn test_indexer_runtime_config_inherits_onchain_refresh_tick_run_budget_from_total_budget() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
@@ -531,7 +604,7 @@ fn test_indexer_runtime_config_inherits_onchain_refresh_tick_run_budget_from_tot
 
 #[test]
 fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_total_budget() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
@@ -552,7 +625,7 @@ fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_total_b
 
 #[test]
 fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_run_budget() {
-    temp_env::with_vars(
+    with_env_vars!(
         [
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
