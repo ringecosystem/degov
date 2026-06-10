@@ -4,7 +4,7 @@ use sha3::{Digest, Keccak256};
 use std::time::Duration;
 
 const OPENROUTER_CHAT_COMPLETIONS_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_DEFAULT_MODEL: &str = "google/gemini-2.5-flash-preview";
+const OPENROUTER_DEFAULT_MODEL: &str = "google/gemini-2.5-flash";
 
 pub trait ProposalTitleExtractor {
     fn extract_title(
