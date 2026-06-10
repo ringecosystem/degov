@@ -168,6 +168,13 @@ pub fn plan_power_reconcile(
     let candidates = candidates
         .into_values()
         .map(|candidate| {
+            if candidate.refresh_balance() {
+                read_plan_builder.add_account_balance_refresh(
+                    &candidate.account,
+                    candidate.latest_activity_block,
+                    ChainReadReason::TokenActivityPowerRefresh,
+                );
+            }
             read_plan_builder.add_account_power_refresh_with_method(
                 &candidate.account,
                 candidate.latest_activity_block,
@@ -217,6 +224,7 @@ impl PendingPowerCandidate {
         let governor = normalize_identifier(&context.contracts.governor);
         let governor_token = normalize_identifier(&context.contracts.governor_token);
         let reason = reason_label(&self.reasons);
+        let refresh_balance = self.refresh_balance();
 
         PowerReconcileCandidate {
             contract_set_id: context.contract_set_id.clone(),
@@ -239,7 +247,7 @@ impl PendingPowerCandidate {
                 account: self.account,
                 source: PowerRefreshReadSource::OnchainRpc,
                 status: PowerRefreshStatus::Pending,
-                refresh_balance: false,
+                refresh_balance,
                 refresh_power: true,
                 reason,
                 first_seen_activity_block: self.first_seen_activity_block,
@@ -258,6 +266,11 @@ impl PendingPowerCandidate {
             self.latest_transaction_index,
             self.latest_log_index,
         )
+    }
+
+    fn refresh_balance(&self) -> bool {
+        self.reasons.contains(&PowerActivityReason::DelegateChanged)
+            || self.reasons.contains(&PowerActivityReason::Transfer)
     }
 }
 

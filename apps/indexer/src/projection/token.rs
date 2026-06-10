@@ -336,6 +336,7 @@ impl InMemoryTokenProjectionRepository {
         };
         self.delegate_mappings
             .insert(mapping.id.clone(), mapping.clone());
+        self.upsert_delegate_snapshot(common, delegator, to_delegate, true, &mapping.power);
     }
 
     fn apply_delegate_votes_changed(
@@ -391,12 +392,14 @@ impl InMemoryTokenProjectionRepository {
             return;
         }
 
-        let mapping_power = self
+        let Some(previous_mapping_power) = self
             .delegate_mappings
             .get(from_delegate)
             .filter(|mapping| mapping.to == to_delegate)
-            .map(|mapping| mapping.power.clone());
-        let previous_mapping_power = mapping_power.unwrap_or_else(|| "0".to_owned());
+            .map(|mapping| mapping.power.clone())
+        else {
+            return;
+        };
         let next_mapping_power = apply_signed_decimal(&previous_mapping_power, delta);
         if let Some(mapping) = self.delegate_mappings.get_mut(from_delegate)
             && mapping.to == to_delegate
@@ -436,10 +439,6 @@ impl InMemoryTokenProjectionRepository {
             return;
         }
         let id = delegate_ref(from_delegate, to_delegate);
-        if is_current && !is_nonzero_decimal(power) {
-            self.delegates.remove(&id);
-            return;
-        }
         let row = DelegateWrite {
             id: id.clone(),
             common: common.clone(),

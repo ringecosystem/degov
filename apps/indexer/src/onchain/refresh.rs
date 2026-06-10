@@ -1222,6 +1222,11 @@ where
                     crate::ChainReadReason::TokenActivityPowerRefresh,
                     self.current_power_method,
                 );
+                builder.add_account_balance_refresh(
+                    &task.account,
+                    parse_u64(&task.last_seen_block_number)?,
+                    crate::ChainReadReason::TokenActivityPowerRefresh,
+                );
             }
 
             let plan = builder.build();
@@ -1230,6 +1235,8 @@ where
                 .execute_read_plan(&plan)
                 .map_err(|failures| OnchainRefreshReaderError::new(format_failures(&failures)))?;
 
+            let mut powers_by_account = BTreeMap::<String, String>::new();
+            let mut balances_by_account = BTreeMap::<String, String>::new();
             for result in report.results {
                 let Some(account) = result.key.args.first() else {
                     continue;
@@ -1243,9 +1250,21 @@ where
                         )));
                     }
                 };
-                let Some(task) = tasks_by_account.get(account) else {
-                    continue;
-                };
+                match result.key.method {
+                    method if method == self.current_power_method => {
+                        powers_by_account.insert(account.clone(), value);
+                    }
+                    ChainReadMethod::BalanceOf => {
+                        balances_by_account.insert(account.clone(), value);
+                    }
+                    _ => {}
+                }
+            }
+
+            for (account, task) in tasks_by_account {
+                let power = powers_by_account.get(&account).cloned().ok_or_else(|| {
+                    OnchainRefreshReaderError::new(format!("missing power read for {account}"))
+                })?;
                 writes.push(ProvisionalContributorPowerOverlayWrite {
                     id: provisional_contributor_power_overlay_id(task),
                     segment_id: None,
@@ -1256,8 +1275,8 @@ where
                     governor_address: Some(normalize_identifier(&governor_address)),
                     token_address: Some(normalize_identifier(&token_address)),
                     account: normalize_identifier(&task.account),
-                    power: value,
-                    balance: None,
+                    power,
+                    balance: balances_by_account.get(&account).cloned(),
                     delegates_count_all: 0,
                     delegates_count_effective: 0,
                     last_vote_block_number: None,
@@ -2748,6 +2767,7 @@ fn provisional_delegate_power_overlay_writes(
                 relation.token_address.clone(),
                 relation.delegator.clone(),
             ))?;
+            let power = contributor.balance.as_ref()?;
 
             Some(ProvisionalDelegatePowerOverlayWrite {
                 id: provisional_delegate_power_overlay_id(relation),
@@ -2760,7 +2780,7 @@ fn provisional_delegate_power_overlay_writes(
                 token_address: relation.token_address.clone(),
                 delegator: relation.delegator.clone(),
                 delegate: relation.delegate.clone(),
-                power: contributor.power.clone(),
+                power: power.clone(),
                 is_current: relation.is_current,
                 source: contributor.source.clone(),
                 status: contributor.status.clone(),
