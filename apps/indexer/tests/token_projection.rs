@@ -90,7 +90,7 @@ fn test_project_token_events_preserves_history_mappings_relations_and_reconcile_
 
     assert_eq!(batch.reconcile_plan.metrics.candidate_count, 7);
     assert_eq!(batch.reconcile_plan.metrics.deduped_count, 4);
-    assert_eq!(batch.reconcile_plan.chain_read_plan.reads.len(), 6);
+    assert_eq!(batch.reconcile_plan.chain_read_plan.reads.len(), 5);
     let accounts = batch
         .reconcile_plan
         .candidates
@@ -136,7 +136,7 @@ fn test_project_token_events_preserves_history_mappings_relations_and_reconcile_
             .iter()
             .filter(|read| read.key.method == ChainReadMethod::BalanceOf)
             .count(),
-        3
+        2
     );
 }
 
