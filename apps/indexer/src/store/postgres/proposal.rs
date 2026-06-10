@@ -352,6 +352,8 @@ pub struct ProposalTitleRefreshCandidate {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProposalTitleRefreshUpdate {
     pub id: String,
+    pub description: String,
+    pub previous_title: String,
     pub title: String,
 }
 
@@ -381,6 +383,7 @@ pub async fn read_proposal_title_refresh_candidates(
 
 const UPDATE_PROPOSAL_TITLES_SQL_PREFIX: &str =
     "UPDATE proposal SET title = proposal_title_refresh.title FROM (";
+const UPDATE_PROPOSAL_TITLES_CHUNK_SIZE: usize = 5_000;
 
 pub async fn update_proposal_titles(
     pool: &PgPool,
@@ -391,13 +394,31 @@ pub async fn update_proposal_titles(
         return Ok(0);
     }
 
+    let mut rows_affected = 0;
+    for update_chunk in updates.chunks(UPDATE_PROPOSAL_TITLES_CHUNK_SIZE) {
+        rows_affected += update_proposal_title_chunk(pool, dao_code, update_chunk).await?;
+    }
+
+    Ok(rows_affected)
+}
+
+async fn update_proposal_title_chunk(
+    pool: &PgPool,
+    dao_code: &str,
+    updates: &[ProposalTitleRefreshUpdate],
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(UPDATE_PROPOSAL_TITLES_SQL_PREFIX);
     builder.push_values(updates, |mut row, update| {
-        row.push_bind(&update.id).push_bind(&update.title);
+        row.push_bind(&update.id)
+            .push_bind(&update.description)
+            .push_bind(&update.previous_title)
+            .push_bind(&update.title);
     });
     builder.push(
-        ") AS proposal_title_refresh(id, title)
+        ") AS proposal_title_refresh(id, description, previous_title, title)
          WHERE proposal.id = proposal_title_refresh.id
+           AND proposal.description = proposal_title_refresh.description
+           AND proposal.title = proposal_title_refresh.previous_title
            AND proposal.dao_code = ",
     );
     builder.push_bind(dao_code);

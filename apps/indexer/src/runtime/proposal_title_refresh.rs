@@ -3,9 +3,11 @@ use runtime_anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
 
 use crate::{
-    ProposalTitleRefreshCandidate, ProposalTitleRefreshUpdate, derive_proposal_metadata,
+    ProposalTitleRefreshCandidate, ProposalTitleRefreshUpdate,
+    projection::proposal_metadata::OpenRouterProposalTitleExtractor,
     read_proposal_title_refresh_candidates, required_env, update_proposal_titles,
 };
+use crate::{derive_proposal_metadata, derive_proposal_metadata_with_title_extractor};
 
 use super::migrate::apply_migrations;
 
@@ -53,9 +55,15 @@ pub async fn refresh_proposal_titles_with_pool(
 pub fn plan_proposal_title_refreshes(
     candidates: &[ProposalTitleRefreshCandidate],
 ) -> Vec<ProposalTitleRefreshUpdate> {
-    plan_proposal_title_refreshes_with(candidates, |description| {
-        derive_proposal_metadata(description).title
-    })
+    if let Some(title_extractor) = OpenRouterProposalTitleExtractor::from_env() {
+        plan_proposal_title_refreshes_with(candidates, |description| {
+            derive_proposal_metadata_with_title_extractor(description, &title_extractor).title
+        })
+    } else {
+        plan_proposal_title_refreshes_with(candidates, |description| {
+            derive_proposal_metadata(description).title
+        })
+    }
 }
 
 fn plan_proposal_title_refreshes_with(
@@ -71,6 +79,8 @@ fn plan_proposal_title_refreshes_with(
             } else {
                 Some(ProposalTitleRefreshUpdate {
                     id: candidate.id.clone(),
+                    description: candidate.description.clone(),
+                    previous_title: candidate.title.clone(),
                     title,
                 })
             }
@@ -111,6 +121,8 @@ mod tests {
             updates,
             vec![ProposalTitleRefreshUpdate {
                 id: "proposal:1".to_owned(),
+                description: "# Fresh title\nBody".to_owned(),
+                previous_title: "stale".to_owned(),
                 title: "Fresh title".to_owned(),
             }]
         );
