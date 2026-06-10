@@ -170,6 +170,26 @@ fn test_project_proposal_created_skips_erc721_decimals_enrichment_read() {
 }
 
 #[test]
+fn test_project_proposal_created_uses_ethereum_float_block_interval_fallback() {
+    let batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: production_log("block-interval", 100, 0, 1, 1_700_000_000_000),
+            event: proposal_created("42", "# Proposal title\n\nProposal body"),
+        }],
+    )
+    .expect("projection succeeds");
+
+    let proposal = &batch.proposals[0];
+    assert_eq!(
+        proposal.block_interval.as_deref(),
+        Some("13.333333333333334")
+    );
+    assert_eq!(proposal.vote_start_timestamp, "1699998933333");
+    assert_eq!(proposal.vote_end_timestamp, "1699999200000");
+}
+
+#[test]
 fn test_project_proposal_created_uses_raw_log_id_and_timestamp_clock_enrichment() {
     let batch = project_proposal_events(
         &context(),
@@ -313,7 +333,10 @@ fn test_project_proposal_created_estimates_blocknumber_vote_timestamps_from_prop
     assert_eq!(proposal.clock_mode, "blocknumber");
     assert_eq!(proposal.vote_start_timestamp, "1745507999000");
     assert_eq!(proposal.vote_end_timestamp, "1746060503000");
-    assert_eq!(proposal.block_interval.as_deref(), Some("12"));
+    assert_eq!(
+        proposal.block_interval.as_deref(),
+        Some("13.333333333333334")
+    );
     assert_eq!(
         proposal.timelock_address.as_deref(),
         Some("0x2222222222222222222222222222222222222222")
