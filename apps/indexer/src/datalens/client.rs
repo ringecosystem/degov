@@ -1,10 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{
-        Arc, Condvar, Mutex, OnceLock,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Arc, Condvar, Mutex, OnceLock, mpsc},
     time::{Duration, Instant},
 };
 
@@ -43,7 +39,7 @@ pub struct DatalensNativeClient {
     query_gate: Option<DatalensQueryConcurrencyGate>,
     query_key: DatalensQueryConcurrencyKey,
     query_timeout: Duration,
-    blocking_query_in_flight: Arc<AtomicBool>,
+    blocking_query_guard: Arc<DatalensBlockingQueryGuard>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -129,6 +125,49 @@ struct DatalensQueryConcurrencyGateInner {
 struct DatalensQueryConcurrencyGateState {
     global_in_flight: usize,
     per_chain_in_flight: HashMap<DatalensQueryConcurrencyKey, usize>,
+}
+
+const MAX_BLOCKING_SDK_WORKERS_PER_KEY: usize = 2;
+
+struct DatalensBlockingQueryGuard {
+    active_workers: Mutex<usize>,
+}
+
+struct DatalensBlockingQueryPermit {
+    guard: Arc<DatalensBlockingQueryGuard>,
+}
+
+impl DatalensBlockingQueryGuard {
+    fn new() -> Self {
+        Self {
+            active_workers: Mutex::new(0),
+        }
+    }
+
+    fn acquire(&self) -> Result<(), DatalensSdkError> {
+        let mut active_workers = self.active_workers.lock().map_err(|_| {
+            DatalensSdkError::Transport("Datalens blocking query guard lock poisoned".to_owned())
+        })?;
+        if *active_workers >= MAX_BLOCKING_SDK_WORKERS_PER_KEY {
+            return Err(DatalensSdkError::Transport(format!(
+                "Datalens query timed out because {active_workers} previous SDK queries are still in flight"
+            )));
+        }
+        *active_workers += 1;
+        Ok(())
+    }
+
+    fn release(&self) {
+        if let Ok(mut active_workers) = self.active_workers.lock() {
+            *active_workers = active_workers.saturating_sub(1);
+        }
+    }
+}
+
+impl Drop for DatalensBlockingQueryPermit {
+    fn drop(&mut self) {
+        self.guard.release();
+    }
 }
 
 enum DatalensQueryConcurrencyAcquire {
@@ -303,6 +342,7 @@ pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
         || normalized.contains("sending request")
         || normalized.contains("connection")
         || normalized.contains("network")
+        || normalized.contains("still in flight")
         || normalized.contains("provider_failure")
         || normalized.contains("unavailable_head")
         || normalized.contains("no available server")
@@ -339,7 +379,7 @@ impl DatalensNativeClient {
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
-            blocking_query_in_flight: blocking_query_guard_for_config(config)?,
+            blocking_query_guard: blocking_query_guard_for_config(config)?,
         })
     }
 
@@ -375,7 +415,7 @@ impl DatalensNativeClient {
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
-            blocking_query_in_flight: blocking_query_guard_for_config(config)?,
+            blocking_query_guard: blocking_query_guard_for_config(config)?,
         })
     }
 
@@ -498,25 +538,18 @@ impl DatalensNativeClient {
         F: FnOnce(DatalensClient) -> Result<QueryResponse, DatalensSdkError> + Send + 'static,
     {
         let started_at = Instant::now();
-        if self
-            .blocking_query_in_flight
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            let error = datalens_query_timeout_error(
-                operation,
-                self.query_timeout,
-                Some("previous SDK query is still in flight"),
-            );
+        if let Err(error) = self.blocking_query_guard.acquire() {
             self.warn_query_timeout(operation, &error);
             return Err(error);
         }
+        let blocking_query_permit = DatalensBlockingQueryPermit {
+            guard: self.blocking_query_guard.clone(),
+        };
 
         let permit = match self.acquire_query_concurrency_permit(operation) {
             Ok(DatalensQueryConcurrencyAcquire::Acquired(permit)) => permit,
             Ok(DatalensQueryConcurrencyAcquire::TimedOut) => {
-                self.blocking_query_in_flight
-                    .store(false, Ordering::Release);
+                drop(blocking_query_permit);
                 let error = datalens_query_timeout_error(
                     operation,
                     self.query_timeout,
@@ -526,14 +559,12 @@ impl DatalensNativeClient {
                 return Err(error);
             }
             Err(error) => {
-                self.blocking_query_in_flight
-                    .store(false, Ordering::Release);
+                drop(blocking_query_permit);
                 return Err(DatalensSdkError::Transport(error.to_string()));
             }
         };
         let Some(remaining_timeout) = self.query_timeout.checked_sub(started_at.elapsed()) else {
-            self.blocking_query_in_flight
-                .store(false, Ordering::Release);
+            drop(blocking_query_permit);
             let error = datalens_query_timeout_error(
                 operation,
                 self.query_timeout,
@@ -544,19 +575,16 @@ impl DatalensNativeClient {
         };
         let (sender, receiver) = mpsc::sync_channel(1);
         let client = self.client.clone();
-        let blocking_query_in_flight = self.blocking_query_in_flight.clone();
         let spawn_result = std::thread::Builder::new()
             .name(format!("degov-datalens-{operation}"))
             .spawn(move || {
-                let _in_flight_reset = DatalensBlockingQueryReset(blocking_query_in_flight);
+                let _blocking_query_permit = blocking_query_permit;
                 let _permit = permit;
                 let result = run(client);
                 let _ = sender.send(result);
             });
 
         if let Err(error) = spawn_result {
-            self.blocking_query_in_flight
-                .store(false, Ordering::Release);
             return Err(DatalensSdkError::Transport(format!(
                 "spawn Datalens {operation} worker: {error}"
             )));
@@ -617,14 +645,6 @@ impl DatalensNativeClient {
     }
 }
 
-struct DatalensBlockingQueryReset(Arc<AtomicBool>);
-
-impl Drop for DatalensBlockingQueryReset {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
-    }
-}
-
 fn fallback_retry_delay(
     retry_config: &RetryConfig,
     error: &DatalensSdkError,
@@ -650,9 +670,9 @@ fn fallback_retry_delay(
 
 fn blocking_query_guard_for_config(
     config: &DatalensConfig,
-) -> Result<Arc<AtomicBool>, DatalensError> {
+) -> Result<Arc<DatalensBlockingQueryGuard>, DatalensError> {
     static BLOCKING_QUERY_GUARDS: OnceLock<
-        Mutex<HashMap<DatalensBlockingQueryKey, Arc<AtomicBool>>>,
+        Mutex<HashMap<DatalensBlockingQueryKey, Arc<DatalensBlockingQueryGuard>>>,
     > = OnceLock::new();
 
     let key = DatalensBlockingQueryKey::from_config(config);
@@ -662,7 +682,7 @@ fn blocking_query_guard_for_config(
     })?;
     Ok(guards
         .entry(key)
-        .or_insert_with(|| Arc::new(AtomicBool::new(false)))
+        .or_insert_with(|| Arc::new(DatalensBlockingQueryGuard::new()))
         .clone())
 }
 
