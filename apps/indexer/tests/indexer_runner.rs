@@ -403,11 +403,85 @@ fn test_runner_splits_transient_range_and_retries_without_pass_error() {
 }
 
 #[test]
-fn test_runner_keeps_transient_min_chunk_as_recoverable_pass_error() {
+fn test_runner_splits_transient_failure_below_normal_min_and_advances_checkpoint() {
     let mut options = options();
-    set_block_range_limit(&mut options, 100);
+    set_block_range_limit(&mut options, 101);
     let observed_ranges = Arc::new(Mutex::new(Vec::new()));
-    let reader = TransientDatalensReader::new(99, observed_ranges.clone());
+    let reader = TransientDatalensReader::new(1, observed_ranges.clone());
+    let mut runner = IndexerRunner::new(
+        options,
+        contexts(),
+        reader,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+        ScriptedDecoder,
+    );
+    runner.request_shutdown_after_chunks(1);
+
+    let report = runner
+        .run_to_target(101)
+        .expect("transient range splits below normal min chunk");
+
+    assert_eq!(report.chunks_processed, 1);
+    assert!(report.shutdown_requested);
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        2
+    );
+    assert_eq!(runner.store().commit_count(), 1);
+    assert_eq!(
+        *observed_ranges.lock().expect("observed ranges"),
+        vec![
+            (1, 101),
+            (1, 50),
+            (1, 25),
+            (1, 12),
+            (1, 6),
+            (1, 3),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+        ]
+    );
+}
+
+#[test]
+fn test_runner_splits_two_block_transient_failure_to_single_block() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 2);
+    let observed_ranges = Arc::new(Mutex::new(Vec::new()));
+    let reader = TransientDatalensReader::new(1, observed_ranges.clone());
+    let mut runner = IndexerRunner::new(
+        options,
+        contexts(),
+        reader,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+        ScriptedDecoder,
+    );
+    runner.request_shutdown_after_chunks(1);
+
+    let report = runner
+        .run_to_target(2)
+        .expect("two-block transient failure splits to one block");
+
+    assert_eq!(report.chunks_processed, 1);
+    assert!(report.shutdown_requested);
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        2
+    );
+    assert_eq!(runner.store().commit_count(), 1);
+    assert_eq!(
+        *observed_ranges.lock().expect("observed ranges"),
+        vec![(1, 2), (1, 1), (1, 1), (1, 1)]
+    );
+}
+
+#[test]
+fn test_runner_keeps_single_block_transient_failure_as_recoverable_pass_error() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 1);
+    let observed_ranges = Arc::new(Mutex::new(Vec::new()));
+    let reader = TransientDatalensReader::new(0, observed_ranges.clone());
     let mut runner = IndexerRunner::new(
         options,
         contexts(),
@@ -417,8 +491,8 @@ fn test_runner_keeps_transient_min_chunk_as_recoverable_pass_error() {
     );
 
     let error = runner
-        .run_to_target(100)
-        .expect_err("min chunk transient remains a pass error");
+        .run_to_target(1)
+        .expect_err("single-block transient remains a pass error");
 
     assert!(error.to_string().contains("502"));
     assert_eq!(
@@ -428,7 +502,7 @@ fn test_runner_keeps_transient_min_chunk_as_recoverable_pass_error() {
     assert_eq!(runner.store().commit_count(), 0);
     assert_eq!(
         *observed_ranges.lock().expect("observed ranges"),
-        vec![(1, 100)]
+        vec![(1, 1)]
     );
 }
 

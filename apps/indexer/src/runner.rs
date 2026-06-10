@@ -72,6 +72,7 @@ pub struct AdaptiveChunkSizerConfig {
     pub initial_chunk_size: u32,
     pub max_chunk_size: u32,
     pub min_chunk_size: u32,
+    pub transient_query_failure_min_chunk_size: u32,
     pub local_processing_shrink_threshold: Duration,
     pub fast_chunk_duration_threshold: Duration,
     pub high_query_duration_threshold: Duration,
@@ -89,6 +90,7 @@ impl AdaptiveChunkSizerConfig {
             initial_chunk_size: max_chunk_size,
             max_chunk_size,
             min_chunk_size: 100,
+            transient_query_failure_min_chunk_size: 1,
             local_processing_shrink_threshold: Duration::from_secs(10),
             fast_chunk_duration_threshold: Duration::from_secs(1),
             high_query_duration_threshold: Duration::from_secs(10),
@@ -104,6 +106,9 @@ impl AdaptiveChunkSizerConfig {
     pub fn capped_to_block_range_limit(mut self, block_range_limit: u32) -> Self {
         self.max_chunk_size = self.max_chunk_size.min(block_range_limit);
         self.min_chunk_size = self.min_chunk_size.min(self.max_chunk_size);
+        self.transient_query_failure_min_chunk_size = self
+            .transient_query_failure_min_chunk_size
+            .min(self.max_chunk_size);
         self.initial_chunk_size = self.initial_chunk_size.min(self.max_chunk_size);
         self.initial_chunk_size = self.initial_chunk_size.max(self.min_chunk_size);
         self
@@ -173,10 +178,14 @@ impl AdaptiveChunkSizer {
         if config.initial_chunk_size == 0
             || config.max_chunk_size == 0
             || config.min_chunk_size == 0
+            || config.transient_query_failure_min_chunk_size == 0
         {
             return Err(CheckpointError::InvalidRangeLimit);
         }
         if config.min_chunk_size > config.max_chunk_size {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
+        if config.transient_query_failure_min_chunk_size > config.max_chunk_size {
             return Err(CheckpointError::InvalidRangeLimit);
         }
         if config.initial_chunk_size < config.min_chunk_size
@@ -317,7 +326,7 @@ impl AdaptiveChunkSizer {
         &mut self,
         failed_range_block_count: u32,
     ) -> Option<(u32, u32)> {
-        if failed_range_block_count <= self.config.min_chunk_size {
+        if failed_range_block_count <= self.config.transient_query_failure_min_chunk_size {
             return None;
         }
 
@@ -326,7 +335,7 @@ impl AdaptiveChunkSizer {
         self.unstable_chunks = 0;
         self.current_chunk_size = failed_range_block_count
             .saturating_div(2)
-            .max(self.config.min_chunk_size)
+            .max(self.config.transient_query_failure_min_chunk_size)
             .min(self.current_chunk_size);
 
         Some((previous_chunk_size, self.current_chunk_size))
