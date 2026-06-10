@@ -126,18 +126,19 @@ pub fn plan_power_reconcile(
     let mut candidates = BTreeMap::<String, PendingPowerCandidate>::new();
 
     for event in events {
-        for (account, reason) in affected_accounts(&event.event) {
-            if is_zero_address(&account) {
+        for activity in affected_accounts(&event.event) {
+            if is_zero_address(&activity.account) {
                 continue;
             }
 
             candidate_count += 1;
-            let normalized_account = normalize_identifier(&account);
+            let normalized_account = normalize_identifier(&activity.account);
             candidates
                 .entry(normalized_account.clone())
                 .and_modify(|candidate| {
                     candidate.first_seen_activity_block =
                         candidate.first_seen_activity_block.min(event.block_number);
+                    candidate.refresh_balance |= activity.refresh_balance;
                     if event.log_position() >= candidate.latest_position() {
                         candidate.latest_activity_block = event.block_number;
                         candidate.latest_transaction_index = event.transaction_index;
@@ -145,7 +146,7 @@ pub fn plan_power_reconcile(
                         candidate.last_seen_block_timestamp_ms = event.block_timestamp_ms;
                         candidate.last_seen_transaction_hash = event.transaction_hash.clone();
                     }
-                    candidate.reasons.insert(reason);
+                    candidate.reasons.insert(activity.reason);
                 })
                 .or_insert_with(|| PendingPowerCandidate {
                     account: normalized_account,
@@ -155,7 +156,8 @@ pub fn plan_power_reconcile(
                     latest_log_index: event.log_index,
                     last_seen_block_timestamp_ms: event.block_timestamp_ms,
                     last_seen_transaction_hash: event.transaction_hash.clone(),
-                    reasons: [reason].into(),
+                    refresh_balance: activity.refresh_balance,
+                    reasons: [activity.reason].into(),
                 });
         }
     }
@@ -216,6 +218,7 @@ struct PendingPowerCandidate {
     latest_log_index: u64,
     last_seen_block_timestamp_ms: Option<u64>,
     last_seen_transaction_hash: String,
+    refresh_balance: bool,
     reasons: BTreeSet<PowerActivityReason>,
 }
 
@@ -269,33 +272,57 @@ impl PendingPowerCandidate {
     }
 
     fn refresh_balance(&self) -> bool {
-        self.reasons.contains(&PowerActivityReason::DelegateChanged)
-            || self.reasons.contains(&PowerActivityReason::Transfer)
+        self.refresh_balance
     }
 }
 
-fn affected_accounts(event: &DecodedDaoEvent) -> Vec<(String, PowerActivityReason)> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AccountActivity {
+    account: String,
+    reason: PowerActivityReason,
+    refresh_balance: bool,
+}
+
+impl AccountActivity {
+    fn power_only(account: String, reason: PowerActivityReason) -> Self {
+        Self {
+            account,
+            reason,
+            refresh_balance: false,
+        }
+    }
+
+    fn with_balance(account: String, reason: PowerActivityReason) -> Self {
+        Self {
+            account,
+            reason,
+            refresh_balance: true,
+        }
+    }
+}
+
+fn affected_accounts(event: &DecodedDaoEvent) -> Vec<AccountActivity> {
     match event {
         DecodedDaoEvent::Token(DecodedTokenEvent::Transfer(event)) => vec![
-            (event.from.clone(), PowerActivityReason::Transfer),
-            (event.to.clone(), PowerActivityReason::Transfer),
+            AccountActivity::with_balance(event.from.clone(), PowerActivityReason::Transfer),
+            AccountActivity::with_balance(event.to.clone(), PowerActivityReason::Transfer),
         ],
         DecodedDaoEvent::Token(DecodedTokenEvent::DelegateChanged(event)) => vec![
-            (
+            AccountActivity::with_balance(
                 event.delegator.clone(),
                 PowerActivityReason::DelegateChanged,
             ),
-            (
+            AccountActivity::power_only(
                 event.from_delegate.clone(),
                 PowerActivityReason::DelegateChanged,
             ),
-            (
+            AccountActivity::power_only(
                 event.to_delegate.clone(),
                 PowerActivityReason::DelegateChanged,
             ),
         ],
         DecodedDaoEvent::Token(DecodedTokenEvent::DelegateVotesChanged(event)) => {
-            vec![(
+            vec![AccountActivity::power_only(
                 event.delegate.clone(),
                 PowerActivityReason::DelegateVotesChanged,
             )]

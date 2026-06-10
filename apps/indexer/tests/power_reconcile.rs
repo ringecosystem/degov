@@ -153,6 +153,51 @@ fn test_plan_power_reconcile_does_not_write_log_derived_power() {
 }
 
 #[test]
+fn test_plan_power_reconcile_refreshes_balance_only_for_delegate_change_delegator() {
+    let delegator = account("aaaa");
+    let from_delegate = account("bbbb");
+    let to_delegate = account("cccc");
+    let events = vec![PowerReconcileEvent {
+        block_number: 150,
+        block_timestamp_ms: Some(150_000),
+        transaction_hash: "0xtx150".to_owned(),
+        transaction_index: 0,
+        log_index: 0,
+        event: DecodedDaoEvent::Token(DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+            delegator: delegator.clone(),
+            from_delegate: from_delegate.clone(),
+            to_delegate: to_delegate.clone(),
+        })),
+    }];
+
+    let plan = plan_power_reconcile(&context(150, 150, Some(150)), &events);
+
+    let delegator_candidate = plan
+        .candidates
+        .iter()
+        .find(|candidate| candidate.account == delegator)
+        .expect("delegator candidate");
+    assert!(delegator_candidate.status.refresh_balance);
+
+    for delegate in [&from_delegate, &to_delegate] {
+        let candidate = plan
+            .candidates
+            .iter()
+            .find(|candidate| candidate.account == *delegate)
+            .expect("delegate candidate");
+        assert!(candidate.status.refresh_power);
+        assert!(!candidate.status.refresh_balance);
+        assert!(
+            !plan.chain_read_plan.reads.iter().any(|read| {
+                read.metadata.accounts.contains(delegate)
+                    && read.key.method == ChainReadMethod::BalanceOf
+            }),
+            "delegatee accounts should not receive balanceOf refresh reads"
+        );
+    }
+}
+
+#[test]
 fn test_plan_power_reconcile_emits_chaintool_get_votes_reads() {
     let acct = account("aaaa");
     let events = vec![PowerReconcileEvent {
