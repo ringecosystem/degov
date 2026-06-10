@@ -17,6 +17,7 @@ async fn write_data_metric_timeline(
         .map(|(contract_set_id, id)| (contract_set_id.as_str(), id.as_str()))
         .collect::<HashSet<_>>();
     let mut delegate_mapping_cache = DelegateMappingCache::default();
+    let mut delegate_snapshot_cache = DelegateSnapshotCache::default();
     let mut contributor_ensure_cache = ContributorEnsureCache::default();
     let mut token_metadata_cache = BatchTokenMetadataCache::default();
     let mut items = Vec::new();
@@ -47,6 +48,7 @@ async fn write_data_metric_timeline(
                     apply_token_operation(
                         transaction,
                         &mut delegate_mapping_cache,
+                        &mut delegate_snapshot_cache,
                         &mut contributor_ensure_cache,
                         &mut token_metadata_cache,
                         operation,
@@ -62,6 +64,7 @@ async fn write_data_metric_timeline(
             }
         }
     }
+    delegate_snapshot_cache.flush(transaction).await?;
     delegate_mapping_cache.flush(transaction).await?;
     contributor_ensure_cache
         .flush_contributor_count_deltas(transaction)
