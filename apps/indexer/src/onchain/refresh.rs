@@ -786,6 +786,8 @@ where
             let previous_values =
                 read_contributor_refresh_values(&mut transaction, successes).await?;
             upsert_contributor_refresh(&mut transaction, successes).await?;
+            reconcile_current_delegate_relation_power_from_balance(&mut transaction, successes)
+                .await?;
             insert_refresh_checkpoints(
                 &mut transaction,
                 successes,
@@ -2122,6 +2124,154 @@ async fn upsert_contributor_refresh_group(
         .push_bind(refresh_balance)
         .push(" THEN EXCLUDED.balance ELSE contributor.balance END");
     query.build().execute(&mut **transaction).await?;
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct DelegateRelationBalanceRefreshKey {
+    contract_set_id: String,
+    chain_id: i32,
+    dao_code: Option<String>,
+    governor_address: String,
+    token_address: String,
+    account: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DelegateRelationBalanceRefresh {
+    key: DelegateRelationBalanceRefreshKey,
+    balance: String,
+}
+
+async fn reconcile_current_delegate_relation_power_from_balance(
+    transaction: &mut Transaction<'_, Postgres>,
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+) -> Result<(), sqlx::Error> {
+    let mut refreshes_by_key = BTreeMap::new();
+    for (task, value) in successes {
+        let Some(balance) = value.balance.as_ref().filter(|_| task.refresh_balance) else {
+            continue;
+        };
+        let key = DelegateRelationBalanceRefreshKey {
+            contract_set_id: task.contract_set_id.clone(),
+            chain_id: task.chain_id,
+            dao_code: task.dao_code.clone(),
+            governor_address: task.governor_address.clone(),
+            token_address: task.token_address.clone(),
+            account: task.account.clone(),
+        };
+        refreshes_by_key.insert(
+            key.clone(),
+            DelegateRelationBalanceRefresh {
+                key,
+                balance: balance.clone(),
+            },
+        );
+    }
+
+    if refreshes_by_key.is_empty() {
+        return Ok(());
+    }
+
+    let refreshes = refreshes_by_key.into_values().collect::<Vec<_>>();
+    for chunk in refreshes.chunks(MAX_ONCHAIN_REFRESH_APPLY_ROWS) {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "WITH refreshed (
+                contract_set_id, chain_id, dao_code, governor_address, token_address,
+                delegator, balance
+             ) AS (",
+        );
+        query.push_values(chunk, |mut values, refresh| {
+            values
+                .push_bind(&refresh.key.contract_set_id)
+                .push_bind(refresh.key.chain_id)
+                .push_bind(&refresh.key.dao_code)
+                .push_bind(&refresh.key.governor_address)
+                .push_bind(&refresh.key.token_address)
+                .push_bind(&refresh.key.account)
+                .push_bind(&refresh.balance)
+                .push_unseparated("::NUMERIC(78, 0)");
+        });
+        query.push(
+            "),
+             current_edges AS (
+                SELECT DISTINCT ON (delegate.contract_set_id, delegate.id)
+                    delegate.contract_set_id,
+                    delegate.id,
+                    delegate.from_delegate,
+                    delegate.to_delegate,
+                    delegate.power AS previous_power,
+                    refreshed.balance AS new_power
+                FROM delegate
+                JOIN refreshed
+                  ON refreshed.contract_set_id = delegate.contract_set_id
+                 AND refreshed.chain_id = delegate.chain_id
+                 AND refreshed.dao_code IS NOT DISTINCT FROM delegate.dao_code
+                 AND refreshed.governor_address IS NOT DISTINCT FROM delegate.governor_address
+                 AND (
+                    delegate.token_address IS NOT DISTINCT FROM refreshed.token_address
+                    OR delegate.token_address IS NULL
+                 )
+                 AND refreshed.delegator = delegate.from_delegate
+                WHERE delegate.is_current = TRUE
+                ORDER BY delegate.contract_set_id, delegate.id
+             ),
+             effective_deltas AS (
+                SELECT
+                    contract_set_id,
+                    to_delegate,
+                    SUM(
+                        CASE
+                            WHEN previous_power = 0::NUMERIC(78, 0)
+                             AND new_power <> 0::NUMERIC(78, 0) THEN 1
+                            WHEN previous_power <> 0::NUMERIC(78, 0)
+                             AND new_power = 0::NUMERIC(78, 0) THEN -1
+                            ELSE 0
+                        END
+                    )::INT AS delta
+                FROM current_edges
+                GROUP BY contract_set_id, to_delegate
+             ),
+             updated_delegates AS (
+                UPDATE delegate
+                SET power = current_edges.new_power
+                FROM current_edges
+                WHERE delegate.contract_set_id = current_edges.contract_set_id
+                  AND delegate.id = current_edges.id
+                  AND delegate.power IS DISTINCT FROM current_edges.new_power
+                RETURNING delegate.id
+             ),
+             updated_delegate_mappings AS (
+                UPDATE delegate_mapping
+                SET power = current_edges.new_power
+                FROM current_edges
+                WHERE delegate_mapping.contract_set_id = current_edges.contract_set_id
+                  AND delegate_mapping.id = current_edges.from_delegate
+                  AND delegate_mapping.\"from\" = current_edges.from_delegate
+                  AND delegate_mapping.\"to\" = current_edges.to_delegate
+                  AND delegate_mapping.power IS DISTINCT FROM current_edges.new_power
+                RETURNING delegate_mapping.id
+             ),
+             updated_effective_counts AS (
+                UPDATE contributor
+                SET delegates_count_effective = GREATEST(
+                    0,
+                    contributor.delegates_count_effective + effective_deltas.delta
+                )
+                FROM effective_deltas
+                WHERE contributor.contract_set_id = effective_deltas.contract_set_id
+                  AND contributor.id = effective_deltas.to_delegate
+                  AND effective_deltas.delta <> 0
+                RETURNING contributor.id
+             )
+             SELECT
+                (SELECT count(*)::BIGINT FROM updated_delegates) AS delegate_updates,
+                (SELECT count(*)::BIGINT FROM updated_delegate_mappings) AS mapping_updates,
+                (SELECT count(*)::BIGINT FROM updated_effective_counts) AS count_updates",
+        );
+        query.build().fetch_one(&mut **transaction).await?;
+    }
 
     Ok(())
 }
