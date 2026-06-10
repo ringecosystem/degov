@@ -1403,8 +1403,7 @@ fn estimate_blocknumber_timestamp(
 fn block_interval(chain_id: i32, clock_mode: &str) -> Option<String> {
     const ETHEREUM_MAINNET_CHAIN_ID: i32 = 1;
 
-    (chain_id == ETHEREUM_MAINNET_CHAIN_ID && clock_mode == "blocknumber")
-        .then(|| "13.333333333333334".to_owned())
+    (chain_id == ETHEREUM_MAINNET_CHAIN_ID && clock_mode == "blocknumber").then(|| "12".to_owned())
 }
 
 fn timepoint_timestamp_for_proposal(proposal: &ProposalWrite, timepoint: &str) -> String {

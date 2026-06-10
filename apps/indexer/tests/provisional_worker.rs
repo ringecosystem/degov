@@ -29,18 +29,33 @@ static DATABASE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 #[test]
 fn test_provisional_worker_writes_segments_without_final_checkpoint_boundary() {
     let config = datalens_config();
-    let mut reader = MockProvisionalReader::new(vec![Ok(DatalensProvisionalLogQueryResult {
-        rows: serde_json::json!([]),
-        segments: vec![cache_segment("provider", "latest", 100, 105)],
-    })]);
+    let mut reader = MockProvisionalReader::new(vec![
+        Ok(DatalensProvisionalLogQueryResult {
+            rows: serde_json::json!([]),
+            segments: vec![cache_segment("provider", "latest", 100, 105)],
+        }),
+        Ok(DatalensProvisionalLogQueryResult {
+            rows: serde_json::json!([]),
+            segments: Vec::new(),
+        }),
+        Ok(DatalensProvisionalLogQueryResult {
+            rows: serde_json::json!([]),
+            segments: Vec::new(),
+        }),
+    ]);
     let mut store = RecordingProvisionalStore::default();
     let mut worker = ProvisionalWorker::new(options(&config), &mut reader, &mut store);
 
     let report = worker.run_once().expect("worker runs once");
 
     assert_eq!(report.segments_written, 1);
-    assert_eq!(reader.calls.len(), 1);
-    assert_eq!(reader.calls[0].finality.as_deref(), Some("safe_to_latest"));
+    assert_eq!(reader.calls.len(), 3);
+    assert!(
+        reader
+            .calls
+            .iter()
+            .all(|call| call.finality.as_deref() == Some("safe_to_latest"))
+    );
     assert_eq!(store.writes.len(), 1);
     assert_eq!(store.writes[0].segment_finality, "latest");
 }

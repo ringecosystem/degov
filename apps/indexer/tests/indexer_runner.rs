@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -359,7 +358,15 @@ fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subrang
     assert_eq!(runner.store().commit_count(), 2);
     assert_eq!(
         *observed_ranges.lock().expect("observed ranges"),
-        vec![(1, 1_000), (1, 500), (501, 1_000)]
+        vec![
+            (1, 1_000),
+            (1, 500),
+            (1, 500),
+            (1, 500),
+            (501, 1_000),
+            (501, 1_000),
+            (501, 1_000),
+        ]
     );
 }
 
@@ -677,7 +684,11 @@ fn test_runner_decodes_duplicate_address_token_log_with_token_source() {
 
     assert_eq!(
         *attempts.lock().expect("attempts"),
-        vec![DaoLogSource::Governor, DaoLogSource::GovernorToken]
+        vec![
+            DaoLogSource::Governor,
+            DaoLogSource::GovernorToken,
+            DaoLogSource::Timelock
+        ]
     );
     assert_eq!(
         runner.store().token_repository().delegate_changed().len(),
@@ -719,14 +730,46 @@ fn test_runner_keeps_duplicate_address_unsupported_topic_unsupported() {
 }
 
 struct ScriptedDatalensReader {
-    rows: VecDeque<Vec<Value>>,
+    rows: Vec<Vec<Value>>,
 }
 
 impl DatalensLogQueryReader for ScriptedDatalensReader {
-    fn query_logs(&mut self, _input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
-        Ok(DatalensLogQueryResult::rows_only(Value::Array(
-            self.rows.pop_front().expect("scripted query response"),
-        )))
+    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
+        let addresses = input
+            .selector
+            .evm_logs
+            .as_ref()
+            .map(|selector| {
+                selector
+                    .addresses
+                    .iter()
+                    .map(|address| address.to_ascii_lowercase())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let rows = self
+            .rows
+            .iter()
+            .flatten()
+            .filter(|row| {
+                let block_number = row
+                    .get("block_number")
+                    .or_else(|| row.get("blockNumber"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or_default();
+                let address = row
+                    .get("address")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+
+                (input.range.start..=input.range.end).contains(&block_number)
+                    && addresses.iter().any(|candidate| candidate == &address)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        Ok(DatalensLogQueryResult::rows_only(Value::Array(rows)))
     }
 }
 
@@ -996,9 +1039,7 @@ fn runner_with_store<D: IndexerEventDecoder>(
     IndexerRunner::new(
         options,
         contexts(),
-        ScriptedDatalensReader {
-            rows: VecDeque::from(rows),
-        },
+        ScriptedDatalensReader { rows },
         store,
         decoder,
     )

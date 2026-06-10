@@ -110,20 +110,46 @@ fn test_warmup_effectiveness_aggregation_builds_operator_log_fields() {
 fn test_fetch_dao_log_pages_preserves_cache_summary() {
     let config = config();
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
-    let mut reader = MockLogReader::new(vec![Ok(DatalensLogQueryResult {
-        rows: json!([]),
-        cache: DatalensLogQueryCacheSummary::from_datalens_cache_json(&json!({
-            "hit_ranges": [],
-            "missing_ranges": [{ "kind": "block", "start": 100, "end": 100 }],
-            "provider_fill_ranges": [{ "kind": "block", "start": 100, "end": 100 }]
-        })),
-    })]);
+    let mut reader = MockLogReader::new(vec![
+        Ok(DatalensLogQueryResult {
+            rows: json!([]),
+            cache: DatalensLogQueryCacheSummary::from_datalens_cache_json(&json!({
+                "hit_ranges": [],
+                "missing_ranges": [{ "kind": "block", "start": 100, "end": 100 }],
+                "provider_fill_ranges": [{ "kind": "block", "start": 100, "end": 100 }]
+            })),
+        }),
+        Ok(DatalensLogQueryResult {
+            rows: json!([]),
+            cache: DatalensLogQueryCacheSummary::from_datalens_cache_json(&json!({
+                "hit_ranges": [{ "kind": "block", "start": 100, "end": 100 }],
+                "missing_ranges": [],
+                "provider_fill_ranges": []
+            })),
+        }),
+        Ok(DatalensLogQueryResult {
+            rows: json!([]),
+            cache: DatalensLogQueryCacheSummary::from_datalens_cache_json(&json!({
+                "hit_ranges": [{ "kind": "block", "start": 100, "end": 100 }],
+                "missing_ranges": [],
+                "provider_fill_ranges": []
+            })),
+        }),
+    ]);
 
     let pages = fetch_dao_log_pages(&mut reader, &plans).expect("pages");
 
-    assert_eq!(pages.len(), 1);
+    assert_eq!(pages.len(), 3);
     assert_eq!(pages[0].cache.outcome, DatalensLogQueryCacheOutcome::Miss);
     assert_eq!(pages[0].cache.provider_fill_range_count, Some(1));
+    assert_eq!(
+        pages[1].cache.outcome,
+        DatalensLogQueryCacheOutcome::FullHit
+    );
+    assert_eq!(
+        pages[2].cache.outcome,
+        DatalensLogQueryCacheOutcome::FullHit
+    );
 }
 
 fn identity() -> IndexerCheckpointIdentity {

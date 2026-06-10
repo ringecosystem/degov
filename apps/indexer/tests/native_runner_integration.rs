@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::fmt;
 use std::time::Duration;
 
@@ -291,9 +290,7 @@ fn native_runner_with_options(
     IndexerRunner::new(
         options,
         contexts(),
-        ScriptedReader {
-            rows: VecDeque::from(pages),
-        },
+        ScriptedReader { rows: pages },
         store,
         DaoEventDecoder,
     )
@@ -344,14 +341,46 @@ impl ChainTool for ScriptedChainTool {
 
 #[derive(Clone, Debug)]
 struct ScriptedReader {
-    rows: VecDeque<Vec<Value>>,
+    rows: Vec<Vec<Value>>,
 }
 
 impl DatalensLogQueryReader for ScriptedReader {
-    fn query_logs(&mut self, _input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
-        Ok(DatalensLogQueryResult::rows_only(Value::Array(
-            self.rows.pop_front().expect("scripted query response"),
-        )))
+    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
+        let addresses = input
+            .selector
+            .evm_logs
+            .as_ref()
+            .map(|selector| {
+                selector
+                    .addresses
+                    .iter()
+                    .map(|address| address.to_ascii_lowercase())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let rows = self
+            .rows
+            .iter()
+            .flatten()
+            .filter(|row| {
+                let block_number = row
+                    .get("block_number")
+                    .or_else(|| row.get("blockNumber"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or_default();
+                let address = row
+                    .get("address")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+
+                (input.range.start..=input.range.end).contains(&block_number)
+                    && addresses.iter().any(|candidate| candidate == &address)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        Ok(DatalensLogQueryResult::rows_only(Value::Array(rows)))
     }
 }
 

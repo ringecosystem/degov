@@ -128,7 +128,7 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     run_indexer_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 1);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
     assert_table_count(&database.pool, "proposal_created", 1).await?;
     assert_table_count(&database.pool, "proposal", 1).await?;
     assert_table_count(&database.pool, "vote_cast", 1).await?;
@@ -157,7 +157,7 @@ async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
     run_indexer_all_contract_sets_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 0);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
     assert_checkpoint_scope(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_scope(&database.pool, SECOND_CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_row_count(&database.pool, 2).await?;
@@ -2066,12 +2066,16 @@ fn handle_datalens_request(
         })
     } else {
         query_count.fetch_add(1, Ordering::Relaxed);
-        let rows = governor_rows
-            .iter()
-            .chain(token_rows)
-            .chain(timelock_rows)
-            .cloned()
-            .collect::<Vec<_>>();
+        let request_body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
+        let rows = if request_body.contains(GOVERNOR) || request_body.contains(SECOND_GOVERNOR) {
+            governor_rows.to_vec()
+        } else if request_body.contains(TOKEN) || request_body.contains(SECOND_TOKEN) {
+            token_rows.to_vec()
+        } else if request_body.contains(TIMELOCK) || request_body.contains(SECOND_TIMELOCK) {
+            timelock_rows.to_vec()
+        } else {
+            Vec::new()
+        };
 
         json!({
             "chain": {},
@@ -2252,11 +2256,11 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
     );
     assert_eq!(
         proposal.get::<String, _>("vote_start_timestamp"),
-        "1700001308667"
+        "1700001178000"
     );
     assert_eq!(
         proposal.get::<String, _>("vote_end_timestamp"),
-        "1700002642000"
+        "1700002378000"
     );
     assert_eq!(proposal.get::<String, _>("proposal_eta"), "1234");
     assert_eq!(proposal.get::<String, _>("clock_mode"), "blocknumber");
@@ -2264,7 +2268,7 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
     assert_eq!(proposal.get::<String, _>("decimals"), "18");
     assert_eq!(
         proposal.get::<Option<String>, _>("block_interval"),
-        Some("13.333333333333334".to_owned())
+        Some("12".to_owned())
     );
     assert_eq!(
         proposal.get::<Option<String>, _>("timelock_address"),
