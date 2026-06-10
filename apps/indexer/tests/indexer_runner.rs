@@ -371,6 +371,68 @@ fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subrang
 }
 
 #[test]
+fn test_runner_splits_transient_range_and_retries_without_pass_error() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 5_000);
+    let observed_ranges = Arc::new(Mutex::new(Vec::new()));
+    let reader = TransientDatalensReader::new(2_500, observed_ranges.clone());
+    let mut runner = IndexerRunner::new(
+        options,
+        contexts(),
+        reader,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+        ScriptedDecoder,
+    );
+    runner.request_shutdown_after_chunks(1);
+
+    let report = runner
+        .run_to_target(5_000)
+        .expect("split transient range succeeds");
+
+    assert_eq!(report.chunks_processed, 1);
+    assert!(report.shutdown_requested);
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        2_501
+    );
+    assert_eq!(runner.store().commit_count(), 1);
+    assert_eq!(
+        *observed_ranges.lock().expect("observed ranges"),
+        vec![(1, 5_000), (1, 2_500), (1, 2_500), (1, 2_500)]
+    );
+}
+
+#[test]
+fn test_runner_keeps_transient_min_chunk_as_recoverable_pass_error() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 100);
+    let observed_ranges = Arc::new(Mutex::new(Vec::new()));
+    let reader = TransientDatalensReader::new(99, observed_ranges.clone());
+    let mut runner = IndexerRunner::new(
+        options,
+        contexts(),
+        reader,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+        ScriptedDecoder,
+    );
+
+    let error = runner
+        .run_to_target(100)
+        .expect_err("min chunk transient remains a pass error");
+
+    assert!(error.to_string().contains("502"));
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        1
+    );
+    assert_eq!(runner.store().commit_count(), 0);
+    assert_eq!(
+        *observed_ranges.lock().expect("observed ranges"),
+        vec![(1, 100)]
+    );
+}
+
+#[test]
 fn test_runner_fails_single_block_provider_limit_without_advancing_checkpoint() {
     let mut options = options();
     set_block_range_limit(&mut options, 1);
@@ -843,6 +905,39 @@ impl DatalensLogQueryReader for ProviderLimitDatalensReader {
         if block_count > self.max_successful_blocks {
             return Err(DatalensError::Query(
                 r#"datalens HTTP error 429: {"error":{"kind":"provider_limit","message":"query returns too many logs, narrow your filter: 20000"}}"#
+                    .to_owned(),
+            ));
+        }
+
+        Ok(DatalensLogQueryResult::rows_only(Value::Array(Vec::new())))
+    }
+}
+
+struct TransientDatalensReader {
+    max_successful_blocks: u64,
+    observed_ranges: Arc<Mutex<Vec<(u64, u64)>>>,
+}
+
+impl TransientDatalensReader {
+    fn new(max_successful_blocks: u64, observed_ranges: Arc<Mutex<Vec<(u64, u64)>>>) -> Self {
+        Self {
+            max_successful_blocks,
+            observed_ranges,
+        }
+    }
+}
+
+impl DatalensLogQueryReader for TransientDatalensReader {
+    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
+        let range = (input.range.start, input.range.end);
+        self.observed_ranges
+            .lock()
+            .expect("observed ranges")
+            .push(range);
+        let block_count = input.range.end - input.range.start + 1;
+        if block_count > self.max_successful_blocks {
+            return Err(DatalensError::Query(
+                r#"datalens HTTP error 502: {"error":{"kind":"bad_gateway","message":"bad gateway"}}"#
                     .to_owned(),
             ));
         }
