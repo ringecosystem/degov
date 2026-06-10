@@ -139,6 +139,12 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     for table_name in REQUIRED_TABLES {
         assert_table_exists(&database.pool, &database.schema, table_name).await?;
     }
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "delegate_rolling_metadata_preload_idx",
+    )
+    .await?;
     assert_removed_processor_status_table_absent(&database.pool).await?;
     assert_table_exists(&database.pool, &database.schema, "_sqlx_migrations").await?;
 
@@ -294,6 +300,31 @@ async fn assert_table_exists(
     .await?;
 
     assert!(exists, "expected table {schema}.{table_name} to exist");
+
+    Ok(())
+}
+
+async fn assert_index_exists(
+    pool: &PgPool,
+    schema: &str,
+    index_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let exists: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_indexes
+          WHERE schemaname = $1
+            AND indexname = $2
+        )
+        "#,
+    )
+    .bind(schema)
+    .bind(index_name)
+    .fetch_one(pool)
+    .await?;
+
+    assert!(exists, "expected index {schema}.{index_name} to exist");
 
     Ok(())
 }

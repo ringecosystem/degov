@@ -60,5 +60,15 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
     .await
     .context("ensure scoped onchain refresh deferred drain index")?;
 
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_rolling_metadata_preload_idx
+         ON delegate_rolling (contract_set_id, transaction_hash, log_index DESC)
+         INCLUDE (id, delegator, from_delegate, to_delegate, from_new_votes, to_new_votes)
+         WHERE from_delegate <> to_delegate",
+    )
+    .execute(pool)
+    .await
+    .context("ensure delegate rolling metadata preload index")?;
+
     Ok(())
 }

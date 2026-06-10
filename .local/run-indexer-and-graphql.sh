@@ -29,7 +29,7 @@ fi
 : "${DEGOV_INDEXER_TARGET_HEIGHT:=latest}"
 : "${DEGOV_INDEXER_RUN_ONCE:=false}"
 : "${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED:=true}"
-: "${DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED:=true}"
+: "${DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED:=false}"
 : "${RUST_LOG:=info}"
 export DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS
 export DEGOV_INDEXER_GRAPHQL_ENDPOINT
@@ -54,18 +54,29 @@ cleanup() {
   echo "combined runner stopping at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$LOG_DIR/indexer-combined-main.log"
   [[ -n "${GRAPHQL_PID:-}" ]] && kill "$GRAPHQL_PID" 2>/dev/null || true
   [[ -n "${INDEXER_PID:-}" ]] && kill "$INDEXER_PID" 2>/dev/null || true
+  [[ -n "${WORKER_PID:-}" ]] && kill "$WORKER_PID" 2>/dev/null || true
   wait "$GRAPHQL_PID" 2>/dev/null || true
   wait "$INDEXER_PID" 2>/dev/null || true
+  [[ -n "${WORKER_PID:-}" ]] && wait "$WORKER_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 cargo run -p degov-datalens-indexer --locked -- graphql >> "$LOG_DIR/indexer-graphql-main.log" 2>&1 &
 GRAPHQL_PID=$!
 echo "graphql pid=$GRAPHQL_PID" >> "$LOG_DIR/indexer-combined-main.log"
 sleep 3
+if [[ "${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED}" == "true" && "${DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED}" != "true" ]]; then
+  cargo run -p degov-datalens-indexer --locked -- worker >> "$LOG_DIR/indexer-worker-main.log" 2>&1 &
+  WORKER_PID=$!
+  echo "worker pid=$WORKER_PID" >> "$LOG_DIR/indexer-combined-main.log"
+fi
 cargo run -p degov-datalens-indexer --locked -- run >> "$LOG_DIR/indexer-sync-main.log" 2>&1 &
 INDEXER_PID=$!
 echo "indexer pid=$INDEXER_PID" >> "$LOG_DIR/indexer-combined-main.log"
-wait -n "$GRAPHQL_PID" "$INDEXER_PID"
+if [[ -n "${WORKER_PID:-}" ]]; then
+  wait -n "$GRAPHQL_PID" "$INDEXER_PID" "$WORKER_PID"
+else
+  wait -n "$GRAPHQL_PID" "$INDEXER_PID"
+fi
 status=$?
-echo "combined runner child exited at $(date -u +%Y-%m-%dT%H:%M:%SZ) status=$status graphql_pid=$GRAPHQL_PID indexer_pid=$INDEXER_PID" >> "$LOG_DIR/indexer-combined-main.log"
+echo "combined runner child exited at $(date -u +%Y-%m-%dT%H:%M:%SZ) status=$status graphql_pid=$GRAPHQL_PID indexer_pid=$INDEXER_PID worker_pid=${WORKER_PID:-}" >> "$LOG_DIR/indexer-combined-main.log"
 exit "$status"
