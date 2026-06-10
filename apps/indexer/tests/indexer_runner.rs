@@ -647,6 +647,28 @@ fn test_adaptive_chunk_sizer_provider_fill_below_high_duration_grows() {
 }
 
 #[test]
+fn test_adaptive_chunk_sizer_provider_fill_over_sparse_threshold_grows_below_high_duration() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let first = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_provider_fill(),
+        Duration::from_millis(800),
+        300,
+    ));
+    let second = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_provider_fill(),
+        Duration::from_millis(800),
+        300,
+    ));
+
+    assert_eq!(first.current_chunk_size, 100);
+    assert_eq!(first.reason, AdaptiveChunkSizingReason::Hold);
+    assert_eq!(second.previous_chunk_size, 100);
+    assert_eq!(second.current_chunk_size, 200);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::StableSparseRange);
+}
+
+#[test]
 fn test_adaptive_chunk_sizer_high_duration_shrinks_immediately() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 

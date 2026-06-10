@@ -237,7 +237,8 @@ impl AdaptiveChunkSizer {
         let stable_growth_reason = feedback.stable_growth_reason(&self.config);
         let stable_growth_candidate = stable_growth_reason
             != AdaptiveChunkSizingReason::StableSparseRange
-            || feedback.returned_row_count <= self.config.sparse_returned_row_threshold;
+            || feedback.returned_row_count <= self.config.sparse_returned_row_threshold
+            || feedback.has_provider_fill();
 
         let reason = if slow_local_processing || high_query_duration || dense_range {
             self.stable_chunks = 0;
@@ -378,6 +379,10 @@ impl AdaptiveChunkFeedback {
         self.warmup_effectiveness.partial_hit_count > 0
             || self.warmup_effectiveness.miss_count > 0
             || self.warmup_effectiveness.provider_fill_range_count > 0
+    }
+
+    fn has_provider_fill(&self) -> bool {
+        self.warmup_effectiveness.provider_fill_range_count > 0
     }
 
     fn is_slow_cache_fill(&self, config: &AdaptiveChunkSizerConfig) -> bool {
