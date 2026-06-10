@@ -342,6 +342,71 @@ async fn relink_existing_proposal_to_raw_id(
     Ok(())
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalTitleRefreshCandidate {
+    pub id: String,
+    pub description: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalTitleRefreshUpdate {
+    pub id: String,
+    pub title: String,
+}
+
+pub async fn read_proposal_title_refresh_candidates(
+    pool: &PgPool,
+    dao_code: &str,
+) -> Result<Vec<ProposalTitleRefreshCandidate>, PostgresIndexerRunnerStoreError> {
+    let rows = sqlx::query(
+        "SELECT id, description, title
+         FROM proposal
+         WHERE dao_code = $1
+         ORDER BY block_number, transaction_index, log_index, id",
+    )
+    .bind(dao_code)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| ProposalTitleRefreshCandidate {
+            id: row.get("id"),
+            description: row.get("description"),
+            title: row.get("title"),
+        })
+        .collect())
+}
+
+const UPDATE_PROPOSAL_TITLES_SQL_PREFIX: &str =
+    "UPDATE proposal SET title = proposal_title_refresh.title FROM (";
+
+pub async fn update_proposal_titles(
+    pool: &PgPool,
+    dao_code: &str,
+    updates: &[ProposalTitleRefreshUpdate],
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
+    if updates.is_empty() {
+        return Ok(0);
+    }
+
+    let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(UPDATE_PROPOSAL_TITLES_SQL_PREFIX);
+    builder.push_values(updates, |mut row, update| {
+        row.push_bind(&update.id).push_bind(&update.title);
+    });
+    builder.push(
+        ") AS proposal_title_refresh(id, title)
+         WHERE proposal.id = proposal_title_refresh.id
+           AND proposal.dao_code = ",
+    );
+    builder.push_bind(dao_code);
+    builder.push(" AND proposal.title IS DISTINCT FROM proposal_title_refresh.title");
+
+    let result = builder.build().execute(pool).await?;
+    Ok(result.rows_affected())
+}
+
 async fn insert_proposal_action(
     transaction: &mut Transaction<'_, Postgres>,
     row: &ProposalActionWrite,
@@ -491,5 +556,11 @@ mod proposal_tests {
         assert!(UPSERT_PROPOSAL_SQL.contains(
             "decimals = CASE WHEN EXCLUDED.decimals = 0::NUMERIC(78, 0) THEN proposal.decimals ELSE EXCLUDED.decimals END"
         ));
+    }
+
+    #[test]
+    fn test_update_proposal_titles_is_scoped_to_dao_and_title_only() {
+        assert!(UPDATE_PROPOSAL_TITLES_SQL_PREFIX.contains("UPDATE proposal SET title"));
+        assert!(UPDATE_PROPOSAL_TITLES_SQL_PREFIX.contains("FROM ("));
     }
 }

@@ -148,6 +148,97 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_refresh_proposal_titles_command_updates_only_scoped_dao() -> Result<(), Box<dyn Error>>
+{
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let (demo_proposal, other_proposal) =
+        temp_env::with_vars([("OPENROUTER_API_KEY", None::<&str>)], || {
+            let demo_proposal = project_proposal_events(
+                &proposal_projection_context(),
+                vec![ProposalProjectionEvent {
+                    log: normalized_log("demo-proposal", 10, 0, 0),
+                    event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                        proposal_id: "42".to_owned(),
+                        proposer: PROPOSER.to_owned(),
+                        targets: vec![TARGET.to_owned()],
+                        values: vec!["1".to_owned()],
+                        signatures: vec!["upgrade()".to_owned()],
+                        calldatas: vec!["0x1234".to_owned()],
+                        vote_start: "100".to_owned(),
+                        vote_end: "200".to_owned(),
+                        description: "# Fresh demo title\nBody".to_owned(),
+                    }),
+                }],
+            )
+            .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+            let other_proposal = project_proposal_events(
+                &proposal_projection_context_with_scope(
+                    SECOND_CONTRACT_SET_ID,
+                    1,
+                    SECOND_GOVERNOR,
+                    SECOND_TOKEN,
+                    SECOND_TIMELOCK,
+                    "other-dao",
+                ),
+                vec![ProposalProjectionEvent {
+                    log: normalized_log_with_scope(1, "other-proposal", 11, 0, 0, SECOND_GOVERNOR),
+                    event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                        proposal_id: "42".to_owned(),
+                        proposer: PROPOSER.to_owned(),
+                        targets: vec![TARGET.to_owned()],
+                        values: vec!["1".to_owned()],
+                        signatures: vec!["upgrade()".to_owned()],
+                        calldatas: vec!["0x1234".to_owned()],
+                        vote_start: "100".to_owned(),
+                        vote_end: "200".to_owned(),
+                        description: "# Other DAO title\nBody".to_owned(),
+                    }),
+                }],
+            )
+            .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+
+            Ok::<_, String>((demo_proposal, other_proposal))
+        })?;
+
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(demo_proposal),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(other_proposal),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    sqlx::query("UPDATE proposal SET title = 'stale title'")
+        .execute(&database.pool)
+        .await?;
+
+    run_refresh_proposal_titles_command(&database.database_url, "demo-dao").await?;
+
+    let demo_title: String =
+        sqlx::query_scalar("SELECT title FROM proposal WHERE dao_code = 'demo-dao'")
+            .fetch_one(&database.pool)
+            .await?;
+    let other_title: String =
+        sqlx::query_scalar("SELECT title FROM proposal WHERE dao_code = 'other-dao'")
+            .fetch_one(&database.pool)
+            .await?;
+
+    assert_eq!(demo_title, "Fresh demo title");
+    assert_eq!(other_title, "stale title");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1828,6 +1919,51 @@ async fn run_indexer_command(
     if !status.success() {
         return Err(format!(
             "indexer run failed with status {status}\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+async fn run_refresh_proposal_titles_command(
+    database_url: &str,
+    dao_code: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_degov-datalens-indexer"))
+        .arg("refresh-proposal-titles")
+        .arg("--dao-code")
+        .arg(dao_code)
+        .env("DEGOV_INDEXER_DATABASE_URL", database_url)
+        .env_remove("OPENROUTER_API_KEY")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let status = timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(status) = child.try_wait()? {
+                return Ok::<_, std::io::Error>(status);
+            }
+            sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await;
+
+    let status = match status {
+        Ok(status) => status?,
+        Err(_) => {
+            let _ = child.kill();
+            return Err("proposal title refresh command timed out".into());
+        }
+    };
+    let output = child.wait_with_output()?;
+
+    if !status.success() {
+        return Err(format!(
+            "proposal title refresh failed with status {status}\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         )

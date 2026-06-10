@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use degov_datalens_indexer::runtime::{
-    migrate, run_graphql, run_indexer, run_worker, smoke_datalens,
+    migrate, refresh_proposal_titles, run_graphql, run_indexer, run_worker, smoke_datalens,
 };
 
 #[derive(Debug, Parser)]
@@ -18,6 +18,10 @@ enum Command {
     Migrate,
     Graphql,
     SmokeDatalens,
+    RefreshProposalTitles {
+        #[arg(long)]
+        dao_code: String,
+    },
 }
 
 #[tokio::main]
@@ -31,6 +35,16 @@ async fn main() -> anyhow::Result<()> {
         Command::Migrate => migrate().await,
         Command::Graphql => run_graphql().await,
         Command::SmokeDatalens => smoke_datalens().await,
+        Command::RefreshProposalTitles { dao_code } => {
+            let report = refresh_proposal_titles(dao_code).await?;
+            log::info!(
+                "proposal title refresh completed dao_code={} scanned={} updated={}",
+                report.dao_code,
+                report.scanned,
+                report.updated
+            );
+            Ok(())
+        }
     }
 }
 
