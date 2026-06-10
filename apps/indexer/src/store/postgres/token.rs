@@ -1778,12 +1778,19 @@ impl DelegateMappingCache {
                  SET power = source.power::NUMERIC(78, 0)
                  FROM (VALUES ",
             );
-            query.push_tuples(rows, |mut tuple, row| {
-                tuple
+            for (index, row) in rows.iter().enumerate() {
+                if index > 0 {
+                    query.push(", ");
+                }
+                query
+                    .push("(")
                     .push_bind(&row.common.contract_set_id)
+                    .push(", ")
                     .push_bind(delegate_mapping_ref(&row.common, &row.from))
-                    .push_bind(&row.power);
-            });
+                    .push(", ")
+                    .push_bind(&row.power)
+                    .push("::NUMERIC(78, 0))");
+            }
             query.push(
                 ") AS source(contract_set_id, id, power)
                  WHERE target.contract_set_id = source.contract_set_id

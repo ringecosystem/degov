@@ -971,6 +971,99 @@ async fn test_postgres_token_delegate_mapping_power_update_preserves_relation_me
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_delegate_mapping_bulk_power_only_update_preserves_relations()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let initial = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000001-delegate", 1, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000002-second-delegate", 1, 0, 2),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: RECEIVER.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: SECOND_DELEGATE.to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("initial token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(initial),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let power_only = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000003-transfer", 2, 0, 1),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: ZERO_ADDRESS.to_owned(),
+                    to: DELEGATOR.to_owned(),
+                    value: "40".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000004-second-transfer", 2, 0, 2),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: ZERO_ADDRESS.to_owned(),
+                    to: RECEIVER.to_owned(),
+                    value: "60".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("power-only token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(power_only),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let rows = sqlx::query(
+        r#"SELECT "from", "to", power::TEXT AS power, block_number::TEXT AS block_number
+           FROM delegate_mapping
+           WHERE contract_set_id = $1 AND "from" IN ($2, $3)
+           ORDER BY "from""#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATOR)
+    .bind(RECEIVER)
+    .fetch_all(&database.pool)
+    .await?;
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].get::<String, _>("from"), DELEGATOR);
+    assert_eq!(rows[0].get::<String, _>("to"), DELEGATE);
+    assert_eq!(rows[0].get::<String, _>("power"), "40");
+    assert_eq!(rows[0].get::<String, _>("block_number"), "1");
+    assert_eq!(rows[1].get::<String, _>("from"), RECEIVER);
+    assert_eq!(rows[1].get::<String, _>("to"), SECOND_DELEGATE);
+    assert_eq!(rows[1].get::<String, _>("power"), "60");
+    assert_eq!(rows[1].get::<String, _>("block_number"), "1");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_repeated_delegate_ensure_keeps_member_count_once()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
