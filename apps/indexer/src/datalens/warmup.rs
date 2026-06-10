@@ -136,8 +136,10 @@ pub fn ensure_datalens_warmup_task(
     }
 
     let result = match config.warmup.kind {
-        DatalensWarmupKind::FollowQuery => follow_query_request(config, addresses, start_block)
-            .and_then(|request| ensurer.ensure_warmup_task(request)),
+        DatalensWarmupKind::FollowQuery => {
+            let requests = follow_query_requests(config, addresses, start_block)?;
+            ensure_follow_query_requests(ensurer, requests)
+        }
     };
 
     match result {
@@ -161,30 +163,73 @@ pub fn follow_query_request(
     addresses: &DaoContractAddresses,
     start_block: i64,
 ) -> Result<DatalensWarmupSubmitRequest, DatalensError> {
+    follow_query_requests(config, addresses, start_block)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| DatalensError::Warmup("Datalens warmup query plan was empty".to_owned()))
+}
+
+fn follow_query_requests(
+    config: &DatalensConfig,
+    addresses: &DaoContractAddresses,
+    start_block: i64,
+) -> Result<Vec<DatalensWarmupSubmitRequest>, DatalensError> {
     if start_block < 0 {
         return Err(DatalensError::Warmup(format!(
             "Datalens warmup start block must be non-negative: {start_block}"
         )));
     }
-    let query = crate::plan_dao_log_queries(config, addresses, start_block, start_block)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| DatalensError::Warmup("Datalens warmup query plan was empty".to_owned()))?;
-    let selector = query.input.selector.evm_logs.as_ref().ok_or_else(|| {
-        DatalensError::Warmup("Datalens warmup selector is not evm_logs".to_owned())
-    })?;
 
-    Ok(DatalensWarmupSubmitRequest {
-        chain: warmup_chain_identity(&config.chain)?,
-        dataset_key: warmup_dataset_key(&config.dataset),
-        selector: warmup_evm_logs_selector(&query.input.selector, selector)?,
-        range_kind: warmup_range_kind(&query.input.range.kind)?,
-        start: start_block as u64,
-        end: None,
-        mode: "follow_query".to_owned(),
-        chunk_policy: WarmupChunkPolicy {
-            max_range_len: config.query_limits.block_range_limit,
-        },
+    let queries = crate::plan_dao_log_queries(config, addresses, start_block, start_block)?;
+    if queries.is_empty() {
+        return Err(DatalensError::Warmup(
+            "Datalens warmup query plan was empty".to_owned(),
+        ));
+    }
+
+    queries
+        .into_iter()
+        .map(|query| {
+            let selector = query.input.selector.evm_logs.as_ref().ok_or_else(|| {
+                DatalensError::Warmup("Datalens warmup selector is not evm_logs".to_owned())
+            })?;
+
+            Ok(DatalensWarmupSubmitRequest {
+                chain: warmup_chain_identity(&config.chain)?,
+                dataset_key: warmup_dataset_key(&config.dataset),
+                selector: warmup_evm_logs_selector(&query.input.selector, selector)?,
+                range_kind: warmup_range_kind(&query.input.range.kind)?,
+                start: start_block as u64,
+                end: None,
+                mode: "follow_query".to_owned(),
+                chunk_policy: WarmupChunkPolicy {
+                    max_range_len: config.query_limits.block_range_limit,
+                },
+            })
+        })
+        .collect()
+}
+
+fn ensure_follow_query_requests(
+    ensurer: &mut impl DatalensWarmupEnsurer,
+    requests: Vec<DatalensWarmupSubmitRequest>,
+) -> Result<DatalensWarmupEnsureOutcome, DatalensError> {
+    let mut task_ids = Vec::new();
+    let mut created_any = false;
+
+    for request in requests {
+        match ensurer.ensure_warmup_task(request)? {
+            DatalensWarmupEnsureOutcome::Submitted { task_id, created } => {
+                task_ids.push(task_id);
+                created_any |= created;
+            }
+            outcome => return Ok(outcome),
+        }
+    }
+
+    Ok(DatalensWarmupEnsureOutcome::Submitted {
+        task_id: task_ids.join(","),
+        created: created_any,
     })
 }
 
