@@ -166,6 +166,8 @@ export const GET_PROPOSAL_QUEUED_BY_ID = gql`
 export const GET_PROPOSAL_METRICS = gql`
   query GetProposalMetrics($where: DataMetricWhereInput) {
     dataMetrics(where: $where) {
+      contributorCount
+      holdersCount
       memberCount
       powerSum
       proposalsCount

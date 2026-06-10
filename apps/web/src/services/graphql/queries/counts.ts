@@ -5,8 +5,9 @@ export const GET_GOVERNANCE_COUNTS = gql`
     proposalsPage(orderBy: id_ASC, limit: 0) {
       totalCount
     }
-    contributorsPage(orderBy: id_ASC, limit: 0) {
-      totalCount
+    dataMetrics(where: { id_eq: "global" }) {
+      contributorCount
+      holdersCount
     }
   }
 `;

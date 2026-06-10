@@ -145,8 +145,8 @@ export default function Members() {
     applySortState("delegators", direction);
 
   const getDisplayTitle = () => {
-    const totalCount = dataMetrics?.memberCount;
-    if (totalCount !== undefined) {
+    const totalCount = dataMetrics?.holdersCount ?? dataMetrics?.memberCount;
+    if (totalCount != null) {
       return t("titleWithCount", { count: totalCount });
     }
     return t("title");

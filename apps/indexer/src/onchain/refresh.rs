@@ -2752,17 +2752,32 @@ async fn refresh_data_metric_scope(
 
     sqlx::query(
         "INSERT INTO data_metric (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, power_sum, member_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            power_sum, contributor_count, holders_count, member_count
          )
          SELECT
             $1, $2, $3, $4, $5, $6,
             COALESCE(sum(power), 0)::NUMERIC(78, 0),
-            count(*)::INTEGER
+            count(*)::INTEGER,
+            (
+                CASE
+                    WHEN count(balance) > 0 THEN count(*) FILTER (WHERE balance > 0)
+                    ELSE count(*)
+                END
+            )::INTEGER,
+            (
+                CASE
+                    WHEN count(balance) > 0 THEN count(*) FILTER (WHERE balance > 0)
+                    ELSE count(*)
+                END
+            )::INTEGER
          FROM contributor
          WHERE contract_set_id = $2 AND chain_id = $3 AND governor_address = $5 AND dao_code IS NOT DISTINCT FROM $4
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              power_sum = EXCLUDED.power_sum,
+             contributor_count = EXCLUDED.contributor_count,
+             holders_count = EXCLUDED.holders_count,
              member_count = EXCLUDED.member_count",
     )
     .bind(metric_id)

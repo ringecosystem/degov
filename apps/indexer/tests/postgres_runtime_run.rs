@@ -985,7 +985,7 @@ async fn test_postgres_data_metric_event_snapshots_follow_mixed_batch_event_orde
         .map_err(|error| format!("commit transaction failed: {error}"))?;
 
     let metric = sqlx::query(
-        "SELECT power_sum::TEXT AS power_sum, member_count
+        "SELECT power_sum::TEXT AS power_sum, contributor_count, holders_count, member_count
          FROM data_metric
          WHERE id = '0000000002-proposal'",
     )
@@ -995,7 +995,9 @@ async fn test_postgres_data_metric_event_snapshots_follow_mixed_batch_event_orde
         metric.get::<Option<String>, _>("power_sum"),
         Some("0".to_owned())
     );
-    assert_eq!(metric.get::<Option<i32>, _>("member_count"), Some(1));
+    assert_eq!(metric.get::<Option<i32>, _>("contributor_count"), Some(1));
+    assert_eq!(metric.get::<Option<i32>, _>("holders_count"), Some(0));
+    assert_eq!(metric.get::<Option<i32>, _>("member_count"), Some(0));
 
     database.cleanup().await?;
 
@@ -1317,7 +1319,7 @@ async fn test_postgres_token_delegate_mapping_bulk_power_only_update_preserves_r
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_postgres_token_repeated_delegate_ensure_keeps_member_count_once()
+async fn test_postgres_token_repeated_delegate_ensure_keeps_contributor_count_once()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
@@ -1377,15 +1379,17 @@ async fn test_postgres_token_repeated_delegate_ensure_keeps_member_count_once()
         0
     );
 
-    let member_count: Option<i32> = sqlx::query_scalar(
-        "SELECT member_count
+    let counts = sqlx::query(
+        "SELECT contributor_count, holders_count, member_count
          FROM data_metric
          WHERE contract_set_id = $1 AND id = 'global'",
     )
     .bind(CONTRACT_SET_ID)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(member_count, Some(1));
+    assert_eq!(counts.get::<Option<i32>, _>("contributor_count"), Some(1));
+    assert_eq!(counts.get::<Option<i32>, _>("holders_count"), None);
+    assert_eq!(counts.get::<Option<i32>, _>("member_count"), None);
 
     database.cleanup().await?;
 
@@ -1444,15 +1448,17 @@ async fn test_postgres_token_dense_delegate_count_deltas_are_batched() -> Result
         0
     );
 
-    let member_count: Option<i32> = sqlx::query_scalar(
-        "SELECT member_count
+    let counts = sqlx::query(
+        "SELECT contributor_count, holders_count, member_count
          FROM data_metric
          WHERE contract_set_id = $1 AND id = 'global'",
     )
     .bind(CONTRACT_SET_ID)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(member_count, Some(1));
+    assert_eq!(counts.get::<Option<i32>, _>("contributor_count"), Some(1));
+    assert_eq!(counts.get::<Option<i32>, _>("holders_count"), None);
+    assert_eq!(counts.get::<Option<i32>, _>("member_count"), None);
 
     database.cleanup().await?;
 
@@ -1568,7 +1574,7 @@ async fn test_postgres_token_bulk_writes_dense_events_across_chunks() -> Result<
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_postgres_token_preload_does_not_advance_member_count_before_timeline()
+async fn test_postgres_token_preload_does_not_advance_contributor_count_before_timeline()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_global_metric(&database.pool).await?;
@@ -1622,8 +1628,8 @@ async fn test_postgres_token_preload_does_not_advance_member_count_before_timeli
         },
     )?;
 
-    let proposal_member_count: Option<i32> = sqlx::query_scalar(
-        "SELECT member_count
+    let proposal_counts = sqlx::query(
+        "SELECT contributor_count, holders_count, member_count
          FROM data_metric
          WHERE contract_set_id = $1 AND id = $2",
     )
@@ -1631,17 +1637,36 @@ async fn test_postgres_token_preload_does_not_advance_member_count_before_timeli
     .bind("0000000010-proposal-before-token")
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(proposal_member_count, Some(2));
+    assert_eq!(
+        proposal_counts.get::<Option<i32>, _>("contributor_count"),
+        Some(2)
+    );
+    assert_eq!(
+        proposal_counts.get::<Option<i32>, _>("holders_count"),
+        Some(2)
+    );
+    assert_eq!(
+        proposal_counts.get::<Option<i32>, _>("member_count"),
+        Some(2)
+    );
 
-    let global_member_count: Option<i32> = sqlx::query_scalar(
-        "SELECT member_count
+    let global_counts = sqlx::query(
+        "SELECT contributor_count, holders_count, member_count
          FROM data_metric
          WHERE contract_set_id = $1 AND id = 'global'",
     )
     .bind(CONTRACT_SET_ID)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(global_member_count, Some(3));
+    assert_eq!(
+        global_counts.get::<Option<i32>, _>("contributor_count"),
+        Some(3)
+    );
+    assert_eq!(
+        global_counts.get::<Option<i32>, _>("holders_count"),
+        Some(2)
+    );
+    assert_eq!(global_counts.get::<Option<i32>, _>("member_count"), Some(2));
 
     database.cleanup().await?;
 
@@ -3528,9 +3553,10 @@ fn token_projection_context() -> TokenProjectionContext {
 async fn seed_global_metric(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO data_metric (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, power_sum, member_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            power_sum, contributor_count, holders_count, member_count
          )
-         VALUES ('global', $1, 1, 'demo-dao', $2, $3, 150::NUMERIC(78, 0), 2)",
+         VALUES ('global', $1, 1, 'demo-dao', $2, $3, 150::NUMERIC(78, 0), 2, 2, 2)",
     )
     .bind(CONTRACT_SET_ID)
     .bind(GOVERNOR)
@@ -3544,9 +3570,10 @@ async fn seed_global_metric(pool: &PgPool) -> Result<(), sqlx::Error> {
 async fn seed_empty_global_metric(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO data_metric (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, power_sum, member_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            power_sum, contributor_count, holders_count, member_count
          )
-         VALUES ('global', $1, 1, 'demo-dao', $2, $3, 0::NUMERIC(78, 0), 0)",
+         VALUES ('global', $1, 1, 'demo-dao', $2, $3, 0::NUMERIC(78, 0), 0, 0, 0)",
     )
     .bind(CONTRACT_SET_ID)
     .bind(GOVERNOR)

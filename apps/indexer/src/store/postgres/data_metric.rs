@@ -74,7 +74,7 @@ async fn write_data_metric_timeline(
             }
             DataMetricTimelineItem::Proposal(row) | DataMetricTimelineItem::Vote(row) => {
                 contributor_ensure_cache
-                    .flush_member_count_increments(transaction)
+                    .flush_contributor_count_increments(transaction)
                     .await?;
                 upsert_event_data_metric(transaction, row).await?;
             }
@@ -102,14 +102,17 @@ async fn write_data_metric_timeline(
         .await?;
     let contributor_count_flush_duration = contributor_count_flush_started_at.elapsed();
 
-    let member_count_flush_started_at = std::time::Instant::now();
-    contributor_ensure_cache.flush_member_count_increments(transaction).await?;
-    let member_count_flush_duration = member_count_flush_started_at.elapsed();
+    let contributor_count_metric_flush_started_at = std::time::Instant::now();
+    contributor_ensure_cache
+        .flush_contributor_count_increments(transaction)
+        .await?;
+    let contributor_count_metric_flush_duration =
+        contributor_count_metric_flush_started_at.elapsed();
 
     if let Some(token) = token {
         if let Some(common) = token_batch_common(token) {
             log::info!(
-                "Datalens indexer token timeline phases dao_code={} chain_id={} contract_set_id={} token_operation_count={} inserted_operation_count={} contributor_preload_duration_ms={} metadata_preload_duration_ms={} mapping_preload_duration_ms={} replay_duration_ms={} rolling_flush_duration_ms={} snapshot_flush_duration_ms={} mapping_flush_duration_ms={} contributor_count_flush_duration_ms={} member_count_flush_duration_ms={} total_duration_ms={}",
+                "Datalens indexer token timeline phases dao_code={} chain_id={} contract_set_id={} token_operation_count={} inserted_operation_count={} contributor_preload_duration_ms={} metadata_preload_duration_ms={} mapping_preload_duration_ms={} replay_duration_ms={} rolling_flush_duration_ms={} snapshot_flush_duration_ms={} mapping_flush_duration_ms={} contributor_count_flush_duration_ms={} contributor_count_metric_flush_duration_ms={} total_duration_ms={}",
                 common.dao_code,
                 common.chain_id,
                 common.contract_set_id,
@@ -123,7 +126,7 @@ async fn write_data_metric_timeline(
                 snapshot_flush_duration.as_millis(),
                 mapping_flush_duration.as_millis(),
                 contributor_count_flush_duration.as_millis(),
-                member_count_flush_duration.as_millis(),
+                contributor_count_metric_flush_duration.as_millis(),
                 total_started_at.elapsed().as_millis(),
             );
         }
@@ -156,6 +159,8 @@ fn data_metric_timeline_order(item: &DataMetricTimelineItem<'_>) -> (u64, u64, u
 struct DataMetricSnapshot {
     token_address: Option<String>,
     power_sum: Option<String>,
+    contributor_count: Option<i32>,
+    holders_count: Option<i32>,
     member_count: Option<i32>,
 }
 
@@ -166,6 +171,14 @@ async fn upsert_event_data_metric(
     let snapshot = read_global_data_metric_snapshot(transaction, row).await?;
     let token_address = row.token_address.clone().or(snapshot.token_address.clone());
     let power_sum = row.power_sum.clone().or(snapshot.power_sum);
+    let contributor_count = match row.contributor_count {
+        Some(value) => Some(i64_to_i32(value, "data_metric.contributor_count")?),
+        None => snapshot.contributor_count,
+    };
+    let holders_count = match row.holders_count {
+        Some(value) => Some(i64_to_i32(value, "data_metric.holders_count")?),
+        None => snapshot.holders_count,
+    };
     let member_count = match row.member_count {
         Some(value) => Some(i64_to_i32(value, "data_metric.member_count")?),
         None => snapshot.member_count,
@@ -176,12 +189,12 @@ async fn upsert_event_data_metric(
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, proposals_count, votes_count, votes_with_params_count,
             votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
-            votes_weight_abstain_sum, power_sum, member_count
+            votes_weight_abstain_sum, power_sum, contributor_count, holders_count, member_count
          )
          VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
             $14::NUMERIC(78, 0), $15::NUMERIC(78, 0), $16::NUMERIC(78, 0),
-            $17::NUMERIC(78, 0), $18
+            $17::NUMERIC(78, 0), $18, $19, $20
          )
          ON CONFLICT (contract_set_id, id) WHERE id <> 'global' DO UPDATE
          SET contract_set_id = EXCLUDED.contract_set_id,
@@ -200,6 +213,8 @@ async fn upsert_event_data_metric(
              votes_weight_against_sum = EXCLUDED.votes_weight_against_sum,
              votes_weight_abstain_sum = EXCLUDED.votes_weight_abstain_sum,
              power_sum = EXCLUDED.power_sum,
+             contributor_count = EXCLUDED.contributor_count,
+             holders_count = EXCLUDED.holders_count,
              member_count = EXCLUDED.member_count",
     )
     .bind(&row.id)
@@ -234,6 +249,8 @@ async fn upsert_event_data_metric(
     .bind(&row.votes_weight_against_sum)
     .bind(&row.votes_weight_abstain_sum)
     .bind(&power_sum)
+    .bind(contributor_count)
+    .bind(holders_count)
     .bind(member_count)
     .execute(&mut **transaction)
     .await?;
@@ -246,7 +263,8 @@ async fn read_global_data_metric_snapshot(
     row: &DataMetricWrite,
 ) -> Result<DataMetricSnapshot, PostgresIndexerRunnerStoreError> {
     let snapshot = sqlx::query(
-        "SELECT token_address, power_sum::TEXT AS power_sum, member_count
+        "SELECT token_address, power_sum::TEXT AS power_sum, contributor_count, holders_count,
+                member_count
          FROM data_metric
          WHERE id = $1 AND contract_set_id = $2 AND chain_id = $3 AND governor_address = $4 AND dao_code IS NOT DISTINCT FROM $5",
     )
@@ -266,6 +284,8 @@ async fn read_global_data_metric_snapshot(
         .map(|snapshot| DataMetricSnapshot {
             token_address: snapshot.get("token_address"),
             power_sum: snapshot.get("power_sum"),
+            contributor_count: snapshot.get("contributor_count"),
+            holders_count: snapshot.get("holders_count"),
             member_count: snapshot.get("member_count"),
         })
         .unwrap_or_default())

@@ -271,6 +271,22 @@ fn test_fresh_init_declares_provisional_overlay_schema() {
 }
 
 #[test]
+fn test_fresh_init_declares_split_data_metric_counts() {
+    let init_migration = include_str!("../migrations/0001_init.sql");
+
+    for column_name in [
+        "contributor_count INTEGER",
+        "holders_count INTEGER",
+        "member_count INTEGER",
+    ] {
+        assert!(
+            init_migration.contains(column_name),
+            "expected data_metric count column {column_name}"
+        );
+    }
+}
+
+#[test]
 fn test_fresh_init_declares_onchain_refresh_ready_claim_index() {
     let init_migration = include_str!("../migrations/0001_init.sql");
 
