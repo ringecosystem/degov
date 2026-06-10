@@ -26,6 +26,9 @@ async fn write_data_metric_timeline(
             .preload_batch(transaction, token, &inserted_operation_keys)
             .await?;
         token_metadata_cache = BatchTokenMetadataCache::preload(transaction, token).await?;
+        delegate_mapping_cache
+            .preload_batch(transaction, token, &token_metadata_cache)
+            .await?;
         items.extend(token.operations.iter().map(DataMetricTimelineItem::Token));
     }
     if let Some(proposal) = proposal {
@@ -64,6 +67,9 @@ async fn write_data_metric_timeline(
             }
         }
     }
+    token_metadata_cache
+        .flush_rolling_vote_updates(transaction)
+        .await?;
     delegate_snapshot_cache.flush(transaction).await?;
     delegate_mapping_cache.flush(transaction).await?;
     contributor_ensure_cache
