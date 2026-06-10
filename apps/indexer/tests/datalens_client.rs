@@ -320,10 +320,9 @@ fn test_datalens_log_query_retries_after_stalled_sdk_query_timeout() {
         .query_logs(plans[0].input.clone())
         .expect_err("stalled query times out after retrying");
 
-    assert!(
-        error
-            .to_string()
-            .contains("Datalens query timed out after 50ms"),
+    assert_eq!(
+        classify_datalens_query_error(&error.to_string()),
+        DatalensQueryErrorClass::Transient,
         "{error}"
     );
     assert!(
@@ -354,7 +353,11 @@ fn test_datalens_log_query_allows_retry_after_stalled_sdk_query_times_out() {
     let first_error = client
         .query_logs(plans[0].input.clone())
         .expect_err("first stalled query times out");
-    assert!(first_error.to_string().contains("timed out"));
+    assert_eq!(
+        classify_datalens_query_error(&first_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{first_error}"
+    );
 
     let started_at = std::time::Instant::now();
     let second_result = client
@@ -440,8 +443,16 @@ fn test_datalens_log_query_caps_overlapping_stalled_sdk_queries() {
     );
     let first_error = first_handle.join().expect("first query joins");
     let second_error = second_handle.join().expect("second query joins");
-    assert!(first_error.to_string().contains("timed out"));
-    assert!(second_error.to_string().contains("timed out"));
+    assert_eq!(
+        classify_datalens_query_error(&first_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{first_error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&second_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{second_error}"
+    );
     let requests = server.join();
     assert_eq!(requests.len(), 2);
 }
