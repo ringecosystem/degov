@@ -25,13 +25,32 @@ export const GET_DELEGATES = gql`
   }
 `;
 
-export const GET_DELEGATES_CONNECTION = gql`
-  query GetDelegatesConnection(
+export const GET_DELEGATES_PAGE = gql`
+  query GetDelegatesPage(
+    $limit: Int
+    $offset: Int
     $where: DelegateWhereInput
     $orderBy: [DelegateOrderByInput!]!
   ) {
-    delegatesConnection(where: $where, orderBy: $orderBy) {
+    delegatesPage(
+      limit: $limit
+      offset: $offset
+      where: $where
+      orderBy: $orderBy
+    ) {
       totalCount
+      offset
+      limit
+      items {
+        blockNumber
+        blockTimestamp
+        fromDelegate
+        id
+        isCurrent
+        power
+        toDelegate
+        transactionHash
+      }
     }
   }
 `;
@@ -60,13 +79,31 @@ export const GET_DELEGATE_MAPPINGS = gql`
   }
 `;
 
-export const GET_DELEGATE_MAPPINGS_CONNECTION = gql`
-  query GetDelegateMappingsConnection(
+export const GET_DELEGATE_MAPPINGS_PAGE = gql`
+  query GetDelegateMappingsPage(
+    $limit: Int
+    $offset: Int
     $where: DelegateMappingWhereInput
     $orderBy: [DelegateMappingOrderByInput!]!
   ) {
-    delegateMappingsConnection(where: $where, orderBy: $orderBy) {
+    delegateMappingsPage(
+      limit: $limit
+      offset: $offset
+      where: $where
+      orderBy: $orderBy
+    ) {
       totalCount
+      offset
+      limit
+      items {
+        blockNumber
+        blockTimestamp
+        from
+        id
+        power
+        to
+        transactionHash
+      }
     }
   }
 `;

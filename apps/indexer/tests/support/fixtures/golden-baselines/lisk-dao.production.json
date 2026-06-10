@@ -35,7 +35,7 @@
     "votePowerCheckpoints": 23391,
     "tokenBalanceCheckpoints": 23395,
     "onchainRefreshTasks": 14521,
-    "dataMetricsConnectionTotalCount": 3783
+    "dataMetricsPageTotalCount": 3783
   },
   "samples": {
     "latestProposal": {
@@ -61,15 +61,15 @@
     }
   },
   "queryShapes": {
-    "proposalTotal": "query { proposalsConnection(orderBy: [id_ASC]) { totalCount } }",
-    "contributorsTotal": "query { contributorsConnection(orderBy: id_ASC) { totalCount } }",
-    "dataMetricTotal": "query { dataMetricsConnection(orderBy: id_ASC) { totalCount } }",
+    "proposalTotal": "query { proposalsPage(orderBy: [id_ASC], limit: 0) { totalCount } }",
+    "contributorsTotal": "query { contributorsPage(orderBy: id_ASC, limit: 0) { totalCount } }",
+    "dataMetricTotal": "query { dataMetricsPage(orderBy: id_ASC, limit: 0) { totalCount } }",
     "globalDataMetric": "query { dataMetrics(where: { id_eq: \"global\", chainId_eq: 1135, governorAddress_eq: \"0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568\", daoCode_eq: \"lisk-dao\" }) { proposalsCount votesCount powerSum memberCount } }",
     "latestProposal": "query { proposals(orderBy: [blockTimestamp_DESC_NULLS_LAST], limit: 1) { proposalId title blockNumber metricsVotesCount metricsVotesWeightForSum metricsVotesWeightAgainstSum metricsVotesWeightAbstainSum } }",
     "topContributor": "query { contributors(orderBy: [power_DESC], limit: 1) { id power } }",
     "proposalVoters": "query { proposals(where: { proposalId_eq: \"0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878\", chainId_eq: 1135, governorAddress_eq: \"0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568\", daoCode_eq: \"lisk-dao\" }, limit: 1) { proposalId voters(orderBy: [blockTimestamp_ASC_NULLS_LAST], limit: 1) { voter support weight reason params } } }",
     "proposalsByVoter": "query { proposals(where: { proposalId_eq: \"0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878\", chainId_eq: 1135, governorAddress_eq: \"0x58a61b1807a7bDA541855DaAEAEe89b1DDA48568\", daoCode_eq: \"lisk-dao\", voters_some: { voter_eq: \"0x439042a964a76cc3decffd4135a3d3d99d26fbb1\", support_eq: 1 } }, limit: 1) { proposalId } }",
     "proposalEvents": "query { proposalQueueds(orderBy: [id_ASC]) { proposalId etaSeconds } proposalExecuteds(orderBy: [id_ASC]) { proposalId } proposalCanceleds(orderBy: [id_ASC]) { proposalId } }",
-    "delegateTotals": "query { delegatesConnection(orderBy: [id_ASC]) { totalCount } delegateMappingsConnection(orderBy: [id_ASC]) { totalCount } }"
+    "delegateTotals": "query { delegatesPage(orderBy: [id_ASC], limit: 0) { totalCount } delegateMappingsPage(orderBy: [id_ASC], limit: 0) { totalCount } }"
   }
 }

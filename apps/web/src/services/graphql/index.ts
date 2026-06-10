@@ -443,19 +443,26 @@ export const delegateService = {
     );
     return response?.delegates ?? [];
   },
-  getDelegatesConnection: async (
+  getDelegatesPage: async (
     endpoint: string,
     options: {
+      limit?: number;
+      offset?: number;
       where: DelegateWhere;
-      orderBy: string[];
+      orderBy: string | string[];
     }
   ) => {
-    const response = await request<Types.DelegateConnectionResponse>(
+    const response = await request<Types.DelegatePageResponse>(
       endpoint,
-      Queries.GET_DELEGATES_CONNECTION,
-      options
+      Queries.GET_DELEGATES_PAGE,
+      {
+        ...options,
+        orderBy: Array.isArray(options.orderBy)
+          ? options.orderBy
+          : [options.orderBy],
+      }
     );
-    return response?.delegatesConnection;
+    return response?.delegatesPage;
   },
   getDelegateMappings: async (
     endpoint: string,
@@ -486,19 +493,26 @@ export const delegateService = {
     );
     return response?.delegateMappings ?? [];
   },
-  getDelegateMappingsConnection: async (
+  getDelegateMappingsPage: async (
     endpoint: string,
     options: {
+      limit?: number;
+      offset?: number;
       where: DelegateMappingWhere;
-      orderBy: string[];
+      orderBy: string | string[];
     }
   ) => {
-    const response = await request<Types.DelegateMappingConnectionResponse>(
+    const response = await request<Types.DelegateMappingPageResponse>(
       endpoint,
-      Queries.GET_DELEGATE_MAPPINGS_CONNECTION,
-      options
+      Queries.GET_DELEGATE_MAPPINGS_PAGE,
+      {
+        ...options,
+        orderBy: Array.isArray(options.orderBy)
+          ? options.orderBy
+          : [options.orderBy],
+      }
     );
-    return response?.delegateMappingsConnection;
+    return response?.delegateMappingsPage;
   },
 };
 

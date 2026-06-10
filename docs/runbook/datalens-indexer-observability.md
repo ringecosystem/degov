@@ -505,7 +505,7 @@ Run a GraphQL projection smoke against the public endpoint:
 ```sh
 curl -fsS "$DEGOV_INDEXER_GRAPHQL_ENDPOINT" \
   -H "content-type: application/json" \
-  --data '{"query":"query { indexerStatus { processedHeight targetHeight syncedPercentage isSynced } proposalsConnection(orderBy: [id_ASC]) { totalCount } contributorsConnection(orderBy: [id_ASC]) { totalCount } dataMetrics(where: { id_eq: \"global\" }) { proposalsCount votesCount powerSum memberCount } }"}'
+  --data '{"query":"query { indexerStatus { processedHeight targetHeight syncedPercentage isSynced } proposalsPage(orderBy: [id_ASC], limit: 0) { totalCount } contributorsPage(orderBy: [id_ASC], limit: 0) { totalCount } dataMetrics(where: { id_eq: \"global\" }) { proposalsCount votesCount powerSum memberCount } }"}'
 ```
 
 Expected signal: GraphQL returns `indexerStatus`, proposal/contributor counts, and

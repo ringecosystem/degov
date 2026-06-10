@@ -1,4 +1,4 @@
-export type CountConnectionItem = {
+export type CountPageItem = {
   totalCount: number;
 };
 
@@ -8,15 +8,15 @@ export type GovernanceCounts = {
 };
 
 export type GovernanceCountsResponse = {
-  proposalsConnection?: CountConnectionItem | null;
-  contributorsConnection?: CountConnectionItem | null;
+  proposalsPage?: CountPageItem | null;
+  contributorsPage?: CountPageItem | null;
 };
 
 export function resolveGovernanceCounts(
   response?: GovernanceCountsResponse | null
 ): GovernanceCounts {
   return {
-    proposalsCount: response?.proposalsConnection?.totalCount ?? 0,
-    delegatesCount: response?.contributorsConnection?.totalCount ?? 0,
+    proposalsCount: response?.proposalsPage?.totalCount ?? 0,
+    delegatesCount: response?.contributorsPage?.totalCount ?? 0,
   };
 }

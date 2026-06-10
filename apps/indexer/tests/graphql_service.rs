@@ -150,7 +150,12 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 powerSum
                 memberCount
               }
-              dataMetricsConnection(where: { votesCount_eq: 1 }, orderBy: id_ASC) { totalCount }
+              dataMetricsPage(where: { votesCount_eq: 1 }, orderBy: id_ASC, limit: 0, offset: 2) {
+                totalCount
+                offset
+                limit
+                items { id }
+              }
               contributors(where: { OR: [{ id_eq: "0xvoter1" }, { power_lt: 50 }] }, orderBy: [power_DESC]) {
                 id
                 power
@@ -168,10 +173,30 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 to
                 power
               }
-              proposalsConnection(where: $where, orderBy: id_ASC) { totalCount }
-              contributorsConnection(orderBy: id_ASC) { totalCount }
-              delegatesConnection(where: { fromDelegate_eq: "0xdelegator" }, orderBy: [id_ASC]) { totalCount }
-              delegateMappingsConnection(where: { from_eq: "0xdelegator" }, orderBy: [id_ASC]) { totalCount }
+              proposalsPage(where: $where, orderBy: id_ASC, limit: 1, offset: 0) {
+                totalCount
+                offset
+                limit
+                items { id }
+              }
+              contributorsPage(orderBy: id_ASC, limit: 1, offset: 1) {
+                totalCount
+                offset
+                limit
+                items { id }
+              }
+              delegatesPage(where: { fromDelegate_eq: "0xdelegator" }, orderBy: [id_ASC], limit: 1, offset: 0) {
+                totalCount
+                offset
+                limit
+                items { id }
+              }
+              delegateMappingsPage(where: { from_eq: "0xdelegator" }, orderBy: [id_ASC], limit: 1, offset: 0) {
+                totalCount
+                offset
+                limit
+                items { id to power }
+              }
             }
             "#,
     )
@@ -221,14 +246,71 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     );
     assert_eq!(data["proposalExecuteds"][0]["proposalId"], "0x65");
     assert_eq!(data["dataMetrics"][0]["powerSum"], "150");
-    assert_eq!(data["dataMetricsConnection"]["totalCount"], 1);
+    assert_eq!(data["dataMetricsPage"]["totalCount"], 1);
+    assert_eq!(data["dataMetricsPage"]["offset"], 2);
+    assert_eq!(data["dataMetricsPage"]["limit"], 0);
+    assert_eq!(
+        data["dataMetricsPage"]["items"]
+            .as_array()
+            .expect("items")
+            .len(),
+        0
+    );
     assert_eq!(data["contributors"][0]["id"], "0xvoter1");
     assert_eq!(data["delegates"][0]["isCurrent"], true);
     assert_eq!(data["delegateMappings"][0]["to"], "0xdelegate");
-    assert_eq!(data["proposalsConnection"]["totalCount"], 1);
-    assert_eq!(data["contributorsConnection"]["totalCount"], 2);
-    assert_eq!(data["delegatesConnection"]["totalCount"], 1);
-    assert_eq!(data["delegateMappingsConnection"]["totalCount"], 1);
+    assert_eq!(data["proposalsPage"]["totalCount"], 1);
+    assert_eq!(data["proposalsPage"]["offset"], 0);
+    assert_eq!(data["proposalsPage"]["limit"], 1);
+    assert_eq!(
+        data["proposalsPage"]["items"]
+            .as_array()
+            .expect("items")
+            .len(),
+        1
+    );
+    assert_eq!(data["contributorsPage"]["totalCount"], 2);
+    assert_eq!(data["contributorsPage"]["offset"], 1);
+    assert_eq!(data["contributorsPage"]["limit"], 1);
+    assert_eq!(
+        data["contributorsPage"]["items"]
+            .as_array()
+            .expect("items")
+            .len(),
+        1
+    );
+    assert_eq!(data["delegatesPage"]["totalCount"], 1);
+    assert_eq!(data["delegatesPage"]["offset"], 0);
+    assert_eq!(data["delegatesPage"]["limit"], 1);
+    assert_eq!(data["delegateMappingsPage"]["totalCount"], 1);
+    assert_eq!(data["delegateMappingsPage"]["offset"], 0);
+    assert_eq!(data["delegateMappingsPage"]["limit"], 1);
+    assert_eq!(data["delegateMappingsPage"]["items"][0]["to"], "0xdelegate");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_rejects_removed_connection_fields() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query RemovedConnections {
+              proposalsConnection { totalCount }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        !response.errors.is_empty(),
+        "expected GraphQL error for removed proposalsConnection field"
+    );
 
     database.cleanup().await?;
 
@@ -326,7 +408,7 @@ async fn test_graphql_data_metrics_parity_fields_filters_and_ordering() -> Resul
                 proposalsCount
                 votesCount
               }
-              dataMetricsConnection(orderBy: id_ASC) { totalCount }
+              dataMetricsPage(orderBy: id_ASC, limit: 0) { totalCount offset limit items { id } }
             }
             "#,
         ))
@@ -339,7 +421,16 @@ async fn test_graphql_data_metrics_parity_fields_filters_and_ordering() -> Resul
     );
 
     let data = response.data.into_json()?;
-    assert_eq!(data["dataMetricsConnection"]["totalCount"], 3);
+    assert_eq!(data["dataMetricsPage"]["totalCount"], 3);
+    assert_eq!(data["dataMetricsPage"]["offset"], 0);
+    assert_eq!(data["dataMetricsPage"]["limit"], 0);
+    assert_eq!(
+        data["dataMetricsPage"]["items"]
+            .as_array()
+            .expect("items")
+            .len(),
+        0
+    );
     assert_eq!(data["dataMetrics"][0]["id"], "0000000800-proposal");
     assert_eq!(data["dataMetrics"][1]["id"], "0000000805-vote");
     assert_eq!(data["dataMetrics"][2]["id"], "global");
@@ -667,7 +758,7 @@ async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_graphql_schema_applies_implicit_scope_to_queries_and_connections()
+async fn test_graphql_schema_applies_implicit_scope_to_queries_and_pages()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_other_scope_rows(&database.pool).await?;
@@ -697,11 +788,11 @@ async fn test_graphql_schema_applies_implicit_scope_to_queries_and_connections()
               contributors(orderBy: [id_ASC]) { id daoCode }
               delegates(orderBy: [id_ASC]) { id daoCode }
               delegateMappings(orderBy: [id_ASC]) { id daoCode }
-              proposalsConnection { totalCount }
-              dataMetricsConnection { totalCount }
-              contributorsConnection { totalCount }
-              delegatesConnection { totalCount }
-              delegateMappingsConnection { totalCount }
+              proposalsPage { totalCount offset limit items { id } }
+              dataMetricsPage { totalCount offset limit items { id } }
+              contributorsPage { totalCount offset limit items { id } }
+              delegatesPage { totalCount offset limit items { id } }
+              delegateMappingsPage { totalCount offset limit items { id } }
             }
             "#,
         ))
@@ -738,11 +829,20 @@ async fn test_graphql_schema_applies_implicit_scope_to_queries_and_connections()
         1
     );
     assert_eq!(data["proposalQueueds"].as_array().expect("queued").len(), 1);
-    assert_eq!(data["dataMetricsConnection"]["totalCount"], 3);
-    assert_eq!(data["contributorsConnection"]["totalCount"], 2);
-    assert_eq!(data["delegatesConnection"]["totalCount"], 1);
-    assert_eq!(data["delegateMappingsConnection"]["totalCount"], 1);
-    assert_eq!(data["proposalsConnection"]["totalCount"], 2);
+    assert_eq!(data["dataMetricsPage"]["totalCount"], 3);
+    assert_eq!(data["contributorsPage"]["totalCount"], 2);
+    assert_eq!(data["delegatesPage"]["totalCount"], 1);
+    assert_eq!(data["delegateMappingsPage"]["totalCount"], 1);
+    assert_eq!(data["proposalsPage"]["totalCount"], 2);
+    assert_eq!(data["proposalsPage"]["offset"], 0);
+    assert_eq!(data["proposalsPage"]["limit"], 20);
+    assert_eq!(
+        data["proposalsPage"]["items"]
+            .as_array()
+            .expect("items")
+            .len(),
+        2
+    );
     assert_eq!(data["dataMetrics"][0]["daoCode"], "lisk-dao");
     assert_eq!(data["contributors"][0]["daoCode"], "lisk-dao");
     assert_eq!(data["delegates"][0]["daoCode"], "lisk-dao");
@@ -909,11 +1009,11 @@ async fn test_graphql_schema_scope_conflicts_return_no_rows() -> Result<(), Box<
               contributors(where: { daoCode_eq: "ens-dao" }) { id }
               delegates(where: { daoCode_eq: "ens-dao" }) { id }
               delegateMappings(where: { daoCode_eq: "ens-dao" }) { id }
-              proposalsConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
-              dataMetricsConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
-              contributorsConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
-              delegatesConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
-              delegateMappingsConnection(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              proposalsPage(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              dataMetricsPage(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              contributorsPage(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              delegatesPage(where: { daoCode_eq: "ens-dao" }) { totalCount }
+              delegateMappingsPage(where: { daoCode_eq: "ens-dao" }) { totalCount }
             }
             "#,
         ))
@@ -939,11 +1039,11 @@ async fn test_graphql_schema_scope_conflicts_return_no_rows() -> Result<(), Box<
         assert_eq!(data[field].as_array().expect(field).len(), 0, "{field}");
     }
     for field in [
-        "proposalsConnection",
-        "dataMetricsConnection",
-        "contributorsConnection",
-        "delegatesConnection",
-        "delegateMappingsConnection",
+        "proposalsPage",
+        "dataMetricsPage",
+        "contributorsPage",
+        "delegatesPage",
+        "delegateMappingsPage",
     ] {
         assert_eq!(data[field]["totalCount"], 0, "{field}");
     }
@@ -973,7 +1073,7 @@ async fn test_graphql_http_dao_path_applies_path_scope_and_preserves_admin()
         Client::new()
             .post(admin_endpoint)
             .json(&json!({
-                "query": "query { contributorsConnection { totalCount } contributors(orderBy: [id_ASC]) { daoCode } }"
+                "query": "query { contributorsPage { totalCount } contributors(orderBy: [id_ASC]) { daoCode } }"
             }))
             .send(),
     )
@@ -985,7 +1085,7 @@ async fn test_graphql_http_dao_path_applies_path_scope_and_preserves_admin()
         Client::new()
             .post(ens_endpoint)
             .json(&json!({
-                "query": "query { contributorsConnection { totalCount } contributors(orderBy: [id_ASC]) { daoCode } }"
+                "query": "query { contributorsPage { totalCount } contributors(orderBy: [id_ASC]) { daoCode } }"
             }))
             .send(),
     )
@@ -993,14 +1093,8 @@ async fn test_graphql_http_dao_path_applies_path_scope_and_preserves_admin()
     .json()
     .await?;
 
-    assert_eq!(
-        admin_response["data"]["contributorsConnection"]["totalCount"],
-        3
-    );
-    assert_eq!(
-        ens_response["data"]["contributorsConnection"]["totalCount"],
-        1
-    );
+    assert_eq!(admin_response["data"]["contributorsPage"]["totalCount"], 3);
+    assert_eq!(ens_response["data"]["contributorsPage"]["totalCount"], 1);
     assert_eq!(
         ens_response["data"]["contributors"][0]["daoCode"],
         "ens-dao"

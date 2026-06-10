@@ -28,7 +28,7 @@ query with a power-bearing projection query:
 For Seamless DAO received delegations, the correct source of truth is:
 
 - received delegation count: `Contributor.delegatesCountAll`
-- received delegation list: `delegateMappings` / `delegateMappingsConnection`
+- received delegation list: `delegateMappings` / `delegateMappingsPage`
 - historical delegation changes: `DelegateChanged` and `DelegateRolling`
 - effective power-bearing delegate edges: `delegates` / `Delegate`
 
@@ -122,7 +122,7 @@ For delegation-specific reads:
   delegate, even if some mappings do not currently contribute non-zero power.
 - `delegatesCountEffective` tracks how many effective non-zero `Delegate` edges
   currently point at this delegate.
-- `delegateMappingsConnection.totalCount` should match
+- `delegateMappingsPage.totalCount` should match
   `Contributor.delegatesCountAll` for the same delegate.
-- `delegatesConnection.totalCount` is expected to diverge when some active
+- `delegatesPage.totalCount` is expected to diverge when some active
   delegators have zero effective delegated power.

@@ -11,7 +11,7 @@ import {
 } from "@/hooks/usePaginationRange";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
 import { buildGovernanceScope, delegateService } from "@/services/graphql";
-import type { DelegateItem } from "@/services/graphql/types";
+import type { DelegateItem, DelegatePageItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
 import { AddressWithAvatar } from "../address-with-avatar";
@@ -40,19 +40,19 @@ export interface DelegationSortState {
 interface DelegationTableProps {
   address: Address;
   orderBy: string;
-  totalCount: number;
   sortState: DelegationSortState;
   onDateSortChange: (direction?: DelegationSortDirection) => void;
   onPowerSortChange: (direction?: DelegationSortDirection) => void;
+  onTotalCountChange?: (totalCount: number) => void;
 }
 
 export function DelegationTable({
   address,
   orderBy,
-  totalCount,
   sortState,
   onDateSortChange,
   onPowerSortChange,
+  onTotalCountChange,
 }: DelegationTableProps) {
   const t = useTranslations("profile.receivedDelegations");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
@@ -70,15 +70,7 @@ export function DelegationTable({
   }, [orderBy, address]);
 
   const pageSize = DEFAULT_PAGE_SIZE;
-  const totalPageCount = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
-
-  useEffect(() => {
-    if (currentPage > totalPageCount) {
-      setCurrentPage(totalPageCount);
-    }
-  }, [currentPage, totalPageCount]);
-
-  const { data: pageData = [], isFetching } = useQuery<DelegateItem[]>({
+  const { data: page, isFetching } = useQuery<DelegatePageItem | undefined>({
     queryKey: [
       "delegation-table",
       daoConfig?.indexer?.endpoint,
@@ -89,7 +81,7 @@ export function DelegationTable({
       governanceScope,
     ],
     queryFn: () =>
-      delegateService.getAllDelegates(
+      delegateService.getDelegatesPage(
         daoConfig?.indexer?.endpoint as string,
         {
           limit: pageSize,
@@ -103,8 +95,24 @@ export function DelegationTable({
         }
       ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
-    placeholderData: (previous) => previous ?? [],
+    placeholderData: (previous) => previous,
   });
+
+  const pageData = page?.items ?? [];
+  const totalCount = page?.totalCount ?? 0;
+  const totalPageCount = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+
+  useEffect(() => {
+    if (page?.totalCount !== undefined) {
+      onTotalCountChange?.(page.totalCount);
+    }
+  }, [onTotalCountChange, page?.totalCount]);
+
+  useEffect(() => {
+    if (currentPage > totalPageCount) {
+      setCurrentPage(totalPageCount);
+    }
+  }, [currentPage, totalPageCount]);
 
   const paginationRange = usePaginationRange(currentPage, totalPageCount);
 

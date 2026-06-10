@@ -27,18 +27,24 @@ export type DelegateMappingResponse = {
   delegateMappings: DelegateMappingItem[];
 };
 
-export type DelegateMappingConnectionItem = {
+export type DelegateMappingPageItem = {
   totalCount: number;
+  offset: number;
+  limit: number;
+  items: DelegateMappingItem[];
 };
 
-export type DelegateMappingConnectionResponse = {
-  delegateMappingsConnection: DelegateMappingConnectionItem;
+export type DelegateMappingPageResponse = {
+  delegateMappingsPage: DelegateMappingPageItem;
 };
 
-export type DelegateConnectionItem = {
+export type DelegatePageItem = {
   totalCount: number;
+  offset: number;
+  limit: number;
+  items: DelegateItem[];
 };
 
-export type DelegateConnectionResponse = {
-  delegatesConnection: DelegateConnectionItem;
+export type DelegatePageResponse = {
+  delegatesPage: DelegatePageItem;
 };

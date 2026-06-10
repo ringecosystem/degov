@@ -2,10 +2,10 @@ import { gql } from "graphql-request";
 
 export const GET_GOVERNANCE_COUNTS = gql`
   query GetGovernanceCounts {
-    proposalsConnection(orderBy: id_ASC) {
+    proposalsPage(orderBy: id_ASC, limit: 0) {
       totalCount
     }
-    contributorsConnection(orderBy: id_ASC) {
+    contributorsPage(orderBy: id_ASC, limit: 0) {
       totalCount
     }
   }

@@ -103,8 +103,8 @@ query {
     chainId
     daoCode
   }
-  proposalsConnection(orderBy: [id_ASC]) { totalCount }
-  contributorsConnection(orderBy: [id_ASC]) { totalCount }
+  proposalsPage(orderBy: [id_ASC], limit: 0) { totalCount }
+  contributorsPage(orderBy: [id_ASC], limit: 0) { totalCount }
 }
 ```
 
