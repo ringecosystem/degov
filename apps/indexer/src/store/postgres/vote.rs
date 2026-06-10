@@ -214,7 +214,13 @@ async fn refresh_proposal_vote_totals(
                COALESCE(sum(CASE WHEN support = 0 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_against_sum,
                COALESCE(sum(CASE WHEN support = 2 THEN weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_abstain_sum
              FROM vote_cast_group, resolved
-             WHERE vote_cast_group.proposal_id = resolved.proposal_ref
+             WHERE vote_cast_group.contract_set_id = $2
+               AND vote_cast_group.chain_id IS NOT DISTINCT FROM $3
+               AND vote_cast_group.governor_address IS NOT DISTINCT FROM $4
+               AND (
+                 vote_cast_group.proposal_id = resolved.proposal_ref
+                 OR vote_cast_group.ref_proposal_id = $5
+               )
          ) totals, resolved
          WHERE proposal.id = resolved.proposal_ref",
     )

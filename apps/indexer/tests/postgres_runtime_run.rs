@@ -471,6 +471,259 @@ async fn test_postgres_relinks_lifecycle_stub_plain_proposal_ids() -> Result<(),
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_proposal_upsert_replaces_estimated_vote_timestamps()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let context = proposal_projection_context();
+    let estimated_batch = project_proposal_events(
+        &context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log("evm:1:2:0xtx20:0:0", 2, 0, 0),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Proposal title\n\nProposal body".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("estimated proposal projection failed: {error:?}"))?;
+    let mut exact_batch = estimated_batch.clone();
+    exact_batch.proposals[0].vote_start_timestamp = "1700001000123".to_owned();
+    exact_batch.proposals[0].vote_end_timestamp = "1700002000456".to_owned();
+    let lifecycle_batch = project_proposal_events(
+        &context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log("evm:1:3:0xtx30:0:0", 3, 0, 0),
+            event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                proposal_id: "42".to_owned(),
+                eta_seconds: "1234".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("lifecycle proposal projection failed: {error:?}"))?;
+
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(estimated_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(exact_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(lifecycle_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let proposal = sqlx::query(
+        "SELECT vote_start_timestamp::TEXT AS vote_start_timestamp,
+                vote_end_timestamp::TEXT AS vote_end_timestamp
+         FROM proposal
+         WHERE contract_set_id = $1
+           AND proposal_id = '42'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        proposal.get::<String, _>("vote_start_timestamp"),
+        "1700001000123"
+    );
+    assert_eq!(
+        proposal.get::<String, _>("vote_end_timestamp"),
+        "1700002000456"
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_vote_totals_include_ref_proposal_id_fallback_groups()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let proposal_context = proposal_projection_context();
+    let vote_context = vote_projection_context();
+    let proposal_42_batch = project_proposal_events(
+        &proposal_context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log("evm:1:2:0xtx20:0:0", 2, 0, 0),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Proposal title\n\nProposal body".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+    let proposal_43_batch = project_proposal_events(
+        &proposal_context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log("evm:1:3:0xtx30:0:0", 3, 0, 0),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "43".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Different proposal".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("stale proposal projection failed: {error:?}"))?;
+    let second_scope_context = proposal_projection_context_with_scope(
+        SECOND_CONTRACT_SET_ID,
+        1,
+        SECOND_GOVERNOR,
+        SECOND_TOKEN,
+        SECOND_TIMELOCK,
+        "demo-dao",
+    );
+    let second_scope_proposal_batch = project_proposal_events(
+        &second_scope_context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log_with_scope(1, "second-proposal", 4, 0, 0, SECOND_GOVERNOR),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "100".to_owned(),
+                vote_end: "200".to_owned(),
+                description: "Off-scope proposal".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("off-scope proposal projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(proposal_42_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(proposal_43_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(second_scope_proposal_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let stale_proposal_ref = expected_proposal_ref(CONTRACT_SET_ID, 1, GOVERNOR, "43");
+    let off_scope_proposal_ref =
+        expected_proposal_ref(SECOND_CONTRACT_SET_ID, 1, SECOND_GOVERNOR, "42");
+    sqlx::query(
+        "INSERT INTO vote_cast_group (
+            id, contract_set_id, chain_id, dao_code, governor_address, contract_address,
+            log_index, transaction_index, proposal_id, type, voter, ref_proposal_id, support,
+            weight, reason, params, block_number, block_timestamp, transaction_hash
+         )
+         VALUES
+            ('stale-ref-only', $1, 1, 'demo-dao', $2, $2, 1, 0, $6,
+             'vote-cast-without-params', $3, '42', 1, 25::NUMERIC(78, 0), '', NULL,
+             10::NUMERIC(78, 0), 1700000010000::NUMERIC(78, 0), '0xstale'),
+            ('off-scope-ref-only', $4, 1, 'demo-dao', $5, $5, 1, 0, $7,
+             'vote-cast-without-params', $3, '42', 1, 1000::NUMERIC(78, 0), '', NULL,
+             10::NUMERIC(78, 0), 1700000010000::NUMERIC(78, 0), '0xoffscope')",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(GOVERNOR)
+    .bind(VOTER)
+    .bind(SECOND_CONTRACT_SET_ID)
+    .bind(SECOND_GOVERNOR)
+    .bind(stale_proposal_ref)
+    .bind(off_scope_proposal_ref)
+    .execute(&database.pool)
+    .await?;
+
+    let vote_batch = project_vote_events(
+        &vote_context,
+        vec![VoteProjectionEvent {
+            log: normalized_log("evm:1:11:0xtx110:0:0", 11, 0, 0),
+            event: DecodedGovernorEvent::VoteCast(VoteCastEvent {
+                voter: "0x0000000000000000000000000000000000000b02".to_owned(),
+                proposal_id: "42".to_owned(),
+                support: 1,
+                weight: "75".to_owned(),
+                reason: String::new(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("vote projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            vote: Some(vote_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let proposal = sqlx::query(
+        "SELECT metrics_votes_count, metrics_votes_without_params_count,
+                metrics_votes_weight_for_sum::TEXT AS metrics_votes_weight_for_sum
+         FROM proposal
+         WHERE contract_set_id = $1
+           AND proposal_id = '42'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        proposal.get::<Option<i32>, _>("metrics_votes_count"),
+        Some(2)
+    );
+    assert_eq!(
+        proposal.get::<Option<i32>, _>("metrics_votes_without_params_count"),
+        Some(2)
+    );
+    assert_eq!(
+        proposal.get::<Option<String>, _>("metrics_votes_weight_for_sum"),
+        Some("100".to_owned())
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_data_metric_event_rows_are_idempotent_and_keep_global()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
