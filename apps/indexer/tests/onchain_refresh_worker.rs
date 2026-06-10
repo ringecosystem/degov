@@ -1281,7 +1281,7 @@ async fn test_refresh_live_power_overlays_writes_delegate_overlay_from_current_f
         1,
     )
     .await?;
-    assert_contributor_overlay(&database.pool, ACCOUNT_ONE, "11").await?;
+    assert_contributor_overlay_with_scope(&database.pool, "scope-46", ACCOUNT_ONE, "11").await?;
     assert_delegate_overlay(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "23").await?;
     assert_table_count(&database.pool, "delegate", 1).await?;
     assert_table_count(&database.pool, "vote_power_checkpoint", 0).await?;
@@ -2129,11 +2129,21 @@ async fn assert_contributor_overlay(
     account: &str,
     power: &str,
 ) -> Result<(), sqlx::Error> {
+    assert_contributor_overlay_with_scope(pool, "demo-dao", account, power).await
+}
+
+async fn assert_contributor_overlay_with_scope(
+    pool: &PgPool,
+    contract_set_id: &str,
+    account: &str,
+    power: &str,
+) -> Result<(), sqlx::Error> {
     let row = sqlx::query(
         "SELECT account, power::TEXT AS power, source, status, anchor_block_number::TEXT AS anchor_block_number
          FROM degov_provisional_contributor_power_overlay
-         WHERE contract_set_id = 'demo-dao' AND account = $1",
+         WHERE contract_set_id = $1 AND account = $2",
     )
+    .bind(contract_set_id)
     .bind(account)
     .fetch_one(pool)
     .await?;
