@@ -1139,7 +1139,7 @@ async fn test_postgres_token_reconcile_tasks_preserve_conflict_semantics()
         .iter()
         .find(|row| row.get::<String, _>("account") == DELEGATOR)
         .expect("pending conflict row");
-    assert!(!pending.get::<bool, _>("refresh_balance"));
+    assert!(pending.get::<bool, _>("refresh_balance"));
     assert!(pending.get::<bool, _>("refresh_power"));
     assert_eq!(
         pending.get::<String, _>("reason"),
