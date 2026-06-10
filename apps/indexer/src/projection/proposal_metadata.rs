@@ -158,11 +158,11 @@ pub fn derive_proposal_metadata_with_title_extractor(
     description: &str,
     title_extractor: &dyn ProposalTitleExtractor,
 ) -> ProposalTextMetadata {
-    let (title, description_body) = extract_title_and_body(description);
-    let title = if description.trim().is_empty() || title.trim().is_empty() {
-        title
+    let (local_title, description_body) = extract_title_and_body(description);
+    let title = if description.trim().is_empty() {
+        local_title
     } else {
-        extract_ai_title(title_extractor, description).unwrap_or(title)
+        extract_ai_title(title_extractor, description).unwrap_or(local_title)
     };
     let (description_body, discussion, signature_content) =
         extract_description_tags(&description_body);
@@ -220,7 +220,11 @@ fn extract_title_simplify(description: &str) -> Option<String> {
     }
 
     description.lines().find_map(|line| {
-        let heading = line.trim_start().strip_prefix("# ")?;
+        let trimmed = line.trim_start();
+        let heading = trimmed.strip_prefix('#')?;
+        if !starts_with_whitespace(heading) {
+            return None;
+        }
         let title = heading.trim();
         if title.is_empty() {
             None
@@ -419,6 +423,29 @@ fn strip_html_tags(value: &str) -> String {
     }
 
     stripped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct StaticTitleExtractor;
+
+    impl ProposalTitleExtractor for StaticTitleExtractor {
+        fn extract_title(
+            &self,
+            _description: &str,
+        ) -> Result<Option<String>, ProposalTitleExtractionError> {
+            Ok(Some("AI title".to_owned()))
+        }
+    }
+
+    #[test]
+    fn test_title_extractor_runs_when_local_fallback_is_empty() {
+        let metadata = derive_proposal_metadata_with_title_extractor("<br>", &StaticTitleExtractor);
+
+        assert_eq!(metadata.title, "AI title");
+    }
 }
 
 fn description_hash(description: &str) -> String {

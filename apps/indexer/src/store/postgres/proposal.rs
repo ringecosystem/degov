@@ -210,14 +210,7 @@ async fn insert_proposal_id_event(
     Ok(())
 }
 
-async fn upsert_proposal(
-    transaction: &mut Transaction<'_, Postgres>,
-    row: &ProposalWrite,
-) -> Result<(), PostgresIndexerRunnerStoreError> {
-    relink_existing_proposal_to_raw_id(transaction, row).await?;
-
-    sqlx::query(
-        "INSERT INTO proposal (
+const UPSERT_PROPOSAL_SQL: &str = "INSERT INTO proposal (
             id, contract_set_id, chain_id, dao_code, governor_address, contract_address, log_index,
             transaction_index, proposal_id, proposer, targets, values, signatures, calldatas,
             vote_start, vote_end, description, block_number, block_timestamp, transaction_hash,
@@ -251,10 +244,17 @@ async fn upsert_proposal(
              queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
              block_interval = COALESCE(EXCLUDED.block_interval, proposal.block_interval),
              clock_mode = EXCLUDED.clock_mode,
-             quorum = EXCLUDED.quorum,
-             decimals = EXCLUDED.decimals,
-             timelock_address = COALESCE(EXCLUDED.timelock_address, proposal.timelock_address)",
-    )
+             quorum = CASE WHEN EXCLUDED.quorum = 0::NUMERIC(78, 0) THEN proposal.quorum ELSE EXCLUDED.quorum END,
+             decimals = CASE WHEN EXCLUDED.decimals = 0::NUMERIC(78, 0) THEN proposal.decimals ELSE EXCLUDED.decimals END,
+             timelock_address = COALESCE(EXCLUDED.timelock_address, proposal.timelock_address)";
+
+async fn upsert_proposal(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &ProposalWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    relink_existing_proposal_to_raw_id(transaction, row).await?;
+
+    sqlx::query(UPSERT_PROPOSAL_SQL)
     .bind(&row.id)
     .bind(&row.contract_set_id)
     .bind(row.chain_id)
@@ -477,4 +477,19 @@ async fn insert_proposal_deadline_extension(
     .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod proposal_tests {
+    use super::*;
+
+    #[test]
+    fn test_upsert_proposal_preserves_existing_quorum_and_decimals_when_excluded_zero() {
+        assert!(UPSERT_PROPOSAL_SQL.contains(
+            "quorum = CASE WHEN EXCLUDED.quorum = 0::NUMERIC(78, 0) THEN proposal.quorum ELSE EXCLUDED.quorum END"
+        ));
+        assert!(UPSERT_PROPOSAL_SQL.contains(
+            "decimals = CASE WHEN EXCLUDED.decimals = 0::NUMERIC(78, 0) THEN proposal.decimals ELSE EXCLUDED.decimals END"
+        ));
+    }
 }

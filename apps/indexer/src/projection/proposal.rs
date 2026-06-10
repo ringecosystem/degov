@@ -1391,11 +1391,11 @@ fn estimate_blocknumber_timestamp(
     anchor_block_timestamp: Option<&str>,
     block_interval: Option<&str>,
 ) -> Option<String> {
-    let target = timepoint.parse::<i128>().ok()?;
-    let anchor = anchor_block_number.parse::<i128>().ok()?;
-    let timestamp = anchor_block_timestamp?.parse::<i128>().ok()?;
-    let interval_ms = block_interval?.parse::<i128>().ok()? * 1_000;
-    let estimated = timestamp.checked_add(target.checked_sub(anchor)?.checked_mul(interval_ms)?)?;
+    let target = timepoint.parse::<f64>().ok()?;
+    let anchor = anchor_block_number.parse::<f64>().ok()?;
+    let timestamp = anchor_block_timestamp?.parse::<f64>().ok()?;
+    let interval_ms = block_interval?.parse::<f64>().ok()? * 1_000.0;
+    let estimated = (timestamp + (target - anchor) * interval_ms).round() as i128;
 
     (estimated >= 0).then(|| estimated.to_string())
 }
@@ -1403,7 +1403,8 @@ fn estimate_blocknumber_timestamp(
 fn block_interval(chain_id: i32, clock_mode: &str) -> Option<String> {
     const ETHEREUM_MAINNET_CHAIN_ID: i32 = 1;
 
-    (chain_id == ETHEREUM_MAINNET_CHAIN_ID && clock_mode == "blocknumber").then(|| "12".to_owned())
+    (chain_id == ETHEREUM_MAINNET_CHAIN_ID && clock_mode == "blocknumber")
+        .then(|| "13.333333333333334".to_owned())
 }
 
 fn timepoint_timestamp_for_proposal(proposal: &ProposalWrite, timepoint: &str) -> String {
