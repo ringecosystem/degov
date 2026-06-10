@@ -386,6 +386,7 @@ async fn insert_vote_power_checkpoint(
 async fn apply_token_operation(
     transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
+    delegate_snapshot_cache: &mut DelegateSnapshotCache,
     contributor_ensure_cache: &mut ContributorEnsureCache,
     metadata_cache: &mut BatchTokenMetadataCache,
     operation: &TokenProjectionOperation,
@@ -401,6 +402,7 @@ async fn apply_token_operation(
             apply_delegate_changed_operation(
                 transaction,
                 delegate_mapping_cache,
+                delegate_snapshot_cache,
                 common,
                 delegator,
                 from_delegate,
@@ -419,6 +421,7 @@ async fn apply_token_operation(
             apply_delegate_votes_changed_operation(
                 transaction,
                 delegate_mapping_cache,
+                delegate_snapshot_cache,
                 common,
                 delegate,
                 previous_votes,
@@ -439,6 +442,7 @@ async fn apply_token_operation(
             apply_transfer_operation(
                 transaction,
                 delegate_mapping_cache,
+                delegate_snapshot_cache,
                 common,
                 from,
                 to,
@@ -454,6 +458,7 @@ async fn apply_token_operation(
 async fn apply_delegate_changed_operation(
     transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
+    delegate_snapshot_cache: &mut DelegateSnapshotCache,
     common: &TokenEventCommon,
     delegator: &str,
     from_delegate: &str,
@@ -477,14 +482,13 @@ async fn apply_delegate_changed_operation(
 
     if let Some(previous) = previous_mapping {
         upsert_delegate_snapshot(
-            transaction,
+            delegate_snapshot_cache,
             common,
             delegator,
             &previous.to,
             false,
             &previous.power,
-        )
-        .await?;
+        )?;
         apply_delegate_count_delta(
             transaction,
             common,
@@ -523,7 +527,14 @@ async fn apply_delegate_changed_operation(
         "0",
     )
     .await?;
-    upsert_delegate_snapshot(transaction, common, delegator, to_delegate, true, "0").await?;
+    upsert_delegate_snapshot(
+        delegate_snapshot_cache,
+        common,
+        delegator,
+        to_delegate,
+        true,
+        "0",
+    )?;
 
     Ok(())
 }
@@ -531,6 +542,7 @@ async fn apply_delegate_changed_operation(
 async fn apply_delegate_votes_changed_operation(
     transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
+    delegate_snapshot_cache: &mut DelegateSnapshotCache,
     common: &TokenEventCommon,
     delegate: &str,
     previous_votes: &str,
@@ -563,6 +575,7 @@ async fn apply_delegate_votes_changed_operation(
             apply_delegate_delta(
                 transaction,
                 delegate_mapping_cache,
+                delegate_snapshot_cache,
                 common,
                 &rolling_match.delegator,
                 &rolling_match.from_delegate,
@@ -588,6 +601,7 @@ async fn apply_delegate_votes_changed_operation(
             apply_delegate_delta(
                 transaction,
                 delegate_mapping_cache,
+                delegate_snapshot_cache,
                 common,
                 &rolling_match.delegator,
                 &rolling_match.to_delegate,
@@ -602,6 +616,7 @@ async fn apply_delegate_votes_changed_operation(
 async fn apply_transfer_operation(
     transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
+    delegate_snapshot_cache: &mut DelegateSnapshotCache,
     common: &TokenEventCommon,
     from: &str,
     to: &str,
@@ -616,6 +631,7 @@ async fn apply_transfer_operation(
         apply_delegate_delta(
             transaction,
             delegate_mapping_cache,
+            delegate_snapshot_cache,
             common,
             &mapping.from,
             &mapping.to,
@@ -630,6 +646,7 @@ async fn apply_transfer_operation(
         apply_delegate_delta(
             transaction,
             delegate_mapping_cache,
+            delegate_snapshot_cache,
             common,
             &mapping.from,
             &mapping.to,
@@ -645,6 +662,7 @@ async fn apply_transfer_operation(
 async fn apply_delegate_delta(
     transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
+    delegate_snapshot_cache: &mut DelegateSnapshotCache,
     common: &TokenEventCommon,
     from_delegate: &str,
     to_delegate: &str,
@@ -690,20 +708,19 @@ async fn apply_delegate_delta(
         .await?;
     }
     upsert_delegate_snapshot(
-        transaction,
+        delegate_snapshot_cache,
         common,
         from_delegate,
         to_delegate,
         true,
         &next_mapping_power,
-    )
-    .await?;
+    )?;
 
     Ok(())
 }
 
-async fn upsert_delegate_snapshot(
-    transaction: &mut Transaction<'_, Postgres>,
+fn upsert_delegate_snapshot(
+    delegate_snapshot_cache: &mut DelegateSnapshotCache,
     common: &TokenEventCommon,
     from_delegate: &str,
     to_delegate: &str,
@@ -713,18 +730,127 @@ async fn upsert_delegate_snapshot(
     if is_zero_address(to_delegate) {
         return Ok(());
     }
-    let id = delegate_ref(common, from_delegate, to_delegate);
-    sqlx::query(
+    delegate_snapshot_cache.stage(common, from_delegate, to_delegate, is_current, power);
+
+    Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct DelegateSnapshot {
+    common: TokenEventCommon,
+    from_delegate: String,
+    to_delegate: String,
+    is_current: bool,
+    power: String,
+}
+
+#[derive(Debug, Default)]
+struct DelegateSnapshotCache {
+    dirty: std::collections::BTreeMap<(String, String), DelegateSnapshot>,
+}
+
+impl DelegateSnapshotCache {
+    fn stage(
+        &mut self,
+        common: &TokenEventCommon,
+        from_delegate: &str,
+        to_delegate: &str,
+        is_current: bool,
+        power: &str,
+    ) {
+        let id = delegate_ref(common, from_delegate, to_delegate);
+        self.dirty.insert(
+            (common.contract_set_id.clone(), id),
+            DelegateSnapshot {
+                common: common.clone(),
+                from_delegate: from_delegate.to_owned(),
+                to_delegate: to_delegate.to_owned(),
+                is_current,
+                power: power.to_owned(),
+            },
+        );
+    }
+
+    fn drain_snapshots(&mut self) -> Vec<DelegateSnapshot> {
+        std::mem::take(&mut self.dirty).into_values().collect()
+    }
+
+    async fn flush(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let snapshots = self.drain_snapshots();
+        if snapshots.is_empty() {
+            return Ok(());
+        }
+
+        for rows in snapshots.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+            upsert_delegate_snapshot_batch(transaction, rows).await?;
+        }
+
+        Ok(())
+    }
+}
+
+async fn upsert_delegate_snapshot_batch(
+    transaction: &mut Transaction<'_, Postgres>,
+    rows: &[DelegateSnapshot],
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let mut query = QueryBuilder::<Postgres>::new(
         "INSERT INTO delegate (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
             log_index, transaction_index, from_delegate, to_delegate, block_number,
             block_timestamp, transaction_hash, is_current, power
-         )
-         VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
-            $13::NUMERIC(78, 0), $14, $15, $16::NUMERIC(78, 0)
-         )
-         ON CONFLICT (contract_set_id, id) DO UPDATE
+         ) VALUES ",
+    );
+    for (index, row) in rows.iter().enumerate() {
+        if index > 0 {
+            query.push(", ");
+        }
+        let common = &row.common;
+        query
+            .push("(")
+            .push_bind(delegate_ref(common, &row.from_delegate, &row.to_delegate))
+            .push(", ")
+            .push_bind(&common.contract_set_id)
+            .push(", ")
+            .push_bind(common.chain_id)
+            .push(", ")
+            .push_bind(&common.dao_code)
+            .push(", ")
+            .push_bind(&common.governor_address)
+            .push(", ")
+            .push_bind(&common.token_address)
+            .push(", ")
+            .push_bind(&common.contract_address)
+            .push(", ")
+            .push_bind(u64_to_i32(common.log_index, "delegate.log_index")?)
+            .push(", ")
+            .push_bind(u64_to_i32(
+                common.transaction_index,
+                "delegate.transaction_index",
+            )?)
+            .push(", ")
+            .push_bind(&row.from_delegate)
+            .push(", ")
+            .push_bind(&row.to_delegate)
+            .push(", ")
+            .push_bind(&common.block_number)
+            .push("::NUMERIC(78, 0), ")
+            .push_bind(required_numeric(
+                &common.block_timestamp,
+                "delegate.block_timestamp",
+            )?)
+            .push("::NUMERIC(78, 0), ")
+            .push_bind(&common.transaction_hash)
+            .push(", ")
+            .push_bind(row.is_current)
+            .push(", ")
+            .push_bind(&row.power)
+            .push("::NUMERIC(78, 0))");
+    }
+    query.push(
+        " ON CONFLICT (contract_set_id, id) DO UPDATE
          SET chain_id = EXCLUDED.chain_id,
              dao_code = EXCLUDED.dao_code,
              governor_address = EXCLUDED.governor_address,
@@ -737,31 +863,8 @@ async fn upsert_delegate_snapshot(
              transaction_hash = EXCLUDED.transaction_hash,
              is_current = EXCLUDED.is_current,
              power = EXCLUDED.power",
-    )
-    .bind(id)
-    .bind(&common.contract_set_id)
-    .bind(common.chain_id)
-    .bind(&common.dao_code)
-    .bind(&common.governor_address)
-    .bind(&common.token_address)
-    .bind(&common.contract_address)
-    .bind(u64_to_i32(common.log_index, "delegate.log_index")?)
-    .bind(u64_to_i32(
-        common.transaction_index,
-        "delegate.transaction_index",
-    )?)
-    .bind(from_delegate)
-    .bind(to_delegate)
-    .bind(&common.block_number)
-    .bind(required_numeric(
-        &common.block_timestamp,
-        "delegate.block_timestamp",
-    )?)
-    .bind(&common.transaction_hash)
-    .bind(is_current)
-    .bind(power)
-    .execute(&mut **transaction)
-    .await?;
+    );
+    query.build().execute(&mut **transaction).await?;
 
     Ok(())
 }
@@ -2241,6 +2344,23 @@ mod token_store_tests {
                 power: "25".to_owned(),
             }))
         );
+    }
+
+    #[test]
+    fn test_delegate_snapshot_cache_keeps_only_final_dirty_state_per_relation() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let mut cache = DelegateSnapshotCache::default();
+
+        cache.stage(&common, "0xdelegator", "0xdelegate", true, "10");
+        cache.stage(&common, "0xdelegator", "0xdelegate", true, "25");
+
+        let snapshots = cache.drain_snapshots();
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].from_delegate, "0xdelegator");
+        assert_eq!(snapshots[0].to_delegate, "0xdelegate");
+        assert!(snapshots[0].is_current);
+        assert_eq!(snapshots[0].power, "25");
     }
 
     #[test]
