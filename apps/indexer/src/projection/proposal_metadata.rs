@@ -269,7 +269,24 @@ fn clean_fullback_line(line: &str) -> String {
         without_prefix
     };
 
-    strip_blockquote_prefix(without_rule).to_owned()
+    normalize_bracket_title_prefix(strip_blockquote_prefix(without_rule))
+}
+
+fn normalize_bracket_title_prefix(line: &str) -> String {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix('[') else {
+        return line.to_owned();
+    };
+    let Some(close_offset) = rest.find(']') else {
+        return line.to_owned();
+    };
+    let label = rest[..close_offset].trim();
+    let title = rest[close_offset + 1..].trim();
+    if label.is_empty() || title.is_empty() {
+        return line.to_owned();
+    }
+
+    format!("{label}: {title}")
 }
 
 fn strip_heading_prefix(line: &str) -> Option<&str> {
