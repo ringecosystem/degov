@@ -1663,19 +1663,60 @@ impl DelegateMappingCache {
             query.build().execute(&mut **transaction).await?;
         }
 
-        for row in upserts {
-            let common = &row.common;
-            sqlx::query(
+        for rows in upserts.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
                 r#"INSERT INTO delegate_mapping (
                     id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
                     log_index, transaction_index, "from", "to", power, block_number, block_timestamp,
                     transaction_hash
-                 )
-                 VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
-                    $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
-                 )
-                 ON CONFLICT (contract_set_id, id) DO UPDATE
+                 ) VALUES "#,
+            );
+            for (index, row) in rows.iter().enumerate() {
+                if index > 0 {
+                    query.push(", ");
+                }
+                let common = &row.common;
+                query
+                    .push("(")
+                    .push_bind(delegate_mapping_ref(common, &row.from))
+                    .push(", ")
+                    .push_bind(&common.contract_set_id)
+                    .push(", ")
+                    .push_bind(common.chain_id)
+                    .push(", ")
+                    .push_bind(&common.dao_code)
+                    .push(", ")
+                    .push_bind(&common.governor_address)
+                    .push(", ")
+                    .push_bind(&common.token_address)
+                    .push(", ")
+                    .push_bind(&common.contract_address)
+                    .push(", ")
+                    .push_bind(u64_to_i32(common.log_index, "delegate_mapping.log_index")?)
+                    .push(", ")
+                    .push_bind(u64_to_i32(
+                        common.transaction_index,
+                        "delegate_mapping.transaction_index",
+                    )?)
+                    .push(", ")
+                    .push_bind(&row.from)
+                    .push(", ")
+                    .push_bind(&row.to)
+                    .push(", ")
+                    .push_bind(&row.power)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(&common.block_number)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(required_numeric(
+                        &common.block_timestamp,
+                        "delegate_mapping.block_timestamp",
+                    )?)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(&common.transaction_hash)
+                    .push(")");
+            }
+            query.push(
+                r#" ON CONFLICT (contract_set_id, id) DO UPDATE
                  SET chain_id = EXCLUDED.chain_id,
                      dao_code = EXCLUDED.dao_code,
                      governor_address = EXCLUDED.governor_address,
@@ -1689,30 +1730,8 @@ impl DelegateMappingCache {
                      block_number = EXCLUDED.block_number,
                      block_timestamp = EXCLUDED.block_timestamp,
                      transaction_hash = EXCLUDED.transaction_hash"#,
-            )
-            .bind(delegate_mapping_ref(common, &row.from))
-            .bind(&common.contract_set_id)
-            .bind(common.chain_id)
-            .bind(&common.dao_code)
-            .bind(&common.governor_address)
-            .bind(&common.token_address)
-            .bind(&common.contract_address)
-            .bind(u64_to_i32(common.log_index, "delegate_mapping.log_index")?)
-            .bind(u64_to_i32(
-                common.transaction_index,
-                "delegate_mapping.transaction_index",
-            )?)
-            .bind(&row.from)
-            .bind(&row.to)
-            .bind(&row.power)
-            .bind(&common.block_number)
-            .bind(required_numeric(
-                &common.block_timestamp,
-                "delegate_mapping.block_timestamp",
-            )?)
-            .bind(&common.transaction_hash)
-            .execute(&mut **transaction)
-            .await?;
+            );
+            query.build().execute(&mut **transaction).await?;
         }
 
         Ok(())
@@ -2169,6 +2188,9 @@ fn push_delegate_mapping_preload_candidate(
     common: &TokenEventCommon,
     from: &str,
 ) {
+    if is_zero_address(from) {
+        return;
+    }
     let id = delegate_mapping_ref(common, from);
     if seen.insert((common.contract_set_id.clone(), id.clone())) {
         candidates.push(DelegateMappingPreloadCandidate {
@@ -2790,7 +2812,7 @@ mod token_store_tests {
                 TokenProjectionOperation::Transfer {
                     id: "transfer".to_owned(),
                     common: common.clone(),
-                    from: "0xtransferFrom".to_owned(),
+                    from: "0x0000000000000000000000000000000000000000".to_owned(),
                     to: "0xtransferTo".to_owned(),
                     value: "5".to_owned(),
                     standard: GovernanceTokenStandard::Erc20,
@@ -2819,7 +2841,6 @@ mod token_store_tests {
                 "0xrollingdelegator",
                 "0xrollingfrom",
                 "0xrollingto",
-                "0xtransferfrom",
                 "0xtransferto",
             ]
             .into_iter()

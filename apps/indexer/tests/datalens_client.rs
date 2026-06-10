@@ -231,7 +231,8 @@ fn test_datalens_log_query_retries_provider_timeout_before_success() {
         api_error_response(503, "provider_timeout", None),
         query_success_response(serde_json::json!([{ "block_number": 101 }])),
     ]);
-    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_secs(30);
     let mut client =
         DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(2))
             .expect("client");
