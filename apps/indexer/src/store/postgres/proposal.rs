@@ -357,6 +357,23 @@ pub struct ProposalTitleRefreshUpdate {
     pub title: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalReferenceFieldCandidate {
+    pub id: String,
+    pub proposal_id: String,
+    pub title: String,
+    pub block_interval: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalReferenceFieldUpdate {
+    pub id: String,
+    pub previous_title: String,
+    pub previous_block_interval: Option<String>,
+    pub title: String,
+    pub block_interval: Option<String>,
+}
+
 pub async fn read_proposal_title_refresh_candidates(
     pool: &PgPool,
     dao_code: &str,
@@ -423,6 +440,89 @@ async fn update_proposal_title_chunk(
     );
     builder.push_bind(dao_code);
     builder.push(" AND proposal.title IS DISTINCT FROM proposal_title_refresh.title");
+
+    let result = builder.build().execute(pool).await?;
+    Ok(result.rows_affected())
+}
+
+pub async fn read_proposal_reference_field_candidates(
+    pool: &PgPool,
+    dao_code: &str,
+) -> Result<Vec<ProposalReferenceFieldCandidate>, PostgresIndexerRunnerStoreError> {
+    let rows = sqlx::query(
+        "SELECT id, proposal_id, title, block_interval
+         FROM proposal
+         WHERE dao_code = $1
+         ORDER BY block_number, transaction_index, log_index, id",
+    )
+    .bind(dao_code)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| ProposalReferenceFieldCandidate {
+            id: row.get("id"),
+            proposal_id: row.get("proposal_id"),
+            title: row.get("title"),
+            block_interval: row.get("block_interval"),
+        })
+        .collect())
+}
+
+const UPDATE_PROPOSAL_REFERENCE_FIELDS_SQL_PREFIX: &str =
+    "UPDATE proposal SET title = proposal_reference_fields.title,
+         block_interval = proposal_reference_fields.block_interval
+     FROM (";
+const UPDATE_PROPOSAL_REFERENCE_FIELDS_CHUNK_SIZE: usize = 5_000;
+
+pub async fn update_proposal_reference_fields(
+    pool: &PgPool,
+    dao_code: &str,
+    updates: &[ProposalReferenceFieldUpdate],
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
+    if updates.is_empty() {
+        return Ok(0);
+    }
+
+    let mut rows_affected = 0;
+    for update_chunk in updates.chunks(UPDATE_PROPOSAL_REFERENCE_FIELDS_CHUNK_SIZE) {
+        rows_affected += update_proposal_reference_field_chunk(pool, dao_code, update_chunk).await?;
+    }
+
+    Ok(rows_affected)
+}
+
+async fn update_proposal_reference_field_chunk(
+    pool: &PgPool,
+    dao_code: &str,
+    updates: &[ProposalReferenceFieldUpdate],
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
+    let mut builder: QueryBuilder<Postgres> =
+        QueryBuilder::new(UPDATE_PROPOSAL_REFERENCE_FIELDS_SQL_PREFIX);
+    builder.push_values(updates, |mut row, update| {
+        row.push_bind(&update.id)
+            .push_bind(&update.previous_title)
+            .push_bind(&update.previous_block_interval)
+            .push_bind(&update.title)
+            .push_bind(&update.block_interval);
+    });
+    builder.push(
+        ") AS proposal_reference_fields(
+            id, previous_title, previous_block_interval, title, block_interval
+         )
+         WHERE proposal.id = proposal_reference_fields.id
+           AND proposal.title = proposal_reference_fields.previous_title
+           AND proposal.block_interval IS NOT DISTINCT FROM proposal_reference_fields.previous_block_interval
+           AND proposal.dao_code = ",
+    );
+    builder.push_bind(dao_code);
+    builder.push(
+        " AND (
+            proposal.title IS DISTINCT FROM proposal_reference_fields.title
+            OR proposal.block_interval IS DISTINCT FROM proposal_reference_fields.block_interval
+         )",
+    );
 
     let result = builder.build().execute(pool).await?;
     Ok(result.rows_affected())

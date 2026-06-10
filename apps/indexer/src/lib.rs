@@ -102,8 +102,10 @@ pub use crate::store::postgres::{
     PostgresIndexerRunnerStoreError, PostgresIndexerRunnerTransaction,
     PostgresProvisionalCleanupStore, PostgresProvisionalPowerOverlayStore,
     PostgresProvisionalProposalOverlayStore, PostgresProvisionalSegmentStore,
-    ProposalTitleRefreshCandidate, ProposalTitleRefreshUpdate,
-    read_proposal_title_refresh_candidates, update_proposal_titles,
+    ProposalReferenceFieldCandidate, ProposalReferenceFieldUpdate, ProposalTitleRefreshCandidate,
+    ProposalTitleRefreshUpdate, read_proposal_reference_field_candidates,
+    read_proposal_title_refresh_candidates, update_proposal_reference_fields,
+    update_proposal_titles,
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
