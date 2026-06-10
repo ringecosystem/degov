@@ -905,6 +905,55 @@ async fn test_onchain_refresh_worker_failed_task_uses_attempt_backoff() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_claims_pending_task_at_max_attempts()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        3,
+        false,
+        true,
+    )
+    .await?;
+
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::ZERO,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([(
+            "task-one",
+            OnchainRefreshReadValue {
+                task_id: "task-one".to_owned(),
+                balance: None,
+                power: Some("11".to_owned()),
+            },
+        )]),
+    );
+
+    assert_eq!(worker.ready_backlog().await?, 1);
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 1);
+    assert_eq!(report.completed, 1);
+    assert_completed_task(&database.pool, "task-one", 4).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_rolls_back_when_apply_fails() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_task(
@@ -1229,6 +1278,78 @@ async fn test_onchain_refresh_worker_reschedules_pending_after_lock_with_debounc
     assert_eq!(row.get::<String, _>("last_seen_block_timestamp"), "13000");
     assert_eq!(row.get::<String, _>("last_seen_transaction_hash"), "0xnew");
     assert!(!row.get::<bool, _>("pending_after_lock"));
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_resets_attempts_for_pending_after_lock()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        2,
+        false,
+        true,
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE onchain_refresh_task
+         SET pending_after_lock = TRUE,
+             pending_after_lock_block_number = 13::NUMERIC(78, 0),
+             pending_after_lock_block_timestamp = 13000::NUMERIC(78, 0),
+             pending_after_lock_transaction_hash = '0xnew'
+         WHERE id = 'task-one'",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::ZERO,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([(
+            "task-one",
+            OnchainRefreshReadValue {
+                task_id: "task-one".to_owned(),
+                balance: None,
+                power: Some("11".to_owned()),
+            },
+        )]),
+    );
+
+    let first_report = worker.run_once().await?;
+
+    assert_eq!(first_report.completed, 0);
+    assert_eq!(first_report.debounced_tasks, 1);
+    let row = sqlx::query(
+        "SELECT status, attempts
+         FROM onchain_refresh_task
+         WHERE id = 'task-one'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(row.get::<String, _>("status"), "pending");
+    assert_eq!(row.get::<i32, _>("attempts"), 0);
+
+    let second_report = worker.run_once().await?;
+
+    assert_eq!(second_report.claimed, 1);
+    assert_eq!(second_report.completed, 1);
+    assert_completed_task(&database.pool, "task-one", 1).await?;
 
     database.cleanup().await?;
 
