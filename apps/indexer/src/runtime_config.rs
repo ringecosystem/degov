@@ -249,6 +249,7 @@ pub struct IndexerContractSetRuntimeConfig {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AdaptiveChunkSizerRuntimeConfig {
     pub min_chunk_size: u32,
+    pub transient_query_failure_min_chunk_size: u32,
     pub max_chunk_size: Option<u32>,
     pub fast_chunk_duration_threshold: Duration,
     pub high_query_duration_threshold: Duration,
@@ -262,6 +263,7 @@ impl Default for AdaptiveChunkSizerRuntimeConfig {
     fn default() -> Self {
         Self {
             min_chunk_size: 100,
+            transient_query_failure_min_chunk_size: 1,
             max_chunk_size: None,
             fast_chunk_duration_threshold: Duration::from_secs(1),
             high_query_duration_threshold: Duration::from_secs(10),
@@ -283,6 +285,9 @@ impl AdaptiveChunkSizerRuntimeConfig {
             initial_chunk_size: max_chunk_size,
             max_chunk_size,
             min_chunk_size: self.min_chunk_size.min(max_chunk_size),
+            transient_query_failure_min_chunk_size: self
+                .transient_query_failure_min_chunk_size
+                .min(max_chunk_size),
             fast_chunk_duration_threshold: self.fast_chunk_duration_threshold,
             high_query_duration_threshold: self.high_query_duration_threshold,
             cache_fill_high_duration_threshold: self.cache_fill_high_duration_threshold,
@@ -760,6 +765,7 @@ fn load_adaptive_chunk_sizer_runtime_config() -> Result<AdaptiveChunkSizerRuntim
     let config = AdaptiveChunkSizerRuntimeConfig {
         min_chunk_size: optional_env_u32("DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS")?
             .unwrap_or(defaults.min_chunk_size),
+        transient_query_failure_min_chunk_size: defaults.transient_query_failure_min_chunk_size,
         max_chunk_size: optional_env_u32("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS")?,
         fast_chunk_duration_threshold: Duration::from_millis(
             optional_env_u64("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS")?
