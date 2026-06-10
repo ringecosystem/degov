@@ -27,7 +27,7 @@ fn test_plan_power_reconcile_dedupes_large_batch_before_chain_reads() {
 
     assert_eq!(plan.metrics.candidate_count, 20_000);
     assert_eq!(plan.metrics.deduped_count, 19_998);
-    assert_eq!(plan.metrics.read_count, 2);
+    assert_eq!(plan.metrics.read_count, 4);
     assert_eq!(plan.metrics.processed_count, 0);
     assert_eq!(plan.metrics.failed_count, 0);
     assert_eq!(plan.metrics.sync_lag_blocks, Some(10));
@@ -36,7 +36,7 @@ fn test_plan_power_reconcile_dedupes_large_batch_before_chain_reads() {
         PowerFreshnessState::SyncLag { lag_blocks: 10 }
     );
     assert_eq!(plan.candidates.len(), 2);
-    assert_eq!(plan.chain_read_plan.reads.len(), 2);
+    assert_eq!(plan.chain_read_plan.reads.len(), 4);
 }
 
 #[test]
@@ -106,6 +106,8 @@ fn test_plan_power_reconcile_keeps_latest_activity_block_and_merges_reasons() {
     );
     assert_eq!(candidate.status.status, PowerRefreshStatus::Pending);
     assert_eq!(candidate.status.source, PowerRefreshReadSource::OnchainRpc);
+    assert!(candidate.status.refresh_power);
+    assert!(candidate.status.refresh_balance);
     assert_eq!(candidate.status.first_seen_activity_block, 99);
     assert_eq!(candidate.status.last_seen_activity_block, 103);
     assert_eq!(candidate.status.last_seen_block_timestamp_ms, Some(103_000));
@@ -151,6 +153,51 @@ fn test_plan_power_reconcile_does_not_write_log_derived_power() {
 }
 
 #[test]
+fn test_plan_power_reconcile_refreshes_balance_only_for_delegate_change_delegator() {
+    let delegator = account("aaaa");
+    let from_delegate = account("bbbb");
+    let to_delegate = account("cccc");
+    let events = vec![PowerReconcileEvent {
+        block_number: 150,
+        block_timestamp_ms: Some(150_000),
+        transaction_hash: "0xtx150".to_owned(),
+        transaction_index: 0,
+        log_index: 0,
+        event: DecodedDaoEvent::Token(DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+            delegator: delegator.clone(),
+            from_delegate: from_delegate.clone(),
+            to_delegate: to_delegate.clone(),
+        })),
+    }];
+
+    let plan = plan_power_reconcile(&context(150, 150, Some(150)), &events);
+
+    let delegator_candidate = plan
+        .candidates
+        .iter()
+        .find(|candidate| candidate.account == delegator)
+        .expect("delegator candidate");
+    assert!(delegator_candidate.status.refresh_balance);
+
+    for delegate in [&from_delegate, &to_delegate] {
+        let candidate = plan
+            .candidates
+            .iter()
+            .find(|candidate| candidate.account == *delegate)
+            .expect("delegate candidate");
+        assert!(candidate.status.refresh_power);
+        assert!(!candidate.status.refresh_balance);
+        assert!(
+            !plan.chain_read_plan.reads.iter().any(|read| {
+                read.metadata.accounts.contains(delegate)
+                    && read.key.method == ChainReadMethod::BalanceOf
+            }),
+            "delegatee accounts should not receive balanceOf refresh reads"
+        );
+    }
+}
+
+#[test]
 fn test_plan_power_reconcile_emits_chaintool_get_votes_reads() {
     let acct = account("aaaa");
     let events = vec![PowerReconcileEvent {
@@ -172,7 +219,9 @@ fn test_plan_power_reconcile_emits_chaintool_get_votes_reads() {
         .chain_read_plan
         .reads
         .iter()
-        .find(|read| read.metadata.accounts.contains(&acct))
+        .find(|read| {
+            read.metadata.accounts.contains(&acct) && read.key.method == ChainReadMethod::GetVotes
+        })
         .expect("account read");
 
     assert_eq!(read.key.chain_id, 1);
@@ -182,12 +231,24 @@ fn test_plan_power_reconcile_emits_chaintool_get_votes_reads() {
     );
     assert_eq!(read.key.method, ChainReadMethod::GetVotes);
     assert_eq!(read.key.block_mode, BlockReadMode::Safe);
-    assert_eq!(read.key.args, vec![acct]);
+    assert_eq!(read.key.args, vec![acct.clone()]);
     assert_eq!(
         read.metadata.reasons,
         [ChainReadReason::TokenActivityPowerRefresh].into()
     );
     assert_eq!(read.activity_blocks, vec![200]);
+
+    let balance_read = plan
+        .chain_read_plan
+        .reads
+        .iter()
+        .find(|read| {
+            read.metadata.accounts.contains(&acct) && read.key.method == ChainReadMethod::BalanceOf
+        })
+        .expect("balance read");
+    assert_eq!(balance_read.key.contract_address, read.key.contract_address);
+    assert_eq!(balance_read.key.block_mode, BlockReadMode::Safe);
+    assert_eq!(balance_read.key.args, read.key.args);
 }
 
 #[test]
@@ -270,7 +331,10 @@ fn test_plan_power_reconcile_can_emit_current_votes_fallback_reads() {
         .chain_read_plan
         .reads
         .iter()
-        .find(|read| read.metadata.accounts.contains(&acct))
+        .find(|read| {
+            read.metadata.accounts.contains(&acct)
+                && read.key.method == ChainReadMethod::CurrentVotes
+        })
         .expect("account read");
 
     assert_eq!(read.key.method, ChainReadMethod::CurrentVotes);

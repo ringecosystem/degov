@@ -90,7 +90,7 @@ fn test_project_token_events_preserves_history_mappings_relations_and_reconcile_
 
     assert_eq!(batch.reconcile_plan.metrics.candidate_count, 7);
     assert_eq!(batch.reconcile_plan.metrics.deduped_count, 4);
-    assert_eq!(batch.reconcile_plan.chain_read_plan.reads.len(), 3);
+    assert_eq!(batch.reconcile_plan.chain_read_plan.reads.len(), 5);
     let accounts = batch
         .reconcile_plan
         .candidates
@@ -117,8 +117,27 @@ fn test_project_token_events_preserves_history_mappings_relations_and_reconcile_
     );
     for read in &batch.reconcile_plan.chain_read_plan.reads {
         assert_eq!(read.requirement, ReadRequirement::Required);
-        assert_eq!(read.key.method, ChainReadMethod::GetVotes);
     }
+    assert_eq!(
+        batch
+            .reconcile_plan
+            .chain_read_plan
+            .reads
+            .iter()
+            .filter(|read| read.key.method == ChainReadMethod::GetVotes)
+            .count(),
+        3
+    );
+    assert_eq!(
+        batch
+            .reconcile_plan
+            .chain_read_plan
+            .reads
+            .iter()
+            .filter(|read| read.key.method == ChainReadMethod::BalanceOf)
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -337,7 +356,7 @@ fn test_project_token_events_undelegation_old_side_delta_removes_relation_withou
 }
 
 #[test]
-fn test_project_token_events_delegate_change_without_voting_units_does_not_emit_delegate_edge() {
+fn test_project_token_events_delegate_change_without_voting_units_keeps_zero_power_edge() {
     let batch = project_token_events(
         &context(GovernanceTokenStandard::Erc20),
         vec![TokenProjectionEvent {
@@ -356,7 +375,12 @@ fn test_project_token_events_delegate_change_without_voting_units_does_not_emit_
         .expect("mapping is preserved");
     assert_eq!(mapping.to, account("bbbb"));
     assert_eq!(mapping.power, "0");
-    assert!(repository.delegates().is_empty());
+    let relation = repository
+        .delegates()
+        .get(&format!("{}_{}", account("aaaa"), account("bbbb")))
+        .expect("current zero-power delegate relation");
+    assert!(relation.is_current);
+    assert_eq!(relation.power, "0");
     assert_eq!(
         repository
             .contributors()
@@ -414,6 +438,54 @@ fn test_project_token_events_applies_same_transaction_delegate_vote_delta_to_rel
         1
     );
     assert_eq!(repository.data_metric().power_sum, "0");
+}
+
+#[test]
+fn test_project_token_events_delegate_vote_aggregate_does_not_overwrite_edge_power() {
+    let mut repository = InMemoryTokenProjectionRepository::default();
+    let initial = project_token_events(
+        &context(GovernanceTokenStandard::Erc20),
+        vec![
+            TokenProjectionEvent {
+                log: log(10, 0, 1),
+                event: delegate_changed(account("BBBB"), zero(), account("CCCC")),
+            },
+            TokenProjectionEvent {
+                log: log(11, 0, 1),
+                event: transfer(
+                    account("DDDD"),
+                    account("BBBB"),
+                    "40",
+                    GovernanceTokenStandard::Erc20,
+                ),
+            },
+        ],
+    )
+    .expect("initial projection succeeds");
+    repository.apply(&initial).expect("initial write succeeds");
+
+    let aggregate_change = project_token_events(
+        &context(GovernanceTokenStandard::Erc20),
+        vec![TokenProjectionEvent {
+            log: log(12, 0, 1),
+            event: delegate_votes_changed(account("CCCC"), "40", "1000"),
+        }],
+    )
+    .expect("aggregate projection succeeds");
+    repository
+        .apply(&aggregate_change)
+        .expect("aggregate write succeeds");
+
+    let mapping = repository
+        .delegate_mappings()
+        .get(&account("bbbb"))
+        .expect("current mapping");
+    assert_eq!(mapping.power, "40");
+    let relation = repository
+        .delegates()
+        .get(&format!("{}_{}", account("bbbb"), account("cccc")))
+        .expect("current relation");
+    assert_eq!(relation.power, "40");
 }
 
 #[test]

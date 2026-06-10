@@ -523,6 +523,7 @@ async fn apply_delegate_changed_operation(
         "0",
     )
     .await?;
+    upsert_delegate_snapshot(transaction, common, delegator, to_delegate, true, "0").await?;
 
     Ok(())
 }
@@ -654,30 +655,26 @@ async fn apply_delegate_delta(
         return Ok(());
     }
 
-    let previous_mapping_power =
+    let Some(previous_mapping_power) =
         read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, from_delegate)
             .await?
             .filter(|mapping| mapping.to == to_delegate)
             .map(|mapping| mapping.power)
-            .unwrap_or_else(|| "0".to_owned());
+    else {
+        return Ok(());
+    };
     let next_mapping_power = add_signed_decimal(&previous_mapping_power, delta);
 
-    if previous_mapping_power != "0"
-        || read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, from_delegate)
-            .await?
-            .is_some_and(|mapping| mapping.to == to_delegate)
-    {
-        delegate_mapping_cache.stage(
-            common,
-            from_delegate,
-            Some(DelegateMappingSnapshot {
-                common: common.clone(),
-                from: from_delegate.to_owned(),
-                to: to_delegate.to_owned(),
-                power: next_mapping_power.clone(),
-            }),
-        );
-    }
+    delegate_mapping_cache.stage(
+        common,
+        from_delegate,
+        Some(DelegateMappingSnapshot {
+            common: common.clone(),
+            from: from_delegate.to_owned(),
+            to: to_delegate.to_owned(),
+            power: next_mapping_power.clone(),
+        }),
+    );
 
     let previous_effective = is_nonzero_decimal(&previous_mapping_power);
     let next_effective = is_nonzero_decimal(&next_mapping_power);
@@ -717,15 +714,6 @@ async fn upsert_delegate_snapshot(
         return Ok(());
     }
     let id = delegate_ref(common, from_delegate, to_delegate);
-    if is_current && !is_nonzero_decimal(power) {
-        sqlx::query("DELETE FROM delegate WHERE contract_set_id = $1 AND id = $2")
-            .bind(&common.contract_set_id)
-            .bind(&id)
-            .execute(&mut **transaction)
-            .await?;
-        return Ok(());
-    }
-
     sqlx::query(
         "INSERT INTO delegate (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,

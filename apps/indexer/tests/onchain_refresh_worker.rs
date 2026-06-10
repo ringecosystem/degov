@@ -491,7 +491,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_table_count(&database.pool, "token_balance_checkpoint", 1).await?;
     assert_contributor_overlay(&database.pool, ACCOUNT_ONE, "11").await?;
     assert_contributor_overlay(&database.pool, ACCOUNT_TWO, "5").await?;
-    assert_delegate_overlay_with_scope(&database.pool, "demo-dao", ACCOUNT_ONE, ACCOUNT_TWO, "11")
+    assert_delegate_overlay_with_scope(&database.pool, "demo-dao", ACCOUNT_ONE, ACCOUNT_TWO, "17")
         .await?;
 
     database.cleanup().await?;
@@ -1178,19 +1178,33 @@ fn test_live_power_overlay_reader_uses_latest_block_mode_and_dedupes_accounts() 
     assert_eq!(writes.len(), 1);
     assert_eq!(writes[0].account, account);
     assert_eq!(writes[0].power, "19");
+    assert_eq!(writes[0].balance.as_deref(), Some("19"));
     assert_eq!(writes[0].source, "live-onchain");
     assert_eq!(writes[0].status, "available");
     assert_eq!(writes[0].segment_id, None);
 
     let plans = chain_tool.captured_plans();
     assert_eq!(plans.len(), 1);
-    assert_eq!(plans[0].reads.len(), 1);
-    assert_eq!(plans[0].reads[0].key.block_mode, BlockReadMode::Latest);
+    assert_eq!(plans[0].reads.len(), 2);
+    assert!(
+        plans[0]
+            .reads
+            .iter()
+            .any(|read| read.key.method == ChainReadMethod::GetVotes
+                && read.key.block_mode == BlockReadMode::Latest)
+    );
+    assert!(
+        plans[0]
+            .reads
+            .iter()
+            .any(|read| read.key.method == ChainReadMethod::BalanceOf
+                && read.key.block_mode == BlockReadMode::Safe)
+    );
 }
 
 #[test]
 fn test_refresh_live_power_overlays_writes_provisional_store_only() {
-    let chain_tool = StaticValueChainTool::new("23");
+    let chain_tool = MethodValueChainTool::new("11", "23");
     let reader = LivePowerOverlayReader::new(
         chain_tool,
         BatchReadPlanConfig::default(),
@@ -1222,7 +1236,8 @@ fn test_refresh_live_power_overlays_writes_provisional_store_only() {
 
     assert_eq!(written, 2);
     assert_eq!(store.contributors.len(), 1);
-    assert_eq!(store.contributors[0].power, "23");
+    assert_eq!(store.contributors[0].power, "11");
+    assert_eq!(store.contributors[0].balance.as_deref(), Some("23"));
     assert_eq!(store.delegates.len(), 1);
     assert_eq!(store.delegates[0].delegator, store.contributors[0].account);
     assert_eq!(
@@ -1240,7 +1255,7 @@ async fn test_refresh_live_power_overlays_writes_delegate_overlay_from_current_f
     let database = TestDatabase::connect().await?;
     seed_final_delegate(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "7").await?;
     let reader = LivePowerOverlayReader::new(
-        StaticValueChainTool::new("23"),
+        MethodValueChainTool::new("11", "23"),
         BatchReadPlanConfig::default(),
         ChainReadMethod::GetVotes,
     );
@@ -1266,6 +1281,7 @@ async fn test_refresh_live_power_overlays_writes_delegate_overlay_from_current_f
         1,
     )
     .await?;
+    assert_contributor_overlay_with_scope(&database.pool, "scope-46", ACCOUNT_ONE, "11").await?;
     assert_delegate_overlay(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "23").await?;
     assert_table_count(&database.pool, "delegate", 1).await?;
     assert_table_count(&database.pool, "vote_power_checkpoint", 0).await?;
@@ -1393,6 +1409,13 @@ struct StaticValueChainTool {
     plans: Arc<StdMutex<Vec<ChainReadPlan>>>,
 }
 
+#[derive(Clone, Debug)]
+struct MethodValueChainTool {
+    power: String,
+    balance: String,
+    plans: Arc<StdMutex<Vec<ChainReadPlan>>>,
+}
+
 #[derive(Default)]
 struct RecordingPowerOverlayStore {
     relations: Vec<ProvisionalDelegatePowerOverlayRelation>,
@@ -1445,6 +1468,51 @@ impl ProvisionalPowerOverlayStore for RecordingPowerOverlayStore {
         self.contributors.extend_from_slice(contributors);
         self.delegates.extend_from_slice(delegates);
         Ok(())
+    }
+}
+
+impl MethodValueChainTool {
+    fn new(power: &str, balance: &str) -> Self {
+        Self {
+            power: power.to_owned(),
+            balance: balance.to_owned(),
+            plans: Arc::new(StdMutex::new(Vec::new())),
+        }
+    }
+}
+
+impl ChainTool for MethodValueChainTool {
+    fn execute_read_plan(
+        &self,
+        plan: &ChainReadPlan,
+    ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        self.plans.lock().expect("plans lock").push(plan.clone());
+        Ok(ChainReadExecutionReport {
+            metrics: ChainReadMetrics {
+                requested_reads: plan.metrics.requested_reads,
+                deduped_reads: plan.metrics.deduped_reads,
+                executed_rpc_calls: plan.reads.len(),
+                multicall_batch_size: plan.metrics.multicall_batch_size,
+                ..ChainReadMetrics::default()
+            },
+            results: plan
+                .reads
+                .iter()
+                .enumerate()
+                .map(|(read_index, read)| ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value: ChainReadValue::Integer(match read.key.method {
+                        ChainReadMethod::BalanceOf => self.balance.clone(),
+                        ChainReadMethod::GetVotes | ChainReadMethod::CurrentVotes => {
+                            self.power.clone()
+                        }
+                        _ => self.power.clone(),
+                    }),
+                })
+                .collect(),
+            ..ChainReadExecutionReport::default()
+        })
     }
 }
 
@@ -2061,11 +2129,21 @@ async fn assert_contributor_overlay(
     account: &str,
     power: &str,
 ) -> Result<(), sqlx::Error> {
+    assert_contributor_overlay_with_scope(pool, "demo-dao", account, power).await
+}
+
+async fn assert_contributor_overlay_with_scope(
+    pool: &PgPool,
+    contract_set_id: &str,
+    account: &str,
+    power: &str,
+) -> Result<(), sqlx::Error> {
     let row = sqlx::query(
         "SELECT account, power::TEXT AS power, source, status, anchor_block_number::TEXT AS anchor_block_number
          FROM degov_provisional_contributor_power_overlay
-         WHERE contract_set_id = 'demo-dao' AND account = $1",
+         WHERE contract_set_id = $1 AND account = $2",
     )
+    .bind(contract_set_id)
     .bind(account)
     .fetch_one(pool)
     .await?;

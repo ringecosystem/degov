@@ -226,7 +226,15 @@
         "previous_votes": "10"
       }
     ],
-    "delegates": [],
+    "delegates": [
+      {
+        "from_delegate": "0x0000000000000000000000000000000000003001",
+        "id": "0x0000000000000000000000000000000000003001_0x0000000000000000000000000000000000003003",
+        "is_current": true,
+        "power": "0",
+        "to_delegate": "0x0000000000000000000000000000000000003003"
+      }
+    ],
     "event_order": [
       "evm:1:20000:0x00000000000000000000000000000000000000000000000000000000001e8480:0:0",
       "evm:1:20001:0x00000000000000000000000000000000000000000000000000000000001e84e4:0:0",
@@ -236,7 +244,7 @@
       "candidate_count": 6,
       "deduped_count": 2,
       "deduped_reads": 0,
-      "requested_reads": 4
+      "requested_reads": 6
     },
     "token_transfers": [
       {
@@ -266,7 +274,7 @@
       "candidate_count": 2,
       "deduped_count": 0,
       "deduped_reads": 0,
-      "requested_reads": 2
+      "requested_reads": 4
     },
     "token_transfers": [
       {
