@@ -236,6 +236,8 @@ const UPSERT_PROPOSAL_SQL: &str = "INSERT INTO proposal (
              vote_end = GREATEST(proposal.vote_end, EXCLUDED.vote_end),
              description = CASE WHEN EXCLUDED.description = '' THEN proposal.description ELSE EXCLUDED.description END,
              title = CASE WHEN EXCLUDED.title = '' THEN proposal.title ELSE EXCLUDED.title END,
+             vote_start_timestamp = CASE WHEN EXCLUDED.vote_start_timestamp = 0::NUMERIC(78, 0) THEN proposal.vote_start_timestamp ELSE EXCLUDED.vote_start_timestamp END,
+             vote_end_timestamp = CASE WHEN EXCLUDED.vote_end_timestamp = 0::NUMERIC(78, 0) THEN proposal.vote_end_timestamp ELSE EXCLUDED.vote_end_timestamp END,
              description_hash = COALESCE(EXCLUDED.description_hash, proposal.description_hash),
              proposal_snapshot = COALESCE(EXCLUDED.proposal_snapshot, proposal.proposal_snapshot),
              proposal_deadline = COALESCE(EXCLUDED.proposal_deadline, proposal.proposal_deadline),
