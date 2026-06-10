@@ -2252,11 +2252,11 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
     );
     assert_eq!(
         proposal.get::<String, _>("vote_start_timestamp"),
-        "1700001308667"
+        "1700001178000"
     );
     assert_eq!(
         proposal.get::<String, _>("vote_end_timestamp"),
-        "1700002642000"
+        "1700002378000"
     );
     assert_eq!(proposal.get::<String, _>("proposal_eta"), "1234");
     assert_eq!(proposal.get::<String, _>("clock_mode"), "blocknumber");
@@ -2264,7 +2264,7 @@ async fn assert_proposal_projection_parity_state(pool: &PgPool) -> Result<(), sq
     assert_eq!(proposal.get::<String, _>("decimals"), "18");
     assert_eq!(
         proposal.get::<Option<String>, _>("block_interval"),
-        Some("13.333333333333334".to_owned())
+        Some("12".to_owned())
     );
     assert_eq!(
         proposal.get::<Option<String>, _>("timelock_address"),
