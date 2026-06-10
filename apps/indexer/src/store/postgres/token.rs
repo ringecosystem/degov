@@ -1,23 +1,63 @@
 // Token projection writes and delegate relation maintenance.
 const CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE: usize = 2_000;
 const TOKEN_EVENT_BULK_CHUNK_SIZE: usize = 1_000;
+const DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE: usize = 250;
+const VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE: usize = 1_000;
 
 async fn write_token_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &TokenProjectionBatch,
 ) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
+    let total_started_at = std::time::Instant::now();
     let mut inserted_operation_keys = Vec::new();
 
+    let delegate_changed_started_at = std::time::Instant::now();
     inserted_operation_keys.extend(insert_delegate_changed_batch(transaction, &batch.delegate_changed).await?);
+    let delegate_changed_duration = delegate_changed_started_at.elapsed();
+
+    let delegate_votes_changed_started_at = std::time::Instant::now();
     inserted_operation_keys.extend(
         insert_delegate_votes_changed_batch(transaction, &batch.delegate_votes_changed).await?,
     );
+    let delegate_votes_changed_duration = delegate_votes_changed_started_at.elapsed();
+
+    let token_transfer_started_at = std::time::Instant::now();
     inserted_operation_keys.extend(insert_token_transfer_batch(transaction, &batch.token_transfers).await?);
+    let token_transfer_duration = token_transfer_started_at.elapsed();
+
+    let delegate_rolling_started_at = std::time::Instant::now();
     upsert_delegate_rolling_batch(transaction, &batch.delegate_rollings).await?;
-    let mut metadata_cache = BatchTokenMetadataCache::preload(transaction, batch).await?;
-    for row in &batch.delegate_votes_changed {
-        insert_vote_power_checkpoint(transaction, &mut metadata_cache, row).await?;
+    let delegate_rolling_duration = delegate_rolling_started_at.elapsed();
+
+    let metadata_preload_started_at = std::time::Instant::now();
+    let metadata_cache = BatchTokenMetadataCache::preload(transaction, batch).await?;
+    let metadata_preload_duration = metadata_preload_started_at.elapsed();
+
+    let vote_power_checkpoint_started_at = std::time::Instant::now();
+    insert_vote_power_checkpoint_batch(transaction, &metadata_cache, &batch.delegate_votes_changed).await?;
+    let vote_power_checkpoint_duration = vote_power_checkpoint_started_at.elapsed();
+
+    if let Some(common) = token_batch_common(batch) {
+        log::info!(
+            "Datalens indexer token row write phases dao_code={} chain_id={} contract_set_id={} delegate_changed_count={} delegate_votes_changed_count={} token_transfer_count={} delegate_rolling_count={} inserted_operation_count={} delegate_changed_duration_ms={} delegate_votes_changed_duration_ms={} token_transfer_duration_ms={} delegate_rolling_duration_ms={} metadata_preload_duration_ms={} vote_power_checkpoint_duration_ms={} total_duration_ms={}",
+            common.dao_code,
+            common.chain_id,
+            common.contract_set_id,
+            batch.delegate_changed.len(),
+            batch.delegate_votes_changed.len(),
+            batch.token_transfers.len(),
+            batch.delegate_rollings.len(),
+            inserted_operation_keys.len(),
+            delegate_changed_duration.as_millis(),
+            delegate_votes_changed_duration.as_millis(),
+            token_transfer_duration.as_millis(),
+            delegate_rolling_duration.as_millis(),
+            metadata_preload_duration.as_millis(),
+            vote_power_checkpoint_duration.as_millis(),
+            total_started_at.elapsed().as_millis(),
+        );
     }
+
     Ok(inserted_operation_keys)
 }
 
@@ -314,73 +354,142 @@ async fn upsert_delegate_rolling_batch(
     Ok(())
 }
 
-async fn insert_vote_power_checkpoint(
-    transaction: &mut Transaction<'_, Postgres>,
-    metadata_cache: &mut BatchTokenMetadataCache,
-    row: &DelegateVotesChangedWrite,
-) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let delta = signed_decimal_delta(&row.new_votes, &row.previous_votes);
-    let transfers_count = metadata_cache.transfer_count(&row.common);
-    let rolling_match = metadata_cache.find_rolling_match(
-        &row.common,
-        &row.delegate,
-        &delta,
-        row.common.log_index,
-    );
-    let cause = vote_power_checkpoint_cause(metadata_cache.has_rollings(&row.common), transfers_count > 0);
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct VotePowerCheckpointInsert {
+    id: String,
+    common: TokenEventCommon,
+    log_index: i32,
+    transaction_index: i32,
+    account: String,
+    timepoint: String,
+    previous_power: String,
+    new_power: String,
+    delta: String,
+    cause: &'static str,
+    delegator: Option<String>,
+    from_delegate: Option<String>,
+    to_delegate: Option<String>,
+    block_timestamp: String,
+}
 
-    sqlx::query(
-        "INSERT INTO vote_power_checkpoint (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
-            log_index, transaction_index, account, clock_mode, timepoint, previous_power,
-            new_power, delta, source, cause, delegator, from_delegate, to_delegate, block_number,
-            block_timestamp, transaction_hash
-         )
-         VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'blocknumber', $11::NUMERIC(78, 0),
-            $12::NUMERIC(78, 0), $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), 'event',
-            $15, $16, $17, $18, $19::NUMERIC(78, 0), $20::NUMERIC(78, 0), $21
-         )
-         ON CONFLICT (contract_set_id, id) DO NOTHING",
-    )
-    .bind(&row.id)
-    .bind(&row.common.contract_set_id)
-    .bind(row.common.chain_id)
-    .bind(&row.common.dao_code)
-    .bind(&row.common.governor_address)
-    .bind(&row.common.token_address)
-    .bind(&row.common.contract_address)
-    .bind(u64_to_i32(
-        row.common.log_index,
-        "vote_power_checkpoint.log_index",
-    )?)
-    .bind(u64_to_i32(
-        row.common.transaction_index,
-        "vote_power_checkpoint.transaction_index",
-    )?)
-    .bind(&row.delegate)
-    .bind(&row.common.block_number)
-    .bind(&row.previous_votes)
-    .bind(&row.new_votes)
-    .bind(&delta)
-    .bind(cause)
-    .bind(rolling_match.as_ref().map(|item| item.delegator.as_str()))
-    .bind(
-        rolling_match
-            .as_ref()
-            .map(|item| item.from_delegate.as_str()),
-    )
-    .bind(rolling_match.as_ref().map(|item| item.to_delegate.as_str()))
-    .bind(&row.common.block_number)
-    .bind(required_numeric(
-        &row.common.block_timestamp,
-        "vote_power_checkpoint.block_timestamp",
-    )?)
-    .bind(&row.common.transaction_hash)
-    .execute(&mut **transaction)
-    .await?;
+async fn insert_vote_power_checkpoint_batch(
+    transaction: &mut Transaction<'_, Postgres>,
+    metadata_cache: &BatchTokenMetadataCache,
+    rows: &[DelegateVotesChangedWrite],
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let rows = collect_vote_power_checkpoint_inserts(metadata_cache, rows)?;
+    for rows in rows.chunks(VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE) {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "INSERT INTO vote_power_checkpoint (
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
+                log_index, transaction_index, account, clock_mode, timepoint, previous_power,
+                new_power, delta, source, cause, delegator, from_delegate, to_delegate, block_number,
+                block_timestamp, transaction_hash
+             ) VALUES ",
+        );
+        for (index, row) in rows.iter().enumerate() {
+            if index > 0 {
+                query.push(", ");
+            }
+            let common = &row.common;
+            query
+                .push("(")
+                .push_bind(&row.id)
+                .push(", ")
+                .push_bind(&common.contract_set_id)
+                .push(", ")
+                .push_bind(common.chain_id)
+                .push(", ")
+                .push_bind(&common.dao_code)
+                .push(", ")
+                .push_bind(&common.governor_address)
+                .push(", ")
+                .push_bind(&common.token_address)
+                .push(", ")
+                .push_bind(&common.contract_address)
+                .push(", ")
+                .push_bind(row.log_index)
+                .push(", ")
+                .push_bind(row.transaction_index)
+                .push(", ")
+                .push_bind(&row.account)
+                .push(", 'blocknumber', ")
+                .push_bind(&row.timepoint)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&row.previous_power)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&row.new_power)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&row.delta)
+                .push("::NUMERIC(78, 0), 'event', ")
+                .push_bind(row.cause)
+                .push(", ")
+                .push_bind(row.delegator.as_deref())
+                .push(", ")
+                .push_bind(row.from_delegate.as_deref())
+                .push(", ")
+                .push_bind(row.to_delegate.as_deref())
+                .push(", ")
+                .push_bind(&common.block_number)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&row.block_timestamp)
+                .push("::NUMERIC(78, 0), ")
+                .push_bind(&common.transaction_hash)
+                .push(")");
+        }
+        query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING");
+        query.build().execute(&mut **transaction).await?;
+    }
 
     Ok(())
+}
+
+fn collect_vote_power_checkpoint_inserts(
+    metadata_cache: &BatchTokenMetadataCache,
+    rows: &[DelegateVotesChangedWrite],
+) -> Result<Vec<VotePowerCheckpointInsert>, PostgresIndexerRunnerStoreError> {
+    rows.iter()
+        .map(|row| {
+            let delta = signed_decimal_delta(&row.new_votes, &row.previous_votes);
+            let transfers_count = metadata_cache.transfer_count(&row.common);
+            let rolling_match = metadata_cache.find_rolling_match(
+                &row.common,
+                &row.delegate,
+                &delta,
+                row.common.log_index,
+            );
+            let cause = vote_power_checkpoint_cause(
+                metadata_cache.has_rollings(&row.common),
+                transfers_count > 0,
+            );
+
+            Ok(VotePowerCheckpointInsert {
+                id: row.id.clone(),
+                common: row.common.clone(),
+                log_index: u64_to_i32(row.common.log_index, "vote_power_checkpoint.log_index")?,
+                transaction_index: u64_to_i32(
+                    row.common.transaction_index,
+                    "vote_power_checkpoint.transaction_index",
+                )?,
+                account: row.delegate.clone(),
+                timepoint: row.common.block_number.clone(),
+                previous_power: row.previous_votes.clone(),
+                new_power: row.new_votes.clone(),
+                delta,
+                cause,
+                delegator: rolling_match.as_ref().map(|item| item.delegator.clone()),
+                from_delegate: rolling_match
+                    .as_ref()
+                    .map(|item| item.from_delegate.clone()),
+                to_delegate: rolling_match.as_ref().map(|item| item.to_delegate.clone()),
+                block_timestamp: required_numeric(
+                    &row.common.block_timestamp,
+                    "vote_power_checkpoint.block_timestamp",
+                )?
+                .to_owned(),
+            })
+        })
+        .collect()
 }
 
 async fn apply_token_operation(
@@ -559,19 +668,7 @@ async fn apply_delegate_votes_changed_operation(
 
     match rolling_match.side {
         RollingSide::From => {
-            sqlx::query(
-                "UPDATE delegate_rolling
-                 SET from_previous_votes = $2::NUMERIC(78, 0),
-                     from_new_votes = $3::NUMERIC(78, 0)
-                 WHERE contract_set_id = $4 AND id = $1",
-            )
-            .bind(&rolling_match.id)
-            .bind(previous_votes)
-            .bind(new_votes)
-            .bind(&common.contract_set_id)
-            .execute(&mut **transaction)
-            .await?;
-            metadata_cache.mark_rolling_match(common, &rolling_match, new_votes);
+            metadata_cache.mark_rolling_match(common, &rolling_match, previous_votes, new_votes);
             apply_delegate_delta(
                 transaction,
                 delegate_mapping_cache,
@@ -585,19 +682,7 @@ async fn apply_delegate_votes_changed_operation(
             .await
         }
         RollingSide::To => {
-            sqlx::query(
-                "UPDATE delegate_rolling
-                 SET to_previous_votes = $2::NUMERIC(78, 0),
-                     to_new_votes = $3::NUMERIC(78, 0)
-                 WHERE contract_set_id = $4 AND id = $1",
-            )
-            .bind(&rolling_match.id)
-            .bind(previous_votes)
-            .bind(new_votes)
-            .bind(&common.contract_set_id)
-            .execute(&mut **transaction)
-            .await?;
-            metadata_cache.mark_rolling_match(common, &rolling_match, new_votes);
+            metadata_cache.mark_rolling_match(common, &rolling_match, previous_votes, new_votes);
             apply_delegate_delta(
                 transaction,
                 delegate_mapping_cache,
@@ -1426,6 +1511,13 @@ struct DelegateMappingSnapshot {
     power: String,
 }
 
+#[derive(Clone, Debug)]
+struct DelegateMappingPreloadCandidate {
+    common: TokenEventCommon,
+    id: String,
+    from: String,
+}
+
 #[derive(Debug, Default)]
 struct DelegateMappingCache {
     mappings: HashMap<(String, String), Option<DelegateMappingSnapshot>>,
@@ -1450,6 +1542,19 @@ impl DelegateMappingCache {
         self.mappings.insert(self.key(common, from), snapshot);
     }
 
+    fn set_preloaded(
+        &mut self,
+        common: &TokenEventCommon,
+        from: &str,
+        snapshot: Option<DelegateMappingSnapshot>,
+    ) {
+        let key = self.key(common, from);
+        if self.dirty.contains_key(&key) {
+            return;
+        }
+        self.mappings.insert(key, snapshot);
+    }
+
     fn stage(
         &mut self,
         common: &TokenEventCommon,
@@ -1466,6 +1571,69 @@ impl DelegateMappingCache {
             common.contract_set_id.clone(),
             delegate_mapping_ref(common, from),
         )
+    }
+
+    async fn preload_batch(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+        batch: &TokenProjectionBatch,
+        metadata_cache: &BatchTokenMetadataCache,
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let candidates = collect_delegate_mapping_preload_candidates(batch, metadata_cache);
+        if candidates.is_empty() {
+            return Ok(());
+        }
+
+        let mut grouped = std::collections::BTreeMap::<String, Vec<DelegateMappingPreloadCandidate>>::new();
+        for candidate in candidates {
+            grouped
+                .entry(candidate.common.contract_set_id.clone())
+                .or_default()
+                .push(candidate);
+        }
+
+        for (contract_set_id, candidates) in grouped {
+            let ids = candidates
+                .iter()
+                .map(|candidate| candidate.id.clone())
+                .collect::<Vec<_>>();
+            for candidate in &candidates {
+                self.set_preloaded(&candidate.common, &candidate.from, None);
+            }
+
+            let common_by_id = candidates
+                .iter()
+                .map(|candidate| (candidate.id.clone(), candidate.common.clone()))
+                .collect::<HashMap<_, _>>();
+            let rows = sqlx::query(
+                r#"SELECT id, "from", "to", power::TEXT AS power
+                   FROM delegate_mapping
+                   WHERE contract_set_id = $1 AND id = ANY($2)"#,
+            )
+            .bind(&contract_set_id)
+            .bind(&ids)
+            .fetch_all(&mut **transaction)
+            .await?;
+            for row in rows {
+                let id = row.get::<String, _>("id");
+                let Some(common) = common_by_id.get(&id) else {
+                    continue;
+                };
+                let from = row.get::<String, _>("from");
+                self.set_preloaded(
+                    common,
+                    &from,
+                    Some(DelegateMappingSnapshot {
+                        common: common.clone(),
+                        from: from.clone(),
+                        to: row.get("to"),
+                        power: row.get("power"),
+                    }),
+                );
+            }
+        }
+
+        Ok(())
     }
 
     async fn flush(
@@ -1495,19 +1663,60 @@ impl DelegateMappingCache {
             query.build().execute(&mut **transaction).await?;
         }
 
-        for row in upserts {
-            let common = &row.common;
-            sqlx::query(
+        for rows in upserts.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
                 r#"INSERT INTO delegate_mapping (
                     id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
                     log_index, transaction_index, "from", "to", power, block_number, block_timestamp,
                     transaction_hash
-                 )
-                 VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::NUMERIC(78, 0),
-                    $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
-                 )
-                 ON CONFLICT (contract_set_id, id) DO UPDATE
+                 ) VALUES "#,
+            );
+            for (index, row) in rows.iter().enumerate() {
+                if index > 0 {
+                    query.push(", ");
+                }
+                let common = &row.common;
+                query
+                    .push("(")
+                    .push_bind(delegate_mapping_ref(common, &row.from))
+                    .push(", ")
+                    .push_bind(&common.contract_set_id)
+                    .push(", ")
+                    .push_bind(common.chain_id)
+                    .push(", ")
+                    .push_bind(&common.dao_code)
+                    .push(", ")
+                    .push_bind(&common.governor_address)
+                    .push(", ")
+                    .push_bind(&common.token_address)
+                    .push(", ")
+                    .push_bind(&common.contract_address)
+                    .push(", ")
+                    .push_bind(u64_to_i32(common.log_index, "delegate_mapping.log_index")?)
+                    .push(", ")
+                    .push_bind(u64_to_i32(
+                        common.transaction_index,
+                        "delegate_mapping.transaction_index",
+                    )?)
+                    .push(", ")
+                    .push_bind(&row.from)
+                    .push(", ")
+                    .push_bind(&row.to)
+                    .push(", ")
+                    .push_bind(&row.power)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(&common.block_number)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(required_numeric(
+                        &common.block_timestamp,
+                        "delegate_mapping.block_timestamp",
+                    )?)
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(&common.transaction_hash)
+                    .push(")");
+            }
+            query.push(
+                r#" ON CONFLICT (contract_set_id, id) DO UPDATE
                  SET chain_id = EXCLUDED.chain_id,
                      dao_code = EXCLUDED.dao_code,
                      governor_address = EXCLUDED.governor_address,
@@ -1521,30 +1730,8 @@ impl DelegateMappingCache {
                      block_number = EXCLUDED.block_number,
                      block_timestamp = EXCLUDED.block_timestamp,
                      transaction_hash = EXCLUDED.transaction_hash"#,
-            )
-            .bind(delegate_mapping_ref(common, &row.from))
-            .bind(&common.contract_set_id)
-            .bind(common.chain_id)
-            .bind(&common.dao_code)
-            .bind(&common.governor_address)
-            .bind(&common.token_address)
-            .bind(&common.contract_address)
-            .bind(u64_to_i32(common.log_index, "delegate_mapping.log_index")?)
-            .bind(u64_to_i32(
-                common.transaction_index,
-                "delegate_mapping.transaction_index",
-            )?)
-            .bind(&row.from)
-            .bind(&row.to)
-            .bind(&row.power)
-            .bind(&common.block_number)
-            .bind(required_numeric(
-                &common.block_timestamp,
-                "delegate_mapping.block_timestamp",
-            )?)
-            .bind(&common.transaction_hash)
-            .execute(&mut **transaction)
-            .await?;
+            );
+            query.build().execute(&mut **transaction).await?;
         }
 
         Ok(())
@@ -1576,6 +1763,16 @@ struct DelegateRollingMatch {
     from_delegate: String,
     to_delegate: String,
     side: RollingSide,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DelegateRollingVoteUpdate {
+    contract_set_id: String,
+    id: String,
+    from_previous_votes: Option<String>,
+    from_new_votes: Option<String>,
+    to_previous_votes: Option<String>,
+    to_new_votes: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -1628,6 +1825,7 @@ struct BatchTokenMetadataCache {
     transfer_counts: HashMap<TransactionMetadataKey, i64>,
     rollings: HashMap<TransactionMetadataKey, Vec<DelegateRollingSnapshot>>,
     rolling_index: HashMap<TransactionMetadataKey, RollingSideIndex>,
+    rolling_vote_updates: std::collections::BTreeMap<(String, String), DelegateRollingVoteUpdate>,
 }
 
 impl BatchTokenMetadataCache {
@@ -1713,6 +1911,7 @@ impl BatchTokenMetadataCache {
         &mut self,
         common: &TokenEventCommon,
         rolling_match: &DelegateRollingMatch,
+        previous_votes: &str,
         new_votes: &str,
     ) {
         let Some(rollings) = self.rollings.get_mut(&TransactionMetadataKey::new(common)) else {
@@ -1732,6 +1931,93 @@ impl BatchTokenMetadataCache {
                 rolling.to_new_votes = Some(new_votes.to_owned());
             }
         }
+        self.stage_rolling_vote_update(common, rolling_match, previous_votes, new_votes);
+    }
+
+    fn stage_rolling_vote_update(
+        &mut self,
+        common: &TokenEventCommon,
+        rolling_match: &DelegateRollingMatch,
+        previous_votes: &str,
+        new_votes: &str,
+    ) {
+        let update = self
+            .rolling_vote_updates
+            .entry((common.contract_set_id.clone(), rolling_match.id.clone()))
+            .or_insert_with(|| DelegateRollingVoteUpdate {
+                contract_set_id: common.contract_set_id.clone(),
+                id: rolling_match.id.clone(),
+                from_previous_votes: None,
+                from_new_votes: None,
+                to_previous_votes: None,
+                to_new_votes: None,
+            });
+        match rolling_match.side {
+            RollingSide::From => {
+                update.from_previous_votes = Some(previous_votes.to_owned());
+                update.from_new_votes = Some(new_votes.to_owned());
+            }
+            RollingSide::To => {
+                update.to_previous_votes = Some(previous_votes.to_owned());
+                update.to_new_votes = Some(new_votes.to_owned());
+            }
+        }
+    }
+
+    fn drain_rolling_vote_updates(&mut self) -> Vec<DelegateRollingVoteUpdate> {
+        std::mem::take(&mut self.rolling_vote_updates)
+            .into_values()
+            .collect()
+    }
+
+    async fn flush_rolling_vote_updates(
+        &mut self,
+        transaction: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let updates = self.drain_rolling_vote_updates();
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        for rows in updates.chunks(DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "UPDATE delegate_rolling
+                 SET from_previous_votes = COALESCE(delta.from_previous_votes, delegate_rolling.from_previous_votes),
+                     from_new_votes = COALESCE(delta.from_new_votes, delegate_rolling.from_new_votes),
+                     to_previous_votes = COALESCE(delta.to_previous_votes, delegate_rolling.to_previous_votes),
+                     to_new_votes = COALESCE(delta.to_new_votes, delegate_rolling.to_new_votes)
+                 FROM (VALUES ",
+            );
+            for (index, row) in rows.iter().enumerate() {
+                if index > 0 {
+                    query.push(", ");
+                }
+                query
+                    .push("(")
+                    .push_bind(&row.contract_set_id)
+                    .push(", ")
+                    .push_bind(&row.id)
+                    .push(", ")
+                    .push_bind(row.from_previous_votes.as_deref())
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(row.from_new_votes.as_deref())
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(row.to_previous_votes.as_deref())
+                    .push("::NUMERIC(78, 0), ")
+                    .push_bind(row.to_new_votes.as_deref())
+                    .push("::NUMERIC(78, 0))");
+            }
+            query.push(
+                ") AS delta(
+                    contract_set_id, id, from_previous_votes, from_new_votes, to_previous_votes, to_new_votes
+                 )
+                 WHERE delegate_rolling.contract_set_id = delta.contract_set_id
+                   AND delegate_rolling.id = delta.id",
+            );
+            query.build().execute(&mut **transaction).await?;
+        }
+
+        Ok(())
     }
 
     async fn preload_transfer_counts(
@@ -1834,6 +2120,85 @@ fn collect_transaction_metadata_keys(batch: &TokenProjectionBatch) -> Vec<Transa
         }
     }
     keys
+}
+
+fn collect_delegate_mapping_preload_candidates(
+    batch: &TokenProjectionBatch,
+    metadata_cache: &BatchTokenMetadataCache,
+) -> Vec<DelegateMappingPreloadCandidate> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for operation in &batch.operations {
+        match operation {
+            TokenProjectionOperation::DelegateChanged {
+                common, delegator, ..
+            } => push_delegate_mapping_preload_candidate(
+                &mut candidates,
+                &mut seen,
+                common,
+                delegator,
+            ),
+            TokenProjectionOperation::Transfer {
+                common, from, to, ..
+            } => {
+                push_delegate_mapping_preload_candidate(&mut candidates, &mut seen, common, from);
+                push_delegate_mapping_preload_candidate(&mut candidates, &mut seen, common, to);
+            }
+            TokenProjectionOperation::DelegateVotesChanged { .. } => {}
+        }
+    }
+
+    let common_by_transaction = batch
+        .delegate_votes_changed
+        .iter()
+        .map(|row| (TransactionMetadataKey::new(&row.common), row.common.clone()))
+        .collect::<HashMap<_, _>>();
+    for (metadata_key, rollings) in &metadata_cache.rollings {
+        let Some(common) = common_by_transaction.get(metadata_key) else {
+            continue;
+        };
+        for rolling in rollings {
+            push_delegate_mapping_preload_candidate(
+                &mut candidates,
+                &mut seen,
+                common,
+                &rolling.delegator,
+            );
+            push_delegate_mapping_preload_candidate(
+                &mut candidates,
+                &mut seen,
+                common,
+                &rolling.from_delegate,
+            );
+            push_delegate_mapping_preload_candidate(
+                &mut candidates,
+                &mut seen,
+                common,
+                &rolling.to_delegate,
+            );
+        }
+    }
+
+    candidates
+}
+
+fn push_delegate_mapping_preload_candidate(
+    candidates: &mut Vec<DelegateMappingPreloadCandidate>,
+    seen: &mut HashSet<(String, String)>,
+    common: &TokenEventCommon,
+    from: &str,
+) {
+    if is_zero_address(from) {
+        return;
+    }
+    let id = delegate_mapping_ref(common, from);
+    if seen.insert((common.contract_set_id.clone(), id.clone())) {
+        candidates.push(DelegateMappingPreloadCandidate {
+            common: common.clone(),
+            id,
+            from: from.to_owned(),
+        });
+    }
 }
 
 fn group_transaction_hashes_by_contract_set(
@@ -2067,6 +2432,17 @@ fn token_operation_common(operation: &TokenProjectionOperation) -> &TokenEventCo
     }
 }
 
+fn token_batch_common(batch: &TokenProjectionBatch) -> Option<&TokenEventCommon> {
+    batch
+        .operations
+        .first()
+        .map(token_operation_common)
+        .or_else(|| batch.delegate_changed.first().map(|row| &row.common))
+        .or_else(|| batch.delegate_votes_changed.first().map(|row| &row.common))
+        .or_else(|| batch.token_transfers.first().map(|row| &row.common))
+        .or_else(|| batch.delegate_rollings.first().map(|row| &row.common))
+}
+
 fn transfer_units(value: &str, standard: GovernanceTokenStandard) -> String {
     match standard {
         GovernanceTokenStandard::Erc20 => value.to_owned(),
@@ -2260,11 +2636,18 @@ mod token_store_tests {
             .find_rolling_match(&common, "0xto", "1", 5)
             .expect("first match should use the to side");
 
-        cache.mark_rolling_match(&common, &first_match, "9");
+        cache.mark_rolling_match(&common, &first_match, "8", "9");
         let second_match = cache.find_rolling_match(&common, "0xto", "1", 6);
+        let updates = cache.drain_rolling_vote_updates();
 
         assert_eq!(first_match.side, RollingSide::To);
         assert!(second_match.is_none());
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].id, "rolling-1");
+        assert_eq!(updates[0].from_previous_votes, None);
+        assert_eq!(updates[0].from_new_votes, None);
+        assert_eq!(updates[0].to_previous_votes.as_deref(), Some("8"));
+        assert_eq!(updates[0].to_new_votes.as_deref(), Some("9"));
     }
 
     #[test]
@@ -2344,6 +2727,176 @@ mod token_store_tests {
                 power: "25".to_owned(),
             }))
         );
+    }
+
+    #[test]
+    fn test_delegate_mapping_cache_preloads_hits_and_misses_without_overwriting_dirty_state() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let mut cache = DelegateMappingCache::default();
+
+        cache.stage(
+            &common,
+            "0xdirty",
+            Some(DelegateMappingSnapshot {
+                common: common.clone(),
+                from: "0xdirty".to_owned(),
+                to: "0xstaged".to_owned(),
+                power: "77".to_owned(),
+            }),
+        );
+        cache.set_preloaded(
+            &common,
+            "0xhit",
+            Some(DelegateMappingSnapshot {
+                common: common.clone(),
+                from: "0xhit".to_owned(),
+                to: "0xdelegate".to_owned(),
+                power: "10".to_owned(),
+            }),
+        );
+        cache.set_preloaded(&common, "0xmiss", None);
+        cache.set_preloaded(
+            &common,
+            "0xdirty",
+            Some(DelegateMappingSnapshot {
+                common: common.clone(),
+                from: "0xdirty".to_owned(),
+                to: "0xpreloaded".to_owned(),
+                power: "12".to_owned(),
+            }),
+        );
+
+        assert_eq!(
+            cache.get(&common, "0xhit").flatten().map(|mapping| mapping.to),
+            Some("0xdelegate".to_owned())
+        );
+        assert_eq!(cache.get(&common, "0xmiss"), Some(None));
+        assert_eq!(
+            cache.get(&common, "0xdirty")
+                .flatten()
+                .map(|mapping| (mapping.to, mapping.power)),
+            Some(("0xstaged".to_owned(), "77".to_owned()))
+        );
+    }
+
+    #[test]
+    fn test_collect_delegate_mapping_preload_candidates_includes_operations_and_rollings() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let key = TransactionMetadataKey::new(&common);
+        let mut metadata_cache = BatchTokenMetadataCache::default();
+        metadata_cache.push_rolling(
+            key,
+            DelegateRollingSnapshot {
+                id: "rolling-1".to_owned(),
+                log_index: 4,
+                delegator: "0xrollingDelegator".to_owned(),
+                from_delegate: "0xrollingFrom".to_owned(),
+                to_delegate: "0xrollingTo".to_owned(),
+                from_new_votes: None,
+                to_new_votes: None,
+            },
+        );
+        let batch = TokenProjectionBatch {
+            event_order: Vec::new(),
+            delegate_changed: Vec::new(),
+            delegate_votes_changed: vec![delegate_votes_changed(
+                "votes",
+                common.clone(),
+                "0xrollingTo",
+                "1",
+                "2",
+            )],
+            token_transfers: Vec::new(),
+            delegate_rollings: Vec::new(),
+            operations: vec![
+                TokenProjectionOperation::Transfer {
+                    id: "transfer".to_owned(),
+                    common: common.clone(),
+                    from: "0x0000000000000000000000000000000000000000".to_owned(),
+                    to: "0xtransferTo".to_owned(),
+                    value: "5".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                },
+                TokenProjectionOperation::DelegateChanged {
+                    id: "changed".to_owned(),
+                    common,
+                    delegator: "0xchangedDelegator".to_owned(),
+                    from_delegate: "0xold".to_owned(),
+                    to_delegate: "0xnew".to_owned(),
+                },
+            ],
+            reconcile_plan: empty_reconcile_plan(),
+        };
+
+        let candidates = collect_delegate_mapping_preload_candidates(&batch, &metadata_cache);
+        let ids = candidates
+            .into_iter()
+            .map(|candidate| candidate.id)
+            .collect::<std::collections::BTreeSet<_>>();
+
+        assert_eq!(
+            ids,
+            [
+                "0xchangeddelegator",
+                "0xrollingdelegator",
+                "0xrollingfrom",
+                "0xrollingto",
+                "0xtransferto",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_collect_vote_power_checkpoint_inserts_preserves_cause_and_rolling_relation() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let key = TransactionMetadataKey::new(&common);
+        let mut metadata_cache = BatchTokenMetadataCache::default();
+        metadata_cache.transfer_counts.insert(key.clone(), 1);
+        metadata_cache.push_rolling(
+            key,
+            DelegateRollingSnapshot {
+                id: "rolling-1".to_owned(),
+                log_index: 4,
+                delegator: "0xdelegator".to_owned(),
+                from_delegate: "0xfrom".to_owned(),
+                to_delegate: "0xto".to_owned(),
+                from_new_votes: None,
+                to_new_votes: None,
+            },
+        );
+        let rows = collect_vote_power_checkpoint_inserts(
+            &metadata_cache,
+            &[delegate_votes_changed("votes", common, "0xto", "10", "15")],
+        )
+        .expect("checkpoint rows");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].delta, "5");
+        assert_eq!(rows[0].cause, "delegate-change+transfer");
+        assert_eq!(rows[0].delegator.as_deref(), Some("0xdelegator"));
+        assert_eq!(rows[0].from_delegate.as_deref(), Some("0xfrom"));
+        assert_eq!(rows[0].to_delegate.as_deref(), Some("0xto"));
+    }
+
+    #[test]
+    fn test_collect_vote_power_checkpoint_inserts_keeps_delegate_votes_changed_cause_without_metadata() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let metadata_cache = BatchTokenMetadataCache::default();
+        let rows = collect_vote_power_checkpoint_inserts(
+            &metadata_cache,
+            &[delegate_votes_changed("votes", common, "0xdelegate", "20", "5")],
+        )
+        .expect("checkpoint rows");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].delta, "-15");
+        assert_eq!(rows[0].cause, "delegate-votes-changed");
+        assert_eq!(rows[0].delegator, None);
+        assert_eq!(rows[0].from_delegate, None);
+        assert_eq!(rows[0].to_delegate, None);
     }
 
     #[test]

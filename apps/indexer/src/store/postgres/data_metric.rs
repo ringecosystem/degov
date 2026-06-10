@@ -12,6 +12,7 @@ async fn write_data_metric_timeline(
     vote: Option<&VoteProjectionBatch>,
     token: Option<&TokenProjectionBatch>,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let total_started_at = std::time::Instant::now();
     let inserted_operation_keys = inserted_operation_keys
         .iter()
         .map(|(contract_set_id, id)| (contract_set_id.as_str(), id.as_str()))
@@ -21,11 +22,25 @@ async fn write_data_metric_timeline(
     let mut contributor_ensure_cache = ContributorEnsureCache::default();
     let mut token_metadata_cache = BatchTokenMetadataCache::default();
     let mut items = Vec::new();
+    let mut contributor_preload_duration = std::time::Duration::ZERO;
+    let mut metadata_preload_duration = std::time::Duration::ZERO;
+    let mut mapping_preload_duration = std::time::Duration::ZERO;
     if let Some(token) = token {
+        let started_at = std::time::Instant::now();
         contributor_ensure_cache
             .preload_batch(transaction, token, &inserted_operation_keys)
             .await?;
+        contributor_preload_duration = started_at.elapsed();
+
+        let started_at = std::time::Instant::now();
         token_metadata_cache = BatchTokenMetadataCache::preload(transaction, token).await?;
+        metadata_preload_duration = started_at.elapsed();
+
+        let started_at = std::time::Instant::now();
+        delegate_mapping_cache
+            .preload_batch(transaction, token, &token_metadata_cache)
+            .await?;
+        mapping_preload_duration = started_at.elapsed();
         items.extend(token.operations.iter().map(DataMetricTimelineItem::Token));
     }
     if let Some(proposal) = proposal {
@@ -41,6 +56,7 @@ async fn write_data_metric_timeline(
     }
     items.sort_by_key(data_metric_timeline_order);
 
+    let replay_started_at = std::time::Instant::now();
     for item in items {
         match item {
             DataMetricTimelineItem::Token(operation) => {
@@ -64,12 +80,54 @@ async fn write_data_metric_timeline(
             }
         }
     }
+    let replay_duration = replay_started_at.elapsed();
+
+    let rolling_flush_started_at = std::time::Instant::now();
+    token_metadata_cache
+        .flush_rolling_vote_updates(transaction)
+        .await?;
+    let rolling_flush_duration = rolling_flush_started_at.elapsed();
+
+    let snapshot_flush_started_at = std::time::Instant::now();
     delegate_snapshot_cache.flush(transaction).await?;
+    let snapshot_flush_duration = snapshot_flush_started_at.elapsed();
+
+    let mapping_flush_started_at = std::time::Instant::now();
     delegate_mapping_cache.flush(transaction).await?;
+    let mapping_flush_duration = mapping_flush_started_at.elapsed();
+
+    let contributor_count_flush_started_at = std::time::Instant::now();
     contributor_ensure_cache
         .flush_contributor_count_deltas(transaction)
         .await?;
+    let contributor_count_flush_duration = contributor_count_flush_started_at.elapsed();
+
+    let member_count_flush_started_at = std::time::Instant::now();
     contributor_ensure_cache.flush_member_count_increments(transaction).await?;
+    let member_count_flush_duration = member_count_flush_started_at.elapsed();
+
+    if let Some(token) = token {
+        if let Some(common) = token_batch_common(token) {
+            log::info!(
+                "Datalens indexer token timeline phases dao_code={} chain_id={} contract_set_id={} token_operation_count={} inserted_operation_count={} contributor_preload_duration_ms={} metadata_preload_duration_ms={} mapping_preload_duration_ms={} replay_duration_ms={} rolling_flush_duration_ms={} snapshot_flush_duration_ms={} mapping_flush_duration_ms={} contributor_count_flush_duration_ms={} member_count_flush_duration_ms={} total_duration_ms={}",
+                common.dao_code,
+                common.chain_id,
+                common.contract_set_id,
+                token.operations.len(),
+                inserted_operation_keys.len(),
+                contributor_preload_duration.as_millis(),
+                metadata_preload_duration.as_millis(),
+                mapping_preload_duration.as_millis(),
+                replay_duration.as_millis(),
+                rolling_flush_duration.as_millis(),
+                snapshot_flush_duration.as_millis(),
+                mapping_flush_duration.as_millis(),
+                contributor_count_flush_duration.as_millis(),
+                member_count_flush_duration.as_millis(),
+                total_started_at.elapsed().as_millis(),
+            );
+        }
+    }
 
     Ok(())
 }
