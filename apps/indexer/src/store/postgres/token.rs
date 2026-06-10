@@ -596,7 +596,7 @@ async fn apply_delegate_changed_operation(
             delegator,
             &previous.to,
             false,
-            &previous.power,
+            "0",
         )?;
         apply_delegate_count_delta(
             transaction,
@@ -627,7 +627,7 @@ async fn apply_delegate_changed_operation(
         contributor_ensure_cache,
     )
     .await?;
-    upsert_delegate_mapping(
+    upsert_delegate_mapping_relation(
         transaction,
         delegate_mapping_cache,
         common,
@@ -758,25 +758,25 @@ async fn apply_delegate_delta(
         return Ok(());
     }
 
-    let Some(previous_mapping_power) =
+    let Some(previous_mapping) =
         read_delegate_mapping_cached(transaction, delegate_mapping_cache, common, from_delegate)
             .await?
             .filter(|mapping| mapping.to == to_delegate)
-            .map(|mapping| mapping.power)
     else {
         return Ok(());
     };
+    let previous_mapping_power = previous_mapping.power.clone();
     let next_mapping_power = add_signed_decimal(&previous_mapping_power, delta);
 
-    delegate_mapping_cache.stage(
+    delegate_mapping_cache.stage_power(
         common,
         from_delegate,
-        Some(DelegateMappingSnapshot {
-            common: common.clone(),
+        DelegateMappingSnapshot {
+            common: previous_mapping.common,
             from: from_delegate.to_owned(),
             to: to_delegate.to_owned(),
             power: next_mapping_power.clone(),
-        }),
+        },
     );
 
     let previous_effective = is_nonzero_decimal(&previous_mapping_power);
@@ -954,7 +954,7 @@ async fn upsert_delegate_snapshot_batch(
     Ok(())
 }
 
-async fn upsert_delegate_mapping(
+async fn upsert_delegate_mapping_relation(
     _transaction: &mut Transaction<'_, Postgres>,
     delegate_mapping_cache: &mut DelegateMappingCache,
     common: &TokenEventCommon,
@@ -962,7 +962,7 @@ async fn upsert_delegate_mapping(
     to: &str,
     power: &str,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    delegate_mapping_cache.stage(
+    delegate_mapping_cache.stage_relation(
         common,
         from,
         Some(DelegateMappingSnapshot {
@@ -982,7 +982,7 @@ async fn delete_delegate_mapping(
     common: &TokenEventCommon,
     from: &str,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    delegate_mapping_cache.stage(common, from, None);
+    delegate_mapping_cache.stage_delete(common, from);
 
     Ok(())
 }
@@ -1521,7 +1521,14 @@ struct DelegateMappingPreloadCandidate {
 #[derive(Debug, Default)]
 struct DelegateMappingCache {
     mappings: HashMap<(String, String), Option<DelegateMappingSnapshot>>,
-    dirty: std::collections::BTreeMap<(String, String), Option<DelegateMappingSnapshot>>,
+    dirty: std::collections::BTreeMap<(String, String), DelegateMappingDirty>,
+}
+
+#[derive(Clone, Debug)]
+enum DelegateMappingDirty {
+    Delete,
+    Relation(DelegateMappingSnapshot),
+    Power(DelegateMappingSnapshot),
 }
 
 impl DelegateMappingCache {
@@ -1555,7 +1562,7 @@ impl DelegateMappingCache {
         self.mappings.insert(key, snapshot);
     }
 
-    fn stage(
+    fn stage_relation(
         &mut self,
         common: &TokenEventCommon,
         from: &str,
@@ -1563,7 +1570,39 @@ impl DelegateMappingCache {
     ) {
         let key = self.key(common, from);
         self.mappings.insert(key.clone(), snapshot.clone());
-        self.dirty.insert(key, snapshot);
+        match snapshot {
+            Some(snapshot) => {
+                self.dirty
+                    .insert(key, DelegateMappingDirty::Relation(snapshot));
+            }
+            None => {
+                self.dirty.insert(key, DelegateMappingDirty::Delete);
+            }
+        }
+    }
+
+    fn stage_power(
+        &mut self,
+        common: &TokenEventCommon,
+        from: &str,
+        snapshot: DelegateMappingSnapshot,
+    ) {
+        let key = self.key(common, from);
+        self.mappings.insert(key.clone(), Some(snapshot.clone()));
+        match self.dirty.get_mut(&key) {
+            Some(DelegateMappingDirty::Relation(previous)) => {
+                *previous = snapshot;
+            }
+            _ => {
+                self.dirty.insert(key, DelegateMappingDirty::Power(snapshot));
+            }
+        }
+    }
+
+    fn stage_delete(&mut self, common: &TokenEventCommon, from: &str) {
+        let key = self.key(common, from);
+        self.mappings.insert(key.clone(), None);
+        self.dirty.insert(key, DelegateMappingDirty::Delete);
     }
 
     fn key(&self, common: &TokenEventCommon, from: &str) -> (String, String) {
@@ -1601,12 +1640,11 @@ impl DelegateMappingCache {
                 self.set_preloaded(&candidate.common, &candidate.from, None);
             }
 
-            let common_by_id = candidates
-                .iter()
-                .map(|candidate| (candidate.id.clone(), candidate.common.clone()))
-                .collect::<HashMap<_, _>>();
             let rows = sqlx::query(
-                r#"SELECT id, "from", "to", power::TEXT AS power
+                r#"SELECT id, chain_id, dao_code, governor_address, token_address, contract_address,
+                          log_index, transaction_index, "from", "to", power::TEXT AS power,
+                          block_number::TEXT AS block_number, block_timestamp::TEXT AS block_timestamp,
+                          transaction_hash
                    FROM delegate_mapping
                    WHERE contract_set_id = $1 AND id = ANY($2)"#,
             )
@@ -1616,19 +1654,17 @@ impl DelegateMappingCache {
             .await?;
             for row in rows {
                 let id = row.get::<String, _>("id");
-                let Some(common) = common_by_id.get(&id) else {
+                let Some(candidate) = candidates.iter().find(|candidate| candidate.id == id) else {
                     continue;
                 };
                 let from = row.get::<String, _>("from");
                 self.set_preloaded(
-                    common,
+                    &candidate.common,
                     &from,
-                    Some(DelegateMappingSnapshot {
-                        common: common.clone(),
-                        from: from.clone(),
-                        to: row.get("to"),
-                        power: row.get("power"),
-                    }),
+                    Some(delegate_mapping_snapshot_from_row(
+                        &candidate.common.contract_set_id,
+                        row,
+                    )),
                 );
             }
         }
@@ -1646,11 +1682,13 @@ impl DelegateMappingCache {
         }
 
         let mut deletes = Vec::new();
-        let mut upserts = Vec::new();
-        for ((contract_set_id, id), snapshot) in dirty {
-            match snapshot {
-                Some(snapshot) => upserts.push(snapshot),
-                None => deletes.push((contract_set_id, id)),
+        let mut relation_upserts = Vec::new();
+        let mut power_updates = Vec::new();
+        for ((contract_set_id, id), dirty) in dirty {
+            match dirty {
+                DelegateMappingDirty::Delete => deletes.push((contract_set_id, id)),
+                DelegateMappingDirty::Relation(snapshot) => relation_upserts.push(snapshot),
+                DelegateMappingDirty::Power(snapshot) => power_updates.push(snapshot),
             }
         }
 
@@ -1663,7 +1701,7 @@ impl DelegateMappingCache {
             query.build().execute(&mut **transaction).await?;
         }
 
-        for rows in upserts.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        for rows in relation_upserts.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
             let mut query = QueryBuilder::<Postgres>::new(
                 r#"INSERT INTO delegate_mapping (
                     id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
@@ -1730,6 +1768,26 @@ impl DelegateMappingCache {
                      block_number = EXCLUDED.block_number,
                      block_timestamp = EXCLUDED.block_timestamp,
                      transaction_hash = EXCLUDED.transaction_hash"#,
+            );
+            query.build().execute(&mut **transaction).await?;
+        }
+
+        for rows in power_updates.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "UPDATE delegate_mapping AS target
+                 SET power = source.power::NUMERIC(78, 0)
+                 FROM (VALUES ",
+            );
+            query.push_tuples(rows, |mut tuple, row| {
+                tuple
+                    .push_bind(&row.common.contract_set_id)
+                    .push_bind(delegate_mapping_ref(&row.common, &row.from))
+                    .push_bind(&row.power);
+            });
+            query.push(
+                ") AS source(contract_set_id, id, power)
+                 WHERE target.contract_set_id = source.contract_set_id
+                   AND target.id = source.id",
             );
             query.build().execute(&mut **transaction).await?;
         }
@@ -2247,7 +2305,10 @@ async fn read_delegate_mapping(
     from: &str,
 ) -> Result<Option<DelegateMappingSnapshot>, PostgresIndexerRunnerStoreError> {
     let row = sqlx::query(
-        r#"SELECT "from", "to", power::TEXT AS power
+        r#"SELECT chain_id, dao_code, governor_address, token_address, contract_address,
+                  log_index, transaction_index, "from", "to", power::TEXT AS power,
+                  block_number::TEXT AS block_number, block_timestamp::TEXT AS block_timestamp,
+                  transaction_hash
            FROM delegate_mapping
            WHERE contract_set_id = $1 AND id = $2"#,
     )
@@ -2256,12 +2317,31 @@ async fn read_delegate_mapping(
     .fetch_optional(&mut **transaction)
     .await?;
 
-    Ok(row.map(|row| DelegateMappingSnapshot {
-        common: common.clone(),
+    Ok(row.map(|row| delegate_mapping_snapshot_from_row(&common.contract_set_id, row)))
+}
+
+fn delegate_mapping_snapshot_from_row(
+    contract_set_id: &str,
+    row: sqlx::postgres::PgRow,
+) -> DelegateMappingSnapshot {
+    DelegateMappingSnapshot {
+        common: TokenEventCommon {
+            contract_set_id: contract_set_id.to_owned(),
+            chain_id: row.get("chain_id"),
+            dao_code: row.get("dao_code"),
+            governor_address: row.get("governor_address"),
+            token_address: row.get("token_address"),
+            contract_address: row.get("contract_address"),
+            log_index: row.get::<i32, _>("log_index") as u64,
+            transaction_index: row.get::<i32, _>("transaction_index") as u64,
+            block_number: row.get("block_number"),
+            block_timestamp: row.get("block_timestamp"),
+            transaction_hash: row.get("transaction_hash"),
+        },
         from: row.get("from"),
         to: row.get("to"),
         power: row.get("power"),
-    }))
+    }
 }
 
 fn rolling_match(
@@ -2696,7 +2776,7 @@ mod token_store_tests {
         let common = token_common("scope", "0xtx1", 10, 5);
         let mut cache = DelegateMappingCache::default();
 
-        cache.stage(
+        cache.stage_relation(
             &common,
             "0xdelegator",
             Some(DelegateMappingSnapshot {
@@ -2706,7 +2786,7 @@ mod token_store_tests {
                 power: "10".to_owned(),
             }),
         );
-        cache.stage(
+        cache.stage_relation(
             &common,
             "0xdelegator",
             Some(DelegateMappingSnapshot {
@@ -2734,7 +2814,7 @@ mod token_store_tests {
         let common = token_common("scope", "0xtx1", 10, 5);
         let mut cache = DelegateMappingCache::default();
 
-        cache.stage(
+        cache.stage_relation(
             &common,
             "0xdirty",
             Some(DelegateMappingSnapshot {
@@ -2777,6 +2857,45 @@ mod token_store_tests {
                 .map(|mapping| (mapping.to, mapping.power)),
             Some(("0xstaged".to_owned(), "77".to_owned()))
         );
+    }
+
+    #[test]
+    fn test_delegate_mapping_cache_keeps_relation_dirty_after_power_update() {
+        let relation_common = token_common("scope", "0xrelation", 10, 5);
+        let power_common = token_common("scope", "0xpower", 11, 6);
+        let mut cache = DelegateMappingCache::default();
+
+        cache.stage_relation(
+            &relation_common,
+            "0xdelegator",
+            Some(DelegateMappingSnapshot {
+                common: relation_common.clone(),
+                from: "0xdelegator".to_owned(),
+                to: "0xdelegate".to_owned(),
+                power: "0".to_owned(),
+            }),
+        );
+        cache.stage_power(
+            &power_common,
+            "0xdelegator",
+            DelegateMappingSnapshot {
+                common: relation_common.clone(),
+                from: "0xdelegator".to_owned(),
+                to: "0xdelegate".to_owned(),
+                power: "25".to_owned(),
+            },
+        );
+
+        let dirty = cache
+            .dirty
+            .values()
+            .next()
+            .expect("dirty relation should be staged");
+        let DelegateMappingDirty::Relation(snapshot) = dirty else {
+            panic!("power update should preserve relation upsert semantics");
+        };
+        assert_eq!(snapshot.common.transaction_hash, "0xrelation");
+        assert_eq!(snapshot.power, "25");
     }
 
     #[test]
