@@ -651,23 +651,33 @@ where
             "SELECT count(*)::BIGINT AS task_count
              FROM onchain_refresh_task
              WHERE (
-                status IN ('pending', 'failed')
+                status = 'pending'
+                OR (
+                    status = 'failed'
+                    AND attempts < ",
+        );
+        query.push_bind(self.config.max_attempts).push(
+            "
+                )
                 OR (
                     status = 'processing'
                     AND locked_at IS NOT NULL
                     AND locked_at <= ",
         );
+        query.push_bind(stale_before.to_string()).push(
+            "::NUMERIC(78, 0)
+                    AND attempts < ",
+        );
         query
-            .push_bind(stale_before.to_string())
+            .push_bind(self.config.max_attempts)
             .push(
-                "::NUMERIC(78, 0)
+                "
                 )
              )
              AND next_run_at <= ",
             )
             .push_bind(now_ms.to_string())
-            .push("::NUMERIC(78, 0) AND attempts < ")
-            .push_bind(self.config.max_attempts);
+            .push("::NUMERIC(78, 0)");
         push_onchain_refresh_scope_filter(&mut query, scope);
         let row = query.build().fetch_one(&self.pool).await?;
 
@@ -691,23 +701,33 @@ where
                 SELECT id
                 FROM onchain_refresh_task
                 WHERE (
-                    status IN ('pending', 'failed')
+                    status = 'pending'
+                    OR (
+                        status = 'failed'
+                        AND attempts < ",
+        );
+        query.push_bind(self.config.max_attempts).push(
+            "
+                    )
                     OR (
                         status = 'processing'
                         AND locked_at IS NOT NULL
                         AND locked_at <= ",
         );
+        query.push_bind(stale_before.to_string()).push(
+            "::NUMERIC(78, 0)
+                        AND attempts < ",
+        );
         query
-            .push_bind(stale_before.to_string())
+            .push_bind(self.config.max_attempts)
             .push(
-                "::NUMERIC(78, 0)
+                "
                     )
                 )
                 AND next_run_at <= ",
             )
             .push_bind(now_ms.to_string())
-            .push("::NUMERIC(78, 0) AND attempts < ")
-            .push_bind(self.config.max_attempts);
+            .push("::NUMERIC(78, 0)");
         push_onchain_refresh_scope_filter(&mut query, scope);
         query
             .push(
@@ -2772,6 +2792,7 @@ async fn complete_tasks(
         "UPDATE onchain_refresh_task
          SET status = CASE WHEN pending_after_lock THEN 'pending' ELSE 'completed' END,
              next_run_at = CASE WHEN pending_after_lock THEN $2::NUMERIC(78, 0) ELSE next_run_at END,
+             attempts = CASE WHEN pending_after_lock THEN 0 ELSE attempts END,
              locked_at = NULL,
              locked_by = NULL,
              processed_at = CASE WHEN pending_after_lock THEN processed_at ELSE $3::NUMERIC(78, 0) END,
