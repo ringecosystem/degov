@@ -576,6 +576,8 @@ async fn test_onchain_refresh_worker_zeros_current_delegate_relation_power_from_
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_contributor(&database.pool, ACCOUNT_ONE, "7", Some("77")).await?;
+    seed_contributor(&database.pool, ACCOUNT_TWO, "0", Some("0")).await?;
+    set_contributor_delegate_counts(&database.pool, ACCOUNT_TWO, 1, 1).await?;
     seed_data_metric(&database.pool, "7").await?;
     seed_final_delegate_with_scope(
         &database.pool,
@@ -637,6 +639,7 @@ async fn test_onchain_refresh_worker_zeros_current_delegate_relation_power_from_
     );
     assert_final_delegate(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "0").await?;
     assert_final_delegate_mapping(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "0").await?;
+    assert_contributor_delegate_counts(&database.pool, ACCOUNT_TWO, 1, 0).await?;
 
     database.cleanup().await?;
 
@@ -1768,6 +1771,26 @@ async fn seed_contributor_with_scope(
     Ok(())
 }
 
+async fn set_contributor_delegate_counts(
+    pool: &PgPool,
+    account: &str,
+    all: i32,
+    effective: i32,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE contributor
+         SET delegates_count_all = $2, delegates_count_effective = $3
+         WHERE contract_set_id = 'demo-dao' AND id = $1",
+    )
+    .bind(account)
+    .bind(all)
+    .bind(effective)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 async fn seed_final_delegate(
     pool: &PgPool,
     delegator: &str,
@@ -2014,6 +2037,27 @@ async fn contributor_values_by_scope(
         row.get::<String, _>("power"),
         row.get::<Option<String>, _>("balance"),
     ))
+}
+
+async fn assert_contributor_delegate_counts(
+    pool: &PgPool,
+    account: &str,
+    all: i32,
+    effective: i32,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE contract_set_id = 'demo-dao' AND id = $1",
+    )
+    .bind(account)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<i32, _>("delegates_count_all"), all);
+    assert_eq!(row.get::<i32, _>("delegates_count_effective"), effective);
+
+    Ok(())
 }
 
 async fn data_metric_values_by_scope(
