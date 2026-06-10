@@ -239,6 +239,116 @@ async fn test_refresh_proposal_titles_command_updates_only_scoped_dao() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_refresh_proposal_reference_fields_command_updates_only_scoped_dao()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let (demo_proposal, other_proposal) =
+        temp_env::with_vars([("OPENROUTER_API_KEY", None::<&str>)], || {
+            let demo_proposal = project_proposal_events(
+                &proposal_projection_context(),
+                vec![ProposalProjectionEvent {
+                    log: normalized_log("demo-proposal", 10, 0, 0),
+                    event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                        proposal_id: "42".to_owned(),
+                        proposer: PROPOSER.to_owned(),
+                        targets: vec![TARGET.to_owned()],
+                        values: vec!["1".to_owned()],
+                        signatures: vec!["upgrade()".to_owned()],
+                        calldatas: vec!["0x1234".to_owned()],
+                        vote_start: "100".to_owned(),
+                        vote_end: "200".to_owned(),
+                        description: "# Local demo title\nBody".to_owned(),
+                    }),
+                }],
+            )
+            .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+            let other_proposal = project_proposal_events(
+                &proposal_projection_context_with_scope(
+                    SECOND_CONTRACT_SET_ID,
+                    1,
+                    SECOND_GOVERNOR,
+                    SECOND_TOKEN,
+                    SECOND_TIMELOCK,
+                    "other-dao",
+                ),
+                vec![ProposalProjectionEvent {
+                    log: normalized_log_with_scope(1, "other-proposal", 11, 0, 0, SECOND_GOVERNOR),
+                    event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                        proposal_id: "42".to_owned(),
+                        proposer: PROPOSER.to_owned(),
+                        targets: vec![TARGET.to_owned()],
+                        values: vec!["1".to_owned()],
+                        signatures: vec!["upgrade()".to_owned()],
+                        calldatas: vec!["0x1234".to_owned()],
+                        vote_start: "100".to_owned(),
+                        vote_end: "200".to_owned(),
+                        description: "# Other DAO title\nBody".to_owned(),
+                    }),
+                }],
+            )
+            .map_err(|error| format!("proposal projection failed: {error:?}"))?;
+
+            Ok::<_, String>((demo_proposal, other_proposal))
+        })?;
+
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(demo_proposal),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(other_proposal),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    sqlx::query("UPDATE proposal SET title = 'stale title', block_interval = '12'")
+        .execute(&database.pool)
+        .await?;
+
+    let reference = FakeReferenceGraphqlServer::start(vec![json!({
+        "proposalId": "0x2a",
+        "title": "Reference demo title",
+        "blockInterval": "13.333333333333334"
+    })]);
+
+    run_refresh_proposal_reference_fields_command(
+        &database.database_url,
+        "demo-dao",
+        &format!("{}/demo-dao/graphql", reference.endpoint),
+    )
+    .await?;
+
+    let demo_row =
+        sqlx::query("SELECT title, block_interval FROM proposal WHERE dao_code = 'demo-dao'")
+            .fetch_one(&database.pool)
+            .await?;
+    let other_row =
+        sqlx::query("SELECT title, block_interval FROM proposal WHERE dao_code = 'other-dao'")
+            .fetch_one(&database.pool)
+            .await?;
+
+    assert_eq!(demo_row.get::<String, _>("title"), "Reference demo title");
+    assert_eq!(
+        demo_row.get::<Option<String>, _>("block_interval"),
+        Some("13.333333333333334".to_owned())
+    );
+    assert_eq!(other_row.get::<String, _>("title"), "stale title");
+    assert_eq!(
+        other_row.get::<Option<String>, _>("block_interval"),
+        Some("12".to_owned())
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1973,6 +2083,53 @@ async fn run_refresh_proposal_titles_command(
     Ok(())
 }
 
+async fn run_refresh_proposal_reference_fields_command(
+    database_url: &str,
+    dao_code: &str,
+    reference_graphql_endpoint: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_degov-datalens-indexer"))
+        .arg("refresh-proposal-reference-fields")
+        .arg("--dao-code")
+        .arg(dao_code)
+        .arg("--reference-graphql-endpoint")
+        .arg(reference_graphql_endpoint)
+        .env("DEGOV_INDEXER_DATABASE_URL", database_url)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let status = timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(status) = child.try_wait()? {
+                return Ok::<_, std::io::Error>(status);
+            }
+            sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await;
+
+    let status = match status {
+        Ok(status) => status?,
+        Err(_) => {
+            let _ = child.kill();
+            return Err("proposal reference field refresh command timed out".into());
+        }
+    };
+    let output = child.wait_with_output()?;
+
+    if !status.success() {
+        return Err(format!(
+            "proposal reference field refresh failed with status {status}\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
 async fn run_indexer_all_contract_sets_command(
     database_url: &str,
     datalens_endpoint: &str,
@@ -2096,6 +2253,26 @@ impl FakeDatalensServer {
     }
 }
 
+struct FakeReferenceGraphqlServer {
+    endpoint: String,
+}
+
+impl FakeReferenceGraphqlServer {
+    fn start(proposals: Vec<Value>) -> Self {
+        let listener =
+            TcpListener::bind("127.0.0.1:0").expect("bind fake reference GraphQL server");
+        let endpoint = format!("http://{}", listener.local_addr().expect("local addr"));
+
+        thread::spawn(move || {
+            for stream in listener.incoming().take(4).flatten() {
+                handle_reference_graphql_request(stream, &proposals);
+            }
+        });
+
+        Self { endpoint }
+    }
+}
+
 struct FakeRpcServer {
     endpoint: String,
 }
@@ -2113,6 +2290,42 @@ impl FakeRpcServer {
 
         Self { endpoint }
     }
+}
+
+fn handle_reference_graphql_request(mut stream: TcpStream, proposals: &[Value]) {
+    let request = read_http_request(&mut stream);
+    let request_body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
+    let body_json = serde_json::from_str::<Value>(request_body).unwrap_or_else(|_| json!({}));
+    let limit = body_json
+        .pointer("/variables/limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(100)
+        .max(0) as usize;
+    let offset = body_json
+        .pointer("/variables/offset")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .max(0) as usize;
+    let rows = proposals
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .cloned()
+        .collect::<Vec<_>>();
+    let body = json!({
+        "data": {
+            "proposals": rows
+        }
+    })
+    .to_string();
+    let response = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    stream
+        .write_all(response.as_bytes())
+        .expect("write fake reference GraphQL response");
 }
 
 fn handle_rpc_request(mut stream: TcpStream) {

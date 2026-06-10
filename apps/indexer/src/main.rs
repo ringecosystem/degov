@@ -1,7 +1,8 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use degov_datalens_indexer::runtime::{
-    migrate, refresh_proposal_titles, run_graphql, run_indexer, run_worker, smoke_datalens,
+    migrate, refresh_proposal_reference_fields, refresh_proposal_titles, run_graphql, run_indexer,
+    run_worker, smoke_datalens,
 };
 
 #[derive(Debug, Parser)]
@@ -22,6 +23,12 @@ enum Command {
         #[arg(long)]
         dao_code: String,
     },
+    RefreshProposalReferenceFields {
+        #[arg(long)]
+        dao_code: String,
+        #[arg(long)]
+        reference_graphql_endpoint: String,
+    },
 }
 
 #[tokio::main]
@@ -41,6 +48,23 @@ async fn main() -> anyhow::Result<()> {
                 "proposal title refresh completed dao_code={} scanned={} updated={}",
                 report.dao_code,
                 report.scanned,
+                report.updated
+            );
+            Ok(())
+        }
+        Command::RefreshProposalReferenceFields {
+            dao_code,
+            reference_graphql_endpoint,
+        } => {
+            let report =
+                refresh_proposal_reference_fields(dao_code, reference_graphql_endpoint).await?;
+            log::info!(
+                "proposal reference field refresh completed dao_code={} reference_endpoint={} local_scanned={} reference_scanned={} planned={} updated={}",
+                report.dao_code,
+                report.reference_endpoint,
+                report.local_scanned,
+                report.reference_scanned,
+                report.planned,
                 report.updated
             );
             Ok(())
