@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow as runtime_anyhow;
+use runtime_anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
 
 use crate::{
