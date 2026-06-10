@@ -500,6 +500,150 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_reconciles_current_delegate_relation_power_from_balance()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor(&database.pool, ACCOUNT_ONE, "3", Some("4")).await?;
+    seed_data_metric(&database.pool, "3").await?;
+    seed_final_delegate_with_scope(
+        &database.pool,
+        "demo-dao",
+        "demo-dao",
+        46,
+        ACCOUNT_ONE,
+        ACCOUNT_TWO,
+        "64",
+    )
+    .await?;
+    seed_final_delegate_mapping(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "64").await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        true,
+        true,
+    )
+    .await?;
+
+    let reader = MockOnchainRefreshReader::new([(
+        "task-one",
+        OnchainRefreshReadValue {
+            task_id: "task-one".to_owned(),
+            balance: Some("32".to_owned()),
+            power: Some("0".to_owned()),
+        },
+    )]);
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker.run_once().await?;
+
+    if report.failed > 0 {
+        panic!(
+            "task failed: {:?}",
+            task_error(&database.pool, "task-one").await?
+        );
+    }
+    assert_eq!(report.completed, 1, "{report:?}");
+    assert_eq!(
+        contributor_values(&database.pool, ACCOUNT_ONE).await?,
+        ("0".to_owned(), Some("32".to_owned()))
+    );
+    assert_final_delegate(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "32").await?;
+    assert_final_delegate_mapping(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "32").await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_zeros_current_delegate_relation_power_from_zero_balance()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor(&database.pool, ACCOUNT_ONE, "7", Some("77")).await?;
+    seed_data_metric(&database.pool, "7").await?;
+    seed_final_delegate_with_scope(
+        &database.pool,
+        "demo-dao",
+        "demo-dao",
+        46,
+        ACCOUNT_ONE,
+        ACCOUNT_TWO,
+        "77",
+    )
+    .await?;
+    seed_final_delegate_mapping(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "77").await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        true,
+        true,
+    )
+    .await?;
+
+    let reader = MockOnchainRefreshReader::new([(
+        "task-one",
+        OnchainRefreshReadValue {
+            task_id: "task-one".to_owned(),
+            balance: Some("0".to_owned()),
+            power: Some("0".to_owned()),
+        },
+    )]);
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker.run_once().await?;
+
+    if report.failed > 0 {
+        panic!(
+            "task failed: {:?}",
+            task_error(&database.pool, "task-one").await?
+        );
+    }
+    assert_eq!(report.completed, 1, "{report:?}");
+    assert_eq!(
+        contributor_values(&database.pool, ACCOUNT_ONE).await?,
+        ("0".to_owned(), Some("0".to_owned()))
+    );
+    assert_final_delegate(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "0").await?;
+    assert_final_delegate_mapping(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "0").await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_uses_current_votes_checkpoint_source()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1669,6 +1813,34 @@ async fn seed_final_delegate_with_scope(
     Ok(())
 }
 
+async fn seed_final_delegate_mapping(
+    pool: &PgPool,
+    delegator: &str,
+    delegate: &str,
+    power: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"INSERT INTO delegate_mapping (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            "from", "to", power, block_number, block_timestamp, transaction_hash
+         )
+         VALUES (
+            $1, 'demo-dao', 46, 'demo-dao', $2, $3, $4, $5, $6::NUMERIC(78, 0),
+            12::NUMERIC(78, 0), 12000::NUMERIC(78, 0), '0xdelegate-mapping'
+         )"#,
+    )
+    .bind(delegator)
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(delegator)
+    .bind(delegate)
+    .bind(power)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 async fn seed_data_metric(pool: &PgPool, power_sum: &str) -> Result<(), sqlx::Error> {
     seed_data_metric_with_scope(pool, "demo-dao", power_sum, 1, 7).await
 }
@@ -1918,6 +2090,14 @@ async fn assert_failed_task_error_contains(
     Ok(())
 }
 
+async fn task_error(pool: &PgPool, task_id: &str) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query("SELECT error FROM onchain_refresh_task WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+        .map(|row| row.get("error"))
+}
+
 async fn assert_task_status(
     pool: &PgPool,
     task_id: &str,
@@ -2120,6 +2300,54 @@ async fn assert_delegate_overlay_with_scope(
         row.get::<Option<String>, _>("anchor_block_timestamp"),
         Some("12000".to_owned())
     );
+
+    Ok(())
+}
+
+async fn assert_final_delegate(
+    pool: &PgPool,
+    delegator: &str,
+    delegate: &str,
+    power: &str,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT from_delegate, to_delegate, power::TEXT AS power
+         FROM delegate
+         WHERE contract_set_id = 'demo-dao'
+           AND from_delegate = $1
+           AND to_delegate = $2
+           AND is_current = TRUE",
+    )
+    .bind(delegator)
+    .bind(delegate)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("from_delegate"), delegator);
+    assert_eq!(row.get::<String, _>("to_delegate"), delegate);
+    assert_eq!(row.get::<String, _>("power"), power);
+
+    Ok(())
+}
+
+async fn assert_final_delegate_mapping(
+    pool: &PgPool,
+    delegator: &str,
+    delegate: &str,
+    power: &str,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        r#"SELECT "from", "to", power::TEXT AS power
+         FROM delegate_mapping
+         WHERE contract_set_id = 'demo-dao' AND id = $1"#,
+    )
+    .bind(delegator)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("from"), delegator);
+    assert_eq!(row.get::<String, _>("to"), delegate);
+    assert_eq!(row.get::<String, _>("power"), power);
 
     Ok(())
 }
