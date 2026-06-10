@@ -313,6 +313,25 @@ impl AdaptiveChunkSizer {
         }
     }
 
+    pub fn record_transient_query_failure(
+        &mut self,
+        failed_range_block_count: u32,
+    ) -> Option<(u32, u32)> {
+        if failed_range_block_count <= self.config.min_chunk_size {
+            return None;
+        }
+
+        let previous_chunk_size = self.current_chunk_size;
+        self.stable_chunks = 0;
+        self.unstable_chunks = 0;
+        self.current_chunk_size = failed_range_block_count
+            .saturating_div(2)
+            .max(self.config.min_chunk_size)
+            .min(self.current_chunk_size);
+
+        Some((previous_chunk_size, self.current_chunk_size))
+    }
+
     fn shrink_current_chunk_size(&mut self) {
         self.current_chunk_size = shrink_chunk_size(
             self.current_chunk_size,
@@ -736,6 +755,37 @@ where
                             chunk_started_at.elapsed().as_millis()
                         );
                         continue;
+                    }
+                    if let Some(error_class) = datalens_query_error_class(&error)
+                        .filter(|error_class| *error_class == DatalensQueryErrorClass::Transient)
+                    {
+                        if let Some((previous_chunk_size, new_chunk_size)) =
+                            chunk_sizer.record_transient_query_failure(failed_range_block_count)
+                        {
+                            let retry_to_block = range
+                                .from_block
+                                .saturating_add(i64::from(new_chunk_size))
+                                .saturating_sub(1)
+                                .min(range.to_block)
+                                .max(range.from_block);
+                            warn!(
+                                "Datalens indexer chunk transient split dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} from_block={} previous_to_block={} retry_to_block={} previous_chunk_size={} new_chunk_size={} error_class={} error={} duration_ms={}",
+                                self.options.checkpoint_identity.dao_code,
+                                self.options.checkpoint_identity.chain_id,
+                                self.options.checkpoint_identity.contract_set_id,
+                                self.options.checkpoint_identity.stream_id,
+                                self.options.checkpoint_identity.data_source_version,
+                                range.from_block,
+                                range.to_block,
+                                retry_to_block,
+                                previous_chunk_size,
+                                new_chunk_size,
+                                error_class.as_str(),
+                                error,
+                                chunk_started_at.elapsed().as_millis()
+                            );
+                            continue;
+                        }
                     }
 
                     error!(
@@ -1386,12 +1436,15 @@ fn range_block_count(range: CheckpointBlockRange) -> u32 {
 }
 
 fn is_provider_limit_error(error: &IndexerRunnerError) -> bool {
-    let message = match error {
-        IndexerRunnerError::Datalens(DatalensError::Query(message)) => message,
-        _ => return false,
+    datalens_query_error_class(error) == Some(DatalensQueryErrorClass::ProviderLimit)
+}
+
+fn datalens_query_error_class(error: &IndexerRunnerError) -> Option<DatalensQueryErrorClass> {
+    let IndexerRunnerError::Datalens(DatalensError::Query(message)) = error else {
+        return None;
     };
 
-    classify_datalens_query_error(message) == DatalensQueryErrorClass::ProviderLimit
+    Some(classify_datalens_query_error(message))
 }
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
