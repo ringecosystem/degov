@@ -242,15 +242,27 @@ fn assert_onchain_refresh_plans(store: &CapturingStore) {
     assert!(vote_reads.contains(&ChainReadMethod::State));
 
     let token_batch = batch.token.as_ref().expect("token batch");
-    assert_eq!(token_batch.reconcile_plan.metrics.read_count, 3);
+    assert_eq!(token_batch.reconcile_plan.metrics.read_count, 5);
     assert_eq!(token_batch.reconcile_plan.candidates.len(), 3);
-    assert!(
+    assert_eq!(
         token_batch
             .reconcile_plan
             .chain_read_plan
             .reads
             .iter()
-            .all(|read| read.key.method == ChainReadMethod::GetVotes)
+            .filter(|read| read.key.method == ChainReadMethod::GetVotes)
+            .count(),
+        3
+    );
+    assert_eq!(
+        token_batch
+            .reconcile_plan
+            .chain_read_plan
+            .reads
+            .iter()
+            .filter(|read| read.key.method == ChainReadMethod::BalanceOf)
+            .count(),
+        2
     );
 
     let timelock_reads = batch
