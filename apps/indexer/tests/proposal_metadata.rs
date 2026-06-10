@@ -88,6 +88,8 @@ fn test_derive_proposal_metadata_preserves_textplus_fallback_compatibility() {
     let list_marker = derive_proposal_metadata_without_ai("- Proposal title\nBody");
     let markdown_link =
         derive_proposal_metadata_without_ai("[Proposal title](https://example.com)\nBody");
+    let bracket_prefix =
+        derive_proposal_metadata_without_ai("[EP2] Retrospective Airdrop \nEnacts EP2");
     let blockquote = derive_proposal_metadata_without_ai("> Proposal title\nBody");
     let compact_heading = derive_proposal_metadata_without_ai("#Title\nBody");
     let nested_hash_heading = derive_proposal_metadata_without_ai("## Title\nBody");
@@ -99,6 +101,8 @@ fn test_derive_proposal_metadata_preserves_textplus_fallback_compatibility() {
     assert_eq!(list_marker.description_body, "Body");
     assert_eq!(markdown_link.title, "Proposal title");
     assert_eq!(markdown_link.description_body, "Body");
+    assert_eq!(bracket_prefix.title, "EP2: Retrospective Airdrop");
+    assert_eq!(bracket_prefix.description_body, "Enacts EP2");
     assert_eq!(blockquote.title, "Proposal title");
     assert_eq!(blockquote.description_body, "Body");
     assert_eq!(compact_heading.title, "#Title");
