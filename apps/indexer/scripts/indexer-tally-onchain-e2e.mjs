@@ -25,8 +25,8 @@ const PROPOSALS_QUERY = `
       chainId
       daoCode
     }
-    proposalsConnection(orderBy: [id_ASC]) { totalCount }
-    contributorsConnection(orderBy: [id_ASC]) { totalCount }
+    proposalsPage(orderBy: [id_ASC], limit: 0) { totalCount }
+    contributorsPage(orderBy: [id_ASC], limit: 0) { totalCount }
     proposals(limit: $limit, offset: $offset, orderBy: [blockNumber_DESC]) {
       proposalId
       title
@@ -295,8 +295,8 @@ export async function fetchDatalensProposals(target, limit) {
     summary: {
       indexerStatus: data.indexerStatus ?? null,
       metrics: data.dataMetrics?.[0] ?? null,
-      proposalsCount: data.proposalsConnection?.totalCount ?? null,
-      contributorsCount: data.contributorsConnection?.totalCount ?? null,
+      proposalsCount: data.proposalsPage?.totalCount ?? null,
+      contributorsCount: data.contributorsPage?.totalCount ?? null,
     },
     proposals: data.proposals ?? [],
   };

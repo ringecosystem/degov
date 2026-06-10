@@ -11,7 +11,7 @@ import {
   usePaginationRange,
 } from "@/hooks/usePaginationRange";
 import { buildGovernanceScope, delegateService } from "@/services/graphql";
-import type { DelegateItem } from "@/services/graphql/types";
+import type { DelegateItem, DelegatePageItem } from "@/services/graphql/types";
 
 import { AddressAvatar } from "../address-avatar";
 import { AddressResolver } from "../address-resolver";
@@ -31,13 +31,13 @@ import type { Address } from "viem";
 interface DelegationListProps {
   address: Address;
   orderBy: string;
-  totalCount: number;
+  onTotalCountChange?: (totalCount: number) => void;
 }
 
 export function DelegationList({
   address,
   orderBy,
-  totalCount,
+  onTotalCountChange,
 }: DelegationListProps) {
   const t = useTranslations("profile.receivedDelegations");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
@@ -53,21 +53,11 @@ export function DelegationList({
   }, [orderBy, address]);
 
   const pageSize = DEFAULT_PAGE_SIZE;
-  const totalPageCount = useMemo(() => {
-    return Math.max(1, Math.ceil((totalCount || 0) / pageSize));
-  }, [totalCount, pageSize]);
-
-  useEffect(() => {
-    if (currentPage > totalPageCount) {
-      setCurrentPage(totalPageCount);
-    }
-  }, [currentPage, totalPageCount]);
-
   const {
-    data: pageData = [],
+    data: page,
     isLoading,
     isFetching,
-  } = useQuery<DelegateItem[]>({
+  } = useQuery<DelegatePageItem | undefined>({
     queryKey: [
       "delegation-list",
       daoConfig?.indexer?.endpoint,
@@ -78,7 +68,7 @@ export function DelegationList({
       governanceScope,
     ],
     queryFn: () =>
-      delegateService.getAllDelegates(
+      delegateService.getDelegatesPage(
         daoConfig?.indexer?.endpoint as string,
         {
           limit: pageSize,
@@ -92,8 +82,26 @@ export function DelegationList({
         }
       ),
     enabled: !!daoConfig?.indexer?.endpoint && !!address,
-    placeholderData: (previous) => previous ?? [],
+    placeholderData: (previous) => previous,
   });
+
+  const pageData = useMemo(() => page?.items ?? [], [page?.items]);
+  const totalCount = page?.totalCount ?? 0;
+  const totalPageCount = useMemo(() => {
+    return Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  }, [totalCount, pageSize]);
+
+  useEffect(() => {
+    if (page?.totalCount !== undefined) {
+      onTotalCountChange?.(page.totalCount);
+    }
+  }, [onTotalCountChange, page?.totalCount]);
+
+  useEffect(() => {
+    if (currentPage > totalPageCount) {
+      setCurrentPage(totalPageCount);
+    }
+  }, [currentPage, totalPageCount]);
 
   const delegateAddresses = useMemo(
     () =>

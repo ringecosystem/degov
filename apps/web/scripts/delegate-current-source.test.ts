@@ -16,8 +16,14 @@ test("profile current delegation reads delegates with the current flag", () => {
 });
 
 test("received delegation surfaces keep the current flag on delegate reads", () => {
+  const parent = readSource(
+    "src/app/profile/_components/received-delegations.tsx"
+  );
+
+  assert.doesNotMatch(parent, /getDelegatesConnection/);
+  assert.doesNotMatch(parent, /delegatesConnection/);
+
   const files = [
-    "src/app/profile/_components/received-delegations.tsx",
     "src/components/delegation-table/index.tsx",
     "src/components/delegation-list/index.tsx",
   ];
@@ -25,8 +31,9 @@ test("received delegation surfaces keep the current flag on delegate reads", () 
   for (const file of files) {
     const source = readSource(file);
 
-    assert.match(source, /delegateService\.(getAllDelegates|getDelegatesConnection)/);
+    assert.match(source, /delegateService\.(getAllDelegates|getDelegatesPage)/);
     assert.match(source, /isCurrent_eq:\s*true/);
+    assert.doesNotMatch(source, /getDelegatesConnection/);
     assert.doesNotMatch(source, /to_eq:/);
   }
 });

@@ -73,7 +73,7 @@ struct BaselineCounts {
     vote_power_checkpoints: i64,
     token_balance_checkpoints: i64,
     onchain_refresh_tasks: i64,
-    data_metrics_connection_total_count: i64,
+    data_metrics_page_total_count: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -317,7 +317,7 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
     assert_table_count(
         &database.pool,
         "data_metric",
-        baseline.counts.data_metrics_connection_total_count,
+        baseline.counts.data_metrics_page_total_count,
     )
     .await?;
 
@@ -334,9 +334,9 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
                   $votedProposalWhere: ProposalWhereInput,
                   $wrongVoterProposalWhere: ProposalWhereInput
                 ) {
-                  proposalsConnection(orderBy: [id_ASC]) { totalCount }
-                  contributorsConnection(orderBy: id_ASC) { totalCount }
-                  dataMetricsConnection(orderBy: id_ASC) { totalCount }
+                  proposalsPage(orderBy: [id_ASC], limit: 0) { totalCount }
+                  contributorsPage(orderBy: id_ASC, limit: 0) { totalCount }
+                  dataMetricsPage(orderBy: id_ASC, limit: 0) { totalCount }
                   dataMetrics(where: $metricWhere) {
                     proposalsCount
                     votesCount
@@ -375,8 +375,8 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
                   proposalQueueds(orderBy: [id_ASC]) { proposalId etaSeconds }
                   proposalExecuteds(orderBy: [id_ASC]) { proposalId }
                   proposalCanceleds(orderBy: [id_ASC]) { proposalId }
-                  delegatesConnection(orderBy: [id_ASC]) { totalCount }
-                  delegateMappingsConnection(orderBy: [id_ASC]) { totalCount }
+                  delegatesPage(orderBy: [id_ASC], limit: 0) { totalCount }
+                  delegateMappingsPage(orderBy: [id_ASC], limit: 0) { totalCount }
                 }
                 "#,
             )
@@ -426,12 +426,12 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
     let data = response.data.into_json()?;
 
     assert_eq!(
-        data["proposalsConnection"]["totalCount"],
+        data["proposalsPage"]["totalCount"],
         baseline.counts.proposals
     );
     assert_eq!(
-        data["dataMetricsConnection"]["totalCount"],
-        baseline.counts.data_metrics_connection_total_count
+        data["dataMetricsPage"]["totalCount"],
+        baseline.counts.data_metrics_page_total_count
     );
     assert_eq!(
         data["dataMetrics"][0]["proposalsCount"],
@@ -471,7 +471,7 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
     assert_eq!(data["contributors"][0]["id"], top_contributor.id);
     assert_eq!(data["contributors"][0]["power"], top_contributor.power);
     assert_eq!(
-        data["contributorsConnection"]["totalCount"],
+        data["contributorsPage"]["totalCount"],
         baseline.counts.contributors
     );
     assert_eq!(
@@ -519,11 +519,11 @@ async fn test_lisk_dao_golden_baseline_matches_fixture_contract() -> Result<(), 
         Some(baseline.counts.proposal_canceleds as usize)
     );
     assert_eq!(
-        data["delegatesConnection"]["totalCount"],
+        data["delegatesPage"]["totalCount"],
         baseline.counts.delegates
     );
     assert_eq!(
-        data["delegateMappingsConnection"]["totalCount"],
+        data["delegateMappingsPage"]["totalCount"],
         baseline.counts.delegate_mappings
     );
 
@@ -1227,7 +1227,7 @@ async fn seed_data_metrics(pool: &PgPool, baseline: &Baseline) -> Result<(), sql
     .bind(&baseline.scope.dao_code)
     .bind(&baseline.scope.governor)
     .bind(&baseline.scope.token.address)
-    .bind(baseline.counts.data_metrics_connection_total_count)
+    .bind(baseline.counts.data_metrics_page_total_count)
     .execute(pool)
     .await?;
 

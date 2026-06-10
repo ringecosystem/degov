@@ -210,8 +210,47 @@ pub struct IndexerStatus {
 
 #[derive(Clone, Debug, SimpleObject)]
 #[graphql(rename_fields = "camelCase")]
-pub struct Connection {
+pub struct ProposalPage {
     pub(super) total_count: i64,
+    pub(super) offset: i32,
+    pub(super) limit: i32,
+    pub(super) items: Vec<Proposal>,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct ContributorPage {
+    pub(super) total_count: i64,
+    pub(super) offset: i32,
+    pub(super) limit: i32,
+    pub(super) items: Vec<Contributor>,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct DelegatePage {
+    pub(super) total_count: i64,
+    pub(super) offset: i32,
+    pub(super) limit: i32,
+    pub(super) items: Vec<Delegate>,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct DelegateMappingPage {
+    pub(super) total_count: i64,
+    pub(super) offset: i32,
+    pub(super) limit: i32,
+    pub(super) items: Vec<DelegateMapping>,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct DataMetricPage {
+    pub(super) total_count: i64,
+    pub(super) offset: i32,
+    pub(super) limit: i32,
+    pub(super) items: Vec<DataMetric>,
 }
 
 #[ComplexObject(rename_fields = "camelCase")]

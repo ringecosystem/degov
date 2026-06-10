@@ -1,6 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { DelegationList } from "@/components/delegation-list";
 import { DelegationTable } from "@/components/delegation-table";
@@ -11,8 +10,6 @@ import type {
 } from "@/components/delegation-table";
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { buildGovernanceScope, delegateService } from "@/services/graphql";
 
 import type { Address } from "viem";
 
@@ -41,39 +38,15 @@ const ORDER_BY_MAP: Record<
 
 export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
   const t = useTranslations("profile.receivedDelegations");
-  const daoConfig = useDaoConfig();
   const [sortState, setSortState] =
     useState<DelegationSortState>(DEFAULT_SORT_STATE);
-  const governanceScope = useMemo(
-    () => buildGovernanceScope(daoConfig),
-    [daoConfig]
-  );
+  const [totalCount, setTotalCount] = useState<number>();
 
-  // Get received delegations count
-  const { data: delegationConnection } = useQuery({
-    queryKey: [
-      "delegatesConnection",
-      address,
-      daoConfig?.indexer?.endpoint,
-      governanceScope,
-    ],
-    queryFn: () =>
-      delegateService.getDelegatesConnection(
-        daoConfig?.indexer?.endpoint as string,
-        {
-          where: {
-            ...governanceScope,
-            toDelegate_eq: address.toLowerCase(),
-            isCurrent_eq: true,
-          },
-          orderBy: ["id_ASC"],
-        }
-      ),
-    enabled: !!daoConfig?.indexer?.endpoint && !!address,
-  });
+  useEffect(() => {
+    setTotalCount(undefined);
+  }, [address]);
 
   const getDisplayTitle = () => {
-    const totalCount = delegationConnection?.totalCount;
     if (totalCount !== undefined) {
       return t("titleWithCount", { count: totalCount });
     }
@@ -112,17 +85,17 @@ export function ReceivedDelegations({ address }: ReceivedDelegationsProps) {
           <DelegationTable
             address={address}
             orderBy={orderBy}
-            totalCount={delegationConnection?.totalCount ?? 0}
             sortState={sortState}
             onDateSortChange={handleDateSortChange}
             onPowerSortChange={handlePowerSortChange}
+            onTotalCountChange={setTotalCount}
           />
         }
         mobile={
           <DelegationList
             address={address}
             orderBy={orderBy}
-            totalCount={delegationConnection?.totalCount ?? 0}
+            onTotalCountChange={setTotalCount}
           />
         }
         loadingFallback={

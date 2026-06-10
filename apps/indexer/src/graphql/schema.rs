@@ -8,6 +8,8 @@ use super::pagination::push_page;
 use super::query::*;
 use super::types::*;
 
+const DEFAULT_PAGE_LIMIT: i32 = 20;
+
 #[derive(Default)]
 pub struct QueryRoot;
 
@@ -182,63 +184,168 @@ impl QueryRoot {
         query_indexer_statuses(pool(ctx)?, scope(ctx)?).await
     }
 
-    async fn proposals_connection(
+    async fn proposals_page(
         &self,
         ctx: &Context<'_>,
         where_: Option<ProposalWhereInput>,
         order_by: Option<Vec<ProposalOrderByInput>>,
-    ) -> GraphqlResult<Connection> {
-        let _ = order_by;
-        Ok(Connection {
-            total_count: count_proposals(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
+        offset: Option<i32>,
+        limit: Option<i32>,
+    ) -> GraphqlResult<ProposalPage> {
+        let pool = pool(ctx)?;
+        let scope = scope(ctx)?;
+        let (offset, limit) = page_args(offset, limit);
+        let total_count = count_proposals(pool, scope, where_.as_ref()).await?;
+        let items = if limit == 0 {
+            Vec::new()
+        } else {
+            query_proposals(
+                pool,
+                scope,
+                where_.as_ref(),
+                order_by.as_deref(),
+                Some(offset),
+                Some(limit),
+            )
+            .await?
+        };
+        Ok(ProposalPage {
+            total_count,
+            offset,
+            limit,
+            items,
         })
     }
 
-    async fn contributors_connection(
+    async fn contributors_page(
         &self,
         ctx: &Context<'_>,
         where_: Option<ContributorWhereInput>,
         order_by: Option<Vec<ContributorOrderByInput>>,
-    ) -> GraphqlResult<Connection> {
-        let _ = order_by;
-        Ok(Connection {
-            total_count: count_contributors(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
+        offset: Option<i32>,
+        limit: Option<i32>,
+    ) -> GraphqlResult<ContributorPage> {
+        let pool = pool(ctx)?;
+        let scope = scope(ctx)?;
+        let (offset, limit) = page_args(offset, limit);
+        let total_count = count_contributors(pool, scope, where_.as_ref()).await?;
+        let items = if limit == 0 {
+            Vec::new()
+        } else {
+            query_contributors(
+                pool,
+                scope,
+                where_.as_ref(),
+                order_by.as_deref(),
+                Some(offset),
+                Some(limit),
+            )
+            .await?
+        };
+        Ok(ContributorPage {
+            total_count,
+            offset,
+            limit,
+            items,
         })
     }
 
-    async fn delegates_connection(
+    async fn delegates_page(
         &self,
         ctx: &Context<'_>,
         where_: Option<DelegateWhereInput>,
         order_by: Option<Vec<DelegateOrderByInput>>,
-    ) -> GraphqlResult<Connection> {
-        let _ = order_by;
-        Ok(Connection {
-            total_count: count_delegates(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
+        offset: Option<i32>,
+        limit: Option<i32>,
+    ) -> GraphqlResult<DelegatePage> {
+        let pool = pool(ctx)?;
+        let scope = scope(ctx)?;
+        let (offset, limit) = page_args(offset, limit);
+        let total_count = count_delegates(pool, scope, where_.as_ref()).await?;
+        let items = if limit == 0 {
+            Vec::new()
+        } else {
+            query_delegates(
+                pool,
+                scope,
+                where_.as_ref(),
+                order_by.as_deref(),
+                Some(offset),
+                Some(limit),
+            )
+            .await?
+        };
+        Ok(DelegatePage {
+            total_count,
+            offset,
+            limit,
+            items,
         })
     }
 
-    async fn delegate_mappings_connection(
+    async fn delegate_mappings_page(
         &self,
         ctx: &Context<'_>,
         where_: Option<DelegateMappingWhereInput>,
         order_by: Option<Vec<DelegateMappingOrderByInput>>,
-    ) -> GraphqlResult<Connection> {
-        let _ = order_by;
-        Ok(Connection {
-            total_count: count_delegate_mappings(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
+        offset: Option<i32>,
+        limit: Option<i32>,
+    ) -> GraphqlResult<DelegateMappingPage> {
+        let pool = pool(ctx)?;
+        let scope = scope(ctx)?;
+        let (offset, limit) = page_args(offset, limit);
+        let total_count = count_delegate_mappings(pool, scope, where_.as_ref()).await?;
+        let items = if limit == 0 {
+            Vec::new()
+        } else {
+            query_delegate_mappings(
+                pool,
+                scope,
+                where_.as_ref(),
+                order_by.as_deref(),
+                Some(offset),
+                Some(limit),
+            )
+            .await?
+        };
+        Ok(DelegateMappingPage {
+            total_count,
+            offset,
+            limit,
+            items,
         })
     }
 
-    async fn data_metrics_connection(
+    async fn data_metrics_page(
         &self,
         ctx: &Context<'_>,
         where_: Option<DataMetricWhereInput>,
         order_by: Option<Vec<DataMetricOrderByInput>>,
-    ) -> GraphqlResult<Connection> {
-        let _ = order_by;
-        Ok(Connection {
-            total_count: count_data_metrics(pool(ctx)?, scope(ctx)?, where_.as_ref()).await?,
+        offset: Option<i32>,
+        limit: Option<i32>,
+    ) -> GraphqlResult<DataMetricPage> {
+        let pool = pool(ctx)?;
+        let scope = scope(ctx)?;
+        let (offset, limit) = page_args(offset, limit);
+        let total_count = count_data_metrics(pool, scope, where_.as_ref()).await?;
+        let items = if limit == 0 {
+            Vec::new()
+        } else {
+            query_data_metrics(
+                pool,
+                scope,
+                where_.as_ref(),
+                order_by.as_deref(),
+                Some(offset),
+                Some(limit),
+            )
+            .await?
+        };
+        Ok(DataMetricPage {
+            total_count,
+            offset,
+            limit,
+            items,
         })
     }
 }
@@ -303,4 +410,11 @@ fn pool<'a>(ctx: &'a Context<'_>) -> GraphqlResult<&'a sqlx::PgPool> {
 
 fn scope<'a>(ctx: &'a Context<'_>) -> GraphqlResult<&'a GraphqlScope> {
     Ok(ctx.data::<GraphqlScope>()?)
+}
+
+fn page_args(offset: Option<i32>, limit: Option<i32>) -> (i32, i32) {
+    (
+        offset.unwrap_or(0).max(0),
+        limit.unwrap_or(DEFAULT_PAGE_LIMIT).max(0),
+    )
 }
