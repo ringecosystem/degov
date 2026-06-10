@@ -813,7 +813,7 @@ async fn test_postgres_token_same_batch_mapping_mutations_remain_ordered()
                 }),
             },
             TokenProjectionEvent {
-                log: normalized_token_log("0000000006-second-transfer", 2, 0, 4),
+                log: normalized_token_log("0000000006-second-transfer", 3, 0, 1),
                 event: DecodedTokenEvent::Transfer(TokenTransferEvent {
                     from: DELEGATOR.to_owned(),
                     to: RECEIVER.to_owned(),
@@ -833,7 +833,8 @@ async fn test_postgres_token_same_batch_mapping_mutations_remain_ordered()
     )?;
 
     let mapping = sqlx::query(
-        r#"SELECT "to", power::TEXT AS power
+        r#"SELECT "to", power::TEXT AS power, block_number::TEXT AS block_number,
+                  transaction_hash
            FROM delegate_mapping
            WHERE contract_set_id = $1 AND "from" = $2"#,
     )
@@ -843,6 +844,8 @@ async fn test_postgres_token_same_batch_mapping_mutations_remain_ordered()
     .await?;
     assert_eq!(mapping.get::<String, _>("to"), SECOND_DELEGATE);
     assert_eq!(mapping.get::<String, _>("power"), "50");
+    assert_eq!(mapping.get::<String, _>("block_number"), "2");
+    assert_eq!(mapping.get::<String, _>("transaction_hash"), "0xtx20");
 
     let previous_relation = sqlx::query(
         "SELECT power::TEXT AS power, is_current
@@ -854,7 +857,7 @@ async fn test_postgres_token_same_batch_mapping_mutations_remain_ordered()
     .bind(DELEGATE)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(previous_relation.get::<String, _>("power"), "60");
+    assert_eq!(previous_relation.get::<String, _>("power"), "0");
     assert!(!previous_relation.get::<bool, _>("is_current"));
 
     let current_relation = sqlx::query(
@@ -905,6 +908,62 @@ async fn test_postgres_token_same_batch_mapping_mutations_remain_ordered()
         current_delegate_counts.get::<i32, _>("delegates_count_effective"),
         1
     );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_delegate_mapping_power_update_preserves_relation_metadata()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let token_batch = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000001-delegate", 1, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000002-transfer", 2, 0, 1),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: ZERO_ADDRESS.to_owned(),
+                    to: DELEGATOR.to_owned(),
+                    value: "40".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(token_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let mapping = sqlx::query(
+        r#"SELECT "to", power::TEXT AS power, block_number::TEXT AS block_number,
+                  transaction_hash
+           FROM delegate_mapping
+           WHERE contract_set_id = $1 AND "from" = $2"#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATOR)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(mapping.get::<String, _>("to"), DELEGATE);
+    assert_eq!(mapping.get::<String, _>("power"), "40");
+    assert_eq!(mapping.get::<String, _>("block_number"), "1");
+    assert_eq!(mapping.get::<String, _>("transaction_hash"), "0xtx10");
 
     database.cleanup().await?;
 
