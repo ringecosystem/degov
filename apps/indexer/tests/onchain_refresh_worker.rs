@@ -400,6 +400,13 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_contributor(&database.pool, ACCOUNT_ONE, "3", Some("4")).await?;
+    seed_contributor(
+        &database.pool,
+        "0x0000000000000000000000000000000000000003",
+        "0",
+        Some("0"),
+    )
+    .await?;
     seed_data_metric(&database.pool, "7").await?;
     seed_final_delegate_with_scope(
         &database.pool,
@@ -484,7 +491,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     );
     assert_completed_task(&database.pool, "task-one", 1).await?;
     assert_completed_task(&database.pool, "task-two", 2).await?;
-    assert_data_metric(&database.pool, "16", 2, 7).await?;
+    assert_data_metric_counts(&database.pool, "16", 3, 1, 1, 7).await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_TWO, "0", "5", "5").await?;
     assert_balance_checkpoint(&database.pool, ACCOUNT_ONE, "4", "17", "13").await?;
@@ -1999,11 +2006,11 @@ async fn seed_data_metric_with_scope(
     sqlx::query(
         "INSERT INTO data_metric (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, power_sum,
-            member_count, votes_count
+            contributor_count, holders_count, member_count, votes_count
          )
          VALUES (
             'global',
-            $1, 46, 'demo-dao', $2, $3, $4::NUMERIC(78, 0), $5, $6
+            $1, 46, 'demo-dao', $2, $3, $4::NUMERIC(78, 0), $5, $5, $5, $6
          )",
     )
     .bind(contract_set_id)
@@ -2313,8 +2320,28 @@ async fn assert_data_metric(
     member_count: i32,
     votes_count: i32,
 ) -> Result<(), sqlx::Error> {
+    assert_data_metric_counts(
+        pool,
+        power_sum,
+        member_count,
+        member_count,
+        member_count,
+        votes_count,
+    )
+    .await
+}
+
+async fn assert_data_metric_counts(
+    pool: &PgPool,
+    power_sum: &str,
+    contributor_count: i32,
+    holders_count: i32,
+    member_count: i32,
+    votes_count: i32,
+) -> Result<(), sqlx::Error> {
     let row = sqlx::query(
-        "SELECT power_sum::TEXT AS power_sum, member_count, votes_count
+        "SELECT power_sum::TEXT AS power_sum, contributor_count, holders_count, member_count,
+                votes_count
          FROM data_metric
          WHERE chain_id = 46 AND governor_address = $1 AND dao_code = 'demo-dao'",
     )
@@ -2323,6 +2350,8 @@ async fn assert_data_metric(
     .await?;
 
     assert_eq!(row.get::<String, _>("power_sum"), power_sum);
+    assert_eq!(row.get::<i32, _>("contributor_count"), contributor_count);
+    assert_eq!(row.get::<i32, _>("holders_count"), holders_count);
     assert_eq!(row.get::<i32, _>("member_count"), member_count);
     assert_eq!(row.get::<i32, _>("votes_count"), votes_count);
 

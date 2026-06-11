@@ -615,6 +615,8 @@ type DataMetric @entity @index(fields: ["chainId", "governorAddress", "daoCode"]
   votesWeightAgainstSum: BigInt
   votesWeightAbstainSum: BigInt
   powerSum: BigInt
+  contributorCount: Int
+  holdersCount: Int
   memberCount: Int
 }
 

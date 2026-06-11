@@ -144,6 +144,8 @@ pub struct DataMetric {
     pub(super) votes_weight_against_sum: Option<String>,
     pub(super) votes_weight_abstain_sum: Option<String>,
     pub(super) power_sum: Option<String>,
+    pub(super) contributor_count: Option<i32>,
+    pub(super) holders_count: Option<i32>,
     pub(super) member_count: Option<i32>,
 }
 

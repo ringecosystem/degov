@@ -854,6 +854,8 @@ fn proposal_data_metric(log_id: &str, common: &ProposalEventCommon) -> DataMetri
         votes_weight_against_sum: Some("0".to_owned()),
         votes_weight_abstain_sum: Some("0".to_owned()),
         power_sum: None,
+        contributor_count: None,
+        holders_count: None,
         member_count: None,
     }
 }

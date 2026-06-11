@@ -2,6 +2,11 @@ export type CountPageItem = {
   totalCount: number;
 };
 
+export type DataMetricCountItem = {
+  contributorCount?: number | null;
+  holdersCount?: number | null;
+};
+
 export type GovernanceCounts = {
   proposalsCount: number;
   delegatesCount: number;
@@ -9,7 +14,7 @@ export type GovernanceCounts = {
 
 export type GovernanceCountsResponse = {
   proposalsPage?: CountPageItem | null;
-  contributorsPage?: CountPageItem | null;
+  dataMetrics?: DataMetricCountItem[] | null;
 };
 
 export function resolveGovernanceCounts(
@@ -17,6 +22,9 @@ export function resolveGovernanceCounts(
 ): GovernanceCounts {
   return {
     proposalsCount: response?.proposalsPage?.totalCount ?? 0,
-    delegatesCount: response?.contributorsPage?.totalCount ?? 0,
+    delegatesCount:
+      response?.dataMetrics?.[0]?.holdersCount ??
+      response?.dataMetrics?.[0]?.contributorCount ??
+      0,
   };
 }

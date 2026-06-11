@@ -18,5 +18,7 @@ pub struct DataMetricWrite {
     pub votes_weight_against_sum: Option<String>,
     pub votes_weight_abstain_sum: Option<String>,
     pub power_sum: Option<String>,
+    pub contributor_count: Option<i64>,
+    pub holders_count: Option<i64>,
     pub member_count: Option<i64>,
 }

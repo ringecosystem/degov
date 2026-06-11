@@ -812,6 +812,8 @@ CREATE TABLE IF NOT EXISTS data_metric (
   votes_weight_against_sum NUMERIC(78, 0),
   votes_weight_abstain_sum NUMERIC(78, 0),
   power_sum NUMERIC(78, 0),
+  contributor_count INTEGER,
+  holders_count INTEGER,
   member_count INTEGER,
   PRIMARY KEY (contract_set_id, id),
   CONSTRAINT data_metric_scope_unique UNIQUE NULLS NOT DISTINCT (

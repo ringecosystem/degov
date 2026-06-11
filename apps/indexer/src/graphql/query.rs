@@ -237,7 +237,10 @@ pub(super) async fn query_data_metrics(
           votes_without_params_count, votes_weight_for_sum::text AS votes_weight_for_sum,
           votes_weight_against_sum::text AS votes_weight_against_sum,
           votes_weight_abstain_sum::text AS votes_weight_abstain_sum,
-          power_sum::text AS power_sum, member_count
+          power_sum::text AS power_sum,
+          COALESCE(contributor_count, member_count) AS contributor_count,
+          COALESCE(holders_count, member_count) AS holders_count,
+          COALESCE(holders_count, member_count) AS member_count
         FROM data_metric
         "#,
     );

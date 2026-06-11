@@ -1050,7 +1050,7 @@ async fn ensure_contributor(
     .await?;
 
     if result.rows_affected() > 0 {
-        increment_member_count(transaction, common).await?;
+        increment_contributor_count(transaction, common).await?;
     }
 
     Ok(())
@@ -1075,8 +1075,9 @@ struct ContributorEnsureInsert {
 #[derive(Debug, Default)]
 struct ContributorEnsureCache {
     ensured: HashSet<(String, String)>,
-    pending_member_count_increments: HashMap<(String, String), TokenEventCommon>,
-    member_count_increments: std::collections::BTreeMap<DataMetricIncrementScope, DataMetricIncrement>,
+    pending_contributor_count_increments: HashMap<(String, String), TokenEventCommon>,
+    contributor_count_increments:
+        std::collections::BTreeMap<DataMetricIncrementScope, DataMetricIncrement>,
     contributor_count_deltas:
         std::collections::BTreeMap<ContributorCountDeltaKey, ContributorCountDelta>,
 }
@@ -1228,7 +1229,7 @@ impl ContributorEnsureCache {
                     )
                 })
                 .collect::<Vec<_>>();
-            self.stage_member_count_increments(rows, &inserted);
+            self.stage_contributor_count_increments(rows, &inserted);
         }
 
         Ok(())
@@ -1246,11 +1247,11 @@ impl ContributorEnsureCache {
             common: common.clone(),
         };
         if !self.insert_cache_key(&candidate) {
-            if let Some(common) = self.pending_member_count_increments.remove(&(
+            if let Some(common) = self.pending_contributor_count_increments.remove(&(
                 candidate.common.contract_set_id.clone(),
                 candidate.account.clone(),
             )) {
-                self.stage_member_count_increment(&common);
+                self.stage_contributor_count_increment(&common);
             }
             return Ok(());
         }
@@ -1264,7 +1265,7 @@ impl ContributorEnsureCache {
         ))
     }
 
-    fn stage_member_count_increments(
+    fn stage_contributor_count_increments(
         &mut self,
         candidates: &[ContributorEnsureInsert],
         inserted: &[(String, String)],
@@ -1276,16 +1277,16 @@ impl ContributorEnsureCache {
                 candidate.account.clone(),
             );
             if inserted.contains(&key) {
-                self.pending_member_count_increments
+                self.pending_contributor_count_increments
                     .entry(key)
                     .or_insert_with(|| candidate.common.clone());
             }
         }
     }
 
-    fn stage_member_count_increment(&mut self, common: &TokenEventCommon) {
+    fn stage_contributor_count_increment(&mut self, common: &TokenEventCommon) {
         let key = DataMetricIncrementScope::from(common);
-        self.member_count_increments
+        self.contributor_count_increments
             .entry(key)
             .and_modify(|increment| increment.count += 1)
             .or_insert_with(|| DataMetricIncrement {
@@ -1410,12 +1411,12 @@ impl ContributorEnsureCache {
         Ok(())
     }
 
-    async fn flush_member_count_increments(
+    async fn flush_contributor_count_increments(
         &mut self,
         transaction: &mut Transaction<'_, Postgres>,
     ) -> Result<(), PostgresIndexerRunnerStoreError> {
-        for (_, increment) in std::mem::take(&mut self.member_count_increments) {
-            increment_member_count_by(transaction, &increment.common, increment.count).await?;
+        for (_, increment) in std::mem::take(&mut self.contributor_count_increments) {
+            increment_contributor_count_by(transaction, &increment.common, increment.count).await?;
         }
 
         Ok(())
@@ -1452,26 +1453,26 @@ fn collect_contributor_ensure_candidates(
     candidates
 }
 
-async fn increment_member_count(
+async fn increment_contributor_count(
     transaction: &mut Transaction<'_, Postgres>,
     common: &TokenEventCommon,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    increment_member_count_by(transaction, common, 1).await
+    increment_contributor_count_by(transaction, common, 1).await
 }
 
-async fn increment_member_count_by(
+async fn increment_contributor_count_by(
     transaction: &mut Transaction<'_, Postgres>,
     common: &TokenEventCommon,
     increment: i32,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO data_metric (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, member_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contributor_count
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
-             member_count = COALESCE(data_metric.member_count, 0) + EXCLUDED.member_count",
+             contributor_count = COALESCE(data_metric.contributor_count, 0) + EXCLUDED.contributor_count",
     )
     .bind(data_metric_id(
         common.chain_id,
@@ -3043,22 +3044,22 @@ mod token_store_tests {
     }
 
     #[test]
-    fn test_contributor_ensure_cache_accumulates_member_count_by_scope() {
+    fn test_contributor_ensure_cache_accumulates_contributor_count_by_scope() {
         let common = token_common("scope", "0xtx1", 10, 5);
         let other_common = token_common("other-scope", "0xtx2", 11, 6);
         let mut cache = ContributorEnsureCache::default();
 
-        cache.stage_member_count_increment(&common);
-        cache.stage_member_count_increment(&common);
-        cache.stage_member_count_increment(&other_common);
+        cache.stage_contributor_count_increment(&common);
+        cache.stage_contributor_count_increment(&common);
+        cache.stage_contributor_count_increment(&other_common);
 
         assert_eq!(
-            cache.member_count_increments
+            cache.contributor_count_increments
                 .get(&DataMetricIncrementScope::from(&common))
                 .map(|increment| increment.count),
             Some(2)
         );
-        assert_eq!(cache.member_count_increments.len(), 2);
+        assert_eq!(cache.contributor_count_increments.len(), 2);
     }
 
     #[test]

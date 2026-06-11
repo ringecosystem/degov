@@ -18,6 +18,8 @@ import type { ProfileData } from "./types/profile";
 import type { EvmAbiResponse, EvmAbiInput } from "./types/proposals";
 
 const emptyProposalMetrics: Types.ProposalMetricsItem = {
+  contributorCount: 0,
+  holdersCount: 0,
   memberCount: 0,
   powerSum: "0",
   proposalsCount: "0",

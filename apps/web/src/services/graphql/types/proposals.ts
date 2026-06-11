@@ -166,7 +166,9 @@ export type ProposalQueuedByIdResponse = {
 };
 
 export type ProposalMetricsItem = {
-  memberCount: number;
+  contributorCount: number | null;
+  holdersCount: number | null;
+  memberCount: number | null;
   powerSum: string;
   proposalsCount: string;
   votesCount: string;
