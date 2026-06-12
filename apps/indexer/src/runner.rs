@@ -73,6 +73,7 @@ pub struct AdaptiveChunkSizerConfig {
     pub max_chunk_size: u32,
     pub min_chunk_size: u32,
     pub transient_query_failure_min_chunk_size: u32,
+    pub full_hit_dense_floor: u32,
     pub local_processing_shrink_threshold: Duration,
     pub fast_chunk_duration_threshold: Duration,
     pub high_query_duration_threshold: Duration,
@@ -91,6 +92,7 @@ impl AdaptiveChunkSizerConfig {
             max_chunk_size,
             min_chunk_size: 100,
             transient_query_failure_min_chunk_size: 1,
+            full_hit_dense_floor: 1_000.min(max_chunk_size),
             local_processing_shrink_threshold: Duration::from_secs(10),
             fast_chunk_duration_threshold: Duration::from_secs(1),
             high_query_duration_threshold: Duration::from_secs(10),
@@ -106,6 +108,7 @@ impl AdaptiveChunkSizerConfig {
     pub fn capped_to_block_range_limit(mut self, block_range_limit: u32) -> Self {
         self.max_chunk_size = self.max_chunk_size.min(block_range_limit);
         self.min_chunk_size = self.min_chunk_size.min(self.max_chunk_size);
+        self.full_hit_dense_floor = self.full_hit_dense_floor.min(self.max_chunk_size);
         self.transient_query_failure_min_chunk_size = self
             .transient_query_failure_min_chunk_size
             .min(self.max_chunk_size);
@@ -179,10 +182,16 @@ impl AdaptiveChunkSizer {
             || config.max_chunk_size == 0
             || config.min_chunk_size == 0
             || config.transient_query_failure_min_chunk_size == 0
+            || config.full_hit_dense_floor == 0
         {
             return Err(CheckpointError::InvalidRangeLimit);
         }
         if config.min_chunk_size > config.max_chunk_size {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
+        if config.full_hit_dense_floor < config.min_chunk_size
+            || config.full_hit_dense_floor > config.max_chunk_size
+        {
             return Err(CheckpointError::InvalidRangeLimit);
         }
         if config.transient_query_failure_min_chunk_size > config.max_chunk_size {
@@ -222,7 +231,9 @@ impl AdaptiveChunkSizer {
 
     pub fn record_chunk(&mut self, feedback: AdaptiveChunkFeedback) -> AdaptiveChunkSizingDecision {
         let previous_chunk_size = self.current_chunk_size;
-        let dense_range = feedback.returned_row_count >= self.config.dense_returned_row_threshold;
+        let full_cache_hit = feedback.has_only_full_cache_hits();
+        let dense_range = feedback.returned_row_count >= self.config.dense_returned_row_threshold
+            && !full_cache_hit;
         let slow_local_processing = feedback.local_processing_write_duration
             > self.config.local_processing_shrink_threshold;
         let high_query_duration = feedback.read_duration
@@ -243,7 +254,12 @@ impl AdaptiveChunkSizer {
         let reason = if slow_local_processing || high_query_duration || dense_range {
             self.stable_chunks = 0;
             self.unstable_chunks = 0;
-            self.shrink_current_chunk_size();
+            let shrink_floor = if slow_local_processing && !high_query_duration && full_cache_hit {
+                self.config.full_hit_dense_floor
+            } else {
+                self.config.min_chunk_size
+            };
+            self.shrink_current_chunk_size_to(shrink_floor);
             if slow_local_processing {
                 AdaptiveChunkSizingReason::SlowLocalProcessing
             } else if high_query_duration {
@@ -343,9 +359,13 @@ impl AdaptiveChunkSizer {
     }
 
     fn shrink_current_chunk_size(&mut self) {
+        self.shrink_current_chunk_size_to(self.config.min_chunk_size);
+    }
+
+    fn shrink_current_chunk_size_to(&mut self, min_chunk_size: u32) {
         self.current_chunk_size = shrink_chunk_size(
             self.current_chunk_size,
-            self.config.min_chunk_size,
+            min_chunk_size.min(self.current_chunk_size),
             self.config.shrink_factor_percent,
         );
     }
@@ -364,6 +384,12 @@ impl AdaptiveChunkFeedback {
 
     fn has_full_cache_hit(&self) -> bool {
         self.warmup_effectiveness.full_hit_count > 0 && !self.has_cache_fill()
+    }
+
+    fn has_only_full_cache_hits(&self) -> bool {
+        self.warmup_effectiveness.query_count > 0
+            && self.warmup_effectiveness.full_hit_count == self.warmup_effectiveness.query_count
+            && !self.has_cache_fill()
     }
 
     fn is_fast(&self, config: &AdaptiveChunkSizerConfig) -> bool {

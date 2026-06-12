@@ -685,11 +685,52 @@ fn test_adaptive_chunk_sizer_high_duration_shrinks_immediately() {
 }
 
 #[test]
-fn test_adaptive_chunk_sizer_dense_rows_shrinks_immediately() {
+fn test_adaptive_chunk_sizer_full_hit_high_duration_can_shrink_below_full_hit_floor() {
+    let mut config = adaptive_config(400, 400);
+    config.full_hit_dense_floor = 200;
+    let mut sizer = AdaptiveChunkSizer::new(config).expect("sizer");
+
+    let first = sizer.record_chunk(adaptive_feedback(
+        cache_full_hit(),
+        Duration::from_millis(1_500),
+    ));
+    let second = sizer.record_chunk(adaptive_feedback(
+        cache_full_hit(),
+        Duration::from_millis(1_500),
+    ));
+    let third = sizer.record_chunk(adaptive_feedback(
+        cache_full_hit(),
+        Duration::from_millis(1_500),
+    ));
+
+    assert_eq!(first.current_chunk_size, 200);
+    assert_eq!(first.reason, AdaptiveChunkSizingReason::HighQueryDuration);
+    assert_eq!(second.current_chunk_size, 100);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::HighQueryDuration);
+    assert_eq!(third.current_chunk_size, 50);
+    assert_eq!(third.reason, AdaptiveChunkSizingReason::HighQueryDuration);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_full_hit_dense_rows_do_not_shrink_by_row_count() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 
     let dense = sizer.record_chunk(adaptive_feedback_with_rows(
         cache_full_hit(),
+        Duration::from_millis(50),
+        5_000,
+    ));
+
+    assert_eq!(dense.current_chunk_size, 100);
+    assert_eq!(dense.reason, AdaptiveChunkSizingReason::Hold);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_mixed_full_hit_unavailable_dense_rows_still_shrink() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let dense = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit_with_unavailable(),
         Duration::from_millis(50),
         5_000,
     ));
@@ -699,9 +740,52 @@ fn test_adaptive_chunk_sizer_dense_rows_shrinks_immediately() {
 }
 
 #[test]
+fn test_adaptive_chunk_sizer_dense_provider_fill_still_shrinks_by_row_count() {
+    let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
+
+    let dense = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_provider_fill(),
+        Duration::from_millis(50),
+        5_000,
+    ));
+
+    assert_eq!(dense.current_chunk_size, 50);
+    assert_eq!(dense.reason, AdaptiveChunkSizingReason::DenseReturnedRows);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_slow_full_hit_stops_at_full_hit_floor() {
+    let mut config = adaptive_config(400, 400);
+    config.full_hit_dense_floor = 200;
+    let mut sizer = AdaptiveChunkSizer::new(config).expect("sizer");
+
+    for expected in [200, 200, 200] {
+        let mut feedback =
+            adaptive_feedback_with_rows(cache_full_hit(), Duration::from_millis(50), 5_000);
+        feedback.local_processing_write_duration = Duration::from_secs(11);
+
+        let decision = sizer.record_chunk(feedback);
+
+        assert_eq!(decision.current_chunk_size, expected);
+        assert_eq!(
+            decision.reason,
+            AdaptiveChunkSizingReason::SlowLocalProcessing
+        );
+    }
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_rejects_full_hit_floor_below_min_chunk_size() {
+    let mut config = adaptive_config(100, 400);
+    config.full_hit_dense_floor = 25;
+
+    assert!(AdaptiveChunkSizer::new(config).is_err());
+}
+
+#[test]
 fn test_adaptive_chunk_sizer_slow_local_processing_shrinks_immediately() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
-    let mut feedback = adaptive_feedback(cache_full_hit(), Duration::from_millis(50));
+    let mut feedback = adaptive_feedback(cache_miss(), Duration::from_millis(50));
     feedback.local_processing_write_duration = Duration::from_secs(11);
 
     let slow_local = sizer.record_chunk(feedback);
@@ -1344,6 +1428,15 @@ fn cache_provider_fill() -> DatalensWarmupEffectivenessAggregation {
 
 fn cache_unavailable() -> DatalensWarmupEffectivenessAggregation {
     cache_aggregation(DatalensLogQueryCacheSummary::unavailable())
+}
+
+fn cache_full_hit_with_unavailable() -> DatalensWarmupEffectivenessAggregation {
+    let mut aggregation = cache_full_hit();
+    aggregation.record_query(
+        DatalensLogQueryCacheSummary::unavailable(),
+        Duration::from_millis(20),
+    );
+    aggregation
 }
 
 fn cache_aggregation(
