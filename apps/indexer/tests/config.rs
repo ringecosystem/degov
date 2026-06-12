@@ -398,11 +398,16 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
                 "DEGOV_INDEXER_ADAPTIVE_CHUNK_SHRINK_FACTOR_PERCENT",
                 Some("75"),
             ),
+            (
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_FULL_HIT_DENSE_FLOOR_BLOCKS",
+                Some("125"),
+            ),
         ],
         || {
             let runtime = IndexerRuntimeConfig::from_env().expect("load runtime config");
 
             assert_eq!(runtime.adaptive_chunk_sizer.min_chunk_size, 25);
+            assert_eq!(runtime.adaptive_chunk_sizer.full_hit_dense_floor, 125);
             assert_eq!(runtime.adaptive_chunk_sizer.max_chunk_size, Some(400));
             assert_eq!(
                 runtime.adaptive_chunk_sizer.fast_chunk_duration_threshold,
@@ -427,6 +432,7 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
             assert_eq!(capped.initial_chunk_size, 300);
             assert_eq!(capped.max_chunk_size, 300);
             assert_eq!(capped.min_chunk_size, 25);
+            assert_eq!(capped.full_hit_dense_floor, 125);
             assert_eq!(
                 capped.cache_fill_high_duration_threshold,
                 Duration::from_millis(1250)
@@ -434,6 +440,30 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
             assert_eq!(capped.stable_chunks_to_grow, 3);
             assert_eq!(capped.unstable_chunks_to_shrink, 4);
             assert_eq!(capped.shrink_factor_percent, 75);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_rejects_full_hit_dense_floor_below_min_chunk_size() {
+    with_datalens_env(
+        &[
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS", Some("100")),
+            (
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_FULL_HIT_DENSE_FLOOR_BLOCKS",
+                Some("50"),
+            ),
+        ],
+        || {
+            let error =
+                IndexerRuntimeConfig::from_env().expect_err("reject full-hit floor below min");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_ADAPTIVE_CHUNK_FULL_HIT_DENSE_FLOOR_BLOCKS")
+            );
         },
     );
 }

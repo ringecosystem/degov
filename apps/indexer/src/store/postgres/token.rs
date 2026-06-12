@@ -1,8 +1,58 @@
 // Token projection writes and delegate relation maintenance.
-const CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE: usize = 2_000;
-const TOKEN_EVENT_BULK_CHUNK_SIZE: usize = 1_000;
-const DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE: usize = 250;
-const VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE: usize = 1_000;
+const POSTGRES_BIND_PARAMETER_LIMIT: usize = 65_535;
+const CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE_DEFAULT: usize = 3_000;
+const TOKEN_EVENT_BULK_CHUNK_SIZE_DEFAULT: usize = 3_000;
+const DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE_DEFAULT: usize = 1_000;
+const VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE_DEFAULT: usize = 3_000;
+const CONTRIBUTOR_ENSURE_BULK_BINDS_PER_ROW: usize = 16;
+const TOKEN_EVENT_BULK_BINDS_PER_ROW: usize = 19;
+const DELEGATE_ROLLING_VOTE_UPDATE_BINDS_PER_ROW: usize = 6;
+const VOTE_POWER_CHECKPOINT_BULK_BINDS_PER_ROW: usize = 21;
+
+fn bulk_chunk_size_from_env(
+    env_name: &str,
+    default_size: usize,
+    binds_per_row: usize,
+) -> usize {
+    let requested_size = std::env::var(env_name)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|size| *size > 0)
+        .unwrap_or(default_size);
+    requested_size.min(POSTGRES_BIND_PARAMETER_LIMIT / binds_per_row)
+}
+
+fn token_event_bulk_chunk_size() -> usize {
+    bulk_chunk_size_from_env(
+        "DEGOV_INDEXER_TOKEN_EVENT_BULK_CHUNK_SIZE",
+        TOKEN_EVENT_BULK_CHUNK_SIZE_DEFAULT,
+        TOKEN_EVENT_BULK_BINDS_PER_ROW,
+    )
+}
+
+fn contributor_ensure_bulk_chunk_size() -> usize {
+    bulk_chunk_size_from_env(
+        "DEGOV_INDEXER_CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE",
+        CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE_DEFAULT,
+        CONTRIBUTOR_ENSURE_BULK_BINDS_PER_ROW,
+    )
+}
+
+fn delegate_rolling_vote_update_chunk_size() -> usize {
+    bulk_chunk_size_from_env(
+        "DEGOV_INDEXER_DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE",
+        DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE_DEFAULT,
+        DELEGATE_ROLLING_VOTE_UPDATE_BINDS_PER_ROW,
+    )
+}
+
+fn vote_power_checkpoint_bulk_chunk_size() -> usize {
+    bulk_chunk_size_from_env(
+        "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
+        VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE_DEFAULT,
+        VOTE_POWER_CHECKPOINT_BULK_BINDS_PER_ROW,
+    )
+}
 
 async fn write_token_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
@@ -66,7 +116,7 @@ async fn insert_delegate_changed_batch(
     rows: &[DelegateChangedWrite],
 ) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
     let mut inserted = Vec::new();
-    for rows in rows.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+    for rows in rows.chunks(token_event_bulk_chunk_size()) {
         let mut query = QueryBuilder::<Postgres>::new(
             "INSERT INTO delegate_changed (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address,
@@ -130,7 +180,7 @@ async fn insert_delegate_votes_changed_batch(
     rows: &[DelegateVotesChangedWrite],
 ) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
     let mut inserted = Vec::new();
-    for rows in rows.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+    for rows in rows.chunks(token_event_bulk_chunk_size()) {
         let mut query = QueryBuilder::<Postgres>::new(
             "INSERT INTO delegate_votes_changed (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address,
@@ -197,7 +247,7 @@ async fn insert_token_transfer_batch(
     rows: &[TokenTransferWrite],
 ) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
     let mut inserted = Vec::new();
-    for rows in rows.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+    for rows in rows.chunks(token_event_bulk_chunk_size()) {
         let mut query = QueryBuilder::<Postgres>::new(
             "INSERT INTO token_transfer (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address,
@@ -280,7 +330,7 @@ async fn upsert_delegate_rolling_batch(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[DelegateRollingWrite],
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    for rows in rows.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+    for rows in rows.chunks(token_event_bulk_chunk_size()) {
         let mut query = QueryBuilder::<Postgres>::new(
             "INSERT INTO delegate_rolling (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address,
@@ -378,7 +428,7 @@ async fn insert_vote_power_checkpoint_batch(
     rows: &[DelegateVotesChangedWrite],
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     let rows = collect_vote_power_checkpoint_inserts(metadata_cache, rows)?;
-    for rows in rows.chunks(VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE) {
+    for rows in rows.chunks(vote_power_checkpoint_bulk_chunk_size()) {
         let mut query = QueryBuilder::<Postgres>::new(
             "INSERT INTO vote_power_checkpoint (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
@@ -869,7 +919,7 @@ impl DelegateSnapshotCache {
             return Ok(());
         }
 
-        for rows in snapshots.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        for rows in snapshots.chunks(token_event_bulk_chunk_size()) {
             upsert_delegate_snapshot_batch(transaction, rows).await?;
         }
 
@@ -1173,7 +1223,7 @@ impl ContributorEnsureCache {
             })
             .collect::<Result<Vec<_>, PostgresIndexerRunnerStoreError>>()?;
 
-        for rows in rows.chunks(CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE) {
+        for rows in rows.chunks(contributor_ensure_bulk_chunk_size()) {
             let mut query = QueryBuilder::<Postgres>::new(
                 "INSERT INTO contributor (
                     id, contract_set_id, chain_id, dao_code, governor_address, token_address,
@@ -1331,7 +1381,7 @@ impl ContributorEnsureCache {
             return Ok(());
         }
 
-        for rows in deltas.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        for rows in deltas.chunks(token_event_bulk_chunk_size()) {
             let mut query = QueryBuilder::<Postgres>::new(
                 "UPDATE contributor
                  SET chain_id = delta.chain_id,
@@ -1693,7 +1743,7 @@ impl DelegateMappingCache {
             }
         }
 
-        for rows in deletes.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        for rows in deletes.chunks(token_event_bulk_chunk_size()) {
             let mut query =
                 QueryBuilder::<Postgres>::new("DELETE FROM delegate_mapping WHERE (contract_set_id, id) IN ");
             query.push_tuples(rows, |mut tuple, (contract_set_id, id)| {
@@ -1702,7 +1752,7 @@ impl DelegateMappingCache {
             query.build().execute(&mut **transaction).await?;
         }
 
-        for rows in relation_upserts.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        for rows in relation_upserts.chunks(token_event_bulk_chunk_size()) {
             let mut query = QueryBuilder::<Postgres>::new(
                 r#"INSERT INTO delegate_mapping (
                     id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
@@ -1773,7 +1823,7 @@ impl DelegateMappingCache {
             query.build().execute(&mut **transaction).await?;
         }
 
-        for rows in power_updates.chunks(TOKEN_EVENT_BULK_CHUNK_SIZE) {
+        for rows in power_updates.chunks(token_event_bulk_chunk_size()) {
             let mut query = QueryBuilder::<Postgres>::new(
                 "UPDATE delegate_mapping AS target
                  SET power = source.power::NUMERIC(78, 0)
@@ -2045,7 +2095,7 @@ impl BatchTokenMetadataCache {
             return Ok(());
         }
 
-        for rows in updates.chunks(DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE) {
+        for rows in updates.chunks(delegate_rolling_vote_update_chunk_size()) {
             let mut query = QueryBuilder::<Postgres>::new(
                 "UPDATE delegate_rolling
                  SET from_previous_votes = COALESCE(delta.from_previous_votes, delegate_rolling.from_previous_votes),
@@ -2571,6 +2621,100 @@ mod token_store_tests {
         BatchReadPlanConfig, ChainContracts, ChainReadMethod, PowerReconcileContext,
         plan_power_reconcile,
     };
+
+    #[test]
+    fn test_bulk_chunk_size_defaults_to_preferred_values() {
+        temp_env::with_vars(
+            [
+                ("DEGOV_INDEXER_TOKEN_EVENT_BULK_CHUNK_SIZE", None::<&str>),
+                (
+                    "DEGOV_INDEXER_CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE",
+                    None::<&str>,
+                ),
+                (
+                    "DEGOV_INDEXER_DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE",
+                    None::<&str>,
+                ),
+                (
+                    "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
+                    None::<&str>,
+                ),
+            ],
+            || {
+                assert_eq!(token_event_bulk_chunk_size(), 3_000);
+                assert_eq!(contributor_ensure_bulk_chunk_size(), 3_000);
+                assert_eq!(delegate_rolling_vote_update_chunk_size(), 1_000);
+                assert_eq!(vote_power_checkpoint_bulk_chunk_size(), 3_000);
+            },
+        );
+    }
+
+    #[test]
+    fn test_bulk_chunk_size_env_values_are_capped_to_postgres_bind_limit() {
+        temp_env::with_vars(
+            [
+                ("DEGOV_INDEXER_TOKEN_EVENT_BULK_CHUNK_SIZE", Some("100000")),
+                (
+                    "DEGOV_INDEXER_CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE",
+                    Some("100000"),
+                ),
+                (
+                    "DEGOV_INDEXER_DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE",
+                    Some("100000"),
+                ),
+                (
+                    "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
+                    Some("100000"),
+                ),
+            ],
+            || {
+                assert_eq!(
+                    token_event_bulk_chunk_size(),
+                    POSTGRES_BIND_PARAMETER_LIMIT / TOKEN_EVENT_BULK_BINDS_PER_ROW
+                );
+                assert_eq!(
+                    contributor_ensure_bulk_chunk_size(),
+                    POSTGRES_BIND_PARAMETER_LIMIT / CONTRIBUTOR_ENSURE_BULK_BINDS_PER_ROW
+                );
+                assert_eq!(
+                    delegate_rolling_vote_update_chunk_size(),
+                    POSTGRES_BIND_PARAMETER_LIMIT
+                        / DELEGATE_ROLLING_VOTE_UPDATE_BINDS_PER_ROW
+                );
+                assert_eq!(
+                    vote_power_checkpoint_bulk_chunk_size(),
+                    POSTGRES_BIND_PARAMETER_LIMIT / VOTE_POWER_CHECKPOINT_BULK_BINDS_PER_ROW
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn test_bulk_chunk_size_invalid_env_values_fall_back_to_defaults() {
+        temp_env::with_vars(
+            [
+                ("DEGOV_INDEXER_TOKEN_EVENT_BULK_CHUNK_SIZE", Some("0")),
+                (
+                    "DEGOV_INDEXER_CONTRIBUTOR_ENSURE_BULK_CHUNK_SIZE",
+                    Some("not-a-number"),
+                ),
+                (
+                    "DEGOV_INDEXER_DELEGATE_ROLLING_VOTE_UPDATE_CHUNK_SIZE",
+                    Some("0"),
+                ),
+                (
+                    "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
+                    Some("not-a-number"),
+                ),
+            ],
+            || {
+                assert_eq!(token_event_bulk_chunk_size(), 3_000);
+                assert_eq!(contributor_ensure_bulk_chunk_size(), 3_000);
+                assert_eq!(delegate_rolling_vote_update_chunk_size(), 1_000);
+                assert_eq!(vote_power_checkpoint_bulk_chunk_size(), 3_000);
+            },
+        );
+    }
 
     #[test]
     fn test_collect_contributor_ensure_candidates_dedupes_delegate_changed_targets() {
