@@ -6,22 +6,23 @@ use log::{error, info, warn};
 use thiserror::Error;
 
 use crate::{
-    ChainReadExecutionReport, ChainReadPlan, ChainTool, CheckpointBlockRange, CheckpointError,
-    DaoContractAddresses, DaoEventDecodeError, DaoLogSource, DatalensConfig, DatalensError,
-    DatalensLogPage, DatalensLogQueryReader, DatalensQueryErrorClass,
+    ChainReadExecutionReport, ChainReadPlan, ChainReadPlanBuilder, ChainTool, CheckpointBlockRange,
+    CheckpointError, DaoContractAddresses, DaoEventDecodeError, DaoLogSource, DatalensConfig,
+    DatalensError, DatalensLogPage, DatalensLogQueryReader, DatalensQueryErrorClass,
     DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields, DecodedDaoEvent,
     GovernanceTokenStandard, InMemoryProposalProjectionRepository,
     InMemoryTimelockProjectionRepository, InMemoryTokenProjectionRepository,
     InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
     NormalizedEvmLog, ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionEvent,
-    ProposalProjectionRepository, TimelockProjectionBatch, TimelockProjectionContext,
+    ProposalProjectionRepository, ProposalTimestampBackfillCandidate,
+    ProposalTimestampBackfillUpdate, TimelockProjectionBatch, TimelockProjectionContext,
     TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
     TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository,
     VoteProjectionBatch, VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
     classify_datalens_query_error, datalens_selector_fingerprint, decode_dao_log,
     fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries, plan_next_checkpoint_range,
-    project_proposal_events, project_timelock_events_with_proposal_links, project_token_events,
-    project_vote_events,
+    plan_proposal_timestamp_backfill_updates, project_proposal_events,
+    project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
 };
 
 use crate::OnchainRefreshTickReport;
@@ -37,6 +38,22 @@ pub struct IndexerRunnerOptions {
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerConfig,
     pub onchain_refresh_deferred_drain_batch_size: usize,
+    pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProposalTimestampBackfillConfig {
+    pub enabled: bool,
+    pub batch_size: usize,
+}
+
+impl Default for ProposalTimestampBackfillConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            batch_size: 100,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -543,6 +560,22 @@ pub trait IndexerRunnerStore {
     ) -> Result<usize, Self::Error> {
         Ok(0)
     }
+
+    fn read_proposal_timestamp_backfill_candidates(
+        &mut self,
+        _identity: &IndexerCheckpointIdentity,
+        _processed_height: i64,
+        _batch_size: usize,
+    ) -> Result<Vec<ProposalTimestampBackfillCandidate>, Self::Error> {
+        Ok(Vec::new())
+    }
+
+    fn update_proposal_timestamp_backfill(
+        &mut self,
+        _updates: &[ProposalTimestampBackfillUpdate],
+    ) -> Result<u64, Self::Error> {
+        Ok(0)
+    }
 }
 
 pub trait IndexerRunnerTransaction {
@@ -896,6 +929,7 @@ where
                 }
             };
             let deferred_drain_duration = deferred_drain_started_at.elapsed();
+            self.run_proposal_timestamp_backfill(range.to_block);
             self.run_onchain_refresh_tick(range.to_block);
 
             chunks_processed += 1;
@@ -1056,6 +1090,142 @@ where
                 processed_block,
                 error
             ),
+        }
+    }
+
+    fn run_proposal_timestamp_backfill(&mut self, processed_block: i64) {
+        let config = self.options.proposal_timestamp_backfill;
+        if !config.enabled || config.batch_size == 0 {
+            return;
+        }
+        let Some(context) = self.contexts.proposal.as_ref() else {
+            return;
+        };
+        if self.chain_tool.is_none() {
+            return;
+        }
+
+        let started_at = Instant::now();
+        let candidates = match self.store.read_proposal_timestamp_backfill_candidates(
+            &self.options.checkpoint_identity,
+            processed_block,
+            config.batch_size,
+        ) {
+            Ok(candidates) => candidates,
+            Err(error) => {
+                warn!(
+                    "Datalens indexer proposal timestamp backfill candidate read failed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} processed_block={} error={}",
+                    self.options.checkpoint_identity.dao_code,
+                    self.options.checkpoint_identity.chain_id,
+                    self.options.checkpoint_identity.contract_set_id,
+                    self.options.checkpoint_identity.stream_id,
+                    self.options.checkpoint_identity.data_source_version,
+                    processed_block,
+                    error
+                );
+                return;
+            }
+        };
+        if candidates.is_empty() {
+            return;
+        }
+
+        let mut builder = ChainReadPlanBuilder::new(
+            self.options.checkpoint_identity.chain_id,
+            context.contracts.clone(),
+            context.read_plan_config,
+        );
+        for candidate in &candidates {
+            if candidate.clock_mode != "blocknumber" {
+                continue;
+            }
+            if candidate
+                .vote_start
+                .parse::<i64>()
+                .is_ok_and(|block| block <= processed_block)
+            {
+                builder.add_optional_block_timestamp_read(&candidate.vote_start);
+            }
+            if candidate
+                .vote_end
+                .parse::<i64>()
+                .is_ok_and(|block| block <= processed_block)
+            {
+                builder.add_optional_block_timestamp_read(&candidate.vote_end);
+            }
+        }
+
+        let plan = builder.build();
+        let Some(report) = self.execute_proposal_timestamp_backfill_read_plan(&plan) else {
+            return;
+        };
+        let updates = plan_proposal_timestamp_backfill_updates(&candidates, &report);
+        let updated_rows = match self.store.update_proposal_timestamp_backfill(&updates) {
+            Ok(rows) => rows,
+            Err(error) => {
+                warn!(
+                    "Datalens indexer proposal timestamp backfill update failed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} processed_block={} candidates={} updates={} error={}",
+                    self.options.checkpoint_identity.dao_code,
+                    self.options.checkpoint_identity.chain_id,
+                    self.options.checkpoint_identity.contract_set_id,
+                    self.options.checkpoint_identity.stream_id,
+                    self.options.checkpoint_identity.data_source_version,
+                    processed_block,
+                    candidates.len(),
+                    updates.len(),
+                    error
+                );
+                return;
+            }
+        };
+
+        info!(
+            "Datalens indexer proposal timestamp backfill completed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} processed_block={} candidates={} updates={} updated_rows={} optional_failures={} duration_ms={}",
+            self.options.checkpoint_identity.dao_code,
+            self.options.checkpoint_identity.chain_id,
+            self.options.checkpoint_identity.contract_set_id,
+            self.options.checkpoint_identity.stream_id,
+            self.options.checkpoint_identity.data_source_version,
+            processed_block,
+            candidates.len(),
+            updates.len(),
+            updated_rows,
+            report.partial_failures.optional_failures.len(),
+            started_at.elapsed().as_millis()
+        );
+    }
+
+    fn execute_proposal_timestamp_backfill_read_plan(
+        &self,
+        plan: &ChainReadPlan,
+    ) -> Option<ChainReadExecutionReport> {
+        if plan.reads.is_empty() {
+            return None;
+        }
+        let Some(chain_tool) = self.chain_tool.as_ref() else {
+            return None;
+        };
+
+        match chain_tool.execute_read_plan(plan) {
+            Ok(report) => Some(report),
+            Err(failures) if failures.can_commit_projection_writes() => {
+                Some(ChainReadExecutionReport {
+                    partial_failures: failures,
+                    ..ChainReadExecutionReport::default()
+                })
+            }
+            Err(failures) => {
+                warn!(
+                    "Datalens indexer proposal timestamp backfill reads failed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} failures={:?}",
+                    self.options.checkpoint_identity.dao_code,
+                    self.options.checkpoint_identity.chain_id,
+                    self.options.checkpoint_identity.contract_set_id,
+                    self.options.checkpoint_identity.stream_id,
+                    self.options.checkpoint_identity.data_source_version,
+                    failures
+                );
+                None
+            }
         }
     }
 
@@ -1511,6 +1681,9 @@ pub struct InMemoryIndexerRunnerStore {
     commit_count: u64,
     rollback_count: u64,
     deferred_drain_requests: Vec<usize>,
+    proposal_timestamp_backfill_candidates: Vec<ProposalTimestampBackfillCandidate>,
+    proposal_timestamp_backfill_updates: Vec<ProposalTimestampBackfillUpdate>,
+    proposal_timestamp_backfill_requests: Vec<(i64, usize)>,
     apply_failures: VecDeque<String>,
     commit_failures: VecDeque<String>,
 }
@@ -1526,6 +1699,9 @@ impl InMemoryIndexerRunnerStore {
             commit_count: 0,
             rollback_count: 0,
             deferred_drain_requests: Vec::new(),
+            proposal_timestamp_backfill_candidates: Vec::new(),
+            proposal_timestamp_backfill_updates: Vec::new(),
+            proposal_timestamp_backfill_requests: Vec::new(),
             apply_failures: VecDeque::new(),
             commit_failures: VecDeque::new(),
         }
@@ -1545,6 +1721,21 @@ impl InMemoryIndexerRunnerStore {
 
     pub fn deferred_drain_requests(&self) -> &[usize] {
         &self.deferred_drain_requests
+    }
+
+    pub fn set_proposal_timestamp_backfill_candidates(
+        &mut self,
+        candidates: Vec<ProposalTimestampBackfillCandidate>,
+    ) {
+        self.proposal_timestamp_backfill_candidates = candidates;
+    }
+
+    pub fn proposal_timestamp_backfill_updates(&self) -> &[ProposalTimestampBackfillUpdate] {
+        &self.proposal_timestamp_backfill_updates
+    }
+
+    pub fn proposal_timestamp_backfill_requests(&self) -> &[(i64, usize)] {
+        &self.proposal_timestamp_backfill_requests
     }
 
     pub fn fail_next_apply(&mut self, message: impl Into<String>) {
@@ -1632,6 +1823,31 @@ impl IndexerRunnerStore for InMemoryIndexerRunnerStore {
     ) -> Result<usize, Self::Error> {
         self.deferred_drain_requests.push(max_rows);
         Ok(0)
+    }
+
+    fn read_proposal_timestamp_backfill_candidates(
+        &mut self,
+        _identity: &IndexerCheckpointIdentity,
+        processed_height: i64,
+        batch_size: usize,
+    ) -> Result<Vec<ProposalTimestampBackfillCandidate>, Self::Error> {
+        self.proposal_timestamp_backfill_requests
+            .push((processed_height, batch_size));
+        Ok(self
+            .proposal_timestamp_backfill_candidates
+            .iter()
+            .take(batch_size)
+            .cloned()
+            .collect())
+    }
+
+    fn update_proposal_timestamp_backfill(
+        &mut self,
+        updates: &[ProposalTimestampBackfillUpdate],
+    ) -> Result<u64, Self::Error> {
+        self.proposal_timestamp_backfill_updates
+            .extend_from_slice(updates);
+        Ok(updates.len() as u64)
     }
 }
 

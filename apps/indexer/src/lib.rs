@@ -69,8 +69,9 @@ pub use crate::projection::proposal::{
     ProposalDeadlineExtensionWrite, ProposalEventCommon, ProposalExtendedWrite, ProposalIdWrite,
     ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionError,
     ProposalProjectionEvent, ProposalProjectionRepository, ProposalQueuedWrite,
-    ProposalRepositoryWriteError, ProposalStateEpochWrite, ProposalStateWriteKind, ProposalWrite,
-    project_proposal_events,
+    ProposalRepositoryWriteError, ProposalStateEpochWrite, ProposalStateWriteKind,
+    ProposalTimestampBackfillCandidate, ProposalTimestampBackfillUpdate, ProposalWrite,
+    plan_proposal_timestamp_backfill_updates, project_proposal_events,
 };
 pub use crate::projection::proposal_metadata::{
     ProposalTextMetadata, ProposalTitleExtractionError, ProposalTitleExtractor,
@@ -104,8 +105,8 @@ pub use crate::store::postgres::{
     PostgresProvisionalProposalOverlayStore, PostgresProvisionalSegmentStore,
     ProposalReferenceFieldCandidate, ProposalReferenceFieldUpdate, ProposalTitleRefreshCandidate,
     ProposalTitleRefreshUpdate, read_proposal_reference_field_candidates,
-    read_proposal_title_refresh_candidates, update_proposal_reference_fields,
-    update_proposal_titles,
+    read_proposal_timestamp_backfill_candidates, read_proposal_title_refresh_candidates,
+    update_proposal_reference_fields, update_proposal_timestamp_backfill, update_proposal_titles,
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -138,7 +139,7 @@ pub use runner::{
     InMemoryIndexerRunnerStore, InMemoryIndexerRunnerStoreError, IndexerEventDecoder,
     IndexerOnchainRefreshTick, IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts,
     IndexerRunnerError, IndexerRunnerOptions, IndexerRunnerProgress, IndexerRunnerReport,
-    IndexerRunnerStore, IndexerRunnerTransaction, page_rows,
+    IndexerRunnerStore, IndexerRunnerTransaction, ProposalTimestampBackfillConfig, page_rows,
 };
 pub use runtime_config::{
     AdaptiveChunkSizerRuntimeConfig, ContractSetConcurrencyLimit, GraphqlRuntimeConfig,

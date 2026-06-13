@@ -14,7 +14,8 @@ use crate::{
     IndexerCheckpoint, IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
     IndexerRunnerTransaction, PowerReconcileCandidate, ProposalActionWrite, ProposalCreatedWrite,
     ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
-    ProposalProjectionBatch, ProposalQueuedWrite, ProposalStateEpochWrite, ProposalVoteTotalWrite,
+    ProposalProjectionBatch, ProposalQueuedWrite, ProposalStateEpochWrite,
+    ProposalTimestampBackfillCandidate, ProposalTimestampBackfillUpdate, ProposalVoteTotalWrite,
     ProposalWrite, ProvisionalCleanupReport, ProvisionalCleanupStore,
     ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayRelation,
     ProvisionalDelegatePowerOverlayWrite, ProvisionalPowerOverlayScope,
@@ -111,6 +112,27 @@ impl IndexerRunnerStore for PostgresIndexerRunnerStore {
         max_rows: usize,
     ) -> Result<usize, Self::Error> {
         block_on_runtime(drain_deferred_onchain_refresh_tasks(&self.pool, max_rows))
+    }
+
+    fn read_proposal_timestamp_backfill_candidates(
+        &mut self,
+        identity: &IndexerCheckpointIdentity,
+        processed_height: i64,
+        batch_size: usize,
+    ) -> Result<Vec<ProposalTimestampBackfillCandidate>, Self::Error> {
+        block_on_runtime(read_proposal_timestamp_backfill_candidates(
+            &self.pool,
+            identity,
+            processed_height,
+            batch_size,
+        ))
+    }
+
+    fn update_proposal_timestamp_backfill(
+        &mut self,
+        updates: &[ProposalTimestampBackfillUpdate],
+    ) -> Result<u64, Self::Error> {
+        block_on_runtime(update_proposal_timestamp_backfill(&self.pool, updates))
     }
 }
 
