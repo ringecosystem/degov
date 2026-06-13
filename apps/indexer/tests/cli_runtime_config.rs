@@ -4,8 +4,9 @@ use degov_datalens_indexer::{
     ContractSetConcurrencyLimit, DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig,
     DatalensProvisionalFinality, DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig,
     IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRuntimeConfig,
-    OnchainRefreshTickConfig, ProvisionalRuntimeConfig, datalens_retry_config,
-    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
+    OnchainRefreshTickConfig, ProposalTimestampBackfillConfig, ProvisionalRuntimeConfig,
+    datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
+    parse_i64_env_value,
 };
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -808,6 +809,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
         onchain_refresh_deferred_drain_batch_size: 100,
+        proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
             finality: DatalensProvisionalFinality::SafeToLatest,
@@ -889,6 +891,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
         onchain_refresh_deferred_drain_batch_size: 100,
+        proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
             finality: DatalensProvisionalFinality::SafeToLatest,
@@ -930,6 +933,7 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
         onchain_refresh_deferred_drain_batch_size: 100,
+        proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
             finality: DatalensProvisionalFinality::SafeToLatest,
