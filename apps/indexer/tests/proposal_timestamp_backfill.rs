@@ -33,6 +33,23 @@ fn test_plan_proposal_timestamp_backfill_keeps_failed_reads_retryable() {
 }
 
 #[test]
+fn test_plan_proposal_timestamp_backfill_marks_exact_timestamp_read_resolved() {
+    let updates = plan_proposal_timestamp_backfill_updates(
+        &[blocknumber_candidate()],
+        &ChainReadExecutionReport {
+            results: vec![block_timestamp_result("16978023", "1680633647000")],
+            ..ChainReadExecutionReport::default()
+        },
+    );
+
+    assert_eq!(updates.len(), 1);
+    assert_eq!(
+        updates[0].vote_end_timestamp.as_deref(),
+        Some("1680633647000")
+    );
+}
+
+#[test]
 fn test_plan_proposal_timestamp_backfill_ignores_timestamp_clock_proposals() {
     let mut candidate = blocknumber_candidate();
     candidate.clock_mode = "timestamp".to_owned();

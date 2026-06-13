@@ -539,6 +539,8 @@ CREATE TABLE IF NOT EXISTS proposal (
   title TEXT NOT NULL,
   vote_start_timestamp NUMERIC(78, 0) NOT NULL,
   vote_end_timestamp NUMERIC(78, 0) NOT NULL,
+  vote_start_timestamp_resolved BOOLEAN NOT NULL DEFAULT FALSE,
+  vote_end_timestamp_resolved BOOLEAN NOT NULL DEFAULT FALSE,
   block_interval TEXT,
   description_hash TEXT,
   proposal_snapshot NUMERIC(78, 0),

@@ -554,19 +554,11 @@ pub async fn read_proposal_timestamp_backfill_candidates(
            AND (
                 (
                     vote_start <= $4::NUMERIC(78, 0)
-                    AND vote_start_timestamp = CASE
-                        WHEN block_interval IS NOT NULL AND block_timestamp IS NOT NULL
-                            THEN block_timestamp + ((vote_start - block_number) * (block_interval::NUMERIC * 1000::NUMERIC))
-                        ELSE vote_start
-                    END
+                    AND vote_start_timestamp_resolved = FALSE
                 )
                 OR (
                     vote_end <= $4::NUMERIC(78, 0)
-                    AND vote_end_timestamp = CASE
-                        WHEN block_interval IS NOT NULL AND block_timestamp IS NOT NULL
-                            THEN block_timestamp + ((vote_end - block_number) * (block_interval::NUMERIC * 1000::NUMERIC))
-                        ELSE vote_end
-                    END
+                    AND vote_end_timestamp_resolved = FALSE
                 )
            )
          ORDER BY block_number, transaction_index, log_index, id
@@ -612,7 +604,9 @@ pub async fn update_proposal_timestamp_backfill(
 const UPDATE_PROPOSAL_TIMESTAMP_BACKFILL_SQL_PREFIX: &str =
     "UPDATE proposal SET
          vote_start_timestamp = COALESCE(proposal_timestamp_backfill.vote_start_timestamp::NUMERIC(78, 0), proposal.vote_start_timestamp),
-         vote_end_timestamp = COALESCE(proposal_timestamp_backfill.vote_end_timestamp::NUMERIC(78, 0), proposal.vote_end_timestamp)
+         vote_end_timestamp = COALESCE(proposal_timestamp_backfill.vote_end_timestamp::NUMERIC(78, 0), proposal.vote_end_timestamp),
+         vote_start_timestamp_resolved = proposal.vote_start_timestamp_resolved OR proposal_timestamp_backfill.vote_start_timestamp IS NOT NULL,
+         vote_end_timestamp_resolved = proposal.vote_end_timestamp_resolved OR proposal_timestamp_backfill.vote_end_timestamp IS NOT NULL
      FROM (";
 
 async fn update_proposal_timestamp_backfill_proposals(
@@ -632,11 +626,17 @@ async fn update_proposal_timestamp_backfill_proposals(
            AND (
                 (
                     proposal_timestamp_backfill.vote_start_timestamp IS NOT NULL
-                    AND proposal.vote_start_timestamp IS DISTINCT FROM proposal_timestamp_backfill.vote_start_timestamp::NUMERIC(78, 0)
+                    AND (
+                        proposal.vote_start_timestamp IS DISTINCT FROM proposal_timestamp_backfill.vote_start_timestamp::NUMERIC(78, 0)
+                        OR proposal.vote_start_timestamp_resolved = FALSE
+                    )
                 )
                 OR (
                     proposal_timestamp_backfill.vote_end_timestamp IS NOT NULL
-                    AND proposal.vote_end_timestamp IS DISTINCT FROM proposal_timestamp_backfill.vote_end_timestamp::NUMERIC(78, 0)
+                    AND (
+                        proposal.vote_end_timestamp IS DISTINCT FROM proposal_timestamp_backfill.vote_end_timestamp::NUMERIC(78, 0)
+                        OR proposal.vote_end_timestamp_resolved = FALSE
+                    )
                 )
            )",
     );

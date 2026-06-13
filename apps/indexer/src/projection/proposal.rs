@@ -210,11 +210,9 @@ pub fn plan_proposal_timestamp_backfill_updates(
         .filter_map(|candidate| {
             let vote_start_timestamp = block_timestamps
                 .get(&(candidate.chain_id, candidate.vote_start.clone()))
-                .filter(|timestamp| *timestamp != &candidate.vote_start_timestamp)
                 .cloned();
             let vote_end_timestamp = block_timestamps
                 .get(&(candidate.chain_id, candidate.vote_end.clone()))
-                .filter(|timestamp| *timestamp != &candidate.vote_end_timestamp)
                 .cloned();
 
             (vote_start_timestamp.is_some() || vote_end_timestamp.is_some()).then(|| {
