@@ -579,6 +579,88 @@ async fn test_onchain_refresh_worker_reconciles_current_delegate_relation_power_
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_recomputes_effective_delegate_count_for_positive_power_refresh()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor(&database.pool, ACCOUNT_ONE, "3", Some("4")).await?;
+    seed_contributor(&database.pool, ACCOUNT_TWO, "0", Some("0")).await?;
+    set_contributor_delegate_counts(&database.pool, ACCOUNT_TWO, 2, 1).await?;
+    seed_data_metric(&database.pool, "3").await?;
+    seed_final_delegate_with_scope(
+        &database.pool,
+        "demo-dao",
+        "demo-dao",
+        46,
+        ACCOUNT_ONE,
+        ACCOUNT_TWO,
+        "64",
+    )
+    .await?;
+    seed_final_delegate_with_scope(
+        &database.pool,
+        "demo-dao",
+        "demo-dao",
+        46,
+        ACCOUNT_THREE,
+        ACCOUNT_TWO,
+        "5",
+    )
+    .await?;
+    seed_final_delegate_mapping(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "64").await?;
+    seed_final_delegate_mapping(&database.pool, ACCOUNT_THREE, ACCOUNT_TWO, "5").await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "pending",
+        0,
+        true,
+        true,
+    )
+    .await?;
+
+    let reader = MockOnchainRefreshReader::new([(
+        "task-one",
+        OnchainRefreshReadValue {
+            task_id: "task-one".to_owned(),
+            balance: Some("32".to_owned()),
+            power: Some("0".to_owned()),
+        },
+    )]);
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker.run_once().await?;
+
+    if report.failed > 0 {
+        panic!(
+            "task failed: {:?}",
+            task_error(&database.pool, "task-one").await?
+        );
+    }
+    assert_eq!(report.completed, 1, "{report:?}");
+    assert_final_delegate(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "32").await?;
+    assert_final_delegate_mapping(&database.pool, ACCOUNT_ONE, ACCOUNT_TWO, "32").await?;
+    assert_contributor_delegate_counts(&database.pool, ACCOUNT_TWO, 2, 2).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_zeros_current_delegate_relation_power_from_zero_balance()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -2686,3 +2768,4 @@ const SCOPE_ONE: &str = "scope:timelock-a:erc20:dataset-a";
 const SCOPE_TWO: &str = "scope:timelock-b:erc721:dataset-b";
 const ACCOUNT_ONE: &str = "0x0000000000000000000000000000000000000001";
 const ACCOUNT_TWO: &str = "0x0000000000000000000000000000000000000002";
+const ACCOUNT_THREE: &str = "0x0000000000000000000000000000000000000003";

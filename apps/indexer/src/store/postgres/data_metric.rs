@@ -93,13 +93,14 @@ async fn write_data_metric_timeline(
     let snapshot_flush_duration = snapshot_flush_started_at.elapsed();
 
     let mapping_flush_started_at = std::time::Instant::now();
-    delegate_mapping_cache.flush(transaction).await?;
+    let effective_count_delegates = delegate_mapping_cache.flush(transaction).await?;
     let mapping_flush_duration = mapping_flush_started_at.elapsed();
 
     let contributor_count_flush_started_at = std::time::Instant::now();
     contributor_ensure_cache
         .flush_contributor_count_deltas(transaction)
         .await?;
+    recompute_delegate_count_effective(transaction, &effective_count_delegates).await?;
     let contributor_count_flush_duration = contributor_count_flush_started_at.elapsed();
 
     let contributor_count_metric_flush_started_at = std::time::Instant::now();
