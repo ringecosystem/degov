@@ -1611,6 +1611,9 @@ impl DelegateMappingCache {
         if self.dirty.contains_key(&key) {
             return;
         }
+        if let Some(snapshot) = &snapshot {
+            self.stage_effective_count_delegate(&snapshot.common, &snapshot.to);
+        }
         self.mappings.insert(key, snapshot);
     }
 
@@ -3076,6 +3079,28 @@ mod token_store_tests {
                 .map(|mapping| (mapping.to, mapping.power)),
             Some(("0xstaged".to_owned(), "77".to_owned()))
         );
+    }
+
+    #[test]
+    fn test_delegate_mapping_cache_preloaded_hit_stages_effective_count_recompute() {
+        let common = token_common("scope", "0xtx1", 10, 5);
+        let mut cache = DelegateMappingCache::default();
+
+        cache.set_preloaded(
+            &common,
+            "0xhit",
+            Some(DelegateMappingSnapshot {
+                common: common.clone(),
+                from: "0xhit".to_owned(),
+                to: "0xdelegate".to_owned(),
+                power: "0".to_owned(),
+            }),
+        );
+
+        assert!(cache.effective_count_delegates.contains_key(&(
+            common.contract_set_id.clone(),
+            contributor_ref("0xdelegate"),
+        )));
     }
 
     #[test]

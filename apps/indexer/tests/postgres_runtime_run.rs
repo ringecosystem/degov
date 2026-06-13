@@ -1423,6 +1423,81 @@ async fn test_postgres_token_power_update_recomputes_effective_delegate_count()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_noop_delegate_change_recomputes_stale_effective_count()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let initial = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000000001-delegate", 1, 0, 1),
+            event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                delegator: DELEGATOR.to_owned(),
+                from_delegate: ZERO_ADDRESS.to_owned(),
+                to_delegate: DELEGATE.to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("initial token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(initial),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    sqlx::query(
+        "UPDATE contributor
+         SET delegates_count_effective = 1
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .execute(&database.pool)
+    .await?;
+
+    let noop_delegate_change = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000000002-noop-delegate", 2, 0, 1),
+            event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                delegator: DELEGATOR.to_owned(),
+                from_delegate: DELEGATE.to_owned(),
+                to_delegate: DELEGATE.to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("noop token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(noop_delegate_change),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let delegate_counts = sqlx::query(
+        "SELECT delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(delegate_counts.get::<i32, _>("delegates_count_all"), 1);
+    assert_eq!(
+        delegate_counts.get::<i32, _>("delegates_count_effective"),
+        0
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_repeated_delegate_ensure_keeps_contributor_count_once()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
