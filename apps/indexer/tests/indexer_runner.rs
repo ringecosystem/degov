@@ -10,10 +10,15 @@ use degov_datalens_indexer::{
     DatalensWarmupEffectivenessAggregation, DatasetKeyConfig, DecodedDaoEvent,
     DecodedGovernorEvent, DecodedTokenEvent, GovernanceTokenStandard, InMemoryIndexerRunnerStore,
     IndexerCheckpointIdentity, IndexerEventDecoder, IndexerRunner, IndexerRunnerContexts,
-    IndexerRunnerOptions, NormalizedEvmLog, QueryLimitConfig, SecretString, TokenProjectionContext,
-    VoteCastEvent, VoteProjectionContext, page_rows,
+    IndexerRunnerOptions, NormalizedEvmLog, PartialChainReadFailureReport,
+    ProposalProjectionContext, ProposalTimestampBackfillCandidate, ProposalTimestampBackfillConfig,
+    QueryLimitConfig, SecretString, TokenProjectionContext, VoteCastEvent, VoteProjectionContext,
+    page_rows,
 };
-use degov_datalens_indexer::{IndexerOnchainRefreshTick, OnchainRefreshTickReport};
+use degov_datalens_indexer::{
+    ChainReadExecutionReport, ChainReadMethod, ChainReadResult, ChainReadValue, ChainTool,
+    IndexerOnchainRefreshTick, OnchainRefreshTickReport,
+};
 use serde_json::{Value, json};
 
 #[test]
@@ -971,6 +976,46 @@ fn test_runner_keeps_duplicate_address_unsupported_topic_unsupported() {
     );
 }
 
+#[test]
+fn test_runner_backfills_proposal_timestamp_after_chunk_commit() {
+    let mut store = InMemoryIndexerRunnerStore::new(identity(), 1);
+    store.set_proposal_timestamp_backfill_candidates(vec![ProposalTimestampBackfillCandidate {
+        proposal_ref: "proposal:ens:42".to_owned(),
+        chain_id: 1,
+        governor_address: GOVERNOR.to_owned(),
+        clock_mode: "blocknumber".to_owned(),
+        vote_start: "10".to_owned(),
+        vote_end: "20".to_owned(),
+        vote_start_timestamp: "1700000100000".to_owned(),
+        vote_end_timestamp: "1700000200000".to_owned(),
+    }]);
+    let mut options = options();
+    set_block_range_limit(&mut options, 20);
+    let mut runner = runner_with_store_and_contexts(
+        vec![vec![]],
+        ScriptedDecoder,
+        options,
+        store,
+        contexts_with_proposal(),
+    )
+    .with_chain_tool(Box::new(TimestampBackfillChainTool));
+
+    runner.run_to_target(20).expect("runner succeeds");
+
+    assert_eq!(
+        runner.store().proposal_timestamp_backfill_requests(),
+        &[(20, 100)]
+    );
+    let updates = runner.store().proposal_timestamp_backfill_updates();
+    assert_eq!(updates.len(), 1);
+    assert_eq!(updates[0].proposal_ref, "proposal:ens:42");
+    assert_eq!(updates[0].vote_start_timestamp, None);
+    assert_eq!(
+        updates[0].vote_end_timestamp.as_deref(),
+        Some("1680641927000")
+    );
+}
+
 struct ScriptedDatalensReader {
     rows: Vec<Vec<Value>>,
 }
@@ -1028,6 +1073,35 @@ impl DatalensLogQueryReader for FailingDatalensReader {
 
 struct RecordingOnchainRefreshTick {
     blocks: Arc<Mutex<Vec<i64>>>,
+}
+
+struct TimestampBackfillChainTool;
+
+impl ChainTool for TimestampBackfillChainTool {
+    fn execute_read_plan(
+        &self,
+        plan: &degov_datalens_indexer::ChainReadPlan,
+    ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        let results = plan
+            .reads
+            .iter()
+            .enumerate()
+            .filter_map(|(read_index, read)| {
+                (read.key.method == ChainReadMethod::BlockTimestamp
+                    && read.key.args.first().map(String::as_str) == Some("20"))
+                .then(|| ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value: ChainReadValue::Integer("1680641927000".to_owned()),
+                })
+            })
+            .collect();
+
+        Ok(ChainReadExecutionReport {
+            results,
+            ..ChainReadExecutionReport::default()
+        })
+    }
 }
 
 impl IndexerOnchainRefreshTick for RecordingOnchainRefreshTick {
@@ -1311,9 +1385,19 @@ fn runner_with_store<D: IndexerEventDecoder>(
     options: IndexerRunnerOptions,
     store: InMemoryIndexerRunnerStore,
 ) -> IndexerRunner<ScriptedDatalensReader, InMemoryIndexerRunnerStore, D> {
+    runner_with_store_and_contexts(rows, decoder, options, store, contexts())
+}
+
+fn runner_with_store_and_contexts<D: IndexerEventDecoder>(
+    rows: Vec<Vec<Value>>,
+    decoder: D,
+    options: IndexerRunnerOptions,
+    store: InMemoryIndexerRunnerStore,
+    contexts: IndexerRunnerContexts,
+) -> IndexerRunner<ScriptedDatalensReader, InMemoryIndexerRunnerStore, D> {
     IndexerRunner::new(
         options,
-        contexts(),
+        contexts,
         ScriptedDatalensReader { rows },
         store,
         decoder,
@@ -1351,6 +1435,7 @@ fn options() -> IndexerRunnerOptions {
         progress_refresh_lag_blocks: 0,
         adaptive_chunk_sizer: AdaptiveChunkSizerConfig::for_max_chunk_size(1),
         onchain_refresh_deferred_drain_batch_size: 100,
+        proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
     }
 }
 
@@ -1495,6 +1580,32 @@ fn contexts() -> IndexerRunnerContexts {
         proposal: None,
         timelock: None,
     }
+}
+
+fn proposal_context() -> ProposalProjectionContext {
+    let contracts = ChainContracts {
+        governor: GOVERNOR.to_owned(),
+        governor_token: TOKEN.to_owned(),
+        timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+    };
+
+    ProposalProjectionContext {
+        contract_set_id: "demo-scope".to_owned(),
+        dao_code: "demo-dao".to_owned(),
+        governor_address: contracts.governor.clone(),
+        contracts,
+        token_standard: GovernanceTokenStandard::Erc20,
+        read_plan_config: BatchReadPlanConfig {
+            max_concurrency: 10,
+            multicall_batch_size: 100,
+        },
+    }
+}
+
+fn contexts_with_proposal() -> IndexerRunnerContexts {
+    let mut contexts = contexts();
+    contexts.proposal = Some(proposal_context());
+    contexts
 }
 
 fn identity() -> IndexerCheckpointIdentity {

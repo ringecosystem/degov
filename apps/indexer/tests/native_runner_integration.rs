@@ -13,9 +13,10 @@ use degov_datalens_indexer::{
     IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts, IndexerRunnerOptions,
     IndexerRunnerStore, IndexerRunnerTransaction, PartialChainReadFailureReport,
     ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionRepository,
-    QueryLimitConfig, SecretString, TimelockProjectionContext, TimelockProjectionEvent,
-    TimelockProjectionRepository, TimelockProposalLinkContext, TokenProjectionContext,
-    TokenProjectionRepository, VoteProjectionContext, VoteProjectionRepository,
+    ProposalTimestampBackfillConfig, QueryLimitConfig, SecretString, TimelockProjectionContext,
+    TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
+    TokenProjectionContext, TokenProjectionRepository, VoteProjectionContext,
+    VoteProjectionRepository,
 };
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
@@ -615,6 +616,7 @@ fn options() -> IndexerRunnerOptions {
         progress_refresh_lag_blocks: 0,
         adaptive_chunk_sizer: AdaptiveChunkSizerConfig::for_max_chunk_size(10),
         onchain_refresh_deferred_drain_batch_size: 100,
+        proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
     }
 }
 

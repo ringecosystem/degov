@@ -10,8 +10,8 @@ use crate::{
     DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig, DatalensProvisionalFinality,
     DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet, IndexerCheckpointIdentity,
     IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshTickConfig,
-    OnchainRefreshWorkerConfig, ProposalProjectionContext, SecretString, TimelockProjectionContext,
-    TokenProjectionContext, VoteProjectionContext,
+    OnchainRefreshWorkerConfig, ProposalProjectionContext, ProposalTimestampBackfillConfig,
+    SecretString, TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
     store::postgres::DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
 };
 
@@ -153,6 +153,7 @@ pub struct IndexerRuntimeConfig {
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
     pub onchain_refresh_deferred_drain_batch_size: usize,
+    pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
     pub provisional: ProvisionalRuntimeConfig,
 }
 
@@ -244,6 +245,7 @@ pub struct IndexerContractSetRuntimeConfig {
     pub max_chunks_per_run: Option<u64>,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
     pub onchain_refresh_deferred_drain_batch_size: usize,
+    pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -357,6 +359,7 @@ impl IndexerRuntimeConfig {
             onchain_refresh_tick: load_onchain_refresh_tick_config()?,
             onchain_refresh_deferred_drain_batch_size:
                 onchain_refresh_deferred_drain_batch_size_from_env()?,
+            proposal_timestamp_backfill: load_proposal_timestamp_backfill_config()?,
             provisional: ProvisionalRuntimeConfig::from_env()?,
             poll_interval,
             run_once,
@@ -427,6 +430,7 @@ impl IndexerRuntimeConfig {
             onchain_refresh_tick: self.onchain_refresh_tick.clone(),
             onchain_refresh_deferred_drain_batch_size: self
                 .onchain_refresh_deferred_drain_batch_size,
+            proposal_timestamp_backfill: self.proposal_timestamp_backfill,
         };
 
         Ok(runtime
@@ -496,6 +500,7 @@ impl IndexerContractSetRuntimeConfig {
                 .for_block_range_limit(config.query_limits.block_range_limit),
             onchain_refresh_deferred_drain_batch_size: self
                 .onchain_refresh_deferred_drain_batch_size,
+            proposal_timestamp_backfill: self.proposal_timestamp_backfill,
         })
     }
 
@@ -732,6 +737,22 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     }
     if config.min_blocks_between_ticks < 0 {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MIN_BLOCKS must be zero or greater");
+    }
+
+    Ok(config)
+}
+
+fn load_proposal_timestamp_backfill_config() -> Result<ProposalTimestampBackfillConfig> {
+    let defaults = ProposalTimestampBackfillConfig::default();
+    let config = ProposalTimestampBackfillConfig {
+        enabled: optional_env_bool("DEGOV_INDEXER_PROPOSAL_TIMESTAMP_BACKFILL_ENABLED")?
+            .unwrap_or(defaults.enabled),
+        batch_size: optional_env_usize("DEGOV_INDEXER_PROPOSAL_TIMESTAMP_BACKFILL_BATCH_SIZE")?
+            .unwrap_or(defaults.batch_size),
+    };
+
+    if config.enabled && config.batch_size == 0 {
+        bail!("DEGOV_INDEXER_PROPOSAL_TIMESTAMP_BACKFILL_BATCH_SIZE must be greater than zero");
     }
 
     Ok(config)

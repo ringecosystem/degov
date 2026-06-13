@@ -530,6 +530,180 @@ async fn update_proposal_reference_field_chunk(
     Ok(result.rows_affected())
 }
 
+pub async fn read_proposal_timestamp_backfill_candidates(
+    pool: &PgPool,
+    identity: &IndexerCheckpointIdentity,
+    processed_height: i64,
+    batch_size: usize,
+) -> Result<Vec<ProposalTimestampBackfillCandidate>, PostgresIndexerRunnerStoreError> {
+    if batch_size == 0 {
+        return Ok(Vec::new());
+    }
+
+    let rows = sqlx::query(
+        "SELECT id, chain_id, governor_address, clock_mode,
+                vote_start::TEXT AS vote_start,
+                vote_end::TEXT AS vote_end,
+                vote_start_timestamp::TEXT AS vote_start_timestamp,
+                vote_end_timestamp::TEXT AS vote_end_timestamp
+         FROM proposal
+         WHERE dao_code = $1
+           AND contract_set_id = $2
+           AND chain_id = $3
+           AND clock_mode = 'blocknumber'
+           AND (
+                (
+                    vote_start <= $4::NUMERIC(78, 0)
+                    AND vote_start_timestamp = CASE
+                        WHEN block_interval IS NOT NULL AND block_timestamp IS NOT NULL
+                            THEN block_timestamp + ((vote_start - block_number) * (block_interval::NUMERIC * 1000::NUMERIC))
+                        ELSE vote_start
+                    END
+                )
+                OR (
+                    vote_end <= $4::NUMERIC(78, 0)
+                    AND vote_end_timestamp = CASE
+                        WHEN block_interval IS NOT NULL AND block_timestamp IS NOT NULL
+                            THEN block_timestamp + ((vote_end - block_number) * (block_interval::NUMERIC * 1000::NUMERIC))
+                        ELSE vote_end
+                    END
+                )
+           )
+         ORDER BY block_number, transaction_index, log_index, id
+         LIMIT $5",
+    )
+    .bind(&identity.dao_code)
+    .bind(&identity.contract_set_id)
+    .bind(identity.chain_id)
+    .bind(processed_height.to_string())
+    .bind(i64::try_from(batch_size).unwrap_or(i64::MAX))
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| ProposalTimestampBackfillCandidate {
+            proposal_ref: row.get("id"),
+            chain_id: row.get("chain_id"),
+            governor_address: row.get("governor_address"),
+            clock_mode: row.get("clock_mode"),
+            vote_start: row.get("vote_start"),
+            vote_end: row.get("vote_end"),
+            vote_start_timestamp: row.get("vote_start_timestamp"),
+            vote_end_timestamp: row.get("vote_end_timestamp"),
+        })
+        .collect())
+}
+
+pub async fn update_proposal_timestamp_backfill(
+    pool: &PgPool,
+    updates: &[ProposalTimestampBackfillUpdate],
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
+    if updates.is_empty() {
+        return Ok(0);
+    }
+
+    let proposal_rows = update_proposal_timestamp_backfill_proposals(pool, updates).await?;
+    let state_epoch_rows = update_proposal_timestamp_backfill_state_epochs(pool, updates).await?;
+
+    Ok(proposal_rows + state_epoch_rows)
+}
+
+const UPDATE_PROPOSAL_TIMESTAMP_BACKFILL_SQL_PREFIX: &str =
+    "UPDATE proposal SET
+         vote_start_timestamp = COALESCE(proposal_timestamp_backfill.vote_start_timestamp::NUMERIC(78, 0), proposal.vote_start_timestamp),
+         vote_end_timestamp = COALESCE(proposal_timestamp_backfill.vote_end_timestamp::NUMERIC(78, 0), proposal.vote_end_timestamp)
+     FROM (";
+
+async fn update_proposal_timestamp_backfill_proposals(
+    pool: &PgPool,
+    updates: &[ProposalTimestampBackfillUpdate],
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
+    let mut builder: QueryBuilder<Postgres> =
+        QueryBuilder::new(UPDATE_PROPOSAL_TIMESTAMP_BACKFILL_SQL_PREFIX);
+    builder.push_values(updates, |mut row, update| {
+        row.push_bind(&update.proposal_ref)
+            .push_bind(update.vote_start_timestamp.as_deref())
+            .push_bind(update.vote_end_timestamp.as_deref());
+    });
+    builder.push(
+        ") AS proposal_timestamp_backfill(id, vote_start_timestamp, vote_end_timestamp)
+         WHERE proposal.id = proposal_timestamp_backfill.id
+           AND (
+                (
+                    proposal_timestamp_backfill.vote_start_timestamp IS NOT NULL
+                    AND proposal.vote_start_timestamp IS DISTINCT FROM proposal_timestamp_backfill.vote_start_timestamp::NUMERIC(78, 0)
+                )
+                OR (
+                    proposal_timestamp_backfill.vote_end_timestamp IS NOT NULL
+                    AND proposal.vote_end_timestamp IS DISTINCT FROM proposal_timestamp_backfill.vote_end_timestamp::NUMERIC(78, 0)
+                )
+           )",
+    );
+
+    let result = builder.build().execute(pool).await?;
+    Ok(result.rows_affected())
+}
+
+const UPDATE_PROPOSAL_STATE_EPOCH_TIMESTAMP_BACKFILL_SQL_PREFIX: &str =
+    "UPDATE proposal_state_epoch SET
+         start_block_timestamp = CASE
+             WHEN proposal_timestamp_backfill.vote_start_timestamp IS NOT NULL
+                  AND proposal_state_epoch.start_timepoint = proposal.vote_start
+                 THEN proposal_timestamp_backfill.vote_start_timestamp::NUMERIC(78, 0)
+             WHEN proposal_timestamp_backfill.vote_end_timestamp IS NOT NULL
+                  AND proposal_state_epoch.start_timepoint = proposal.vote_end
+                 THEN proposal_timestamp_backfill.vote_end_timestamp::NUMERIC(78, 0)
+             ELSE proposal_state_epoch.start_block_timestamp
+         END,
+         end_block_timestamp = CASE
+             WHEN proposal_timestamp_backfill.vote_start_timestamp IS NOT NULL
+                  AND proposal_state_epoch.end_timepoint = proposal.vote_start
+                 THEN proposal_timestamp_backfill.vote_start_timestamp::NUMERIC(78, 0)
+             WHEN proposal_timestamp_backfill.vote_end_timestamp IS NOT NULL
+                  AND proposal_state_epoch.end_timepoint = proposal.vote_end
+                 THEN proposal_timestamp_backfill.vote_end_timestamp::NUMERIC(78, 0)
+             ELSE proposal_state_epoch.end_block_timestamp
+         END
+     FROM (";
+
+async fn update_proposal_timestamp_backfill_state_epochs(
+    pool: &PgPool,
+    updates: &[ProposalTimestampBackfillUpdate],
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
+    let mut builder: QueryBuilder<Postgres> =
+        QueryBuilder::new(UPDATE_PROPOSAL_STATE_EPOCH_TIMESTAMP_BACKFILL_SQL_PREFIX);
+    builder.push_values(updates, |mut row, update| {
+        row.push_bind(&update.proposal_ref)
+            .push_bind(update.vote_start_timestamp.as_deref())
+            .push_bind(update.vote_end_timestamp.as_deref());
+    });
+    builder.push(
+        ") AS proposal_timestamp_backfill(proposal_ref, vote_start_timestamp, vote_end_timestamp)
+         JOIN proposal ON proposal.id = proposal_timestamp_backfill.proposal_ref
+         WHERE proposal_state_epoch.proposal_ref = proposal_timestamp_backfill.proposal_ref
+           AND (
+                (
+                    proposal_timestamp_backfill.vote_start_timestamp IS NOT NULL
+                    AND (
+                        proposal_state_epoch.start_timepoint = proposal.vote_start
+                        OR proposal_state_epoch.end_timepoint = proposal.vote_start
+                    )
+                )
+                OR (
+                    proposal_timestamp_backfill.vote_end_timestamp IS NOT NULL
+                    AND (
+                        proposal_state_epoch.start_timepoint = proposal.vote_end
+                        OR proposal_state_epoch.end_timepoint = proposal.vote_end
+                    )
+                )
+           )",
+    );
+
+    let result = builder.build().execute(pool).await?;
+    Ok(result.rows_affected())
+}
+
 async fn insert_proposal_action(
     transaction: &mut Transaction<'_, Postgres>,
     row: &ProposalActionWrite,

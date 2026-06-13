@@ -169,6 +169,66 @@ fn apply_block_timestamps(
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalTimestampBackfillCandidate {
+    pub proposal_ref: String,
+    pub chain_id: i32,
+    pub governor_address: String,
+    pub clock_mode: String,
+    pub vote_start: String,
+    pub vote_end: String,
+    pub vote_start_timestamp: String,
+    pub vote_end_timestamp: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalTimestampBackfillUpdate {
+    pub proposal_ref: String,
+    pub vote_start_timestamp: Option<String>,
+    pub vote_end_timestamp: Option<String>,
+}
+
+pub fn plan_proposal_timestamp_backfill_updates(
+    candidates: &[ProposalTimestampBackfillCandidate],
+    report: &ChainReadExecutionReport,
+) -> Vec<ProposalTimestampBackfillUpdate> {
+    let block_timestamps = report
+        .results
+        .iter()
+        .filter_map(|result| {
+            if result.key.method != ChainReadMethod::BlockTimestamp {
+                return None;
+            }
+            let block_number = result.key.args.first()?;
+            let timestamp = chain_read_scalar(&result.value)?;
+            Some(((result.key.chain_id, block_number.clone()), timestamp))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    candidates
+        .iter()
+        .filter(|candidate| candidate.clock_mode == "blocknumber")
+        .filter_map(|candidate| {
+            let vote_start_timestamp = block_timestamps
+                .get(&(candidate.chain_id, candidate.vote_start.clone()))
+                .filter(|timestamp| *timestamp != &candidate.vote_start_timestamp)
+                .cloned();
+            let vote_end_timestamp = block_timestamps
+                .get(&(candidate.chain_id, candidate.vote_end.clone()))
+                .filter(|timestamp| *timestamp != &candidate.vote_end_timestamp)
+                .cloned();
+
+            (vote_start_timestamp.is_some() || vote_end_timestamp.is_some()).then(|| {
+                ProposalTimestampBackfillUpdate {
+                    proposal_ref: candidate.proposal_ref.clone(),
+                    vote_start_timestamp,
+                    vote_end_timestamp,
+                }
+            })
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProposalProjectionError {
     MixedChainIds {
         expected: i32,
