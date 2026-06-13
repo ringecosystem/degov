@@ -172,6 +172,18 @@ fn test_derive_proposal_metadata_uses_ai_title_when_provider_returns_title() {
 }
 
 #[test]
+fn test_derive_proposal_metadata_uses_ai_title_when_local_fallback_is_empty() {
+    let metadata = derive_proposal_metadata_with_title_extractor(
+        "<br>",
+        &StaticTitleExtractor {
+            title: Some("AI title".to_owned()),
+        },
+    );
+
+    assert_eq!(metadata.title, "AI title");
+}
+
+#[test]
 fn test_derive_proposal_metadata_falls_back_when_ai_fails_or_returns_empty_title() {
     let failure_metadata = derive_proposal_metadata_with_title_extractor(
         "# Local title\nBody",
