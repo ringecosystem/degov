@@ -1007,6 +1007,7 @@ mod tests {
             adaptive_chunk_sizer: Default::default(),
             onchain_refresh_tick: Default::default(),
             onchain_refresh_deferred_drain_batch_size: 100,
+            proposal_timestamp_backfill: Default::default(),
             provisional: ProvisionalRuntimeConfig {
                 enabled: false,
                 finality: DatalensProvisionalFinality::SafeToLatest,
