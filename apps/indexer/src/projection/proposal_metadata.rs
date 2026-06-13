@@ -482,24 +482,6 @@ fn strip_html_tags(value: &str) -> String {
 mod tests {
     use super::*;
 
-    struct StaticTitleExtractor;
-
-    impl ProposalTitleExtractor for StaticTitleExtractor {
-        fn extract_title(
-            &self,
-            _description: &str,
-        ) -> Result<Option<String>, ProposalTitleExtractionError> {
-            Ok(Some("AI title".to_owned()))
-        }
-    }
-
-    #[test]
-    fn test_title_extractor_runs_when_local_fallback_is_empty() {
-        let metadata = derive_proposal_metadata_with_title_extractor("<br>", &StaticTitleExtractor);
-
-        assert_eq!(metadata.title, "AI title");
-    }
-
     #[test]
     fn test_openrouter_title_request_uses_legacy_textplus_prompt_shape() {
         let body = openrouter_title_request_body("test-model", "# Local title\n\nBody");

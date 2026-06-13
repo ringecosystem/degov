@@ -522,6 +522,116 @@ fn test_project_token_events_uses_erc721_unit_delta_for_relation_power() {
 }
 
 #[test]
+fn test_redelegate_marks_previous_relation_inactive_with_zero_power() {
+    let repository = project_events(vec![
+        TokenProjectionEvent {
+            log: log(10, 0, 1),
+            event: delegate_changed(account("c01"), zero(), account("c02")),
+        },
+        TokenProjectionEvent {
+            log: log(11, 0, 1),
+            event: transfer(
+                zero(),
+                account("c01"),
+                "100",
+                GovernanceTokenStandard::Erc20,
+            ),
+        },
+        TokenProjectionEvent {
+            log: log(12, 0, 1),
+            event: delegate_changed(account("c01"), account("c02"), account("c03")),
+        },
+    ]);
+
+    let previous_relation = repository
+        .delegates()
+        .get(&delegate_ref(&account("c01"), &account("c02")))
+        .expect("previous relation should be staged");
+    assert!(!previous_relation.is_current);
+    assert_eq!(previous_relation.power, "0");
+
+    let current_relation = repository
+        .delegates()
+        .get(&delegate_ref(&account("c01"), &account("c03")))
+        .expect("current relation should be staged");
+    assert!(current_relation.is_current);
+
+    let mapping = repository
+        .delegate_mappings()
+        .get(&account("c01"))
+        .expect("delegate mapping should be staged");
+    assert_eq!(mapping.to, account("c03"));
+}
+
+#[test]
+fn test_power_update_preserves_delegate_mapping_relation_metadata() {
+    let repository = project_events(vec![
+        TokenProjectionEvent {
+            log: log(10, 0, 1),
+            event: delegate_changed(account("c01"), zero(), account("c02")),
+        },
+        TokenProjectionEvent {
+            log: log(11, 0, 1),
+            event: transfer(zero(), account("c01"), "40", GovernanceTokenStandard::Erc20),
+        },
+    ]);
+
+    let mapping = repository
+        .delegate_mappings()
+        .get(&account("c01"))
+        .expect("delegate mapping should be staged");
+    assert_eq!(mapping.to, account("c02"));
+    assert_eq!(mapping.power, "40");
+    assert_eq!(mapping.common.block_number, "10");
+    assert_eq!(mapping.common.transaction_hash, "0xtx10");
+}
+
+#[test]
+fn test_redelegated_power_update_preserves_current_relation_metadata() {
+    let repository = project_events(vec![
+        TokenProjectionEvent {
+            log: log(10, 0, 1),
+            event: delegate_changed(account("c01"), zero(), account("c02")),
+        },
+        TokenProjectionEvent {
+            log: log(10, 0, 2),
+            event: transfer(
+                zero(),
+                account("c01"),
+                "100",
+                GovernanceTokenStandard::Erc20,
+            ),
+        },
+        TokenProjectionEvent {
+            log: log(11, 0, 1),
+            event: delegate_changed(account("c01"), account("c02"), account("c03")),
+        },
+        TokenProjectionEvent {
+            log: log(11, 0, 2),
+            event: delegate_votes_changed(account("c03"), "0", "100"),
+        },
+        TokenProjectionEvent {
+            log: log(12, 0, 1),
+            event: transfer(
+                account("c01"),
+                account("c04"),
+                "25",
+                GovernanceTokenStandard::Erc20,
+            ),
+        },
+    ]);
+
+    let mapping = repository
+        .delegate_mappings()
+        .get(&account("c01"))
+        .expect("delegate mapping should be staged");
+    assert_eq!(mapping.to, account("c03"));
+    assert_eq!(mapping.power, "75");
+    assert_eq!(mapping.common.block_number, "11");
+    assert_eq!(mapping.common.transaction_hash, "0xtx11");
+}
+
+#[test]
 fn test_project_token_events_rejects_registry_standard_mismatch() {
     let err = project_token_events(
         &context(GovernanceTokenStandard::Erc20),
@@ -687,4 +797,16 @@ fn account(suffix: &str) -> String {
 
 fn zero() -> String {
     "0x0000000000000000000000000000000000000000".to_owned()
+}
+
+fn project_events(events: Vec<TokenProjectionEvent>) -> InMemoryTokenProjectionRepository {
+    let batch =
+        project_token_events(&context(GovernanceTokenStandard::Erc20), events).expect("projection");
+    let mut repository = InMemoryTokenProjectionRepository::default();
+    repository.apply(&batch).expect("in-memory write succeeds");
+    repository
+}
+
+fn delegate_ref(delegator: &str, delegate: &str) -> String {
+    format!("{delegator}_{delegate}")
 }
