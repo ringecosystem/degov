@@ -1573,6 +1573,7 @@ struct DelegateMappingPreloadCandidate {
 struct DelegateMappingCache {
     mappings: HashMap<(String, String), Option<DelegateMappingSnapshot>>,
     dirty: std::collections::BTreeMap<(String, String), DelegateMappingDirty>,
+    effective_count_delegates: HashMap<(String, String), TokenEventCommon>,
 }
 
 #[derive(Clone, Debug)]
@@ -1620,6 +1621,12 @@ impl DelegateMappingCache {
         snapshot: Option<DelegateMappingSnapshot>,
     ) {
         let key = self.key(common, from);
+        if let Some(Some(previous)) = self.mappings.get(&key).cloned() {
+            self.stage_effective_count_delegate(&previous.common, &previous.to);
+        }
+        if let Some(snapshot) = &snapshot {
+            self.stage_effective_count_delegate(&snapshot.common, &snapshot.to);
+        }
         self.mappings.insert(key.clone(), snapshot.clone());
         match snapshot {
             Some(snapshot) => {
@@ -1639,6 +1646,7 @@ impl DelegateMappingCache {
         snapshot: DelegateMappingSnapshot,
     ) {
         let key = self.key(common, from);
+        self.stage_effective_count_delegate(&snapshot.common, &snapshot.to);
         self.mappings.insert(key.clone(), Some(snapshot.clone()));
         match self.dirty.get_mut(&key) {
             Some(DelegateMappingDirty::Relation(previous)) => {
@@ -1652,8 +1660,18 @@ impl DelegateMappingCache {
 
     fn stage_delete(&mut self, common: &TokenEventCommon, from: &str) {
         let key = self.key(common, from);
+        if let Some(Some(previous)) = self.mappings.get(&key).cloned() {
+            self.stage_effective_count_delegate(&previous.common, &previous.to);
+        }
         self.mappings.insert(key.clone(), None);
         self.dirty.insert(key, DelegateMappingDirty::Delete);
+    }
+
+    fn stage_effective_count_delegate(&mut self, common: &TokenEventCommon, to_delegate: &str) {
+        self.effective_count_delegates.insert(
+            (common.contract_set_id.clone(), contributor_ref(to_delegate)),
+            common.clone(),
+        );
     }
 
     fn key(&self, common: &TokenEventCommon, from: &str) -> (String, String) {
@@ -1726,10 +1744,13 @@ impl DelegateMappingCache {
     async fn flush(
         &mut self,
         transaction: &mut Transaction<'_, Postgres>,
-    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    ) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
         let dirty = std::mem::take(&mut self.dirty);
+        let effective_count_delegates = std::mem::take(&mut self.effective_count_delegates)
+            .into_keys()
+            .collect::<Vec<_>>();
         if dirty.is_empty() {
-            return Ok(());
+            return Ok(effective_count_delegates);
         }
 
         let mut deletes = Vec::new();
@@ -1850,8 +1871,54 @@ impl DelegateMappingCache {
             query.build().execute(&mut **transaction).await?;
         }
 
-        Ok(())
+        Ok(effective_count_delegates)
     }
+}
+
+async fn recompute_delegate_count_effective(
+    transaction: &mut Transaction<'_, Postgres>,
+    delegates: &[(String, String)],
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    if delegates.is_empty() {
+        return Ok(());
+    }
+
+    for rows in delegates.chunks(token_event_bulk_chunk_size()) {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "UPDATE contributor
+             SET delegates_count_effective = counts.positive_count
+             FROM (
+                SELECT affected.contract_set_id,
+                       affected.id,
+                       COUNT(delegate_mapping.id) FILTER (WHERE delegate_mapping.power > 0)::INT AS positive_count
+                FROM (VALUES ",
+        );
+        for (index, (contract_set_id, id)) in rows.iter().enumerate() {
+            if index > 0 {
+                query.push(", ");
+            }
+            query
+                .push("(")
+                .push_bind(contract_set_id)
+                .push(", ")
+                .push_bind(id)
+                .push(")");
+        }
+        query.push(
+            r#") AS affected(contract_set_id, id)
+                LEFT JOIN delegate_mapping
+                  ON delegate_mapping.contract_set_id = affected.contract_set_id
+                 AND delegate_mapping."to" = affected.id
+                GROUP BY affected.contract_set_id, affected.id
+             ) AS counts
+             WHERE contributor.contract_set_id = counts.contract_set_id
+               AND contributor.id = counts.id
+               AND contributor.delegates_count_effective IS DISTINCT FROM counts.positive_count"#,
+        );
+        query.build().execute(&mut **transaction).await?;
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Debug)]

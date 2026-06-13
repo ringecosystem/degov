@@ -1319,6 +1319,110 @@ async fn test_postgres_token_delegate_mapping_bulk_power_only_update_preserves_r
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_power_update_recomputes_effective_delegate_count()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let initial = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000001-delegate", 1, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000002-second-delegate", 1, 0, 2),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: RECEIVER.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000003-transfer", 2, 0, 1),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: ZERO_ADDRESS.to_owned(),
+                    to: DELEGATOR.to_owned(),
+                    value: "40".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("0000000004-second-transfer", 2, 0, 2),
+                event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                    from: ZERO_ADDRESS.to_owned(),
+                    to: RECEIVER.to_owned(),
+                    value: "60".to_owned(),
+                    standard: GovernanceTokenStandard::Erc20,
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("initial token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(initial),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    sqlx::query(
+        "UPDATE contributor
+         SET delegates_count_effective = 1
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .execute(&database.pool)
+    .await?;
+
+    let update = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000000005-transfer", 3, 0, 1),
+            event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                from: ZERO_ADDRESS.to_owned(),
+                to: DELEGATOR.to_owned(),
+                value: "10".to_owned(),
+                standard: GovernanceTokenStandard::Erc20,
+            }),
+        }],
+    )
+    .map_err(|error| format!("update token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(update),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let delegate_counts = sqlx::query(
+        "SELECT delegates_count_all, delegates_count_effective
+         FROM contributor
+         WHERE contract_set_id = $1 AND id = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(delegate_counts.get::<i32, _>("delegates_count_all"), 2);
+    assert_eq!(
+        delegate_counts.get::<i32, _>("delegates_count_effective"),
+        2
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_repeated_delegate_ensure_keeps_contributor_count_once()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;

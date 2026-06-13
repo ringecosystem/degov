@@ -2237,21 +2237,11 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                 WHERE delegate.is_current = TRUE
                 ORDER BY delegate.contract_set_id, delegate.id
              ),
-             effective_deltas AS (
-                SELECT
+             affected_delegates AS (
+                SELECT DISTINCT
                     contract_set_id,
-                    to_delegate,
-                    SUM(
-                        CASE
-                            WHEN previous_power = 0::NUMERIC(78, 0)
-                             AND new_power <> 0::NUMERIC(78, 0) THEN 1
-                            WHEN previous_power <> 0::NUMERIC(78, 0)
-                             AND new_power = 0::NUMERIC(78, 0) THEN -1
-                            ELSE 0
-                        END
-                    )::INT AS delta
+                    to_delegate
                 FROM current_edges
-                GROUP BY contract_set_id, to_delegate
              ),
              updated_delegates AS (
                 UPDATE delegate
@@ -2273,16 +2263,30 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                   AND delegate_mapping.power IS DISTINCT FROM current_edges.new_power
                 RETURNING delegate_mapping.id
              ),
+             effective_counts AS (
+                SELECT
+                    affected_delegates.contract_set_id,
+                    affected_delegates.to_delegate,
+                    COUNT(delegate_mapping.id) FILTER (
+                        WHERE COALESCE(current_edges.new_power, delegate_mapping.power) > 0
+                    )::INT AS positive_count
+                FROM affected_delegates
+                LEFT JOIN delegate_mapping
+                  ON delegate_mapping.contract_set_id = affected_delegates.contract_set_id
+                 AND delegate_mapping.\"to\" = affected_delegates.to_delegate
+                LEFT JOIN current_edges
+                  ON current_edges.contract_set_id = delegate_mapping.contract_set_id
+                 AND current_edges.from_delegate = delegate_mapping.\"from\"
+                 AND current_edges.to_delegate = delegate_mapping.\"to\"
+                GROUP BY affected_delegates.contract_set_id, affected_delegates.to_delegate
+             ),
              updated_effective_counts AS (
                 UPDATE contributor
-                SET delegates_count_effective = GREATEST(
-                    0,
-                    contributor.delegates_count_effective + effective_deltas.delta
-                )
-                FROM effective_deltas
-                WHERE contributor.contract_set_id = effective_deltas.contract_set_id
-                  AND contributor.id = effective_deltas.to_delegate
-                  AND effective_deltas.delta <> 0
+                SET delegates_count_effective = effective_counts.positive_count
+                FROM effective_counts
+                WHERE contributor.contract_set_id = effective_counts.contract_set_id
+                  AND contributor.id = effective_counts.to_delegate
+                  AND contributor.delegates_count_effective IS DISTINCT FROM effective_counts.positive_count
                 RETURNING contributor.id
              )
              SELECT
