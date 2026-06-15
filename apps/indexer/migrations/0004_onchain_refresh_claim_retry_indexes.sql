@@ -1,0 +1,4 @@
+-- Onchain refresh claim retry index marker.
+--
+-- Runtime startup creates these indexes concurrently and serializes startup
+-- migration/index ensure with a Postgres advisory lock.
