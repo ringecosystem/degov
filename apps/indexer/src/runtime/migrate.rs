@@ -70,5 +70,14 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
     .await
     .context("ensure delegate rolling metadata preload index")?;
 
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_data_metric_scope_idx
+         ON contributor (contract_set_id, chain_id, governor_address, dao_code)
+         INCLUDE (power, balance)",
+    )
+    .execute(pool)
+    .await
+    .context("ensure contributor data metric scope index")?;
+
     Ok(())
 }

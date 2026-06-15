@@ -909,6 +909,8 @@ CREATE TABLE IF NOT EXISTS contributor (
 
 CREATE INDEX IF NOT EXISTS contributor_lookup_idx
   ON contributor (chain_id, contract_set_id, governor_address, id);
+CREATE INDEX IF NOT EXISTS contributor_data_metric_scope_idx
+  ON contributor (contract_set_id, chain_id, governor_address, dao_code) INCLUDE (power, balance);
 
 CREATE TABLE IF NOT EXISTS delegate_mapping (
   id TEXT NOT NULL,
