@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// File overview: Deploy the playground Timelock and DGovernor around the existing Darwinia governance token.
+// File overview: Deploy the playground Timelock and DGovernor around the existing Darwinia GTK token.
 pragma solidity ^0.8.0;
 
 import {Script} from "forge-std/Script.sol";
@@ -12,19 +12,19 @@ import {Timelock} from "../src/Timelock.sol";
 contract DeployPlayground is Script {
     uint256 internal constant DARWINIA_CHAIN_ID = 46;
     address internal constant DEFAULT_DEPLOYER = 0x0f14341A7f464320319025540E8Fe48Ad0fe5aec;
-    address internal constant GTP = 0xbC9f58566810F7e853e1eef1b9957ac82F9971df;
+    address internal constant GTK = 0xbC9f58566810F7e853e1eef1b9957ac82F9971df;
     uint256 internal constant MIN_DELAY = 3 minutes;
 
     function run() public {
         require(block.chainid == DARWINIA_CHAIN_ID, "playground deploy must run on Darwinia");
-        require(GTP.code.length > 0, "playground GTP has no code");
-        IERC6372(GTP).clock();
+        require(GTK.code.length > 0, "playground GTK has no code");
+        IERC6372(GTK).clock();
 
         address deployer = vm.envOr("PLAYGROUND_DEPLOYER", DEFAULT_DEPLOYER);
 
         safeconsole.log("Chain Id: ", block.chainid);
         safeconsole.log("deployer: ", deployer);
-        safeconsole.log("gtp: ", GTP);
+        safeconsole.log("gtk: ", GTK);
 
         vm.startBroadcast(deployer);
 
@@ -33,7 +33,7 @@ contract DeployPlayground is Script {
         Timelock timelock = new Timelock(MIN_DELAY, proposers, executors, deployer);
         safeconsole.log("timelock: ", address(timelock));
 
-        DGovernor governor = new DGovernor(IVotes(GTP), timelock);
+        DGovernor governor = new DGovernor(IVotes(GTK), timelock);
         safeconsole.log("dgov: ", address(governor));
 
         timelock.grantRole(timelock.PROPOSER_ROLE(), address(governor));
