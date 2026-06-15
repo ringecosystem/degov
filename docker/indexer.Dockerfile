@@ -4,7 +4,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY apps/indexer/Cargo.toml apps/indexer/Cargo.toml
 COPY apps/indexer/src apps/indexer/src
-COPY apps/indexer/schema apps/indexer/schema
+COPY apps/indexer/migrations apps/indexer/migrations
 
 RUN cargo build -p degov-datalens-indexer --locked --release
 
