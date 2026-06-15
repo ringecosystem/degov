@@ -1,0 +1,5 @@
+-- Onchain refresh runtime index marker.
+--
+-- The actual index creation is performed by runtime startup with
+-- CREATE INDEX CONCURRENTLY IF NOT EXISTS so existing staging databases keep
+-- accepting writes while the hot-path indexes are built.

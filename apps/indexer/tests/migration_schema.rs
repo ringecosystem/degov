@@ -157,6 +157,24 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         "contributor_data_metric_scope_idx",
     )
     .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_failed_retry_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_processing_retry_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "delegate_current_from_scope_idx",
+    )
+    .await?;
     assert_removed_processor_status_table_absent(&database.pool).await?;
     assert_table_exists(&database.pool, &database.schema, "_sqlx_migrations").await?;
 
@@ -212,7 +230,11 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
 
     assert_eq!(
         migration_files,
-        ["0001_init.sql", "0002_hot_path_runtime_indexes.sql"]
+        [
+            "0001_init.sql",
+            "0002_hot_path_runtime_indexes.sql",
+            "0003_onchain_refresh_runtime_indexes.sql"
+        ]
     );
 
     let init_migration = include_str!("../migrations/0001_init.sql");
