@@ -14,9 +14,7 @@ extra_output_files = ["metadata"]
 eth_rpc_url  = "https://erpc.ringdao.com/main/evm/46"
 
 [rpc_endpoints]
-crab = "https://crab-rpc.darwinia.network"
 darwinia = "https://rpc.darwinia.network"
 
 [etherscan]
-crab = { key = "xxx", url = "https://crab-scan.darwinia.network/api", chain = 44 }
 darwinia = { key = "xxx", url = "https://explorer.darwinia.network/api", chain = 46 }
