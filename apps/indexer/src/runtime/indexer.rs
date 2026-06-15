@@ -688,6 +688,20 @@ async fn ensure_warmup_on_startup(
         .configured_contract_sets(config)
         .context("select Datalens warmup contract sets")?;
     let retry_config = datalens_retry_config(runtime.query_max_attempts);
+    let concurrency = warmup_startup_global_concurrency(runtime, contract_sets.len());
+    let global_semaphore = Arc::new(Semaphore::new(concurrency));
+    let per_chain_semaphores = warmup_startup_per_chain_semaphores(runtime, &contract_sets);
+    let mut handles = task::JoinSet::new();
+
+    log::info!(
+        "Datalens follow_query warmup startup ensure scheduling contract_set_count={} concurrency={} per_chain_concurrency={}",
+        contract_sets.len(),
+        concurrency,
+        runtime
+            .datalens_query_concurrency
+            .per_chain_max_in_flight
+            .map_or_else(|| "unlimited".to_owned(), |limit| limit.to_string())
+    );
 
     for contract_set in contract_sets {
         let config = contract_set.config.clone();
@@ -698,34 +712,60 @@ async fn ensure_warmup_on_startup(
         let start_block = contract_set.contract.start_block;
         let warmup_required = config.warmup.required;
         let retry_config = retry_config.clone();
-        let outcome = task::spawn_blocking(move || -> Result<_> {
+        let per_chain_permit = acquire_semaphore(
+            per_chain_semaphores
+                .as_ref()
+                .and_then(|semaphores| semaphores.get(&chain_id).cloned()),
+        )
+        .await
+        .context("acquire Datalens warmup startup per-chain concurrency permit")?;
+        let global_permit = global_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .context("acquire Datalens warmup startup concurrency permit")?;
+
+        handles.spawn_blocking(move || -> Result<_> {
+            let _global_permit = global_permit;
+            let _per_chain_permit = per_chain_permit;
             let mut client =
                 DatalensNativeClient::from_config_with_retry_config(&config, retry_config)
                     .context("create Datalens client")?;
-            ensure_datalens_warmup_task(&mut client, &config, &addresses, start_block)
-                .context("ensure Datalens follow_query warmup task")
-        })
-        .await
-        .context("join Datalens warmup ensure task")??;
+            let outcome =
+                ensure_datalens_warmup_task(&mut client, &config, &addresses, start_block)
+                    .context("ensure Datalens follow_query warmup task")?;
 
-        match outcome {
+            Ok(WarmupStartupEnsureResult {
+                dao_code,
+                chain_id,
+                contract_set_id,
+                warmup_required,
+                outcome,
+            })
+        });
+    }
+
+    while let Some(result) = handles.join_next().await {
+        let result = result.context("join Datalens warmup ensure task")??;
+
+        match result.outcome {
             DatalensWarmupEnsureOutcome::Disabled => {}
             DatalensWarmupEnsureOutcome::Failed { error } => {
                 log::warn!(
                     "Datalens follow_query warmup startup ensure failed; continuing indexing dao_code={} chain_id={} contract_set_id={} required={} error={}",
-                    dao_code,
-                    chain_id,
-                    contract_set_id,
-                    warmup_required,
+                    result.dao_code,
+                    result.chain_id,
+                    result.contract_set_id,
+                    result.warmup_required,
                     error
                 );
             }
             DatalensWarmupEnsureOutcome::Submitted { task_id, created } => {
                 log::info!(
                     "Datalens follow_query warmup task ensured dao_code={} chain_id={} contract_set_id={} task_id={} created={}",
-                    dao_code,
-                    chain_id,
-                    contract_set_id,
+                    result.dao_code,
+                    result.chain_id,
+                    result.contract_set_id,
                     task_id,
                     created
                 );
@@ -734,6 +774,44 @@ async fn ensure_warmup_on_startup(
     }
 
     Ok(())
+}
+
+struct WarmupStartupEnsureResult {
+    dao_code: String,
+    chain_id: i32,
+    contract_set_id: String,
+    warmup_required: bool,
+    outcome: DatalensWarmupEnsureOutcome,
+}
+
+fn warmup_startup_global_concurrency(
+    runtime: &IndexerRuntimeConfig,
+    contract_set_count: usize,
+) -> usize {
+    if contract_set_count == 0 {
+        return 1;
+    }
+
+    runtime
+        .datalens_query_concurrency
+        .global_max_in_flight
+        .unwrap_or(4)
+        .min(contract_set_count)
+        .max(1)
+}
+
+fn warmup_startup_per_chain_semaphores(
+    runtime: &IndexerRuntimeConfig,
+    contract_sets: &[DatalensRuntimeContractSet],
+) -> Option<BTreeMap<i32, Arc<Semaphore>>> {
+    let limit = runtime.datalens_query_concurrency.per_chain_max_in_flight?;
+    let mut semaphores = BTreeMap::new();
+    for contract_set in contract_sets {
+        semaphores
+            .entry(contract_set.contract.chain_id)
+            .or_insert_with(|| Arc::new(Semaphore::new(limit)));
+    }
+    Some(semaphores)
 }
 
 async fn run_contract_set_pass(
@@ -1039,6 +1117,31 @@ mod tests {
             .expect("fixed target height resolves without Datalens");
 
         assert_eq!(height, 568800);
+    }
+
+    #[test]
+    fn test_warmup_startup_concurrency_uses_query_limit_without_exceeding_contract_sets() {
+        let mut runtime = runtime_for_warmup_concurrency();
+        runtime.datalens_query_concurrency.global_max_in_flight = Some(8);
+
+        assert_eq!(warmup_startup_global_concurrency(&runtime, 50), 8);
+        assert_eq!(warmup_startup_global_concurrency(&runtime, 3), 3);
+    }
+
+    #[test]
+    fn test_warmup_startup_concurrency_defaults_to_bounded_parallelism() {
+        let runtime = runtime_for_warmup_concurrency();
+
+        assert_eq!(warmup_startup_global_concurrency(&runtime, 50), 4);
+        assert_eq!(warmup_startup_global_concurrency(&runtime, 0), 1);
+    }
+
+    #[test]
+    fn test_warmup_startup_global_concurrency_does_not_use_per_chain_limit() {
+        let mut runtime = runtime_for_warmup_concurrency();
+        runtime.datalens_query_concurrency.per_chain_max_in_flight = Some(1);
+
+        assert_eq!(warmup_startup_global_concurrency(&runtime, 50), 4);
     }
 
     #[tokio::test]
@@ -1704,6 +1807,33 @@ mod tests {
                 CONTRACT_SET_RETRY_INITIAL_BACKOFF
             ]
         );
+    }
+
+    fn runtime_for_warmup_concurrency() -> IndexerRuntimeConfig {
+        IndexerRuntimeConfig {
+            dao_filter: None,
+            contract_set_mode: crate::IndexerContractSetMode::All,
+            target_height: IndexerTargetHeight::Fixed(568800),
+            poll_interval: Duration::from_millis(10),
+            run_once: true,
+            max_chunks_per_run: None,
+            database_max_connections: 1,
+            checkpoint_stream_id: "datalens-native".to_owned(),
+            data_source_version: "datalens-v1".to_owned(),
+            query_max_attempts: 1,
+            datalens_query_concurrency: Default::default(),
+            contract_set_max_concurrency: crate::ContractSetConcurrencyLimit::Unlimited,
+            contract_set_per_chain_max_concurrency: crate::ContractSetConcurrencyLimit::Unlimited,
+            progress_refresh_lag_blocks: 100,
+            adaptive_chunk_sizer: Default::default(),
+            onchain_refresh_tick: Default::default(),
+            onchain_refresh_deferred_drain_batch_size: 100,
+            proposal_timestamp_backfill: Default::default(),
+            provisional: ProvisionalRuntimeConfig {
+                enabled: false,
+                finality: DatalensProvisionalFinality::SafeToLatest,
+            },
+        }
     }
 
     #[derive(Clone, Default)]
