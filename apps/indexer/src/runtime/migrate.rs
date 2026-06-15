@@ -1,6 +1,6 @@
 use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result};
-use sqlx::{PgPool, migrate::Migrator, postgres::PgPoolOptions};
+use sqlx::{PgConnection, PgPool, migrate::Migrator, postgres::PgPoolOptions};
 
 use crate::required_env;
 
@@ -22,21 +22,55 @@ pub async fn migrate() -> Result<()> {
 }
 
 pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
-    MIGRATOR
-        .run(pool)
+    let mut connection = pool
+        .acquire()
         .await
-        .context("apply Datalens-native DeGov indexer init migration")?;
-    ensure_runtime_indexes(pool).await?;
+        .context("acquire DeGov indexer migration connection")?;
+
+    sqlx::query("SELECT pg_advisory_lock(hashtext('degov_indexer_runtime_migration'))")
+        .execute(&mut *connection)
+        .await
+        .context("acquire DeGov indexer runtime migration lock")?;
+
+    let result: Result<()> = async {
+        MIGRATOR
+            .run(&mut *connection)
+            .await
+            .context("apply Datalens-native DeGov indexer init migration")?;
+        ensure_runtime_indexes(&mut connection).await?;
+
+        Ok(())
+    }
+    .await;
+
+    let unlock_result = sqlx::query_scalar::<_, bool>(
+        "SELECT pg_advisory_unlock(hashtext('degov_indexer_runtime_migration'))",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("release DeGov indexer runtime migration lock")
+    .and_then(|unlocked| {
+        if unlocked {
+            Ok(())
+        } else {
+            Err(runtime_anyhow::Error::msg(
+                "DeGov indexer runtime migration lock was not held",
+            ))
+        }
+    });
+
+    result?;
+    unlock_result?;
 
     Ok(())
 }
 
-async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
+async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS onchain_refresh_task_claim_queue_idx
          ON onchain_refresh_task (status, next_run_at, updated_at, id)",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure onchain refresh claim queue index")?;
 
@@ -46,7 +80,7 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
             chain_id, contract_set_id, dao_code, status, next_run_at, updated_at, id
          )",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure scoped onchain refresh claim queue index")?;
 
@@ -56,9 +90,17 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
          INCLUDE (attempts)
          WHERE status = 'failed'",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure failed onchain refresh retry index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_attempt_retry_idx
+         ON onchain_refresh_task (status, attempts, next_run_at, updated_at, id)",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure failed onchain refresh attempt retry index")?;
 
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_retry_idx
@@ -66,9 +108,18 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
          INCLUDE (locked_at, attempts)
          WHERE status = 'processing'",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure processing onchain refresh retry index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_lock_retry_idx
+         ON onchain_refresh_task (status, attempts, locked_at, next_run_at, updated_at, id)
+         WHERE locked_at IS NOT NULL",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure processing onchain refresh lock retry index")?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx
@@ -76,7 +127,7 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
             chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
          )",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure scoped onchain refresh deferred drain index")?;
 
@@ -86,7 +137,7 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
          INCLUDE (id, delegator, from_delegate, to_delegate, from_new_votes, to_new_votes)
          WHERE from_delegate <> to_delegate",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure delegate rolling metadata preload index")?;
 
@@ -96,7 +147,7 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
          INCLUDE (token_address, to_delegate, is_current)
          WHERE is_current = TRUE",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure current delegate scope lookup index")?;
 
@@ -104,7 +155,7 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_to_lookup_idx
          ON delegate_mapping (contract_set_id, \"to\") INCLUDE (id, power)",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure delegate mapping target lookup index")?;
 
@@ -113,7 +164,7 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
          ON contributor (contract_set_id, chain_id, governor_address, dao_code)
          INCLUDE (power, balance)",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await
     .context("ensure contributor data metric scope index")?;
 
