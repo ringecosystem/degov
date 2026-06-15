@@ -151,6 +151,12 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         "delegate_mapping_to_lookup_idx",
     )
     .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "contributor_data_metric_scope_idx",
+    )
+    .await?;
     assert_removed_processor_status_table_absent(&database.pool).await?;
     assert_table_exists(&database.pool, &database.schema, "_sqlx_migrations").await?;
 
@@ -290,6 +296,18 @@ fn test_fresh_init_declares_split_data_metric_counts() {
             "expected data_metric count column {column_name}"
         );
     }
+}
+
+#[test]
+fn test_fresh_init_declares_contributor_data_metric_scope_index() {
+    let init_migration = include_str!("../migrations/0001_init.sql");
+
+    assert!(init_migration.contains("contributor_data_metric_scope_idx"));
+    assert!(
+        init_migration
+            .contains("ON contributor (contract_set_id, chain_id, governor_address, dao_code)")
+    );
+    assert!(init_migration.contains("INCLUDE (power, balance)"));
 }
 
 #[test]
