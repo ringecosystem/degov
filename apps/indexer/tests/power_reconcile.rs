@@ -356,7 +356,7 @@ fn context(from_block: u64, to_block: u64, target_height: Option<u64>) -> PowerR
         contracts: ChainContracts {
             governor: "0x1111111111111111111111111111111111111111".to_owned(),
             governor_token: "0x2222222222222222222222222222222222222222".to_owned(),
-            timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+            timelock: Some("0x3333333333333333333333333333333333333333".to_owned()),
         },
         from_block,
         to_block,

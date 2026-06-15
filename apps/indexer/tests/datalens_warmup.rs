@@ -84,7 +84,7 @@ fn test_ensure_datalens_warmup_task_submits_distinct_task_for_selector_mismatch(
     let config = config();
     let mut ensurer = MockWarmupEnsurer::default();
     let mut other_addresses = addresses();
-    other_addresses.timelock = "0x4444444444444444444444444444444444444444".to_owned();
+    other_addresses.timelock = Some("0x4444444444444444444444444444444444444444".to_owned());
 
     ensure_datalens_warmup_task(&mut ensurer, &config, &addresses(), 100).expect("first");
     let second =
@@ -161,7 +161,7 @@ fn addresses() -> DaoContractAddresses {
         governor: "0x1111111111111111111111111111111111111111".to_owned(),
         governor_token: "0x2222222222222222222222222222222222222222".to_owned(),
         governor_token_standard: GovernanceTokenStandard::Erc20,
-        timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+        timelock: Some("0x3333333333333333333333333333333333333333".to_owned()),
     }
 }
 

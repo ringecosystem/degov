@@ -157,7 +157,7 @@ pub struct DatalensContractSetConfig {
     pub governor: String,
     pub governor_token: String,
     pub governor_token_standard: GovernanceTokenStandard,
-    pub timelock: String,
+    pub timelock: Option<String>,
     pub start_block: i64,
 }
 
@@ -417,7 +417,14 @@ impl DatalensConfig {
                 "token_standard",
                 token_standard_scope_value(contract.governor_token_standard).to_owned(),
             ),
-            ("timelock", normalize_scope_value(&contract.timelock)),
+            (
+                "timelock",
+                contract
+                    .timelock
+                    .as_deref()
+                    .map(normalize_scope_value)
+                    .unwrap_or_else(|| "none".to_owned()),
+            ),
         ]
         .into_iter()
         .map(|(key, value)| format!("{key}={value}"))
@@ -586,17 +593,14 @@ fn dao_contract_addresses(
 
     Ok(
         match (governor, governor_token, governor_token_standard, timelock) {
-            (
-                Some(governor),
-                Some(governor_token),
-                Some(governor_token_standard),
-                Some(timelock),
-            ) => Some(DaoContractAddresses {
-                governor,
-                governor_token,
-                governor_token_standard,
-                timelock,
-            }),
+            (Some(governor), Some(governor_token), Some(governor_token_standard), timelock) => {
+                Some(DaoContractAddresses {
+                    governor,
+                    governor_token,
+                    governor_token_standard,
+                    timelock,
+                })
+            }
             (None, None, None, None) => None,
             (None, _, _, _) => {
                 return Err(ConfigError::MissingRequired {
@@ -611,11 +615,6 @@ fn dao_contract_addresses(
             (_, _, None, _) => {
                 return Err(ConfigError::MissingRequired {
                     field: "DATALENS_GOVERNOR_TOKEN_STANDARD",
-                });
-            }
-            (_, _, _, None) => {
-                return Err(ConfigError::MissingRequired {
-                    field: "DATALENS_TIMELOCK_ADDRESS",
                 });
             }
         },
@@ -766,7 +765,10 @@ fn parse_contract_config(
             raw.governor_token,
         )?,
         governor_token_standard: token_standard,
-        timelock: required_string_path(format!("{contract_path}.timelock"), raw.timelock)?,
+        timelock: raw
+            .timelock
+            .map(|value| required_string_path(format!("{contract_path}.timelock"), Some(value)))
+            .transpose()?,
         start_block,
     })
 }

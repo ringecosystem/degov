@@ -541,13 +541,15 @@ impl IndexerContractSetRuntimeConfig {
                 token_standard: contracts.governor_token_standard,
                 read_plan_config,
             }),
-            timelock: Some(TimelockProjectionContext {
-                contract_set_id: self.checkpoint_contract_set_id.clone(),
-                dao_code: self.dao_code.clone(),
-                governor_address: contracts.governor.clone(),
-                timelock_address: contracts.timelock.clone(),
-                contracts: chain_contracts,
-                read_plan_config,
+            timelock: contracts.timelock.as_ref().map(|timelock_address| {
+                TimelockProjectionContext {
+                    contract_set_id: self.checkpoint_contract_set_id.clone(),
+                    dao_code: self.dao_code.clone(),
+                    governor_address: contracts.governor.clone(),
+                    timelock_address: timelock_address.clone(),
+                    contracts: chain_contracts,
+                    read_plan_config,
+                }
             }),
         }
     }

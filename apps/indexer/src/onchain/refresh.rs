@@ -1066,7 +1066,7 @@ where
                 ChainContracts {
                     governor: governor_address,
                     governor_token: token_address,
-                    timelock: String::new(),
+                    timelock: None,
                 },
                 self.read_plan_config,
             );
@@ -1227,7 +1227,7 @@ where
                 ChainContracts {
                     governor: governor_address.clone(),
                     governor_token: token_address.clone(),
-                    timelock: String::new(),
+                    timelock: None,
                 },
                 self.read_plan_config,
             );
@@ -3692,7 +3692,7 @@ mod tests {
             ChainContracts {
                 governor: "0x1000000000000000000000000000000000000000".to_owned(),
                 governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
-                timelock: String::new(),
+                timelock: None,
             },
             BatchReadPlanConfig {
                 max_concurrency: 4,
@@ -3737,7 +3737,7 @@ mod tests {
             ChainContracts {
                 governor: "0x1000000000000000000000000000000000000000".to_owned(),
                 governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
-                timelock: String::new(),
+                timelock: None,
             },
             BatchReadPlanConfig {
                 max_concurrency: 4,
@@ -3765,7 +3765,7 @@ mod tests {
         let contracts = ChainContracts {
             governor: "0x1000000000000000000000000000000000000000".to_owned(),
             governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
-            timelock: String::new(),
+            timelock: None,
         };
         let mut builder = ChainReadPlanBuilder::new(
             1,
@@ -3811,7 +3811,7 @@ mod tests {
             ChainContracts {
                 governor: "0x1000000000000000000000000000000000000000".to_owned(),
                 governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
-                timelock: String::new(),
+                timelock: None,
             },
             BatchReadPlanConfig {
                 max_concurrency: 4,

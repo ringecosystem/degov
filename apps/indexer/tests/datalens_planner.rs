@@ -78,6 +78,19 @@ fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelo
 }
 
 #[test]
+fn test_plan_dao_log_queries_skips_timelock_when_not_configured() {
+    let config = config(1_000, DatalensFinality::DurableOnly);
+    let mut addresses = addresses();
+    addresses.timelock = None;
+
+    let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
+
+    assert_eq!(plans.len(), 2);
+    assert_eq!(plans[0].sources[0].source, DaoLogSource::Governor);
+    assert_eq!(plans[1].sources[0].source, DaoLogSource::GovernorToken);
+}
+
+#[test]
 fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
     let config = config(50, DatalensFinality::DurableOnly);
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 220).expect("plans");
@@ -264,7 +277,7 @@ fn addresses() -> DaoContractAddresses {
         governor: "0x1111111111111111111111111111111111111111".to_owned(),
         governor_token: "0x2222222222222222222222222222222222222222".to_owned(),
         governor_token_standard: GovernanceTokenStandard::Erc20,
-        timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+        timelock: Some("0x3333333333333333333333333333333333333333".to_owned()),
     }
 }
 

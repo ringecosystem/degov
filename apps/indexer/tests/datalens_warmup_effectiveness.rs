@@ -192,7 +192,7 @@ fn addresses() -> DaoContractAddresses {
         governor: "0x1111111111111111111111111111111111111111".to_owned(),
         governor_token: "0x2222222222222222222222222222222222222222".to_owned(),
         governor_token_standard: GovernanceTokenStandard::Erc20,
-        timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+        timelock: Some("0x3333333333333333333333333333333333333333".to_owned()),
     }
 }
 

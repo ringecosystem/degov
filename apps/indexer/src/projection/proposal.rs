@@ -585,7 +585,8 @@ pub fn project_proposal_events(
                 let metric = proposal_data_metric(&input.log.id, &common);
                 data_metrics.insert(metric.id.clone(), metric);
 
-                let proposal = proposal_write(common.clone(), event, &context.contracts.timelock);
+                let proposal =
+                    proposal_write(common.clone(), event, context.contracts.timelock.as_deref());
                 proposal_refs.insert(proposal_lookup_key(&common), proposal.id.clone());
                 for action in proposal_action_writes(&common, &proposal, event) {
                     proposal_actions.insert(action.id.clone(), action);
@@ -921,7 +922,7 @@ fn proposal_data_metric(log_id: &str, common: &ProposalEventCommon) -> DataMetri
 fn proposal_write(
     common: ProposalEventCommon,
     event: &ProposalCreatedEvent,
-    timelock_address: &str,
+    timelock_address: Option<&str>,
 ) -> ProposalWrite {
     let metadata = derive_proposal_metadata(&event.description);
     let clock_mode = infer_clock_mode(&event.vote_start, &event.vote_end);
@@ -979,7 +980,7 @@ fn proposal_write(
         clock_mode,
         quorum: "0".to_owned(),
         decimals: "0".to_owned(),
-        timelock_address: Some(normalize_identifier(timelock_address)),
+        timelock_address: timelock_address.map(normalize_identifier),
         queued_block_number: None,
         queued_block_timestamp: None,
         queued_transaction_hash: None,

@@ -101,7 +101,7 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint(
             );
             assert_eq!(
                 config.dao_contracts.as_ref().expect("contracts").timelock,
-                "0x3333333333333333333333333333333333333333"
+                Some("0x3333333333333333333333333333333333333333".to_owned())
             );
             assert_eq!(config.chains.len(), 1);
             assert_eq!(config.chains[0].network_id, 1);
@@ -124,6 +124,42 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint(
                 Some("unit-test-redacted-value")
             );
             assert_eq!(sdk_config.application.as_deref(), Some("degov-live"));
+        },
+    );
+}
+
+#[test]
+fn test_from_env_allows_contracts_without_timelock() {
+    with_datalens_env(
+        &[
+            ("DATALENS_ENDPOINT", Some("https://datalens.ringdao.com/")),
+            ("DATALENS_APPLICATION", Some("degov-live")),
+            ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
+            ("DATALENS_CHAIN_NAME", Some("ethereum")),
+            ("DATALENS_CHAIN_ID", Some("1")),
+            ("DATALENS_DATASET_FAMILY", Some("evm")),
+            ("DATALENS_DATASET_NAME", Some("logs")),
+            ("DEGOV_INDEXER_DAO_CODE", Some("no-timelock-dao")),
+            ("DEGOV_INDEXER_START_BLOCK", Some("100")),
+            (
+                "DATALENS_GOVERNOR_ADDRESS",
+                Some("0x1111111111111111111111111111111111111111"),
+            ),
+            (
+                "DATALENS_GOVERNOR_TOKEN_ADDRESS",
+                Some("0x2222222222222222222222222222222222222222"),
+            ),
+            ("DATALENS_GOVERNOR_TOKEN_STANDARD", Some("ERC20")),
+            ("DATALENS_TIMELOCK_ADDRESS", None),
+        ],
+        || {
+            let config = DatalensConfig::from_env().expect("load config");
+
+            assert_eq!(
+                config.dao_contracts.as_ref().expect("contracts").timelock,
+                None
+            );
+            assert_eq!(config.chains[0].contracts[0].timelock, None);
         },
     );
 }
