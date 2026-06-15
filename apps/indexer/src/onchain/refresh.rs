@@ -446,7 +446,7 @@ where
         &self,
         batch_size: usize,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, None)
+        self.run_once_with_batch_size_and_scope(batch_size, None, true)
             .await
     }
 
@@ -455,7 +455,16 @@ where
         batch_size: usize,
         scope: &OnchainRefreshTaskScope,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, Some(scope))
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), true)
+            .await
+    }
+
+    pub async fn run_once_with_batch_size_for_scope_without_backlog(
+        &self,
+        batch_size: usize,
+        scope: &OnchainRefreshTaskScope,
+    ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), false)
             .await
     }
 
@@ -463,6 +472,7 @@ where
         &self,
         batch_size: usize,
         scope: Option<&OnchainRefreshTaskScope>,
+        include_backlog: bool,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
         let started_at = Instant::now();
         let now_ms = unix_time_millis();
@@ -589,10 +599,12 @@ where
         }
 
         report.duration_ms = started_at.elapsed().as_millis();
-        report.backlog = match scope {
-            Some(scope) => self.ready_backlog_for_scope(scope).await.ok(),
-            None => self.ready_backlog().await.ok(),
-        };
+        if include_backlog {
+            report.backlog = match scope {
+                Some(scope) => self.ready_backlog_for_scope(scope).await.ok(),
+                None => self.ready_backlog().await.ok(),
+            };
+        }
 
         log::info!(
             "onchain refresh batch completed dao_code={} chain_id={} contract_set_id={} claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} apply_chunks={} apply_batch_size={} duration_ms={} backlog={}",

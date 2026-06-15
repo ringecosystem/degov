@@ -936,14 +936,12 @@ where
     ) -> std::result::Result<crate::OnchainRefreshRunReport, Self::Error> {
         self.handle.block_on(
             self.worker
-                .run_once_with_batch_size_for_scope(max_tasks, &self.scope),
+                .run_once_with_batch_size_for_scope_without_backlog(max_tasks, &self.scope),
         )
     }
 
     fn backlog(&mut self) -> Option<u64> {
-        self.handle
-            .block_on(self.worker.ready_backlog_for_scope(&self.scope))
-            .ok()
+        None
     }
 }
 
