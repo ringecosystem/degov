@@ -51,6 +51,26 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
     .context("ensure scoped onchain refresh claim queue index")?;
 
     sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_retry_idx
+         ON onchain_refresh_task (next_run_at, updated_at, id)
+         INCLUDE (attempts)
+         WHERE status = 'failed'",
+    )
+    .execute(pool)
+    .await
+    .context("ensure failed onchain refresh retry index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_retry_idx
+         ON onchain_refresh_task (next_run_at, updated_at, id)
+         INCLUDE (locked_at, attempts)
+         WHERE status = 'processing'",
+    )
+    .execute(pool)
+    .await
+    .context("ensure processing onchain refresh retry index")?;
+
+    sqlx::query(
         "CREATE INDEX IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx
          ON onchain_refresh_deferred_candidate (
             chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
@@ -69,6 +89,16 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
     .execute(pool)
     .await
     .context("ensure delegate rolling metadata preload index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_current_from_scope_idx
+         ON delegate (contract_set_id, chain_id, dao_code, governor_address, from_delegate)
+         INCLUDE (token_address, to_delegate, is_current)
+         WHERE is_current = TRUE",
+    )
+    .execute(pool)
+    .await
+    .context("ensure current delegate scope lookup index")?;
 
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_to_lookup_idx

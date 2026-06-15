@@ -69,6 +69,13 @@ pub struct OnchainRefreshTaskScope {
     pub dao_code: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OnchainRefreshClaimQueue {
+    Pending,
+    FailedRetry,
+    StaleProcessing,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshTickConfig {
     pub enabled: bool,
@@ -439,7 +446,8 @@ where
     }
 
     pub async fn run_once(&self) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size(self.config.batch_size).await
+        self.run_once_with_batch_size_and_scope(self.config.batch_size, None, false)
+            .await
     }
 
     pub async fn run_once_with_batch_size(
@@ -704,6 +712,32 @@ where
         batch_size: usize,
         scope: Option<&OnchainRefreshTaskScope>,
     ) -> Result<Vec<OnchainRefreshTask>, OnchainRefreshWorkerError> {
+        let mut tasks = Vec::new();
+        for queue in [
+            OnchainRefreshClaimQueue::Pending,
+            OnchainRefreshClaimQueue::FailedRetry,
+            OnchainRefreshClaimQueue::StaleProcessing,
+        ] {
+            if tasks.len() >= batch_size {
+                break;
+            }
+            let remaining_batch_size = batch_size - tasks.len();
+            tasks.extend(
+                self.claim_tasks_from_queue(now_ms, remaining_batch_size, scope, queue)
+                    .await?,
+            );
+        }
+
+        Ok(tasks)
+    }
+
+    async fn claim_tasks_from_queue(
+        &self,
+        now_ms: i64,
+        batch_size: usize,
+        scope: Option<&OnchainRefreshTaskScope>,
+        queue: OnchainRefreshClaimQueue,
+    ) -> Result<Vec<OnchainRefreshTask>, OnchainRefreshWorkerError> {
         let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
         let batch_size =
             i64::try_from(batch_size).map_err(|_| OnchainRefreshWorkerError::BatchSizeOverflow)?;
@@ -712,32 +746,29 @@ where
             "WITH candidates AS (
                 SELECT id
                 FROM onchain_refresh_task
-                WHERE (
-                    status = 'pending'
-                    OR (
-                        status = 'failed'
-                        AND attempts < ",
+                WHERE status = ",
         );
-        query.push_bind(self.config.max_attempts).push(
-            "
-                    )
-                    OR (
-                        status = 'processing'
-                        AND locked_at IS NOT NULL
-                        AND locked_at <= ",
-        );
-        query.push_bind(stale_before.to_string()).push(
-            "::NUMERIC(78, 0)
-                        AND attempts < ",
-        );
+        match queue {
+            OnchainRefreshClaimQueue::Pending => {
+                query.push_bind("pending");
+            }
+            OnchainRefreshClaimQueue::FailedRetry => {
+                query
+                    .push_bind("failed")
+                    .push(" AND attempts < ")
+                    .push_bind(self.config.max_attempts);
+            }
+            OnchainRefreshClaimQueue::StaleProcessing => {
+                query
+                    .push_bind("processing")
+                    .push(" AND locked_at IS NOT NULL AND locked_at <= ")
+                    .push_bind(stale_before.to_string())
+                    .push("::NUMERIC(78, 0) AND attempts < ")
+                    .push_bind(self.config.max_attempts);
+            }
+        }
         query
-            .push_bind(self.config.max_attempts)
-            .push(
-                "
-                    )
-                )
-                AND next_run_at <= ",
-            )
+            .push(" AND next_run_at <= ")
             .push_bind(now_ms.to_string())
             .push("::NUMERIC(78, 0)");
         push_onchain_refresh_scope_filter(&mut query, scope);
