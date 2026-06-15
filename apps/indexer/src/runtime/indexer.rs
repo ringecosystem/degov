@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, future::Future, sync::Arc, time::Duration};
 
 use anyhow as runtime_anyhow;
+use datalens_sdk::RetryConfig;
 use runtime_anyhow::{Context, Result, bail};
 use sqlx::postgres::PgPoolOptions;
 use tokio::{runtime::Handle, sync::Semaphore, task, time::sleep};
@@ -689,19 +690,57 @@ async fn ensure_warmup_on_startup(
         .context("select Datalens warmup contract sets")?;
     let retry_config = datalens_retry_config(runtime.query_max_attempts);
     let concurrency = warmup_startup_global_concurrency(runtime, contract_sets.len());
-    let global_semaphore = Arc::new(Semaphore::new(concurrency));
-    let per_chain_semaphores = warmup_startup_per_chain_semaphores(runtime, &contract_sets);
-    let mut handles = task::JoinSet::new();
+    let per_chain_max_in_flight = runtime.datalens_query_concurrency.per_chain_max_in_flight;
+    let wait_for_completion = contract_sets
+        .iter()
+        .any(|contract_set| contract_set.config.warmup.required);
 
     log::info!(
-        "Datalens follow_query warmup startup ensure scheduling contract_set_count={} concurrency={} per_chain_concurrency={}",
+        "Datalens follow_query warmup startup ensure scheduling contract_set_count={} concurrency={} per_chain_concurrency={} wait_for_completion={}",
         contract_sets.len(),
         concurrency,
-        runtime
-            .datalens_query_concurrency
-            .per_chain_max_in_flight
-            .map_or_else(|| "unlimited".to_owned(), |limit| limit.to_string())
+        per_chain_max_in_flight.map_or_else(|| "unlimited".to_owned(), |limit| limit.to_string()),
+        wait_for_completion
     );
+
+    if wait_for_completion {
+        run_warmup_startup_ensure(
+            contract_sets,
+            retry_config,
+            concurrency,
+            per_chain_max_in_flight,
+        )
+        .await
+    } else {
+        task::spawn(async move {
+            if let Err(error) = run_warmup_startup_ensure(
+                contract_sets,
+                retry_config,
+                concurrency,
+                per_chain_max_in_flight,
+            )
+            .await
+            {
+                log::warn!(
+                    "Datalens follow_query warmup startup background ensure failed error={:#}",
+                    error
+                );
+            }
+        });
+        Ok(())
+    }
+}
+
+async fn run_warmup_startup_ensure(
+    contract_sets: Vec<DatalensRuntimeContractSet>,
+    retry_config: RetryConfig,
+    concurrency: usize,
+    per_chain_max_in_flight: Option<usize>,
+) -> Result<()> {
+    let global_semaphore = Arc::new(Semaphore::new(concurrency));
+    let per_chain_semaphores =
+        warmup_startup_per_chain_semaphores(per_chain_max_in_flight, &contract_sets);
+    let mut handles = task::JoinSet::new();
 
     for contract_set in contract_sets {
         let config = contract_set.config.clone();
@@ -801,10 +840,10 @@ fn warmup_startup_global_concurrency(
 }
 
 fn warmup_startup_per_chain_semaphores(
-    runtime: &IndexerRuntimeConfig,
+    per_chain_max_in_flight: Option<usize>,
     contract_sets: &[DatalensRuntimeContractSet],
 ) -> Option<BTreeMap<i32, Arc<Semaphore>>> {
-    let limit = runtime.datalens_query_concurrency.per_chain_max_in_flight?;
+    let limit = per_chain_max_in_flight?;
     let mut semaphores = BTreeMap::new();
     for contract_set in contract_sets {
         semaphores
