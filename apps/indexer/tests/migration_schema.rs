@@ -145,6 +145,18 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         "delegate_rolling_metadata_preload_idx",
     )
     .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "delegate_mapping_to_lookup_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "contributor_data_metric_scope_idx",
+    )
+    .await?;
     assert_removed_processor_status_table_absent(&database.pool).await?;
     assert_table_exists(&database.pool, &database.schema, "_sqlx_migrations").await?;
 
@@ -287,12 +299,33 @@ fn test_fresh_init_declares_split_data_metric_counts() {
 }
 
 #[test]
+fn test_fresh_init_declares_contributor_data_metric_scope_index() {
+    let init_migration = include_str!("../migrations/0001_init.sql");
+
+    assert!(init_migration.contains("contributor_data_metric_scope_idx"));
+    assert!(
+        init_migration
+            .contains("ON contributor (contract_set_id, chain_id, governor_address, dao_code)")
+    );
+    assert!(init_migration.contains("INCLUDE (power, balance)"));
+}
+
+#[test]
 fn test_fresh_init_declares_onchain_refresh_ready_claim_index() {
     let init_migration = include_str!("../migrations/0001_init.sql");
 
     assert!(init_migration.contains("onchain_refresh_task_ready_claim_idx"));
     assert!(init_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));
     assert!(init_migration.contains("WHERE status IN ('pending', 'failed')"));
+}
+
+#[test]
+fn test_fresh_init_declares_delegate_mapping_target_lookup_index() {
+    let init_migration = include_str!("../migrations/0001_init.sql");
+
+    assert!(init_migration.contains("delegate_mapping_to_lookup_idx"));
+    assert!(init_migration.contains("ON delegate_mapping (contract_set_id, \"to\")"));
+    assert!(init_migration.contains("INCLUDE (id, power)"));
 }
 
 async fn assert_table_exists(
