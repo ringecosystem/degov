@@ -1,0 +1,6 @@
+-- Hot-path index migration marker.
+--
+-- The actual index creation is intentionally performed by runtime startup with
+-- CREATE INDEX CONCURRENTLY IF NOT EXISTS. Keeping this migration lightweight
+-- avoids blocking writes on existing staging databases while still advancing
+-- sqlx migration history without modifying the applied 0001 checksum.

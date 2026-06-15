@@ -909,8 +909,6 @@ CREATE TABLE IF NOT EXISTS contributor (
 
 CREATE INDEX IF NOT EXISTS contributor_lookup_idx
   ON contributor (chain_id, contract_set_id, governor_address, id);
-CREATE INDEX IF NOT EXISTS contributor_data_metric_scope_idx
-  ON contributor (contract_set_id, chain_id, governor_address, dao_code) INCLUDE (power, balance);
 
 CREATE TABLE IF NOT EXISTS delegate_mapping (
   id TEXT NOT NULL,
@@ -933,8 +931,6 @@ CREATE TABLE IF NOT EXISTS delegate_mapping (
 
 CREATE INDEX IF NOT EXISTS delegate_mapping_lookup_idx
   ON delegate_mapping (chain_id, contract_set_id, governor_address, "from");
-CREATE INDEX IF NOT EXISTS delegate_mapping_to_lookup_idx
-  ON delegate_mapping (contract_set_id, "to") INCLUDE (id, power);
 
 CREATE TABLE IF NOT EXISTS degov_provisional_segment (
   id TEXT PRIMARY KEY,
