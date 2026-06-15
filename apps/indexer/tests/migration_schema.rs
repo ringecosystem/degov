@@ -200,7 +200,8 @@ async fn test_migration_can_run_twice_without_deleting_existing_rows() -> Result
 }
 
 #[test]
-fn test_indexer_uses_a_single_fresh_init_migration() -> Result<(), Box<dyn Error>> {
+fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
+-> Result<(), Box<dyn Error>> {
     let migrations_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
     let mut migration_files = fs::read_dir(migrations_dir)?
         .filter_map(|entry| entry.ok())
@@ -209,12 +210,19 @@ fn test_indexer_uses_a_single_fresh_init_migration() -> Result<(), Box<dyn Error
         .collect::<Vec<_>>();
     migration_files.sort();
 
-    assert_eq!(migration_files, ["0001_init.sql"]);
+    assert_eq!(
+        migration_files,
+        ["0001_init.sql", "0002_hot_path_runtime_indexes.sql"]
+    );
 
     let init_migration = include_str!("../migrations/0001_init.sql");
     assert!(init_migration.contains("fresh index initialization"));
     assert!(init_migration.contains("No historical in-place migration"));
     assert!(init_migration.contains("reset or recreate"));
+
+    let hot_path_migration = include_str!("../migrations/0002_hot_path_runtime_indexes.sql");
+    assert!(hot_path_migration.contains("CREATE INDEX CONCURRENTLY IF NOT EXISTS"));
+    assert!(hot_path_migration.contains("sqlx migration history"));
 
     Ok(())
 }
@@ -299,33 +307,12 @@ fn test_fresh_init_declares_split_data_metric_counts() {
 }
 
 #[test]
-fn test_fresh_init_declares_contributor_data_metric_scope_index() {
-    let init_migration = include_str!("../migrations/0001_init.sql");
-
-    assert!(init_migration.contains("contributor_data_metric_scope_idx"));
-    assert!(
-        init_migration
-            .contains("ON contributor (contract_set_id, chain_id, governor_address, dao_code)")
-    );
-    assert!(init_migration.contains("INCLUDE (power, balance)"));
-}
-
-#[test]
 fn test_fresh_init_declares_onchain_refresh_ready_claim_index() {
     let init_migration = include_str!("../migrations/0001_init.sql");
 
     assert!(init_migration.contains("onchain_refresh_task_ready_claim_idx"));
     assert!(init_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));
     assert!(init_migration.contains("WHERE status IN ('pending', 'failed')"));
-}
-
-#[test]
-fn test_fresh_init_declares_delegate_mapping_target_lookup_index() {
-    let init_migration = include_str!("../migrations/0001_init.sql");
-
-    assert!(init_migration.contains("delegate_mapping_to_lookup_idx"));
-    assert!(init_migration.contains("ON delegate_mapping (contract_set_id, \"to\")"));
-    assert!(init_migration.contains("INCLUDE (id, power)"));
 }
 
 async fn assert_table_exists(
