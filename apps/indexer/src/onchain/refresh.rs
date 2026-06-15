@@ -26,6 +26,7 @@ use crate::{
 };
 
 pub const DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
+const DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS: i32 = 3;
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
 
@@ -753,18 +754,16 @@ where
                 query.push_bind("pending");
             }
             OnchainRefreshClaimQueue::FailedRetry => {
-                query
-                    .push_bind("failed")
-                    .push(" AND attempts < ")
-                    .push_bind(self.config.max_attempts);
+                query.push_bind("failed").push(" AND attempts < ");
+                push_attempt_limit(&mut query, self.config.max_attempts);
             }
             OnchainRefreshClaimQueue::StaleProcessing => {
                 query
                     .push_bind("processing")
                     .push(" AND locked_at IS NOT NULL AND locked_at <= ")
                     .push_bind(stale_before.to_string())
-                    .push("::NUMERIC(78, 0) AND attempts < ")
-                    .push_bind(self.config.max_attempts);
+                    .push("::NUMERIC(78, 0) AND attempts < ");
+                push_attempt_limit(&mut query, self.config.max_attempts);
             }
         }
         query
@@ -969,6 +968,14 @@ fn onchain_refresh_retry_backoff_delay(base_delay: Duration, attempts: i32) -> D
     let multiplier = 1u32.checked_shl(exponent).unwrap_or(32);
 
     base_delay.saturating_mul(multiplier)
+}
+
+fn push_attempt_limit(query: &mut QueryBuilder<'_, Postgres>, max_attempts: i32) {
+    if max_attempts == DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS {
+        query.push(DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS);
+    } else {
+        query.push_bind(max_attempts);
+    }
 }
 
 fn push_onchain_refresh_scope_filter<'args>(

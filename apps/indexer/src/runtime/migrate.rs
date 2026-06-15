@@ -103,6 +103,15 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .context("ensure failed onchain refresh attempt retry index")?;
 
     sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_ready_retry_idx
+         ON onchain_refresh_task (next_run_at, updated_at, id)
+         WHERE status = 'failed' AND attempts < 3",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure failed onchain refresh ready retry index")?;
+
+    sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_retry_idx
          ON onchain_refresh_task (next_run_at, updated_at, id)
          INCLUDE (locked_at, attempts)
