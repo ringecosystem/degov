@@ -458,6 +458,97 @@ fn test_datalens_log_query_caps_overlapping_stalled_sdk_queries() {
 }
 
 #[test]
+fn test_datalens_log_query_uses_configured_gate_for_overlapping_sdk_cap() {
+    let server = FakeQueryServer::start_concurrent(vec![
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+    ]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(120);
+    let gate = DatalensQueryConcurrencyGate::new(DatalensQueryConcurrencyConfig {
+        global_max_in_flight: Some(4),
+        per_chain_max_in_flight: Some(4),
+    })
+    .expect("gate");
+    let mut first_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("first client")
+            .with_query_concurrency_gate(gate.clone());
+    let mut second_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("second client")
+            .with_query_concurrency_gate(gate.clone());
+    let mut third_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("third client")
+            .with_query_concurrency_gate(gate);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+    let first_input = plans[0].input.clone();
+    let second_input = plans[0].input.clone();
+    let third_input = plans[0].input.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+
+    let first_handle = thread::spawn({
+        let started_sender = started_sender.clone();
+        move || {
+            started_sender.send(()).expect("send first start");
+            first_client
+                .query_logs(first_input)
+                .expect_err("first stalled query times out")
+        }
+    });
+    let second_handle = thread::spawn(move || {
+        started_sender.send(()).expect("send second start");
+        second_client
+            .query_logs(second_input)
+            .expect_err("second stalled query times out")
+    });
+    started_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .expect("first query starts");
+    started_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .expect("second query starts");
+    thread::sleep(Duration::from_millis(50));
+
+    let started_at = std::time::Instant::now();
+    let third_error = third_client
+        .query_logs(third_input)
+        .expect_err("third query times out through configured gate");
+
+    assert!(
+        started_at.elapsed() >= Duration::from_millis(100),
+        "third query should use the configured worker cap instead of failing immediately"
+    );
+    assert!(
+        !third_error
+            .to_string()
+            .contains("previous SDK queries are still in flight"),
+        "{third_error}"
+    );
+    let first_error = first_handle.join().expect("first query joins");
+    let second_error = second_handle.join().expect("second query joins");
+    assert_eq!(
+        classify_datalens_query_error(&first_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{first_error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&second_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{second_error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&third_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{third_error}"
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 3);
+}
+
+#[test]
 fn test_datalens_log_query_times_out_while_waiting_for_query_gate() {
     let mut config = datalens_config("http://127.0.0.1:9", DatalensFinality::DurableOnly);
     config.timeout = Duration::from_millis(50);

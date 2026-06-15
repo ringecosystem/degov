@@ -130,7 +130,12 @@ struct DatalensQueryConcurrencyGateState {
 const MAX_BLOCKING_SDK_WORKERS_PER_KEY: usize = 2;
 
 struct DatalensBlockingQueryGuard {
-    active_workers: Mutex<usize>,
+    state: Mutex<DatalensBlockingQueryGuardState>,
+}
+
+struct DatalensBlockingQueryGuardState {
+    active_workers: usize,
+    max_workers: usize,
 }
 
 struct DatalensBlockingQueryPermit {
@@ -140,26 +145,36 @@ struct DatalensBlockingQueryPermit {
 impl DatalensBlockingQueryGuard {
     fn new() -> Self {
         Self {
-            active_workers: Mutex::new(0),
+            state: Mutex::new(DatalensBlockingQueryGuardState {
+                active_workers: 0,
+                max_workers: MAX_BLOCKING_SDK_WORKERS_PER_KEY,
+            }),
         }
     }
 
     fn acquire(&self) -> Result<(), DatalensSdkError> {
-        let mut active_workers = self.active_workers.lock().map_err(|_| {
+        let mut state = self.state.lock().map_err(|_| {
             DatalensSdkError::Transport("Datalens blocking query guard lock poisoned".to_owned())
         })?;
-        if *active_workers >= MAX_BLOCKING_SDK_WORKERS_PER_KEY {
+        if state.active_workers >= state.max_workers {
             return Err(DatalensSdkError::Transport(format!(
-                "Datalens query timed out because {active_workers} previous SDK queries are still in flight"
+                "Datalens query timed out because {} previous SDK queries are still in flight",
+                state.active_workers
             )));
         }
-        *active_workers += 1;
+        state.active_workers += 1;
         Ok(())
     }
 
     fn release(&self) {
-        if let Ok(mut active_workers) = self.active_workers.lock() {
-            *active_workers = active_workers.saturating_sub(1);
+        if let Ok(mut state) = self.state.lock() {
+            state.active_workers = state.active_workers.saturating_sub(1);
+        }
+    }
+
+    fn set_max_workers(&self, max_workers: usize) {
+        if let Ok(mut state) = self.state.lock() {
+            state.max_workers = max_workers.max(1);
         }
     }
 }
@@ -293,6 +308,13 @@ impl DatalensQueryConcurrencyGate {
                         >= limit
                 })
     }
+
+    fn blocking_query_worker_limit(&self) -> Option<usize> {
+        self.inner
+            .config
+            .per_chain_max_in_flight
+            .or(self.inner.config.global_max_in_flight)
+    }
 }
 
 impl Drop for DatalensQueryConcurrencyPermit {
@@ -420,6 +442,9 @@ impl DatalensNativeClient {
     }
 
     pub fn with_query_concurrency_gate(mut self, gate: DatalensQueryConcurrencyGate) -> Self {
+        if let Some(max_workers) = gate.blocking_query_worker_limit() {
+            self.blocking_query_guard.set_max_workers(max_workers);
+        }
         self.query_gate = Some(gate);
         self
     }
@@ -538,18 +563,9 @@ impl DatalensNativeClient {
         F: FnOnce(DatalensClient) -> Result<QueryResponse, DatalensSdkError> + Send + 'static,
     {
         let started_at = Instant::now();
-        if let Err(error) = self.blocking_query_guard.acquire() {
-            self.warn_query_timeout(operation, &error);
-            return Err(error);
-        }
-        let blocking_query_permit = DatalensBlockingQueryPermit {
-            guard: self.blocking_query_guard.clone(),
-        };
-
         let permit = match self.acquire_query_concurrency_permit(operation) {
             Ok(DatalensQueryConcurrencyAcquire::Acquired(permit)) => permit,
             Ok(DatalensQueryConcurrencyAcquire::TimedOut) => {
-                drop(blocking_query_permit);
                 let error = datalens_query_timeout_error(
                     operation,
                     self.query_timeout,
@@ -559,12 +575,10 @@ impl DatalensNativeClient {
                 return Err(error);
             }
             Err(error) => {
-                drop(blocking_query_permit);
                 return Err(DatalensSdkError::Transport(error.to_string()));
             }
         };
         let Some(remaining_timeout) = self.query_timeout.checked_sub(started_at.elapsed()) else {
-            drop(blocking_query_permit);
             let error = datalens_query_timeout_error(
                 operation,
                 self.query_timeout,
@@ -572,6 +586,13 @@ impl DatalensNativeClient {
             );
             self.warn_query_timeout(operation, &error);
             return Err(error);
+        };
+        if let Err(error) = self.blocking_query_guard.acquire() {
+            self.warn_query_timeout(operation, &error);
+            return Err(error);
+        }
+        let blocking_query_permit = DatalensBlockingQueryPermit {
+            guard: self.blocking_query_guard.clone(),
         };
         let (sender, receiver) = mpsc::sync_channel(1);
         let client = self.client.clone();
