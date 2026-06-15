@@ -178,6 +178,12 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "onchain_refresh_task_failed_ready_retry_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "onchain_refresh_task_processing_lock_retry_idx",
     )
     .await?;
@@ -246,7 +252,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
             "0001_init.sql",
             "0002_hot_path_runtime_indexes.sql",
             "0003_onchain_refresh_runtime_indexes.sql",
-            "0004_onchain_refresh_claim_retry_indexes.sql"
+            "0004_onchain_refresh_claim_retry_indexes.sql",
+            "0005_onchain_refresh_failed_ready_retry_index.sql"
         ]
     );
 
