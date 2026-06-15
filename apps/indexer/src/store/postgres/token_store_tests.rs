@@ -149,7 +149,7 @@ fn test_collect_contributor_ensure_candidates_dedupes_delegate_changed_targets()
                 contracts: ChainContracts {
                     governor: "0xgovernor".to_owned(),
                     governor_token: "0xtoken".to_owned(),
-                    timelock: "0xtimelock".to_owned(),
+                    timelock: Some("0xtimelock".to_owned()),
                 },
                 from_block: 10,
                 to_block: 10,
@@ -686,7 +686,7 @@ fn empty_reconcile_plan() -> crate::PowerReconcilePlan {
             contracts: ChainContracts {
                 governor: "0xgovernor".to_owned(),
                 governor_token: "0xtoken".to_owned(),
-                timelock: "0xtimelock".to_owned(),
+                timelock: Some("0xtimelock".to_owned()),
             },
             from_block: 10,
             to_block: 10,

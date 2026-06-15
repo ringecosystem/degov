@@ -5,7 +5,7 @@ use std::time::Duration;
 pub struct ChainContracts {
     pub governor: String,
     pub governor_token: String,
-    pub timelock: String,
+    pub timelock: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -434,9 +434,12 @@ impl ChainReadPlanBuilder {
         activity_block: u64,
         reason: ChainReadReason,
     ) {
+        let Some(timelock) = &self.contracts.timelock else {
+            return;
+        };
         let operation_id = normalize_identifier(operation_id);
         self.add_required_read(ChainReadDraft {
-            contract_address: self.contracts.timelock.clone(),
+            contract_address: timelock.clone(),
             method: ChainReadMethod::TimelockOperationState,
             args: vec![operation_id.clone()],
             block_mode: BlockReadMode::Safe,
@@ -544,8 +547,11 @@ impl ChainReadPlanBuilder {
     }
 
     fn add_timelock_capability(&mut self, method: ChainReadMethod, args: Vec<&str>) {
+        let Some(timelock) = &self.contracts.timelock else {
+            return;
+        };
         self.add_required_read(ChainReadDraft {
-            contract_address: self.contracts.timelock.clone(),
+            contract_address: timelock.clone(),
             method,
             args: args.into_iter().map(str::to_owned).collect(),
             block_mode: BlockReadMode::Fresh,
@@ -702,7 +708,7 @@ fn normalize_contracts(contracts: ChainContracts) -> ChainContracts {
     ChainContracts {
         governor: normalize_identifier(&contracts.governor),
         governor_token: normalize_identifier(&contracts.governor_token),
-        timelock: normalize_identifier(&contracts.timelock),
+        timelock: contracts.timelock.as_deref().map(normalize_identifier),
     }
 }
 

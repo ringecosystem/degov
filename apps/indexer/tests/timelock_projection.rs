@@ -622,7 +622,7 @@ fn context() -> TimelockProjectionContext {
         contracts: ChainContracts {
             governor: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             governor_token: "0x1111111111111111111111111111111111111111".to_owned(),
-            timelock: "0x2222222222222222222222222222222222222222".to_owned(),
+            timelock: Some("0x2222222222222222222222222222222222222222".to_owned()),
         },
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
@@ -639,7 +639,7 @@ fn proposal_context() -> ProposalProjectionContext {
         contracts: ChainContracts {
             governor: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             governor_token: "0x1111111111111111111111111111111111111111".to_owned(),
-            timelock: "0x2222222222222222222222222222222222222222".to_owned(),
+            timelock: Some("0x2222222222222222222222222222222222222222".to_owned()),
         },
         token_standard: GovernanceTokenStandard::Erc20,
         read_plan_config: BatchReadPlanConfig {

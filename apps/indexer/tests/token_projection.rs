@@ -721,7 +721,7 @@ fn context(token_standard: GovernanceTokenStandard) -> TokenProjectionContext {
         contracts: ChainContracts {
             governor: account("aaaa"),
             governor_token: account("1111"),
-            timelock: account("2222"),
+            timelock: Some(account("2222")),
         },
         token_standard,
         from_block: 10,

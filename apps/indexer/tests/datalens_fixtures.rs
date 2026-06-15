@@ -666,7 +666,7 @@ fn contracts(token_address: &str) -> ChainContracts {
     ChainContracts {
         governor: "0x1111111111111111111111111111111111111111".to_owned(),
         governor_token: token_address.to_owned(),
-        timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+        timelock: Some("0x3333333333333333333333333333333333333333".to_owned()),
     }
 }
 

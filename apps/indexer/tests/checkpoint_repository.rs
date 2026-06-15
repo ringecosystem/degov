@@ -648,7 +648,7 @@ fn empty_reconcile_plan(
     let contracts = ChainContracts {
         governor: governor.to_owned(),
         governor_token: token.to_owned(),
-        timelock: TIMELOCK.to_owned(),
+        timelock: Some(TIMELOCK.to_owned()),
     };
     let context = PowerReconcileContext {
         contract_set_id: contract_set_id.to_owned(),

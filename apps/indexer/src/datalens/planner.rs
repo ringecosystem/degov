@@ -16,7 +16,7 @@ pub struct DaoContractAddresses {
     pub governor: String,
     pub governor_token: String,
     pub governor_token_standard: GovernanceTokenStandard,
-    pub timelock: String,
+    pub timelock: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -185,7 +185,7 @@ fn query_plans(
     from_block: i32,
     to_block: i32,
 ) -> Vec<DaoLogQueryPlan> {
-    vec![
+    let mut plans = vec![
         query_plan(
             config,
             DaoLogAddressSource {
@@ -206,17 +206,22 @@ fn query_plans(
             from_block,
             to_block,
         ),
-        query_plan(
+    ];
+
+    if let Some(timelock) = &addresses.timelock {
+        plans.push(query_plan(
             config,
             DaoLogAddressSource {
-                address: addresses.timelock.clone(),
+                address: timelock.clone(),
                 source: DaoLogSource::Timelock,
             },
             TIMELOCK_TOPIC0_FILTERS,
             from_block,
             to_block,
-        ),
-    ]
+        ));
+    }
+
+    plans
 }
 
 fn query_plan(

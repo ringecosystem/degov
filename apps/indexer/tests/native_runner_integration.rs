@@ -629,7 +629,7 @@ fn contexts() -> IndexerRunnerContexts {
     let contracts = ChainContracts {
         governor: GOVERNOR.to_owned(),
         governor_token: TOKEN.to_owned(),
-        timelock: TIMELOCK.to_owned(),
+        timelock: Some(TIMELOCK.to_owned()),
     };
     let read_plan_config = BatchReadPlanConfig {
         max_concurrency: 10,
@@ -669,7 +669,7 @@ fn contexts() -> IndexerRunnerContexts {
             contract_set_id: "dao=demo-dao|chain=1|governor=0xgovernor|token=0xtoken".to_owned(),
             dao_code: "demo-dao".to_owned(),
             governor_address: contracts.governor.clone(),
-            timelock_address: contracts.timelock.clone(),
+            timelock_address: contracts.timelock.clone().expect("timelock"),
             contracts,
             read_plan_config,
         }),
@@ -691,7 +691,7 @@ fn addresses() -> DaoContractAddresses {
         governor: GOVERNOR.to_owned(),
         governor_token: TOKEN.to_owned(),
         governor_token_standard: GovernanceTokenStandard::Erc20,
-        timelock: TIMELOCK.to_owned(),
+        timelock: Some(TIMELOCK.to_owned()),
     }
 }
 

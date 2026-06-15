@@ -239,12 +239,9 @@ fn test_capability_plan_covers_required_governor_token_and_timelock_reads() {
         &contracts.governor_token,
         ChainReadMethod::GetPriorVotes,
     );
-    assert_required(&plan, &contracts.timelock, ChainReadMethod::TimelockEta);
-    assert_required(
-        &plan,
-        &contracts.timelock,
-        ChainReadMethod::TimelockOperationState,
-    );
+    let timelock = contracts.timelock.as_deref().expect("timelock");
+    assert_required(&plan, timelock, ChainReadMethod::TimelockEta);
+    assert_required(&plan, timelock, ChainReadMethod::TimelockOperationState);
 }
 
 #[test]
@@ -355,6 +352,6 @@ fn contracts() -> ChainContracts {
     ChainContracts {
         governor: "0x1111111111111111111111111111111111111111".to_owned(),
         governor_token: "0x2222222222222222222222222222222222222222".to_owned(),
-        timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+        timelock: Some("0x3333333333333333333333333333333333333333".to_owned()),
     }
 }

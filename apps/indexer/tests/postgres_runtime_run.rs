@@ -3587,7 +3587,7 @@ fn proposal_projection_context() -> ProposalProjectionContext {
         contracts: ChainContracts {
             governor: GOVERNOR.to_owned(),
             governor_token: TOKEN.to_owned(),
-            timelock: TIMELOCK.to_owned(),
+            timelock: Some(TIMELOCK.to_owned()),
         },
         token_standard: GovernanceTokenStandard::Erc20,
         read_plan_config: BatchReadPlanConfig {
@@ -3605,7 +3605,7 @@ fn vote_projection_context() -> VoteProjectionContext {
         contracts: ChainContracts {
             governor: GOVERNOR.to_owned(),
             governor_token: TOKEN.to_owned(),
-            timelock: TIMELOCK.to_owned(),
+            timelock: Some(TIMELOCK.to_owned()),
         },
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
@@ -3623,7 +3623,7 @@ fn timelock_projection_context() -> TimelockProjectionContext {
         contracts: ChainContracts {
             governor: GOVERNOR.to_owned(),
             governor_token: TOKEN.to_owned(),
-            timelock: TIMELOCK.to_owned(),
+            timelock: Some(TIMELOCK.to_owned()),
         },
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
@@ -3647,7 +3647,7 @@ fn proposal_projection_context_with_scope(
         contracts: ChainContracts {
             governor: governor.to_owned(),
             governor_token: token.to_owned(),
-            timelock: timelock.to_owned(),
+            timelock: Some(timelock.to_owned()),
         },
         token_standard: GovernanceTokenStandard::Erc20,
         read_plan_config: BatchReadPlanConfig {
@@ -3672,7 +3672,7 @@ fn vote_projection_context_with_scope(
         contracts: ChainContracts {
             governor: governor.to_owned(),
             governor_token: token.to_owned(),
-            timelock: timelock.to_owned(),
+            timelock: Some(timelock.to_owned()),
         },
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
@@ -3697,7 +3697,7 @@ fn timelock_projection_context_with_scope(
         contracts: ChainContracts {
             governor: governor.to_owned(),
             governor_token: token.to_owned(),
-            timelock: timelock.to_owned(),
+            timelock: Some(timelock.to_owned()),
         },
         read_plan_config: BatchReadPlanConfig {
             max_concurrency: 4,
@@ -3715,7 +3715,7 @@ fn token_projection_context() -> TokenProjectionContext {
         contracts: ChainContracts {
             governor: GOVERNOR.to_owned(),
             governor_token: TOKEN.to_owned(),
-            timelock: TIMELOCK.to_owned(),
+            timelock: Some(TIMELOCK.to_owned()),
         },
         token_standard: GovernanceTokenStandard::Erc20,
         from_block: 1,

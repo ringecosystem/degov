@@ -751,7 +751,7 @@ async fn run_contract_set_pass(
         runtime.checkpoint_contract_set_id,
         contracts.governor,
         contracts.governor_token,
-        contracts.timelock,
+        contracts.timelock.as_deref().unwrap_or("none"),
         runtime.start_block,
         runtime.target_height
     );
