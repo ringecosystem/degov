@@ -751,15 +751,15 @@ where
         );
         match queue {
             OnchainRefreshClaimQueue::Pending => {
-                query.push_bind("pending");
+                query.push("'pending'");
             }
             OnchainRefreshClaimQueue::FailedRetry => {
-                query.push_bind("failed").push(" AND attempts < ");
+                query.push("'failed' AND attempts < ");
                 push_attempt_limit(&mut query, self.config.max_attempts);
             }
             OnchainRefreshClaimQueue::StaleProcessing => {
                 query
-                    .push_bind("processing")
+                    .push("'processing'")
                     .push(" AND locked_at IS NOT NULL AND locked_at <= ")
                     .push_bind(stale_before.to_string())
                     .push("::NUMERIC(78, 0) AND attempts < ");
