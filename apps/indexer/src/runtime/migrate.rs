@@ -70,5 +70,13 @@ async fn ensure_runtime_indexes(pool: &PgPool) -> Result<()> {
     .await
     .context("ensure delegate rolling metadata preload index")?;
 
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_to_lookup_idx
+         ON delegate_mapping (contract_set_id, \"to\") INCLUDE (id, power)",
+    )
+    .execute(pool)
+    .await
+    .context("ensure delegate mapping target lookup index")?;
+
     Ok(())
 }

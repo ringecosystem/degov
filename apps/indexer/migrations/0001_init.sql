@@ -931,6 +931,8 @@ CREATE TABLE IF NOT EXISTS delegate_mapping (
 
 CREATE INDEX IF NOT EXISTS delegate_mapping_lookup_idx
   ON delegate_mapping (chain_id, contract_set_id, governor_address, "from");
+CREATE INDEX IF NOT EXISTS delegate_mapping_to_lookup_idx
+  ON delegate_mapping (contract_set_id, "to") INCLUDE (id, power);
 
 CREATE TABLE IF NOT EXISTS degov_provisional_segment (
   id TEXT PRIMARY KEY,
