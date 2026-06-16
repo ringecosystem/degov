@@ -1157,6 +1157,97 @@ async fn test_graphql_http_endpoint_serves_configured_dao_path() -> Result<(), B
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_endpoint_serves_cors_preflight_on_configured_dao_path()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/degov")?;
+    let schema = graphql::build_schema(pool);
+    let app = graphql::build_router_with_paths(schema, ["/ens-dao/graphql".to_owned()]);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let endpoint = format!("http://{}/ens-dao/graphql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new()
+            .request(reqwest::Method::OPTIONS, endpoint)
+            .header("origin", "https://ens.next.degov.ai")
+            .header("access-control-request-method", "POST")
+            .header("access-control-request-headers", "content-type")
+            .send(),
+    )
+    .await??;
+
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .expect("allow origin")
+            .to_str()?,
+        "*"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-methods")
+            .expect("allow methods")
+            .to_str()?,
+        "GET,POST,OPTIONS"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-headers")
+            .expect("allow headers")
+            .to_str()?,
+        "*"
+    );
+
+    server.abort();
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_endpoint_adds_cors_header_to_configured_dao_post_response()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/degov")?;
+    let schema = graphql::build_schema(pool);
+    let app = graphql::build_router_with_paths(schema, ["/ens-dao/graphql".to_owned()]);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let endpoint = format!("http://{}/ens-dao/graphql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new()
+            .post(endpoint)
+            .header("origin", "https://ens.next.degov.ai")
+            .json(&json!({
+                "query": "query { __typename }"
+            }))
+            .send(),
+    )
+    .await??;
+
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .expect("allow origin")
+            .to_str()?,
+        "*"
+    );
+    let body: serde_json::Value = response.json().await?;
+    assert_eq!(body["data"]["__typename"], "QueryRoot");
+
+    server.abort();
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_http_endpoint_serves_configured_dao_graphiql_path()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;

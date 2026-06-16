@@ -3,8 +3,11 @@ use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
     Router,
+    body::Body,
     extract::State,
-    response::{Html, IntoResponse},
+    http::{HeaderValue, Request, StatusCode, header},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
 
@@ -60,7 +63,8 @@ where
                         let scope = scope.clone();
                         async move { graphql_handler(schema, request, scope).await }
                     }
-                }),
+                })
+                .options(cors_preflight),
             )
             .route(
                 &graphiql_path,
@@ -70,7 +74,9 @@ where
                 }),
             );
     }
-    router.with_state(schema)
+    router
+        .layer(middleware::from_fn(add_cors_headers))
+        .with_state(schema)
 }
 
 async fn graphql_handler(
@@ -93,6 +99,28 @@ async fn graphql_graphiql(endpoint: String) -> impl IntoResponse {
             .plugins(&[graphiql_explorer_plugin()])
             .finish(),
     )
+}
+
+async fn cors_preflight() -> StatusCode {
+    StatusCode::OK
+}
+
+async fn add_cors_headers(request: Request<Body>, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET,POST,OPTIONS"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("*"),
+    );
+    response
 }
 
 fn graphiql_explorer_plugin<'a>() -> GraphiQLPlugin<'a> {
