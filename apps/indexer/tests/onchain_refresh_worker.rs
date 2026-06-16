@@ -10,10 +10,11 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    BatchReadPlanConfig, BlockReadMode, ChainReadExecutionReport, ChainReadMethod,
-    ChainReadMetrics, ChainReadPlan, ChainReadResult, ChainReadValue, ChainTool, EvmRpcChainTool,
-    LivePowerOverlayReader, MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue,
-    OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
+    BatchReadPlanConfig, BlockReadMode, ChainReadExecutionReport, ChainReadFailure,
+    ChainReadFailureKind, ChainReadMethod, ChainReadMetrics, ChainReadPlan, ChainReadResult,
+    ChainReadValue, ChainTool, EvmRpcChainTool, LivePowerOverlayReader,
+    MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue, OnchainRefreshReader,
+    OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
     OnchainRefreshTaskScope, OnchainRefreshTickClock, OnchainRefreshTickConfig,
     OnchainRefreshTickRunner, OnchainRefreshTickScheduler, OnchainRefreshTickSkipReason,
     OnchainRefreshWorker, OnchainRefreshWorkerConfig, PartialChainReadFailureReport,
@@ -1598,6 +1599,34 @@ fn test_chain_tool_onchain_refresh_reader_dedupes_duplicate_reads_in_one_batch()
 }
 
 #[test]
+fn test_chain_tool_onchain_refresh_reader_keeps_successes_when_required_read_fails() {
+    let chain_tool = PartialFailureChainTool::new(ACCOUNT_TWO);
+    let reader = degov_datalens_indexer::ChainToolOnchainRefreshReader::new(
+        chain_tool.clone(),
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+
+    let report = reader
+        .read_tasks_with_report(&[
+            task_for_chain("task-one", 1, ACCOUNT_ONE),
+            task_for_chain("task-two", 1, ACCOUNT_TWO),
+        ])
+        .expect("read tasks with partial failure");
+
+    assert_eq!(report.values.len(), 1);
+    assert_eq!(report.values[0].task_id, "task-one");
+    assert_eq!(report.values[0].power.as_deref(), Some("101"));
+    assert_eq!(report.failures.len(), 1);
+    assert_eq!(report.failures[0].task_id, "task-two");
+    assert!(
+        report.failures[0]
+            .message
+            .contains("multicall subcall reverted")
+    );
+}
+
+#[test]
 fn test_live_power_overlay_reader_uses_latest_block_mode_and_dedupes_accounts() {
     let chain_tool = StaticValueChainTool::new("19");
     let reader = LivePowerOverlayReader::new(
@@ -1893,6 +1922,74 @@ struct MethodValueChainTool {
     power: String,
     balance: String,
     plans: Arc<StdMutex<Vec<ChainReadPlan>>>,
+}
+
+#[derive(Clone, Debug)]
+struct PartialFailureChainTool {
+    failed_account: String,
+}
+
+impl PartialFailureChainTool {
+    fn new(failed_account: &str) -> Self {
+        Self {
+            failed_account: failed_account.to_owned(),
+        }
+    }
+}
+
+impl ChainTool for PartialFailureChainTool {
+    fn execute_read_plan(
+        &self,
+        plan: &ChainReadPlan,
+    ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        let report = self.execute_read_plan_partial(plan);
+        if report.partial_failures.required_failures.is_empty() {
+            Ok(report)
+        } else {
+            Err(report.partial_failures)
+        }
+    }
+
+    fn execute_read_plan_partial(&self, plan: &ChainReadPlan) -> ChainReadExecutionReport {
+        let mut results = Vec::new();
+        let mut failures = PartialChainReadFailureReport::default();
+
+        for (read_index, read) in plan.reads.iter().enumerate() {
+            if read
+                .key
+                .args
+                .first()
+                .is_some_and(|account| account.eq_ignore_ascii_case(&self.failed_account))
+            {
+                failures.required_failures.push(ChainReadFailure {
+                    key: read.key.clone(),
+                    kind: ChainReadFailureKind::Reverted,
+                    retryable: false,
+                    message: "multicall subcall reverted".to_owned(),
+                });
+            } else {
+                results.push(ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value: ChainReadValue::Integer("101".to_owned()),
+                });
+            }
+        }
+
+        ChainReadExecutionReport {
+            metrics: ChainReadMetrics {
+                requested_reads: plan.metrics.requested_reads,
+                deduped_reads: plan.metrics.deduped_reads,
+                executed_rpc_calls: plan.reads.len(),
+                multicall_batch_size: plan.metrics.multicall_batch_size,
+                failures: failures.required_failures.len(),
+                ..ChainReadMetrics::default()
+            },
+            results,
+            partial_failures: failures,
+            ..ChainReadExecutionReport::default()
+        }
+    }
 }
 
 #[derive(Default)]

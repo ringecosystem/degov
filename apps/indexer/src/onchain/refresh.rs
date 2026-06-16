@@ -354,9 +354,16 @@ pub struct OnchainRefreshReadValue {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct OnchainRefreshReadReport {
     pub values: Vec<OnchainRefreshReadValue>,
+    pub failures: Vec<OnchainRefreshReadFailure>,
     pub rpc_reads_requested: usize,
     pub rpc_reads_deduped: usize,
     pub cache_hits: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OnchainRefreshReadFailure {
+    pub task_id: String,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -546,6 +553,11 @@ where
             report.rpc_reads_requested += read_report.rpc_reads_requested;
             report.rpc_reads_deduped += read_report.rpc_reads_deduped;
             report.cache_hits += read_report.cache_hits;
+            let failures = read_report
+                .failures
+                .into_iter()
+                .map(|failure| (failure.task_id.clone(), failure.message))
+                .collect::<BTreeMap<_, _>>();
 
             let values = read_report
                 .values
@@ -566,10 +578,16 @@ where
                         }
                     },
                     None => {
-                        self.mark_task_failed(task, "missing reader result", now_ms)
-                            .await?;
-                        report.failed += 1;
-                        report.validation_failures += 1;
+                        if let Some(message) = failures.get(&task.id) {
+                            self.mark_task_failed(task, message, now_ms).await?;
+                            report.failed += 1;
+                            report.rpc_error_failures += 1;
+                        } else {
+                            self.mark_task_failed(task, "missing reader result", now_ms)
+                                .await?;
+                            report.failed += 1;
+                            report.validation_failures += 1;
+                        }
                     }
                 }
             }
@@ -1110,6 +1128,7 @@ where
             read_report.rpc_reads_deduped += chain_report.rpc_reads_deduped;
             read_report.cache_hits += chain_report.cache_hits;
             read_report.values.extend(chain_report.values);
+            read_report.failures.extend(chain_report.failures);
         }
 
         Ok(read_report)
@@ -1165,6 +1184,8 @@ where
         }
 
         let mut values_by_key = BTreeMap::<(i32, String, String, ChainReadMethod), String>::new();
+        let mut failures_by_key =
+            BTreeMap::<(i32, String, String, ChainReadMethod), Vec<String>>::new();
         let mut read_report = OnchainRefreshReadReport::default();
         for ((chain_id, governor_address, token_address), group_tasks) in groups {
             let mut builder = ChainReadPlanBuilder::new(
@@ -1196,13 +1217,27 @@ where
             }
 
             let plan = builder.build();
-            let report = self
-                .chain_tool
-                .execute_read_plan(&plan)
-                .map_err(|failures| OnchainRefreshReaderError::new(format_failures(&failures)))?;
+            let report = self.chain_tool.execute_read_plan_partial(&plan);
             read_report.rpc_reads_requested += report.metrics.requested_reads;
             read_report.rpc_reads_deduped += report.metrics.deduped_reads;
             read_report.cache_hits += report.metrics.cache_hits;
+            for failure in report.partial_failures.required_failures {
+                let Some(account) = failure.key.args.first() else {
+                    return Err(OnchainRefreshReaderError::new(format!(
+                        "missing account for failed {:?} read",
+                        failure.key.method
+                    )));
+                };
+                failures_by_key
+                    .entry((
+                        failure.key.chain_id,
+                        normalize_identifier(&failure.key.contract_address),
+                        normalize_identifier(account),
+                        failure.key.method,
+                    ))
+                    .or_default()
+                    .push(failure.message);
+            }
 
             for result in report.results {
                 let Some(account) = result.key.args.first() else {
@@ -1229,57 +1264,70 @@ where
             }
         }
 
-        read_report.values = tasks
-            .iter()
-            .map(|task| {
-                let power = if task.refresh_power {
-                    Some(
-                        values_by_key
-                            .get(&(
-                                task.chain_id,
-                                normalize_identifier(&task.token_address),
-                                normalize_identifier(&task.account),
-                                self.current_power_method,
-                            ))
-                            .cloned()
-                            .ok_or_else(|| {
-                                OnchainRefreshReaderError::new(format!(
-                                    "missing power read for {}",
-                                    task.account
-                                ))
-                            })?,
-                    )
-                } else {
-                    None
-                };
-                let balance = if task.refresh_balance {
-                    Some(
-                        values_by_key
-                            .get(&(
-                                task.chain_id,
-                                normalize_identifier(&task.token_address),
-                                normalize_identifier(&task.account),
-                                ChainReadMethod::BalanceOf,
-                            ))
-                            .cloned()
-                            .ok_or_else(|| {
-                                OnchainRefreshReaderError::new(format!(
-                                    "missing balance read for {}",
-                                    task.account
-                                ))
-                            })?,
-                    )
-                } else {
-                    None
-                };
+        for task in tasks {
+            let mut task_failures = Vec::<String>::new();
+            let power = if task.refresh_power {
+                let key = (
+                    task.chain_id,
+                    normalize_identifier(&task.token_address),
+                    normalize_identifier(&task.account),
+                    self.current_power_method,
+                );
+                match values_by_key.get(&key).cloned() {
+                    Some(value) => Some(value),
+                    None => {
+                        if let Some(messages) = failures_by_key.get(&key) {
+                            task_failures.extend(messages.iter().cloned());
+                            None
+                        } else {
+                            return Err(OnchainRefreshReaderError::new(format!(
+                                "missing power read for {}",
+                                task.account
+                            )));
+                        }
+                    }
+                }
+            } else {
+                None
+            };
+            let balance = if task.refresh_balance {
+                let key = (
+                    task.chain_id,
+                    normalize_identifier(&task.token_address),
+                    normalize_identifier(&task.account),
+                    ChainReadMethod::BalanceOf,
+                );
+                match values_by_key.get(&key).cloned() {
+                    Some(value) => Some(value),
+                    None => {
+                        if let Some(messages) = failures_by_key.get(&key) {
+                            task_failures.extend(messages.iter().cloned());
+                            None
+                        } else {
+                            return Err(OnchainRefreshReaderError::new(format!(
+                                "missing balance read for {}",
+                                task.account
+                            )));
+                        }
+                    }
+                }
+            } else {
+                None
+            };
 
-                Ok(OnchainRefreshReadValue {
+            if task_failures.is_empty() {
+                read_report.values.push(OnchainRefreshReadValue {
                     task_id: task.id.clone(),
                     balance,
                     power,
-                })
-            })
-            .collect::<Result<Vec<_>, OnchainRefreshReaderError>>()?;
+                });
+            } else {
+                read_report.failures.push(OnchainRefreshReadFailure {
+                    task_id: task.id.clone(),
+                    message: task_failures.join("; "),
+                });
+            }
+        }
 
         Ok(read_report)
     }
@@ -1737,6 +1785,15 @@ impl ChainTool for EvmRpcChainTool {
         &self,
         plan: &ChainReadPlan,
     ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        let report = self.execute_read_plan_partial(plan);
+        if !report.partial_failures.required_failures.is_empty() {
+            return Err(report.partial_failures);
+        }
+
+        Ok(report)
+    }
+
+    fn execute_read_plan_partial(&self, plan: &ChainReadPlan) -> ChainReadExecutionReport {
         let mut results = Vec::new();
         let mut failures = PartialChainReadFailureReport::default();
         let mut cache_hits = 0;
@@ -1803,11 +1860,7 @@ impl ChainTool for EvmRpcChainTool {
             }
         }
 
-        if !failures.required_failures.is_empty() {
-            return Err(failures);
-        }
-
-        Ok(ChainReadExecutionReport {
+        ChainReadExecutionReport {
             metrics: ChainReadMetrics {
                 requested_reads: plan.metrics.requested_reads,
                 deduped_reads: plan.metrics.deduped_reads,
@@ -1820,7 +1873,7 @@ impl ChainTool for EvmRpcChainTool {
             results,
             partial_failures: failures,
             ..ChainReadExecutionReport::default()
-        })
+        }
     }
 }
 
@@ -3778,6 +3831,43 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    struct RequiredPartialFailureMockEvmRpcClient;
+
+    impl EvmRpcClient for RequiredPartialFailureMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+            let return_data = calls
+                .into_iter()
+                .enumerate()
+                .map(|(index, _call)| {
+                    if index == 1 {
+                        Token::Tuple(vec![Token::Bool(false), Token::Bytes(Vec::new())])
+                    } else {
+                        Token::Tuple(vec![
+                            Token::Bool(true),
+                            Token::Bytes(encode(&[Token::Uint(U256::from(index + 100))])),
+                        ])
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Array(return_data)]))
+            ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
     struct TransportFailureMockEvmRpcClient {
         eth_call_count: Arc<AtomicUsize>,
     }
@@ -3915,6 +4005,48 @@ mod tests {
         );
         assert_eq!(report.partial_failures.required_failures.len(), 0);
         assert_eq!(report.partial_failures.optional_failures.len(), 1);
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_partial_report_keeps_successes_when_required_multicall_item_fails() {
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        let plan = builder.build();
+
+        let failure = EvmRpcChainTool::from_rpc_client(RequiredPartialFailureMockEvmRpcClient)
+            .execute_read_plan(&plan)
+            .expect_err("required failure still fails regular read plan");
+        assert_eq!(failure.required_failures.len(), 1);
+
+        let tool = EvmRpcChainTool::from_rpc_client(RequiredPartialFailureMockEvmRpcClient);
+        let report = tool.execute_read_plan_partial(&plan);
+
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("100".to_owned())
+        );
+        assert_eq!(report.partial_failures.required_failures.len(), 1);
     }
 
     #[test]

@@ -204,6 +204,23 @@ pub trait ChainTool {
         &self,
         plan: &ChainReadPlan,
     ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport>;
+
+    fn execute_read_plan_partial(&self, plan: &ChainReadPlan) -> ChainReadExecutionReport {
+        match self.execute_read_plan(plan) {
+            Ok(report) => report,
+            Err(failures) => ChainReadExecutionReport {
+                metrics: ChainReadMetrics {
+                    requested_reads: plan.metrics.requested_reads,
+                    deduped_reads: plan.metrics.deduped_reads,
+                    multicall_batch_size: plan.metrics.multicall_batch_size,
+                    failures: failures.required_failures.len() + failures.optional_failures.len(),
+                    ..ChainReadMetrics::default()
+                },
+                partial_failures: failures,
+                ..ChainReadExecutionReport::default()
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
