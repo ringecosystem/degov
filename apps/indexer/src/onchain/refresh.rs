@@ -32,6 +32,7 @@ pub const MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
 const DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS: i32 = 3;
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
 const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 200;
+const MAX_ONCHAIN_REFRESH_DATA_METRIC_REFRESH_ROWS: usize = 200;
 const ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS: usize = 3;
 const ONCHAIN_REFRESH_APPLY_RETRY_BASE_DELAY_MS: u64 = 50;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
@@ -527,7 +528,11 @@ where
         }
         let tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
         if tasks.is_empty() {
-            return Ok(OnchainRefreshRunReport::default());
+            let data_metric_refreshes = self.drain_data_metric_refresh_tasks(now_ms).await?;
+            return Ok(OnchainRefreshRunReport {
+                data_metric_refreshes,
+                ..OnchainRefreshRunReport::default()
+            });
         }
 
         let mut report = OnchainRefreshRunReport {
@@ -610,7 +615,6 @@ where
                             report.completed += batch_report.completed;
                             report.debounced_tasks += batch_report.debounced_tasks;
                             report.skipped_tasks += batch_report.debounced_tasks;
-                            report.data_metric_refreshes += batch_report.data_metric_refreshes;
                         }
                         Err(error) => {
                             let message = error.to_string();
@@ -626,6 +630,7 @@ where
                     }
                 }
             }
+            report.data_metric_refreshes += self.drain_data_metric_refresh_tasks(now_ms).await?;
         }
 
         report.duration_ms = started_at.elapsed().as_millis();
@@ -699,6 +704,74 @@ where
         }
 
         Ok(drained_total)
+    }
+
+    async fn drain_data_metric_refresh_tasks(
+        &self,
+        now_ms: i64,
+    ) -> Result<usize, OnchainRefreshWorkerError> {
+        let mut refreshed_total = 0usize;
+        let mut attempted_ids = BTreeSet::<String>::new();
+        for _ in 0..MAX_ONCHAIN_REFRESH_DATA_METRIC_REFRESH_ROWS {
+            let mut transaction = self.pool.begin().await?;
+            let skipped_ids = attempted_ids.iter().cloned().collect::<Vec<_>>();
+            let row = sqlx::query(
+                "SELECT id, contract_set_id, chain_id, dao_code, governor_address, token_address
+                 FROM onchain_refresh_data_metric_task
+                 WHERE NOT (id = ANY($1::TEXT[]))
+                 ORDER BY updated_at ASC, id ASC
+                 LIMIT 1
+                 FOR UPDATE SKIP LOCKED",
+            )
+            .bind(&skipped_ids)
+            .fetch_optional(&mut *transaction)
+            .await?;
+            let Some(row) = row else {
+                transaction.commit().await?;
+                break;
+            };
+
+            let id: String = row.get("id");
+            attempted_ids.insert(id.clone());
+            let scope = DataMetricRefreshScope {
+                contract_set_id: row.get("contract_set_id"),
+                chain_id: row.get("chain_id"),
+                dao_code: row.get("dao_code"),
+                governor_address: row.get("governor_address"),
+                token_address: row.get("token_address"),
+            };
+
+            if let Err(error) = refresh_data_metric_scope(&mut transaction, &scope).await {
+                sqlx::query(
+                    "UPDATE onchain_refresh_data_metric_task
+                     SET attempts = attempts + 1,
+                         last_error = $2,
+                         updated_at = $3::NUMERIC(78, 0)
+                     WHERE id = $1",
+                )
+                .bind(&id)
+                .bind(truncate_error(&error.to_string()))
+                .bind(now_ms.to_string())
+                .execute(&mut *transaction)
+                .await?;
+                transaction.commit().await?;
+                log::warn!(
+                    "onchain refresh data metric refresh failed id={} error={}",
+                    id,
+                    error
+                );
+                continue;
+            }
+
+            sqlx::query("DELETE FROM onchain_refresh_data_metric_task WHERE id = $1")
+                .bind(&id)
+                .execute(&mut *transaction)
+                .await?;
+            transaction.commit().await?;
+            refreshed_total += 1;
+        }
+
+        Ok(refreshed_total)
     }
 
     pub async fn ready_backlog(&self) -> Result<u64, OnchainRefreshWorkerError> {
@@ -935,8 +1008,8 @@ where
                 self.current_power_method,
             )
             .await?;
-            let data_metric_refreshes =
-                refresh_data_metric_scopes(&mut transaction, data_metric_scopes).await?;
+            enqueue_data_metric_refresh_scopes(&mut transaction, data_metric_scopes, now_ms)
+                .await?;
             let debounced_tasks = complete_tasks(
                 &mut transaction,
                 successes,
@@ -946,10 +1019,10 @@ where
             )
             .await?;
 
-            Ok::<_, OnchainRefreshWorkerError>((data_metric_refreshes, debounced_tasks))
+            Ok::<_, OnchainRefreshWorkerError>(debounced_tasks)
         }
         .await;
-        let (data_metric_refreshes, debounced_tasks) = match result {
+        let debounced_tasks = match result {
             Ok(report) => report,
             Err(error) => {
                 if let Err(rollback_error) = transaction.rollback().await {
@@ -972,7 +1045,7 @@ where
         Ok(OnchainRefreshApplyBatchReport {
             completed: successes.len().saturating_sub(debounced_tasks),
             debounced_tasks,
-            data_metric_refreshes,
+            data_metric_refreshes: 0,
         })
     }
 
@@ -3128,19 +3201,42 @@ struct DataMetricRefreshScope {
     token_address: String,
 }
 
-async fn refresh_data_metric_scopes(
+async fn enqueue_data_metric_refresh_scopes(
     transaction: &mut Transaction<'_, Postgres>,
     scopes: &BTreeSet<DataMetricRefreshScope>,
-) -> Result<usize, sqlx::Error> {
+    now_ms: i64,
+) -> Result<(), sqlx::Error> {
     if scopes.is_empty() {
-        return Ok(0);
+        return Ok(());
     }
 
-    for scope in scopes {
-        refresh_data_metric_scope(transaction, scope).await?;
-    }
+    let mut query = QueryBuilder::<Postgres>::new(
+        "INSERT INTO onchain_refresh_data_metric_task (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            created_at, updated_at
+         ) ",
+    );
+    query.push_values(scopes, |mut values, scope| {
+        values
+            .push_bind(data_metric_refresh_task_id(scope))
+            .push_bind(&scope.contract_set_id)
+            .push_bind(scope.chain_id)
+            .push_bind(&scope.dao_code)
+            .push_bind(&scope.governor_address)
+            .push_bind(&scope.token_address)
+            .push_bind(now_ms.to_string())
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(now_ms.to_string())
+            .push_unseparated("::NUMERIC(78, 0)");
+    });
+    query.push(
+        " ON CONFLICT (id) DO UPDATE
+          SET token_address = EXCLUDED.token_address,
+              updated_at = EXCLUDED.updated_at",
+    );
+    query.build().execute(&mut **transaction).await?;
 
-    Ok(scopes.len())
+    Ok(())
 }
 
 fn data_metric_refresh_scopes_for_chunk(
@@ -3160,6 +3256,16 @@ fn data_metric_refresh_scope(task: &OnchainRefreshTask) -> DataMetricRefreshScop
         governor_address: task.governor_address.clone(),
         token_address: task.token_address.clone(),
     }
+}
+
+fn data_metric_refresh_task_id(scope: &DataMetricRefreshScope) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        scope.contract_set_id,
+        scope.chain_id,
+        scope.dao_code.as_deref().unwrap_or(""),
+        scope.governor_address
+    )
 }
 
 async fn refresh_data_metric_scope(

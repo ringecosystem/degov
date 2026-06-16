@@ -248,6 +248,32 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .context("ensure contributor data metric scope index")?;
 
     sqlx::query(
+        "CREATE TABLE IF NOT EXISTS onchain_refresh_data_metric_task (
+            id TEXT PRIMARY KEY,
+            contract_set_id TEXT NOT NULL,
+            chain_id INTEGER NOT NULL,
+            dao_code TEXT,
+            governor_address TEXT NOT NULL,
+            token_address TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at NUMERIC(78, 0) NOT NULL,
+            updated_at NUMERIC(78, 0) NOT NULL
+         )",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure onchain refresh data metric task table")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_data_metric_task_ready_idx
+         ON onchain_refresh_data_metric_task (updated_at, id)",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure onchain refresh data metric task ready index")?;
+
+    sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_graphql_scope_power_idx
          ON contributor (chain_id, governor_address, dao_code, power DESC, id)
          INCLUDE (
