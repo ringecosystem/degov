@@ -9,9 +9,10 @@ use crate::{
     AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainReadMethod,
     DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig, DatalensProvisionalFinality,
     DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet, IndexerCheckpointIdentity,
-    IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshTickConfig,
-    OnchainRefreshWorkerConfig, ProposalProjectionContext, ProposalTimestampBackfillConfig,
-    SecretString, TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
+    IndexerRunnerContexts, IndexerRunnerOptions, MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE,
+    OnchainRefreshTickConfig, OnchainRefreshWorkerConfig, ProposalProjectionContext,
+    ProposalTimestampBackfillConfig, SecretString, TimelockProjectionContext,
+    TokenProjectionContext, VoteProjectionContext,
     store::postgres::DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
 };
 
@@ -1172,10 +1173,10 @@ pub fn onchain_refresh_apply_batch_size_from_env() -> Result<usize> {
     if batch_size == 0 {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE must be greater than zero");
     }
-    if batch_size > DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE {
+    if batch_size > MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE {
         bail!(
             "DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE must be less than or equal to {}",
-            DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+            MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
         );
     }
 

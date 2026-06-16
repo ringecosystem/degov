@@ -49,8 +49,9 @@ pub use crate::decode::evm_log::{
 };
 pub use crate::onchain::refresh::{
     ChainToolOnchainRefreshReader, DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, EvmRpcChainTool,
-    LivePowerOverlayReader, MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue,
-    OnchainRefreshReader, OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
+    LivePowerOverlayReader, MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE,
+    MultiChainToolOnchainRefreshReader, OnchainRefreshReadValue, OnchainRefreshReader,
+    OnchainRefreshReaderError, OnchainRefreshRunReport, OnchainRefreshTask,
     OnchainRefreshTaskScope, OnchainRefreshTickClock, OnchainRefreshTickConfig,
     OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
     OnchainRefreshTickSkipReason, OnchainRefreshWorker, OnchainRefreshWorkerConfig,
