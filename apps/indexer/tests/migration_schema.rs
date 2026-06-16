@@ -253,6 +253,42 @@ async fn test_migration_can_run_twice_without_deleting_existing_rows() -> Result
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    sqlx::query("DROP INDEX contributor_data_metric_scope_idx")
+        .execute(&database.pool)
+        .await?;
+    sqlx::query(
+        "CREATE INDEX contributor_data_metric_scope_idx
+         ON contributor (id)",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "UPDATE pg_index
+         SET indisvalid = false
+         WHERE indexrelid = 'contributor_data_metric_scope_idx'::regclass",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    apply_migrations(&database.pool).await?;
+
+    assert_index_is_valid(
+        &database.pool,
+        &database.schema,
+        "contributor_data_metric_scope_idx",
+    )
+    .await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 #[test]
 fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
 -> Result<(), Box<dyn Error>> {
@@ -424,6 +460,31 @@ async fn assert_index_exists(
     .await?;
 
     assert!(exists, "expected index {schema}.{index_name} to exist");
+
+    Ok(())
+}
+
+async fn assert_index_is_valid(
+    pool: &PgPool,
+    schema: &str,
+    index_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let is_valid: bool = sqlx::query_scalar(
+        r#"
+        SELECT pg_index.indisvalid
+        FROM pg_class index_class
+        JOIN pg_namespace index_namespace ON index_namespace.oid = index_class.relnamespace
+        JOIN pg_index ON pg_index.indexrelid = index_class.oid
+        WHERE index_namespace.nspname = $1
+          AND index_class.relname = $2
+        "#,
+    )
+    .bind(schema)
+    .bind(index_name)
+    .fetch_one(pool)
+    .await?;
+
+    assert!(is_valid, "expected index {schema}.{index_name} to be valid");
 
     Ok(())
 }

@@ -74,6 +74,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure onchain refresh claim queue index")?;
 
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_pending_status_claim_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_pending_status_claim_idx
          ON onchain_refresh_task (status, next_run_at, updated_at, id)
@@ -93,6 +94,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure scoped onchain refresh claim queue index")?;
 
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_retry_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_retry_idx
          ON onchain_refresh_task (next_run_at, updated_at, id)
@@ -103,6 +105,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure failed onchain refresh retry index")?;
 
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_attempt_retry_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_attempt_retry_idx
          ON onchain_refresh_task (status, attempts, next_run_at, updated_at, id)",
@@ -111,6 +114,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure failed onchain refresh attempt retry index")?;
 
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_ready_retry_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_ready_retry_idx
          ON onchain_refresh_task (next_run_at, updated_at, id)
@@ -120,6 +124,11 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure failed onchain refresh ready retry index")?;
 
+    drop_invalid_runtime_index(
+        connection,
+        "onchain_refresh_task_failed_ready_status_retry_idx",
+    )
+    .await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_ready_status_retry_idx
          ON onchain_refresh_task (status, next_run_at, updated_at, id)
@@ -129,6 +138,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure failed onchain refresh ready status retry index")?;
 
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_processing_retry_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_retry_idx
          ON onchain_refresh_task (next_run_at, updated_at, id)
@@ -139,6 +149,8 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure processing onchain refresh retry index")?;
 
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_processing_lock_retry_idx")
+        .await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_lock_retry_idx
          ON onchain_refresh_task (status, attempts, locked_at, next_run_at, updated_at, id)
@@ -158,6 +170,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure scoped onchain refresh deferred drain index")?;
 
+    drop_invalid_runtime_index(connection, "delegate_rolling_metadata_preload_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_rolling_metadata_preload_idx
          ON delegate_rolling (contract_set_id, transaction_hash, log_index DESC)
@@ -168,6 +181,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure delegate rolling metadata preload index")?;
 
+    drop_invalid_runtime_index(connection, "delegate_current_from_scope_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_current_from_scope_idx
          ON delegate (contract_set_id, chain_id, dao_code, governor_address, from_delegate)
@@ -178,6 +192,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure current delegate scope lookup index")?;
 
+    drop_invalid_runtime_index(connection, "delegate_mapping_to_lookup_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_to_lookup_idx
          ON delegate_mapping (contract_set_id, \"to\") INCLUDE (id, power)",
@@ -186,6 +201,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure delegate mapping target lookup index")?;
 
+    drop_invalid_runtime_index(connection, "delegate_mapping_effective_count_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_effective_count_idx
          ON delegate_mapping (contract_set_id, \"to\", \"from\") INCLUDE (id, power)",
@@ -194,6 +210,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure delegate mapping effective count index")?;
 
+    drop_invalid_runtime_index(connection, "contributor_data_metric_scope_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_data_metric_scope_idx
          ON contributor (contract_set_id, chain_id, governor_address, dao_code)
@@ -203,6 +220,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure contributor data metric scope index")?;
 
+    drop_invalid_runtime_index(connection, "contributor_graphql_scope_power_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_graphql_scope_power_idx
          ON contributor (chain_id, governor_address, dao_code, power DESC, id)
@@ -215,6 +233,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure contributor GraphQL scope power index")?;
 
+    drop_invalid_runtime_index(connection, "provisional_contributor_live_scope_power_idx").await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_contributor_live_scope_power_idx
          ON degov_provisional_contributor_power_overlay (
@@ -227,6 +246,11 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure live contributor overlay scope power index")?;
 
+    drop_invalid_runtime_index(
+        connection,
+        "provisional_contributor_live_account_lookup_idx",
+    )
+    .await?;
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_contributor_live_account_lookup_idx
          ON degov_provisional_contributor_power_overlay (
@@ -237,6 +261,35 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .execute(&mut *connection)
     .await
     .context("ensure live contributor overlay account lookup index")?;
+
+    Ok(())
+}
+
+async fn drop_invalid_runtime_index(connection: &mut PgConnection, index_name: &str) -> Result<()> {
+    let invalid_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM pg_class index_class
+            JOIN pg_namespace index_namespace ON index_namespace.oid = index_class.relnamespace
+            JOIN pg_index ON pg_index.indexrelid = index_class.oid
+            WHERE index_namespace.nspname = current_schema()
+              AND index_class.relname = $1
+              AND pg_index.indisvalid = FALSE
+         )",
+    )
+    .bind(index_name)
+    .fetch_one(&mut *connection)
+    .await
+    .with_context(|| format!("check invalid runtime index {index_name}"))?;
+
+    if invalid_exists {
+        sqlx::query(&format!(
+            r#"DROP INDEX CONCURRENTLY IF EXISTS "{index_name}""#
+        ))
+        .execute(connection)
+        .await
+        .with_context(|| format!("drop invalid runtime index {index_name}"))?;
+    }
 
     Ok(())
 }
