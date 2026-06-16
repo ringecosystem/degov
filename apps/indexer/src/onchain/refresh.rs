@@ -29,7 +29,7 @@ pub const DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 200;
 pub const MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
 const DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS: i32 = 3;
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
-const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 5_000;
+const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 500;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -974,7 +974,6 @@ where
                 FROM onchain_refresh_task
                 WHERE status = 'failed'
                   AND attempts >= $1
-                ORDER BY updated_at ASC, id ASC
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
              )
@@ -3531,6 +3530,11 @@ mod tests {
     #[test]
     fn test_default_onchain_refresh_apply_batch_size_keeps_transactions_small() {
         assert_eq!(DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, 200);
+    }
+
+    #[test]
+    fn test_exhausted_archive_batch_size_keeps_cleanup_transactions_small() {
+        assert_eq!(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS, 500);
     }
 
     #[test]
