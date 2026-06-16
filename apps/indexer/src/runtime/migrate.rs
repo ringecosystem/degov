@@ -178,6 +178,8 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure current delegate scope lookup index")?;
 
+    drop_invalid_index_if_exists(connection, "delegate_mapping_to_lookup_idx").await?;
+
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_to_lookup_idx
          ON delegate_mapping (contract_set_id, \"to\") INCLUDE (id, power)",
@@ -185,6 +187,14 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .execute(&mut *connection)
     .await
     .context("ensure delegate mapping target lookup index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_effective_count_idx
+         ON delegate_mapping (contract_set_id, \"to\", \"from\") INCLUDE (id, power)",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure delegate mapping effective count index")?;
 
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_data_metric_scope_idx
@@ -229,6 +239,37 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .execute(&mut *connection)
     .await
     .context("ensure live contributor overlay account lookup index")?;
+
+    Ok(())
+}
+
+async fn drop_invalid_index_if_exists(
+    connection: &mut PgConnection,
+    index_name: &str,
+) -> Result<()> {
+    let invalid_index_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM pg_class index_class
+            JOIN pg_index ON pg_index.indexrelid = index_class.oid
+            JOIN pg_namespace ON pg_namespace.oid = index_class.relnamespace
+            WHERE pg_namespace.nspname = current_schema()
+              AND index_class.relname = $1
+              AND pg_index.indisvalid = FALSE
+         )",
+    )
+    .bind(index_name)
+    .fetch_one(&mut *connection)
+    .await
+    .with_context(|| format!("check invalid runtime index {index_name}"))?;
+
+    if invalid_index_exists {
+        let query = format!("DROP INDEX CONCURRENTLY IF EXISTS \"{index_name}\"");
+        sqlx::query(&query)
+            .execute(&mut *connection)
+            .await
+            .with_context(|| format!("drop invalid runtime index {index_name}"))?;
+    }
 
     Ok(())
 }
