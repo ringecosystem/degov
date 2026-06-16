@@ -178,7 +178,19 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "onchain_refresh_task_pending_status_claim_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "onchain_refresh_task_failed_ready_retry_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_failed_ready_status_retry_idx",
     )
     .await?;
     assert_index_exists(
