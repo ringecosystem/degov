@@ -95,8 +95,10 @@ fn graphql_paths(endpoint: Option<&str>, configured_path: Option<&str>) -> Resul
     if let Some(path) = endpoint.and_then(endpoint_graphql_path) {
         push_graphql_path(&mut paths, &path)?;
     }
-    if let Some(path) = configured_path {
-        push_graphql_path(&mut paths, path)?;
+    if let Some(paths_config) = configured_path {
+        for path in paths_config.split([',', '\n', '\r', '\t', ' ']) {
+            push_graphql_path(&mut paths, path)?;
+        }
     }
     Ok(paths)
 }
