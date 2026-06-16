@@ -224,6 +224,12 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         "delegate_current_from_scope_idx",
     )
     .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "delegate_current_power_refresh_idx",
+    )
+    .await?;
     assert_removed_processor_status_table_absent(&database.pool).await?;
     assert_table_exists(&database.pool, &database.schema, "_sqlx_migrations").await?;
 
