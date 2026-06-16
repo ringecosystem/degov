@@ -1,6 +1,7 @@
 use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result};
 use sqlx::{PgConnection, PgPool, migrate::Migrator, postgres::PgPoolOptions};
+use std::time::Duration;
 
 use crate::required_env;
 
@@ -34,10 +35,7 @@ pub async fn repair_invalid_runtime_indexes() -> Result<()> {
         .await
         .context("acquire DeGov indexer invalid index repair connection")?;
 
-    sqlx::query("SELECT pg_advisory_lock(hashtext('degov_indexer_runtime_migration'))")
-        .execute(&mut *connection)
-        .await
-        .context("acquire DeGov indexer runtime migration lock")?;
+    acquire_runtime_migration_lock(&mut connection).await?;
 
     let result = repair_invalid_runtime_indexes_for_connection(&mut connection).await;
 
@@ -71,10 +69,7 @@ pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
         .await
         .context("acquire DeGov indexer migration connection")?;
 
-    sqlx::query("SELECT pg_advisory_lock(hashtext('degov_indexer_runtime_migration'))")
-        .execute(&mut *connection)
-        .await
-        .context("acquire DeGov indexer runtime migration lock")?;
+    acquire_runtime_migration_lock(&mut connection).await?;
 
     let result: Result<()> = async {
         MIGRATOR
@@ -107,6 +102,46 @@ pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
     unlock_result?;
 
     Ok(())
+}
+
+async fn acquire_runtime_migration_lock(connection: &mut PgConnection) -> Result<()> {
+    const MAX_ATTEMPTS: usize = 3;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match sqlx::query("SELECT pg_advisory_lock(hashtext('degov_indexer_runtime_migration'))")
+            .execute(&mut *connection)
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(error)
+                if attempt < MAX_ATTEMPTS && is_retryable_runtime_migration_lock_error(&error) =>
+            {
+                let delay = Duration::from_millis(100 * attempt as u64);
+                log::warn!(
+                    "DeGov indexer runtime migration lock retry scheduled attempt={} max_attempts={} delay_ms={} error={}",
+                    attempt,
+                    MAX_ATTEMPTS,
+                    delay.as_millis(),
+                    error
+                );
+                tokio::time::sleep(delay).await;
+            }
+            Err(error) => {
+                return Err(error).context("acquire DeGov indexer runtime migration lock");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn is_retryable_runtime_migration_lock_error(error: &sqlx::Error) -> bool {
+    match error {
+        sqlx::Error::Database(database_error) => database_error
+            .code()
+            .is_some_and(|code| matches!(code.as_ref(), "40P01" | "40001")),
+        _ => false,
+    }
 }
 
 async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
@@ -223,6 +258,16 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .context("ensure current delegate scope lookup index")?;
 
     sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_current_power_refresh_idx
+         ON delegate (contract_set_id, chain_id, dao_code, governor_address, from_delegate)
+         INCLUDE (id, token_address, to_delegate, power)
+         WHERE is_current = TRUE",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure current delegate power refresh index")?;
+
+    sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_to_lookup_idx
          ON delegate_mapping (contract_set_id, \"to\") INCLUDE (id, power)",
     )
@@ -328,6 +373,7 @@ async fn repair_invalid_runtime_indexes_for_connection(
         .await?;
     drop_invalid_runtime_index(connection, "delegate_rolling_metadata_preload_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_current_from_scope_idx").await?;
+    drop_invalid_runtime_index(connection, "delegate_current_power_refresh_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_to_lookup_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_effective_count_idx").await?;
     drop_invalid_runtime_index(connection, "contributor_data_metric_scope_idx").await?;
