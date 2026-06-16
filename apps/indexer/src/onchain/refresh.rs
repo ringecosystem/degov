@@ -25,9 +25,11 @@ use crate::{
     },
 };
 
-pub const DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
+pub const DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 200;
+pub const MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
 const DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS: i32 = 3;
-const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
+const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
+const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 5_000;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -488,6 +490,7 @@ where
         let deferred_drain_started_at = Instant::now();
         let deferred_drain_batch_size =
             worker_deferred_drain_batch_size(self.config.deferred_drain_batch_size, batch_size);
+        self.archive_exhausted_failed_tasks(now_ms).await?;
         let deferred_drain_count = match scope {
             Some(scope) => {
                 drain_deferred_onchain_refresh_tasks_for_scope(
@@ -933,10 +936,15 @@ where
         let next_run_at = now_ms.saturating_add(duration_millis_i64(
             onchain_refresh_retry_backoff_delay(self.config.retry_delay, task.attempts),
         ));
+        let status = if task.attempts >= self.config.max_attempts {
+            "exhausted"
+        } else {
+            "failed"
+        };
 
         sqlx::query(
             "UPDATE onchain_refresh_task
-             SET status = 'failed',
+             SET status = $5,
                  next_run_at = $2::NUMERIC(78, 0),
                  locked_at = NULL,
                  locked_by = NULL,
@@ -948,6 +956,39 @@ where
         .bind(&task.id)
         .bind(next_run_at.to_string())
         .bind(truncate_error(error))
+        .bind(now_ms.to_string())
+        .bind(status)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn archive_exhausted_failed_tasks(
+        &self,
+        now_ms: i64,
+    ) -> Result<(), OnchainRefreshWorkerError> {
+        sqlx::query(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'failed'
+                  AND attempts >= $1
+                ORDER BY updated_at ASC, id ASC
+                LIMIT $2
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'exhausted',
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = COALESCE(processed_at, $3::NUMERIC(78, 0)),
+                 updated_at = $3::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+        )
+        .bind(self.config.max_attempts)
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
         .bind(now_ms.to_string())
         .execute(&self.pool)
         .await?;
@@ -3485,6 +3526,11 @@ mod tests {
     fn test_worker_deferred_drain_batch_size_tracks_claim_budget() {
         assert_eq!(worker_deferred_drain_batch_size(100, 1_000), 1_000);
         assert_eq!(worker_deferred_drain_batch_size(2_000, 1_000), 2_000);
+    }
+
+    #[test]
+    fn test_default_onchain_refresh_apply_batch_size_keeps_transactions_small() {
+        assert_eq!(DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, 200);
     }
 
     #[test]

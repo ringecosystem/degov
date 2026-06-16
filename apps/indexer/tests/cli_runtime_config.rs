@@ -3,10 +3,10 @@ use std::{sync::Mutex, time::Duration};
 use degov_datalens_indexer::{
     ContractSetConcurrencyLimit, DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig,
     DatalensProvisionalFinality, DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig,
-    IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRuntimeConfig,
-    OnchainRefreshTickConfig, ProposalTimestampBackfillConfig, ProvisionalRuntimeConfig,
-    datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
-    parse_i64_env_value,
+    IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight,
+    MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, OnchainRefreshRuntimeConfig, OnchainRefreshTickConfig,
+    ProposalTimestampBackfillConfig, ProvisionalRuntimeConfig, datalens_retry_config,
+    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
 };
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -172,11 +172,11 @@ fn test_onchain_refresh_runtime_config_accepts_max_apply_batch() {
 
             assert_eq!(
                 config.apply_batch_size,
-                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+                MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
             );
             assert_eq!(
                 config.worker_config().apply_batch_size,
-                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+                MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
             );
         },
     );
@@ -717,7 +717,10 @@ fn test_indexer_runtime_config_inherits_onchain_refresh_tick_run_budget_from_tot
             let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
 
             assert_eq!(config.onchain_refresh_tick.max_tasks_per_tick, 1000);
-            assert_eq!(config.onchain_refresh_tick.max_tasks_per_run, 1000);
+            assert_eq!(
+                config.onchain_refresh_tick.max_tasks_per_run,
+                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+            );
         },
     );
 }
