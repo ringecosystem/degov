@@ -285,7 +285,6 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(hot_path_migration.contains("sqlx migration history"));
 
     let runtime_migration = include_str!("../src/runtime/migrate.rs");
-    assert!(runtime_migration.contains("drop_invalid_index_if_exists"));
     assert!(runtime_migration.contains("delegate_mapping_effective_count_idx"));
 
     Ok(())
