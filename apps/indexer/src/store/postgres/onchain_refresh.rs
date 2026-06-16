@@ -1,5 +1,5 @@
 // Onchain refresh task persistence.
-const MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS: usize = 1_000;
+const MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS: usize = 200;
 pub const DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS: usize = 100;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -699,6 +699,11 @@ mod tests {
         assert_eq!(immediate.inline_upsert_count, 0);
         assert_eq!(immediate.deferred_candidate_count, 1_205);
         assert_eq!(immediate.ready_drain_count, 1_000);
+    }
+
+    #[test]
+    fn test_onchain_refresh_task_upsert_chunk_size_keeps_writes_bounded() {
+        assert_eq!(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS, 200);
     }
 
     fn candidate(

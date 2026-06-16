@@ -488,26 +488,15 @@ where
         let started_at = Instant::now();
         let now_ms = unix_time_millis();
         let deferred_drain_started_at = Instant::now();
-        let deferred_drain_batch_size =
-            worker_deferred_drain_batch_size(self.config.deferred_drain_batch_size, batch_size);
+        let deferred_drain_target =
+            worker_deferred_drain_target(self.config.deferred_drain_batch_size, batch_size);
         self.archive_exhausted_failed_tasks(now_ms).await?;
-        let deferred_drain_count = match scope {
-            Some(scope) => {
-                drain_deferred_onchain_refresh_tasks_for_scope(
-                    &self.pool,
-                    deferred_drain_batch_size,
-                    scope,
-                )
-                .await
-            }
-            None => {
-                drain_deferred_onchain_refresh_tasks(&self.pool, deferred_drain_batch_size).await
-            }
-        }
-        .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
+        let deferred_drain_count = self
+            .drain_deferred_onchain_refresh_backlog(deferred_drain_target, scope)
+            .await?;
         if deferred_drain_count > 0 {
             log::info!(
-                "onchain refresh worker materialized deferred tasks dao_code={} chain_id={} contract_set_id={} deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_duration_ms={}",
+                "onchain refresh worker materialized deferred tasks dao_code={} chain_id={} contract_set_id={} deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_target={} deferred_drain_duration_ms={}",
                 scope
                     .map(|scope| scope.dao_code.as_str())
                     .unwrap_or("global"),
@@ -518,7 +507,8 @@ where
                     .map(|scope| scope.contract_set_id.as_str())
                     .unwrap_or("global"),
                 deferred_drain_count,
-                deferred_drain_batch_size,
+                self.config.deferred_drain_batch_size,
+                deferred_drain_target,
                 deferred_drain_started_at.elapsed().as_millis()
             );
         }
@@ -652,6 +642,35 @@ where
         );
 
         Ok(report)
+    }
+
+    async fn drain_deferred_onchain_refresh_backlog(
+        &self,
+        target_rows: usize,
+        scope: Option<&OnchainRefreshTaskScope>,
+    ) -> Result<usize, OnchainRefreshWorkerError> {
+        let mut drained_total = 0usize;
+        while drained_total < target_rows {
+            let batch_size = self
+                .config
+                .deferred_drain_batch_size
+                .min(target_rows - drained_total);
+            let drained = match scope {
+                Some(scope) => {
+                    drain_deferred_onchain_refresh_tasks_for_scope(&self.pool, batch_size, scope)
+                        .await
+                }
+                None => drain_deferred_onchain_refresh_tasks(&self.pool, batch_size).await,
+            }
+            .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
+
+            drained_total += drained;
+            if drained < batch_size {
+                break;
+            }
+        }
+
+        Ok(drained_total)
     }
 
     pub async fn ready_backlog(&self) -> Result<u64, OnchainRefreshWorkerError> {
@@ -996,10 +1015,7 @@ where
     }
 }
 
-fn worker_deferred_drain_batch_size(
-    configured_batch_size: usize,
-    claim_batch_size: usize,
-) -> usize {
+fn worker_deferred_drain_target(configured_batch_size: usize, claim_batch_size: usize) -> usize {
     configured_batch_size.max(claim_batch_size)
 }
 
@@ -3522,9 +3538,9 @@ mod tests {
     }
 
     #[test]
-    fn test_worker_deferred_drain_batch_size_tracks_claim_budget() {
-        assert_eq!(worker_deferred_drain_batch_size(100, 1_000), 1_000);
-        assert_eq!(worker_deferred_drain_batch_size(2_000, 1_000), 2_000);
+    fn test_worker_deferred_drain_target_tracks_claim_budget() {
+        assert_eq!(worker_deferred_drain_target(100, 1_000), 1_000);
+        assert_eq!(worker_deferred_drain_target(2_000, 1_000), 2_000);
     }
 
     #[test]

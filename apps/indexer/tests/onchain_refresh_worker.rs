@@ -1731,6 +1731,46 @@ async fn test_refresh_live_power_overlays_writes_delegate_overlay_from_current_f
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_drains_deferred_tasks_to_claim_budget_in_small_writes()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    for index in 0..10 {
+        seed_deferred_task(
+            &database.pool,
+            &format!("deferred-{index}"),
+            &format!("0x{index:040x}"),
+        )
+        .await?;
+    }
+
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 3,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([]),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 10);
+    assert_eq!(report.failed, 10);
+    assert_table_count(&database.pool, "onchain_refresh_deferred_candidate", 0).await?;
+    assert_table_count(&database.pool, "onchain_refresh_task", 10).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_fails_only_missing_rpc_chain_group()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -2285,6 +2325,35 @@ async fn seed_task_with_contract_set(
     .bind(refresh_power)
     .bind(status)
     .bind(attempts)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_deferred_task(
+    pool: &PgPool,
+    task_id: &str,
+    account: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO onchain_refresh_deferred_candidate (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+            refresh_balance, refresh_power, reason, first_seen_block_number,
+            last_seen_block_number, last_seen_block_timestamp, last_seen_transaction_hash,
+            next_run_at, created_at, updated_at
+         )
+         VALUES (
+            $1, 'demo-dao', 46, 'demo-dao', $2, $3, $4,
+            false, true, 'token-activity', 10::NUMERIC(78, 0),
+            12::NUMERIC(78, 0), 12000::NUMERIC(78, 0), '0xdeferred',
+            0::NUMERIC(78, 0), 10000::NUMERIC(78, 0), 10000::NUMERIC(78, 0)
+         )",
+    )
+    .bind(task_id)
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(account)
     .execute(pool)
     .await?;
 
