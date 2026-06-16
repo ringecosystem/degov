@@ -1,8 +1,8 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use degov_datalens_indexer::runtime::{
-    migrate, refresh_proposal_reference_fields, refresh_proposal_titles, run_graphql, run_indexer,
-    run_worker, smoke_datalens,
+    migrate, refresh_proposal_reference_fields, refresh_proposal_titles,
+    repair_invalid_runtime_indexes, run_graphql, run_indexer, run_worker, smoke_datalens,
 };
 
 #[derive(Debug, Parser)]
@@ -17,6 +17,7 @@ enum Command {
     Run,
     Worker,
     Migrate,
+    RepairInvalidIndexes,
     Graphql,
     SmokeDatalens,
     RefreshProposalTitles {
@@ -40,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Run => run_indexer().await,
         Command::Worker => run_worker().await,
         Command::Migrate => migrate().await,
+        Command::RepairInvalidIndexes => repair_invalid_runtime_indexes().await,
         Command::Graphql => run_graphql().await,
         Command::SmokeDatalens => smoke_datalens().await,
         Command::RefreshProposalTitles { dao_code } => {

@@ -7,7 +7,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use degov_datalens_indexer::runtime::apply_migrations;
+use degov_datalens_indexer::runtime::{apply_migrations, repair_invalid_runtime_indexes};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 
@@ -62,6 +62,7 @@ struct TestDatabase {
     _guard: MutexGuard<'static, ()>,
     pool: PgPool,
     schema: String,
+    database_url: String,
 }
 
 impl TestDatabase {
@@ -83,16 +84,22 @@ impl TestDatabase {
             .await?;
         setup_pool.close().await;
 
+        let database_url = database_url_with_search_path(&database_url, &schema);
         let pool = PgPoolOptions::new()
             .max_connections(1)
-            .connect(&database_url_with_search_path(&database_url, &schema))
+            .connect(&database_url)
             .await?;
 
         Ok(Self {
             _guard: guard,
             pool,
             schema,
+            database_url,
         })
+    }
+
+    fn database_url(&self) -> &str {
+        &self.database_url
     }
 
     async fn cleanup(&self) -> Result<(), sqlx::Error> {
@@ -276,6 +283,26 @@ async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Er
     .await?;
 
     apply_migrations(&database.pool).await?;
+    assert_index_is_invalid(
+        &database.pool,
+        &database.schema,
+        "contributor_data_metric_scope_idx",
+    )
+    .await?;
+
+    let previous_database_url = env::var("DEGOV_INDEXER_DATABASE_URL").ok();
+    // These migration tests are serialized by DATABASE_TEST_LOCK.
+    unsafe {
+        env::set_var("DEGOV_INDEXER_DATABASE_URL", database.database_url());
+    }
+    let repair_result = repair_invalid_runtime_indexes().await;
+    unsafe {
+        match previous_database_url {
+            Some(value) => env::set_var("DEGOV_INDEXER_DATABASE_URL", value),
+            None => env::remove_var("DEGOV_INDEXER_DATABASE_URL"),
+        }
+    }
+    repair_result?;
 
     assert_index_is_valid(
         &database.pool,
@@ -485,6 +512,34 @@ async fn assert_index_is_valid(
     .await?;
 
     assert!(is_valid, "expected index {schema}.{index_name} to be valid");
+
+    Ok(())
+}
+
+async fn assert_index_is_invalid(
+    pool: &PgPool,
+    schema: &str,
+    index_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let is_valid: bool = sqlx::query_scalar(
+        r#"
+        SELECT pg_index.indisvalid
+        FROM pg_class index_class
+        JOIN pg_namespace index_namespace ON index_namespace.oid = index_class.relnamespace
+        JOIN pg_index ON pg_index.indexrelid = index_class.oid
+        WHERE index_namespace.nspname = $1
+          AND index_class.relname = $2
+        "#,
+    )
+    .bind(schema)
+    .bind(index_name)
+    .fetch_one(pool)
+    .await?;
+
+    assert!(
+        !is_valid,
+        "expected index {schema}.{index_name} to be invalid"
+    );
 
     Ok(())
 }
