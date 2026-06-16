@@ -2396,12 +2396,6 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                 WHERE delegate.is_current = TRUE
                 ORDER BY delegate.contract_set_id, delegate.id
              ),
-             affected_delegates AS (
-                SELECT DISTINCT
-                    contract_set_id,
-                    to_delegate
-                FROM current_edges
-             ),
              updated_delegates AS (
                 UPDATE delegate
                 SET power = current_edges.new_power
@@ -2409,7 +2403,7 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                 WHERE delegate.contract_set_id = current_edges.contract_set_id
                   AND delegate.id = current_edges.id
                   AND delegate.power IS DISTINCT FROM current_edges.new_power
-                RETURNING delegate.id
+                RETURNING delegate.contract_set_id, delegate.to_delegate
              ),
              updated_delegate_mappings AS (
                 UPDATE delegate_mapping
@@ -2420,7 +2414,14 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                   AND delegate_mapping.\"from\" = current_edges.from_delegate
                   AND delegate_mapping.\"to\" = current_edges.to_delegate
                   AND delegate_mapping.power IS DISTINCT FROM current_edges.new_power
-                RETURNING delegate_mapping.id
+                RETURNING delegate_mapping.contract_set_id, delegate_mapping.\"to\" AS to_delegate
+             ),
+             affected_delegates AS (
+                SELECT contract_set_id, to_delegate
+                FROM updated_delegates
+                UNION
+                SELECT contract_set_id, to_delegate
+                FROM updated_delegate_mappings
              ),
              effective_counts AS (
                 SELECT
