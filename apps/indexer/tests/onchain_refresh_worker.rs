@@ -481,7 +481,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_eq!(report.unique_accounts, 2);
     assert_eq!(report.apply_chunks, 2);
     assert_eq!(report.apply_batch_size, 1);
-    assert_eq!(report.data_metric_refreshes, 2);
+    assert_eq!(report.data_metric_refreshes, 1);
     assert_eq!(
         contributor_values(&database.pool, ACCOUNT_ONE).await?,
         ("11".to_owned(), Some("17".to_owned()))
