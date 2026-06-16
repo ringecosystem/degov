@@ -154,6 +154,12 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "delegate_mapping_effective_count_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "contributor_data_metric_scope_idx",
     )
     .await?;
@@ -277,6 +283,10 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     let hot_path_migration = include_str!("../migrations/0002_hot_path_runtime_indexes.sql");
     assert!(hot_path_migration.contains("CREATE INDEX CONCURRENTLY IF NOT EXISTS"));
     assert!(hot_path_migration.contains("sqlx migration history"));
+
+    let runtime_migration = include_str!("../src/runtime/migrate.rs");
+    assert!(runtime_migration.contains("drop_invalid_index_if_exists"));
+    assert!(runtime_migration.contains("delegate_mapping_effective_count_idx"));
 
     Ok(())
 }
