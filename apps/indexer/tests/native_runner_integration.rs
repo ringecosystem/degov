@@ -615,6 +615,7 @@ fn options() -> IndexerRunnerOptions {
         safe_height: None,
         progress_refresh_lag_blocks: 0,
         adaptive_chunk_sizer: AdaptiveChunkSizerConfig::for_max_chunk_size(10),
+        onchain_refresh_deferred_drain_enabled: true,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
     }

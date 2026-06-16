@@ -599,6 +599,7 @@ fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bound
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED", None,),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", None),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN", None),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS", None),
@@ -619,6 +620,26 @@ fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bound
                 Duration::from_millis(500)
             );
             assert_eq!(config.onchain_refresh_tick.min_blocks_between_ticks, 100);
+            assert!(config.onchain_refresh_deferred_drain_enabled);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_all_mode_defaults_to_enqueue_only_onchain_refresh() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED", None,),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(!config.onchain_refresh_tick.enabled);
+            assert!(!config.onchain_refresh_deferred_drain_enabled);
         },
     );
 }
@@ -630,6 +651,7 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", Some("true")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED", None,),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", Some("3")),
             (
                 "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN",
@@ -652,6 +674,29 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
                 Duration::from_millis(25)
             );
             assert_eq!(config.onchain_refresh_tick.min_blocks_between_ticks, 5);
+            assert!(config.onchain_refresh_deferred_drain_enabled);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_all_mode_accepts_explicit_deferred_drain_enable() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", None),
+            (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED",
+                Some("true"),
+            ),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(!config.onchain_refresh_tick.enabled);
+            assert!(config.onchain_refresh_deferred_drain_enabled);
         },
     );
 }
@@ -834,6 +879,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_enabled: false,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
@@ -916,6 +962,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_enabled: false,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
@@ -958,6 +1005,7 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_enabled: false,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
