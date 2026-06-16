@@ -1077,6 +1077,52 @@ async fn test_onchain_refresh_worker_archives_existing_exhausted_failed_tasks()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_archives_stale_processing_task_at_max_attempts()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "processing",
+        3,
+        false,
+        true,
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE onchain_refresh_task
+         SET locked_at = 0::NUMERIC(78, 0), locked_by = 'stale-worker'
+         WHERE id = 'task-one'",
+    )
+    .execute(&database.pool)
+    .await?;
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::ZERO,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([]),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 0);
+    assert_task_status(&database.pool, "task-one", "exhausted", 3).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_claims_pending_task_at_max_attempts()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;

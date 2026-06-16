@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt,
     sync::{Arc, Mutex},
     thread,
@@ -29,7 +29,7 @@ pub const DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 200;
 pub const MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
 const DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS: i32 = 3;
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
-const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 500;
+const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 2_000;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -497,7 +497,7 @@ where
         let deferred_drain_started_at = Instant::now();
         let deferred_drain_target =
             worker_deferred_drain_target(self.config.deferred_drain_batch_size, batch_size);
-        self.archive_exhausted_failed_tasks(now_ms).await?;
+        self.archive_exhausted_tasks(now_ms).await?;
         let deferred_drain_count = self
             .drain_deferred_onchain_refresh_backlog(deferred_drain_target, scope)
             .await?;
@@ -594,8 +594,12 @@ where
             if !successes.is_empty() {
                 for chunk in onchain_refresh_apply_chunks(&successes, self.config.apply_batch_size)
                 {
+                    let data_metric_scopes = data_metric_refresh_scopes_for_chunk(chunk);
                     report.apply_chunks += 1;
-                    match self.apply_success_batch(chunk, now_ms).await {
+                    match self
+                        .apply_success_batch(chunk, now_ms, &data_metric_scopes)
+                        .await
+                    {
                         Ok(batch_report) => {
                             report.completed += batch_report.completed;
                             report.debounced_tasks += batch_report.debounced_tasks;
@@ -881,6 +885,7 @@ where
         &self,
         successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
         now_ms: i64,
+        data_metric_scopes: &BTreeSet<DataMetricRefreshScope>,
     ) -> Result<OnchainRefreshApplyBatchReport, OnchainRefreshWorkerError> {
         let mut transaction = self.pool.begin().await?;
 
@@ -897,9 +902,16 @@ where
                 self.current_power_method,
             )
             .await?;
-            let data_metric_refreshes = refresh_data_metrics(&mut transaction, successes).await?;
-            let debounced_tasks =
-                complete_tasks(&mut transaction, successes, now_ms, self.config.debounce).await?;
+            let data_metric_refreshes =
+                refresh_data_metric_scopes(&mut transaction, data_metric_scopes).await?;
+            let debounced_tasks = complete_tasks(
+                &mut transaction,
+                successes,
+                now_ms,
+                self.config.debounce,
+                &self.config.lock_owner,
+            )
+            .await?;
 
             Ok::<_, OnchainRefreshWorkerError>((data_metric_refreshes, debounced_tasks))
         }
@@ -988,23 +1000,24 @@ where
                  processed_at = NULL,
                  error = $3,
                  updated_at = $4::NUMERIC(78, 0)
-             WHERE id = $1",
+             WHERE id = $1
+               AND status = 'processing'
+               AND locked_by = $6",
         )
         .bind(&task.id)
         .bind(next_run_at.to_string())
         .bind(truncate_error(error))
         .bind(now_ms.to_string())
         .bind(status)
+        .bind(&self.config.lock_owner)
         .execute(&self.pool)
         .await?;
 
         Ok(())
     }
 
-    async fn archive_exhausted_failed_tasks(
-        &self,
-        now_ms: i64,
-    ) -> Result<(), OnchainRefreshWorkerError> {
+    async fn archive_exhausted_tasks(&self, now_ms: i64) -> Result<(), OnchainRefreshWorkerError> {
+        let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
         sqlx::query(
             "WITH candidates AS (
                 SELECT id
@@ -1024,6 +1037,33 @@ where
              WHERE onchain_refresh_task.id = candidates.id",
         )
         .bind(self.config.max_attempts)
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
+        .bind(now_ms.to_string())
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'processing'
+                  AND attempts >= $1
+                  AND locked_at IS NOT NULL
+                  AND locked_at <= $2::NUMERIC(78, 0)
+                LIMIT $3
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'exhausted',
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = COALESCE(processed_at, $4::NUMERIC(78, 0)),
+                 updated_at = $4::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+        )
+        .bind(self.config.max_attempts)
+        .bind(stale_before.to_string())
         .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
         .bind(now_ms.to_string())
         .execute(&self.pool)
@@ -2882,26 +2922,38 @@ struct DataMetricRefreshScope {
     token_address: String,
 }
 
-async fn refresh_data_metrics(
+async fn refresh_data_metric_scopes(
     transaction: &mut Transaction<'_, Postgres>,
-    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+    scopes: &BTreeSet<DataMetricRefreshScope>,
 ) -> Result<usize, sqlx::Error> {
-    let scopes = successes
-        .iter()
-        .map(|(task, _value)| DataMetricRefreshScope {
-            contract_set_id: task.contract_set_id.clone(),
-            chain_id: task.chain_id,
-            dao_code: task.dao_code.clone(),
-            governor_address: task.governor_address.clone(),
-            token_address: task.token_address.clone(),
-        })
-        .collect::<std::collections::BTreeSet<_>>();
+    if scopes.is_empty() {
+        return Ok(0);
+    }
 
-    for scope in &scopes {
+    for scope in scopes {
         refresh_data_metric_scope(transaction, scope).await?;
     }
 
     Ok(scopes.len())
+}
+
+fn data_metric_refresh_scopes_for_chunk(
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+) -> BTreeSet<DataMetricRefreshScope> {
+    successes
+        .iter()
+        .map(|(task, _value)| data_metric_refresh_scope(task))
+        .collect()
+}
+
+fn data_metric_refresh_scope(task: &OnchainRefreshTask) -> DataMetricRefreshScope {
+    DataMetricRefreshScope {
+        contract_set_id: task.contract_set_id.clone(),
+        chain_id: task.chain_id,
+        dao_code: task.dao_code.clone(),
+        governor_address: task.governor_address.clone(),
+        token_address: task.token_address.clone(),
+    }
 }
 
 async fn refresh_data_metric_scope(
@@ -2961,6 +3013,7 @@ async fn complete_tasks(
     successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
     now_ms: i64,
     debounce: Duration,
+    lock_owner: &str,
 ) -> Result<usize, sqlx::Error> {
     let task_ids = successes
         .iter()
@@ -2985,11 +3038,14 @@ async fn complete_tasks(
              pending_after_lock_transaction_hash = NULL,
              updated_at = $3::NUMERIC(78, 0)
          WHERE id = ANY($1)
+           AND status = 'processing'
+           AND locked_by = $4
          RETURNING status",
     )
     .bind(&task_ids)
     .bind(next_run_at.to_string())
     .bind(now_ms.to_string())
+    .bind(lock_owner)
     .fetch_all(&mut **transaction)
     .await?;
 
@@ -3604,7 +3660,7 @@ mod tests {
 
     #[test]
     fn test_exhausted_archive_batch_size_keeps_cleanup_transactions_small() {
-        assert_eq!(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS, 500);
+        assert_eq!(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS, 2_000);
     }
 
     #[test]
