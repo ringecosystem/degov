@@ -1123,6 +1123,328 @@ async fn test_onchain_refresh_worker_archives_stale_processing_task_at_max_attem
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_prioritizes_stale_processing_before_pending_tasks()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor(&database.pool, ACCOUNT_ONE, "3", Some("4")).await?;
+    seed_contributor(&database.pool, ACCOUNT_TWO, "5", Some("6")).await?;
+    seed_task(
+        &database.pool,
+        "stale-task",
+        ACCOUNT_ONE,
+        "processing",
+        1,
+        false,
+        true,
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "pending-task",
+        ACCOUNT_TWO,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE onchain_refresh_task
+         SET locked_at = 0::NUMERIC(78, 0), locked_by = 'stale-worker'
+         WHERE id = 'stale-task'",
+    )
+    .execute(&database.pool)
+    .await?;
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 1,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::ZERO,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([
+            (
+                "stale-task",
+                OnchainRefreshReadValue {
+                    task_id: "stale-task".to_owned(),
+                    balance: None,
+                    power: Some("11".to_owned()),
+                },
+            ),
+            (
+                "pending-task",
+                OnchainRefreshReadValue {
+                    task_id: "pending-task".to_owned(),
+                    balance: None,
+                    power: Some("17".to_owned()),
+                },
+            ),
+        ]),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 1);
+    assert_eq!(report.completed, 1);
+    assert_completed_task(&database.pool, "stale-task", 2).await?;
+    assert_task_status(&database.pool, "pending-task", "pending", 0).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_keeps_pending_moving_when_stale_processing_exists()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor(&database.pool, ACCOUNT_ONE, "3", Some("4")).await?;
+    seed_contributor(&database.pool, ACCOUNT_TWO, "5", Some("6")).await?;
+    seed_contributor(&database.pool, ACCOUNT_THREE, "7", Some("8")).await?;
+    seed_contributor(
+        &database.pool,
+        "0x0000000000000000000000000000000000000004",
+        "9",
+        Some("10"),
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "stale-task-one",
+        ACCOUNT_ONE,
+        "processing",
+        1,
+        false,
+        true,
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "stale-task-two",
+        "0x0000000000000000000000000000000000000004",
+        "processing",
+        1,
+        false,
+        true,
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "failed-task",
+        ACCOUNT_TWO,
+        "failed",
+        1,
+        false,
+        true,
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "pending-task",
+        ACCOUNT_THREE,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE onchain_refresh_task
+         SET locked_at = 0::NUMERIC(78, 0), locked_by = 'stale-worker'
+         WHERE id IN ('stale-task-one', 'stale-task-two')",
+    )
+    .execute(&database.pool)
+    .await?;
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 3,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::ZERO,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([
+            (
+                "stale-task-one",
+                OnchainRefreshReadValue {
+                    task_id: "stale-task-one".to_owned(),
+                    balance: None,
+                    power: Some("11".to_owned()),
+                },
+            ),
+            (
+                "stale-task-two",
+                OnchainRefreshReadValue {
+                    task_id: "stale-task-two".to_owned(),
+                    balance: None,
+                    power: Some("12".to_owned()),
+                },
+            ),
+            (
+                "failed-task",
+                OnchainRefreshReadValue {
+                    task_id: "failed-task".to_owned(),
+                    balance: None,
+                    power: Some("13".to_owned()),
+                },
+            ),
+            (
+                "pending-task",
+                OnchainRefreshReadValue {
+                    task_id: "pending-task".to_owned(),
+                    balance: None,
+                    power: Some("17".to_owned()),
+                },
+            ),
+        ]),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 3);
+    assert_eq!(report.completed, 3);
+    assert_completed_task(&database.pool, "stale-task-one", 2).await?;
+    assert_completed_task(&database.pool, "failed-task", 2).await?;
+    assert_completed_task(&database.pool, "pending-task", 1).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_refills_unused_queue_quota_by_priority()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor(&database.pool, ACCOUNT_ONE, "3", Some("4")).await?;
+    seed_contributor(&database.pool, ACCOUNT_TWO, "5", Some("6")).await?;
+    seed_contributor(&database.pool, ACCOUNT_THREE, "7", Some("8")).await?;
+    seed_contributor(
+        &database.pool,
+        "0x0000000000000000000000000000000000000004",
+        "9",
+        Some("10"),
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "stale-task-one",
+        ACCOUNT_ONE,
+        "processing",
+        1,
+        false,
+        true,
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "stale-task-two",
+        ACCOUNT_TWO,
+        "processing",
+        1,
+        false,
+        true,
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "pending-task-one",
+        ACCOUNT_THREE,
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+    seed_task(
+        &database.pool,
+        "pending-task-two",
+        "0x0000000000000000000000000000000000000004",
+        "pending",
+        0,
+        false,
+        true,
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE onchain_refresh_task
+         SET locked_at = 0::NUMERIC(78, 0), locked_by = 'stale-worker'
+         WHERE id IN ('stale-task-one', 'stale-task-two')",
+    )
+    .execute(&database.pool)
+    .await?;
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 3,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::ZERO,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([
+            (
+                "stale-task-one",
+                OnchainRefreshReadValue {
+                    task_id: "stale-task-one".to_owned(),
+                    balance: None,
+                    power: Some("11".to_owned()),
+                },
+            ),
+            (
+                "stale-task-two",
+                OnchainRefreshReadValue {
+                    task_id: "stale-task-two".to_owned(),
+                    balance: None,
+                    power: Some("12".to_owned()),
+                },
+            ),
+            (
+                "pending-task-one",
+                OnchainRefreshReadValue {
+                    task_id: "pending-task-one".to_owned(),
+                    balance: None,
+                    power: Some("17".to_owned()),
+                },
+            ),
+            (
+                "pending-task-two",
+                OnchainRefreshReadValue {
+                    task_id: "pending-task-two".to_owned(),
+                    balance: None,
+                    power: Some("19".to_owned()),
+                },
+            ),
+        ]),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 3);
+    assert_eq!(report.completed, 3);
+    assert_completed_task(&database.pool, "stale-task-one", 2).await?;
+    assert_completed_task(&database.pool, "stale-task-two", 2).await?;
+    assert_completed_task(&database.pool, "pending-task-one", 1).await?;
+    assert_task_status(&database.pool, "pending-task-two", "pending", 0).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_claims_pending_task_at_max_attempts()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;

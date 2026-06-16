@@ -758,19 +758,33 @@ where
         scope: Option<&OnchainRefreshTaskScope>,
     ) -> Result<Vec<OnchainRefreshTask>, OnchainRefreshWorkerError> {
         let mut tasks = Vec::new();
-        for queue in [
-            OnchainRefreshClaimQueue::Pending,
-            OnchainRefreshClaimQueue::FailedRetry,
+        let queues = [
             OnchainRefreshClaimQueue::StaleProcessing,
-        ] {
-            if tasks.len() >= batch_size {
+            OnchainRefreshClaimQueue::FailedRetry,
+            OnchainRefreshClaimQueue::Pending,
+        ];
+        let mut remaining_batch_size = batch_size;
+        let fair_queue_batch_size = batch_size.div_ceil(queues.len());
+        for queue in queues.iter().copied() {
+            if remaining_batch_size == 0 {
                 break;
             }
-            let remaining_batch_size = batch_size - tasks.len();
-            tasks.extend(
-                self.claim_tasks_from_queue(now_ms, remaining_batch_size, scope, queue)
-                    .await?,
-            );
+            let queue_batch_size = fair_queue_batch_size.min(remaining_batch_size);
+            let claimed = self
+                .claim_tasks_from_queue(now_ms, queue_batch_size, scope, queue)
+                .await?;
+            remaining_batch_size = remaining_batch_size.saturating_sub(claimed.len());
+            tasks.extend(claimed);
+        }
+        for queue in queues {
+            if remaining_batch_size == 0 {
+                break;
+            }
+            let claimed = self
+                .claim_tasks_from_queue(now_ms, remaining_batch_size, scope, queue)
+                .await?;
+            remaining_batch_size = remaining_batch_size.saturating_sub(claimed.len());
+            tasks.extend(claimed);
         }
 
         Ok(tasks)
