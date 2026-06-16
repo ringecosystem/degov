@@ -154,6 +154,7 @@ pub struct IndexerRuntimeConfig {
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+    pub onchain_refresh_deferred_drain_enabled: bool,
     pub onchain_refresh_deferred_drain_batch_size: usize,
     pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
     pub provisional: ProvisionalRuntimeConfig,
@@ -246,6 +247,7 @@ pub struct IndexerContractSetRuntimeConfig {
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub max_chunks_per_run: Option<u64>,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+    pub onchain_refresh_deferred_drain_enabled: bool,
     pub onchain_refresh_deferred_drain_batch_size: usize,
     pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
 }
@@ -335,6 +337,12 @@ impl IndexerRuntimeConfig {
         );
         let run_once = optional_env_bool("DEGOV_INDEXER_RUN_ONCE")?.unwrap_or(false);
 
+        let onchain_refresh_tick = load_onchain_refresh_tick_config()?;
+        let onchain_refresh_deferred_drain_enabled = load_onchain_refresh_deferred_drain_enabled(
+            contract_set_mode,
+            onchain_refresh_tick.enabled,
+        )?;
+
         Ok(Self {
             dao_filter,
             contract_set_mode,
@@ -358,7 +366,8 @@ impl IndexerRuntimeConfig {
             )?
             .unwrap_or(100),
             adaptive_chunk_sizer: load_adaptive_chunk_sizer_runtime_config()?,
-            onchain_refresh_tick: load_onchain_refresh_tick_config()?,
+            onchain_refresh_tick,
+            onchain_refresh_deferred_drain_enabled,
             onchain_refresh_deferred_drain_batch_size:
                 onchain_refresh_deferred_drain_batch_size_from_env()?,
             proposal_timestamp_backfill: load_proposal_timestamp_backfill_config()?,
@@ -430,6 +439,7 @@ impl IndexerRuntimeConfig {
             adaptive_chunk_sizer: self.adaptive_chunk_sizer,
             max_chunks_per_run: self.max_chunks_per_run,
             onchain_refresh_tick: self.onchain_refresh_tick.clone(),
+            onchain_refresh_deferred_drain_enabled: self.onchain_refresh_deferred_drain_enabled,
             onchain_refresh_deferred_drain_batch_size: self
                 .onchain_refresh_deferred_drain_batch_size,
             proposal_timestamp_backfill: self.proposal_timestamp_backfill,
@@ -500,6 +510,7 @@ impl IndexerContractSetRuntimeConfig {
             adaptive_chunk_sizer: self
                 .adaptive_chunk_sizer
                 .for_block_range_limit(config.query_limits.block_range_limit),
+            onchain_refresh_deferred_drain_enabled: self.onchain_refresh_deferred_drain_enabled,
             onchain_refresh_deferred_drain_batch_size: self
                 .onchain_refresh_deferred_drain_batch_size,
             proposal_timestamp_backfill: self.proposal_timestamp_backfill,
@@ -744,6 +755,21 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     }
 
     Ok(config)
+}
+
+fn load_onchain_refresh_deferred_drain_enabled(
+    contract_set_mode: IndexerContractSetMode,
+    tick_enabled: bool,
+) -> Result<bool> {
+    let default_enabled = match contract_set_mode {
+        IndexerContractSetMode::Single => true,
+        IndexerContractSetMode::All => tick_enabled,
+    };
+
+    Ok(
+        optional_env_bool("DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED")?
+            .unwrap_or(default_enabled),
+    )
 }
 
 fn load_proposal_timestamp_backfill_config() -> Result<ProposalTimestampBackfillConfig> {

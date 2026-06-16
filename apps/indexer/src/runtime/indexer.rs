@@ -11,11 +11,12 @@ use crate::{
     DatalensError, DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensQueryErrorClass,
     DatalensRuntimeContractSet, DatalensWarmupEnsureOutcome, EvmRpcChainTool,
     IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick,
-    IndexerRunner, IndexerRunnerReport, IndexerRuntimeConfig, IndexerTargetHeight,
-    MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTaskScope,
-    OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
-    OnchainRefreshWorker, OnchainRefreshWorkerError, PostgresIndexerRunnerStore,
-    PostgresProvisionalCleanupStore, classify_datalens_query_error, datalens_retry_config,
+    IndexerRunner, IndexerRunnerReport, IndexerRunnerStore, IndexerRuntimeConfig,
+    IndexerTargetHeight, MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig,
+    OnchainRefreshTaskScope, OnchainRefreshTickReport, OnchainRefreshTickRunner,
+    OnchainRefreshTickScheduler, OnchainRefreshWorker, OnchainRefreshWorkerError,
+    PostgresIndexerRunnerStore, PostgresProvisionalCleanupStore,
+    checkpoint::configured_range_progress, classify_datalens_query_error, datalens_retry_config,
     ensure_datalens_warmup_task, onchain_refresh_debounce_from_env, required_env,
 };
 
@@ -205,6 +206,7 @@ async fn run_configured_contract_set_pass_result(
         Err(error) => return Err(ContractSetPassError::setup(error)),
     };
     let report = match run_contract_set_pass(
+        runtime.contract_set_mode,
         contract_runtime.clone(),
         contract_set.config.clone(),
         contract_set.addresses.clone(),
@@ -431,6 +433,33 @@ fn contains_recoverable_datalens_query_error(error: &runtime_anyhow::Error) -> b
             ),
             _ => false,
         })
+}
+
+fn resolve_contract_set_max_chunks_per_run(
+    contract_set_mode: IndexerContractSetMode,
+    runtime: &IndexerContractSetRuntimeConfig,
+    processed_height: Option<i64>,
+    target_height: i64,
+) -> Option<u64> {
+    if let Some(chunks) = runtime.max_chunks_per_run {
+        return Some(chunks);
+    }
+    if !matches!(contract_set_mode, IndexerContractSetMode::All) {
+        return None;
+    }
+
+    let remaining_blocks =
+        configured_range_progress(processed_height, runtime.start_block, target_height)
+            .remaining_blocks;
+    if remaining_blocks >= 10_000_000 {
+        Some(5)
+    } else if remaining_blocks >= 1_000_000 {
+        Some(4)
+    } else if remaining_blocks >= 100_000 {
+        Some(3)
+    } else {
+        Some(1)
+    }
 }
 
 #[derive(Debug)]
@@ -854,6 +883,7 @@ fn warmup_startup_per_chain_semaphores(
 }
 
 async fn run_contract_set_pass(
+    contract_set_mode: IndexerContractSetMode,
     runtime: IndexerContractSetRuntimeConfig,
     config: DatalensConfig,
     contracts: DaoContractAddresses,
@@ -890,7 +920,7 @@ async fn run_contract_set_pass(
         if let Some(gate) = datalens_query_gate {
             client = client.with_query_concurrency_gate(gate);
         }
-        let store = PostgresIndexerRunnerStore::new(pool)
+        let mut store = PostgresIndexerRunnerStore::new(pool)
             .with_onchain_refresh_debounce(onchain_refresh_debounce)
             .with_onchain_refresh_deferred_drain_batch_size(
                 runtime.onchain_refresh_deferred_drain_batch_size,
@@ -898,6 +928,22 @@ async fn run_contract_set_pass(
         let options = runtime
             .options(&config, &contracts)
             .map_err(ContractSetPassError::setup)?;
+        let max_chunks_per_run = if runtime.max_chunks_per_run.is_some()
+            || matches!(contract_set_mode, IndexerContractSetMode::Single)
+        {
+            runtime.max_chunks_per_run
+        } else {
+            let checkpoint = store
+                .read_or_create_checkpoint(&options.checkpoint_identity, options.start_block)
+                .context("read Datalens indexer checkpoint for chunk budget")
+                .map_err(ContractSetPassError::setup)?;
+            resolve_contract_set_max_chunks_per_run(
+                contract_set_mode,
+                &runtime,
+                checkpoint.processed_height,
+                runtime.target_height,
+            )
+        };
         let mut runner = IndexerRunner::new(
             options,
             runtime.contexts(&contracts),
@@ -911,7 +957,7 @@ async fn run_contract_set_pass(
         if let Some(chain_tool) = projection_chain_tool {
             runner = runner.with_chain_tool(chain_tool);
         }
-        if let Some(chunks) = runtime.max_chunks_per_run {
+        if let Some(chunks) = max_chunks_per_run {
             runner.request_shutdown_after_chunks(chunks);
         }
 
@@ -1102,6 +1148,78 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn test_resolve_contract_set_max_chunks_per_run_adapts_all_mode_from_remaining_blocks() {
+        let runtime = contract_runtime_for_chunk_budget(None);
+
+        assert_eq!(
+            resolve_contract_set_max_chunks_per_run(
+                IndexerContractSetMode::All,
+                &runtime,
+                Some(0),
+                10_000_000
+            ),
+            Some(5)
+        );
+        assert_eq!(
+            resolve_contract_set_max_chunks_per_run(
+                IndexerContractSetMode::All,
+                &runtime,
+                Some(0),
+                1_000_000
+            ),
+            Some(4)
+        );
+        assert_eq!(
+            resolve_contract_set_max_chunks_per_run(
+                IndexerContractSetMode::All,
+                &runtime,
+                Some(0),
+                100_000
+            ),
+            Some(3)
+        );
+        assert_eq!(
+            resolve_contract_set_max_chunks_per_run(
+                IndexerContractSetMode::All,
+                &runtime,
+                Some(0),
+                99_999
+            ),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_resolve_contract_set_max_chunks_per_run_uses_explicit_value() {
+        let runtime = contract_runtime_for_chunk_budget(Some(9));
+
+        assert_eq!(
+            resolve_contract_set_max_chunks_per_run(
+                IndexerContractSetMode::All,
+                &runtime,
+                Some(0),
+                10_000_000
+            ),
+            Some(9)
+        );
+    }
+
+    #[test]
+    fn test_resolve_contract_set_max_chunks_per_run_leaves_single_mode_unset_by_default() {
+        let runtime = contract_runtime_for_chunk_budget(None);
+
+        assert_eq!(
+            resolve_contract_set_max_chunks_per_run(
+                IndexerContractSetMode::Single,
+                &runtime,
+                Some(0),
+                10_000_000
+            ),
+            None
+        );
+    }
+
     #[tokio::test]
     async fn test_resolve_contract_set_target_height_keeps_fixed_numeric_target_without_datalens() {
         let runtime = IndexerRuntimeConfig {
@@ -1121,6 +1239,7 @@ mod tests {
             progress_refresh_lag_blocks: 100,
             adaptive_chunk_sizer: Default::default(),
             onchain_refresh_tick: Default::default(),
+            onchain_refresh_deferred_drain_enabled: false,
             onchain_refresh_deferred_drain_batch_size: 100,
             proposal_timestamp_backfill: Default::default(),
             provisional: ProvisionalRuntimeConfig {
@@ -1156,6 +1275,88 @@ mod tests {
             .expect("fixed target height resolves without Datalens");
 
         assert_eq!(height, 568800);
+    }
+
+    fn contract_runtime_for_chunk_budget(
+        max_chunks_per_run: Option<u64>,
+    ) -> IndexerContractSetRuntimeConfig {
+        IndexerContractSetRuntimeConfig {
+            dao_code: "demo-dao".to_owned(),
+            start_block: 0,
+            target_height: 10_000_000,
+            checkpoint_contract_set_id: "demo-dao:v1".to_owned(),
+            checkpoint_stream_id: "datalens-native".to_owned(),
+            data_source_version: "datalens-v1".to_owned(),
+            query_max_attempts: 1,
+            datalens_query_concurrency: Default::default(),
+            contract_set_max_concurrency: crate::ContractSetConcurrencyLimit::Unlimited,
+            contract_set_per_chain_max_concurrency: crate::ContractSetConcurrencyLimit::Unlimited,
+            progress_refresh_lag_blocks: 100,
+            adaptive_chunk_sizer: Default::default(),
+            max_chunks_per_run,
+            onchain_refresh_tick: Default::default(),
+            onchain_refresh_deferred_drain_enabled: false,
+            onchain_refresh_deferred_drain_batch_size: 100,
+            proposal_timestamp_backfill: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_all_mode_contract_set_runtime_preserves_enqueue_only_onchain_refresh() {
+        let runtime = runtime_for_warmup_concurrency();
+        let contract_set = crate::DatalensRuntimeContractSet {
+            dao_code: "demo-dao".to_owned(),
+            contract_set_id: "demo-dao:1:governor".to_owned(),
+            contract: crate::DatalensContractSetConfig {
+                dao_code: Some("demo-dao".to_owned()),
+                chain_id: 1,
+                network_name: "ethereum".to_owned(),
+                governor: "0x0000000000000000000000000000000000000001".to_owned(),
+                governor_token: "0x0000000000000000000000000000000000000002".to_owned(),
+                governor_token_standard: crate::GovernanceTokenStandard::Erc20,
+                timelock: None,
+                start_block: 1,
+            },
+            config: DatalensConfig {
+                endpoint: "http://127.0.0.1:1".to_owned(),
+                application: "degov-test".to_owned(),
+                bearer_token: SecretString::new("unit-test-redacted-value"),
+                timeout: Duration::from_secs(1),
+                finality: DatalensFinality::DurableOnly,
+                chain: ChainIdentityConfig {
+                    family: ChainFamily::Evm,
+                    configured_name: "ethereum".to_owned(),
+                    network_id: Some(1),
+                },
+                dataset: DatasetKeyConfig {
+                    family: "evm".to_owned(),
+                    name: "logs".to_owned(),
+                },
+                query_limits: QueryLimitConfig {
+                    block_range_limit: 1_000,
+                },
+                warmup: Default::default(),
+                dao_contracts: None,
+                chains: Vec::new(),
+            },
+            addresses: crate::DaoContractAddresses {
+                governor: "0x0000000000000000000000000000000000000001".to_owned(),
+                governor_token: "0x0000000000000000000000000000000000000002".to_owned(),
+                timelock: None,
+                governor_token_standard: crate::GovernanceTokenStandard::Erc20,
+            },
+        };
+
+        let contract_runtime = runtime
+            .for_configured_contract_set_at_target(&contract_set, 100)
+            .expect("contract runtime builds");
+        let options = contract_runtime
+            .options(&contract_set.config, &contract_set.addresses)
+            .expect("runner options build");
+
+        assert!(!contract_runtime.onchain_refresh_tick.enabled);
+        assert!(!contract_runtime.onchain_refresh_deferred_drain_enabled);
+        assert!(!options.onchain_refresh_deferred_drain_enabled);
     }
 
     #[test]
@@ -1866,6 +2067,7 @@ mod tests {
             progress_refresh_lag_blocks: 100,
             adaptive_chunk_sizer: Default::default(),
             onchain_refresh_tick: Default::default(),
+            onchain_refresh_deferred_drain_enabled: false,
             onchain_refresh_deferred_drain_batch_size: 100,
             proposal_timestamp_backfill: Default::default(),
             provisional: ProvisionalRuntimeConfig {

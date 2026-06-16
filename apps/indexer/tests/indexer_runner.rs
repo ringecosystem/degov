@@ -289,12 +289,26 @@ fn test_runner_runs_onchain_refresh_tick_after_chunk_commit() {
 #[test]
 fn test_runner_drains_deferred_onchain_refresh_with_configured_budget_after_chunk_commit() {
     let mut options = options();
+    options.onchain_refresh_deferred_drain_enabled = true;
     options.onchain_refresh_deferred_drain_batch_size = 1_000;
     let mut runner = runner_with_decoder(vec![vec![row(1, 0, 0)]], ScriptedDecoder, options);
 
     runner.run_to_target(1).expect("runner succeeds");
 
     assert_eq!(runner.store().deferred_drain_requests(), &[1_000]);
+}
+
+#[test]
+fn test_runner_skips_deferred_onchain_refresh_drain_when_disabled_after_chunk_commit() {
+    let mut options = options();
+    options.onchain_refresh_deferred_drain_enabled = false;
+    options.onchain_refresh_deferred_drain_batch_size = 1_000;
+    let mut runner = runner_with_decoder(vec![vec![row(1, 0, 0)]], ScriptedDecoder, options);
+
+    runner.run_to_target(1).expect("runner succeeds");
+
+    assert_eq!(runner.store().deferred_drain_requests(), &[] as &[usize]);
+    assert_eq!(runner.store().commit_count(), 1);
 }
 
 #[test]
@@ -1434,6 +1448,7 @@ fn options() -> IndexerRunnerOptions {
         safe_height: None,
         progress_refresh_lag_blocks: 0,
         adaptive_chunk_sizer: AdaptiveChunkSizerConfig::for_max_chunk_size(1),
+        onchain_refresh_deferred_drain_enabled: true,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
     }
