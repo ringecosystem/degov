@@ -177,5 +177,40 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure contributor data metric scope index")?;
 
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_graphql_scope_power_idx
+         ON contributor (chain_id, governor_address, dao_code, power DESC, id)
+         INCLUDE (
+            contract_set_id, token_address, block_number, block_timestamp,
+            transaction_hash, last_vote_timestamp, balance, delegates_count_all
+         )",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure contributor GraphQL scope power index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_contributor_live_scope_power_idx
+         ON degov_provisional_contributor_power_overlay (
+            chain_id, governor_address, dao_code, power DESC, account,
+            contract_set_id, token_address
+         )
+         WHERE source = 'live-onchain' AND status = 'available'",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure live contributor overlay scope power index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_contributor_live_account_lookup_idx
+         ON degov_provisional_contributor_power_overlay (
+            contract_set_id, account, chain_id, dao_code, governor_address, token_address
+         )
+         WHERE source = 'live-onchain' AND status = 'available'",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure live contributor overlay account lookup index")?;
+
     Ok(())
 }

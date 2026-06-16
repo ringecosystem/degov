@@ -266,6 +266,32 @@ fn test_graphql_runtime_config_keeps_public_endpoint_separate_from_bind_address(
 }
 
 #[test]
+fn test_graphql_runtime_config_accepts_multiple_paths() {
+    with_env_vars!(
+        [
+            (
+                "DEGOV_INDEXER_GRAPHQL_PATH",
+                Some("/ens-dao/graphql,/lisk-dao/graphql\n/rn-dao/graphql"),
+            ),
+            ("DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS", Some("0.0.0.0:4350")),
+        ],
+        || {
+            let config = GraphqlRuntimeConfig::from_env().expect("graphql config parses");
+
+            assert_eq!(
+                config.paths,
+                vec![
+                    "/graphql".to_owned(),
+                    "/ens-dao/graphql".to_owned(),
+                    "/lisk-dao/graphql".to_owned(),
+                    "/rn-dao/graphql".to_owned(),
+                ]
+            );
+        },
+    );
+}
+
+#[test]
 fn test_graphql_runtime_config_accepts_legacy_bind_endpoint() {
     with_env_vars!(
         [
