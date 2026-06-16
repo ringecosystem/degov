@@ -348,6 +348,7 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(init_migration.contains("fresh index initialization"));
     assert!(init_migration.contains("No historical in-place migration"));
     assert!(init_migration.contains("reset or recreate"));
+    assert!(!init_migration.contains("onchain_refresh_data_metric_task"));
 
     let hot_path_migration = include_str!("../migrations/0002_hot_path_runtime_indexes.sql");
     assert!(hot_path_migration.contains("CREATE INDEX CONCURRENTLY IF NOT EXISTS"));
@@ -355,6 +356,7 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
 
     let runtime_migration = include_str!("../src/runtime/migrate.rs");
     assert!(runtime_migration.contains("delegate_mapping_effective_count_idx"));
+    assert!(runtime_migration.contains("onchain_refresh_data_metric_task"));
 
     Ok(())
 }
