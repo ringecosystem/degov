@@ -1991,6 +1991,25 @@ impl EvmRpcChainTool {
                         for (call, result) in calls.into_iter().zip(results) {
                             report.covered_read_indexes.push(call.read_index);
                             if !result.success {
+                                match self
+                                    .execute_power_method_fallback(call.read_index, &call.read)
+                                {
+                                    PowerMethodFallbackOutcome::Success { result, cache_hit } => {
+                                        report.cache_hits += usize::from(cache_hit);
+                                        report.executed_rpc_calls += usize::from(!cache_hit);
+                                        report.results.push(result);
+                                        continue;
+                                    }
+                                    PowerMethodFallbackOutcome::Failure {
+                                        failure,
+                                        rpc_attempted,
+                                    } => {
+                                        report.executed_rpc_calls += usize::from(rpc_attempted);
+                                        report.failures.push(failure);
+                                        continue;
+                                    }
+                                    PowerMethodFallbackOutcome::NotApplicable => {}
+                                }
                                 report.failures.push(ReadFailure {
                                     read_index: call.read_index,
                                     message: "multicall subcall reverted".to_owned(),
@@ -2100,6 +2119,85 @@ impl EvmRpcChainTool {
         ))
     }
 
+    fn execute_power_method_fallback(
+        &self,
+        read_index: usize,
+        read: &crate::ChainReadRequest,
+    ) -> PowerMethodFallbackOutcome {
+        let Some(fallback_method) = alternate_current_power_method(read.key.method) else {
+            return PowerMethodFallbackOutcome::NotApplicable;
+        };
+        let fallback_key = ChainReadKey {
+            method: fallback_method,
+            ..read.key.clone()
+        };
+        if let Some(value) = self.cache.get(&fallback_key) {
+            self.cache.insert(&read.key, value.clone());
+            return PowerMethodFallbackOutcome::Success {
+                result: ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value,
+                },
+                cache_hit: true,
+            };
+        }
+
+        let data = match encode_call_data(fallback_method, &read.key.args) {
+            Ok(data) => data,
+            Err(message) => {
+                return PowerMethodFallbackOutcome::Failure {
+                    failure: power_method_fallback_failure(
+                        read_index,
+                        format!("alternate current power method encode failed: {message}"),
+                        ChainReadFailureKind::Internal,
+                        false,
+                    ),
+                    rpc_attempted: false,
+                };
+            }
+        };
+        let result = match self.eth_call(&read.key.contract_address, &data, read.key.block_mode) {
+            Ok(result) => result,
+            Err(message) => {
+                return PowerMethodFallbackOutcome::Failure {
+                    failure: power_method_fallback_failure(
+                        read_index,
+                        format!("alternate current power method eth_call failed: {message}"),
+                        ChainReadFailureKind::Transport,
+                        true,
+                    ),
+                    rpc_attempted: true,
+                };
+            }
+        };
+        let value = match decode_call_value(fallback_method, &result) {
+            Ok(value) => value,
+            Err(message) => {
+                return PowerMethodFallbackOutcome::Failure {
+                    failure: power_method_fallback_failure(
+                        read_index,
+                        format!("alternate current power method decode failed: {message}"),
+                        ChainReadFailureKind::Decode,
+                        false,
+                    ),
+                    rpc_attempted: true,
+                };
+            }
+        };
+        self.cache.insert(&fallback_key, value.clone());
+        self.cache.insert(&read.key, value.clone());
+
+        PowerMethodFallbackOutcome::Success {
+            result: ChainReadResult {
+                read_index,
+                key: read.key.clone(),
+                value,
+            },
+            cache_hit: false,
+        }
+    }
+
     fn execute_block_timestamp(
         &self,
         read_index: usize,
@@ -2207,6 +2305,20 @@ fn fail_multicall_group(
     }
 }
 
+fn power_method_fallback_failure(
+    read_index: usize,
+    message: String,
+    kind: ChainReadFailureKind,
+    retryable: bool,
+) -> ReadFailure {
+    ReadFailure {
+        read_index,
+        message: format!("multicall subcall reverted; {message}"),
+        kind,
+        retryable,
+    }
+}
+
 #[derive(Clone, Debug)]
 struct EvmMulticallRead {
     read_index: usize,
@@ -2229,6 +2341,19 @@ struct ReadFailure {
     message: String,
     kind: ChainReadFailureKind,
     retryable: bool,
+}
+
+#[derive(Clone, Debug)]
+enum PowerMethodFallbackOutcome {
+    NotApplicable,
+    Success {
+        result: ChainReadResult,
+        cache_hit: bool,
+    },
+    Failure {
+        failure: ReadFailure,
+        rpc_attempted: bool,
+    },
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -3221,6 +3346,14 @@ fn current_power_checkpoint_source(method: ChainReadMethod) -> &'static str {
     }
 }
 
+#[cfg(test)]
+fn current_power_signature(method: ChainReadMethod) -> &'static str {
+    match method {
+        ChainReadMethod::CurrentVotes => "getCurrentVotes(address)",
+        _ => "getVotes(address)",
+    }
+}
+
 fn parse_u64(value: &str) -> Result<u64, OnchainRefreshReaderError> {
     value.parse::<u64>().map_err(|error| {
         OnchainRefreshReaderError::new(format!("parse block number {value}: {error}"))
@@ -3280,6 +3413,14 @@ fn is_multicall_eligible(read: &ChainReadRequest) -> bool {
         read.key.method,
         ChainReadMethod::BlockTimestamp | ChainReadMethod::TimelockOperationState
     )
+}
+
+fn alternate_current_power_method(method: ChainReadMethod) -> Option<ChainReadMethod> {
+    match method {
+        ChainReadMethod::GetVotes => Some(ChainReadMethod::CurrentVotes),
+        ChainReadMethod::CurrentVotes => Some(ChainReadMethod::GetVotes),
+        _ => None,
+    }
 }
 
 fn encode_call_data(method: ChainReadMethod, args: &[String]) -> Result<String, String> {
@@ -3897,6 +4038,12 @@ mod tests {
             data: &str,
             _block_mode: BlockReadMode,
         ) -> Result<String, String> {
+            if !data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("fallback unavailable".to_owned());
+            }
             let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
             let return_data = calls
                 .into_iter()
@@ -3938,6 +4085,73 @@ mod tests {
         ) -> Result<String, String> {
             self.eth_call_count.fetch_add(1, Ordering::SeqCst);
             Err("transport unavailable".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone)]
+    struct PowerMethodFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+        primary_method: ChainReadMethod,
+        fallback_method: ChainReadMethod,
+    }
+
+    impl EvmRpcClient for PowerMethodFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+                let primary_selector = format!(
+                    "0x{}",
+                    hex::encode(function_selector(current_power_signature(
+                        self.primary_method
+                    )))
+                );
+                let return_data = calls
+                    .into_iter()
+                    .map(|call| {
+                        if call.call_data.starts_with(&primary_selector) {
+                            Token::Tuple(vec![Token::Bool(false), Token::Bytes(Vec::new())])
+                        } else {
+                            Token::Tuple(vec![
+                                Token::Bool(true),
+                                Token::Bytes(encode(&[Token::Uint(U256::from(100))])),
+                            ])
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Array(return_data)]))
+                ));
+            }
+
+            let fallback_selector = format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    self.fallback_method
+                )))
+            );
+            if data.starts_with(&fallback_selector) {
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::from(250))]))
+                ));
+            }
+
+            Err("unexpected eth_call".to_owned())
         }
 
         fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
@@ -4023,6 +4237,98 @@ mod tests {
     }
 
     #[test]
+    fn test_evm_rpc_chain_tool_falls_back_to_alternate_current_power_method() {
+        let rpc = PowerMethodFallbackMockEvmRpcClient {
+            eth_call_count: Arc::default(),
+            primary_method: ChainReadMethod::GetVotes,
+            fallback_method: ChainReadMethod::CurrentVotes,
+        };
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let plan = builder.build();
+        let report = tool
+            .execute_read_plan(&plan)
+            .expect("power read falls back to alternate method");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[0].key.method, ChainReadMethod::GetVotes);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
+
+        let cached = tool
+            .execute_read_plan(&plan)
+            .expect("fallback result is cached under original read key");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(cached.metrics.cache_hits, 1);
+        assert_eq!(
+            cached.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_falls_back_from_current_votes_to_get_votes() {
+        let rpc = PowerMethodFallbackMockEvmRpcClient {
+            eth_call_count: Arc::default(),
+            primary_method: ChainReadMethod::CurrentVotes,
+            fallback_method: ChainReadMethod::GetVotes,
+        };
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh_with_method(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+            ChainReadMethod::CurrentVotes,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("current votes read falls back to getVotes");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[0].key.method, ChainReadMethod::CurrentVotes);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
+    }
+
+    #[test]
     fn test_evm_rpc_chain_tool_keeps_successes_when_optional_multicall_item_fails() {
         let tool = EvmRpcChainTool::from_rpc_client(PartialFailureMockEvmRpcClient);
         let contracts = ChainContracts {
@@ -4094,6 +4400,16 @@ mod tests {
             .execute_read_plan(&plan)
             .expect_err("required failure still fails regular read plan");
         assert_eq!(failure.required_failures.len(), 1);
+        assert_eq!(
+            failure.required_failures[0].kind,
+            ChainReadFailureKind::Transport
+        );
+        assert!(failure.required_failures[0].retryable);
+        assert!(
+            failure.required_failures[0]
+                .message
+                .contains("alternate current power method eth_call failed")
+        );
 
         let tool = EvmRpcChainTool::from_rpc_client(RequiredPartialFailureMockEvmRpcClient);
         let report = tool.execute_read_plan_partial(&plan);
@@ -4104,6 +4420,7 @@ mod tests {
             ChainReadValue::Integer("100".to_owned())
         );
         assert_eq!(report.partial_failures.required_failures.len(), 1);
+        assert_eq!(report.metrics.executed_rpc_calls, 2);
     }
 
     #[test]
