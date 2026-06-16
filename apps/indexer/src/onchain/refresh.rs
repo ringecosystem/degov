@@ -1,6 +1,8 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
+    future::Future,
+    pin::Pin,
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -30,7 +32,11 @@ pub const MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
 const DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS: i32 = 3;
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
 const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 2_000;
+const ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS: usize = 3;
+const ONCHAIN_REFRESH_APPLY_RETRY_BASE_DELAY_MS: u64 = 50;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
+type OnchainRefreshApplyFuture<'a, T> =
+    Pin<Box<dyn Future<Output = Result<T, OnchainRefreshWorkerError>> + 'a>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshWorkerConfig {
@@ -901,6 +907,19 @@ where
         now_ms: i64,
         data_metric_scopes: &BTreeSet<DataMetricRefreshScope>,
     ) -> Result<OnchainRefreshApplyBatchReport, OnchainRefreshWorkerError> {
+        retry_onchain_refresh_apply_operation(
+            || Box::pin(self.apply_success_batch_once(successes, now_ms, data_metric_scopes)),
+            Duration::from_millis(ONCHAIN_REFRESH_APPLY_RETRY_BASE_DELAY_MS),
+        )
+        .await
+    }
+
+    async fn apply_success_batch_once(
+        &self,
+        successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+        now_ms: i64,
+        data_metric_scopes: &BTreeSet<DataMetricRefreshScope>,
+    ) -> Result<OnchainRefreshApplyBatchReport, OnchainRefreshWorkerError> {
         let mut transaction = self.pool.begin().await?;
 
         let result = async {
@@ -1089,6 +1108,54 @@ where
 
 fn worker_deferred_drain_target(configured_batch_size: usize, claim_batch_size: usize) -> usize {
     configured_batch_size.max(claim_batch_size)
+}
+
+async fn retry_onchain_refresh_apply_operation<'a, T, F>(
+    mut operation: F,
+    base_delay: Duration,
+) -> Result<T, OnchainRefreshWorkerError>
+where
+    F: FnMut() -> OnchainRefreshApplyFuture<'a, T>,
+{
+    let mut attempt = 1usize;
+    loop {
+        match operation().await {
+            Ok(report) => return Ok(report),
+            Err(error)
+                if attempt < ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS
+                    && is_retryable_onchain_refresh_apply_error(&error) =>
+            {
+                log::warn!(
+                    "onchain refresh success batch retry scheduled attempt={} max_attempts={} error={}",
+                    attempt + 1,
+                    ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS,
+                    error
+                );
+                tokio::time::sleep(onchain_refresh_apply_retry_delay(base_delay, attempt)).await;
+                attempt += 1;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn is_retryable_onchain_refresh_apply_error(error: &OnchainRefreshWorkerError) -> bool {
+    match error {
+        OnchainRefreshWorkerError::Database(sqlx::Error::Database(error)) => error
+            .code()
+            .as_deref()
+            .is_some_and(is_retryable_onchain_refresh_apply_sqlstate),
+        _ => false,
+    }
+}
+
+fn is_retryable_onchain_refresh_apply_sqlstate(code: &str) -> bool {
+    matches!(code, "40P01" | "40001")
+}
+
+fn onchain_refresh_apply_retry_delay(base_delay: Duration, attempt: usize) -> Duration {
+    let multiplier = u32::try_from(attempt).unwrap_or(u32::MAX).max(1);
+    base_delay.saturating_mul(multiplier)
 }
 
 fn onchain_refresh_retry_backoff_delay(base_delay: Duration, attempts: i32) -> Duration {
@@ -3791,6 +3858,52 @@ struct JsonRpcError {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::{borrow::Cow, error::Error as StdError};
+
+    #[derive(Debug)]
+    struct FakeDatabaseError {
+        code: &'static str,
+    }
+
+    impl fmt::Display for FakeDatabaseError {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "fake database error {}", self.code)
+        }
+    }
+
+    impl StdError for FakeDatabaseError {}
+
+    impl sqlx::error::DatabaseError for FakeDatabaseError {
+        fn message(&self) -> &str {
+            "fake database error"
+        }
+
+        fn code(&self) -> Option<Cow<'_, str>> {
+            Some(Cow::Borrowed(self.code))
+        }
+
+        fn as_error(&self) -> &(dyn StdError + Send + Sync + 'static) {
+            self
+        }
+
+        fn as_error_mut(&mut self) -> &mut (dyn StdError + Send + Sync + 'static) {
+            self
+        }
+
+        fn into_error(self: Box<Self>) -> Box<dyn StdError + Send + Sync + 'static> {
+            self
+        }
+
+        fn kind(&self) -> sqlx::error::ErrorKind {
+            sqlx::error::ErrorKind::Other
+        }
+    }
+
+    fn fake_database_error(code: &'static str) -> OnchainRefreshWorkerError {
+        OnchainRefreshWorkerError::Database(sqlx::Error::Database(Box::new(FakeDatabaseError {
+            code,
+        })))
+    }
 
     #[test]
     fn test_encode_call_data_accepts_hex_uint_arguments() {
@@ -3806,6 +3919,89 @@ mod tests {
     fn test_worker_deferred_drain_target_tracks_claim_budget() {
         assert_eq!(worker_deferred_drain_target(100, 1_000), 1_000);
         assert_eq!(worker_deferred_drain_target(2_000, 1_000), 2_000);
+    }
+
+    #[test]
+    fn test_onchain_refresh_apply_retry_classifies_retryable_sqlstates() {
+        assert!(is_retryable_onchain_refresh_apply_sqlstate("40P01"));
+        assert!(is_retryable_onchain_refresh_apply_sqlstate("40001"));
+        assert!(!is_retryable_onchain_refresh_apply_sqlstate("23505"));
+    }
+
+    #[tokio::test]
+    async fn test_onchain_refresh_apply_retry_retries_retryable_errors_until_success() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let result = retry_onchain_refresh_apply_operation(
+            {
+                let attempts = attempts.clone();
+                move || {
+                    let attempts = attempts.clone();
+                    Box::pin(async move {
+                        let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                        if attempt < 2 {
+                            Err(fake_database_error("40P01"))
+                        } else {
+                            Ok("ok")
+                        }
+                    })
+                }
+            },
+            Duration::ZERO,
+        )
+        .await
+        .expect("retryable errors eventually succeed");
+
+        assert_eq!(result, "ok");
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_onchain_refresh_apply_retry_stops_at_max_attempts() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let error = retry_onchain_refresh_apply_operation(
+            {
+                let attempts = attempts.clone();
+                move || {
+                    let attempts = attempts.clone();
+                    Box::pin(async move {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        Err::<(), _>(fake_database_error("40P01"))
+                    })
+                }
+            },
+            Duration::ZERO,
+        )
+        .await
+        .expect_err("retryable errors stop after max attempts");
+
+        assert!(is_retryable_onchain_refresh_apply_error(&error));
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_onchain_refresh_apply_retry_does_not_retry_non_retryable_errors() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let error = retry_onchain_refresh_apply_operation(
+            {
+                let attempts = attempts.clone();
+                move || {
+                    let attempts = attempts.clone();
+                    Box::pin(async move {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        Err::<(), _>(fake_database_error("23505"))
+                    })
+                }
+            },
+            Duration::ZERO,
+        )
+        .await
+        .expect_err("non-retryable errors fail immediately");
+
+        assert!(!is_retryable_onchain_refresh_apply_error(&error));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
 
     #[test]
