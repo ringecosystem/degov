@@ -6,6 +6,7 @@ use runtime_anyhow::{Context, Result, bail};
 use sqlx::postgres::PgPoolOptions;
 use tokio::{runtime::Handle, sync::Semaphore, task, time::sleep};
 
+use crate::runner::IndexerRunnerProgress;
 use crate::{
     ChainTool, DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
     DatalensError, DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensQueryErrorClass,
@@ -168,7 +169,7 @@ async fn run_configured_contract_set_pass(
     )
     .await
     {
-        Ok(()) => Ok(()),
+        Ok(_) => Ok(()),
         Err(error) => handle_contract_set_pass_failure(runtime, &contract_set, error),
     }
 }
@@ -178,7 +179,7 @@ async fn run_configured_contract_set_pass_result(
     contract_set: DatalensRuntimeContractSet,
     pool: sqlx::PgPool,
     datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
-) -> std::result::Result<(), ContractSetPassError> {
+) -> std::result::Result<ContractSetPassOutcome, ContractSetPassError> {
     let target_height = resolve_contract_set_target_height(runtime, &contract_set.config)
         .await
         .map_err(ContractSetPassError::setup)?;
@@ -201,7 +202,7 @@ async fn run_configured_contract_set_pass_result(
                 target_height,
                 error
             );
-            return Ok(());
+            return Ok(ContractSetPassOutcome::skipped(target_height));
         }
         Err(error) => return Err(ContractSetPassError::setup(error)),
     };
@@ -234,7 +235,7 @@ async fn run_configured_contract_set_pass_result(
         report.last_progress.onchain_refresh_allowed
     );
 
-    Ok(())
+    Ok(ContractSetPassOutcome { report })
 }
 
 async fn run_recovering_configured_contract_set_pass(
@@ -375,17 +376,18 @@ async fn run_recovering_contract_set_pass_loop<Run, RunFuture, Sleep, SleepFutur
 ) -> Result<()>
 where
     Run: FnMut() -> RunFuture,
-    RunFuture: Future<Output = std::result::Result<(), ContractSetPassError>>,
+    RunFuture: Future,
+    RunFuture::Output: ContractSetPassLoopResult,
     Sleep: FnMut(Duration) -> SleepFuture,
     SleepFuture: Future<Output = ()>,
 {
     let mut backoff = ContractSetRetryBackoff::default();
 
     loop {
-        match run_pass().await {
-            Ok(()) => {
+        match run_pass().await.into_result() {
+            Ok(outcome) => {
                 backoff.reset();
-                sleep_for(poll_interval).await;
+                sleep_for(outcome.next_poll_interval(poll_interval)).await;
             }
             Err(error) if contract_set_pass_error_is_retryable(&error) => {
                 let delay = backoff.next_delay();
@@ -400,6 +402,87 @@ where
             }
             Err(error) => return Err(error.into_error()),
         }
+    }
+}
+
+trait ContractSetPassLoopResult {
+    type Outcome: ContractSetPassLoopOutcome;
+
+    fn into_result(self) -> std::result::Result<Self::Outcome, ContractSetPassError>;
+}
+
+impl<T> ContractSetPassLoopResult for std::result::Result<T, ContractSetPassError>
+where
+    T: ContractSetPassLoopOutcome,
+{
+    type Outcome = T;
+
+    fn into_result(self) -> std::result::Result<Self::Outcome, ContractSetPassError> {
+        self
+    }
+}
+
+trait ContractSetPassLoopOutcome {
+    fn next_poll_interval(&self, default_interval: Duration) -> Duration;
+}
+
+impl ContractSetPassLoopOutcome for () {
+    fn next_poll_interval(&self, default_interval: Duration) -> Duration {
+        default_interval
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ContractSetPassOutcome {
+    report: IndexerRunnerReport,
+}
+
+impl ContractSetPassOutcome {
+    fn skipped(target_height: i64) -> Self {
+        Self {
+            report: IndexerRunnerReport {
+                chunks_processed: 0,
+                shutdown_requested: false,
+                last_progress: IndexerRunnerProgress {
+                    processed_height: None,
+                    target_height,
+                    synced_percentage: 100.0,
+                    configured_start_block: target_height,
+                    remaining_blocks: 0,
+                    configured_range_synced_percentage: 100.0,
+                    current_rate_blocks_per_second: None,
+                    eta_seconds: None,
+                    onchain_refresh_allowed: true,
+                },
+            },
+        }
+    }
+}
+
+impl ContractSetPassLoopOutcome for ContractSetPassOutcome {
+    fn next_poll_interval(&self, default_interval: Duration) -> Duration {
+        recovering_contract_set_poll_interval(&self.report, default_interval)
+    }
+}
+
+const CAUGHT_UP_POLL_INTERVAL_MULTIPLIER: u32 = 12;
+const NEAR_CAUGHT_UP_POLL_INTERVAL_MULTIPLIER: u32 = 3;
+const NEAR_CAUGHT_UP_REMAINING_BLOCKS: i64 = 100;
+const BACKLOG_REMAINING_BLOCKS: i64 = 100_000;
+
+fn recovering_contract_set_poll_interval(
+    report: &IndexerRunnerReport,
+    default_interval: Duration,
+) -> Duration {
+    let remaining_blocks = report.last_progress.remaining_blocks;
+    if remaining_blocks == 0 {
+        default_interval * CAUGHT_UP_POLL_INTERVAL_MULTIPLIER
+    } else if remaining_blocks <= NEAR_CAUGHT_UP_REMAINING_BLOCKS {
+        default_interval * NEAR_CAUGHT_UP_POLL_INTERVAL_MULTIPLIER
+    } else if remaining_blocks >= BACKLOG_REMAINING_BLOCKS {
+        Duration::ZERO
+    } else {
+        default_interval
     }
 }
 
@@ -1220,6 +1303,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_recovering_contract_set_poll_interval_slows_caught_up_jobs() {
+        let default_interval = Duration::from_secs(10);
+
+        assert_eq!(
+            recovering_contract_set_poll_interval(
+                &runner_report_with_remaining_blocks(0),
+                default_interval
+            ),
+            Duration::from_secs(120)
+        );
+    }
+
+    #[test]
+    fn test_recovering_contract_set_poll_interval_slows_near_caught_up_jobs() {
+        let default_interval = Duration::from_secs(10);
+
+        assert_eq!(
+            recovering_contract_set_poll_interval(
+                &runner_report_with_remaining_blocks(100),
+                default_interval
+            ),
+            Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn test_recovering_contract_set_poll_interval_prioritizes_backlog_jobs() {
+        let default_interval = Duration::from_secs(10);
+
+        assert_eq!(
+            recovering_contract_set_poll_interval(
+                &runner_report_with_remaining_blocks(100_000),
+                default_interval
+            ),
+            Duration::ZERO
+        );
+    }
+
     #[tokio::test]
     async fn test_resolve_contract_set_target_height_keeps_fixed_numeric_target_without_datalens() {
         let runtime = IndexerRuntimeConfig {
@@ -1298,6 +1420,28 @@ mod tests {
             onchain_refresh_deferred_drain_enabled: false,
             onchain_refresh_deferred_drain_batch_size: 100,
             proposal_timestamp_backfill: Default::default(),
+        }
+    }
+
+    fn runner_report_with_remaining_blocks(remaining_blocks: i64) -> IndexerRunnerReport {
+        IndexerRunnerReport {
+            chunks_processed: 1,
+            shutdown_requested: false,
+            last_progress: IndexerRunnerProgress {
+                processed_height: Some(100),
+                target_height: 100 + remaining_blocks,
+                synced_percentage: if remaining_blocks == 0 { 100.0 } else { 50.0 },
+                configured_start_block: 0,
+                remaining_blocks,
+                configured_range_synced_percentage: if remaining_blocks == 0 {
+                    100.0
+                } else {
+                    50.0
+                },
+                current_rate_blocks_per_second: None,
+                eta_seconds: None,
+                onchain_refresh_allowed: true,
+            },
         }
     }
 
@@ -1588,7 +1732,9 @@ mod tests {
                                                 .context(
                                                     "resolve latest Datalens durable head height",
                                                 );
-                                                return Err(ContractSetPassError::setup(error));
+                                                return Err::<(), _>(ContractSetPassError::setup(
+                                                    error,
+                                                ));
                                             }
                                             std::future::pending().await
                                         }
