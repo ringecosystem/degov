@@ -284,6 +284,15 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .context("ensure delegate mapping effective count index")?;
 
     sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_positive_count_idx
+         ON delegate_mapping (contract_set_id, \"to\") INCLUDE (id)
+         WHERE power > 0",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure positive delegate mapping count index")?;
+
+    sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_data_metric_scope_idx
          ON contributor (contract_set_id, chain_id, governor_address, dao_code)
          INCLUDE (power, balance)",
@@ -376,6 +385,7 @@ async fn repair_invalid_runtime_indexes_for_connection(
     drop_invalid_runtime_index(connection, "delegate_current_power_refresh_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_to_lookup_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_effective_count_idx").await?;
+    drop_invalid_runtime_index(connection, "delegate_mapping_positive_count_idx").await?;
     drop_invalid_runtime_index(connection, "contributor_data_metric_scope_idx").await?;
     drop_invalid_runtime_index(connection, "contributor_graphql_scope_power_idx").await?;
     drop_invalid_runtime_index(connection, "provisional_contributor_live_scope_power_idx").await?;
