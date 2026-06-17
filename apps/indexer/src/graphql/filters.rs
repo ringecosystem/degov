@@ -256,6 +256,11 @@ pub(super) fn push_contributor_filters<'a>(
         push_qualified_column(query, table_alias, "power");
         query.push(" < ").push_bind(power).push("::numeric");
     }
+    if let Some(count) = where_.delegates_count_all_gt {
+        push_and(query, has_condition);
+        push_qualified_column(query, table_alias, "delegates_count_all");
+        query.push(" > ").push_bind(count);
+    }
     if let Some(or) = &where_.or {
         push_or_group(query, has_condition, or, |query, has_condition, filter| {
             push_contributor_filters(query, has_condition, filter, table_alias);

@@ -512,6 +512,8 @@ pub struct ContributorWhereInput {
     pub(super) id_not_eq: Option<String>,
     #[graphql(name = "power_lt")]
     pub(super) power_lt: Option<i64>,
+    #[graphql(name = "delegatesCountAll_gt")]
+    pub(super) delegates_count_all_gt: Option<i32>,
     #[graphql(name = "OR")]
     pub(super) or: Option<Vec<ContributorWhereInput>>,
 }
