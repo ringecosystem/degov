@@ -3090,27 +3090,9 @@ async fn read_live_delegate_power_overlay_relations(
     for (scope, mut accounts) in accounts_by_scope {
         accounts.sort();
         accounts.dedup();
-        let rows = sqlx::query(
-            "SELECT
-                 contract_set_id, chain_id, dao_code, governor_address, token_address,
-                 from_delegate, to_delegate, is_current
-             FROM delegate
-             WHERE contract_set_id = $1
-               AND chain_id IS NOT DISTINCT FROM $2
-               AND dao_code IS NOT DISTINCT FROM $3
-               AND governor_address IS NOT DISTINCT FROM $4
-               AND (token_address IS NOT DISTINCT FROM $5 OR token_address IS NULL)
-               AND from_delegate = ANY($6)
-               AND is_current = TRUE",
-        )
-        .bind(&scope.contract_set_id)
-        .bind(scope.chain_id)
-        .bind(&scope.dao_code)
-        .bind(&scope.governor_address)
-        .bind(&scope.token_address)
-        .bind(&accounts)
-        .fetch_all(&mut **transaction)
-        .await?;
+        let mut query = QueryBuilder::<Postgres>::new("");
+        push_live_delegate_power_overlay_relations_query(&mut query, &scope, &accounts);
+        let rows = query.build().fetch_all(&mut **transaction).await?;
 
         relations.extend(rows.into_iter().map(|row| {
             ProvisionalDelegatePowerOverlayRelation {
@@ -3130,6 +3112,90 @@ async fn read_live_delegate_power_overlay_relations(
     }
 
     Ok(relations)
+}
+
+fn push_live_delegate_power_overlay_relations_query<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    scope: &'a LiveDelegateRelationScope,
+    accounts: &'a [String],
+) {
+    query
+        .push("WITH scoped_accounts AS MATERIALIZED (SELECT account FROM unnest(")
+        .push_bind(accounts)
+        .push(
+            "::TEXT[]) AS account)
+         SELECT
+             delegate.contract_set_id,
+             delegate.chain_id,
+             delegate.dao_code,
+             delegate.governor_address,
+             COALESCE(delegate.token_address, ",
+        )
+        .push_bind(&scope.token_address)
+        .push(
+            ") AS token_address,
+             delegate.from_delegate,
+             delegate.to_delegate,
+             delegate.is_current
+         FROM scoped_accounts
+         JOIN LATERAL (
+             SELECT
+                 contract_set_id, chain_id, dao_code, governor_address, token_address,
+                 from_delegate, to_delegate, is_current
+             FROM delegate
+             WHERE contract_set_id = ",
+        )
+        .push_bind(&scope.contract_set_id);
+
+    push_optional_i32_predicate(query, "chain_id", scope.chain_id);
+    push_optional_string_predicate(query, "dao_code", &scope.dao_code);
+    push_optional_string_predicate(query, "governor_address", &scope.governor_address);
+
+    query.push(" AND from_delegate = scoped_accounts.account");
+    match &scope.token_address {
+        Some(token_address) => {
+            query
+                .push(" AND (token_address = ")
+                .push_bind(token_address)
+                .push(" OR token_address IS NULL)");
+        }
+        None => {
+            query.push(" AND token_address IS NULL");
+        }
+    }
+    query.push(" AND is_current = TRUE OFFSET 0) delegate ON TRUE");
+}
+
+fn push_optional_i32_predicate(
+    query: &mut QueryBuilder<'_, Postgres>,
+    column_name: &'static str,
+    value: Option<i32>,
+) {
+    query.push(" AND ").push(column_name);
+    match value {
+        Some(value) => {
+            query.push(" = ").push_bind(value);
+        }
+        None => {
+            query.push(" IS NULL");
+        }
+    }
+}
+
+fn push_optional_string_predicate<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    column_name: &'static str,
+    value: &'a Option<String>,
+) {
+    query.push(" AND ").push(column_name);
+    match value {
+        Some(value) => {
+            query.push(" = ").push_bind(value);
+        }
+        None => {
+            query.push(" IS NULL");
+        }
+    }
 }
 
 async fn upsert_live_delegate_power_overlays(
@@ -4009,6 +4075,32 @@ mod tests {
         OnchainRefreshWorkerError::Database(sqlx::Error::Database(Box::new(FakeDatabaseError {
             code,
         })))
+    }
+
+    #[test]
+    fn test_live_delegate_power_overlay_relation_query_uses_account_driven_lateral_lookup() {
+        let scope = LiveDelegateRelationScope {
+            contract_set_id: "contract-set".to_owned(),
+            chain_id: Some(1),
+            dao_code: Some("dao".to_owned()),
+            governor_address: Some("0xgovernor".to_owned()),
+            token_address: Some("0xtoken".to_owned()),
+        };
+        let accounts = vec![
+            "0x0000000000000000000000000000000000000001".to_owned(),
+            "0x0000000000000000000000000000000000000002".to_owned(),
+        ];
+        let mut query = QueryBuilder::<Postgres>::new("");
+
+        push_live_delegate_power_overlay_relations_query(&mut query, &scope, &accounts);
+        let sql = query.sql();
+
+        assert!(sql.contains("WITH scoped_accounts AS MATERIALIZED"));
+        assert!(sql.contains("JOIN LATERAL"));
+        assert!(sql.contains("from_delegate = scoped_accounts.account"));
+        assert!(sql.contains("OFFSET 0"));
+        assert!(!sql.contains("from_delegate = ANY"));
+        assert!(!sql.contains("IS NOT DISTINCT FROM"));
     }
 
     #[test]
