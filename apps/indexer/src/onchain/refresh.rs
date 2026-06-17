@@ -1696,6 +1696,7 @@ where
 pub struct EvmRpcChainTool {
     rpc_client: Arc<dyn EvmRpcClient>,
     cache: ChainReadCache,
+    current_power_methods: CurrentPowerMethodPreferences,
 }
 
 impl EvmRpcChainTool {
@@ -1708,6 +1709,7 @@ impl EvmRpcChainTool {
         Ok(Self {
             rpc_client: Arc::new(ReqwestEvmRpcClient { rpc_url, client }),
             cache: ChainReadCache::default(),
+            current_power_methods: CurrentPowerMethodPreferences::default(),
         })
     }
 
@@ -1719,6 +1721,7 @@ impl EvmRpcChainTool {
         Self {
             rpc_client: Arc::new(rpc_client),
             cache: ChainReadCache::default(),
+            current_power_methods: CurrentPowerMethodPreferences::default(),
         }
     }
 }
@@ -1888,6 +1891,50 @@ impl ChainReadCache {
                 },
             );
         }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct CurrentPowerMethodPreferences {
+    methods: Arc<Mutex<BTreeMap<CurrentPowerMethodPreferenceKey, ChainReadMethod>>>,
+}
+
+impl CurrentPowerMethodPreferences {
+    fn get(&self, key: &ChainReadKey) -> Option<ChainReadMethod> {
+        let key = CurrentPowerMethodPreferenceKey::from_read_key(key)?;
+        let methods = self.methods.lock().ok()?;
+        methods.get(&key).copied()
+    }
+
+    fn insert(&self, key: &ChainReadKey, method: ChainReadMethod) {
+        if !is_current_power_method(method) {
+            return;
+        }
+        let Some(key) = CurrentPowerMethodPreferenceKey::from_read_key(key) else {
+            return;
+        };
+        if let Ok(mut methods) = self.methods.lock() {
+            methods.insert(key, method);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct CurrentPowerMethodPreferenceKey {
+    chain_id: i32,
+    contract_address: String,
+}
+
+impl CurrentPowerMethodPreferenceKey {
+    fn from_read_key(key: &ChainReadKey) -> Option<Self> {
+        if !is_current_power_method(key.method) {
+            return None;
+        }
+
+        Some(Self {
+            chain_id: key.chain_id,
+            contract_address: normalize_identifier(&key.contract_address),
+        })
     }
 }
 
@@ -2099,10 +2146,12 @@ impl EvmRpcChainTool {
                 continue;
             }
 
-            match encode_call_data(read.key.method, &read.key.args) {
+            let call_key = self.current_power_call_key(&read.key);
+            match encode_call_data(call_key.method, &call_key.args) {
                 Ok(call_data) => calls.push(EvmMulticallRead {
                     read_index: *read_index,
                     read: read.clone(),
+                    call_key,
                     call_data,
                 }),
                 Err(message) => {
@@ -2145,9 +2194,11 @@ impl EvmRpcChainTool {
                         for (call, result) in calls.into_iter().zip(results) {
                             report.covered_read_indexes.push(call.read_index);
                             if !result.success {
-                                match self
-                                    .execute_power_method_fallback(call.read_index, &call.read)
-                                {
+                                match self.execute_power_method_fallback(
+                                    call.read_index,
+                                    &call.read,
+                                    call.call_key.method,
+                                ) {
                                     PowerMethodFallbackOutcome::Success { result, cache_hit } => {
                                         report.cache_hits += usize::from(cache_hit);
                                         report.executed_rpc_calls += usize::from(!cache_hit);
@@ -2173,9 +2224,12 @@ impl EvmRpcChainTool {
                                 continue;
                             }
 
-                            match decode_call_value(call.read.key.method, &result.return_data) {
+                            match decode_call_value(call.call_key.method, &result.return_data) {
                                 Ok(value) => {
+                                    self.cache.insert(&call.call_key, value.clone());
                                     self.cache.insert(&call.read.key, value.clone());
+                                    self.current_power_methods
+                                        .insert(&call.read.key, call.call_key.method);
                                     report.results.push(ChainReadResult {
                                         read_index: call.read_index,
                                         key: call.read.key,
@@ -2277,8 +2331,9 @@ impl EvmRpcChainTool {
         &self,
         read_index: usize,
         read: &crate::ChainReadRequest,
+        failed_method: ChainReadMethod,
     ) -> PowerMethodFallbackOutcome {
-        let Some(fallback_method) = alternate_current_power_method(read.key.method) else {
+        let Some(fallback_method) = alternate_current_power_method(failed_method) else {
             return PowerMethodFallbackOutcome::NotApplicable;
         };
         let fallback_key = ChainReadKey {
@@ -2341,6 +2396,8 @@ impl EvmRpcChainTool {
         };
         self.cache.insert(&fallback_key, value.clone());
         self.cache.insert(&read.key, value.clone());
+        self.current_power_methods
+            .insert(&read.key, fallback_method);
 
         PowerMethodFallbackOutcome::Success {
             result: ChainReadResult {
@@ -2374,6 +2431,20 @@ impl EvmRpcChainTool {
                     .to_string(),
             ),
         })
+    }
+
+    fn current_power_call_key(&self, key: &ChainReadKey) -> ChainReadKey {
+        let Some(method) = self.current_power_methods.get(key) else {
+            return key.clone();
+        };
+        if method == key.method {
+            return key.clone();
+        }
+
+        ChainReadKey {
+            method,
+            ..key.clone()
+        }
     }
 
     fn execute_timelock_operation_state(
@@ -2477,6 +2548,7 @@ fn power_method_fallback_failure(
 struct EvmMulticallRead {
     read_index: usize,
     read: ChainReadRequest,
+    call_key: ChainReadKey,
     call_data: String,
 }
 
@@ -3676,6 +3748,13 @@ fn alternate_current_power_method(method: ChainReadMethod) -> Option<ChainReadMe
     }
 }
 
+fn is_current_power_method(method: ChainReadMethod) -> bool {
+    matches!(
+        method,
+        ChainReadMethod::GetVotes | ChainReadMethod::CurrentVotes
+    )
+}
+
 fn encode_call_data(method: ChainReadMethod, args: &[String]) -> Result<String, String> {
     let (signature, tokens) = match method {
         ChainReadMethod::BlockTimestamp => {
@@ -4692,6 +4771,35 @@ mod tests {
         assert_eq!(
             cached.results[0].value,
             ChainReadValue::Integer("250".to_owned())
+        );
+
+        let mut next_builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        next_builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let next = tool
+            .execute_read_plan(&next_builder.build())
+            .expect("learned fallback method is used for later account reads");
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(next.metrics.executed_rpc_calls, 1);
+        assert_eq!(next.results[0].key.method, ChainReadMethod::GetVotes);
+        assert_eq!(
+            next.results[0].value,
+            ChainReadValue::Integer("100".to_owned())
         );
     }
 
