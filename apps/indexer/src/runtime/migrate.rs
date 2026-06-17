@@ -238,6 +238,30 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .context("ensure scoped onchain refresh deferred drain index")?;
 
     sqlx::query(
+        "ALTER TABLE onchain_refresh_task SET (
+            autovacuum_vacuum_scale_factor = 0.01,
+            autovacuum_vacuum_threshold = 1000,
+            autovacuum_analyze_scale_factor = 0.02,
+            autovacuum_analyze_threshold = 1000
+         )",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure onchain refresh task autovacuum settings")?;
+
+    sqlx::query(
+        "ALTER TABLE onchain_refresh_deferred_candidate SET (
+            autovacuum_vacuum_scale_factor = 0.01,
+            autovacuum_vacuum_threshold = 1000,
+            autovacuum_analyze_scale_factor = 0.02,
+            autovacuum_analyze_threshold = 1000
+         )",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure onchain refresh deferred candidate autovacuum settings")?;
+
+    sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_rolling_metadata_preload_idx
          ON delegate_rolling (contract_set_id, transaction_hash, log_index DESC)
          INCLUDE (id, delegator, from_delegate, to_delegate, from_new_votes, to_new_votes)

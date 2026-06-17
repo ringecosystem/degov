@@ -8,7 +8,7 @@ use std::{
 };
 
 use degov_datalens_indexer::runtime::{apply_migrations, repair_invalid_runtime_indexes};
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 
 static SCHEMA_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -245,6 +245,30 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         &database.pool,
         &database.schema,
         "delegate_current_power_refresh_idx",
+    )
+    .await?;
+    assert_table_reloptions_contains(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task",
+        &[
+            "autovacuum_vacuum_scale_factor=0.01",
+            "autovacuum_vacuum_threshold=1000",
+            "autovacuum_analyze_scale_factor=0.02",
+            "autovacuum_analyze_threshold=1000",
+        ],
+    )
+    .await?;
+    assert_table_reloptions_contains(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_deferred_candidate",
+        &[
+            "autovacuum_vacuum_scale_factor=0.01",
+            "autovacuum_vacuum_threshold=1000",
+            "autovacuum_analyze_scale_factor=0.02",
+            "autovacuum_analyze_threshold=1000",
+        ],
     )
     .await?;
     assert_removed_processor_status_table_absent(&database.pool).await?;
@@ -574,6 +598,36 @@ async fn assert_index_is_valid(
     .await?;
 
     assert!(is_valid, "expected index {schema}.{index_name} to be valid");
+
+    Ok(())
+}
+
+async fn assert_table_reloptions_contains(
+    pool: &PgPool,
+    schema: &str,
+    table_name: &str,
+    expected_options: &[&str],
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT COALESCE(c.reloptions, ARRAY[]::TEXT[]) AS reloptions
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = $1 AND c.relname = $2",
+    )
+    .bind(schema)
+    .bind(table_name)
+    .fetch_one(pool)
+    .await?;
+    let reloptions: Vec<String> = row.get("reloptions");
+
+    for expected_option in expected_options {
+        assert!(
+            reloptions
+                .iter()
+                .any(|reloption| reloption == expected_option),
+            "expected table {table_name} reloptions to contain {expected_option}, got {reloptions:?}"
+        );
+    }
 
     Ok(())
 }
