@@ -72,6 +72,7 @@ type ContributorWhere = GovernanceScope & {
   id_in?: string[];
   id_not_eq?: string;
   id_eq?: string;
+  delegatesCountAll_gt?: number;
 };
 
 const normalizeScopeAddress = (address?: string | null) => {
@@ -546,6 +547,33 @@ export const treasuryService = {
 };
 
 export const contributorService = {
+  getContributorsPage: async (
+    endpoint: string,
+    options: {
+      limit: number;
+      offset: number;
+      orderBy?: string | string[];
+      where?: ContributorWhere;
+    }
+  ) => {
+    const orderByInput = Array.isArray(options?.orderBy)
+      ? options?.orderBy
+      : options?.orderBy
+      ? [options.orderBy]
+      : ["id_ASC"];
+
+    const response = await request<Types.ContributorPageResponse>(
+      endpoint,
+      Queries.GET_CONTRIBUTORS_PAGE,
+      {
+        limit: options.limit,
+        offset: options.offset,
+        orderBy: orderByInput,
+        where: options.where,
+      }
+    );
+    return response?.contributorsPage;
+  },
   getAllContributors: async (
     endpoint: string,
     options: {

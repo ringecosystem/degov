@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "react-use";
 import { useAccount } from "wagmi";
 
@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WithConnect } from "@/components/with-connect";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { proposalService } from "@/services/graphql";
+import { buildGovernanceScope, contributorService } from "@/services/graphql";
 import type { ContributorItem } from "@/services/graphql/types";
 
 import type { Address } from "viem";
@@ -74,6 +74,10 @@ export default function Members() {
   const [sortState, setSortState] =
     useState<MemberSortState>(DEFAULT_SORT_STATE);
   const [hasUserSorted, setHasUserSorted] = useState(false);
+  const governanceScope = useMemo(
+    () => buildGovernanceScope(daoConfig),
+    [daoConfig]
+  );
 
   // Debounce search term
   useDebounce(
@@ -84,11 +88,20 @@ export default function Members() {
     [searchTerm]
   );
 
-  const { data: dataMetrics } = useQuery({
-    queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
+  const { data: delegatesCountPage } = useQuery({
+    queryKey: ["delegates-count", daoConfig?.indexer?.endpoint, governanceScope],
     queryFn: () =>
-      proposalService.getProposalMetrics(
-        daoConfig?.indexer?.endpoint as string
+      contributorService.getContributorsPage(
+        daoConfig?.indexer?.endpoint as string,
+        {
+          limit: 0,
+          offset: 0,
+          orderBy: "id_ASC",
+          where: {
+            ...governanceScope,
+            delegatesCountAll_gt: 0,
+          },
+        }
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
   });
@@ -145,7 +158,7 @@ export default function Members() {
     applySortState("delegators", direction);
 
   const getDisplayTitle = () => {
-    const totalCount = dataMetrics?.holdersCount ?? dataMetrics?.memberCount;
+    const totalCount = delegatesCountPage?.totalCount;
     if (totalCount != null) {
       return t("titleWithCount", { count: totalCount });
     }

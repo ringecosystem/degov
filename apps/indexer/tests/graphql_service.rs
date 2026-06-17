@@ -187,6 +187,17 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 limit
                 items { id }
               }
+              contributorsWithDelegatorsPage: contributorsPage(
+                where: { delegatesCountAll_gt: 0 }
+                orderBy: id_ASC
+                limit: 1
+                offset: 0
+              ) {
+                totalCount
+                offset
+                limit
+                items { id delegatesCountAll }
+              }
               delegatesPage(where: { fromDelegate_eq: "0xdelegator" }, orderBy: [id_ASC], limit: 1, offset: 0) {
                 totalCount
                 offset
@@ -282,6 +293,17 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
             .as_array()
             .expect("items")
             .len(),
+        1
+    );
+    assert_eq!(data["contributorsWithDelegatorsPage"]["totalCount"], 1);
+    assert_eq!(data["contributorsWithDelegatorsPage"]["offset"], 0);
+    assert_eq!(data["contributorsWithDelegatorsPage"]["limit"], 1);
+    assert_eq!(
+        data["contributorsWithDelegatorsPage"]["items"][0]["id"],
+        "0xvoter1"
+    );
+    assert_eq!(
+        data["contributorsWithDelegatorsPage"]["items"][0]["delegatesCountAll"],
         1
     );
     assert_eq!(data["delegatesPage"]["totalCount"], 1);

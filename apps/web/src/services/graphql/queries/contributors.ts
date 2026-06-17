@@ -33,3 +33,27 @@ export const GET_CONTRIBUTORS = gql`
     }
   }
 `;
+
+export const GET_CONTRIBUTORS_PAGE = gql`
+  query GetContributorsPage(
+    $limit: Int
+    $offset: Int
+    $orderBy: [ContributorOrderByInput!]
+    $where: ContributorWhereInput
+  ) {
+    contributorsPage(
+      limit: $limit
+      offset: $offset
+      orderBy: $orderBy
+      where: $where
+    ) {
+      totalCount
+      offset
+      limit
+      items {
+        id
+        delegatesCountAll
+      }
+    }
+  }
+`;

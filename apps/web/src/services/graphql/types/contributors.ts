@@ -11,3 +11,14 @@ export type ContributorItem = {
 export type ContributorResponse = {
   contributors: ContributorItem[];
 };
+
+export type ContributorPageItem = {
+  totalCount: number;
+  offset: number;
+  limit: number;
+  items: Pick<ContributorItem, "id" | "delegatesCountAll">[];
+};
+
+export type ContributorPageResponse = {
+  contributorsPage: ContributorPageItem;
+};
