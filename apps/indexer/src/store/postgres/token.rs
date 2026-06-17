@@ -1893,7 +1893,7 @@ async fn recompute_delegate_count_effective(
              FROM (
                 SELECT affected.contract_set_id,
                        affected.id,
-                       COUNT(delegate_mapping.id) FILTER (WHERE delegate_mapping.power > 0)::INT AS positive_count
+                       COUNT(delegate_mapping.id)::INT AS positive_count
                 FROM (VALUES ",
         );
         for (index, (contract_set_id, id)) in rows.iter().enumerate() {
@@ -1912,6 +1912,7 @@ async fn recompute_delegate_count_effective(
                 LEFT JOIN delegate_mapping
                   ON delegate_mapping.contract_set_id = affected.contract_set_id
                  AND delegate_mapping."to" = affected.id
+                 AND delegate_mapping.power > 0
                 GROUP BY affected.contract_set_id, affected.id
              ) AS counts
              WHERE contributor.contract_set_id = counts.contract_set_id

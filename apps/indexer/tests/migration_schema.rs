@@ -161,6 +161,23 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "delegate_mapping_positive_count_idx",
+    )
+    .await?;
+    assert_index_definition_contains(
+        &database.pool,
+        &database.schema,
+        "delegate_mapping_positive_count_idx",
+        &[
+            "USING btree (contract_set_id, \"to\")",
+            "INCLUDE (id)",
+            "WHERE (power >",
+        ],
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "delegate_mapping_effective_count_idx",
     )
     .await?;
@@ -362,6 +379,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
 
     let runtime_migration = include_str!("../src/runtime/migrate.rs");
     assert!(runtime_migration.contains("delegate_mapping_effective_count_idx"));
+    assert!(runtime_migration.contains("delegate_mapping_positive_count_idx"));
+    assert!(runtime_migration.contains("WHERE power > 0"));
     assert!(runtime_migration.contains("onchain_refresh_data_metric_task"));
 
     Ok(())
@@ -501,6 +520,35 @@ async fn assert_index_exists(
     .await?;
 
     assert!(exists, "expected index {schema}.{index_name} to exist");
+
+    Ok(())
+}
+
+async fn assert_index_definition_contains(
+    pool: &PgPool,
+    schema: &str,
+    index_name: &str,
+    expected_fragments: &[&str],
+) -> Result<(), Box<dyn Error>> {
+    let indexdef: String = sqlx::query_scalar(
+        r#"
+        SELECT indexdef
+        FROM pg_indexes
+        WHERE schemaname = $1
+          AND indexname = $2
+        "#,
+    )
+    .bind(schema)
+    .bind(index_name)
+    .fetch_one(pool)
+    .await?;
+
+    for fragment in expected_fragments {
+        assert!(
+            indexdef.contains(fragment),
+            "expected index {schema}.{index_name} definition to contain {fragment:?}; got {indexdef}"
+        );
+    }
 
     Ok(())
 }
