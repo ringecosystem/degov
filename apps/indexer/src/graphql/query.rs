@@ -271,6 +271,17 @@ pub(super) async fn query_contributors(
     offset: Option<i32>,
     limit: Option<i32>,
 ) -> GraphqlResult<Vec<Contributor>> {
+    if can_use_power_desc_candidate_query(where_, order_by, limit) {
+        return query_contributors_by_power_desc_candidates(
+            pool,
+            implicit_scope,
+            where_,
+            offset,
+            limit.expect("checked by can_use_power_desc_candidate_query"),
+        )
+        .await;
+    }
+
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
         SELECT id, chain_id, dao_code, governor_address, block_number::text AS block_number,
@@ -307,6 +318,414 @@ pub(super) async fn query_contributors(
     push_page(&mut query, offset, limit);
 
     Ok(query.build_query_as().fetch_all(pool).await?)
+}
+
+async fn query_contributors_by_power_desc_candidates(
+    pool: &PgPool,
+    implicit_scope: &GraphqlScope,
+    where_: Option<&ContributorWhereInput>,
+    offset: Option<i32>,
+    limit: i32,
+) -> GraphqlResult<Vec<Contributor>> {
+    let offset = offset.unwrap_or(0).max(0);
+    let limit = limit.max(0);
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    let mut candidate_limit = contributor_candidate_limit(offset, limit);
+    for _ in 0..CONTRIBUTOR_CANDIDATE_MAX_ATTEMPTS {
+        let rows = query_contributors_by_power_desc_candidate_limit(
+            pool,
+            implicit_scope,
+            where_,
+            offset,
+            limit,
+            candidate_limit,
+        )
+        .await?;
+        if rows.first().is_none_or(|row| row.is_exact) {
+            return Ok(rows
+                .into_iter()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .map(Contributor::from)
+                .collect());
+        }
+        if candidate_limit >= CONTRIBUTOR_CANDIDATE_MAX_LIMIT {
+            break;
+        }
+        candidate_limit = candidate_limit
+            .saturating_mul(2)
+            .min(CONTRIBUTOR_CANDIDATE_MAX_LIMIT);
+    }
+
+    Err(async_graphql::Error::new(format!(
+        "contributors power_DESC query could not prove exact pagination within {CONTRIBUTOR_CANDIDATE_MAX_LIMIT} candidates"
+    )))
+}
+
+async fn query_contributors_by_power_desc_candidate_limit(
+    pool: &PgPool,
+    implicit_scope: &GraphqlScope,
+    where_: Option<&ContributorWhereInput>,
+    offset: i32,
+    limit: i32,
+    candidate_limit: i32,
+) -> GraphqlResult<Vec<ContributorCandidateRow>> {
+    let requested_end = offset.saturating_add(limit);
+    let stream_limit = candidate_limit.saturating_add(1);
+    let mut query = QueryBuilder::<Postgres>::new(
+        r#"
+        WITH overlay_stream AS (
+          SELECT contributor_power_overlay.contract_set_id,
+            contributor_power_overlay.account AS id,
+            contributor_power_overlay.power
+          FROM degov_provisional_contributor_power_overlay contributor_power_overlay
+        "#,
+    );
+    push_contributor_candidate_where(
+        &mut query,
+        implicit_scope,
+        where_,
+        ContributorCandidateSource::Overlay,
+    );
+    query.push(
+        r#"
+          ORDER BY contributor_power_overlay.power DESC, contributor_power_overlay.account ASC
+          LIMIT "#,
+    );
+    query.push_bind(stream_limit);
+    query.push(
+        r#"
+        ),
+        overlay_top AS (
+          SELECT contract_set_id, id
+          FROM overlay_stream
+          ORDER BY power DESC, id ASC
+          LIMIT "#,
+    );
+    query.push_bind(candidate_limit);
+    query.push(
+        r#"
+        ),
+        overlay_next AS (
+          SELECT power, id
+          FROM overlay_stream
+          ORDER BY power DESC, id ASC
+          OFFSET "#,
+    );
+    query.push_bind(candidate_limit);
+    query.push(
+        r#"
+          LIMIT 1
+        ),
+        base_stream AS (
+          SELECT contributor.contract_set_id, contributor.id, contributor.power
+          FROM contributor
+        "#,
+    );
+    push_contributor_candidate_where(
+        &mut query,
+        implicit_scope,
+        where_,
+        ContributorCandidateSource::Base,
+    );
+    query.push(
+        r#"
+          ORDER BY contributor.power DESC, contributor.id ASC
+          LIMIT "#,
+    );
+    query.push_bind(stream_limit);
+    query.push(
+        r#"
+        ),
+        base_top AS (
+          SELECT contract_set_id, id
+          FROM base_stream
+          ORDER BY power DESC, id ASC
+          LIMIT "#,
+    );
+    query.push_bind(candidate_limit);
+    query.push(
+        r#"
+        ),
+        base_next AS (
+          SELECT power, id
+          FROM base_stream
+          ORDER BY power DESC, id ASC
+          OFFSET "#,
+    );
+    query.push_bind(candidate_limit);
+    query.push(
+        r#"
+          LIMIT 1
+        ),
+        contributor_candidates AS (
+          SELECT contract_set_id, id FROM overlay_top
+          UNION
+          SELECT contract_set_id, id FROM base_top
+        ),
+        candidate_rows AS (
+          SELECT contributor.id, contributor.contract_set_id, contributor.chain_id,
+            contributor.dao_code, contributor.governor_address, contributor.block_number,
+            contributor.block_timestamp, contributor.transaction_hash,
+            contributor.last_vote_timestamp,
+            COALESCE(contributor_power_overlay.power, contributor.power) AS power,
+            contributor.balance, contributor.delegates_count_all
+          FROM contributor_candidates
+          JOIN contributor
+            ON contributor.contract_set_id = contributor_candidates.contract_set_id
+           AND contributor.id = contributor_candidates.id
+          LEFT JOIN degov_provisional_contributor_power_overlay contributor_power_overlay
+            ON contributor_power_overlay.contract_set_id = contributor.contract_set_id
+           AND contributor_power_overlay.chain_id IS NOT DISTINCT FROM contributor.chain_id
+           AND contributor_power_overlay.dao_code IS NOT DISTINCT FROM contributor.dao_code
+           AND contributor_power_overlay.governor_address IS NOT DISTINCT FROM contributor.governor_address
+           AND (
+             contributor_power_overlay.token_address IS NOT DISTINCT FROM contributor.token_address
+             OR contributor.token_address IS NULL
+           )
+           AND contributor_power_overlay.account = contributor.id
+           AND contributor_power_overlay.source = 'live-onchain'
+           AND contributor_power_overlay.status = 'available'
+        ),
+        sorted_candidate_rows AS (
+          SELECT id, chain_id, dao_code, governor_address, block_number, block_timestamp,
+            transaction_hash, last_vote_timestamp, power, balance, delegates_count_all,
+            ROW_NUMBER() OVER (ORDER BY power DESC, id ASC) AS row_number,
+            COUNT(*) OVER () AS candidate_count
+          FROM candidate_rows
+        ),
+        boundary AS (
+          SELECT power, id
+          FROM sorted_candidate_rows
+          WHERE row_number = "#,
+    );
+    query.push_bind(requested_end);
+    query.push(
+        r#"
+        ),
+        next_rows AS (
+          SELECT power, id FROM overlay_next
+          UNION ALL
+          SELECT power, id FROM base_next
+        ),
+        exact AS (
+          SELECT CASE
+            WHEN COALESCE((SELECT MAX(candidate_count) FROM sorted_candidate_rows), 0) < "#,
+    );
+    query.push_bind(requested_end);
+    query.push(
+        r#"
+              THEN NOT EXISTS (SELECT 1 FROM next_rows)
+            ELSE NOT EXISTS (
+              SELECT 1
+              FROM next_rows
+              CROSS JOIN boundary
+              WHERE next_rows.power > boundary.power
+                 OR (next_rows.power = boundary.power AND next_rows.id < boundary.id)
+            )
+          END AS is_exact
+        )
+        SELECT id, chain_id, dao_code, governor_address, block_number::text AS block_number,
+          (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
+          transaction_hash,
+          (CASE WHEN last_vote_timestamp IS NULL THEN NULL WHEN last_vote_timestamp < 1000000000000 THEN last_vote_timestamp * 1000 ELSE last_vote_timestamp END)::text AS last_vote_timestamp,
+          power::text AS power,
+          balance::text AS balance, delegates_count_all,
+          exact.is_exact
+        FROM sorted_candidate_rows
+        CROSS JOIN exact
+        WHERE row_number <= "#,
+    );
+    query.push_bind(requested_end);
+    query.push(" ORDER BY row_number ASC");
+
+    Ok(query.build_query_as().fetch_all(pool).await?)
+}
+
+const CONTRIBUTOR_CANDIDATE_MAX_ATTEMPTS: usize = 8;
+const CONTRIBUTOR_CANDIDATE_MAX_LIMIT: i32 = 20_000;
+
+#[derive(FromRow)]
+struct ContributorCandidateRow {
+    id: String,
+    chain_id: Option<i32>,
+    dao_code: Option<String>,
+    governor_address: Option<String>,
+    block_number: String,
+    block_timestamp: String,
+    transaction_hash: String,
+    last_vote_timestamp: Option<String>,
+    power: String,
+    balance: Option<String>,
+    delegates_count_all: i32,
+    is_exact: bool,
+}
+
+impl From<ContributorCandidateRow> for Contributor {
+    fn from(row: ContributorCandidateRow) -> Self {
+        Self {
+            id: row.id,
+            chain_id: row.chain_id,
+            dao_code: row.dao_code,
+            governor_address: row.governor_address,
+            block_number: row.block_number,
+            block_timestamp: row.block_timestamp,
+            transaction_hash: row.transaction_hash,
+            last_vote_timestamp: row.last_vote_timestamp,
+            power: row.power,
+            balance: row.balance,
+            delegates_count_all: row.delegates_count_all,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+enum ContributorCandidateSource {
+    Base,
+    Overlay,
+}
+
+fn can_use_power_desc_candidate_query(
+    where_: Option<&ContributorWhereInput>,
+    order_by: Option<&[ContributorOrderByInput]>,
+    limit: Option<i32>,
+) -> bool {
+    if limit.is_none() {
+        return false;
+    }
+    let order_by = order_by.unwrap_or(&[ContributorOrderByInput::IdAsc]);
+    let power_desc_order = matches!(order_by, [ContributorOrderByInput::PowerDesc])
+        || matches!(
+            order_by,
+            [
+                ContributorOrderByInput::PowerDesc,
+                ContributorOrderByInput::IdAsc
+            ]
+        );
+    power_desc_order
+        && where_.is_none_or(|where_| {
+            where_.or.is_none()
+                && where_.power_lt.is_none()
+                && where_.delegates_count_all_gt.is_none()
+        })
+}
+
+fn contributor_candidate_limit(offset: i32, limit: i32) -> i32 {
+    let requested_end = offset.saturating_add(limit).max(0);
+    requested_end
+        .saturating_mul(2)
+        .saturating_add(60)
+        .max(100)
+        .min(CONTRIBUTOR_CANDIDATE_MAX_LIMIT)
+}
+
+fn push_contributor_candidate_where<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
+    where_: Option<&'a ContributorWhereInput>,
+    source: ContributorCandidateSource,
+) {
+    query.push(" WHERE ");
+    let mut has_condition = false;
+    match source {
+        ContributorCandidateSource::Base => {
+            push_implicit_scope_filters(
+                query,
+                &mut has_condition,
+                implicit_scope,
+                "contributor",
+                true,
+            );
+            if let Some(where_) = where_ {
+                push_contributor_candidate_filters(query, &mut has_condition, where_, source);
+            }
+        }
+        ContributorCandidateSource::Overlay => {
+            push_column_eq(
+                query,
+                &mut has_condition,
+                "contributor_power_overlay",
+                "source",
+                "live-onchain",
+            );
+            push_column_eq(
+                query,
+                &mut has_condition,
+                "contributor_power_overlay",
+                "status",
+                "available",
+            );
+            push_implicit_scope_filters(
+                query,
+                &mut has_condition,
+                implicit_scope,
+                "contributor_power_overlay",
+                true,
+            );
+            if let Some(where_) = where_ {
+                push_contributor_candidate_filters(query, &mut has_condition, where_, source);
+            }
+        }
+    }
+    if !has_condition {
+        query.push("TRUE");
+    }
+}
+
+fn push_contributor_candidate_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    where_: &'a ContributorWhereInput,
+    source: ContributorCandidateSource,
+) {
+    let table_alias = match source {
+        ContributorCandidateSource::Base => "contributor",
+        ContributorCandidateSource::Overlay => "contributor_power_overlay",
+    };
+    push_scope_filters(query, has_condition, &where_.scope, table_alias);
+    if let Some(id) = &where_.id_eq {
+        push_contributor_candidate_id_eq(query, has_condition, source, id);
+    }
+    if let Some(ids) = &where_.id_in {
+        push_and(query, has_condition);
+        push_contributor_candidate_id_column(query, source);
+        query.push(" = ANY(").push_bind(ids).push(")");
+    }
+    if let Some(id) = &where_.id_not_eq {
+        push_and(query, has_condition);
+        push_contributor_candidate_id_column(query, source);
+        query.push(" <> ").push_bind(id);
+    }
+    if let Some(power) = where_.power_lt {
+        push_and(query, has_condition);
+        push_qualified_column(query, table_alias, "power");
+        query.push(" < ").push_bind(power).push("::numeric");
+    }
+}
+
+fn push_contributor_candidate_id_eq<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    source: ContributorCandidateSource,
+    id: &'a str,
+) {
+    push_and(query, has_condition);
+    push_contributor_candidate_id_column(query, source);
+    query.push(" = ").push_bind(id);
+}
+
+fn push_contributor_candidate_id_column(
+    query: &mut QueryBuilder<'_, Postgres>,
+    source: ContributorCandidateSource,
+) {
+    match source {
+        ContributorCandidateSource::Base => push_qualified_column(query, "contributor", "id"),
+        ContributorCandidateSource::Overlay => {
+            push_qualified_column(query, "contributor_power_overlay", "account")
+        }
+    }
 }
 
 pub(super) async fn query_delegates(
