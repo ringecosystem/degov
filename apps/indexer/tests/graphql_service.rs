@@ -737,6 +737,112 @@ async fn test_graphql_power_fields_prefer_provisional_overlay_and_fallback_to_fi
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_contributors_power_desc_uses_live_overlay_with_stable_pagination()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_power_overlay_rows(&database.pool).await?;
+    seed_contributor_power_order_rows(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query ContributorPowerOrder {
+              firstPage: contributors(
+                where: {
+                  chainId_eq: 1135
+                  governorAddress_eq: "0xgovernor"
+                  daoCode_eq: "lisk-dao"
+                  id_not_eq: "0xbot"
+                }
+                orderBy: [power_DESC]
+                limit: 3
+              ) {
+                id
+                power
+              }
+              secondPage: contributors(
+                where: {
+                  chainId_eq: 1135
+                  governorAddress_eq: "0xgovernor"
+                  daoCode_eq: "lisk-dao"
+                  id_not_eq: "0xbot"
+                }
+                orderBy: [power_DESC]
+                limit: 2
+                offset: 2
+              ) {
+                id
+                power
+              }
+            }
+            "#,
+    );
+    let response = schema.execute(request).await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = serde_json::to_value(response.data)?;
+    assert_eq!(data["firstPage"][0]["id"], "0xoverlay-top");
+    assert_eq!(data["firstPage"][0]["power"], "1000");
+    assert_eq!(data["firstPage"][1]["id"], "0xvoter1");
+    assert_eq!(data["firstPage"][1]["power"], "999");
+    assert_eq!(data["firstPage"][2]["id"], "0xbase-top");
+    assert_eq!(data["firstPage"][2]["power"], "900");
+    assert_eq!(data["secondPage"][0]["id"], "0xbase-top");
+    assert_eq!(data["secondPage"][1]["id"], "0xbase-tie-a");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_contributors_power_desc_errors_when_cap_cannot_prove_pagination()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_many_contributor_power_rows(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query ContributorPowerOrder {
+              contributors(
+                where: {
+                  chainId_eq: 1135
+                  governorAddress_eq: "0xgovernor"
+                  daoCode_eq: "lisk-dao"
+                }
+                orderBy: [power_DESC]
+                limit: 1
+                offset: 20000
+              ) {
+                id
+                power
+              }
+            }
+            "#,
+    );
+    let response = schema.execute(request).await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert!(
+        response.errors[0]
+            .message
+            .contains("could not prove exact pagination"),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to_final()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1609,6 +1715,96 @@ async fn seed_power_overlay_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           '0xdelegator', '0xdelegate', 888, TRUE, 'live-onchain', 'available', 900,
           1700000200
         )
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_contributor_power_order_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+          id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
+          last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all, delegates_count_effective
+        )
+        SELECT
+          '0xdownranked-' || lpad(i::text, 3, '0'), $1, 1135, 'lisk-dao', '0xgovernor',
+          700 + i, 1700000000 + i, '0xdownranked' || i, 700 + i, 1700000000 + i,
+          5000 - i, 1, 0, 0
+        FROM generate_series(1, 105) AS i
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_contributor_power_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address, token_address,
+          account, power, delegates_count_all, delegates_count_effective, source, status,
+          anchor_block_number, anchor_block_timestamp
+        )
+        SELECT
+          'overlay:contributor:0xdownranked-' || lpad(i::text, 3, '0'), $1, 1135, 'lisk', 'lisk-dao',
+          '0xgovernor', '0xtoken', '0xdownranked-' || lpad(i::text, 3, '0'),
+          1, 0, 0, 'live-onchain', 'available', 900, 1700000200
+        FROM generate_series(1, 105) AS i
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+          id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
+          last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all, delegates_count_effective
+        ) VALUES
+          ('0xoverlay-top', $1, 1135, 'lisk-dao', '0xgovernor', 810, 1700000210, '0xoverlaytop', 810, 1700000210, 10, 1, 0, 0),
+          ('0xbase-top', $1, 1135, 'lisk-dao', '0xgovernor', 811, 1700000220, '0xbasetop', 811, 1700000220, 900, 1, 0, 0),
+          ('0xbase-tie-b', $1, 1135, 'lisk-dao', '0xgovernor', 812, 1700000230, '0xbasetieb', 812, 1700000230, 800, 1, 0, 0),
+          ('0xbase-tie-a', $1, 1135, 'lisk-dao', '0xgovernor', 813, 1700000240, '0xbasetiea', 813, 1700000240, 800, 1, 0, 0),
+          ('0xbot', $1, 1135, 'lisk-dao', '0xgovernor', 814, 1700000250, '0xbotvote', 814, 1700000250, 2000, 1, 0, 0)
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_contributor_power_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address, token_address,
+          account, power, delegates_count_all, delegates_count_effective, source, status,
+          anchor_block_number, anchor_block_timestamp
+        ) VALUES (
+          'overlay:contributor:0xoverlay-top', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor', '0xtoken',
+          '0xoverlay-top', 1000, 0, 0, 'live-onchain', 'available', 900, 1700000200
+        )
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_many_contributor_power_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+          id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
+          last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all, delegates_count_effective
+        )
+        SELECT
+          '0xcap-' || lpad(i::text, 5, '0'), $1, 1135, 'lisk-dao', '0xgovernor',
+          100000 + i, 1700100000 + i, '0xcap' || i, 100000 + i, 1700100000 + i,
+          200000 - i, 1, 0, 0
+        FROM generate_series(1, 20001) AS i
         "#,
     )
     .bind(CONTRACT_SET_ID)
