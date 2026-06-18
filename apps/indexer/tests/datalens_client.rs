@@ -199,6 +199,24 @@ fn test_datalens_durable_head_reader_uses_safe_finality_for_durable_head() {
 }
 
 #[test]
+fn test_datalens_durable_head_reader_uses_sdk_chain_head_latest_finality() {
+    let server = FakeHeadServer::start(568900, "latest");
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client = DatalensNativeClient::from_config(&config).expect("client");
+
+    let height = client
+        .latest_head_height(&config)
+        .expect("latest head height");
+
+    assert_eq!(height, 568900);
+    let request = server.join();
+    assert!(
+        request.starts_with("GET /v1/chains/ethereum/head?finality=latest "),
+        "{request}"
+    );
+}
+
+#[test]
 fn test_datalens_log_query_retries_retryable_rate_limit_before_success() {
     let server = FakeQueryServer::start(vec![
         api_error_response(429, "rate_limited", Some("request_rate_limit")),

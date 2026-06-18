@@ -23,7 +23,7 @@ export function useBlockSync() {
       return indexerStatusService.getIndexerStatus(daoConfig.indexer.endpoint);
     },
     enabled: !!daoConfig?.indexer?.endpoint,
-    refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
+    refetchInterval: CACHE_TIMES.TWO_SECONDS,
   });
 
   const currentBlock = currentBlockData ? Number(currentBlockData) : 0;

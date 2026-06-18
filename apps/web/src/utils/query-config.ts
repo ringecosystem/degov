@@ -1,6 +1,7 @@
 import { hashFn } from "@wagmi/core/query";
 
 export const CACHE_TIMES = {
+  TWO_SECONDS: 2 * 1000,
   FIVE_SECONDS: 5 * 1000,
   TEN_SECONDS: 10 * 1000,
   THIRTY_SECONDS: 30 * 1000,

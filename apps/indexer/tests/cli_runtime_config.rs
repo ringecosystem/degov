@@ -886,8 +886,8 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
-            enabled: false,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            enabled: true,
+            finality: DatalensProvisionalFinality::LatestOnly,
         },
     };
     let selected = config
@@ -903,6 +903,11 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
 
     assert_eq!(planned.dao_code, "lisk-dao");
     assert_eq!(planned.start_block, 568752);
+    assert!(!planned.provisional.enabled);
+    assert_eq!(
+        planned.provisional.finality,
+        DatalensProvisionalFinality::LatestOnly
+    );
     assert_eq!(options.checkpoint_identity.chain_id, 1135);
     assert_eq!(
         options.checkpoint_identity.contract_set_id,
