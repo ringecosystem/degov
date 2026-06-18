@@ -204,6 +204,7 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 limit
                 items { id }
               }
+              delegateProfilesCount
               delegateMappingsPage(where: { from_eq: "0xdelegator" }, orderBy: [id_ASC], limit: 1, offset: 0) {
                 totalCount
                 offset
@@ -309,6 +310,7 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     assert_eq!(data["delegatesPage"]["totalCount"], 1);
     assert_eq!(data["delegatesPage"]["offset"], 0);
     assert_eq!(data["delegatesPage"]["limit"], 1);
+    assert_eq!(data["delegateProfilesCount"], 2);
     assert_eq!(data["delegateMappingsPage"]["totalCount"], 1);
     assert_eq!(data["delegateMappingsPage"]["offset"], 0);
     assert_eq!(data["delegateMappingsPage"]["limit"], 1);
@@ -832,7 +834,7 @@ async fn test_graphql_schema_applies_implicit_scope_to_queries_and_pages()
               proposalsPage { totalCount offset limit items { id } }
               dataMetricsPage { totalCount offset limit items { id } }
               contributorsPage { totalCount offset limit items { id } }
-              delegatesPage { totalCount offset limit items { id } }
+              delegatesPage(where: { isCurrent_eq: true }) { totalCount offset limit items { id } }
               delegateMappingsPage { totalCount offset limit items { id } }
             }
             "#,
@@ -1448,7 +1450,10 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         INSERT INTO delegate (
           id, contract_set_id, chain_id, dao_code, governor_address, from_delegate, to_delegate, block_number,
           block_timestamp, transaction_hash, is_current, power
-        ) VALUES ('0xdelegator_0xdelegate', $1, 1135, 'lisk-dao', '0xgovernor', '0xdelegator', '0xdelegate', 807, 1700000125, '0xdelegate', TRUE, 75)
+        ) VALUES
+          ('0xdelegator_0xdelegate', $1, 1135, 'lisk-dao', '0xgovernor', '0xdelegator', '0xdelegate', 807, 1700000125, '0xdelegate', TRUE, 75),
+          ('0xolddelegator_0xformer', $1, 1135, 'lisk-dao', '0xgovernor', '0xolddelegator', '0xformer', 808, 1700000126, '0xformer', FALSE, 0),
+          ('0xotherdelegator_0xformer', $1, 1135, 'lisk-dao', '0xgovernor', '0xotherdelegator', '0xformer', 809, 1700000127, '0xformer2', FALSE, 0)
         "#,
     )
     .bind(CONTRACT_SET_ID)

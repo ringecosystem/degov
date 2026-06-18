@@ -446,6 +446,48 @@ pub(super) async fn count_delegates(
     Ok(total)
 }
 
+pub(super) async fn count_delegate_profiles(
+    pool: &PgPool,
+    implicit_scope: &GraphqlScope,
+    where_: Option<&DelegateWhereInput>,
+) -> GraphqlResult<i64> {
+    // TODO: switch this realtime count to dataMetrics/materialized metrics.
+    let mut query = QueryBuilder::<Postgres>::new(
+        r#"
+        SELECT COUNT(DISTINCT lower(to_delegate))::int8 AS total
+        FROM (
+          SELECT delegate.id, delegate.contract_set_id, delegate.chain_id,
+            delegate.dao_code, delegate.governor_address, delegate.from_delegate,
+            delegate.to_delegate, delegate.is_current,
+            COALESCE(delegate_power_overlay.power, delegate.power) AS power
+          FROM delegate
+          LEFT JOIN degov_provisional_delegate_power_overlay delegate_power_overlay
+            ON delegate_power_overlay.contract_set_id = delegate.contract_set_id
+           AND delegate_power_overlay.chain_id IS NOT DISTINCT FROM delegate.chain_id
+           AND delegate_power_overlay.dao_code IS NOT DISTINCT FROM delegate.dao_code
+           AND delegate_power_overlay.governor_address IS NOT DISTINCT FROM delegate.governor_address
+           AND (
+             delegate_power_overlay.token_address IS NOT DISTINCT FROM delegate.token_address
+             OR delegate.token_address IS NULL
+           )
+           AND delegate_power_overlay.delegator = delegate.from_delegate
+           AND delegate_power_overlay.delegate = delegate.to_delegate
+           AND delegate_power_overlay.source = 'live-onchain'
+           AND delegate_power_overlay.status = 'available'
+        ) delegate
+        "#,
+    );
+    push_delegate_where(&mut query, implicit_scope, where_);
+    if !implicit_scope.is_empty() || where_.is_some() {
+        query.push(" AND ");
+    } else {
+        query.push(" WHERE ");
+    }
+    query.push("lower(to_delegate) <> '0x0000000000000000000000000000000000000000'");
+    let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
+    Ok(total)
+}
+
 pub(super) async fn count_delegate_mappings(
     pool: &PgPool,
     implicit_scope: &GraphqlScope,

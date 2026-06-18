@@ -19,17 +19,19 @@ const graphqlServiceSource = readFileSync(
   "utf8"
 );
 
-test("delegates page title uses contributors with delegators count", () => {
+test("delegates page title uses delegate profile count", () => {
   assert.match(
     localeDelegatesPageSource,
     /export\s+\{\s*default\s*\}\s+from\s+"..\/..\/delegates\/page"/
   );
-  assert.match(contributorQueriesSource, /contributorsPage\s*\(/);
-  assert.match(contributorQueriesSource, /totalCount/);
-  assert.match(graphqlServiceSource, /getContributorsPage/);
-  assert.match(delegatesPageSource, /contributorService\.getContributorsPage/);
-  assert.match(delegatesPageSource, /delegatesCountAll_gt:\s*0/);
-  assert.match(delegatesPageSource, /delegatesCountPage\?\.totalCount/);
+  assert.match(contributorQueriesSource, /delegateProfilesCount\s*\(/);
+  assert.match(graphqlServiceSource, /getDelegateProfilesCount/);
+  assert.match(
+    delegatesPageSource,
+    /contributorService\.getDelegateProfilesCount/
+  );
+  assert.match(delegatesPageSource, /delegateProfilesCount/);
+  assert.doesNotMatch(delegatesPageSource, /delegatesCountAll_gt:\s*0/);
   assert.doesNotMatch(
     delegatesPageSource,
     /dataMetrics\?\.holdersCount\s*\?\?\s*dataMetrics\?\.memberCount/
