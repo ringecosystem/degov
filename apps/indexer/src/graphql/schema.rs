@@ -283,6 +283,14 @@ impl QueryRoot {
         })
     }
 
+    async fn delegate_profiles_count(
+        &self,
+        ctx: &Context<'_>,
+        where_: Option<DelegateWhereInput>,
+    ) -> GraphqlResult<i64> {
+        count_delegate_profiles(pool(ctx)?, scope(ctx)?, where_.as_ref()).await
+    }
+
     async fn delegate_mappings_page(
         &self,
         ctx: &Context<'_>,

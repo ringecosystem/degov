@@ -547,6 +547,21 @@ export const treasuryService = {
 };
 
 export const contributorService = {
+  getDelegateProfilesCount: async (
+    endpoint: string,
+    options: {
+      where?: DelegateWhere;
+    } = {}
+  ) => {
+    const response = await request<Types.DelegateProfilesCountResponse>(
+      endpoint,
+      Queries.GET_DELEGATE_PROFILES_COUNT,
+      {
+        where: options.where,
+      }
+    );
+    return response?.delegateProfilesCount ?? 0;
+  },
   getContributorsPage: async (
     endpoint: string,
     options: {

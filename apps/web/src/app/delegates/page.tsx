@@ -88,19 +88,13 @@ export default function Members() {
     [searchTerm]
   );
 
-  const { data: delegatesCountPage } = useQuery({
+  const { data: delegateProfilesCount } = useQuery({
     queryKey: ["delegates-count", daoConfig?.indexer?.endpoint, governanceScope],
     queryFn: () =>
-      contributorService.getContributorsPage(
+      contributorService.getDelegateProfilesCount(
         daoConfig?.indexer?.endpoint as string,
         {
-          limit: 0,
-          offset: 0,
-          orderBy: "id_ASC",
-          where: {
-            ...governanceScope,
-            delegatesCountAll_gt: 0,
-          },
+          where: governanceScope,
         }
       ),
     enabled: !!daoConfig?.indexer?.endpoint,
@@ -158,9 +152,8 @@ export default function Members() {
     applySortState("delegators", direction);
 
   const getDisplayTitle = () => {
-    const totalCount = delegatesCountPage?.totalCount;
-    if (totalCount != null) {
-      return t("titleWithCount", { count: totalCount });
+    if (delegateProfilesCount != null) {
+      return t("titleWithCount", { count: delegateProfilesCount });
     }
     return t("title");
   };

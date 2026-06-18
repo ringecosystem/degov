@@ -22,3 +22,7 @@ export type ContributorPageItem = {
 export type ContributorPageResponse = {
   contributorsPage: ContributorPageItem;
 };
+
+export type DelegateProfilesCountResponse = {
+  delegateProfilesCount: number;
+};

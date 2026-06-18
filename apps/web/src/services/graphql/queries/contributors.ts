@@ -57,3 +57,9 @@ export const GET_CONTRIBUTORS_PAGE = gql`
     }
   }
 `;
+
+export const GET_DELEGATE_PROFILES_COUNT = gql`
+  query GetDelegateProfilesCount($where: DelegateWhereInput) {
+    delegateProfilesCount(where: $where)
+  }
+`;
