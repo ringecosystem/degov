@@ -251,6 +251,7 @@ pub struct IndexerContractSetRuntimeConfig {
     pub onchain_refresh_deferred_drain_enabled: bool,
     pub onchain_refresh_deferred_drain_batch_size: usize,
     pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
+    pub provisional: ProvisionalRuntimeConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -444,11 +445,22 @@ impl IndexerRuntimeConfig {
             onchain_refresh_deferred_drain_batch_size: self
                 .onchain_refresh_deferred_drain_batch_size,
             proposal_timestamp_backfill: self.proposal_timestamp_backfill,
+            provisional: self.provisional_for_target(),
         };
 
         Ok(runtime
             .with_start_block(contract_set.contract.start_block)?
             .with_contract_set_scope(contract_set.contract_set_id.clone()))
+    }
+
+    fn provisional_for_target(&self) -> ProvisionalRuntimeConfig {
+        match self.target_height {
+            IndexerTargetHeight::Latest => self.provisional.clone(),
+            IndexerTargetHeight::Fixed(_) => ProvisionalRuntimeConfig {
+                enabled: false,
+                finality: self.provisional.finality,
+            },
+        }
     }
 
     pub fn should_skip_contract_set_start_after_target(&self, start_block: i64) -> bool {

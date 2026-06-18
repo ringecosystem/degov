@@ -9,16 +9,21 @@ use tokio::{runtime::Handle, sync::Semaphore, task, time::sleep};
 use crate::runner::IndexerRunnerProgress;
 use crate::{
     ChainTool, DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
-    DatalensError, DatalensNativeClient, DatalensQueryConcurrencyGate, DatalensQueryErrorClass,
-    DatalensRuntimeContractSet, DatalensWarmupEnsureOutcome, EvmRpcChainTool,
-    IndexerContractSetMode, IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick,
-    IndexerRunner, IndexerRunnerReport, IndexerRunnerStore, IndexerRuntimeConfig,
-    IndexerTargetHeight, MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig,
-    OnchainRefreshTaskScope, OnchainRefreshTickReport, OnchainRefreshTickRunner,
-    OnchainRefreshTickScheduler, OnchainRefreshWorker, OnchainRefreshWorkerError,
-    PostgresIndexerRunnerStore, PostgresProvisionalCleanupStore,
-    checkpoint::configured_range_progress, classify_datalens_query_error, datalens_retry_config,
-    ensure_datalens_warmup_task, onchain_refresh_debounce_from_env, required_env,
+    DatalensError, DatalensNativeClient, DatalensProvisionalLogQueryReader,
+    DatalensQueryConcurrencyGate, DatalensQueryErrorClass, DatalensRuntimeContractSet,
+    DatalensWarmupEnsureOutcome, EvmRpcChainTool, IndexerContractSetMode,
+    IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner, IndexerRunnerReport,
+    IndexerRunnerStore, IndexerRuntimeConfig, IndexerTargetHeight,
+    MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTaskScope,
+    OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
+    OnchainRefreshWorker, OnchainRefreshWorkerError, PostgresIndexerRunnerStore,
+    PostgresProvisionalCleanupStore, PostgresProvisionalSegmentStore, ProvisionalWorker,
+    ProvisionalWorkerOptions,
+    checkpoint::configured_range_progress,
+    classify_datalens_query_error, datalens_retry_config, ensure_datalens_warmup_task,
+    onchain_refresh_debounce_from_env,
+    provisional::{DatalensProvisionalSegmentStore, ProvisionalWorkerError},
+    required_env,
 };
 
 use super::{datalens::verify_datalens, migrate::apply_migrations};
@@ -1000,10 +1005,10 @@ async fn run_contract_set_pass(
         )
         .context("create Datalens client")
         .map_err(ContractSetPassError::setup)?;
-        if let Some(gate) = datalens_query_gate {
+        if let Some(gate) = datalens_query_gate.clone() {
             client = client.with_query_concurrency_gate(gate);
         }
-        let mut store = PostgresIndexerRunnerStore::new(pool)
+        let mut store = PostgresIndexerRunnerStore::new(pool.clone())
             .with_onchain_refresh_debounce(onchain_refresh_debounce)
             .with_onchain_refresh_deferred_drain_batch_size(
                 runtime.onchain_refresh_deferred_drain_batch_size,
@@ -1044,10 +1049,50 @@ async fn run_contract_set_pass(
             runner.request_shutdown_after_chunks(chunks);
         }
 
-        runner
+        let report = runner
             .run_to_target(runtime.target_height)
             .context("run Datalens indexer to target height")
-            .map_err(ContractSetPassError::runner)
+            .map_err(ContractSetPassError::runner)?;
+
+        if runtime.provisional.enabled {
+            let mut provisional_client = DatalensNativeClient::from_config_with_retry_config(
+                &config,
+                datalens_retry_config(runtime.query_max_attempts),
+            )
+            .context("create Datalens provisional client")
+            .map_err(ContractSetPassError::setup)?;
+            if let Some(gate) = datalens_query_gate {
+                provisional_client = provisional_client.with_query_concurrency_gate(gate);
+            }
+            let mut provisional_store = PostgresProvisionalSegmentStore::new(pool);
+            if let Err(error) = run_provisional_worker_once(
+                &runtime,
+                &config,
+                &contracts,
+                &report,
+                &mut provisional_client,
+                &mut provisional_store,
+            )
+            .context("run Datalens provisional worker")
+            {
+                log::warn!(
+                    "Datalens provisional worker failed after durable pass dao_code={} chain_id={:?} contract_set_id={} error={:#}",
+                    runtime.dao_code,
+                    config.chain.network_id,
+                    runtime.checkpoint_contract_set_id,
+                    error
+                );
+            }
+        } else {
+            log::debug!(
+                "Datalens provisional worker disabled dao_code={} chain_id={:?} contract_set_id={}",
+                runtime.dao_code,
+                config.chain.network_id,
+                runtime.checkpoint_contract_set_id
+            );
+        }
+
+        Ok(report)
     })
     .await
     .map_err(|error| {
@@ -1055,6 +1100,102 @@ async fn run_contract_set_pass(
             runtime_anyhow::Error::new(error).context("join Datalens indexer runner task"),
         )
     })?
+}
+
+fn run_provisional_worker_once<R, S>(
+    runtime: &IndexerContractSetRuntimeConfig,
+    config: &DatalensConfig,
+    contracts: &DaoContractAddresses,
+    report: &IndexerRunnerReport,
+    reader: &mut R,
+    store: &mut S,
+) -> Result<Option<usize>>
+where
+    R: DatalensDurableHeadReader + DatalensProvisionalLogQueryReader,
+    S: DatalensProvisionalSegmentStore,
+{
+    if !runtime.provisional.enabled {
+        log::debug!(
+            "Datalens provisional worker disabled dao_code={} chain_id={:?} contract_set_id={}",
+            runtime.dao_code,
+            config.chain.network_id,
+            runtime.checkpoint_contract_set_id
+        );
+        return Ok(None);
+    }
+
+    let Some(chain_id) = config.chain.network_id else {
+        bail!(
+            "missing Datalens chain network_id for provisional worker dao_code={} contract_set_id={}",
+            runtime.dao_code,
+            runtime.checkpoint_contract_set_id
+        );
+    };
+    let latest_height = reader
+        .latest_head_height(config)
+        .context("resolve latest Datalens head height for provisional worker")?;
+    let Some((from_block, to_block)) = provisional_tail_range(runtime, report, latest_height)
+    else {
+        log::debug!(
+            "Datalens provisional worker skipped without latest tail dao_code={} chain_id={} contract_set_id={} durable_target_height={} latest_height={}",
+            runtime.dao_code,
+            chain_id,
+            runtime.checkpoint_contract_set_id,
+            runtime.target_height,
+            latest_height
+        );
+        return Ok(None);
+    };
+    let options = ProvisionalWorkerOptions {
+        datalens_config: config.clone(),
+        addresses: contracts.clone(),
+        dao_code: runtime.dao_code.clone(),
+        contract_set_id: runtime.checkpoint_contract_set_id.clone(),
+        chain_id,
+        chain_name: config.chain.configured_name.clone(),
+        finality: runtime.provisional.finality,
+        from_block,
+        to_block,
+    };
+    let mut worker = ProvisionalWorker::new(options, reader, store);
+    let report = worker
+        .run_once()
+        .map_err(provisional_worker_error_to_anyhow)?;
+
+    log::info!(
+        "Datalens provisional worker completed dao_code={} chain_id={} contract_set_id={} finality={} range_start_block={} range_end_block={} segments_written={}",
+        runtime.dao_code,
+        chain_id,
+        runtime.checkpoint_contract_set_id,
+        runtime.provisional.finality.as_datalens_value(),
+        from_block,
+        to_block,
+        report.segments_written
+    );
+
+    Ok(Some(report.segments_written))
+}
+
+fn provisional_tail_range(
+    runtime: &IndexerContractSetRuntimeConfig,
+    report: &IndexerRunnerReport,
+    latest_height: i64,
+) -> Option<(i64, i64)> {
+    if report.last_progress.remaining_blocks != 0 || latest_height <= runtime.target_height {
+        return None;
+    }
+
+    Some((
+        runtime
+            .target_height
+            .saturating_add(1)
+            .max(runtime.start_block),
+        latest_height,
+    ))
+}
+
+fn provisional_worker_error_to_anyhow(error: ProvisionalWorkerError) -> runtime_anyhow::Error {
+    runtime_anyhow::Error::new(error)
 }
 
 fn build_projection_chain_tool(
@@ -1224,9 +1365,13 @@ mod tests {
         time::Duration,
     };
 
+    use datalens_sdk::native::QueryInput;
+
     use crate::{
-        ChainFamily, ChainIdentityConfig, DatalensFinality, DatalensProvisionalFinality,
-        DatasetKeyConfig, ProvisionalRuntimeConfig, QueryLimitConfig, SecretString,
+        ChainFamily, ChainIdentityConfig, DatalensFinality, DatalensProvisionalCacheSegment,
+        DatalensProvisionalFinality, DatalensProvisionalLogQueryResult,
+        DatalensProvisionalSegmentWrite, DatasetKeyConfig, GovernanceTokenStandard,
+        ProvisionalRuntimeConfig, QueryLimitConfig, SecretString,
     };
 
     use super::*;
@@ -1399,6 +1544,108 @@ mod tests {
         assert_eq!(height, 568800);
     }
 
+    #[test]
+    fn test_provisional_worker_runtime_disabled_skips_reader_and_store() {
+        let runtime = contract_runtime(ProvisionalRuntimeConfig {
+            enabled: false,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        });
+        let config = datalens_config();
+        let contracts = dao_contracts();
+        let mut reader = RecordingProvisionalReader::default();
+        let mut store = RecordingProvisionalSegmentStore::default();
+
+        let result = run_provisional_worker_once(
+            &runtime,
+            &config,
+            &contracts,
+            &runner_report_with_remaining_blocks(0),
+            &mut reader,
+            &mut store,
+        )
+        .expect("disabled provisional worker skips cleanly");
+
+        assert_eq!(result, None);
+        assert_eq!(reader.latest_head_calls, 0);
+        assert!(reader.finalities.is_empty());
+        assert!(store.writes.is_empty());
+    }
+
+    #[test]
+    fn test_provisional_worker_runtime_enabled_runs_safe_to_latest_path() {
+        let runtime = contract_runtime(ProvisionalRuntimeConfig {
+            enabled: true,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        });
+        let config = datalens_config();
+        let contracts = dao_contracts();
+        let mut reader =
+            RecordingProvisionalReader::with_segments(vec![DatalensProvisionalCacheSegment {
+                source: "provider".to_owned(),
+                finality: "safe_to_latest".to_owned(),
+                range_start_block: 21,
+                range_end_block: 25,
+                anchor_block_number: Some(25),
+                anchor_block_hash: Some("0xanchor".to_owned()),
+                anchor_parent_hash: Some("0xparent".to_owned()),
+                anchor_block_timestamp: Some(1_700_000_000),
+            }]);
+        let mut store = RecordingProvisionalSegmentStore::default();
+
+        let result = run_provisional_worker_once(
+            &runtime,
+            &config,
+            &contracts,
+            &runner_report_with_remaining_blocks(0),
+            &mut reader,
+            &mut store,
+        )
+        .expect("enabled provisional worker runs");
+
+        assert_eq!(result, Some(1));
+        assert_eq!(reader.latest_head_calls, 1);
+        assert_eq!(reader.ranges, vec![(21, 25), (21, 25)]);
+        assert_eq!(
+            reader.finalities,
+            vec![
+                Some("safe_to_latest".to_owned()),
+                Some("safe_to_latest".to_owned())
+            ]
+        );
+        assert_eq!(store.writes.len(), 1);
+        assert_eq!(store.writes[0].segment_finality, "safe_to_latest");
+        assert_eq!(store.writes[0].range_start_block, 21);
+        assert_eq!(store.writes[0].range_end_block, 25);
+    }
+
+    #[test]
+    fn test_provisional_worker_runtime_skips_until_durable_pass_catches_up() {
+        let runtime = contract_runtime(ProvisionalRuntimeConfig {
+            enabled: true,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        });
+        let config = datalens_config();
+        let contracts = dao_contracts();
+        let mut reader = RecordingProvisionalReader::default();
+        let mut store = RecordingProvisionalSegmentStore::default();
+
+        let result = run_provisional_worker_once(
+            &runtime,
+            &config,
+            &contracts,
+            &runner_report_with_remaining_blocks(1),
+            &mut reader,
+            &mut store,
+        )
+        .expect("provisional worker skips while durable pass is behind");
+
+        assert_eq!(result, None);
+        assert_eq!(reader.latest_head_calls, 1);
+        assert!(reader.finalities.is_empty());
+        assert!(reader.ranges.is_empty());
+        assert!(store.writes.is_empty());
+    }
+
     fn contract_runtime_for_chunk_budget(
         max_chunks_per_run: Option<u64>,
     ) -> IndexerContractSetRuntimeConfig {
@@ -1420,6 +1667,33 @@ mod tests {
             onchain_refresh_deferred_drain_enabled: false,
             onchain_refresh_deferred_drain_batch_size: 100,
             proposal_timestamp_backfill: Default::default(),
+            provisional: ProvisionalRuntimeConfig {
+                enabled: false,
+                finality: DatalensProvisionalFinality::SafeToLatest,
+            },
+        }
+    }
+
+    fn contract_runtime(provisional: ProvisionalRuntimeConfig) -> IndexerContractSetRuntimeConfig {
+        IndexerContractSetRuntimeConfig {
+            dao_code: "demo-dao".to_owned(),
+            start_block: 10,
+            target_height: 20,
+            checkpoint_contract_set_id: "demo-set".to_owned(),
+            checkpoint_stream_id: "datalens-native".to_owned(),
+            data_source_version: "datalens-v1".to_owned(),
+            query_max_attempts: 1,
+            datalens_query_concurrency: Default::default(),
+            contract_set_max_concurrency: crate::ContractSetConcurrencyLimit::Unlimited,
+            contract_set_per_chain_max_concurrency: crate::ContractSetConcurrencyLimit::Unlimited,
+            progress_refresh_lag_blocks: 100,
+            adaptive_chunk_sizer: Default::default(),
+            max_chunks_per_run: None,
+            onchain_refresh_tick: Default::default(),
+            onchain_refresh_deferred_drain_enabled: false,
+            onchain_refresh_deferred_drain_batch_size: 100,
+            proposal_timestamp_backfill: Default::default(),
+            provisional,
         }
     }
 
@@ -1442,6 +1716,40 @@ mod tests {
                 eta_seconds: None,
                 onchain_refresh_allowed: true,
             },
+        }
+    }
+
+    fn datalens_config() -> DatalensConfig {
+        DatalensConfig {
+            endpoint: "http://127.0.0.1:1".to_owned(),
+            application: "degov-test".to_owned(),
+            bearer_token: SecretString::new("unit-test-redacted-value"),
+            timeout: Duration::from_secs(1),
+            finality: DatalensFinality::DurableOnly,
+            chain: ChainIdentityConfig {
+                family: ChainFamily::Evm,
+                configured_name: "ethereum".to_owned(),
+                network_id: Some(1),
+            },
+            dataset: DatasetKeyConfig {
+                family: "evm".to_owned(),
+                name: "logs".to_owned(),
+            },
+            query_limits: QueryLimitConfig {
+                block_range_limit: 1_000,
+            },
+            warmup: Default::default(),
+            dao_contracts: None,
+            chains: Vec::new(),
+        }
+    }
+
+    fn dao_contracts() -> DaoContractAddresses {
+        DaoContractAddresses {
+            governor: "0x0000000000000000000000000000000000000100".to_owned(),
+            governor_token: "0x0000000000000000000000000000000000000200".to_owned(),
+            timelock: None,
+            governor_token_standard: GovernanceTokenStandard::Erc20,
         }
     }
 
@@ -2220,6 +2528,75 @@ mod tests {
                 enabled: false,
                 finality: DatalensProvisionalFinality::SafeToLatest,
             },
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingProvisionalReader {
+        finalities: Vec<Option<String>>,
+        latest_head_calls: usize,
+        ranges: Vec<(u64, u64)>,
+        next_segments: Vec<DatalensProvisionalCacheSegment>,
+    }
+
+    impl RecordingProvisionalReader {
+        fn with_segments(next_segments: Vec<DatalensProvisionalCacheSegment>) -> Self {
+            Self {
+                finalities: Vec::new(),
+                latest_head_calls: 0,
+                ranges: Vec::new(),
+                next_segments,
+            }
+        }
+    }
+
+    impl DatalensDurableHeadReader for RecordingProvisionalReader {
+        fn durable_head_height(
+            &mut self,
+            _config: &DatalensConfig,
+        ) -> std::result::Result<i64, DatalensError> {
+            Ok(20)
+        }
+
+        fn latest_head_height(
+            &mut self,
+            _config: &DatalensConfig,
+        ) -> std::result::Result<i64, DatalensError> {
+            self.latest_head_calls += 1;
+            Ok(25)
+        }
+    }
+
+    impl DatalensProvisionalLogQueryReader for RecordingProvisionalReader {
+        fn query_provisional_logs(
+            &mut self,
+            input: QueryInput,
+        ) -> std::result::Result<DatalensProvisionalLogQueryResult, DatalensError> {
+            self.finalities.push(input.finality);
+            self.ranges.push((input.range.start, input.range.end));
+            let segments = std::mem::take(&mut self.next_segments);
+
+            Ok(DatalensProvisionalLogQueryResult {
+                rows: serde_json::json!([]),
+                segments,
+            })
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingProvisionalSegmentStore {
+        writes: Vec<DatalensProvisionalSegmentWrite>,
+    }
+
+    impl DatalensProvisionalSegmentStore for RecordingProvisionalSegmentStore {
+        type Error = String;
+
+        fn write_provisional_segments(
+            &mut self,
+            segments: &[DatalensProvisionalSegmentWrite],
+        ) -> std::result::Result<(), Self::Error> {
+            self.writes.extend_from_slice(segments);
+            Ok(())
         }
     }
 

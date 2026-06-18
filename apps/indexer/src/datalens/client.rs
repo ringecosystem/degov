@@ -22,6 +22,7 @@ pub trait DatalensNativeReader {
 
 pub trait DatalensDurableHeadReader {
     fn durable_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError>;
+    fn latest_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -797,13 +798,24 @@ impl DatalensProvisionalLogQueryReader for DatalensNativeClient {
 
 impl DatalensDurableHeadReader for DatalensNativeClient {
     fn durable_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
+        self.head_height(config, ChainHeadFinalityInput::Safe)
+    }
+
+    fn latest_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
+        self.head_height(config, ChainHeadFinalityInput::Latest)
+    }
+}
+
+impl DatalensNativeClient {
+    fn head_height(
+        &mut self,
+        config: &DatalensConfig,
+        finality: ChainHeadFinalityInput,
+    ) -> Result<i64, DatalensError> {
         let response = self
             .client
             .native()
-            .chain_head(
-                &config.chain.configured_name,
-                Some(ChainHeadFinalityInput::Safe),
-            )
+            .chain_head(&config.chain.configured_name, Some(finality))
             .map_err(|error| DatalensError::Query(error.to_string()))?;
 
         i64::try_from(response.height).map_err(|_| {
