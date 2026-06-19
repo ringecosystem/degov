@@ -34,7 +34,13 @@ export const Aside = () => {
   const config = useDaoConfig();
   const t = useTranslations("common.sidebar");
   const [collapsed, setCollapsed] = useState(false);
-  const { status, syncPercentage, currentBlock, indexedBlock } = useBlockSync();
+  const {
+    status,
+    syncPercentage,
+    currentBlock,
+    indexedBlock,
+    durableProcessedBlock,
+  } = useBlockSync();
   const { isDarkTheme } = useCustomTheme();
 
   useEffect(() => {
@@ -154,6 +160,7 @@ export const Aside = () => {
                     syncPercentage={syncPercentage}
                     currentBlock={currentBlock}
                     indexedBlock={indexedBlock}
+                    durableProcessedBlock={durableProcessedBlock}
                   />
                 </TooltipContent>
               </Tooltip>
@@ -164,6 +171,7 @@ export const Aside = () => {
               syncPercentage={syncPercentage}
               currentBlock={currentBlock}
               indexedBlock={indexedBlock}
+              durableProcessedBlock={durableProcessedBlock}
             />
           )}
         </footer>

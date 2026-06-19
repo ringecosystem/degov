@@ -11,3 +11,16 @@ export const GET_INDEXER_STATUS = gql`
     }
   }
 `;
+
+export const GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT = gql`
+  query indexerStatus {
+    indexerStatus {
+      daoCode
+      processedHeight
+      provisionalHeight
+      targetHeight
+      syncedPercentage
+      isSynced
+    }
+  }
+`;

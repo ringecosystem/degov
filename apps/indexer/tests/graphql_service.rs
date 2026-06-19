@@ -1018,6 +1018,7 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
                 chainId
                 contractSetId
                 processedHeight
+                provisionalHeight
                 targetHeight
                 syncedPercentage
                 isSynced
@@ -1042,12 +1043,14 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
     assert_eq!(statuses.len(), 2);
     assert_eq!(statuses[0]["daoCode"], "ens-dao");
     assert_eq!(statuses[0]["processedHeight"], 1200);
+    assert_eq!(statuses[0]["provisionalHeight"], serde_json::Value::Null);
     assert_eq!(statuses[0]["targetHeight"], 1200);
     assert_eq!(statuses[0]["syncedPercentage"], 100.0);
     assert_eq!(statuses[0]["isSynced"], true);
     assert_eq!(statuses[0]["lastError"], "caught up after retry");
     assert_eq!(statuses[1]["daoCode"], "lisk-dao");
     assert_eq!(statuses[1]["processedHeight"], 900);
+    assert_eq!(statuses[1]["provisionalHeight"], 1115);
     assert_eq!(statuses[1]["targetHeight"], 1000);
     assert_eq!(statuses[1]["syncedPercentage"], 90.0);
     assert_eq!(statuses[1]["isSynced"], false);
@@ -1071,6 +1074,7 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
                 chainId
                 contractSetId
                 processedHeight
+                provisionalHeight
                 targetHeight
                 syncedPercentage
                 isSynced
@@ -1095,6 +1099,7 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
     let scoped_data = scoped_response.data.into_json()?;
     assert_eq!(scoped_data["indexerStatus"]["daoCode"], "lisk-dao");
     assert_eq!(scoped_data["indexerStatus"]["processedHeight"], 900);
+    assert_eq!(scoped_data["indexerStatus"]["provisionalHeight"], 1115);
     assert_eq!(scoped_data["indexerStatus"]["targetHeight"], 1000);
     assert_eq!(scoped_data["indexerStatus"]["syncedPercentage"], 90.0);
     assert_eq!(scoped_data["indexerStatus"]["isSynced"], false);
@@ -1127,6 +1132,21 @@ async fn test_graphql_schema_rejects_removed_squid_status_compatibility()
     assert!(
         !sdl.contains(&removed_type),
         "schema still exposes removed status type:\n{sdl}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_exposes_provisional_indexer_status_height()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/degov")?;
+    let schema = graphql::build_schema(pool);
+    let sdl = schema.sdl();
+
+    assert!(
+        sdl.contains("provisionalHeight: Int"),
+        "schema does not expose provisionalHeight on indexer status:\n{sdl}"
     );
 
     Ok(())
@@ -1581,6 +1601,39 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         INSERT INTO degov_indexer_checkpoint (
           dao_code, chain_id, contract_set_id, stream_id, data_source_version, next_block, processed_height, target_height, updated_at
         ) VALUES ('lisk-dao', 1135, $1, 'evm.logs', 'datalens', 901, 900, 1000, now())
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_segment (
+          id, contract_set_id, chain_id, dao_code, dataset_key, selector,
+          selector_fingerprint, range_start_block, range_end_block,
+          segment_finality, source, status, anchor_block_number,
+          anchor_block_timestamp
+        ) VALUES
+          (
+            'segment:available:old', $1, 1135, 'lisk-dao', 'evm.logs',
+            'selector', 'selector', 901, 1100, 'safe_to_latest',
+            'live-onchain', 'available', 1100, 1700000300
+          ),
+          (
+            'segment:available:new', $1, 1135, 'lisk-dao', 'evm.logs',
+            'selector', 'selector', 1101, 1120, 'safe_to_latest',
+            'live-onchain', 'available', 1120, 1700000400
+          ),
+          (
+            'segment:available:lagging-selector', $1, 1135, 'lisk-dao',
+            'evm.logs', 'other-selector', 'other-selector', 901, 1115,
+            'safe_to_latest', 'live-onchain', 'available', 1115, 1700000450
+          ),
+          (
+            'segment:rolled-back', $1, 1135, 'lisk-dao', 'evm.logs',
+            'selector', 'selector', 1121, 1200, 'safe_to_latest',
+            'live-onchain', 'rolled_back', 1200, 1700000500
+          )
         "#,
     )
     .bind(CONTRACT_SET_ID)

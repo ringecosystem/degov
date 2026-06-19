@@ -203,6 +203,7 @@ pub struct IndexerStatus {
     pub(super) chain_id: i32,
     pub(super) contract_set_id: String,
     pub(super) processed_height: Option<i64>,
+    pub(super) provisional_height: Option<i64>,
     pub(super) target_height: Option<i64>,
     pub(super) synced_percentage: Option<f64>,
     pub(super) is_synced: bool,

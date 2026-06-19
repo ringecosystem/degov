@@ -142,6 +142,18 @@ fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
           chain_id,
           contract_set_id,
           processed_height::BIGINT AS processed_height,
+          (
+            SELECT MIN(selector_coverage.range_end_block)::BIGINT
+            FROM (
+              SELECT MAX(segment.range_end_block) AS range_end_block
+              FROM degov_provisional_segment segment
+              WHERE segment.status = 'available'
+                AND segment.dao_code = degov_indexer_checkpoint.dao_code
+                AND segment.chain_id IS NOT DISTINCT FROM degov_indexer_checkpoint.chain_id
+                AND segment.contract_set_id = degov_indexer_checkpoint.contract_set_id
+              GROUP BY segment.source, segment.selector
+            ) selector_coverage
+          ) AS provisional_height,
           target_height::BIGINT AS target_height,
           CASE
             WHEN target_height IS NULL THEN NULL
