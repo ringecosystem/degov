@@ -30,5 +30,7 @@ test("indexer status query requests native status fields", () => {
   assert.match(source, /targetHeight/);
   assert.match(source, /syncedPercentage/);
   assert.match(source, /isSynced/);
+  assert.match(source, /GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT/);
+  assert.match(source, /provisionalHeight/);
   assert.doesNotMatch(source, new RegExp(removedStatusField));
 });

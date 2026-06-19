@@ -519,8 +519,36 @@ export const delegateService = {
   },
 };
 
+const unsupportedProvisionalHeightEndpoints = new Set<string>();
+
 export const indexerStatusService = {
   getIndexerStatus: async (endpoint: string) => {
+    const useBaseQuery = unsupportedProvisionalHeightEndpoints.has(endpoint);
+
+    if (useBaseQuery) {
+      const response = await request<Types.IndexerStatusResponse>(
+        endpoint,
+        Queries.GET_INDEXER_STATUS
+      );
+      return response?.indexerStatus;
+    }
+
+    try {
+      const response = await request<Types.IndexerStatusResponse>(
+        endpoint,
+        Queries.GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT
+      );
+      return response?.indexerStatus;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("provisionalHeight")
+      ) {
+        throw error;
+      }
+      unsupportedProvisionalHeightEndpoints.add(endpoint);
+    }
+
     const response = await request<Types.IndexerStatusResponse>(
       endpoint,
       Queries.GET_INDEXER_STATUS

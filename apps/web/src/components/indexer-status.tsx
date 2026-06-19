@@ -17,12 +17,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 interface IndexerStatusProps {
   currentBlock: number;
   indexedBlock: number;
+  durableProcessedBlock: number;
   syncPercentage: number;
   status: BlockSyncStatus;
 }
 export function IndexerStatus({
   currentBlock,
   indexedBlock,
+  durableProcessedBlock,
   syncPercentage,
   status,
 }: IndexerStatusProps) {
@@ -39,6 +41,9 @@ export function IndexerStatus({
   const hoverMessage = t("currentlyAtBlock", {
     indexedBlock: indexedBlock.toLocaleString(),
     currentBlock: currentBlock.toLocaleString(),
+  });
+  const confirmedHeightMessage = t("confirmedSafeHeight", {
+    processedHeight: durableProcessedBlock.toLocaleString(),
   });
 
   return (
@@ -85,7 +90,14 @@ export function IndexerStatus({
           sideOffset={12}
           className="bg-card border border-card-background shadow-xs max-w-[350px] rounded-[26px] p-[20px] text-[14px]"
         >
-          {hoverMessage}
+          <div className="flex flex-col gap-2">
+            <span>{hoverMessage}</span>
+            {!!durableProcessedBlock && (
+              <span className="text-muted-foreground">
+                {confirmedHeightMessage}
+              </span>
+            )}
+          </div>
         </TooltipContent>
       </Tooltip>
 
