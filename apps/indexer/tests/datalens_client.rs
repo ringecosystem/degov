@@ -330,6 +330,115 @@ fn test_datalens_head_reader_uses_separate_worker_guard_from_log_queries() {
 }
 
 #[test]
+fn test_datalens_head_reader_coalesces_concurrent_same_chain_reads() {
+    let server = FakeQueryServer::start_concurrent(vec![FakeQueryResponse::DelayedHttp(
+        Duration::from_millis(100),
+        head_success_response(568902, "safe"),
+    )]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(500);
+    let first_config = config.clone();
+    let second_config = config.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+
+    let first_handle = thread::spawn(move || {
+        started_sender.send(()).expect("send first start");
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &first_config,
+            retry_config_with_attempts(1),
+        )
+        .expect("first client");
+        client
+            .durable_head_height(&first_config)
+            .expect("first durable head height")
+    });
+    started_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("first head starts");
+    thread::sleep(Duration::from_millis(20));
+    let second_handle = thread::spawn(move || {
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &second_config,
+            retry_config_with_attempts(1),
+        )
+        .expect("second client");
+        client
+            .durable_head_height(&second_config)
+            .expect("second durable head height")
+    });
+
+    assert_eq!(first_handle.join().expect("first head joins"), 568902);
+    assert_eq!(second_handle.join().expect("second head joins"), 568902);
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+    assert!(
+        requests[0].starts_with("GET /v1/chains/ethereum/head?finality=safe "),
+        "{requests:?}"
+    );
+}
+
+#[test]
+fn test_datalens_head_reader_cache_wait_counts_against_deadline() {
+    let server = FakeQueryServer::start_concurrent(vec![FakeQueryResponse::HoldOpen(
+        Duration::from_millis(300),
+    )]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(120);
+    let first_config = config.clone();
+    let second_config = config.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+
+    let first_handle = thread::spawn(move || {
+        started_sender.send(()).expect("send first start");
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &first_config,
+            retry_config_with_attempts(1),
+        )
+        .expect("first client");
+        client
+            .durable_head_height(&first_config)
+            .expect_err("first head times out")
+    });
+    started_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("first head starts");
+    thread::sleep(Duration::from_millis(20));
+    let second_handle = thread::spawn(move || {
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &second_config,
+            retry_config_with_attempts(1),
+        )
+        .expect("second client");
+        let started_at = std::time::Instant::now();
+        let error = client
+            .durable_head_height(&second_config)
+            .expect_err("second head times out");
+        (started_at.elapsed(), error)
+    });
+
+    let first_error = first_handle.join().expect("first head joins");
+    let (second_elapsed, second_error) = second_handle.join().expect("second head joins");
+    assert!(
+        second_elapsed < Duration::from_millis(220),
+        "cache wait should count against the Datalens head deadline"
+    );
+    assert!(
+        first_error
+            .to_string()
+            .contains("Datalens head timed out after 120ms"),
+        "{first_error}"
+    );
+    assert!(
+        second_error
+            .to_string()
+            .contains("Datalens head timed out after 120ms"),
+        "{second_error}"
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
 fn test_datalens_log_query_retries_retryable_rate_limit_before_success() {
     let server = FakeQueryServer::start(vec![
         api_error_response(429, "rate_limited", Some("request_rate_limit")),
@@ -880,6 +989,7 @@ impl FakeHangingQueryServer {
 
 enum FakeQueryResponse {
     Http(String),
+    DelayedHttp(Duration, String),
     CloseWithoutResponse,
     HoldOpen(Duration),
 }
@@ -903,6 +1013,12 @@ impl FakeQueryServer {
                     FakeQueryResponse::Http(response) => stream
                         .write_all(response.as_bytes())
                         .expect("write fake Datalens query response"),
+                    FakeQueryResponse::DelayedHttp(duration, response) => {
+                        thread::sleep(duration);
+                        stream
+                            .write_all(response.as_bytes())
+                            .expect("write fake Datalens query response");
+                    }
                     FakeQueryResponse::CloseWithoutResponse => {}
                     FakeQueryResponse::HoldOpen(duration) => thread::sleep(duration),
                 }
@@ -928,6 +1044,12 @@ impl FakeQueryServer {
                         FakeQueryResponse::Http(response) => stream
                             .write_all(response.as_bytes())
                             .expect("write fake Datalens query response"),
+                        FakeQueryResponse::DelayedHttp(duration, response) => {
+                            thread::sleep(duration);
+                            stream
+                                .write_all(response.as_bytes())
+                                .expect("write fake Datalens query response");
+                        }
                         FakeQueryResponse::CloseWithoutResponse => {}
                         FakeQueryResponse::HoldOpen(duration) => thread::sleep(duration),
                     }
