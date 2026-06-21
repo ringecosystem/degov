@@ -185,7 +185,7 @@ fn query_plans(
     from_block: i32,
     to_block: i32,
 ) -> Vec<DaoLogQueryPlan> {
-    let mut plans = split_topic_query_plans(
+    let mut plans = vec![query_plan(
         config,
         DaoLogAddressSource {
             address: addresses.governor.clone(),
@@ -194,8 +194,8 @@ fn query_plans(
         GOVERNOR_TOPIC0_FILTERS,
         from_block,
         to_block,
-    );
-    plans.extend(split_topic_query_plans(
+    )];
+    plans.push(query_plan(
         config,
         DaoLogAddressSource {
             address: addresses.governor_token.clone(),
@@ -207,7 +207,7 @@ fn query_plans(
     ));
 
     if let Some(timelock) = &addresses.timelock {
-        plans.extend(split_topic_query_plans(
+        plans.push(query_plan(
             config,
             DaoLogAddressSource {
                 address: timelock.clone(),
@@ -220,19 +220,6 @@ fn query_plans(
     }
 
     plans
-}
-
-fn split_topic_query_plans(
-    config: &DatalensConfig,
-    source: DaoLogAddressSource,
-    topic0_filters: &[&str],
-    from_block: i32,
-    to_block: i32,
-) -> Vec<DaoLogQueryPlan> {
-    topic0_filters
-        .iter()
-        .map(|topic| query_plan(config, source.clone(), &[*topic], from_block, to_block))
-        .collect()
 }
 
 fn query_plan(
