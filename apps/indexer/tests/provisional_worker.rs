@@ -33,7 +33,7 @@ fn test_provisional_worker_writes_segments_without_final_checkpoint_boundary() {
         rows: serde_json::json!([]),
         segments: vec![cache_segment("provider", "latest", 100, 105)],
     })];
-    results.extend((1..24).map(|_| {
+    results.extend((1..3).map(|_| {
         Ok(DatalensProvisionalLogQueryResult {
             rows: serde_json::json!([]),
             segments: Vec::new(),
@@ -46,7 +46,7 @@ fn test_provisional_worker_writes_segments_without_final_checkpoint_boundary() {
     let report = worker.run_once().expect("worker runs once");
 
     assert_eq!(report.segments_written, 1);
-    assert_eq!(reader.calls.len(), 24);
+    assert_eq!(reader.calls.len(), 3);
     assert!(
         reader
             .calls

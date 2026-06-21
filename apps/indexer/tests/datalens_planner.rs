@@ -15,12 +15,7 @@ fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelo
     let addresses = addresses();
     let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    assert_eq!(
-        plans.len(),
-        GOVERNOR_TOPIC0_VALUES.len()
-            + GOVERNOR_TOKEN_TOPIC0_VALUES.len()
-            + TIMELOCK_TOPIC0_VALUES.len()
-    );
+    assert_eq!(plans.len(), 3);
     assert_source_queries(
         &plans,
         DaoLogSource::Governor,
@@ -58,23 +53,20 @@ fn test_plan_dao_log_queries_skips_timelock_when_not_configured() {
 
     let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    assert_eq!(
-        plans.len(),
-        GOVERNOR_TOPIC0_VALUES.len() + GOVERNOR_TOKEN_TOPIC0_VALUES.len()
-    );
+    assert_eq!(plans.len(), 2);
     assert_eq!(
         plans
             .iter()
             .filter(|plan| plan.sources[0].source == DaoLogSource::Governor)
             .count(),
-        GOVERNOR_TOPIC0_VALUES.len()
+        1
     );
     assert_eq!(
         plans
             .iter()
             .filter(|plan| plan.sources[0].source == DaoLogSource::GovernorToken)
             .count(),
-        GOVERNOR_TOKEN_TOPIC0_VALUES.len()
+        1
     );
     assert!(
         plans
@@ -92,9 +84,7 @@ fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
         .map(|plan| (plan.from_block, plan.to_block))
         .collect::<Vec<_>>();
 
-    let plans_per_chunk = GOVERNOR_TOPIC0_VALUES.len()
-        + GOVERNOR_TOKEN_TOPIC0_VALUES.len()
-        + TIMELOCK_TOPIC0_VALUES.len();
+    let plans_per_chunk = 3;
 
     assert_eq!(ranges.len(), plans_per_chunk * 3);
     assert_eq!(
@@ -220,20 +210,18 @@ fn assert_source_queries(
         .filter(|plan| plan.sources[0].source == source)
         .collect::<Vec<_>>();
 
-    assert_eq!(source_plans.len(), topic0_values.len());
-    for (plan, topic0) in source_plans.into_iter().zip(topic0_values) {
-        assert_query(
-            plan,
-            &[DaoLogAddressSource {
-                address: address.to_owned(),
-                source,
-            }],
-            &[*topic0],
-            from_block,
-            to_block,
-            finality,
-        );
-    }
+    assert_eq!(source_plans.len(), 1);
+    assert_query(
+        source_plans[0],
+        &[DaoLogAddressSource {
+            address: address.to_owned(),
+            source,
+        }],
+        topic0_values,
+        from_block,
+        to_block,
+        finality,
+    );
 }
 
 fn assert_query(
