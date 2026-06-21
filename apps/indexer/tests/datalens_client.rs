@@ -217,6 +217,38 @@ fn test_datalens_durable_head_reader_uses_sdk_chain_head_latest_finality() {
 }
 
 #[test]
+fn test_datalens_head_reader_returns_degov_timeout_for_stalled_sdk_head() {
+    let server = FakeHangingQueryServer::start(Duration::from_millis(500));
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(50);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("client");
+    let started_at = std::time::Instant::now();
+
+    let error = client
+        .durable_head_height(&config)
+        .expect_err("stalled head request times out");
+
+    assert!(
+        started_at.elapsed() < Duration::from_millis(300),
+        "outer timeout should bound the stalled SDK head call"
+    );
+    let error_message = error.to_string();
+    assert!(
+        error_message.contains("Datalens head timed out after 50ms")
+            || error_message.contains("send datalens REST request"),
+        "{error_message}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&error.to_string()),
+        DatalensQueryErrorClass::Transient
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
 fn test_datalens_log_query_retries_retryable_rate_limit_before_success() {
     let server = FakeQueryServer::start(vec![
         api_error_response(429, "rate_limited", Some("request_rate_limit")),

@@ -555,13 +555,14 @@ impl DatalensNativeClient {
         })
     }
 
-    fn run_query_with_deadline<F>(
+    fn run_query_with_deadline<F, R>(
         &self,
         operation: &'static str,
         run: F,
-    ) -> Result<QueryResponse, DatalensSdkError>
+    ) -> Result<R, DatalensSdkError>
     where
-        F: FnOnce(DatalensClient) -> Result<QueryResponse, DatalensSdkError> + Send + 'static,
+        F: FnOnce(DatalensClient) -> Result<R, DatalensSdkError> + Send + 'static,
+        R: Send + 'static,
     {
         let started_at = Instant::now();
         let permit = match self.acquire_query_concurrency_permit(operation) {
@@ -812,10 +813,11 @@ impl DatalensNativeClient {
         config: &DatalensConfig,
         finality: ChainHeadFinalityInput,
     ) -> Result<i64, DatalensError> {
+        let chain_name = config.chain.configured_name.clone();
         let response = self
-            .client
-            .native()
-            .chain_head(&config.chain.configured_name, Some(finality))
+            .run_query_with_deadline("head", move |client| {
+                client.native().chain_head(&chain_name, Some(finality))
+            })
             .map_err(|error| DatalensError::Query(error.to_string()))?;
 
         i64::try_from(response.height).map_err(|_| {
