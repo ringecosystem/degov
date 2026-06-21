@@ -128,7 +128,7 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     run_indexer_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 1);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 24);
     assert_table_count(&database.pool, "proposal_created", 1).await?;
     assert_table_count(&database.pool, "proposal", 1).await?;
     assert_table_count(&database.pool, "vote_cast", 1).await?;
@@ -358,7 +358,7 @@ async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
     run_indexer_all_contract_sets_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 0);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 24);
     assert_checkpoint_scope(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_scope(&database.pool, SECOND_CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_row_count(&database.pool, 2).await?;
@@ -2842,7 +2842,7 @@ impl FakeDatalensServer {
         let server_query_count = query_count.clone();
 
         thread::spawn(move || {
-            for stream in listener.incoming().take(8).flatten() {
+            for stream in listener.incoming().take(64).flatten() {
                 handle_datalens_request(
                     stream,
                     &governor_rows,
@@ -3026,11 +3026,11 @@ fn handle_datalens_request(
         query_count.fetch_add(1, Ordering::Relaxed);
         let request_body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
         let rows = if request_body.contains(GOVERNOR) || request_body.contains(SECOND_GOVERNOR) {
-            governor_rows.to_vec()
+            matching_datalens_rows(request_body, governor_rows)
         } else if request_body.contains(TOKEN) || request_body.contains(SECOND_TOKEN) {
-            token_rows.to_vec()
+            matching_datalens_rows(request_body, token_rows)
         } else if request_body.contains(TIMELOCK) || request_body.contains(SECOND_TIMELOCK) {
-            timelock_rows.to_vec()
+            matching_datalens_rows(request_body, timelock_rows)
         } else {
             Vec::new()
         };
@@ -3053,6 +3053,17 @@ fn handle_datalens_request(
     stream
         .write_all(response.as_bytes())
         .expect("write fake Datalens response");
+}
+
+fn matching_datalens_rows(request_body: &str, rows: &[Value]) -> Vec<Value> {
+    rows.iter()
+        .filter(|row| {
+            row.pointer("/topics/0")
+                .and_then(Value::as_str)
+                .is_some_and(|topic0| request_body.contains(topic0))
+        })
+        .cloned()
+        .collect()
 }
 
 fn read_http_request(stream: &mut TcpStream) -> String {
