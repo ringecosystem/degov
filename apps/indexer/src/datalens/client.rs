@@ -41,6 +41,7 @@ pub struct DatalensNativeClient {
     query_key: DatalensQueryConcurrencyKey,
     query_timeout: Duration,
     blocking_query_guard: Arc<DatalensBlockingQueryGuard>,
+    blocking_head_guard: Arc<DatalensBlockingQueryGuard>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -99,14 +100,16 @@ struct DatalensBlockingQueryKey {
     endpoint: String,
     application: String,
     query_key: DatalensQueryConcurrencyKey,
+    operation: &'static str,
 }
 
 impl DatalensBlockingQueryKey {
-    fn from_config(config: &DatalensConfig) -> Self {
+    fn from_config(config: &DatalensConfig, operation: &'static str) -> Self {
         Self {
             endpoint: config.endpoint.clone(),
             application: config.application.clone(),
             query_key: DatalensQueryConcurrencyKey::from_config(config),
+            operation,
         }
     }
 }
@@ -153,15 +156,23 @@ impl DatalensBlockingQueryGuard {
         }
     }
 
-    fn acquire(&self) -> Result<(), DatalensSdkError> {
+    fn acquire(&self, operation: &str) -> Result<(), DatalensSdkError> {
         let mut state = self.state.lock().map_err(|_| {
             DatalensSdkError::Transport("Datalens blocking query guard lock poisoned".to_owned())
         })?;
         if state.active_workers >= state.max_workers {
-            return Err(DatalensSdkError::Transport(format!(
-                "Datalens query timed out because {} previous SDK queries are still in flight",
-                state.active_workers
-            )));
+            let message = if operation == "query" {
+                format!(
+                    "Datalens query timed out because {} previous SDK queries are still in flight",
+                    state.active_workers
+                )
+            } else {
+                format!(
+                    "Datalens {operation} timed out because {} previous SDK {operation} workers are still in flight",
+                    state.active_workers
+                )
+            };
+            return Err(DatalensSdkError::Transport(message));
         }
         state.active_workers += 1;
         Ok(())
@@ -402,7 +413,8 @@ impl DatalensNativeClient {
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
-            blocking_query_guard: blocking_query_guard_for_config(config)?,
+            blocking_query_guard: blocking_query_guard_for_config(config, "query")?,
+            blocking_head_guard: blocking_query_guard_for_config(config, "head")?,
         })
     }
 
@@ -438,7 +450,8 @@ impl DatalensNativeClient {
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
-            blocking_query_guard: blocking_query_guard_for_config(config)?,
+            blocking_query_guard: blocking_query_guard_for_config(config, "query")?,
+            blocking_head_guard: blocking_query_guard_for_config(config, "head")?,
         })
     }
 
@@ -589,12 +602,13 @@ impl DatalensNativeClient {
             self.warn_query_timeout(operation, &error);
             return Err(error);
         };
-        if let Err(error) = self.blocking_query_guard.acquire() {
+        let blocking_guard = self.blocking_guard_for_operation(operation);
+        if let Err(error) = blocking_guard.acquire(operation) {
             self.warn_query_timeout(operation, &error);
             return Err(error);
         }
         let blocking_query_permit = DatalensBlockingQueryPermit {
-            guard: self.blocking_query_guard.clone(),
+            guard: blocking_guard,
         };
         let (sender, receiver) = mpsc::sync_channel(1);
         let client = self.client.clone();
@@ -630,6 +644,10 @@ impl DatalensNativeClient {
         &self,
         operation: &str,
     ) -> Result<DatalensQueryConcurrencyAcquire, DatalensError> {
+        if operation == "head" {
+            return Ok(DatalensQueryConcurrencyAcquire::Acquired(None));
+        }
+
         let Some(gate) = self.query_gate.as_ref() else {
             return Ok(DatalensQueryConcurrencyAcquire::Acquired(None));
         };
@@ -666,6 +684,14 @@ impl DatalensNativeClient {
             error
         );
     }
+
+    fn blocking_guard_for_operation(&self, operation: &str) -> Arc<DatalensBlockingQueryGuard> {
+        if operation == "head" {
+            self.blocking_head_guard.clone()
+        } else {
+            self.blocking_query_guard.clone()
+        }
+    }
 }
 
 fn fallback_retry_delay(
@@ -693,12 +719,13 @@ fn fallback_retry_delay(
 
 fn blocking_query_guard_for_config(
     config: &DatalensConfig,
+    operation: &'static str,
 ) -> Result<Arc<DatalensBlockingQueryGuard>, DatalensError> {
     static BLOCKING_QUERY_GUARDS: OnceLock<
         Mutex<HashMap<DatalensBlockingQueryKey, Arc<DatalensBlockingQueryGuard>>>,
     > = OnceLock::new();
 
-    let key = DatalensBlockingQueryKey::from_config(config);
+    let key = DatalensBlockingQueryKey::from_config(config, operation);
     let guards = BLOCKING_QUERY_GUARDS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guards = guards.lock().map_err(|_| {
         DatalensError::Query("Datalens blocking query guard lock poisoned".to_owned())
