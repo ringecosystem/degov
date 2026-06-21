@@ -2258,7 +2258,11 @@ impl EvmRpcChainTool {
                 }
             }
             Err(message) => {
-                fail_multicall_group(calls, &mut report, message);
+                if should_try_latest_block_fallback_after_error(&message) {
+                    self.execute_multicall_fallback(calls, &mut report, message);
+                } else {
+                    fail_multicall_group(calls, &mut report, message);
+                }
             }
         }
 
@@ -4994,7 +4998,7 @@ mod tests {
                 "0x{}",
                 hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
             )) {
-                return Ok("0x".to_owned());
+                return Err(self.at_block_error.to_owned());
             }
 
             match block_mode {
@@ -5365,7 +5369,7 @@ mod tests {
         assert!(failures.required_failures[0].message.contains("HTTP 500"));
         assert_eq!(
             *block_modes.lock().expect("block mode lock"),
-            vec![BlockReadMode::AtBlock(200), BlockReadMode::AtBlock(200)]
+            vec![BlockReadMode::AtBlock(200)]
         );
     }
 
