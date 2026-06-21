@@ -2752,25 +2752,80 @@ async fn reconcile_current_delegate_relation_power_from_balance(
 
     let refreshes = refreshes_by_key.into_values().collect::<Vec<_>>();
     for chunk in refreshes.chunks(MAX_ONCHAIN_REFRESH_APPLY_ROWS) {
-        let mut query = QueryBuilder::<Postgres>::new(
-            "WITH refreshed (
-                contract_set_id, chain_id, dao_code, governor_address, token_address,
-                delegator, balance
-             ) AS (",
-        );
-        query.push_values(chunk, |mut values, refresh| {
-            values
-                .push_bind(&refresh.key.contract_set_id)
-                .push_bind(refresh.key.chain_id)
-                .push_bind(&refresh.key.dao_code)
-                .push_bind(&refresh.key.governor_address)
-                .push_bind(&refresh.key.token_address)
-                .push_bind(&refresh.key.account)
-                .push_bind(&refresh.balance)
-                .push_unseparated("::NUMERIC(78, 0)");
-        });
-        query.push(
-            "),
+        let mut query = QueryBuilder::<Postgres>::new("");
+        push_delegate_relation_balance_refresh_query(&mut query, chunk);
+        query.build().fetch_one(&mut **transaction).await?;
+    }
+
+    Ok(())
+}
+
+fn push_delegate_relation_balance_refresh_query<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    refreshes: &[DelegateRelationBalanceRefresh],
+) {
+    let contract_set_ids = refreshes
+        .iter()
+        .map(|refresh| refresh.key.contract_set_id.clone())
+        .collect::<Vec<_>>();
+    let chain_ids = refreshes
+        .iter()
+        .map(|refresh| refresh.key.chain_id)
+        .collect::<Vec<_>>();
+    let dao_codes = refreshes
+        .iter()
+        .map(|refresh| refresh.key.dao_code.clone())
+        .collect::<Vec<_>>();
+    let governor_addresses = refreshes
+        .iter()
+        .map(|refresh| refresh.key.governor_address.clone())
+        .collect::<Vec<_>>();
+    let token_addresses = refreshes
+        .iter()
+        .map(|refresh| refresh.key.token_address.clone())
+        .collect::<Vec<_>>();
+    let delegators = refreshes
+        .iter()
+        .map(|refresh| refresh.key.account.clone())
+        .collect::<Vec<_>>();
+    let balances = refreshes
+        .iter()
+        .map(|refresh| refresh.balance.clone())
+        .collect::<Vec<_>>();
+
+    query
+        .push(
+            "WITH refreshed AS MATERIALIZED (
+                SELECT
+                    contract_set_id,
+                    chain_id,
+                    dao_code,
+                    governor_address,
+                    token_address,
+                    delegator,
+                    balance_text::NUMERIC(78, 0) AS balance
+                FROM unnest(",
+        )
+        .push_bind(contract_set_ids)
+        .push("::TEXT[], ")
+        .push_bind(chain_ids)
+        .push("::INT4[], ")
+        .push_bind(dao_codes)
+        .push("::TEXT[], ")
+        .push_bind(governor_addresses)
+        .push("::TEXT[], ")
+        .push_bind(token_addresses)
+        .push("::TEXT[], ")
+        .push_bind(delegators)
+        .push("::TEXT[], ")
+        .push_bind(balances)
+        .push(
+            "::TEXT[]
+                ) AS refreshed_input (
+                    contract_set_id, chain_id, dao_code, governor_address, token_address,
+                    delegator, balance_text
+                )
+             ),
              current_edges AS (
                 SELECT DISTINCT ON (delegate.contract_set_id, delegate.id)
                     delegate.contract_set_id,
@@ -2851,10 +2906,6 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                 (SELECT count(*)::BIGINT FROM updated_delegate_mappings) AS mapping_updates,
                 (SELECT count(*)::BIGINT FROM updated_effective_counts) AS count_updates",
         );
-        query.build().fetch_one(&mut **transaction).await?;
-    }
-
-    Ok(())
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -4186,6 +4237,32 @@ mod tests {
         assert!(sql.contains("OFFSET 0"));
         assert!(!sql.contains("from_delegate = ANY"));
         assert!(!sql.contains("IS NOT DISTINCT FROM"));
+    }
+
+    #[test]
+    fn test_delegate_relation_balance_refresh_query_uses_fixed_unnest_input() {
+        let refreshes = vec![DelegateRelationBalanceRefresh {
+            key: DelegateRelationBalanceRefreshKey {
+                contract_set_id: "contract-set".to_owned(),
+                chain_id: 1,
+                dao_code: Some("dao".to_owned()),
+                governor_address: "0xgovernor".to_owned(),
+                token_address: "0xtoken".to_owned(),
+                account: "0xaccount".to_owned(),
+            },
+            balance: "42".to_owned(),
+        }];
+        let mut query = QueryBuilder::<Postgres>::new("");
+
+        push_delegate_relation_balance_refresh_query(&mut query, &refreshes);
+        let sql = query.sql();
+
+        assert!(sql.contains("WITH refreshed AS MATERIALIZED"));
+        assert!(sql.contains("unnest("));
+        assert!(sql.contains("::TEXT[]"));
+        assert!(sql.contains("::INT4[]"));
+        assert!(sql.contains("balance_text::NUMERIC(78, 0) AS balance"));
+        assert!(!sql.contains("VALUES"));
     }
 
     #[test]
