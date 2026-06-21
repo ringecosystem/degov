@@ -2318,10 +2318,43 @@ impl EvmRpcChainTool {
             ));
         }
 
-        let data = encode_call_data(read.key.method, &read.key.args)?;
-        let result = self.eth_call(&read.key.contract_address, &data, read.key.block_mode)?;
-        let value = decode_call_value(read.key.method, &result)?;
+        let call_key = self.current_power_call_key(&read.key);
+        let data = encode_call_data(call_key.method, &call_key.args)?;
+        let result = match self.eth_call(&call_key.contract_address, &data, call_key.block_mode) {
+            Ok(result) => result,
+            Err(message) => {
+                if should_try_power_method_fallback_after_direct_error(&message) {
+                    match self.execute_power_method_fallback(read_index, read, call_key.method) {
+                        PowerMethodFallbackOutcome::Success { result, cache_hit } => {
+                            return Ok((result, cache_hit));
+                        }
+                        PowerMethodFallbackOutcome::Failure { failure, .. } => {
+                            return Err(failure.message);
+                        }
+                        PowerMethodFallbackOutcome::NotApplicable => {}
+                    }
+                }
+                return Err(message);
+            }
+        };
+        let value = match decode_call_value(call_key.method, &result) {
+            Ok(value) => value,
+            Err(message) => {
+                match self.execute_power_method_fallback(read_index, read, call_key.method) {
+                    PowerMethodFallbackOutcome::Success { result, cache_hit } => {
+                        return Ok((result, cache_hit));
+                    }
+                    PowerMethodFallbackOutcome::Failure { failure, .. } => {
+                        return Err(failure.message);
+                    }
+                    PowerMethodFallbackOutcome::NotApplicable => return Err(message),
+                }
+            }
+        };
+        self.cache.insert(&call_key, value.clone());
         self.cache.insert(&read.key, value.clone());
+        self.current_power_methods
+            .insert(&read.key, call_key.method);
 
         Ok((
             ChainReadResult {
@@ -2534,6 +2567,11 @@ fn fail_multicall_group(
             retryable: true,
         });
     }
+}
+
+fn should_try_power_method_fallback_after_direct_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("execution reverted") || message.contains("revert")
 }
 
 fn power_method_fallback_failure(
@@ -4763,6 +4801,60 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct MulticallDecodeFallbackPowerMethodMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+        primary_method: ChainReadMethod,
+        fallback_method: ChainReadMethod,
+        primary_error: &'static str,
+    }
+
+    impl EvmRpcClient for MulticallDecodeFallbackPowerMethodMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Ok("0x".to_owned());
+            }
+
+            let primary_selector = format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    self.primary_method
+                )))
+            );
+            if data.starts_with(&primary_selector) {
+                return Err(self.primary_error.to_owned());
+            }
+
+            let fallback_selector = format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    self.fallback_method
+                )))
+            );
+            if data.starts_with(&fallback_selector) {
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::from(250))]))
+                ));
+            }
+
+            Err("unexpected eth_call".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
     #[test]
     fn test_evm_rpc_chain_tool_executes_multicall_groups_once() {
         let rpc = MockEvmRpcClient::default();
@@ -4959,6 +5051,84 @@ mod tests {
             report.results[0].value,
             ChainReadValue::Integer("250".to_owned())
         );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_uses_power_method_fallback_after_multicall_decode_failure() {
+        let rpc = MulticallDecodeFallbackPowerMethodMockEvmRpcClient {
+            eth_call_count: Arc::default(),
+            primary_method: ChainReadMethod::GetVotes,
+            fallback_method: ChainReadMethod::CurrentVotes,
+            primary_error: "execution reverted",
+        };
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("direct fallback read uses alternate current power method");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[0].key.method, ChainReadMethod::GetVotes);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_use_power_method_fallback_after_transport_error() {
+        let rpc = MulticallDecodeFallbackPowerMethodMockEvmRpcClient {
+            eth_call_count: Arc::default(),
+            primary_method: ChainReadMethod::GetVotes,
+            fallback_method: ChainReadMethod::CurrentVotes,
+            primary_error: "RPC eth_call failed with HTTP 500",
+        };
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("transport failure is reported");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(failures.required_failures[0].message.contains("HTTP 500"));
     }
 
     #[test]
