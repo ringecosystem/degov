@@ -273,61 +273,108 @@ async fn insert_token_transfer_batch(
     let chunk_size = token_event_bulk_chunk_size();
     let mut inserted = Vec::new();
     for rows in rows.chunks(chunk_size) {
-        let mut query = QueryBuilder::<Postgres>::new(
+        let mut ids = Vec::with_capacity(rows.len());
+        let mut contract_set_ids = Vec::with_capacity(rows.len());
+        let mut chain_ids = Vec::with_capacity(rows.len());
+        let mut dao_codes = Vec::with_capacity(rows.len());
+        let mut governor_addresses = Vec::with_capacity(rows.len());
+        let mut token_addresses = Vec::with_capacity(rows.len());
+        let mut contract_addresses = Vec::with_capacity(rows.len());
+        let mut log_indexes = Vec::with_capacity(rows.len());
+        let mut transaction_indexes = Vec::with_capacity(rows.len());
+        let mut from_accounts = Vec::with_capacity(rows.len());
+        let mut to_accounts = Vec::with_capacity(rows.len());
+        let mut values = Vec::with_capacity(rows.len());
+        let mut standards = Vec::with_capacity(rows.len());
+        let mut block_numbers = Vec::with_capacity(rows.len());
+        let mut block_timestamps = Vec::with_capacity(rows.len());
+        let mut transaction_hashes = Vec::with_capacity(rows.len());
+
+        for row in rows {
+            let common = &row.common;
+            ids.push(row.id.clone());
+            contract_set_ids.push(common.contract_set_id.clone());
+            chain_ids.push(common.chain_id);
+            dao_codes.push(common.dao_code.clone());
+            governor_addresses.push(common.governor_address.clone());
+            token_addresses.push(common.token_address.clone());
+            contract_addresses.push(common.contract_address.clone());
+            log_indexes.push(u64_to_i32(common.log_index, "token_transfer.log_index")?);
+            transaction_indexes.push(u64_to_i32(
+                common.transaction_index,
+                "token_transfer.transaction_index",
+            )?);
+            from_accounts.push(row.from.clone());
+            to_accounts.push(row.to.clone());
+            values.push(row.value.clone());
+            standards.push(row.standard.clone());
+            block_numbers.push(common.block_number.clone());
+            block_timestamps.push(
+                required_numeric(&common.block_timestamp, "token_transfer.block_timestamp")?
+                    .to_owned(),
+            );
+            transaction_hashes.push(common.transaction_hash.clone());
+        }
+
+        let inserted_rows = sqlx::query(
             "INSERT INTO token_transfer (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address,
                 contract_address, log_index, transaction_index, \"from\", \"to\", value, standard,
                 block_number, block_timestamp, transaction_hash
-             ) VALUES ",
-        );
-        for (index, row) in rows.iter().enumerate() {
-            if index > 0 {
-                query.push(", ");
-            }
-            let common = &row.common;
-            query
-                .push("(")
-                .push_bind(&row.id)
-                .push(", ")
-                .push_bind(&common.contract_set_id)
-                .push(", ")
-                .push_bind(common.chain_id)
-                .push(", ")
-                .push_bind(&common.dao_code)
-                .push(", ")
-                .push_bind(&common.governor_address)
-                .push(", ")
-                .push_bind(&common.token_address)
-                .push(", ")
-                .push_bind(&common.contract_address)
-                .push(", ")
-                .push_bind(u64_to_i32(common.log_index, "token_transfer.log_index")?)
-                .push(", ")
-                .push_bind(u64_to_i32(
-                    common.transaction_index,
-                    "token_transfer.transaction_index",
-                )?)
-                .push(", ")
-                .push_bind(&row.from)
-                .push(", ")
-                .push_bind(&row.to)
-                .push(", ")
-                .push_bind(&row.value)
-                .push("::NUMERIC(78, 0), ")
-                .push_bind(&row.standard)
-                .push(", ")
-                .push_bind(&common.block_number)
-                .push("::NUMERIC(78, 0), ")
-                .push_bind(required_numeric(
-                    &common.block_timestamp,
-                    "token_transfer.block_timestamp",
-                )?)
-                .push("::NUMERIC(78, 0), ")
-                .push_bind(&common.transaction_hash)
-                .push(")");
-        }
-        query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING RETURNING contract_set_id, id");
-        inserted.extend(fetch_inserted_operation_keys(transaction, query).await?);
+             )
+             SELECT
+                source.id,
+                source.contract_set_id,
+                source.chain_id,
+                source.dao_code,
+                source.governor_address,
+                source.token_address,
+                source.contract_address,
+                source.log_index,
+                source.transaction_index,
+                source.from_account,
+                source.to_account,
+                source.value::NUMERIC(78, 0),
+                source.standard,
+                source.block_number::NUMERIC(78, 0),
+                source.block_timestamp::NUMERIC(78, 0),
+                source.transaction_hash
+             FROM UNNEST(
+                $1::TEXT[], $2::TEXT[], $3::INT4[], $4::TEXT[], $5::TEXT[], $6::TEXT[],
+                $7::TEXT[], $8::INT4[], $9::INT4[], $10::TEXT[], $11::TEXT[], $12::TEXT[],
+                $13::TEXT[], $14::TEXT[], $15::TEXT[], $16::TEXT[]
+             ) AS source(
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+                contract_address, log_index, transaction_index, from_account, to_account, value,
+                standard, block_number, block_timestamp, transaction_hash
+             )
+             ON CONFLICT (contract_set_id, id) DO NOTHING
+             RETURNING contract_set_id, id",
+        )
+        .bind(&ids)
+        .bind(&contract_set_ids)
+        .bind(&chain_ids)
+        .bind(&dao_codes)
+        .bind(&governor_addresses)
+        .bind(&token_addresses)
+        .bind(&contract_addresses)
+        .bind(&log_indexes)
+        .bind(&transaction_indexes)
+        .bind(&from_accounts)
+        .bind(&to_accounts)
+        .bind(&values)
+        .bind(&standards)
+        .bind(&block_numbers)
+        .bind(&block_timestamps)
+        .bind(&transaction_hashes)
+        .fetch_all(&mut **transaction)
+        .await?;
+        inserted.extend(inserted_rows.into_iter().map(|row| {
+            (
+                row.get::<String, _>("contract_set_id"),
+                row.get::<String, _>("id"),
+            )
+        }));
     }
 
     if let Some(common) = rows.first().map(|row| &row.common) {
