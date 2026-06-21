@@ -220,6 +220,22 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "onchain_refresh_task_pending_ready_claim_idx",
+    )
+    .await?;
+    assert_index_definition_contains(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_pending_ready_claim_idx",
+        &[
+            "USING btree (next_run_at, updated_at, id)",
+            "WHERE (status = 'pending'::text)",
+        ],
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "onchain_refresh_task_failed_ready_retry_idx",
     )
     .await?;
@@ -387,7 +403,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
             "0002_hot_path_runtime_indexes.sql",
             "0003_onchain_refresh_runtime_indexes.sql",
             "0004_onchain_refresh_claim_retry_indexes.sql",
-            "0005_onchain_refresh_failed_ready_retry_index.sql"
+            "0005_onchain_refresh_failed_ready_retry_index.sql",
+            "0006_onchain_refresh_pending_ready_claim_index.sql"
         ]
     );
 
@@ -406,6 +423,9 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("delegate_mapping_positive_count_idx"));
     assert!(runtime_migration.contains("WHERE power > 0"));
     assert!(runtime_migration.contains("onchain_refresh_data_metric_task"));
+    assert!(runtime_migration.contains("onchain_refresh_task_pending_ready_claim_idx"));
+    assert!(runtime_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));
+    assert!(runtime_migration.contains("WHERE status = 'pending'"));
 
     Ok(())
 }
