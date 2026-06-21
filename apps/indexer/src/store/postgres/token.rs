@@ -2141,7 +2141,7 @@ impl BatchTokenMetadataCache {
     ) -> Result<Self, PostgresIndexerRunnerStoreError> {
         let keys = collect_transaction_metadata_keys(batch);
         let mut cache = Self::default();
-        cache.preload_transfer_counts(transaction, &keys).await?;
+        cache.preload_transfer_counts(batch, &keys);
         cache.preload_rollings(transaction, &keys).await?;
         Ok(cache)
     }
@@ -2326,36 +2326,21 @@ impl BatchTokenMetadataCache {
         Ok(())
     }
 
-    async fn preload_transfer_counts(
+    fn preload_transfer_counts(
         &mut self,
-        transaction: &mut Transaction<'_, Postgres>,
+        batch: &TokenProjectionBatch,
         keys: &[TransactionMetadataKey],
-    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    ) {
         for key in keys {
             self.transfer_counts.entry(key.clone()).or_default();
         }
-        for (contract_set_id, transaction_hashes) in group_transaction_hashes_by_contract_set(keys) {
-            let rows = sqlx::query(
-                "SELECT transaction_hash, count(*)::BIGINT AS transfer_count
-                 FROM token_transfer
-                 WHERE contract_set_id = $1 AND transaction_hash = ANY($2)
-                 GROUP BY transaction_hash",
-            )
-            .bind(&contract_set_id)
-            .bind(&transaction_hashes)
-            .fetch_all(&mut **transaction)
-            .await?;
-            for row in rows {
-                self.transfer_counts.insert(
-                    TransactionMetadataKey {
-                        contract_set_id: contract_set_id.clone(),
-                        transaction_hash: row.get("transaction_hash"),
-                    },
-                    row.get("transfer_count"),
-                );
-            }
+        for row in &batch.token_transfers {
+            let key = TransactionMetadataKey::new(&row.common);
+            let Some(count) = self.transfer_counts.get_mut(&key) else {
+                continue;
+            };
+            *count += 1;
         }
-        Ok(())
     }
 
     async fn preload_rollings(

@@ -330,6 +330,42 @@ fn test_batch_token_metadata_cache_uses_delegate_specific_rolling_candidates() {
 }
 
 #[test]
+fn test_batch_token_metadata_cache_counts_transfers_from_current_batch() {
+    let common = token_common("scope", "0xtx1", 10, 1);
+    let other_transaction = token_common("scope", "0xtx2", 10, 2);
+    let untracked_scope = token_common("untracked-scope", "0xtx1", 10, 3);
+    let batch = TokenProjectionBatch {
+        event_order: Vec::new(),
+        delegate_changed: Vec::new(),
+        delegate_votes_changed: vec![
+            delegate_votes_changed("votes-1", common.clone(), "0xdelegate1", "0", "1"),
+            delegate_votes_changed(
+                "votes-2",
+                other_transaction.clone(),
+                "0xdelegate2",
+                "1",
+                "2",
+            ),
+        ],
+        token_transfers: vec![
+            token_transfer("transfer-1", common.clone(), "0xfrom1", "0xto1", "10"),
+            token_transfer("transfer-2", common.clone(), "0xfrom2", "0xto2", "20"),
+            token_transfer("transfer-3", untracked_scope, "0xfrom3", "0xto3", "30"),
+        ],
+        delegate_rollings: Vec::new(),
+        operations: Vec::new(),
+        reconcile_plan: empty_reconcile_plan(),
+    };
+    let keys = collect_transaction_metadata_keys(&batch);
+    let mut cache = BatchTokenMetadataCache::default();
+
+    cache.preload_transfer_counts(&batch, &keys);
+
+    assert_eq!(cache.transfer_count(&common), 2);
+    assert_eq!(cache.transfer_count(&other_transaction), 0);
+}
+
+#[test]
 fn test_delegate_mapping_cache_keeps_only_final_dirty_state_per_account() {
     let common = token_common("scope", "0xtx1", 10, 5);
     let mut cache = DelegateMappingCache::default();
@@ -692,6 +728,23 @@ fn delegate_votes_changed(
         delegate: delegate.to_owned(),
         previous_votes: previous_votes.to_owned(),
         new_votes: new_votes.to_owned(),
+    }
+}
+
+fn token_transfer(
+    id: &str,
+    common: TokenEventCommon,
+    from: &str,
+    to: &str,
+    value: &str,
+) -> TokenTransferWrite {
+    TokenTransferWrite {
+        id: id.to_owned(),
+        common,
+        from: from.to_owned(),
+        to: to.to_owned(),
+        value: value.to_owned(),
+        standard: "erc20".to_owned(),
     }
 }
 

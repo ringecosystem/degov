@@ -432,6 +432,14 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("onchain_refresh_task_pending_ready_claim_idx"));
     assert!(runtime_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));
     assert!(runtime_migration.contains("WHERE status = 'pending'"));
+    assert!(
+        runtime_migration
+            .contains("DROP INDEX CONCURRENTLY IF EXISTS token_transfer_transaction_hash_idx")
+    );
+    assert!(
+        runtime_migration
+            .contains("DROP INDEX CONCURRENTLY IF EXISTS token_transfer_chain_governor_token_idx")
+    );
 
     Ok(())
 }
