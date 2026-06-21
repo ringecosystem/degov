@@ -1377,9 +1377,10 @@ where
                 .push(task);
         }
 
-        let mut values_by_key = BTreeMap::<(i32, String, String, ChainReadMethod), String>::new();
+        let mut values_by_key =
+            BTreeMap::<(i32, String, String, ChainReadMethod, BlockReadMode), String>::new();
         let mut failures_by_key =
-            BTreeMap::<(i32, String, String, ChainReadMethod), Vec<String>>::new();
+            BTreeMap::<(i32, String, String, ChainReadMethod, BlockReadMode), Vec<String>>::new();
         let mut read_report = OnchainRefreshReadReport::default();
         for ((chain_id, governor_address, token_address), group_tasks) in groups {
             let mut builder = ChainReadPlanBuilder::new(
@@ -1428,6 +1429,7 @@ where
                         normalize_identifier(&failure.key.contract_address),
                         normalize_identifier(account),
                         failure.key.method,
+                        failure.key.block_mode,
                     ))
                     .or_default()
                     .push(failure.message);
@@ -1449,9 +1451,10 @@ where
                 values_by_key.insert(
                     (
                         result.key.chain_id,
-                        result.key.contract_address.clone(),
-                        account.clone(),
+                        normalize_identifier(&result.key.contract_address),
+                        normalize_identifier(account),
                         result.key.method,
+                        result.key.block_mode,
                     ),
                     value,
                 );
@@ -1460,12 +1463,14 @@ where
 
         for task in tasks {
             let mut task_failures = Vec::<String>::new();
+            let activity_block = parse_u64(&task.last_seen_block_number)?;
             let power = if task.refresh_power {
                 let key = (
                     task.chain_id,
                     normalize_identifier(&task.token_address),
                     normalize_identifier(&task.account),
                     self.current_power_method,
+                    BlockReadMode::AtBlock(activity_block),
                 );
                 match values_by_key.get(&key).cloned() {
                     Some(value) => Some(value),
@@ -1490,6 +1495,7 @@ where
                     normalize_identifier(&task.token_address),
                     normalize_identifier(&task.account),
                     ChainReadMethod::BalanceOf,
+                    BlockReadMode::AtBlock(activity_block),
                 );
                 match values_by_key.get(&key).cloned() {
                     Some(value) => Some(value),
@@ -1592,7 +1598,7 @@ where
                     crate::ChainReadReason::TokenActivityPowerRefresh,
                     self.current_power_method,
                 );
-                builder.add_account_balance_refresh(
+                builder.add_account_latest_balance_refresh(
                     &task.account,
                     parse_u64(&task.last_seen_block_number)?,
                     crate::ChainReadReason::TokenActivityPowerRefresh,
@@ -4377,6 +4383,40 @@ mod tests {
     }
 
     #[test]
+    fn test_chain_read_cache_keeps_historical_current_account_reads_block_specific() {
+        let cache = ChainReadCache::default();
+        let balance = ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+            method: ChainReadMethod::BalanceOf,
+            args: vec!["0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned()],
+            block_mode: BlockReadMode::AtBlock(200),
+        };
+        let same_account_next_block = ChainReadKey {
+            block_mode: BlockReadMode::AtBlock(201),
+            ..balance.clone()
+        };
+        let same_account_safe = ChainReadKey {
+            block_mode: BlockReadMode::Safe,
+            ..balance.clone()
+        };
+        let same_account_latest = ChainReadKey {
+            block_mode: BlockReadMode::Latest,
+            ..balance.clone()
+        };
+
+        cache.insert(&balance, ChainReadValue::Integer("100".to_owned()));
+
+        assert_eq!(
+            cache.get(&balance),
+            Some(ChainReadValue::Integer("100".to_owned()))
+        );
+        assert_eq!(cache.get(&same_account_next_block), None);
+        assert_eq!(cache.get(&same_account_safe), None);
+        assert_eq!(cache.get(&same_account_latest), None);
+    }
+
+    #[test]
     fn test_chain_read_cache_expires_current_account_reads() {
         let cache = ChainReadCache::default();
         let balance = ChainReadKey {
@@ -4876,7 +4916,7 @@ mod tests {
             .execute_read_plan(&builder.build())
             .expect("required read survives optional multicall failure");
 
-        assert_eq!(report.metrics.executed_rpc_calls, 1);
+        assert_eq!(report.metrics.executed_rpc_calls, 2);
         assert_eq!(report.results.len(), 1);
         assert_eq!(
             report.results[0].value,

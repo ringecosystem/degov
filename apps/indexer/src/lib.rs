@@ -41,8 +41,8 @@ pub use crate::decode::dao_event::{
     DecodedGovernorEvent, DecodedTimelockEvent, DecodedTokenEvent, DelegateChangedEvent,
     DelegateVotesChangedEvent, GovernanceTokenStandard, ParameterChangeEvent, ProposalCreatedEvent,
     ProposalExtendedEvent, ProposalIdEvent, ProposalQueuedEvent, RoleAccountEvent,
-    RoleAdminChangedEvent, TimelockOperationIdEvent, TokenTransferEvent, UnsupportedTopicEvent,
-    VoteCastEvent, VoteCastWithParamsEvent, decode_dao_log,
+    RoleAdminChangedEvent, TimelockChangeEvent, TimelockOperationIdEvent, TokenTransferEvent,
+    UnsupportedTopicEvent, VoteCastEvent, VoteCastWithParamsEvent, decode_dao_log,
 };
 pub use crate::decode::evm_log::{
     EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows,
@@ -64,8 +64,9 @@ pub use crate::projection::power_reconcile::{
     PowerRefreshStatus, PowerRefreshStatusRecord, plan_power_reconcile,
 };
 pub use crate::projection::proposal::{
-    InMemoryProposalProjectionRepository, ProposalActionWrite, ProposalCreatedWrite,
-    ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
+    GovernanceParameterCheckpointWrite, GovernorEventCommon, GovernorParameterChangeWrite,
+    GovernorTimelockChangeWrite, InMemoryProposalProjectionRepository, ProposalActionWrite,
+    ProposalCreatedWrite, ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
     ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionError,
     ProposalProjectionEvent, ProposalProjectionRepository, ProposalQueuedWrite,
     ProposalStateEpochWrite, ProposalStateWriteKind, ProposalTimestampBackfillCandidate,

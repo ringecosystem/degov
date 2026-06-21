@@ -1932,7 +1932,7 @@ fn test_multi_chain_reader_routes_tasks_to_matching_chain_tool() {
         .chain(lisk_tool.captured_plans())
     {
         for read in plan.reads {
-            assert_eq!(read.key.block_mode, BlockReadMode::Safe);
+            assert_eq!(read.key.block_mode, BlockReadMode::AtBlock(12));
         }
     }
 }
@@ -1964,6 +1964,43 @@ fn test_chain_tool_onchain_refresh_reader_dedupes_duplicate_reads_in_one_batch()
     assert_eq!(plans[0].metrics.requested_reads, 2);
     assert_eq!(plans[0].metrics.deduped_reads, 1);
     assert_eq!(plans[0].reads.len(), 1);
+}
+
+#[test]
+fn test_chain_tool_onchain_refresh_reader_keeps_same_account_activity_blocks_distinct() {
+    let chain_tool = BlockModeValueChainTool::new();
+    let reader = degov_datalens_indexer::ChainToolOnchainRefreshReader::new(
+        chain_tool.clone(),
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+    let mut earlier = task_for_chain("task-earlier", 1, ACCOUNT_ONE);
+    earlier.last_seen_block_number = "200".to_owned();
+    let mut later = task_for_chain("task-later", 1, ACCOUNT_ONE);
+    later.last_seen_block_number = "201".to_owned();
+
+    let values = reader
+        .read_tasks(&[earlier, later])
+        .expect("read block-specific tasks")
+        .into_iter()
+        .map(|value| (value.task_id.clone(), value))
+        .collect::<BTreeMap<_, _>>();
+
+    assert_eq!(
+        values
+            .get("task-earlier")
+            .expect("earlier")
+            .power
+            .as_deref(),
+        Some("200")
+    );
+    assert_eq!(
+        values.get("task-later").expect("later").power.as_deref(),
+        Some("201")
+    );
+    let plans = chain_tool.captured_plans();
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].reads.len(), 2);
 }
 
 #[test]
@@ -2034,7 +2071,7 @@ fn test_live_power_overlay_reader_uses_latest_block_mode_and_dedupes_accounts() 
             .reads
             .iter()
             .any(|read| read.key.method == ChainReadMethod::BalanceOf
-                && read.key.block_mode == BlockReadMode::Safe)
+                && read.key.block_mode == BlockReadMode::Latest)
     );
 }
 
@@ -2286,6 +2323,11 @@ struct StaticValueChainTool {
 }
 
 #[derive(Clone, Debug)]
+struct BlockModeValueChainTool {
+    plans: Arc<StdMutex<Vec<ChainReadPlan>>>,
+}
+
+#[derive(Clone, Debug)]
 struct MethodValueChainTool {
     power: String,
     balance: String,
@@ -2470,6 +2512,56 @@ impl StaticValueChainTool {
 
     fn captured_plans(&self) -> Vec<ChainReadPlan> {
         self.plans.lock().expect("plans lock").clone()
+    }
+}
+
+impl BlockModeValueChainTool {
+    fn new() -> Self {
+        Self {
+            plans: Arc::new(StdMutex::new(Vec::new())),
+        }
+    }
+
+    fn captured_plans(&self) -> Vec<ChainReadPlan> {
+        self.plans.lock().expect("plans lock").clone()
+    }
+}
+
+impl ChainTool for BlockModeValueChainTool {
+    fn execute_read_plan(
+        &self,
+        plan: &ChainReadPlan,
+    ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        self.plans.lock().expect("plans lock").push(plan.clone());
+        Ok(ChainReadExecutionReport {
+            metrics: ChainReadMetrics {
+                requested_reads: plan.metrics.requested_reads,
+                deduped_reads: plan.metrics.deduped_reads,
+                executed_rpc_calls: plan.reads.len(),
+                multicall_batch_size: plan.metrics.multicall_batch_size,
+                ..ChainReadMetrics::default()
+            },
+            results: plan
+                .reads
+                .iter()
+                .enumerate()
+                .map(|(read_index, read)| {
+                    let value = match read.key.block_mode {
+                        BlockReadMode::AtBlock(block_number) => block_number.to_string(),
+                        BlockReadMode::Safe => "safe".to_owned(),
+                        BlockReadMode::Latest => "latest".to_owned(),
+                        BlockReadMode::Finalized => "finalized".to_owned(),
+                        BlockReadMode::Fresh => "fresh".to_owned(),
+                    };
+                    ChainReadResult {
+                        read_index,
+                        key: read.key.clone(),
+                        value: ChainReadValue::Integer(value),
+                    }
+                })
+                .collect(),
+            ..ChainReadExecutionReport::default()
+        })
     }
 }
 
