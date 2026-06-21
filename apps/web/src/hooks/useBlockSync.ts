@@ -8,6 +8,10 @@ import { indexerStatusService } from "@/services/graphql";
 import { CACHE_TIMES } from "@/utils/query-config";
 
 export type BlockSyncStatus = "operational" | "syncing" | "offline";
+
+const toBlockNumber = (height?: number | null) =>
+  height !== null && height !== undefined ? Number(height) : 0;
+
 export function useBlockSync() {
   const daoConfig = useDaoConfig();
 
@@ -27,9 +31,12 @@ export function useBlockSync() {
   });
 
   const currentBlock = currentBlockData ? Number(currentBlockData) : 0;
-  const indexedBlock = indexerStatus?.processedHeight
-    ? Number(indexerStatus.processedHeight)
-    : 0;
+  const processedBlock = toBlockNumber(indexerStatus?.processedHeight);
+  const indexedBlock = toBlockNumber(
+    indexerStatus?.latestProcessedHeight ??
+      indexerStatus?.provisionalHeight ??
+      indexerStatus?.processedHeight
+  );
   const nativeSyncPercentage = indexerStatus?.syncedPercentage;
 
   const syncPercentage = useMemo(() => {
@@ -52,6 +59,7 @@ export function useBlockSync() {
   return {
     currentBlock,
     indexedBlock,
+    processedBlock,
     syncPercentage,
     isLoading,
     status,

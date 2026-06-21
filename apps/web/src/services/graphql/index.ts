@@ -519,13 +519,80 @@ export const delegateService = {
   },
 };
 
+type IndexerStatusQueryVariant =
+  | "latestProcessedHeight"
+  | "provisionalHeight"
+  | "base";
+
+const indexerStatusQueryVariants: Array<{
+  key: IndexerStatusQueryVariant;
+  query: string;
+}> = [
+  {
+    key: "latestProcessedHeight",
+    query: Queries.GET_INDEXER_STATUS_WITH_LATEST_PROCESSED_HEIGHT,
+  },
+  {
+    key: "provisionalHeight",
+    query: Queries.GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT,
+  },
+  {
+    key: "base",
+    query: Queries.GET_INDEXER_STATUS,
+  },
+];
+
+const indexerStatusQueryVariantByEndpoint = new Map<
+  string,
+  IndexerStatusQueryVariant
+>();
+
+const isUnsupportedIndexerStatusFieldError = (error: unknown) => {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.message.includes("latestProcessedHeight") ||
+    error.message.includes("provisionalHeight")
+  );
+};
+
+const fetchIndexerStatusWithQuery = async (endpoint: string, query: string) => {
+  const response = await request<Types.IndexerStatusResponse>(endpoint, query);
+  return response?.indexerStatus;
+};
+
 export const indexerStatusService = {
   getIndexerStatus: async (endpoint: string) => {
-    const response = await request<Types.IndexerStatusResponse>(
-      endpoint,
-      Queries.GET_INDEXER_STATUS
-    );
-    return response?.indexerStatus;
+    const cachedVariant = indexerStatusQueryVariantByEndpoint.get(endpoint);
+    const variants = cachedVariant
+      ? [
+          ...indexerStatusQueryVariants.filter(
+            (variant) => variant.key === cachedVariant
+          ),
+          ...indexerStatusQueryVariants.filter(
+            (variant) => variant.key !== cachedVariant
+          ),
+        ]
+      : indexerStatusQueryVariants;
+
+    for (const variant of variants) {
+      try {
+        const indexerStatus = await fetchIndexerStatusWithQuery(
+          endpoint,
+          variant.query
+        );
+        indexerStatusQueryVariantByEndpoint.set(endpoint, variant.key);
+        return indexerStatus;
+      } catch (error) {
+        if (
+          variant.key === "base" ||
+          !isUnsupportedIndexerStatusFieldError(error)
+        ) {
+          throw error;
+        }
+      }
+    }
+
+    return null;
   },
 };
 
