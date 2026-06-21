@@ -4,7 +4,7 @@ use degov_datalens_indexer::{
     GovernanceTokenStandard, NormalizedEvmLog, ProposalCreatedEvent, ProposalExtendedEvent,
     ProposalIdEvent, ProposalProjectionContext, ProposalProjectionError, ProposalProjectionEvent,
     ProposalProjectionRepository, ProposalQueuedEvent, ProposalStateWriteKind, ReadRequirement,
-    project_proposal_events,
+    TimelockChangeEvent, project_proposal_events,
 };
 use serde_json::json;
 
@@ -517,6 +517,134 @@ fn test_project_proposal_lifecycle_stub_omits_block_interval_for_non_ethereum_ch
 }
 
 #[test]
+fn test_project_governor_parameter_events_builds_event_rows_and_checkpoints() {
+    let batch = project_proposal_events(
+        &context(),
+        vec![
+            ProposalProjectionEvent {
+                log: log(20, 0, 1),
+                event: parameter_change("VotingDelaySet", "1", "2"),
+            },
+            ProposalProjectionEvent {
+                log: log(21, 0, 2),
+                event: parameter_change("VotingPeriodSet", "10", "20"),
+            },
+            ProposalProjectionEvent {
+                log: log(22, 0, 3),
+                event: parameter_change("ProposalThresholdSet", "100", "200"),
+            },
+            ProposalProjectionEvent {
+                log: log(23, 0, 4),
+                event: parameter_change("QuorumNumeratorUpdated", "4", "5"),
+            },
+            ProposalProjectionEvent {
+                log: log(24, 0, 5),
+                event: parameter_change("LateQuorumVoteExtensionSet", "6", "7"),
+            },
+            ProposalProjectionEvent {
+                log: log(25, 0, 6),
+                event: DecodedGovernorEvent::TimelockChange(TimelockChangeEvent {
+                    old_timelock: "0x2222222222222222222222222222222222222222".to_owned(),
+                    new_timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+                }),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(batch.voting_delay_set.len(), 1);
+    assert_eq!(batch.voting_delay_set[0].old_value, "1");
+    assert_eq!(batch.voting_delay_set[0].new_value, "2");
+    assert_eq!(batch.voting_period_set.len(), 1);
+    assert_eq!(batch.voting_period_set[0].old_value, "10");
+    assert_eq!(batch.voting_period_set[0].new_value, "20");
+    assert_eq!(batch.proposal_threshold_set.len(), 1);
+    assert_eq!(batch.proposal_threshold_set[0].old_value, "100");
+    assert_eq!(batch.proposal_threshold_set[0].new_value, "200");
+    assert_eq!(batch.quorum_numerator_updated.len(), 1);
+    assert_eq!(batch.quorum_numerator_updated[0].old_value, "4");
+    assert_eq!(batch.quorum_numerator_updated[0].new_value, "5");
+    assert_eq!(batch.late_quorum_vote_extension_set.len(), 1);
+    assert_eq!(batch.late_quorum_vote_extension_set[0].old_value, "6");
+    assert_eq!(batch.late_quorum_vote_extension_set[0].new_value, "7");
+    assert_eq!(batch.timelock_change.len(), 1);
+    assert_eq!(
+        batch.timelock_change[0].old_timelock,
+        "0x2222222222222222222222222222222222222222"
+    );
+    assert_eq!(
+        batch.timelock_change[0].new_timelock,
+        "0x3333333333333333333333333333333333333333"
+    );
+
+    let checkpoints = batch
+        .governance_parameter_checkpoints
+        .iter()
+        .map(|row| {
+            (
+                row.event_name.as_str(),
+                row.parameter_name.as_str(),
+                row.value_type.as_str(),
+                row.old_value.as_deref(),
+                row.new_value.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        checkpoints,
+        vec![
+            ("VotingDelaySet", "voting_delay", "uint256", Some("1"), "2"),
+            (
+                "VotingPeriodSet",
+                "voting_period",
+                "uint256",
+                Some("10"),
+                "20"
+            ),
+            (
+                "ProposalThresholdSet",
+                "proposal_threshold",
+                "uint256",
+                Some("100"),
+                "200"
+            ),
+            (
+                "QuorumNumeratorUpdated",
+                "quorum_numerator",
+                "uint256",
+                Some("4"),
+                "5"
+            ),
+            (
+                "LateQuorumVoteExtensionSet",
+                "late_quorum_vote_extension",
+                "uint256",
+                Some("6"),
+                "7"
+            ),
+            (
+                "TimelockChange",
+                "timelock",
+                "address",
+                Some("0x2222222222222222222222222222222222222222"),
+                "0x3333333333333333333333333333333333333333"
+            ),
+        ]
+    );
+    assert_eq!(
+        batch.event_order,
+        vec![
+            "evm:1:20:0xtx20:0:1",
+            "evm:1:21:0xtx21:0:2",
+            "evm:1:22:0xtx22:0:3",
+            "evm:1:23:0xtx23:0:4",
+            "evm:1:24:0xtx24:0:5",
+            "evm:1:25:0xtx25:0:6",
+        ]
+    );
+}
+
+#[test]
 fn test_project_proposal_events_replays_idempotently_and_sorts_by_log_position() {
     let mut events = vec![
         ProposalProjectionEvent {
@@ -1025,6 +1153,22 @@ fn proposal_created(proposal_id: &str, description: &str) -> DecodedGovernorEven
         vote_end: "40".to_owned(),
         description: description.to_owned(),
     })
+}
+
+fn parameter_change(event_name: &str, old_value: &str, new_value: &str) -> DecodedGovernorEvent {
+    let event = degov_datalens_indexer::ParameterChangeEvent {
+        old_value: old_value.to_owned(),
+        new_value: new_value.to_owned(),
+    };
+
+    match event_name {
+        "VotingDelaySet" => DecodedGovernorEvent::VotingDelaySet(event),
+        "VotingPeriodSet" => DecodedGovernorEvent::VotingPeriodSet(event),
+        "ProposalThresholdSet" => DecodedGovernorEvent::ProposalThresholdSet(event),
+        "QuorumNumeratorUpdated" => DecodedGovernorEvent::QuorumNumeratorUpdated(event),
+        "LateQuorumVoteExtensionSet" => DecodedGovernorEvent::LateQuorumVoteExtensionSet(event),
+        _ => panic!("unexpected parameter change event {event_name}"),
+    }
 }
 
 fn read_result(

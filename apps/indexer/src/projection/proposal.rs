@@ -35,6 +35,13 @@ pub struct ProposalProjectionBatch {
     pub proposal_actions: Vec<ProposalActionWrite>,
     pub proposal_state_epochs: Vec<ProposalStateEpochWrite>,
     pub proposal_deadline_extensions: Vec<ProposalDeadlineExtensionWrite>,
+    pub voting_delay_set: Vec<GovernorParameterChangeWrite>,
+    pub voting_period_set: Vec<GovernorParameterChangeWrite>,
+    pub proposal_threshold_set: Vec<GovernorParameterChangeWrite>,
+    pub quorum_numerator_updated: Vec<GovernorParameterChangeWrite>,
+    pub late_quorum_vote_extension_set: Vec<GovernorParameterChangeWrite>,
+    pub timelock_change: Vec<GovernorTimelockChangeWrite>,
+    pub governance_parameter_checkpoints: Vec<GovernanceParameterCheckpointWrite>,
     pub data_metrics: Vec<DataMetricWrite>,
     pub chain_read_plan: ChainReadPlan,
 }
@@ -300,6 +307,48 @@ pub struct ProposalEventCommon {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernorEventCommon {
+    pub contract_set_id: String,
+    pub log_id: String,
+    pub chain_id: i32,
+    pub dao_code: String,
+    pub governor_address: String,
+    pub contract_address: String,
+    pub log_index: u64,
+    pub transaction_index: u64,
+    pub block_number: String,
+    pub block_timestamp: Option<String>,
+    pub transaction_hash: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernorParameterChangeWrite {
+    pub id: String,
+    pub common: GovernorEventCommon,
+    pub old_value: String,
+    pub new_value: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernorTimelockChangeWrite {
+    pub id: String,
+    pub common: GovernorEventCommon,
+    pub old_timelock: String,
+    pub new_timelock: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernanceParameterCheckpointWrite {
+    pub id: String,
+    pub common: GovernorEventCommon,
+    pub event_name: String,
+    pub parameter_name: String,
+    pub value_type: String,
+    pub old_value: Option<String>,
+    pub new_value: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProposalWrite {
     pub contract_set_id: String,
     pub id: String,
@@ -435,6 +484,13 @@ pub struct InMemoryProposalProjectionRepository {
     proposal_actions: BTreeMap<String, ProposalActionWrite>,
     proposal_state_epochs: BTreeMap<String, ProposalStateEpochWrite>,
     proposal_deadline_extensions: BTreeMap<String, ProposalDeadlineExtensionWrite>,
+    voting_delay_set: BTreeMap<String, GovernorParameterChangeWrite>,
+    voting_period_set: BTreeMap<String, GovernorParameterChangeWrite>,
+    proposal_threshold_set: BTreeMap<String, GovernorParameterChangeWrite>,
+    quorum_numerator_updated: BTreeMap<String, GovernorParameterChangeWrite>,
+    late_quorum_vote_extension_set: BTreeMap<String, GovernorParameterChangeWrite>,
+    timelock_change: BTreeMap<String, GovernorTimelockChangeWrite>,
+    governance_parameter_checkpoints: BTreeMap<String, GovernanceParameterCheckpointWrite>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -486,6 +542,37 @@ impl ProposalProjectionRepository for InMemoryProposalProjectionRepository {
         extend_map(
             &mut self.proposal_deadline_extensions,
             &batch.proposal_deadline_extensions,
+            |row| row.id.clone(),
+        );
+        extend_map(&mut self.voting_delay_set, &batch.voting_delay_set, |row| {
+            row.id.clone()
+        });
+        extend_map(
+            &mut self.voting_period_set,
+            &batch.voting_period_set,
+            |row| row.id.clone(),
+        );
+        extend_map(
+            &mut self.proposal_threshold_set,
+            &batch.proposal_threshold_set,
+            |row| row.id.clone(),
+        );
+        extend_map(
+            &mut self.quorum_numerator_updated,
+            &batch.quorum_numerator_updated,
+            |row| row.id.clone(),
+        );
+        extend_map(
+            &mut self.late_quorum_vote_extension_set,
+            &batch.late_quorum_vote_extension_set,
+            |row| row.id.clone(),
+        );
+        extend_map(&mut self.timelock_change, &batch.timelock_change, |row| {
+            row.id.clone()
+        });
+        extend_map(
+            &mut self.governance_parameter_checkpoints,
+            &batch.governance_parameter_checkpoints,
             |row| row.id.clone(),
         );
         for proposal in &batch.proposals {
@@ -551,6 +638,13 @@ pub fn project_proposal_events(
     let mut proposal_actions = BTreeMap::new();
     let mut proposal_state_epochs = BTreeMap::new();
     let mut proposal_deadline_extensions = BTreeMap::new();
+    let mut voting_delay_set = BTreeMap::new();
+    let mut voting_period_set = BTreeMap::new();
+    let mut proposal_threshold_set = BTreeMap::new();
+    let mut quorum_numerator_updated = BTreeMap::new();
+    let mut late_quorum_vote_extension_set = BTreeMap::new();
+    let mut timelock_change = BTreeMap::new();
+    let mut governance_parameter_checkpoints = BTreeMap::new();
     let mut data_metrics = BTreeMap::new();
     let mut proposal_refs = BTreeMap::new();
 
@@ -565,6 +659,131 @@ pub fn project_proposal_events(
     });
 
     for input in ordered {
+        let governor_event_common = governor_common(context, &governor_address, &input.log);
+        match &input.event {
+            DecodedGovernorEvent::VotingDelaySet(event) => {
+                event_order.push(input.log.id.clone());
+                let row = governor_parameter_change_write(
+                    &input.log.id,
+                    governor_event_common.clone(),
+                    event,
+                );
+                voting_delay_set.insert(row.id.clone(), row);
+                let checkpoint = governance_parameter_checkpoint_write(
+                    &input.log.id,
+                    governor_event_common,
+                    "VotingDelaySet",
+                    "voting_delay",
+                    "uint256",
+                    Some(event.old_value.clone()),
+                    event.new_value.clone(),
+                );
+                governance_parameter_checkpoints.insert(checkpoint.id.clone(), checkpoint);
+                continue;
+            }
+            DecodedGovernorEvent::VotingPeriodSet(event) => {
+                event_order.push(input.log.id.clone());
+                let row = governor_parameter_change_write(
+                    &input.log.id,
+                    governor_event_common.clone(),
+                    event,
+                );
+                voting_period_set.insert(row.id.clone(), row);
+                let checkpoint = governance_parameter_checkpoint_write(
+                    &input.log.id,
+                    governor_event_common,
+                    "VotingPeriodSet",
+                    "voting_period",
+                    "uint256",
+                    Some(event.old_value.clone()),
+                    event.new_value.clone(),
+                );
+                governance_parameter_checkpoints.insert(checkpoint.id.clone(), checkpoint);
+                continue;
+            }
+            DecodedGovernorEvent::ProposalThresholdSet(event) => {
+                event_order.push(input.log.id.clone());
+                let row = governor_parameter_change_write(
+                    &input.log.id,
+                    governor_event_common.clone(),
+                    event,
+                );
+                proposal_threshold_set.insert(row.id.clone(), row);
+                let checkpoint = governance_parameter_checkpoint_write(
+                    &input.log.id,
+                    governor_event_common,
+                    "ProposalThresholdSet",
+                    "proposal_threshold",
+                    "uint256",
+                    Some(event.old_value.clone()),
+                    event.new_value.clone(),
+                );
+                governance_parameter_checkpoints.insert(checkpoint.id.clone(), checkpoint);
+                continue;
+            }
+            DecodedGovernorEvent::QuorumNumeratorUpdated(event) => {
+                event_order.push(input.log.id.clone());
+                let row = governor_parameter_change_write(
+                    &input.log.id,
+                    governor_event_common.clone(),
+                    event,
+                );
+                quorum_numerator_updated.insert(row.id.clone(), row);
+                let checkpoint = governance_parameter_checkpoint_write(
+                    &input.log.id,
+                    governor_event_common,
+                    "QuorumNumeratorUpdated",
+                    "quorum_numerator",
+                    "uint256",
+                    Some(event.old_value.clone()),
+                    event.new_value.clone(),
+                );
+                governance_parameter_checkpoints.insert(checkpoint.id.clone(), checkpoint);
+                continue;
+            }
+            DecodedGovernorEvent::LateQuorumVoteExtensionSet(event) => {
+                event_order.push(input.log.id.clone());
+                let row = governor_parameter_change_write(
+                    &input.log.id,
+                    governor_event_common.clone(),
+                    event,
+                );
+                late_quorum_vote_extension_set.insert(row.id.clone(), row);
+                let checkpoint = governance_parameter_checkpoint_write(
+                    &input.log.id,
+                    governor_event_common,
+                    "LateQuorumVoteExtensionSet",
+                    "late_quorum_vote_extension",
+                    "uint256",
+                    Some(event.old_value.clone()),
+                    event.new_value.clone(),
+                );
+                governance_parameter_checkpoints.insert(checkpoint.id.clone(), checkpoint);
+                continue;
+            }
+            DecodedGovernorEvent::TimelockChange(event) => {
+                event_order.push(input.log.id.clone());
+                let row = governor_timelock_change_write(
+                    &input.log.id,
+                    governor_event_common.clone(),
+                    event,
+                );
+                timelock_change.insert(row.id.clone(), row);
+                let checkpoint = governance_parameter_checkpoint_write(
+                    &input.log.id,
+                    governor_event_common,
+                    "TimelockChange",
+                    "timelock",
+                    "address",
+                    Some(normalize_identifier(&event.old_timelock)),
+                    normalize_identifier(&event.new_timelock),
+                );
+                governance_parameter_checkpoints.insert(checkpoint.id.clone(), checkpoint);
+                continue;
+            }
+            _ => {}
+        }
+
         let proposal_id = proposal_id(&input.event);
         let Some(proposal_id) = proposal_id else {
             continue;
@@ -754,6 +973,13 @@ pub fn project_proposal_events(
         proposal_actions: proposal_actions.into_values().collect(),
         proposal_state_epochs,
         proposal_deadline_extensions: proposal_deadline_extensions.into_values().collect(),
+        voting_delay_set: voting_delay_set.into_values().collect(),
+        voting_period_set: voting_period_set.into_values().collect(),
+        proposal_threshold_set: proposal_threshold_set.into_values().collect(),
+        quorum_numerator_updated: quorum_numerator_updated.into_values().collect(),
+        late_quorum_vote_extension_set: late_quorum_vote_extension_set.into_values().collect(),
+        timelock_change: timelock_change.into_values().collect(),
+        governance_parameter_checkpoints: governance_parameter_checkpoints.into_values().collect(),
         data_metrics: data_metrics.into_values().collect(),
         chain_read_plan: builder.build(),
     })
@@ -833,6 +1059,28 @@ fn common(
     }
 }
 
+fn governor_common(
+    context: &ProposalProjectionContext,
+    governor_address: &str,
+    log: &NormalizedEvmLog,
+) -> GovernorEventCommon {
+    GovernorEventCommon {
+        contract_set_id: context.contract_set_id.clone(),
+        chain_id: log.chain_id,
+        log_id: log.id.clone(),
+        dao_code: context.dao_code.clone(),
+        governor_address: governor_address.to_owned(),
+        contract_address: normalize_identifier(&log.address),
+        log_index: log.log_index,
+        transaction_index: log.transaction_index,
+        block_number: log.block_number.to_string(),
+        block_timestamp: log
+            .block_timestamp_ms
+            .map(|timestamp| timestamp.to_string()),
+        transaction_hash: normalize_identifier(&log.transaction_hash),
+    }
+}
+
 fn proposal_created_write(
     log_id: &str,
     common: ProposalEventCommon,
@@ -890,6 +1138,52 @@ fn proposal_id_write(log_id: &str, common: ProposalEventCommon) -> ProposalIdWri
         id: log_id.to_owned(),
         common,
         proposal_id,
+    }
+}
+
+fn governor_parameter_change_write(
+    log_id: &str,
+    common: GovernorEventCommon,
+    event: &crate::ParameterChangeEvent,
+) -> GovernorParameterChangeWrite {
+    GovernorParameterChangeWrite {
+        id: log_id.to_owned(),
+        common,
+        old_value: event.old_value.clone(),
+        new_value: event.new_value.clone(),
+    }
+}
+
+fn governor_timelock_change_write(
+    log_id: &str,
+    common: GovernorEventCommon,
+    event: &crate::TimelockChangeEvent,
+) -> GovernorTimelockChangeWrite {
+    GovernorTimelockChangeWrite {
+        id: log_id.to_owned(),
+        common,
+        old_timelock: normalize_identifier(&event.old_timelock),
+        new_timelock: normalize_identifier(&event.new_timelock),
+    }
+}
+
+fn governance_parameter_checkpoint_write(
+    log_id: &str,
+    common: GovernorEventCommon,
+    event_name: &str,
+    parameter_name: &str,
+    value_type: &str,
+    old_value: Option<String>,
+    new_value: String,
+) -> GovernanceParameterCheckpointWrite {
+    GovernanceParameterCheckpointWrite {
+        id: log_id.to_owned(),
+        common,
+        event_name: event_name.to_owned(),
+        parameter_name: parameter_name.to_owned(),
+        value_type: value_type.to_owned(),
+        old_value,
+        new_value,
     }
 }
 

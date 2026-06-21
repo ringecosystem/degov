@@ -30,6 +30,62 @@ async fn write_proposal_batch_rows(
     for row in &batch.proposal_deadline_extensions {
         insert_proposal_deadline_extension(transaction, row).await?;
     }
+    for row in &batch.voting_delay_set {
+        insert_governor_parameter_change(
+            transaction,
+            "voting_delay_set",
+            "old_voting_delay",
+            "new_voting_delay",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.voting_period_set {
+        insert_governor_parameter_change(
+            transaction,
+            "voting_period_set",
+            "old_voting_period",
+            "new_voting_period",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.proposal_threshold_set {
+        insert_governor_parameter_change(
+            transaction,
+            "proposal_threshold_set",
+            "old_proposal_threshold",
+            "new_proposal_threshold",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.quorum_numerator_updated {
+        insert_governor_parameter_change(
+            transaction,
+            "quorum_numerator_updated",
+            "old_quorum_numerator",
+            "new_quorum_numerator",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.late_quorum_vote_extension_set {
+        insert_governor_parameter_change(
+            transaction,
+            "late_quorum_vote_extension_set",
+            "old_late_quorum_vote_extension",
+            "new_late_quorum_vote_extension",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.timelock_change {
+        insert_governor_timelock_change(transaction, row).await?;
+    }
+    for row in &batch.governance_parameter_checkpoints {
+        insert_governance_parameter_checkpoint(transaction, row).await?;
+    }
     Ok(())
 }
 
@@ -835,6 +891,143 @@ async fn insert_proposal_deadline_extension(
         "proposal_deadline_extension.block_timestamp",
     )?)
     .bind(&row.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_governor_parameter_change(
+    transaction: &mut Transaction<'_, Postgres>,
+    table: &str,
+    old_column: &str,
+    new_column: &str,
+    row: &GovernorParameterChangeWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let sql = format!(
+        "INSERT INTO {table} (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, {old_column}, {new_column}, block_number, block_timestamp,
+            transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8::NUMERIC(78, 0), $9::NUMERIC(78, 0),
+            $10::NUMERIC(78, 0), $11::NUMERIC(78, 0), $12
+         )
+         ON CONFLICT (id) DO NOTHING"
+    );
+
+    sqlx::query(&sql)
+        .bind(&row.id)
+        .bind(row.common.chain_id)
+        .bind(&row.common.dao_code)
+        .bind(&row.common.governor_address)
+        .bind(&row.common.contract_address)
+        .bind(u64_to_i32(
+            row.common.log_index,
+            "governor_parameter_change.log_index",
+        )?)
+        .bind(u64_to_i32(
+            row.common.transaction_index,
+            "governor_parameter_change.transaction_index",
+        )?)
+        .bind(&row.old_value)
+        .bind(&row.new_value)
+        .bind(&row.common.block_number)
+        .bind(required_numeric(
+            &row.common.block_timestamp,
+            "governor_parameter_change.block_timestamp",
+        )?)
+        .bind(&row.common.transaction_hash)
+        .execute(&mut **transaction)
+        .await?;
+
+    Ok(())
+}
+
+async fn insert_governor_timelock_change(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &GovernorTimelockChangeWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO timelock_change (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, old_timelock, new_timelock, block_number, block_timestamp,
+            transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0),
+            $11::NUMERIC(78, 0), $12
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.common.chain_id)
+    .bind(&row.common.dao_code)
+    .bind(&row.common.governor_address)
+    .bind(&row.common.contract_address)
+    .bind(u64_to_i32(
+        row.common.log_index,
+        "timelock_change.log_index",
+    )?)
+    .bind(u64_to_i32(
+        row.common.transaction_index,
+        "timelock_change.transaction_index",
+    )?)
+    .bind(&row.old_timelock)
+    .bind(&row.new_timelock)
+    .bind(&row.common.block_number)
+    .bind(required_numeric(
+        &row.common.block_timestamp,
+        "timelock_change.block_timestamp",
+    )?)
+    .bind(&row.common.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_governance_parameter_checkpoint(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &GovernanceParameterCheckpointWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO governance_parameter_checkpoint (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, event_name, parameter_name, value_type, old_value, new_value,
+            block_number, block_timestamp, transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.common.chain_id)
+    .bind(&row.common.dao_code)
+    .bind(&row.common.governor_address)
+    .bind(&row.common.contract_address)
+    .bind(u64_to_i32(
+        row.common.log_index,
+        "governance_parameter_checkpoint.log_index",
+    )?)
+    .bind(u64_to_i32(
+        row.common.transaction_index,
+        "governance_parameter_checkpoint.transaction_index",
+    )?)
+    .bind(&row.event_name)
+    .bind(&row.parameter_name)
+    .bind(&row.value_type)
+    .bind(row.old_value.as_deref())
+    .bind(&row.new_value)
+    .bind(&row.common.block_number)
+    .bind(required_numeric(
+        &row.common.block_timestamp,
+        "governance_parameter_checkpoint.block_timestamp",
+    )?)
+    .bind(&row.common.transaction_hash)
     .execute(&mut **transaction)
     .await?;
 
