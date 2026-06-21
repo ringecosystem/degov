@@ -233,6 +233,12 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         ],
     )
     .await?;
+    assert_index_absent(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_status_idx",
+    )
+    .await?;
     assert_index_exists(
         &database.pool,
         &database.schema,
@@ -352,7 +358,7 @@ async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Er
     .await?;
 
     apply_migrations(&database.pool).await?;
-    assert_index_is_invalid(
+    assert_index_is_valid(
         &database.pool,
         &database.schema,
         "contributor_data_metric_scope_idx",
@@ -568,6 +574,31 @@ async fn assert_index_exists(
     Ok(())
 }
 
+async fn assert_index_absent(
+    pool: &PgPool,
+    schema: &str,
+    index_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let exists: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_indexes
+          WHERE schemaname = $1
+            AND indexname = $2
+        )
+        "#,
+    )
+    .bind(schema)
+    .bind(index_name)
+    .fetch_one(pool)
+    .await?;
+
+    assert!(!exists, "expected index {schema}.{index_name} to be absent");
+
+    Ok(())
+}
+
 async fn assert_index_definition_contains(
     pool: &PgPool,
     schema: &str,
@@ -648,34 +679,6 @@ async fn assert_table_reloptions_contains(
             "expected table {table_name} reloptions to contain {expected_option}, got {reloptions:?}"
         );
     }
-
-    Ok(())
-}
-
-async fn assert_index_is_invalid(
-    pool: &PgPool,
-    schema: &str,
-    index_name: &str,
-) -> Result<(), Box<dyn Error>> {
-    let is_valid: bool = sqlx::query_scalar(
-        r#"
-        SELECT pg_index.indisvalid
-        FROM pg_class index_class
-        JOIN pg_namespace index_namespace ON index_namespace.oid = index_class.relnamespace
-        JOIN pg_index ON pg_index.indexrelid = index_class.oid
-        WHERE index_namespace.nspname = $1
-          AND index_class.relname = $2
-        "#,
-    )
-    .bind(schema)
-    .bind(index_name)
-    .fetch_one(pool)
-    .await?;
-
-    assert!(
-        !is_valid,
-        "expected index {schema}.{index_name} to be invalid"
-    );
 
     Ok(())
 }
