@@ -163,6 +163,15 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .context("ensure pending onchain refresh status claim index")?;
 
     sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_pending_ready_claim_idx
+         ON onchain_refresh_task (next_run_at, updated_at, id)
+         WHERE status = 'pending'",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure pending onchain refresh ready claim index")?;
+
+    sqlx::query(
         "CREATE INDEX IF NOT EXISTS onchain_refresh_task_scope_claim_queue_idx
          ON onchain_refresh_task (
             chain_id, contract_set_id, dao_code, status, next_run_at, updated_at, id
@@ -393,6 +402,7 @@ async fn repair_invalid_runtime_indexes_for_connection(
     connection: &mut PgConnection,
 ) -> Result<()> {
     drop_invalid_runtime_index(connection, "onchain_refresh_task_pending_status_claim_idx").await?;
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_pending_ready_claim_idx").await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_retry_idx").await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_attempt_retry_idx").await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_ready_retry_idx").await?;
