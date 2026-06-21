@@ -249,6 +249,87 @@ fn test_datalens_head_reader_returns_degov_timeout_for_stalled_sdk_head() {
 }
 
 #[test]
+fn test_datalens_head_reader_uses_separate_worker_guard_from_log_queries() {
+    let server = FakeQueryServer::start_concurrent(vec![
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+        FakeQueryResponse::Http(head_success_response(568901, "safe")),
+    ]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(120);
+    let gate = DatalensQueryConcurrencyGate::new(DatalensQueryConcurrencyConfig {
+        global_max_in_flight: Some(2),
+        per_chain_max_in_flight: Some(2),
+    })
+    .expect("gate");
+    let mut first_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("first client")
+            .with_query_concurrency_gate(gate.clone());
+    let mut second_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("second client")
+            .with_query_concurrency_gate(gate.clone());
+    let mut head_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("head client")
+            .with_query_concurrency_gate(gate);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+    let first_input = plans[0].input.clone();
+    let second_input = plans[0].input.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+
+    let first_handle = thread::spawn({
+        let started_sender = started_sender.clone();
+        move || {
+            started_sender.send(()).expect("send first start");
+            first_client
+                .query_logs(first_input)
+                .expect_err("first stalled query times out")
+        }
+    });
+    let second_handle = thread::spawn(move || {
+        started_sender.send(()).expect("send second start");
+        second_client
+            .query_logs(second_input)
+            .expect_err("second stalled query times out")
+    });
+    started_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .expect("first query starts");
+    started_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .expect("second query starts");
+    thread::sleep(Duration::from_millis(50));
+
+    let height = head_client
+        .durable_head_height(&config)
+        .expect("head uses a separate blocking worker guard");
+
+    assert_eq!(height, 568901);
+    let first_error = first_handle.join().expect("first query joins");
+    let second_error = second_handle.join().expect("second query joins");
+    assert_eq!(
+        classify_datalens_query_error(&first_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{first_error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&second_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{second_error}"
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 3);
+    assert!(
+        requests
+            .iter()
+            .any(|request| request.starts_with("GET /v1/chains/ethereum/head?finality=safe ")),
+        "{requests:?}"
+    );
+}
+
+#[test]
 fn test_datalens_log_query_retries_retryable_rate_limit_before_success() {
     let server = FakeQueryServer::start(vec![
         api_error_response(429, "rate_limited", Some("request_rate_limit")),
@@ -872,6 +953,15 @@ impl FakeQueryServer {
 
 fn handle_head_request(mut stream: TcpStream, height: u64, finality: &'static str) -> String {
     let request = read_http_request(&mut stream);
+    let response = head_success_response(height, finality);
+    stream
+        .write_all(response.as_bytes())
+        .expect("write fake Datalens head response");
+
+    request
+}
+
+fn head_success_response(height: u64, finality: &'static str) -> String {
     let body = serde_json::json!({
         "chain": {
             "configured_name": "ethereum"
@@ -886,11 +976,7 @@ fn handle_head_request(mut stream: TcpStream, height: u64, finality: &'static st
         body.len(),
         body
     );
-    stream
-        .write_all(response.as_bytes())
-        .expect("write fake Datalens head response");
-
-    request
+    response
 }
 
 fn query_success_response(rows: serde_json::Value) -> String {
