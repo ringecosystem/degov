@@ -1604,13 +1604,14 @@ mod tests {
 
         assert_eq!(result, Some(1));
         assert_eq!(reader.latest_head_calls, 1);
-        assert_eq!(reader.ranges, vec![(21, 25), (21, 25)]);
-        assert_eq!(
-            reader.finalities,
-            vec![
-                Some("safe_to_latest".to_owned()),
-                Some("safe_to_latest".to_owned())
-            ]
+        assert_eq!(reader.ranges.len(), 16);
+        assert!(reader.ranges.iter().all(|range| *range == (21, 25)));
+        assert_eq!(reader.finalities.len(), 16);
+        assert!(
+            reader
+                .finalities
+                .iter()
+                .all(|finality| finality.as_deref() == Some("safe_to_latest"))
         );
         assert_eq!(store.writes.len(), 1);
         assert_eq!(store.writes[0].segment_finality, "safe_to_latest");

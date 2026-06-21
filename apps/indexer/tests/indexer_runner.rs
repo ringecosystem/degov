@@ -375,18 +375,11 @@ fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subrang
         1_001
     );
     assert_eq!(runner.store().commit_count(), 2);
-    assert_eq!(
-        *observed_ranges.lock().expect("observed ranges"),
-        vec![
-            (1, 1_000),
-            (1, 500),
-            (1, 500),
-            (1, 500),
-            (501, 1_000),
-            (501, 1_000),
-            (501, 1_000),
-        ]
-    );
+    let observed = observed_ranges.lock().expect("observed ranges");
+    assert_range_count(&observed, (1, 1_000), 1);
+    assert_range_count(&observed, (1, 500), ALL_SELECTOR_COUNT);
+    assert_range_count(&observed, (501, 1_000), ALL_SELECTOR_COUNT);
+    assert_eq!(observed.len(), 1 + ALL_SELECTOR_COUNT * 2);
 }
 
 #[test]
@@ -415,10 +408,10 @@ fn test_runner_splits_transient_range_and_retries_without_pass_error() {
         2_501
     );
     assert_eq!(runner.store().commit_count(), 1);
-    assert_eq!(
-        *observed_ranges.lock().expect("observed ranges"),
-        vec![(1, 5_000), (1, 2_500), (1, 2_500), (1, 2_500)]
-    );
+    let observed = observed_ranges.lock().expect("observed ranges");
+    assert_range_count(&observed, (1, 5_000), 1);
+    assert_range_count(&observed, (1, 2_500), ALL_SELECTOR_COUNT);
+    assert_eq!(observed.len(), 1 + ALL_SELECTOR_COUNT);
 }
 
 #[test]
@@ -447,20 +440,13 @@ fn test_runner_splits_transient_failure_below_normal_min_and_advances_checkpoint
         2
     );
     assert_eq!(runner.store().commit_count(), 1);
+    let observed = observed_ranges.lock().expect("observed ranges");
     assert_eq!(
-        *observed_ranges.lock().expect("observed ranges"),
-        vec![
-            (1, 101),
-            (1, 50),
-            (1, 25),
-            (1, 12),
-            (1, 6),
-            (1, 3),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-        ]
+        &observed[..6],
+        &[(1, 101), (1, 50), (1, 25), (1, 12), (1, 6), (1, 3)]
     );
+    assert_range_count(&observed, (1, 1), ALL_SELECTOR_COUNT);
+    assert_eq!(observed.len(), 6 + ALL_SELECTOR_COUNT);
 }
 
 #[test]
@@ -489,10 +475,10 @@ fn test_runner_splits_two_block_transient_failure_to_single_block() {
         2
     );
     assert_eq!(runner.store().commit_count(), 1);
-    assert_eq!(
-        *observed_ranges.lock().expect("observed ranges"),
-        vec![(1, 2), (1, 1), (1, 1), (1, 1)]
-    );
+    let observed = observed_ranges.lock().expect("observed ranges");
+    assert_range_count(&observed, (1, 2), 1);
+    assert_range_count(&observed, (1, 1), ALL_SELECTOR_COUNT);
+    assert_eq!(observed.len(), 1 + ALL_SELECTOR_COUNT);
 }
 
 #[test]
@@ -918,9 +904,12 @@ fn test_runner_decodes_distinct_log_addresses_with_matching_sources() {
 
     runner.run_to_target(1).expect("runner succeeds");
 
-    assert_eq!(
-        *attempts.lock().expect("attempts"),
-        vec![DaoLogSource::Governor, DaoLogSource::GovernorToken]
+    let attempts = attempts.lock().expect("attempts");
+    assert_source_attempt_counts(
+        &attempts,
+        GOVERNOR_SELECTOR_COUNT,
+        GOVERNOR_TOKEN_SELECTOR_COUNT,
+        0,
     );
     assert_eq!(
         runner.store().vote_repository().data_metric().votes_count,
@@ -943,13 +932,12 @@ fn test_runner_decodes_duplicate_address_token_log_with_token_source() {
 
     runner.run_to_target(1).expect("runner succeeds");
 
-    assert_eq!(
-        *attempts.lock().expect("attempts"),
-        vec![
-            DaoLogSource::Governor,
-            DaoLogSource::GovernorToken,
-            DaoLogSource::Timelock
-        ]
+    let attempts = attempts.lock().expect("attempts");
+    assert_source_attempt_counts(
+        &attempts,
+        GOVERNOR_SELECTOR_COUNT,
+        GOVERNOR_TOKEN_SELECTOR_COUNT,
+        TIMELOCK_SELECTOR_COUNT,
     );
     assert_eq!(
         runner.store().token_repository().delegate_changed().len(),
@@ -968,13 +956,12 @@ fn test_runner_keeps_duplicate_address_unsupported_topic_unsupported() {
 
     runner.run_to_target(1).expect("runner succeeds");
 
-    assert_eq!(
-        *attempts.lock().expect("attempts"),
-        vec![
-            DaoLogSource::Governor,
-            DaoLogSource::GovernorToken,
-            DaoLogSource::Timelock
-        ]
+    let attempts = attempts.lock().expect("attempts");
+    assert_source_attempt_counts(
+        &attempts,
+        GOVERNOR_SELECTOR_COUNT,
+        GOVERNOR_TOKEN_SELECTOR_COUNT,
+        TIMELOCK_SELECTOR_COUNT,
     );
     assert_eq!(
         runner.store().checkpoint().expect("checkpoint").next_block,
@@ -1560,6 +1547,49 @@ fn set_block_range_limit(options: &mut IndexerRunnerOptions, block_range_limit: 
     options.adaptive_chunk_sizer = AdaptiveChunkSizerConfig::for_max_chunk_size(block_range_limit);
 }
 
+fn assert_range_count(observed: &[(u64, u64)], range: (u64, u64), expected_count: usize) {
+    assert_eq!(
+        observed
+            .iter()
+            .filter(|observed_range| **observed_range == range)
+            .count(),
+        expected_count
+    );
+}
+
+fn assert_source_attempt_counts(
+    attempts: &[DaoLogSource],
+    governor_count: usize,
+    governor_token_count: usize,
+    timelock_count: usize,
+) {
+    assert_eq!(
+        attempts
+            .iter()
+            .filter(|source| **source == DaoLogSource::Governor)
+            .count(),
+        governor_count
+    );
+    assert_eq!(
+        attempts
+            .iter()
+            .filter(|source| **source == DaoLogSource::GovernorToken)
+            .count(),
+        governor_token_count
+    );
+    assert_eq!(
+        attempts
+            .iter()
+            .filter(|source| **source == DaoLogSource::Timelock)
+            .count(),
+        timelock_count
+    );
+    assert_eq!(
+        attempts.len(),
+        governor_count + governor_token_count + timelock_count
+    );
+}
+
 fn contexts() -> IndexerRunnerContexts {
     let contracts = ChainContracts {
         governor: "0x1111111111111111111111111111111111111111".to_owned(),
@@ -1682,3 +1712,8 @@ fn row_with_removed(
 
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
 const TOKEN: &str = "0x2222222222222222222222222222222222222222";
+const GOVERNOR_SELECTOR_COUNT: usize = 13;
+const GOVERNOR_TOKEN_SELECTOR_COUNT: usize = 3;
+const TIMELOCK_SELECTOR_COUNT: usize = 8;
+const ALL_SELECTOR_COUNT: usize =
+    GOVERNOR_SELECTOR_COUNT + GOVERNOR_TOKEN_SELECTOR_COUNT + TIMELOCK_SELECTOR_COUNT;
