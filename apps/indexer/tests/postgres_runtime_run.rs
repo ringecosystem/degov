@@ -2240,6 +2240,123 @@ async fn test_postgres_token_deferred_refresh_reschedules_ready_materialized_tas
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_deferred_refresh_skips_ready_metadata_only_conflict()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone())
+        .with_onchain_refresh_debounce(Duration::from_secs(120));
+    let first_batch = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000000030-ready-votes", 30, 0, 1),
+            event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                delegate: DELEGATE.to_owned(),
+                previous_votes: "0".to_owned(),
+                new_votes: "1".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("first token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(first_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    sqlx::query(
+        "UPDATE onchain_refresh_deferred_candidate
+         SET next_run_at = 0::NUMERIC(78, 0),
+             updated_at = 1234::NUMERIC(78, 0)
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .execute(&database.pool)
+    .await?;
+
+    let second_batch = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000000031-ready-votes-repeat", 31, 0, 1),
+            event: DecodedTokenEvent::DelegateVotesChanged(DelegateVotesChangedEvent {
+                delegate: DELEGATE.to_owned(),
+                previous_votes: "1".to_owned(),
+                new_votes: "2".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("repeat token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(second_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let advanced = sqlx::query(
+        "SELECT refresh_balance, refresh_power,
+                last_seen_block_number::TEXT AS last_seen_block_number,
+                next_run_at::TEXT AS next_run_at,
+                updated_at::TEXT AS updated_at
+         FROM onchain_refresh_deferred_candidate
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert!(!advanced.get::<bool, _>("refresh_balance"));
+    assert!(advanced.get::<bool, _>("refresh_power"));
+    assert_eq!(advanced.get::<String, _>("last_seen_block_number"), "31");
+    assert_ne!(advanced.get::<String, _>("updated_at"), "1234");
+    assert_ne!(advanced.get::<String, _>("next_run_at"), "0");
+
+    let flag_batch = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("0000000032-ready-transfer", 32, 0, 1),
+            event: DecodedTokenEvent::Transfer(TokenTransferEvent {
+                from: DELEGATE.to_owned(),
+                to: RECEIVER.to_owned(),
+                value: "1".to_owned(),
+                standard: GovernanceTokenStandard::Erc20,
+            }),
+        }],
+    )
+    .map_err(|error| format!("flag token projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(flag_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let updated = sqlx::query(
+        "SELECT refresh_balance, refresh_power,
+                last_seen_block_number::TEXT AS last_seen_block_number,
+                updated_at::TEXT AS updated_at
+         FROM onchain_refresh_deferred_candidate
+         WHERE contract_set_id = $1 AND account = $2",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(DELEGATE)
+    .fetch_one(&database.pool)
+    .await?;
+    assert!(updated.get::<bool, _>("refresh_balance"));
+    assert!(updated.get::<bool, _>("refresh_power"));
+    assert_eq!(updated.get::<String, _>("last_seen_block_number"), "32");
+    assert_ne!(updated.get::<String, _>("updated_at"), "1234");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_token_reconcile_tasks_insert_across_bulk_chunks()
 -> Result<(), Box<dyn Error>> {
     const DENSE_EVENT_COUNT: usize = 1_205;

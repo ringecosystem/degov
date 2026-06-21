@@ -96,12 +96,17 @@ async fn write_data_metric_timeline(
     let effective_count_delegates = delegate_mapping_cache.flush(transaction).await?;
     let mapping_flush_duration = mapping_flush_started_at.elapsed();
 
-    let contributor_count_flush_started_at = std::time::Instant::now();
-    contributor_ensure_cache
+    let contributor_count_started_at = std::time::Instant::now();
+    let contributor_count_delta_flush_started_at = std::time::Instant::now();
+    let contributor_count_delta_count = contributor_ensure_cache
         .flush_contributor_count_deltas(transaction)
         .await?;
+    let contributor_count_delta_flush_duration = contributor_count_delta_flush_started_at.elapsed();
+    let contributor_count_effective_recompute_started_at = std::time::Instant::now();
     recompute_delegate_count_effective(transaction, &effective_count_delegates).await?;
-    let contributor_count_flush_duration = contributor_count_flush_started_at.elapsed();
+    let contributor_count_effective_recompute_duration =
+        contributor_count_effective_recompute_started_at.elapsed();
+    let contributor_count_flush_duration = contributor_count_started_at.elapsed();
 
     let contributor_count_metric_flush_started_at = std::time::Instant::now();
     contributor_ensure_cache
@@ -112,13 +117,18 @@ async fn write_data_metric_timeline(
 
     if let Some(token) = token {
         if let Some(common) = token_batch_common(token) {
+            let effective_recompute_chunk_size = recompute_delegate_count_effective_chunk_size();
             log::info!(
-                "Datalens indexer token timeline phases dao_code={} chain_id={} contract_set_id={} token_operation_count={} inserted_operation_count={} contributor_preload_duration_ms={} metadata_preload_duration_ms={} mapping_preload_duration_ms={} replay_duration_ms={} rolling_flush_duration_ms={} snapshot_flush_duration_ms={} mapping_flush_duration_ms={} contributor_count_flush_duration_ms={} contributor_count_metric_flush_duration_ms={} total_duration_ms={}",
+                "Datalens indexer token timeline phases dao_code={} chain_id={} contract_set_id={} token_operation_count={} inserted_operation_count={} effective_delegate_count={} effective_recompute_chunk_size={} effective_recompute_chunk_count={} contributor_count_delta_count={} contributor_preload_duration_ms={} metadata_preload_duration_ms={} mapping_preload_duration_ms={} replay_duration_ms={} rolling_flush_duration_ms={} snapshot_flush_duration_ms={} mapping_flush_duration_ms={} contributor_count_delta_flush_duration_ms={} contributor_count_effective_recompute_duration_ms={} contributor_count_flush_duration_ms={} contributor_count_metric_flush_duration_ms={} total_duration_ms={}",
                 common.dao_code,
                 common.chain_id,
                 common.contract_set_id,
                 token.operations.len(),
                 inserted_operation_keys.len(),
+                effective_count_delegates.len(),
+                effective_recompute_chunk_size,
+                chunk_count(effective_count_delegates.len(), effective_recompute_chunk_size),
+                contributor_count_delta_count,
                 contributor_preload_duration.as_millis(),
                 metadata_preload_duration.as_millis(),
                 mapping_preload_duration.as_millis(),
@@ -126,6 +136,8 @@ async fn write_data_metric_timeline(
                 rolling_flush_duration.as_millis(),
                 snapshot_flush_duration.as_millis(),
                 mapping_flush_duration.as_millis(),
+                contributor_count_delta_flush_duration.as_millis(),
+                contributor_count_effective_recompute_duration.as_millis(),
                 contributor_count_flush_duration.as_millis(),
                 contributor_count_metric_flush_duration.as_millis(),
                 total_started_at.elapsed().as_millis(),
@@ -299,9 +311,10 @@ async fn refresh_vote_data_metric(
     let Some(row) = rows.first() else {
         return Ok(());
     };
+    let started_at = std::time::Instant::now();
     let metric_id = data_metric_id(row.chain_id, &row.governor_address, &row.dao_code);
 
-    sqlx::query(
+    let result = sqlx::query(
         "INSERT INTO data_metric (
             id, contract_set_id, chain_id, dao_code, governor_address, votes_count, votes_with_params_count,
             votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
@@ -332,6 +345,16 @@ async fn refresh_vote_data_metric(
     .bind(&row.governor_address)
     .execute(&mut **transaction)
     .await?;
+
+    log::info!(
+        "Datalens indexer vote data_metric refresh completed dao_code={} chain_id={} contract_set_id={} vote_signal_count={} rows_affected={} duration_ms={}",
+        row.dao_code,
+        row.chain_id,
+        row.contract_set_id,
+        rows.len(),
+        result.rows_affected(),
+        started_at.elapsed().as_millis()
+    );
 
     Ok(())
 }
@@ -364,9 +387,10 @@ async fn refresh_proposal_data_metric(
     let Some((contract_set_id, chain_id, dao_code, governor_address)) = scope else {
         return Ok(());
     };
+    let started_at = std::time::Instant::now();
     let metric_id = data_metric_id(chain_id, governor_address, dao_code);
 
-    sqlx::query(
+    let result = sqlx::query(
         "INSERT INTO data_metric (
             id, contract_set_id, chain_id, dao_code, governor_address, proposals_count
          )
@@ -383,6 +407,17 @@ async fn refresh_proposal_data_metric(
     .bind(governor_address)
     .execute(&mut **transaction)
     .await?;
+
+    log::info!(
+        "Datalens indexer proposal data_metric refresh completed dao_code={} chain_id={} contract_set_id={} proposal_count={} data_metric_count={} rows_affected={} duration_ms={}",
+        dao_code,
+        chain_id,
+        contract_set_id,
+        batch.proposals.len(),
+        batch.data_metrics.len(),
+        result.rows_affected(),
+        started_at.elapsed().as_millis()
+    );
 
     Ok(())
 }
