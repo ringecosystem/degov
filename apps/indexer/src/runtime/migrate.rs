@@ -412,9 +412,17 @@ async fn repair_invalid_runtime_indexes_for_connection(
 
 async fn drop_obsolete_runtime_indexes_for_connection(connection: &mut PgConnection) -> Result<()> {
     sqlx::query("DROP INDEX CONCURRENTLY IF EXISTS onchain_refresh_task_status_idx")
-        .execute(connection)
+        .execute(&mut *connection)
         .await
         .context("drop obsolete onchain refresh status index")?;
+    sqlx::query("DROP INDEX CONCURRENTLY IF EXISTS token_transfer_transaction_hash_idx")
+        .execute(&mut *connection)
+        .await
+        .context("drop obsolete token transfer transaction hash index")?;
+    sqlx::query("DROP INDEX CONCURRENTLY IF EXISTS token_transfer_chain_governor_token_idx")
+        .execute(&mut *connection)
+        .await
+        .context("drop obsolete token transfer chain governor token index")?;
 
     Ok(())
 }
