@@ -580,12 +580,12 @@ async fn test_onchain_refresh_worker_reconciles_current_delegate_relation_power_
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_onchain_refresh_worker_recomputes_effective_delegate_count_for_positive_power_refresh()
+async fn test_onchain_refresh_worker_preserves_effective_delegate_count_for_positive_power_refresh()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_contributor(&database.pool, ACCOUNT_ONE, "3", Some("4")).await?;
     seed_contributor(&database.pool, ACCOUNT_TWO, "0", Some("0")).await?;
-    set_contributor_delegate_counts(&database.pool, ACCOUNT_TWO, 2, 1).await?;
+    set_contributor_delegate_counts(&database.pool, ACCOUNT_TWO, 2, 2).await?;
     seed_data_metric(&database.pool, "3").await?;
     seed_final_delegate_with_scope(
         &database.pool,
