@@ -21,12 +21,17 @@ fn test_bulk_chunk_size_defaults_to_preferred_values() {
                 "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
                 None::<&str>,
             ),
+            (
+                "DEGOV_INDEXER_RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_CHUNK_SIZE",
+                None::<&str>,
+            ),
         ],
         || {
             assert_eq!(token_event_bulk_chunk_size(), 3_000);
             assert_eq!(contributor_ensure_bulk_chunk_size(), 3_000);
             assert_eq!(delegate_rolling_vote_update_chunk_size(), 1_000);
             assert_eq!(vote_power_checkpoint_bulk_chunk_size(), 3_000);
+            assert_eq!(recompute_delegate_count_effective_chunk_size(), 3_000);
         },
     );
 }
@@ -48,6 +53,10 @@ fn test_bulk_chunk_size_env_values_are_capped_to_postgres_bind_limit() {
                 "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
                 Some("100000"),
             ),
+            (
+                "DEGOV_INDEXER_RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_CHUNK_SIZE",
+                Some("100000"),
+            ),
         ],
         || {
             assert_eq!(
@@ -65,6 +74,10 @@ fn test_bulk_chunk_size_env_values_are_capped_to_postgres_bind_limit() {
             assert_eq!(
                 vote_power_checkpoint_bulk_chunk_size(),
                 POSTGRES_BIND_PARAMETER_LIMIT / VOTE_POWER_CHECKPOINT_BULK_BINDS_PER_ROW
+            );
+            assert_eq!(
+                recompute_delegate_count_effective_chunk_size(),
+                POSTGRES_BIND_PARAMETER_LIMIT / RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_BINDS_PER_ROW
             );
         },
     );
@@ -87,12 +100,17 @@ fn test_bulk_chunk_size_invalid_env_values_fall_back_to_defaults() {
                 "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
                 Some("not-a-number"),
             ),
+            (
+                "DEGOV_INDEXER_RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_CHUNK_SIZE",
+                Some("0"),
+            ),
         ],
         || {
             assert_eq!(token_event_bulk_chunk_size(), 3_000);
             assert_eq!(contributor_ensure_bulk_chunk_size(), 3_000);
             assert_eq!(delegate_rolling_vote_update_chunk_size(), 1_000);
             assert_eq!(vote_power_checkpoint_bulk_chunk_size(), 3_000);
+            assert_eq!(recompute_delegate_count_effective_chunk_size(), 3_000);
         },
     );
 }

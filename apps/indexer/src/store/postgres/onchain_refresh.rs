@@ -27,17 +27,40 @@ fn plan_onchain_refresh_enqueue_with_drain_budget(
     }
 }
 
+#[cfg(test)]
+fn should_update_deferred_candidate_conflict(
+    existing_next_run_at: i64,
+    now_ms: i64,
+    existing_refresh_balance: bool,
+    incoming_refresh_balance: bool,
+    existing_refresh_power: bool,
+    incoming_refresh_power: bool,
+    existing_first_seen_block_number: u64,
+    incoming_first_seen_block_number: u64,
+    existing_last_seen_block_number: u64,
+    incoming_last_seen_block_number: u64,
+) -> bool {
+    existing_next_run_at > now_ms
+        || (incoming_refresh_balance && !existing_refresh_balance)
+        || (incoming_refresh_power && !existing_refresh_power)
+        || existing_first_seen_block_number > incoming_first_seen_block_number
+        || existing_last_seen_block_number < incoming_last_seen_block_number
+}
+
 async fn upsert_onchain_refresh_tasks(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[PowerReconcileCandidate],
     debounce: Duration,
     deferred_drain_batch_size: usize,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let total_started_at = std::time::Instant::now();
     let original_count = rows.len();
+    let dedupe_started_at = std::time::Instant::now();
     let mut rows = dedupe_onchain_refresh_tasks(rows)
         .into_iter()
         .map(OnchainRefreshTaskWrite::from)
         .collect::<Vec<_>>();
+    let dedupe_duration = dedupe_started_at.elapsed();
     let now_ms = unix_time_millis();
     let next_run_at = now_ms.saturating_add(duration_millis_i64(debounce));
     for row in &mut rows {
@@ -46,13 +69,20 @@ async fn upsert_onchain_refresh_tasks(
 
     let plan =
         plan_onchain_refresh_enqueue_with_drain_budget(rows.len(), debounce, deferred_drain_batch_size);
+    let mut deferred_candidate_write_count = 0;
+    let deferred_upsert_started_at = std::time::Instant::now();
     for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
-        upsert_deferred_onchain_refresh_candidate_chunk(transaction, chunk, now_ms, next_run_at)
-            .await?;
+        deferred_candidate_write_count +=
+            upsert_deferred_onchain_refresh_candidate_chunk(transaction, chunk, now_ms, next_run_at)
+                .await?;
     }
+    let deferred_upsert_duration = deferred_upsert_started_at.elapsed();
+    let reschedule_started_at = std::time::Instant::now();
     let rescheduled_count =
         reschedule_materialized_onchain_refresh_tasks(transaction, &rows, next_run_at, now_ms)
             .await?;
+    let reschedule_duration = reschedule_started_at.elapsed();
+    let ready_drain_started_at = std::time::Instant::now();
     let drained_count = drain_deferred_onchain_refresh_tasks_in_transaction(
         transaction,
         plan.ready_drain_count,
@@ -60,18 +90,27 @@ async fn upsert_onchain_refresh_tasks(
         None,
     )
     .await?;
+    let ready_drain_duration = ready_drain_started_at.elapsed();
 
     log::info!(
-        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} deduped_duplicate_count={} inline_upsert_count={} deferred_count={} rescheduled_materialized_count={} ready_drain_batch_size={} ready_drain_count={} materialized_count={}",
+        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} deduped_duplicate_count={} inline_upsert_count={} deferred_count={} deferred_chunk_size={} deferred_chunk_count={} deferred_candidate_write_count={} rescheduled_materialized_count={} ready_drain_batch_size={} ready_drain_count={} materialized_count={} dedupe_duration_ms={} deferred_upsert_duration_ms={} reschedule_duration_ms={} ready_drain_duration_ms={} total_duration_ms={}",
         original_count,
         rows.len(),
         original_count.saturating_sub(rows.len()),
         plan.inline_upsert_count,
         plan.deferred_candidate_count,
+        MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS,
+        chunk_count(rows.len(), MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS),
+        deferred_candidate_write_count,
         rescheduled_count,
         deferred_drain_batch_size,
         plan.ready_drain_count,
-        drained_count
+        drained_count,
+        dedupe_duration.as_millis(),
+        deferred_upsert_duration.as_millis(),
+        reschedule_duration.as_millis(),
+        ready_drain_duration.as_millis(),
+        total_started_at.elapsed().as_millis()
     );
 
     Ok(())
@@ -484,7 +523,7 @@ async fn upsert_deferred_onchain_refresh_candidate_chunk(
     rows: &[OnchainRefreshTaskWrite],
     now_ms: i64,
     next_run_at: i64,
-) -> Result<(), PostgresIndexerRunnerStoreError> {
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
     let mut query = QueryBuilder::<Postgres>::new(
         "INSERT INTO onchain_refresh_deferred_candidate (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
@@ -530,11 +569,16 @@ async fn upsert_deferred_onchain_refresh_candidate_chunk(
              last_seen_block_timestamp = GREATEST(onchain_refresh_deferred_candidate.last_seen_block_timestamp, EXCLUDED.last_seen_block_timestamp),
              last_seen_transaction_hash = EXCLUDED.last_seen_transaction_hash,
              next_run_at = GREATEST(onchain_refresh_deferred_candidate.next_run_at, EXCLUDED.next_run_at),
-             updated_at = EXCLUDED.updated_at",
+             updated_at = EXCLUDED.updated_at
+         WHERE onchain_refresh_deferred_candidate.next_run_at > EXCLUDED.updated_at
+            OR (EXCLUDED.refresh_balance AND NOT onchain_refresh_deferred_candidate.refresh_balance)
+            OR (EXCLUDED.refresh_power AND NOT onchain_refresh_deferred_candidate.refresh_power)
+            OR onchain_refresh_deferred_candidate.first_seen_block_number > EXCLUDED.first_seen_block_number
+            OR onchain_refresh_deferred_candidate.last_seen_block_number < EXCLUDED.last_seen_block_number",
     );
-    query.build().execute(&mut **transaction).await?;
+    let result = query.build().execute(&mut **transaction).await?;
 
-    Ok(())
+    Ok(result.rows_affected())
 }
 
 async fn read_deferred_onchain_refresh_candidates(
@@ -699,6 +743,32 @@ mod tests {
         assert_eq!(immediate.inline_upsert_count, 0);
         assert_eq!(immediate.deferred_candidate_count, 1_205);
         assert_eq!(immediate.ready_drain_count, 1_000);
+    }
+
+    #[test]
+    fn test_deferred_candidate_conflict_skips_ready_metadata_only_update() {
+        assert!(!should_update_deferred_candidate_conflict(
+            1_000, 1_234, true, false, true, true, 30, 31, 40, 40,
+        ));
+    }
+
+    #[test]
+    fn test_deferred_candidate_conflict_updates_behavioral_changes() {
+        assert!(should_update_deferred_candidate_conflict(
+            2_000, 1_234, true, false, true, true, 30, 31, 40, 40,
+        ));
+        assert!(should_update_deferred_candidate_conflict(
+            1_000, 1_234, false, true, true, true, 30, 31, 40, 40,
+        ));
+        assert!(should_update_deferred_candidate_conflict(
+            1_000, 1_234, true, false, false, true, 30, 31, 40, 40,
+        ));
+        assert!(should_update_deferred_candidate_conflict(
+            1_000, 1_234, true, false, true, true, 30, 29, 40, 40,
+        ));
+        assert!(should_update_deferred_candidate_conflict(
+            1_000, 1_234, true, false, true, true, 30, 31, 40, 41,
+        ));
     }
 
     #[test]

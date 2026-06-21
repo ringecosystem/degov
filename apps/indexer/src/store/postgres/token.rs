@@ -8,6 +8,7 @@ const CONTRIBUTOR_ENSURE_BULK_BINDS_PER_ROW: usize = 16;
 const TOKEN_EVENT_BULK_BINDS_PER_ROW: usize = 19;
 const DELEGATE_ROLLING_VOTE_UPDATE_BINDS_PER_ROW: usize = 6;
 const VOTE_POWER_CHECKPOINT_BULK_BINDS_PER_ROW: usize = 21;
+const RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_BINDS_PER_ROW: usize = 2;
 
 fn bulk_chunk_size_from_env(
     env_name: &str,
@@ -54,6 +55,22 @@ fn vote_power_checkpoint_bulk_chunk_size() -> usize {
     )
 }
 
+fn recompute_delegate_count_effective_chunk_size() -> usize {
+    bulk_chunk_size_from_env(
+        "DEGOV_INDEXER_RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_CHUNK_SIZE",
+        TOKEN_EVENT_BULK_CHUNK_SIZE_DEFAULT,
+        RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_BINDS_PER_ROW,
+    )
+}
+
+fn chunk_count(row_count: usize, chunk_size: usize) -> usize {
+    if row_count == 0 {
+        0
+    } else {
+        (row_count - 1) / chunk_size + 1
+    }
+}
+
 async fn write_token_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &TokenProjectionBatch,
@@ -88,15 +105,21 @@ async fn write_token_batch_rows(
     let vote_power_checkpoint_duration = vote_power_checkpoint_started_at.elapsed();
 
     if let Some(common) = token_batch_common(batch) {
+        let token_event_chunk_size = token_event_bulk_chunk_size();
         log::info!(
-            "Datalens indexer token row write phases dao_code={} chain_id={} contract_set_id={} delegate_changed_count={} delegate_votes_changed_count={} token_transfer_count={} delegate_rolling_count={} inserted_operation_count={} delegate_changed_duration_ms={} delegate_votes_changed_duration_ms={} token_transfer_duration_ms={} delegate_rolling_duration_ms={} metadata_preload_duration_ms={} vote_power_checkpoint_duration_ms={} total_duration_ms={}",
+            "Datalens indexer token row write phases dao_code={} chain_id={} contract_set_id={} token_event_chunk_size={} delegate_changed_count={} delegate_changed_chunk_count={} delegate_votes_changed_count={} delegate_votes_changed_chunk_count={} token_transfer_count={} token_transfer_chunk_count={} delegate_rolling_count={} delegate_rolling_chunk_count={} inserted_operation_count={} delegate_changed_duration_ms={} delegate_votes_changed_duration_ms={} token_transfer_duration_ms={} delegate_rolling_duration_ms={} metadata_preload_duration_ms={} vote_power_checkpoint_duration_ms={} total_duration_ms={}",
             common.dao_code,
             common.chain_id,
             common.contract_set_id,
+            token_event_chunk_size,
             batch.delegate_changed.len(),
+            chunk_count(batch.delegate_changed.len(), token_event_chunk_size),
             batch.delegate_votes_changed.len(),
+            chunk_count(batch.delegate_votes_changed.len(), token_event_chunk_size),
             batch.token_transfers.len(),
+            chunk_count(batch.token_transfers.len(), token_event_chunk_size),
             batch.delegate_rollings.len(),
+            chunk_count(batch.delegate_rollings.len(), token_event_chunk_size),
             inserted_operation_keys.len(),
             delegate_changed_duration.as_millis(),
             delegate_votes_changed_duration.as_millis(),
@@ -246,8 +269,10 @@ async fn insert_token_transfer_batch(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[TokenTransferWrite],
 ) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
+    let started_at = std::time::Instant::now();
+    let chunk_size = token_event_bulk_chunk_size();
     let mut inserted = Vec::new();
-    for rows in rows.chunks(token_event_bulk_chunk_size()) {
+    for rows in rows.chunks(chunk_size) {
         let mut query = QueryBuilder::<Postgres>::new(
             "INSERT INTO token_transfer (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address,
@@ -303,6 +328,20 @@ async fn insert_token_transfer_batch(
         }
         query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING RETURNING contract_set_id, id");
         inserted.extend(fetch_inserted_operation_keys(transaction, query).await?);
+    }
+
+    if let Some(common) = rows.first().map(|row| &row.common) {
+        log::info!(
+            "Datalens indexer token transfer row write completed dao_code={} chain_id={} contract_set_id={} row_count={} chunk_size={} chunk_count={} inserted_count={} duration_ms={}",
+            common.dao_code,
+            common.chain_id,
+            common.contract_set_id,
+            rows.len(),
+            chunk_size,
+            chunk_count(rows.len(), chunk_size),
+            inserted.len(),
+            started_at.elapsed().as_millis()
+        );
     }
 
     Ok(inserted)
@@ -1373,12 +1412,13 @@ impl ContributorEnsureCache {
     async fn flush_contributor_count_deltas(
         &mut self,
         transaction: &mut Transaction<'_, Postgres>,
-    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    ) -> Result<usize, PostgresIndexerRunnerStoreError> {
         let deltas = std::mem::take(&mut self.contributor_count_deltas)
             .into_iter()
             .collect::<Vec<_>>();
+        let delta_count = deltas.len();
         if deltas.is_empty() {
-            return Ok(());
+            return Ok(0);
         }
 
         for rows in deltas.chunks(token_event_bulk_chunk_size()) {
@@ -1458,7 +1498,7 @@ impl ContributorEnsureCache {
             query.build().execute(&mut **transaction).await?;
         }
 
-        Ok(())
+        Ok(delta_count)
     }
 
     async fn flush_contributor_count_increments(
@@ -1886,7 +1926,8 @@ async fn recompute_delegate_count_effective(
         return Ok(());
     }
 
-    for rows in delegates.chunks(token_event_bulk_chunk_size()) {
+    let chunk_size = recompute_delegate_count_effective_chunk_size();
+    for rows in delegates.chunks(chunk_size) {
         let mut query = QueryBuilder::<Postgres>::new(
             "UPDATE contributor
              SET delegates_count_effective = counts.positive_count
