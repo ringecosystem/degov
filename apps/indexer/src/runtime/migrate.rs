@@ -78,6 +78,7 @@ pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
             .context("apply Datalens-native DeGov indexer init migration")?;
         drop_invalid_runtime_indexes_for_connection(&mut connection).await?;
         ensure_runtime_indexes(&mut connection).await?;
+        repair_delegate_effective_counts_once(&mut connection).await?;
         drop_obsolete_runtime_indexes_for_connection(&mut connection).await?;
 
         Ok(())
@@ -405,7 +406,94 @@ async fn repair_invalid_runtime_indexes_for_connection(
 ) -> Result<()> {
     drop_invalid_runtime_indexes_for_connection(connection).await?;
     ensure_runtime_indexes(connection).await?;
+    repair_delegate_effective_counts_once(connection).await?;
     drop_obsolete_runtime_indexes_for_connection(connection).await?;
+
+    Ok(())
+}
+
+async fn repair_delegate_effective_counts_once(connection: &mut PgConnection) -> Result<()> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS degov_runtime_repair_marker (
+            id TEXT PRIMARY KEY,
+            applied_at NUMERIC(78, 0) NOT NULL
+         )",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure DeGov runtime repair marker table")?;
+
+    let already_applied = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM degov_runtime_repair_marker
+            WHERE id = 'delegate_effective_counts_v1'
+         )",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("check delegate effective count runtime repair marker")?;
+
+    if already_applied {
+        return Ok(());
+    }
+
+    let row = sqlx::query_as::<_, (i64, i64)>(
+        "WITH positive_counts AS MATERIALIZED (
+            SELECT
+                contract_set_id,
+                \"to\" AS contributor_id,
+                COUNT(id)::INT AS positive_count
+            FROM delegate_mapping
+            WHERE power > 0
+            GROUP BY contract_set_id, \"to\"
+         ),
+         updated_positive AS (
+            UPDATE contributor
+            SET delegates_count_effective = positive_counts.positive_count
+            FROM positive_counts
+            WHERE contributor.contract_set_id = positive_counts.contract_set_id
+              AND contributor.id = positive_counts.contributor_id
+              AND contributor.delegates_count_effective IS DISTINCT FROM positive_counts.positive_count
+            RETURNING contributor.id
+         ),
+         updated_zero AS (
+            UPDATE contributor
+            SET delegates_count_effective = 0
+            WHERE contributor.delegates_count_effective IS DISTINCT FROM 0
+              AND NOT EXISTS (
+                SELECT 1
+                FROM positive_counts
+                WHERE positive_counts.contract_set_id = contributor.contract_set_id
+                  AND positive_counts.contributor_id = contributor.id
+              )
+            RETURNING contributor.id
+         )
+         SELECT
+            (SELECT COUNT(*)::BIGINT FROM updated_positive) AS positive_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_zero) AS zero_updates",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("repair delegate effective counts")?;
+
+    log::info!(
+        "DeGov delegate effective counts repaired positive_updates={} zero_updates={}",
+        row.0,
+        row.1
+    );
+
+    sqlx::query(
+        "INSERT INTO degov_runtime_repair_marker (id, applied_at)
+         VALUES (
+            'delegate_effective_counts_v1',
+            FLOOR(EXTRACT(EPOCH FROM now()) * 1000)::NUMERIC(78, 0)
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("mark delegate effective count runtime repair complete")?;
 
     Ok(())
 }

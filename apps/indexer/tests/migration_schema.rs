@@ -428,6 +428,9 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("delegate_mapping_effective_count_idx"));
     assert!(runtime_migration.contains("delegate_mapping_positive_count_idx"));
     assert!(runtime_migration.contains("WHERE power > 0"));
+    assert!(runtime_migration.contains("degov_runtime_repair_marker"));
+    assert!(runtime_migration.contains("delegate_effective_counts_v1"));
+    assert!(runtime_migration.contains("repair_delegate_effective_counts_once"));
     assert!(runtime_migration.contains("onchain_refresh_data_metric_task"));
     assert!(runtime_migration.contains("onchain_refresh_task_pending_ready_claim_idx"));
     assert!(runtime_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));

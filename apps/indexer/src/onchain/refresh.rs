@@ -2886,6 +2886,27 @@ fn push_delegate_relation_balance_refresh_query<'a>(
                 WHERE delegate.is_current = TRUE
                 ORDER BY delegate.contract_set_id, delegate.id
              ),
+             mapping_edges AS (
+                SELECT
+                    delegate_mapping.contract_set_id,
+                    delegate_mapping.id,
+                    delegate_mapping.\"from\",
+                    delegate_mapping.\"to\" AS to_delegate,
+                    delegate_mapping.power AS previous_power,
+                    current_edges.new_power,
+                    CASE
+                        WHEN delegate_mapping.power <= 0 AND current_edges.new_power > 0 THEN 1
+                        WHEN delegate_mapping.power > 0 AND current_edges.new_power <= 0 THEN -1
+                        ELSE 0
+                    END AS effective_count_delta
+                FROM delegate_mapping
+                JOIN current_edges
+                  ON current_edges.contract_set_id = delegate_mapping.contract_set_id
+                 AND current_edges.from_delegate = delegate_mapping.id
+                 AND current_edges.from_delegate = delegate_mapping.\"from\"
+                 AND current_edges.to_delegate = delegate_mapping.\"to\"
+                WHERE delegate_mapping.power IS DISTINCT FROM current_edges.new_power
+             ),
              updated_delegates AS (
                 UPDATE delegate
                 SET power = current_edges.new_power
@@ -2897,46 +2918,34 @@ fn push_delegate_relation_balance_refresh_query<'a>(
              ),
              updated_delegate_mappings AS (
                 UPDATE delegate_mapping
-                SET power = current_edges.new_power
-                FROM current_edges
-                WHERE delegate_mapping.contract_set_id = current_edges.contract_set_id
-                  AND delegate_mapping.id = current_edges.from_delegate
-                  AND delegate_mapping.\"from\" = current_edges.from_delegate
-                  AND delegate_mapping.\"to\" = current_edges.to_delegate
-                  AND delegate_mapping.power IS DISTINCT FROM current_edges.new_power
-                RETURNING delegate_mapping.contract_set_id, delegate_mapping.\"to\" AS to_delegate
+                SET power = mapping_edges.new_power
+                FROM mapping_edges
+                WHERE delegate_mapping.contract_set_id = mapping_edges.contract_set_id
+                  AND delegate_mapping.id = mapping_edges.id
+                  AND delegate_mapping.\"from\" = mapping_edges.\"from\"
+                  AND delegate_mapping.\"to\" = mapping_edges.to_delegate
+                  AND delegate_mapping.power IS DISTINCT FROM mapping_edges.new_power
+                RETURNING
+                    mapping_edges.contract_set_id,
+                    mapping_edges.to_delegate,
+                    mapping_edges.effective_count_delta
              ),
-             affected_delegates AS (
-                SELECT contract_set_id, to_delegate
-                FROM updated_delegates
-                UNION
-                SELECT contract_set_id, to_delegate
-                FROM updated_delegate_mappings
-             ),
-             effective_counts AS (
+             effective_count_deltas AS (
                 SELECT
-                    affected_delegates.contract_set_id,
-                    affected_delegates.to_delegate,
-                    COUNT(delegate_mapping.id) FILTER (
-                        WHERE COALESCE(current_edges.new_power, delegate_mapping.power) > 0
-                    )::INT AS positive_count
-                FROM affected_delegates
-                LEFT JOIN delegate_mapping
-                  ON delegate_mapping.contract_set_id = affected_delegates.contract_set_id
-                 AND delegate_mapping.\"to\" = affected_delegates.to_delegate
-                LEFT JOIN current_edges
-                  ON current_edges.contract_set_id = delegate_mapping.contract_set_id
-                 AND current_edges.from_delegate = delegate_mapping.\"from\"
-                 AND current_edges.to_delegate = delegate_mapping.\"to\"
-                GROUP BY affected_delegates.contract_set_id, affected_delegates.to_delegate
+                    contract_set_id,
+                    to_delegate,
+                    SUM(effective_count_delta)::INT AS count_delta
+                FROM updated_delegate_mappings
+                WHERE effective_count_delta <> 0
+                GROUP BY contract_set_id, to_delegate
              ),
              updated_effective_counts AS (
                 UPDATE contributor
-                SET delegates_count_effective = effective_counts.positive_count
-                FROM effective_counts
-                WHERE contributor.contract_set_id = effective_counts.contract_set_id
-                  AND contributor.id = effective_counts.to_delegate
-                  AND contributor.delegates_count_effective IS DISTINCT FROM effective_counts.positive_count
+                SET delegates_count_effective =
+                    GREATEST(0, contributor.delegates_count_effective + effective_count_deltas.count_delta)
+                FROM effective_count_deltas
+                WHERE contributor.contract_set_id = effective_count_deltas.contract_set_id
+                  AND contributor.id = effective_count_deltas.to_delegate
                 RETURNING contributor.id
              )
              SELECT
@@ -4301,6 +4310,35 @@ mod tests {
         assert!(sql.contains("::INT4[]"));
         assert!(sql.contains("balance_text::NUMERIC(78, 0) AS balance"));
         assert!(!sql.contains("VALUES"));
+    }
+
+    #[test]
+    fn test_delegate_relation_balance_refresh_query_updates_effective_count_by_delta() {
+        let refreshes = vec![DelegateRelationBalanceRefresh {
+            key: DelegateRelationBalanceRefreshKey {
+                contract_set_id: "contract-set".to_owned(),
+                chain_id: 1,
+                dao_code: Some("dao".to_owned()),
+                governor_address: "0xgovernor".to_owned(),
+                token_address: "0xtoken".to_owned(),
+                account: "0xaccount".to_owned(),
+            },
+            balance: "42".to_owned(),
+        }];
+        let mut query = QueryBuilder::<Postgres>::new("");
+
+        push_delegate_relation_balance_refresh_query(&mut query, &refreshes);
+        let sql = query.sql();
+
+        assert!(sql.contains("mapping_edges AS"));
+        assert!(sql.contains("effective_count_delta"));
+        assert!(sql.contains("effective_count_deltas AS"));
+        assert!(sql.contains("SUM(effective_count_delta)::INT AS count_delta"));
+        assert!(sql.contains(
+            "GREATEST(0, contributor.delegates_count_effective + effective_count_deltas.count_delta)"
+        ));
+        assert!(!sql.contains("COUNT(delegate_mapping.id)"));
+        assert!(!sql.contains("positive_count"));
     }
 
     #[test]
