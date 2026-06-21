@@ -12,8 +12,8 @@ use degov_datalens_indexer::{
     DatalensNativeClient, DatalensNativeReader, DatalensProvisionalLogQueryReader,
     DatalensQueryConcurrencyConfig, DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey,
     DatalensQueryErrorClass, DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig,
-    SecretString, ServiceReadiness, classify_datalens_query_error, plan_dao_log_queries,
-    verify_datalens_service,
+    SecretString, ServiceReadiness, classify_datalens_query_error, ensure_datalens_warmup_task,
+    plan_dao_log_queries, verify_datalens_service,
 };
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -214,6 +214,32 @@ fn test_datalens_durable_head_reader_uses_sdk_chain_head_latest_finality() {
         request.starts_with("GET /v1/chains/ethereum/head?finality=latest "),
         "{request}"
     );
+}
+
+#[test]
+fn test_datalens_warmup_ensurer_uses_ensure_endpoint() {
+    let response = http_response(
+        200,
+        serde_json::json!({
+            "task_id": "task-1",
+            "created": false
+        }),
+    );
+    let server = FakeQueryServer::start(vec![response.clone(), response.clone(), response]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.warmup.enabled = true;
+    let mut client = DatalensNativeClient::from_config(&config).expect("client");
+
+    ensure_datalens_warmup_task(&mut client, &config, &addresses(), 100).expect("warmup ensured");
+
+    let requests = server.join();
+    assert_eq!(requests.len(), 3);
+    for request in requests {
+        assert!(
+            request.starts_with("POST /v1/warmup/tasks/ensure "),
+            "{request}"
+        );
+    }
 }
 
 #[test]
