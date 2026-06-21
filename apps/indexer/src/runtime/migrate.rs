@@ -76,7 +76,9 @@ pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
             .run(&mut *connection)
             .await
             .context("apply Datalens-native DeGov indexer init migration")?;
+        drop_invalid_runtime_indexes_for_connection(&mut connection).await?;
         ensure_runtime_indexes(&mut connection).await?;
+        drop_obsolete_runtime_indexes_for_connection(&mut connection).await?;
 
         Ok(())
     }
@@ -401,6 +403,23 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
 async fn repair_invalid_runtime_indexes_for_connection(
     connection: &mut PgConnection,
 ) -> Result<()> {
+    drop_invalid_runtime_indexes_for_connection(connection).await?;
+    ensure_runtime_indexes(connection).await?;
+    drop_obsolete_runtime_indexes_for_connection(connection).await?;
+
+    Ok(())
+}
+
+async fn drop_obsolete_runtime_indexes_for_connection(connection: &mut PgConnection) -> Result<()> {
+    sqlx::query("DROP INDEX CONCURRENTLY IF EXISTS onchain_refresh_task_status_idx")
+        .execute(connection)
+        .await
+        .context("drop obsolete onchain refresh status index")?;
+
+    Ok(())
+}
+
+async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnection) -> Result<()> {
     drop_invalid_runtime_index(connection, "onchain_refresh_task_pending_status_claim_idx").await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_pending_ready_claim_idx").await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_retry_idx").await?;
@@ -421,6 +440,7 @@ async fn repair_invalid_runtime_indexes_for_connection(
     drop_invalid_runtime_index(connection, "delegate_mapping_effective_count_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_positive_count_idx").await?;
     drop_invalid_runtime_index(connection, "contributor_data_metric_scope_idx").await?;
+    drop_invalid_runtime_index(connection, "onchain_refresh_data_metric_task_ready_idx").await?;
     drop_invalid_runtime_index(connection, "contributor_graphql_scope_power_idx").await?;
     drop_invalid_runtime_index(connection, "provisional_contributor_live_scope_power_idx").await?;
     drop_invalid_runtime_index(
@@ -428,7 +448,6 @@ async fn repair_invalid_runtime_indexes_for_connection(
         "provisional_contributor_live_account_lookup_idx",
     )
     .await?;
-    ensure_runtime_indexes(connection).await?;
 
     Ok(())
 }
