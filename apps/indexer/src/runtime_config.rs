@@ -259,6 +259,7 @@ pub struct AdaptiveChunkSizerRuntimeConfig {
     pub min_chunk_size: u32,
     pub transient_query_failure_min_chunk_size: u32,
     pub full_hit_dense_floor: u32,
+    pub initial_chunk_size: Option<u32>,
     pub max_chunk_size: Option<u32>,
     pub fast_chunk_duration_threshold: Duration,
     pub high_query_duration_threshold: Duration,
@@ -274,6 +275,7 @@ impl Default for AdaptiveChunkSizerRuntimeConfig {
             min_chunk_size: 100,
             transient_query_failure_min_chunk_size: 1,
             full_hit_dense_floor: 1_000,
+            initial_chunk_size: None,
             max_chunk_size: None,
             fast_chunk_duration_threshold: Duration::from_secs(1),
             high_query_duration_threshold: Duration::from_secs(10),
@@ -292,8 +294,13 @@ impl AdaptiveChunkSizerRuntimeConfig {
             .unwrap_or(block_range_limit)
             .min(block_range_limit);
         let min_chunk_size = self.min_chunk_size.min(max_chunk_size);
+        let initial_chunk_size = self
+            .initial_chunk_size
+            .unwrap_or(max_chunk_size)
+            .min(max_chunk_size)
+            .max(min_chunk_size);
         AdaptiveChunkSizerConfig {
-            initial_chunk_size: max_chunk_size,
+            initial_chunk_size,
             max_chunk_size,
             min_chunk_size,
             transient_query_failure_min_chunk_size: self
@@ -841,6 +848,7 @@ fn load_adaptive_chunk_sizer_runtime_config() -> Result<AdaptiveChunkSizerRuntim
             "DEGOV_INDEXER_ADAPTIVE_CHUNK_FULL_HIT_DENSE_FLOOR_BLOCKS",
         )?
         .unwrap_or(defaults.full_hit_dense_floor),
+        initial_chunk_size: optional_env_u32("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS")?,
         max_chunk_size: optional_env_u32("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS")?,
         fast_chunk_duration_threshold: Duration::from_millis(
             optional_env_u64("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS")?
@@ -894,6 +902,29 @@ fn load_adaptive_chunk_sizer_runtime_config() -> Result<AdaptiveChunkSizerRuntim
         bail!(
             "DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS must be less than or equal to DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS"
         );
+    }
+    if config
+        .initial_chunk_size
+        .is_some_and(|initial_chunk_size| initial_chunk_size == 0)
+    {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS must be greater than zero");
+    }
+    if config
+        .initial_chunk_size
+        .is_some_and(|initial_chunk_size| initial_chunk_size < config.min_chunk_size)
+    {
+        bail!(
+            "DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS must be greater than or equal to DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS"
+        );
+    }
+    if let (Some(initial_chunk_size), Some(max_chunk_size)) =
+        (config.initial_chunk_size, config.max_chunk_size)
+    {
+        if initial_chunk_size > max_chunk_size {
+            bail!(
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS must be less than or equal to DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS"
+            );
+        }
     }
     if config.fast_chunk_duration_threshold.is_zero() {
         bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS must be greater than zero");
