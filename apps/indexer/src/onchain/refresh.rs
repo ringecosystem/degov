@@ -1395,7 +1395,7 @@ where
 
             for task in group_tasks {
                 if task.refresh_power {
-                    builder.add_account_power_refresh_with_method(
+                    builder.add_account_latest_power_refresh_with_method(
                         &task.account,
                         parse_u64(&task.last_seen_block_number)?,
                         crate::ChainReadReason::TokenActivityPowerRefresh,
@@ -1403,7 +1403,7 @@ where
                     );
                 }
                 if task.refresh_balance {
-                    builder.add_account_balance_refresh(
+                    builder.add_account_latest_balance_refresh(
                         &task.account,
                         parse_u64(&task.last_seen_block_number)?,
                         crate::ChainReadReason::TokenActivityPowerRefresh,
@@ -1463,14 +1463,13 @@ where
 
         for task in tasks {
             let mut task_failures = Vec::<String>::new();
-            let activity_block = parse_u64(&task.last_seen_block_number)?;
             let power = if task.refresh_power {
                 let key = (
                     task.chain_id,
                     normalize_identifier(&task.token_address),
                     normalize_identifier(&task.account),
                     self.current_power_method,
-                    BlockReadMode::AtBlock(activity_block),
+                    BlockReadMode::Latest,
                 );
                 match values_by_key.get(&key).cloned() {
                     Some(value) => Some(value),
@@ -1495,7 +1494,7 @@ where
                     normalize_identifier(&task.token_address),
                     normalize_identifier(&task.account),
                     ChainReadMethod::BalanceOf,
-                    BlockReadMode::AtBlock(activity_block),
+                    BlockReadMode::Latest,
                 );
                 match values_by_key.get(&key).cloned() {
                     Some(value) => Some(value),
@@ -4762,6 +4761,90 @@ mod tests {
             Some(ChainReadValue::Integer("18".to_owned()))
         );
         assert_eq!(cache.get(&quorum), None);
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturePlanChainTool {
+        reads: Arc<Mutex<Vec<ChainReadRequest>>>,
+    }
+
+    impl ChainTool for CapturePlanChainTool {
+        fn execute_read_plan(
+            &self,
+            plan: &ChainReadPlan,
+        ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+            self.reads
+                .lock()
+                .expect("read capture lock")
+                .extend(plan.reads.clone());
+            Ok(ChainReadExecutionReport {
+                metrics: ChainReadMetrics {
+                    requested_reads: plan.metrics.requested_reads,
+                    deduped_reads: plan.metrics.deduped_reads,
+                    ..ChainReadMetrics::default()
+                },
+                results: plan
+                    .reads
+                    .iter()
+                    .enumerate()
+                    .map(|(read_index, read)| ChainReadResult {
+                        read_index,
+                        key: read.key.clone(),
+                        value: ChainReadValue::Integer(match read.key.method {
+                            ChainReadMethod::BalanceOf => "100".to_owned(),
+                            ChainReadMethod::GetVotes => "50".to_owned(),
+                            _ => "0".to_owned(),
+                        }),
+                    })
+                    .collect(),
+                ..ChainReadExecutionReport::default()
+            })
+        }
+    }
+
+    #[test]
+    fn test_onchain_refresh_reader_reads_current_values_at_latest() {
+        let chain_tool = CapturePlanChainTool::default();
+        let reads = chain_tool.reads.clone();
+        let reader = ChainToolOnchainRefreshReader::new(
+            chain_tool,
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+            ChainReadMethod::GetVotes,
+        );
+        let task = OnchainRefreshTask {
+            id: "task-1".to_owned(),
+            contract_set_id: "contract-set-1".to_owned(),
+            chain_id: 1,
+            dao_code: Some("test-dao".to_owned()),
+            governor_address: "0x1000000000000000000000000000000000000000".to_owned(),
+            token_address: "0x2000000000000000000000000000000000000000".to_owned(),
+            account: "0x3000000000000000000000000000000000000000".to_owned(),
+            refresh_balance: true,
+            refresh_power: true,
+            last_seen_block_number: "200".to_owned(),
+            last_seen_block_timestamp: "1000".to_owned(),
+            last_seen_transaction_hash: "0xabc".to_owned(),
+            attempts: 0,
+        };
+
+        let report = reader
+            .read_tasks_with_report(&[task])
+            .expect("current refresh read succeeds");
+
+        assert_eq!(report.values.len(), 1);
+        assert_eq!(report.values[0].balance.as_deref(), Some("100"));
+        assert_eq!(report.values[0].power.as_deref(), Some("50"));
+        let reads = reads.lock().expect("read capture lock");
+        assert_eq!(reads.len(), 2);
+        assert!(
+            reads
+                .iter()
+                .all(|read| read.key.block_mode == BlockReadMode::Latest)
+        );
+        assert!(reads.iter().all(|read| read.activity_blocks == vec![200]));
     }
 
     #[derive(Clone, Default)]

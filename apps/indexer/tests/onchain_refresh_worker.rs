@@ -1932,7 +1932,8 @@ fn test_multi_chain_reader_routes_tasks_to_matching_chain_tool() {
         .chain(lisk_tool.captured_plans())
     {
         for read in plan.reads {
-            assert_eq!(read.key.block_mode, BlockReadMode::AtBlock(12));
+            assert_eq!(read.key.block_mode, BlockReadMode::Latest);
+            assert_eq!(read.activity_blocks, vec![12]);
         }
     }
 }
@@ -1967,7 +1968,7 @@ fn test_chain_tool_onchain_refresh_reader_dedupes_duplicate_reads_in_one_batch()
 }
 
 #[test]
-fn test_chain_tool_onchain_refresh_reader_keeps_same_account_activity_blocks_distinct() {
+fn test_chain_tool_onchain_refresh_reader_dedupes_latest_reads_and_keeps_activity_blocks() {
     let chain_tool = BlockModeValueChainTool::new();
     let reader = degov_datalens_indexer::ChainToolOnchainRefreshReader::new(
         chain_tool.clone(),
@@ -1992,15 +1993,19 @@ fn test_chain_tool_onchain_refresh_reader_keeps_same_account_activity_blocks_dis
             .expect("earlier")
             .power
             .as_deref(),
-        Some("200")
+        Some("latest")
     );
     assert_eq!(
         values.get("task-later").expect("later").power.as_deref(),
-        Some("201")
+        Some("latest")
     );
     let plans = chain_tool.captured_plans();
     assert_eq!(plans.len(), 1);
-    assert_eq!(plans[0].reads.len(), 2);
+    assert_eq!(plans[0].metrics.requested_reads, 2);
+    assert_eq!(plans[0].metrics.deduped_reads, 1);
+    assert_eq!(plans[0].reads.len(), 1);
+    assert_eq!(plans[0].reads[0].key.block_mode, BlockReadMode::Latest);
+    assert_eq!(plans[0].reads[0].activity_blocks, vec![200, 201]);
 }
 
 #[test]
