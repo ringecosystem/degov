@@ -2197,59 +2197,7 @@ impl EvmRpcChainTool {
                 report.executed_rpc_calls += 1;
                 match decode_aggregate3_results(&value, calls.len()) {
                     Ok(results) => {
-                        for (call, result) in calls.into_iter().zip(results) {
-                            report.covered_read_indexes.push(call.read_index);
-                            if !result.success {
-                                match self.execute_power_method_fallback(
-                                    call.read_index,
-                                    &call.read,
-                                    call.call_key.method,
-                                ) {
-                                    PowerMethodFallbackOutcome::Success { result, cache_hit } => {
-                                        report.cache_hits += usize::from(cache_hit);
-                                        report.executed_rpc_calls += usize::from(!cache_hit);
-                                        report.results.push(result);
-                                        continue;
-                                    }
-                                    PowerMethodFallbackOutcome::Failure {
-                                        failure,
-                                        rpc_attempted,
-                                    } => {
-                                        report.executed_rpc_calls += usize::from(rpc_attempted);
-                                        report.failures.push(failure);
-                                        continue;
-                                    }
-                                    PowerMethodFallbackOutcome::NotApplicable => {}
-                                }
-                                report.failures.push(ReadFailure {
-                                    read_index: call.read_index,
-                                    message: "multicall subcall reverted".to_owned(),
-                                    kind: ChainReadFailureKind::Reverted,
-                                    retryable: false,
-                                });
-                                continue;
-                            }
-
-                            match decode_call_value(call.call_key.method, &result.return_data) {
-                                Ok(value) => {
-                                    self.cache.insert(&call.call_key, value.clone());
-                                    self.cache.insert(&call.read.key, value.clone());
-                                    self.current_power_methods
-                                        .insert(&call.read.key, call.call_key.method);
-                                    report.results.push(ChainReadResult {
-                                        read_index: call.read_index,
-                                        key: call.read.key,
-                                        value,
-                                    });
-                                }
-                                Err(message) => report.failures.push(ReadFailure {
-                                    read_index: call.read_index,
-                                    message,
-                                    kind: ChainReadFailureKind::Decode,
-                                    retryable: false,
-                                }),
-                            }
-                        }
+                        self.apply_multicall_results(calls, results, &mut report, false);
                     }
                     Err(message) => {
                         report.executed_rpc_calls = report.executed_rpc_calls.saturating_sub(1);
@@ -2258,6 +2206,13 @@ impl EvmRpcChainTool {
                 }
             }
             Err(message) => {
+                if should_try_latest_block_fallback_after_error(&message)
+                    && self
+                        .execute_latest_multicall_fallback(calls.clone(), &mut report)
+                        .is_ok()
+                {
+                    return report;
+                }
                 if should_try_latest_block_fallback_after_error(&message) {
                     self.execute_multicall_fallback(calls, &mut report, message);
                 } else {
@@ -2267,6 +2222,97 @@ impl EvmRpcChainTool {
         }
 
         report
+    }
+
+    fn execute_latest_multicall_fallback(
+        &self,
+        calls: Vec<EvmMulticallRead>,
+        report: &mut EvmRpcGroupExecutionReport,
+    ) -> Result<(), String> {
+        if !calls
+            .iter()
+            .all(|call| should_try_latest_block_fallback_for_read(&call.read, call.call_key.method))
+        {
+            return Err("latest multicall fallback is not applicable".to_owned());
+        }
+
+        let call_data = encode_aggregate3_call_data(&calls)?;
+        let value = self.eth_call(MULTICALL3_ADDRESS, &call_data, BlockReadMode::Latest)?;
+        report.executed_rpc_calls += 1;
+        let results = decode_aggregate3_results(&value, calls.len())?;
+        self.apply_multicall_results(calls, results, report, true);
+
+        Ok(())
+    }
+
+    fn apply_multicall_results(
+        &self,
+        calls: Vec<EvmMulticallRead>,
+        results: Vec<Aggregate3Result>,
+        report: &mut EvmRpcGroupExecutionReport,
+        cache_latest_key: bool,
+    ) {
+        for (call, result) in calls.into_iter().zip(results) {
+            report.covered_read_indexes.push(call.read_index);
+            if !result.success {
+                match self.execute_power_method_fallback(
+                    call.read_index,
+                    &call.read,
+                    call.call_key.method,
+                ) {
+                    PowerMethodFallbackOutcome::Success { result, cache_hit } => {
+                        report.cache_hits += usize::from(cache_hit);
+                        report.executed_rpc_calls += usize::from(!cache_hit);
+                        report.results.push(result);
+                        continue;
+                    }
+                    PowerMethodFallbackOutcome::Failure {
+                        failure,
+                        rpc_attempted,
+                    } => {
+                        report.executed_rpc_calls += usize::from(rpc_attempted);
+                        report.failures.push(failure);
+                        continue;
+                    }
+                    PowerMethodFallbackOutcome::NotApplicable => {}
+                }
+                report.failures.push(ReadFailure {
+                    read_index: call.read_index,
+                    message: "multicall subcall reverted".to_owned(),
+                    kind: ChainReadFailureKind::Reverted,
+                    retryable: false,
+                });
+                continue;
+            }
+
+            match decode_call_value(call.call_key.method, &result.return_data) {
+                Ok(value) => {
+                    let cache_key = if cache_latest_key {
+                        ChainReadKey {
+                            block_mode: BlockReadMode::Latest,
+                            ..call.call_key.clone()
+                        }
+                    } else {
+                        call.call_key.clone()
+                    };
+                    self.cache.insert(&cache_key, value.clone());
+                    self.cache.insert(&call.read.key, value.clone());
+                    self.current_power_methods
+                        .insert(&call.read.key, call.call_key.method);
+                    report.results.push(ChainReadResult {
+                        read_index: call.read_index,
+                        key: call.read.key,
+                        value,
+                    });
+                }
+                Err(message) => report.failures.push(ReadFailure {
+                    read_index: call.read_index,
+                    message,
+                    kind: ChainReadFailureKind::Decode,
+                    retryable: false,
+                }),
+            }
+        }
     }
 
     fn execute_multicall_fallback(
@@ -4998,7 +5044,17 @@ mod tests {
                 "0x{}",
                 hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
             )) {
-                return Err(self.at_block_error.to_owned());
+                return match block_mode {
+                    BlockReadMode::AtBlock(_) => Err(self.at_block_error.to_owned()),
+                    BlockReadMode::Latest => Ok(format!(
+                        "0x{}",
+                        hex::encode(encode(&[Token::Array(vec![Token::Tuple(vec![
+                            Token::Bool(true),
+                            Token::Bytes(encode(&[Token::Uint(U256::from(777))])),
+                        ])])]))
+                    )),
+                    _ => Err("unexpected block mode".to_owned()),
+                };
             }
 
             match block_mode {
@@ -5009,6 +5065,58 @@ mod tests {
                 )),
                 _ => Err("unexpected block mode".to_owned()),
             }
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone)]
+    struct LatestMulticallFallbackMockEvmRpcClient {
+        block_modes: Arc<Mutex<Vec<BlockReadMode>>>,
+        at_block_result: Result<String, &'static str>,
+    }
+
+    impl EvmRpcClient for LatestMulticallFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.block_modes
+                .lock()
+                .expect("block mode lock")
+                .push(block_mode);
+
+            let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+            match block_mode {
+                BlockReadMode::AtBlock(_) => {
+                    return self
+                        .at_block_result
+                        .clone()
+                        .map_err(std::string::ToString::to_string);
+                }
+                BlockReadMode::Latest => {}
+                _ => return Err("unexpected block mode".to_owned()),
+            }
+
+            let return_data = calls
+                .into_iter()
+                .enumerate()
+                .map(|(index, _call)| {
+                    Token::Tuple(vec![
+                        Token::Bool(true),
+                        Token::Bytes(encode(&[Token::Uint(U256::from(index + 700))])),
+                    ])
+                })
+                .collect::<Vec<_>>();
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Array(return_data)]))
+            ))
         }
 
         fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
@@ -5328,12 +5436,68 @@ mod tests {
         );
         assert_eq!(
             *block_modes.lock().expect("block mode lock"),
-            vec![
-                BlockReadMode::AtBlock(200),
-                BlockReadMode::AtBlock(200),
-                BlockReadMode::Latest
-            ]
+            vec![BlockReadMode::AtBlock(200), BlockReadMode::Latest]
         );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_retries_historical_state_multicall_at_latest() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(LatestMulticallFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_result: Err("historical state abc is not available"),
+        });
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let plan = builder.build();
+        let report = tool
+            .execute_read_plan(&plan)
+            .expect("historical aggregate falls back to latest aggregate");
+
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200), BlockReadMode::Latest]
+        );
+        assert_eq!(report.results.len(), 2);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("700".to_owned())
+        );
+        assert_eq!(
+            report.results[1].value,
+            ChainReadValue::Integer("701".to_owned())
+        );
+
+        let cached = tool
+            .execute_read_plan(&plan)
+            .expect("latest aggregate results are cached under original read keys");
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200), BlockReadMode::Latest]
+        );
+        assert_eq!(cached.metrics.executed_rpc_calls, 0);
+        assert_eq!(cached.metrics.cache_hits, 2);
     }
 
     #[test]
