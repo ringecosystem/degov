@@ -264,10 +264,17 @@ impl AdaptiveChunkSizer {
         let fast_chunk = feedback.is_fast(&self.config);
         let slow_cache_fill = cache_fill && feedback.is_slow_cache_fill(&self.config);
         let stable_growth_reason = feedback.stable_growth_reason(&self.config);
-        let stable_growth_candidate = stable_growth_reason
-            != AdaptiveChunkSizingReason::StableSparseRange
-            || feedback.returned_row_count <= self.config.sparse_returned_row_threshold
-            || feedback.has_provider_fill();
+        let sparse_range = feedback.returned_row_count <= self.config.sparse_returned_row_threshold;
+        let sparse_full_hit_with_fast_write = full_cache_hit
+            && sparse_range
+            && feedback.local_processing_write_duration
+                <= self.config.fast_chunk_duration_threshold;
+        let stable_growth_candidate = match stable_growth_reason {
+            AdaptiveChunkSizingReason::StableFullHit => sparse_full_hit_with_fast_write,
+            AdaptiveChunkSizingReason::StableFastChunk => !cache_fill,
+            AdaptiveChunkSizingReason::StableSparseRange => sparse_range && !cache_fill,
+            _ => false,
+        };
 
         let reason = if slow_local_processing || high_query_duration || dense_range {
             self.stable_chunks = 0;
@@ -297,18 +304,9 @@ impl AdaptiveChunkSizer {
                 AdaptiveChunkSizingReason::SlowCacheFillHold
             }
         } else if cache_fill && fast_chunk {
-            self.stable_chunks = self.stable_chunks.saturating_add(1);
+            self.stable_chunks = 0;
             self.unstable_chunks = 0;
-            if self.stable_chunks >= self.config.stable_chunks_to_grow {
-                self.stable_chunks = 0;
-                self.current_chunk_size = self
-                    .current_chunk_size
-                    .saturating_mul(2)
-                    .min(self.config.max_chunk_size);
-                AdaptiveChunkSizingReason::StableFastCacheFill
-            } else {
-                AdaptiveChunkSizingReason::FastCacheFill
-            }
+            AdaptiveChunkSizingReason::FastCacheFill
         } else if stable_growth_candidate {
             self.stable_chunks = self.stable_chunks.saturating_add(1);
             self.unstable_chunks = 0;
@@ -423,10 +421,6 @@ impl AdaptiveChunkFeedback {
         self.warmup_effectiveness.partial_hit_count > 0
             || self.warmup_effectiveness.miss_count > 0
             || self.warmup_effectiveness.provider_fill_range_count > 0
-    }
-
-    fn has_provider_fill(&self) -> bool {
-        self.warmup_effectiveness.provider_fill_range_count > 0
     }
 
     fn is_slow_cache_fill(&self, config: &AdaptiveChunkSizerConfig) -> bool {
