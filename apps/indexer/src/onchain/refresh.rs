@@ -351,11 +351,25 @@ pub struct OnchainRefreshTask {
     pub attempts: i32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct OnchainRefreshReadValue {
     pub task_id: String,
     pub balance: Option<String>,
     pub power: Option<String>,
+    pub checkpoint_balance: Option<String>,
+    pub checkpoint_power: Option<String>,
+}
+
+impl OnchainRefreshReadValue {
+    fn balance_for_current_update(&self) -> Option<&str> {
+        self.balance
+            .as_deref()
+            .or(self.checkpoint_balance.as_deref())
+    }
+
+    fn power_for_current_update(&self) -> Option<&str> {
+        self.power.as_deref().or(self.checkpoint_power.as_deref())
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1387,26 +1401,39 @@ where
                 chain_id,
                 ChainContracts {
                     governor: governor_address,
-                    governor_token: token_address,
+                    governor_token: token_address.clone(),
                     timelock: None,
                 },
                 self.read_plan_config,
             );
 
             for task in group_tasks {
+                let activity_block = parse_u64(&task.last_seen_block_number)?;
                 if task.refresh_power {
-                    builder.add_account_power_refresh_with_method(
+                    builder.add_account_latest_power_refresh_with_method(
                         &task.account,
-                        parse_u64(&task.last_seen_block_number)?,
+                        activity_block,
                         crate::ChainReadReason::TokenActivityPowerRefresh,
                         self.current_power_method,
                     );
+                    builder.add_optional_enrichment_read(
+                        token_address.clone(),
+                        self.current_power_method,
+                        vec![task.account.clone()],
+                        BlockReadMode::AtBlock(activity_block),
+                    );
                 }
                 if task.refresh_balance {
-                    builder.add_account_balance_refresh(
+                    builder.add_account_latest_balance_refresh(
                         &task.account,
-                        parse_u64(&task.last_seen_block_number)?,
+                        activity_block,
                         crate::ChainReadReason::TokenActivityPowerRefresh,
+                    );
+                    builder.add_optional_enrichment_read(
+                        token_address.clone(),
+                        ChainReadMethod::BalanceOf,
+                        vec![task.account.clone()],
+                        BlockReadMode::AtBlock(activity_block),
                     );
                 }
             }
@@ -1433,6 +1460,15 @@ where
                     ))
                     .or_default()
                     .push(failure.message);
+            }
+            for failure in report.partial_failures.optional_failures {
+                log::warn!(
+                    "onchain refresh optional checkpoint read failed chain_id={} method={:?} block_mode={:?} error={}",
+                    failure.key.chain_id,
+                    failure.key.method,
+                    failure.key.block_mode,
+                    failure.message
+                );
             }
 
             for result in report.results {
@@ -1470,7 +1506,7 @@ where
                     normalize_identifier(&task.token_address),
                     normalize_identifier(&task.account),
                     self.current_power_method,
-                    BlockReadMode::AtBlock(activity_block),
+                    BlockReadMode::Latest,
                 );
                 match values_by_key.get(&key).cloned() {
                     Some(value) => Some(value),
@@ -1489,13 +1525,25 @@ where
             } else {
                 None
             };
+            let checkpoint_power = if task.refresh_power {
+                let key = (
+                    task.chain_id,
+                    normalize_identifier(&task.token_address),
+                    normalize_identifier(&task.account),
+                    self.current_power_method,
+                    BlockReadMode::AtBlock(activity_block),
+                );
+                values_by_key.get(&key).cloned()
+            } else {
+                None
+            };
             let balance = if task.refresh_balance {
                 let key = (
                     task.chain_id,
                     normalize_identifier(&task.token_address),
                     normalize_identifier(&task.account),
                     ChainReadMethod::BalanceOf,
-                    BlockReadMode::AtBlock(activity_block),
+                    BlockReadMode::Latest,
                 );
                 match values_by_key.get(&key).cloned() {
                     Some(value) => Some(value),
@@ -1514,12 +1562,26 @@ where
             } else {
                 None
             };
+            let checkpoint_balance = if task.refresh_balance {
+                let key = (
+                    task.chain_id,
+                    normalize_identifier(&task.token_address),
+                    normalize_identifier(&task.account),
+                    ChainReadMethod::BalanceOf,
+                    BlockReadMode::AtBlock(activity_block),
+                );
+                values_by_key.get(&key).cloned()
+            } else {
+                None
+            };
 
             if task_failures.is_empty() {
                 read_report.values.push(OnchainRefreshReadValue {
                     task_id: task.id.clone(),
                     balance,
                     power,
+                    checkpoint_balance,
+                    checkpoint_power,
                 });
             } else {
                 read_report.failures.push(OnchainRefreshReadFailure {
@@ -2206,14 +2268,20 @@ impl EvmRpcChainTool {
                 }
             }
             Err(message) => {
+                let latest_fallback_applicable = calls.iter().all(|call| {
+                    should_try_latest_block_fallback_for_read(&call.read, call.call_key.method)
+                });
                 if should_try_latest_block_fallback_after_error(&message)
-                    && self
+                    && latest_fallback_applicable
+                {
+                    if self
                         .execute_latest_multicall_fallback(calls.clone(), &mut report)
                         .is_ok()
-                {
-                    return report;
-                }
-                if should_try_latest_block_fallback_after_error(&message) {
+                    {
+                        return report;
+                    }
+                    self.execute_multicall_fallback(calls, &mut report, message);
+                } else if should_try_latest_block_fallback_after_error(&message) {
                     self.execute_multicall_fallback(calls, &mut report, message);
                 } else {
                     fail_multicall_group(calls, &mut report, message);
@@ -2697,7 +2765,8 @@ fn should_try_latest_block_fallback_for_read(
     read: &crate::ChainReadRequest,
     method: ChainReadMethod,
 ) -> bool {
-    matches!(read.key.block_mode, BlockReadMode::AtBlock(_))
+    read.requirement == ReadRequirement::Required
+        && matches!(read.key.block_mode, BlockReadMode::AtBlock(_))
         && matches!(
             method,
             ChainReadMethod::BalanceOf | ChainReadMethod::GetVotes | ChainReadMethod::CurrentVotes
@@ -2839,12 +2908,12 @@ async fn upsert_contributor_refresh_group(
             .push("CASE WHEN ")
             .push_bind_unseparated(task.refresh_power)
             .push_unseparated(" THEN ")
-            .push_bind_unseparated(value.power.as_deref())
+            .push_bind_unseparated(value.power_for_current_update())
             .push_unseparated("::NUMERIC(78, 0) ELSE 0::NUMERIC(78, 0) END")
             .push("CASE WHEN ")
             .push_bind_unseparated(task.refresh_balance)
             .push_unseparated(" THEN ")
-            .push_bind_unseparated(value.balance.as_deref())
+            .push_bind_unseparated(value.balance_for_current_update())
             .push_unseparated("::NUMERIC(78, 0) ELSE NULL END")
             .push("0")
             .push("0");
@@ -2894,7 +2963,10 @@ async fn reconcile_current_delegate_relation_power_from_balance(
 ) -> Result<(), sqlx::Error> {
     let mut refreshes_by_key = BTreeMap::new();
     for (task, value) in successes {
-        let Some(balance) = value.balance.as_ref().filter(|_| task.refresh_balance) else {
+        let Some(balance) = value
+            .balance_for_current_update()
+            .filter(|_| task.refresh_balance)
+        else {
             continue;
         };
         let key = DelegateRelationBalanceRefreshKey {
@@ -2909,7 +2981,7 @@ async fn reconcile_current_delegate_relation_power_from_balance(
             key.clone(),
             DelegateRelationBalanceRefresh {
                 key,
-                balance: balance.clone(),
+                balance: balance.to_owned(),
             },
         );
     }
@@ -3134,7 +3206,7 @@ async fn insert_refresh_checkpoints(
 ) -> Result<(), sqlx::Error> {
     let balance_successes = successes
         .iter()
-        .filter(|(task, _value)| task.refresh_balance)
+        .filter(|(task, value)| checkpoint_balance_value(task, value).is_some())
         .collect::<Vec<_>>();
     if !balance_successes.is_empty() {
         let mut query = QueryBuilder::<Postgres>::new(
@@ -3151,7 +3223,7 @@ async fn insert_refresh_checkpoints(
                 .cloned()
                 .unwrap_or_default();
             let previous_balance = previous.balance.unwrap_or_else(|| "0".to_owned());
-            let new_balance = value.balance.as_deref().unwrap_or("0");
+            let new_balance = checkpoint_balance_value(task, value).unwrap_or("0");
             values
                 .push_bind(format!(
                     "onchain-refresh-balance-{}",
@@ -3187,7 +3259,7 @@ async fn insert_refresh_checkpoints(
 
     let power_successes = successes
         .iter()
-        .filter(|(task, _value)| task.refresh_power)
+        .filter(|(task, value)| checkpoint_power_value(task, value).is_some())
         .collect::<Vec<_>>();
     if !power_successes.is_empty() {
         let source = current_power_checkpoint_source(current_power_method);
@@ -3205,7 +3277,7 @@ async fn insert_refresh_checkpoints(
                 .cloned()
                 .unwrap_or_default();
             let previous_power = previous.power.unwrap_or_else(|| "0".to_owned());
-            let new_power = value.power.as_deref().unwrap_or("0");
+            let new_power = checkpoint_power_value(task, value).unwrap_or("0");
             values
                 .push_bind(format!(
                     "onchain-refresh-power-{}",
@@ -3245,6 +3317,24 @@ async fn insert_refresh_checkpoints(
     Ok(())
 }
 
+fn checkpoint_balance_value<'a>(
+    task: &OnchainRefreshTask,
+    value: &'a OnchainRefreshReadValue,
+) -> Option<&'a str> {
+    task.refresh_balance
+        .then_some(value.checkpoint_balance.as_deref())
+        .flatten()
+}
+
+fn checkpoint_power_value<'a>(
+    task: &OnchainRefreshTask,
+    value: &'a OnchainRefreshReadValue,
+) -> Option<&'a str> {
+    task.refresh_power
+        .then_some(value.checkpoint_power.as_deref())
+        .flatten()
+}
+
 async fn upsert_live_power_overlays(
     transaction: &mut Transaction<'_, Postgres>,
     successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
@@ -3268,7 +3358,7 @@ fn live_contributor_power_overlay_writes(
     successes
         .iter()
         .filter_map(|(task, value)| {
-            let power = value.power.as_ref()?;
+            let power = value.power_for_current_update()?;
             task.refresh_power
                 .then(|| ProvisionalContributorPowerOverlayWrite {
                     id: provisional_contributor_power_overlay_id(task),
@@ -3280,8 +3370,8 @@ fn live_contributor_power_overlay_writes(
                     governor_address: Some(normalize_identifier(&task.governor_address)),
                     token_address: Some(normalize_identifier(&task.token_address)),
                     account: normalize_identifier(&task.account),
-                    power: power.clone(),
-                    balance: value.balance.clone(),
+                    power: power.to_owned(),
+                    balance: value.balance_for_current_update().map(str::to_owned),
                     delegates_count_all: 0,
                     delegates_count_effective: 0,
                     last_vote_block_number: None,
@@ -4472,6 +4562,45 @@ mod tests {
     }
 
     #[test]
+    fn test_insert_refresh_checkpoints_skips_values_without_checkpoint_values() {
+        let task = OnchainRefreshTask {
+            id: "task-one".to_owned(),
+            contract_set_id: "contract-set".to_owned(),
+            chain_id: 1,
+            dao_code: Some("dao".to_owned()),
+            governor_address: "0xgovernor".to_owned(),
+            token_address: "0xtoken".to_owned(),
+            account: "0xaccount".to_owned(),
+            refresh_balance: true,
+            refresh_power: true,
+            last_seen_block_number: "12".to_owned(),
+            last_seen_block_timestamp: "12000".to_owned(),
+            last_seen_transaction_hash: "0xtask".to_owned(),
+            attempts: 0,
+        };
+        let latest_only = OnchainRefreshReadValue {
+            task_id: "task-one".to_owned(),
+            balance: Some("99".to_owned()),
+            power: Some("88".to_owned()),
+            checkpoint_balance: None,
+            checkpoint_power: None,
+        };
+        let with_checkpoints = OnchainRefreshReadValue {
+            checkpoint_balance: Some("11".to_owned()),
+            checkpoint_power: Some("22".to_owned()),
+            ..latest_only.clone()
+        };
+
+        assert_eq!(checkpoint_balance_value(&task, &latest_only), None);
+        assert_eq!(checkpoint_power_value(&task, &latest_only), None);
+        assert_eq!(
+            checkpoint_balance_value(&task, &with_checkpoints),
+            Some("11")
+        );
+        assert_eq!(checkpoint_power_value(&task, &with_checkpoints), Some("22"));
+    }
+
+    #[test]
     fn test_encode_call_data_accepts_hex_uint_arguments() {
         let decimal = encode_call_data(ChainReadMethod::State, &["42".to_owned()])
             .expect("decimal proposal id encodes");
@@ -5437,6 +5566,98 @@ mod tests {
         assert_eq!(
             *block_modes.lock().expect("block mode lock"),
             vec![BlockReadMode::AtBlock(200), BlockReadMode::Latest]
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_fallback_optional_historical_reads_to_latest() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_error: "historical state abc is not available",
+        });
+        let contracts = ChainContracts {
+            governor: "0x1000000000000000000000000000000000000000".to_owned(),
+            governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+            timelock: None,
+        };
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            contracts.clone(),
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_optional_enrichment_read(
+            contracts.governor_token,
+            ChainReadMethod::BalanceOf,
+            vec!["0x0000000000000000000000000000000000000001".to_owned()],
+            BlockReadMode::AtBlock(200),
+        );
+
+        let report = tool.execute_read_plan_partial(&builder.build());
+
+        assert_eq!(report.results, vec![]);
+        assert_eq!(report.partial_failures.required_failures, vec![]);
+        assert_eq!(report.partial_failures.optional_failures.len(), 1);
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200), BlockReadMode::AtBlock(200)]
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_preserves_required_fallback_in_mixed_historical_group() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_error: "historical state abc is not available",
+        });
+        let contracts = ChainContracts {
+            governor: "0x1000000000000000000000000000000000000000".to_owned(),
+            governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+            timelock: None,
+        };
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            contracts.clone(),
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_optional_enrichment_read(
+            contracts.governor_token,
+            ChainReadMethod::BalanceOf,
+            vec!["0x0000000000000000000000000000000000000002".to_owned()],
+            BlockReadMode::AtBlock(200),
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("required read falls back when optional read cannot use latest");
+
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("777".to_owned())
+        );
+        assert_eq!(report.partial_failures.required_failures, vec![]);
+        assert_eq!(report.partial_failures.optional_failures.len(), 1);
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![
+                BlockReadMode::AtBlock(200),
+                BlockReadMode::AtBlock(200),
+                BlockReadMode::Latest,
+                BlockReadMode::AtBlock(200)
+            ]
         );
     }
 

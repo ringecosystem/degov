@@ -447,6 +447,9 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
                 task_id: "task-one".to_owned(),
                 balance: Some("17".to_owned()),
                 power: Some("11".to_owned()),
+                checkpoint_balance: Some("17".to_owned()),
+                checkpoint_power: Some("11".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         ),
         (
@@ -455,6 +458,8 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
                 task_id: "task-two".to_owned(),
                 balance: None,
                 power: Some("5".to_owned()),
+                checkpoint_power: Some("5".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         ),
     ]);
@@ -541,6 +546,7 @@ async fn test_onchain_refresh_worker_reconciles_current_delegate_relation_power_
             task_id: "task-one".to_owned(),
             balance: Some("32".to_owned()),
             power: Some("0".to_owned()),
+            ..OnchainRefreshReadValue::default()
         },
     )]);
     let worker = OnchainRefreshWorker::new(
@@ -626,6 +632,7 @@ async fn test_onchain_refresh_worker_preserves_effective_delegate_count_for_posi
             task_id: "task-one".to_owned(),
             balance: Some("32".to_owned()),
             power: Some("0".to_owned()),
+            ..OnchainRefreshReadValue::default()
         },
     )]);
     let worker = OnchainRefreshWorker::new(
@@ -697,6 +704,7 @@ async fn test_onchain_refresh_worker_zeros_current_delegate_relation_power_from_
             task_id: "task-one".to_owned(),
             balance: Some("0".to_owned()),
             power: Some("0".to_owned()),
+            ..OnchainRefreshReadValue::default()
         },
     )]);
     let worker = OnchainRefreshWorker::new(
@@ -757,6 +765,8 @@ async fn test_onchain_refresh_worker_uses_current_votes_checkpoint_source()
             task_id: "task-one".to_owned(),
             balance: None,
             power: Some("11".to_owned()),
+            checkpoint_power: Some("11".to_owned()),
+            ..OnchainRefreshReadValue::default()
         },
     )]);
     let worker = OnchainRefreshWorker::new(
@@ -913,6 +923,7 @@ async fn test_onchain_refresh_worker_scoped_run_claims_only_matching_contract_se
                 task_id: "lisk-task".to_owned(),
                 balance: None,
                 power: Some("13".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         )]),
     );
@@ -1174,6 +1185,7 @@ async fn test_onchain_refresh_worker_prioritizes_stale_processing_before_pending
                     task_id: "stale-task".to_owned(),
                     balance: None,
                     power: Some("11".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
             (
@@ -1182,6 +1194,7 @@ async fn test_onchain_refresh_worker_prioritizes_stale_processing_before_pending
                     task_id: "pending-task".to_owned(),
                     balance: None,
                     power: Some("17".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
         ]),
@@ -1279,6 +1292,7 @@ async fn test_onchain_refresh_worker_keeps_pending_moving_when_stale_processing_
                     task_id: "stale-task-one".to_owned(),
                     balance: None,
                     power: Some("11".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
             (
@@ -1287,6 +1301,7 @@ async fn test_onchain_refresh_worker_keeps_pending_moving_when_stale_processing_
                     task_id: "stale-task-two".to_owned(),
                     balance: None,
                     power: Some("12".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
             (
@@ -1295,6 +1310,7 @@ async fn test_onchain_refresh_worker_keeps_pending_moving_when_stale_processing_
                     task_id: "failed-task".to_owned(),
                     balance: None,
                     power: Some("13".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
             (
@@ -1303,6 +1319,7 @@ async fn test_onchain_refresh_worker_keeps_pending_moving_when_stale_processing_
                     task_id: "pending-task".to_owned(),
                     balance: None,
                     power: Some("17".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
         ]),
@@ -1401,6 +1418,7 @@ async fn test_onchain_refresh_worker_refills_unused_queue_quota_by_priority()
                     task_id: "stale-task-one".to_owned(),
                     balance: None,
                     power: Some("11".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
             (
@@ -1409,6 +1427,7 @@ async fn test_onchain_refresh_worker_refills_unused_queue_quota_by_priority()
                     task_id: "stale-task-two".to_owned(),
                     balance: None,
                     power: Some("12".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
             (
@@ -1417,6 +1436,7 @@ async fn test_onchain_refresh_worker_refills_unused_queue_quota_by_priority()
                     task_id: "pending-task-one".to_owned(),
                     balance: None,
                     power: Some("17".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
             (
@@ -1425,6 +1445,7 @@ async fn test_onchain_refresh_worker_refills_unused_queue_quota_by_priority()
                     task_id: "pending-task-two".to_owned(),
                     balance: None,
                     power: Some("19".to_owned()),
+                    ..OnchainRefreshReadValue::default()
                 },
             ),
         ]),
@@ -1477,6 +1498,7 @@ async fn test_onchain_refresh_worker_claims_pending_task_at_max_attempts()
                 task_id: "task-one".to_owned(),
                 balance: None,
                 power: Some("11".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         )]),
     );
@@ -1524,6 +1546,7 @@ async fn test_onchain_refresh_worker_rolls_back_when_apply_fails() -> Result<(),
                 task_id: "task-one".to_owned(),
                 balance: None,
                 power: Some("not-a-number".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         ),
         (
@@ -1532,6 +1555,7 @@ async fn test_onchain_refresh_worker_rolls_back_when_apply_fails() -> Result<(),
                 task_id: "task-two".to_owned(),
                 balance: None,
                 power: Some("5".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         ),
     ]);
@@ -1611,6 +1635,9 @@ async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<()
                 task_id: "task-one".to_owned(),
                 balance: Some("17".to_owned()),
                 power: Some("11".to_owned()),
+                checkpoint_balance: Some("17".to_owned()),
+                checkpoint_power: Some("11".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         ),
         (
@@ -1619,6 +1646,9 @@ async fn test_onchain_refresh_worker_checkpoint_ids_include_scope() -> Result<()
                 task_id: "task-two".to_owned(),
                 balance: Some("23".to_owned()),
                 power: Some("19".to_owned()),
+                checkpoint_balance: Some("23".to_owned()),
+                checkpoint_power: Some("19".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         ),
     ]);
@@ -1700,6 +1730,9 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
             task_id: "task-one".to_owned(),
             balance: Some("17".to_owned()),
             power: Some("11".to_owned()),
+            checkpoint_balance: Some("17".to_owned()),
+            checkpoint_power: Some("11".to_owned()),
+            ..OnchainRefreshReadValue::default()
         },
     )]);
     let worker = OnchainRefreshWorker::new(
@@ -1789,6 +1822,7 @@ async fn test_onchain_refresh_worker_reschedules_pending_after_lock_with_debounc
                 task_id: "task-one".to_owned(),
                 balance: None,
                 power: Some("11".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         )]),
     );
@@ -1867,6 +1901,7 @@ async fn test_onchain_refresh_worker_resets_attempts_for_pending_after_lock()
                 task_id: "task-one".to_owned(),
                 balance: None,
                 power: Some("11".to_owned()),
+                ..OnchainRefreshReadValue::default()
             },
         )]),
     );
@@ -1931,10 +1966,66 @@ fn test_multi_chain_reader_routes_tasks_to_matching_chain_tool() {
         .into_iter()
         .chain(lisk_tool.captured_plans())
     {
-        for read in plan.reads {
-            assert_eq!(read.key.block_mode, BlockReadMode::AtBlock(12));
-        }
+        let block_modes = plan
+            .reads
+            .iter()
+            .map(|read| read.key.block_mode)
+            .collect::<Vec<_>>();
+        assert!(block_modes.contains(&BlockReadMode::Latest));
+        assert!(block_modes.contains(&BlockReadMode::AtBlock(12)));
     }
+}
+
+#[test]
+fn test_chain_tool_onchain_refresh_reader_reads_current_latest_and_checkpoint_at_activity_block() {
+    let chain_tool = BlockModeValueChainTool::new();
+    let reader = degov_datalens_indexer::ChainToolOnchainRefreshReader::new(
+        chain_tool.clone(),
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+    let mut task = task_for_chain("task-one", 1, ACCOUNT_ONE);
+    task.refresh_balance = true;
+    task.refresh_power = true;
+
+    let values = reader.read_tasks(&[task]).expect("read tasks");
+
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].power.as_deref(), Some("latest"));
+    assert_eq!(values[0].balance.as_deref(), Some("latest"));
+    assert_eq!(values[0].checkpoint_power.as_deref(), Some("12"));
+    assert_eq!(values[0].checkpoint_balance.as_deref(), Some("12"));
+
+    let plans = chain_tool.captured_plans();
+    assert_eq!(plans.len(), 1);
+    assert!(
+        plans[0]
+            .reads
+            .iter()
+            .any(|read| read.key.method == ChainReadMethod::GetVotes
+                && read.key.block_mode == BlockReadMode::Latest)
+    );
+    assert!(
+        plans[0]
+            .reads
+            .iter()
+            .any(|read| read.key.method == ChainReadMethod::GetVotes
+                && read.key.block_mode == BlockReadMode::AtBlock(12))
+    );
+    assert!(
+        plans[0]
+            .reads
+            .iter()
+            .any(|read| read.key.method == ChainReadMethod::BalanceOf
+                && read.key.block_mode == BlockReadMode::Latest)
+    );
+    assert!(
+        plans[0]
+            .reads
+            .iter()
+            .any(|read| read.key.method == ChainReadMethod::BalanceOf
+                && read.key.block_mode == BlockReadMode::AtBlock(12))
+    );
 }
 
 #[test]
@@ -1961,9 +2052,9 @@ fn test_chain_tool_onchain_refresh_reader_dedupes_duplicate_reads_in_one_batch()
     );
     let plans = chain_tool.captured_plans();
     assert_eq!(plans.len(), 1);
-    assert_eq!(plans[0].metrics.requested_reads, 2);
-    assert_eq!(plans[0].metrics.deduped_reads, 1);
-    assert_eq!(plans[0].reads.len(), 1);
+    assert_eq!(plans[0].metrics.requested_reads, 4);
+    assert_eq!(plans[0].metrics.deduped_reads, 2);
+    assert_eq!(plans[0].reads.len(), 2);
 }
 
 #[test]
@@ -1990,17 +2081,45 @@ fn test_chain_tool_onchain_refresh_reader_keeps_same_account_activity_blocks_dis
         values
             .get("task-earlier")
             .expect("earlier")
-            .power
+            .checkpoint_power
             .as_deref(),
         Some("200")
     );
     assert_eq!(
-        values.get("task-later").expect("later").power.as_deref(),
+        values
+            .get("task-later")
+            .expect("later")
+            .checkpoint_power
+            .as_deref(),
         Some("201")
     );
     let plans = chain_tool.captured_plans();
     assert_eq!(plans.len(), 1);
-    assert_eq!(plans[0].reads.len(), 2);
+    assert_eq!(plans[0].reads.len(), 3);
+}
+
+#[test]
+fn test_chain_tool_onchain_refresh_reader_keeps_current_value_when_checkpoint_read_fails() {
+    let chain_tool = HistoricalFailureChainTool;
+    let reader = degov_datalens_indexer::ChainToolOnchainRefreshReader::new(
+        chain_tool,
+        BatchReadPlanConfig::default(),
+        ChainReadMethod::GetVotes,
+    );
+    let mut task = task_for_chain("task-one", 1, ACCOUNT_ONE);
+    task.refresh_balance = true;
+    task.refresh_power = true;
+
+    let report = reader
+        .read_tasks_with_report(&[task])
+        .expect("historical failure is optional");
+
+    assert_eq!(report.failures, vec![]);
+    assert_eq!(report.values.len(), 1);
+    assert_eq!(report.values[0].power.as_deref(), Some("latest"));
+    assert_eq!(report.values[0].balance.as_deref(), Some("latest"));
+    assert_eq!(report.values[0].checkpoint_power, None);
+    assert_eq!(report.values[0].checkpoint_balance, None);
 }
 
 #[test]
@@ -2339,6 +2458,9 @@ struct PartialFailureChainTool {
     failed_account: String,
 }
 
+#[derive(Clone, Debug)]
+struct HistoricalFailureChainTool;
+
 impl PartialFailureChainTool {
     fn new(failed_account: &str) -> Self {
         Self {
@@ -2393,6 +2515,55 @@ impl ChainTool for PartialFailureChainTool {
                 executed_rpc_calls: plan.reads.len(),
                 multicall_batch_size: plan.metrics.multicall_batch_size,
                 failures: failures.required_failures.len(),
+                ..ChainReadMetrics::default()
+            },
+            results,
+            partial_failures: failures,
+            ..ChainReadExecutionReport::default()
+        }
+    }
+}
+
+impl ChainTool for HistoricalFailureChainTool {
+    fn execute_read_plan(
+        &self,
+        plan: &ChainReadPlan,
+    ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        Ok(self.execute_read_plan_partial(plan))
+    }
+
+    fn execute_read_plan_partial(&self, plan: &ChainReadPlan) -> ChainReadExecutionReport {
+        let mut results = Vec::new();
+        let mut failures = PartialChainReadFailureReport::default();
+
+        for (read_index, read) in plan.reads.iter().enumerate() {
+            match read.key.block_mode {
+                BlockReadMode::AtBlock(_) => {
+                    failures.optional_failures.push(ChainReadFailure {
+                        key: read.key.clone(),
+                        kind: ChainReadFailureKind::Reverted,
+                        retryable: false,
+                        message: "historical read unavailable".to_owned(),
+                    });
+                }
+                BlockReadMode::Latest => {
+                    results.push(ChainReadResult {
+                        read_index,
+                        key: read.key.clone(),
+                        value: ChainReadValue::Integer("latest".to_owned()),
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        ChainReadExecutionReport {
+            metrics: ChainReadMetrics {
+                requested_reads: plan.metrics.requested_reads,
+                deduped_reads: plan.metrics.deduped_reads,
+                executed_rpc_calls: plan.reads.len(),
+                multicall_batch_size: plan.metrics.multicall_batch_size,
+                failures: failures.optional_failures.len(),
                 ..ChainReadMetrics::default()
             },
             results,
