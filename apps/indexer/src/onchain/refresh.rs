@@ -2258,7 +2258,11 @@ impl EvmRpcChainTool {
                 }
             }
             Err(message) => {
-                fail_multicall_group(calls, &mut report, message);
+                if should_try_latest_block_fallback_after_error(&message) {
+                    self.execute_multicall_fallback(calls, &mut report, message);
+                } else {
+                    fail_multicall_group(calls, &mut report, message);
+                }
             }
         }
 
@@ -2323,6 +2327,19 @@ impl EvmRpcChainTool {
         let result = match self.eth_call(&call_key.contract_address, &data, call_key.block_mode) {
             Ok(result) => result,
             Err(message) => {
+                if should_try_latest_block_fallback_after_error(&message) {
+                    match self.execute_latest_block_fallback(read_index, read, call_key.method) {
+                        Ok((result, cache_hit)) => return Ok((result, cache_hit)),
+                        Err(fallback_message) => {
+                            log::warn!(
+                                "latest block fallback failed after historical state read error read_method={:?} error={} fallback_error={}",
+                                call_key.method,
+                                message,
+                                fallback_message
+                            );
+                        }
+                    }
+                }
                 if should_try_power_method_fallback_after_direct_error(&message) {
                     match self.execute_power_method_fallback(read_index, read, call_key.method) {
                         PowerMethodFallbackOutcome::Success { result, cache_hit } => {
@@ -2355,6 +2372,55 @@ impl EvmRpcChainTool {
         self.cache.insert(&read.key, value.clone());
         self.current_power_methods
             .insert(&read.key, call_key.method);
+
+        Ok((
+            ChainReadResult {
+                read_index,
+                key: read.key.clone(),
+                value,
+            },
+            false,
+        ))
+    }
+
+    fn execute_latest_block_fallback(
+        &self,
+        read_index: usize,
+        read: &crate::ChainReadRequest,
+        method: ChainReadMethod,
+    ) -> Result<(ChainReadResult, bool), String> {
+        if !should_try_latest_block_fallback_for_read(read, method) {
+            return Err("latest block fallback is not applicable".to_owned());
+        }
+
+        let fallback_key = ChainReadKey {
+            method,
+            block_mode: BlockReadMode::Latest,
+            ..read.key.clone()
+        };
+        if let Some(value) = self.cache.get(&fallback_key) {
+            self.cache.insert(&read.key, value.clone());
+            return Ok((
+                ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value,
+                },
+                true,
+            ));
+        }
+
+        let data = encode_call_data(fallback_key.method, &fallback_key.args)?;
+        let result = self.eth_call(
+            &fallback_key.contract_address,
+            &data,
+            fallback_key.block_mode,
+        )?;
+        let value = decode_call_value(fallback_key.method, &result)?;
+        self.cache.insert(&fallback_key, value.clone());
+        self.cache.insert(&read.key, value.clone());
+        self.current_power_methods
+            .insert(&read.key, fallback_key.method);
 
         Ok((
             ChainReadResult {
@@ -2572,6 +2638,24 @@ fn fail_multicall_group(
 fn should_try_power_method_fallback_after_direct_error(message: &str) -> bool {
     let message = message.to_ascii_lowercase();
     message.contains("execution reverted") || message.contains("revert")
+}
+
+fn should_try_latest_block_fallback_after_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    (message.contains("historical state") && message.contains("not available"))
+        || message.contains("endpoint missing data")
+        || message.contains("remote endpoint does not have this data")
+}
+
+fn should_try_latest_block_fallback_for_read(
+    read: &crate::ChainReadRequest,
+    method: ChainReadMethod,
+) -> bool {
+    matches!(read.key.block_mode, BlockReadMode::AtBlock(_))
+        && matches!(
+            method,
+            ChainReadMethod::BalanceOf | ChainReadMethod::GetVotes | ChainReadMethod::CurrentVotes
+        )
 }
 
 fn power_method_fallback_failure(
@@ -4893,6 +4977,45 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct HistoricalStateFallbackMockEvmRpcClient {
+        block_modes: Arc<Mutex<Vec<BlockReadMode>>>,
+        at_block_error: &'static str,
+    }
+
+    impl EvmRpcClient for HistoricalStateFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.block_modes
+                .lock()
+                .expect("block mode lock")
+                .push(block_mode);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err(self.at_block_error.to_owned());
+            }
+
+            match block_mode {
+                BlockReadMode::AtBlock(_) => Err(self.at_block_error.to_owned()),
+                BlockReadMode::Latest => Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::from(777))]))
+                )),
+                _ => Err("unexpected block mode".to_owned()),
+            }
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
     #[test]
     fn test_evm_rpc_chain_tool_executes_multicall_groups_once() {
         let rpc = MockEvmRpcClient::default();
@@ -5167,6 +5290,87 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert_eq!(failures.required_failures.len(), 1);
         assert!(failures.required_failures[0].message.contains("HTTP 500"));
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_falls_back_to_latest_for_missing_historical_state() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_error: "historical state abc is not available",
+        });
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("missing historical state falls back to latest");
+
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("777".to_owned())
+        );
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![
+                BlockReadMode::AtBlock(200),
+                BlockReadMode::AtBlock(200),
+                BlockReadMode::Latest
+            ]
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_fallback_to_latest_for_transport_error() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_error: "RPC eth_call failed with HTTP 500",
+        });
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("transport error does not fall back to latest");
+
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(failures.required_failures[0].message.contains("HTTP 500"));
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200)]
+        );
     }
 
     #[test]
