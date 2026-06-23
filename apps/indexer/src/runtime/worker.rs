@@ -75,7 +75,8 @@ pub async fn run_worker() -> Result<()> {
         let mut poll_cache_hits = 0;
         let mut poll_debounced_tasks = 0;
 
-        for _ in 0..runtime.max_batches_per_poll {
+        let mut claimed_batches = 0usize;
+        while claimed_batches < runtime.max_batches_per_poll {
             let batch_scope = scope_schedule.next_batch_scope();
             let report =
                 run_onchain_refresh_worker_batch(&worker, &batch_scope, runtime.batch_size)
@@ -90,6 +91,10 @@ pub async fn run_worker() -> Result<()> {
             poll_db_update_failures += report.db_update_failures;
             poll_cache_hits += report.cache_hits;
             poll_debounced_tasks += report.debounced_tasks;
+
+            if report.claimed > 0 {
+                claimed_batches += 1;
+            }
 
             if !scope_schedule.observe_batch_report(&report) {
                 break;
