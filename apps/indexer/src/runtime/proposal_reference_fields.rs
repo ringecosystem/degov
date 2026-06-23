@@ -26,6 +26,7 @@ pub struct ProposalReferenceFieldsReport {
 pub struct ReferenceProposalFields {
     pub proposal_id: String,
     pub title: String,
+    pub clock_mode: String,
     pub block_interval: Option<String>,
 }
 
@@ -87,8 +88,11 @@ pub fn plan_proposal_reference_field_updates(
         .filter_map(|candidate| {
             let key = normalize_proposal_id(&candidate.proposal_id)?;
             let reference = reference_by_proposal_id.get(&key)?;
-            let block_interval = reference_block_interval(candidate, reference);
-            if candidate.title == reference.title && candidate.block_interval == block_interval {
+            let block_interval = reference_block_interval(reference);
+            if candidate.title == reference.title
+                && candidate.clock_mode == reference.clock_mode
+                && candidate.block_interval == block_interval
+            {
                 return None;
             }
 
@@ -96,18 +100,17 @@ pub fn plan_proposal_reference_field_updates(
                 id: candidate.id.clone(),
                 previous_title: candidate.title.clone(),
                 previous_block_interval: candidate.block_interval.clone(),
+                previous_clock_mode: candidate.clock_mode.clone(),
                 title: reference.title.clone(),
+                clock_mode: reference.clock_mode.clone(),
                 block_interval,
             })
         })
         .collect()
 }
 
-fn reference_block_interval(
-    candidate: &ProposalReferenceFieldCandidate,
-    reference: &ReferenceProposalFields,
-) -> Option<String> {
-    (candidate.clock_mode == "blocknumber")
+fn reference_block_interval(reference: &ReferenceProposalFields) -> Option<String> {
+    (reference.clock_mode == "blocknumber")
         .then(|| reference.block_interval.clone())
         .flatten()
 }
@@ -230,6 +233,7 @@ async fn fetch_reference_proposal_fields(endpoint: &str) -> Result<Vec<Reference
         proposals.extend(rows.into_iter().map(|row| ReferenceProposalFields {
             proposal_id: row.proposal_id,
             title: row.title,
+            clock_mode: row.clock_mode,
             block_interval: row.block_interval,
         }));
         if row_count < LIMIT as usize {
@@ -244,6 +248,7 @@ query ProposalReferenceFields($limit: Int!, $offset: Int!) {
   proposals(orderBy: [id_ASC], limit: $limit, offset: $offset) {
     proposalId
     title
+    clockMode
     blockInterval
   }
 }
@@ -277,8 +282,14 @@ struct ReferenceProposalRow {
     #[serde(rename = "proposalId")]
     proposal_id: String,
     title: String,
+    #[serde(rename = "clockMode", default = "default_reference_clock_mode")]
+    clock_mode: String,
     #[serde(rename = "blockInterval")]
     block_interval: Option<String>,
+}
+
+fn default_reference_clock_mode() -> String {
+    "blocknumber".to_owned()
 }
 
 #[cfg(test)]
@@ -321,11 +332,13 @@ mod tests {
                 ReferenceProposalFields {
                     proposal_id: "0x2a".to_owned(),
                     title: "reference title".to_owned(),
+                    clock_mode: "blocknumber".to_owned(),
                     block_interval: Some("13.333333333333334".to_owned()),
                 },
                 ReferenceProposalFields {
                     proposal_id: "0x07".to_owned(),
                     title: "same title".to_owned(),
+                    clock_mode: "blocknumber".to_owned(),
                     block_interval: None,
                 },
             ],
@@ -337,7 +350,9 @@ mod tests {
                 id: "proposal:1".to_owned(),
                 previous_title: "local title".to_owned(),
                 previous_block_interval: Some("12".to_owned()),
+                previous_clock_mode: "blocknumber".to_owned(),
                 title: "reference title".to_owned(),
+                clock_mode: "blocknumber".to_owned(),
                 block_interval: Some("13.333333333333334".to_owned()),
             }]
         );
@@ -356,6 +371,7 @@ mod tests {
             &[ReferenceProposalFields {
                 proposal_id: "0x2a".to_owned(),
                 title: "reference title".to_owned(),
+                clock_mode: "timestamp".to_owned(),
                 block_interval: Some("13.333333333333334".to_owned()),
             }],
         );
@@ -366,7 +382,41 @@ mod tests {
                 id: "proposal:1".to_owned(),
                 previous_title: "local title".to_owned(),
                 previous_block_interval: Some("12".to_owned()),
+                previous_clock_mode: "timestamp".to_owned(),
                 title: "reference title".to_owned(),
+                clock_mode: "timestamp".to_owned(),
+                block_interval: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_plan_proposal_reference_field_updates_repairs_clock_mode_from_reference() {
+        let updates = plan_proposal_reference_field_updates(
+            &[ProposalReferenceFieldCandidate {
+                id: "proposal:1".to_owned(),
+                proposal_id: "42".to_owned(),
+                title: "same title".to_owned(),
+                block_interval: None,
+                clock_mode: "blocknumber".to_owned(),
+            }],
+            &[ReferenceProposalFields {
+                proposal_id: "0x2a".to_owned(),
+                title: "same title".to_owned(),
+                clock_mode: "timestamp".to_owned(),
+                block_interval: Some("13.333333333333334".to_owned()),
+            }],
+        );
+
+        assert_eq!(
+            updates,
+            vec![ProposalReferenceFieldUpdate {
+                id: "proposal:1".to_owned(),
+                previous_title: "same title".to_owned(),
+                previous_block_interval: None,
+                previous_clock_mode: "blocknumber".to_owned(),
+                title: "same title".to_owned(),
+                clock_mode: "timestamp".to_owned(),
                 block_interval: None,
             }]
         );
