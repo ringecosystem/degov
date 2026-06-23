@@ -7,7 +7,7 @@ pub use client::{
     DatalensDurableHeadReader, DatalensNativeClient, DatalensNativeReader,
     DatalensQueryConcurrencyConfig, DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey,
     DatalensQueryErrorClass, ServiceReadiness, classify_datalens_query_error,
-    verify_datalens_service,
+    datalens_query_error_is_current_head_race, verify_datalens_service,
 };
 pub use effectiveness::{
     DatalensLogQueryCacheOutcome, DatalensLogQueryCacheSummary, DatalensLogQueryResult,

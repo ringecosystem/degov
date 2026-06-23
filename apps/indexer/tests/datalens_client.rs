@@ -12,8 +12,9 @@ use degov_datalens_indexer::{
     DatalensNativeClient, DatalensNativeReader, DatalensProvisionalLogQueryReader,
     DatalensQueryConcurrencyConfig, DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey,
     DatalensQueryErrorClass, DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig,
-    SecretString, ServiceReadiness, classify_datalens_query_error, ensure_datalens_warmup_task,
-    plan_dao_log_queries, verify_datalens_service,
+    SecretString, ServiceReadiness, classify_datalens_query_error,
+    datalens_query_error_is_current_head_race, ensure_datalens_warmup_task, plan_dao_log_queries,
+    verify_datalens_service,
 };
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -158,6 +159,19 @@ fn test_classify_datalens_query_error_separates_provider_limit_from_timeout() {
             DatalensQueryErrorClass::Transient
         );
     }
+}
+
+#[test]
+fn test_datalens_query_error_is_current_head_race_is_narrow() {
+    assert!(datalens_query_error_is_current_head_race(
+        r#"Datalens HTTP 400 invalid_input: "block range extends beyond current head block""#
+    ));
+    assert!(!datalens_query_error_is_current_head_race(
+        "Datalens HTTP 400 invalid_input: selector is invalid"
+    ));
+    assert!(!datalens_query_error_is_current_head_race(
+        "Datalens HTTP 400 provider_timeout: block range extends beyond current head block"
+    ));
 }
 
 #[test]
