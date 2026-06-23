@@ -540,11 +540,11 @@ fn resolve_contract_set_max_chunks_per_run(
         configured_range_progress(processed_height, runtime.start_block, target_height)
             .remaining_blocks;
     if remaining_blocks >= 10_000_000 {
-        Some(5)
+        Some(20)
     } else if remaining_blocks >= 1_000_000 {
-        Some(4)
+        Some(12)
     } else if remaining_blocks >= 100_000 {
-        Some(3)
+        Some(6)
     } else {
         Some(1)
     }
@@ -1387,7 +1387,7 @@ mod tests {
                 Some(0),
                 10_000_000
             ),
-            Some(5)
+            Some(20)
         );
         assert_eq!(
             resolve_contract_set_max_chunks_per_run(
@@ -1396,7 +1396,7 @@ mod tests {
                 Some(0),
                 1_000_000
             ),
-            Some(4)
+            Some(12)
         );
         assert_eq!(
             resolve_contract_set_max_chunks_per_run(
@@ -1405,7 +1405,7 @@ mod tests {
                 Some(0),
                 100_000
             ),
-            Some(3)
+            Some(6)
         );
         assert_eq!(
             resolve_contract_set_max_chunks_per_run(

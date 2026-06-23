@@ -294,6 +294,7 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     )
     .await?;
     assert_removed_processor_status_table_absent(&database.pool).await?;
+    assert_checkpoint_adaptive_columns(&database.pool, &database.schema).await?;
     assert_table_exists(&database.pool, &database.schema, "_sqlx_migrations").await?;
 
     database.cleanup().await?;
@@ -410,7 +411,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
             "0003_onchain_refresh_runtime_indexes.sql",
             "0004_onchain_refresh_claim_retry_indexes.sql",
             "0005_onchain_refresh_failed_ready_retry_index.sql",
-            "0006_onchain_refresh_pending_ready_claim_index.sql"
+            "0006_onchain_refresh_pending_ready_claim_index.sql",
+            "0007_checkpoint_adaptive_chunk_state.sql"
         ]
     );
 
@@ -423,6 +425,11 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     let hot_path_migration = include_str!("../migrations/0002_hot_path_runtime_indexes.sql");
     assert!(hot_path_migration.contains("CREATE INDEX CONCURRENTLY IF NOT EXISTS"));
     assert!(hot_path_migration.contains("sqlx migration history"));
+
+    let adaptive_chunk_migration =
+        include_str!("../migrations/0007_checkpoint_adaptive_chunk_state.sql");
+    assert!(adaptive_chunk_migration.contains("adaptive_chunk_size BIGINT"));
+    assert!(!adaptive_chunk_migration.contains("adaptive_chunk_size INTEGER"));
 
     let runtime_migration = include_str!("../src/runtime/migrate.rs");
     assert!(runtime_migration.contains("delegate_mapping_effective_count_idx"));
@@ -556,6 +563,37 @@ async fn assert_table_exists(
     .await?;
 
     assert!(exists, "expected table {schema}.{table_name} to exist");
+
+    Ok(())
+}
+
+async fn assert_checkpoint_adaptive_columns(
+    pool: &PgPool,
+    schema: &str,
+) -> Result<(), sqlx::Error> {
+    for (column_name, data_type) in [
+        ("adaptive_chunk_size", "bigint"),
+        ("adaptive_chunk_reason", "text"),
+        ("adaptive_chunk_updated_at", "timestamp with time zone"),
+    ] {
+        let actual: Option<String> = sqlx::query_scalar(
+            "SELECT data_type
+             FROM information_schema.columns
+             WHERE table_schema = $1
+               AND table_name = 'degov_indexer_checkpoint'
+               AND column_name = $2",
+        )
+        .bind(schema)
+        .bind(column_name)
+        .fetch_optional(pool)
+        .await?;
+
+        assert_eq!(
+            actual.as_deref(),
+            Some(data_type),
+            "unexpected type for checkpoint column {column_name}"
+        );
+    }
 
     Ok(())
 }

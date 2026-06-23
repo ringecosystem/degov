@@ -6,12 +6,13 @@ use std::{
 };
 
 use degov_datalens_indexer::{
-    BatchReadPlanConfig, ChainContracts, ChainReadMethod, ChainReadPlanBuilder,
-    CheckpointRepository, DelegateChangedWrite, GovernanceTokenStandard, IndexerCheckpointIdentity,
-    IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction,
-    PostgresIndexerRunnerStore, PowerFreshnessState, PowerReconcileContext, PowerReconcileMetrics,
-    PowerReconcilePlan, TokenEventCommon, TokenProjectionBatch, TokenProjectionOperation,
-    TokenTransferWrite, plan_next_checkpoint_range, runtime::apply_migrations,
+    AdaptiveChunkSizingDecision, AdaptiveChunkSizingReason, BatchReadPlanConfig, ChainContracts,
+    ChainReadMethod, ChainReadPlanBuilder, CheckpointRepository, DelegateChangedWrite,
+    GovernanceTokenStandard, IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
+    IndexerRunnerTransaction, PostgresIndexerRunnerStore, PowerFreshnessState,
+    PowerReconcileContext, PowerReconcileMetrics, PowerReconcilePlan, TokenEventCommon,
+    TokenProjectionBatch, TokenProjectionOperation, TokenTransferWrite, plan_next_checkpoint_range,
+    runtime::apply_migrations,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -140,6 +141,9 @@ async fn test_checkpoint_commit_advances_with_business_writes() -> Result<(), Bo
     let checkpoint = repository.read_or_create(&identity, 100).await?;
     assert_eq!(checkpoint.next_block, 100);
     assert_eq!(checkpoint.processed_height, None);
+    assert_eq!(checkpoint.adaptive_chunk_size, None);
+    assert_eq!(checkpoint.adaptive_chunk_reason, None);
+    assert_eq!(checkpoint.adaptive_chunk_updated_at, None);
     assert!(!checkpoint.updated_at.is_empty());
 
     let mut transaction = database.pool.begin().await?;
@@ -157,6 +161,7 @@ async fn test_checkpoint_commit_advances_with_business_writes() -> Result<(), Bo
     assert_eq!(checkpoint.next_block, 110);
     assert_eq!(checkpoint.processed_height, Some(109));
     assert_eq!(checkpoint.target_height, Some(120));
+    assert_eq!(checkpoint.adaptive_chunk_size, None);
     assert_legacy_processor_status_table_absent(&database.pool).await?;
 
     let count: i64 = sqlx::query("SELECT count(*)::BIGINT FROM checkpoint_projection_fixture")
@@ -164,6 +169,46 @@ async fn test_checkpoint_commit_advances_with_business_writes() -> Result<(), Bo
         .await?
         .get(0);
     assert_eq!(count, 1);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_checkpoint_commit_persists_adaptive_chunk_state() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let repository = CheckpointRepository::new(database.pool.clone());
+    let identity = identity();
+
+    repository.read_or_create(&identity, 100).await?;
+
+    let mut transaction = database.pool.begin().await?;
+    repository
+        .advance_after_projection(&mut transaction, &identity, 109, Some(120))
+        .await?;
+    repository
+        .update_adaptive_chunk_state(
+            &mut transaction,
+            &identity,
+            &AdaptiveChunkSizingDecision {
+                previous_chunk_size: 10_000,
+                current_chunk_size: 20_000,
+                reason: AdaptiveChunkSizingReason::StableFullHit,
+            },
+        )
+        .await?;
+    transaction.commit().await?;
+
+    let checkpoint = repository.read_or_create(&identity, 100).await?;
+    assert_eq!(checkpoint.next_block, 110);
+    assert_eq!(checkpoint.processed_height, Some(109));
+    assert_eq!(checkpoint.adaptive_chunk_size, Some(20_000));
+    assert_eq!(
+        checkpoint.adaptive_chunk_reason.as_deref(),
+        Some("stable_full_hit")
+    );
+    assert!(checkpoint.adaptive_chunk_updated_at.is_some());
 
     database.cleanup().await?;
 
