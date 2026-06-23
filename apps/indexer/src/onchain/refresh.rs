@@ -1005,7 +1005,6 @@ where
             .push_bind(&self.config.lock_owner)
             .push(
                 ",
-                 error = NULL,
                  updated_at = ",
             )
             .push_bind(now_ms.to_string())
