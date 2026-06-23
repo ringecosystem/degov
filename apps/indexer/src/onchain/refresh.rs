@@ -1609,8 +1609,12 @@ where
                     Some(value) => Some(value),
                     None => {
                         if let Some(messages) = failures_by_key.get(&key) {
-                            task_failures.extend(messages.iter().cloned());
-                            None
+                            if power.is_some() && is_reverted_balance_read_failure(messages) {
+                                None
+                            } else {
+                                task_failures.extend(messages.iter().cloned());
+                                None
+                            }
                         } else {
                             return Err(OnchainRefreshReaderError::new(format!(
                                 "missing balance read for {}",
@@ -2827,6 +2831,14 @@ fn should_try_direct_fallback_after_multicall_error(message: &str) -> bool {
     message.to_ascii_lowercase().contains("out of gas")
 }
 
+fn is_reverted_balance_read_failure(messages: &[String]) -> bool {
+    !messages.is_empty()
+        && messages.iter().all(|message| {
+            let message = message.to_ascii_lowercase();
+            message.contains("revert")
+        })
+}
+
 fn should_try_latest_block_fallback_for_read(
     read: &crate::ChainReadRequest,
     method: ChainReadMethod,
@@ -2908,7 +2920,11 @@ fn validate_read_value(
             field: "power",
         });
     }
-    if task.refresh_balance && value.balance.is_none() {
+    if task.refresh_balance
+        && value.balance.is_none()
+        && value.checkpoint_balance.is_none()
+        && !effective_refresh_power(task, value)
+    {
         return Err(OnchainRefreshWorkerError::MissingReadValue {
             task_id: task.id.clone(),
             field: "balance",
@@ -2927,7 +2943,8 @@ async fn upsert_contributor_refresh(
             let group = successes
                 .iter()
                 .filter(|(task, _value)| {
-                    task.refresh_power == refresh_power && task.refresh_balance == refresh_balance
+                    effective_refresh_power(task, _value) == refresh_power
+                        && effective_refresh_balance(task, _value) == refresh_balance
                 })
                 .collect::<Vec<_>>();
             if group.is_empty() {
@@ -2972,12 +2989,12 @@ async fn upsert_contributor_refresh_group(
             .push_unseparated("::NUMERIC(78, 0)")
             .push_bind(&task.last_seen_transaction_hash)
             .push("CASE WHEN ")
-            .push_bind_unseparated(task.refresh_power)
+            .push_bind_unseparated(effective_refresh_power(task, value))
             .push_unseparated(" THEN ")
             .push_bind_unseparated(value.power_for_current_update())
             .push_unseparated("::NUMERIC(78, 0) ELSE 0::NUMERIC(78, 0) END")
             .push("CASE WHEN ")
-            .push_bind_unseparated(task.refresh_balance)
+            .push_bind_unseparated(effective_refresh_balance(task, value))
             .push_unseparated(" THEN ")
             .push_bind_unseparated(value.balance_for_current_update())
             .push_unseparated("::NUMERIC(78, 0) ELSE NULL END")
@@ -3031,7 +3048,7 @@ async fn reconcile_current_delegate_relation_power_from_balance(
     for (task, value) in successes {
         let Some(balance) = value
             .balance_for_current_update()
-            .filter(|_| task.refresh_balance)
+            .filter(|_| effective_refresh_balance(task, value))
         else {
             continue;
         };
@@ -3387,7 +3404,7 @@ fn checkpoint_balance_value<'a>(
     task: &OnchainRefreshTask,
     value: &'a OnchainRefreshReadValue,
 ) -> Option<&'a str> {
-    task.refresh_balance
+    effective_refresh_balance(task, value)
         .then_some(value.checkpoint_balance.as_deref())
         .flatten()
 }
@@ -3396,9 +3413,17 @@ fn checkpoint_power_value<'a>(
     task: &OnchainRefreshTask,
     value: &'a OnchainRefreshReadValue,
 ) -> Option<&'a str> {
-    task.refresh_power
+    effective_refresh_power(task, value)
         .then_some(value.checkpoint_power.as_deref())
         .flatten()
+}
+
+fn effective_refresh_balance(task: &OnchainRefreshTask, value: &OnchainRefreshReadValue) -> bool {
+    task.refresh_balance && value.balance_for_current_update().is_some()
+}
+
+fn effective_refresh_power(task: &OnchainRefreshTask, value: &OnchainRefreshReadValue) -> bool {
+    task.refresh_power && value.power_for_current_update().is_some()
 }
 
 async fn upsert_live_power_overlays(
@@ -3425,30 +3450,29 @@ fn live_contributor_power_overlay_writes(
         .iter()
         .filter_map(|(task, value)| {
             let power = value.power_for_current_update()?;
-            task.refresh_power
-                .then(|| ProvisionalContributorPowerOverlayWrite {
-                    id: provisional_contributor_power_overlay_id(task),
-                    segment_id: None,
-                    dao_code: task.dao_code.clone(),
-                    contract_set_id: task.contract_set_id.clone(),
-                    chain_id: Some(task.chain_id),
-                    chain_name: None,
-                    governor_address: Some(normalize_identifier(&task.governor_address)),
-                    token_address: Some(normalize_identifier(&task.token_address)),
-                    account: normalize_identifier(&task.account),
-                    power: power.to_owned(),
-                    balance: value.balance_for_current_update().map(str::to_owned),
-                    delegates_count_all: 0,
-                    delegates_count_effective: 0,
-                    last_vote_block_number: None,
-                    last_vote_timestamp: None,
-                    source: "live-onchain".to_owned(),
-                    status: "available".to_owned(),
-                    anchor_block_number: Some(task.last_seen_block_number.clone()),
-                    anchor_block_hash: None,
-                    anchor_parent_hash: None,
-                    anchor_block_timestamp: Some(task.last_seen_block_timestamp.clone()),
-                })
+            effective_refresh_power(task, value).then(|| ProvisionalContributorPowerOverlayWrite {
+                id: provisional_contributor_power_overlay_id(task),
+                segment_id: None,
+                dao_code: task.dao_code.clone(),
+                contract_set_id: task.contract_set_id.clone(),
+                chain_id: Some(task.chain_id),
+                chain_name: None,
+                governor_address: Some(normalize_identifier(&task.governor_address)),
+                token_address: Some(normalize_identifier(&task.token_address)),
+                account: normalize_identifier(&task.account),
+                power: power.to_owned(),
+                balance: value.balance_for_current_update().map(str::to_owned),
+                delegates_count_all: 0,
+                delegates_count_effective: 0,
+                last_vote_block_number: None,
+                last_vote_timestamp: None,
+                source: "live-onchain".to_owned(),
+                status: "available".to_owned(),
+                anchor_block_number: Some(task.last_seen_block_number.clone()),
+                anchor_block_hash: None,
+                anchor_parent_hash: None,
+                anchor_block_timestamp: Some(task.last_seen_block_timestamp.clone()),
+            })
         })
         .collect()
 }
@@ -5046,6 +5070,48 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    struct RevertingBalanceZeroPowerRefreshMockEvmRpcClient;
+
+    impl EvmRpcClient for RevertingBalanceZeroPowerRefreshMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("balanceOf(address)"))
+            )) {
+                return Err("execution reverted: 0x".to_owned());
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("getVotes(address)"))
+            )) {
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::zero())]))
+                ));
+            }
+
+            Err("unexpected eth_call".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
     struct PartialFailureMockEvmRpcClient;
 
     impl EvmRpcClient for PartialFailureMockEvmRpcClient {
@@ -5456,6 +5522,46 @@ mod tests {
             report.results[1].value,
             ChainReadValue::Integer("202".to_owned())
         );
+    }
+
+    #[test]
+    fn test_onchain_refresh_skips_reverted_balance_when_power_read_succeeds() {
+        let chain_tool =
+            EvmRpcChainTool::from_rpc_client(RevertingBalanceZeroPowerRefreshMockEvmRpcClient);
+        let reader = ChainToolOnchainRefreshReader::new(
+            chain_tool,
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+            ChainReadMethod::GetVotes,
+        );
+        let task = OnchainRefreshTask {
+            id: "task-one".to_owned(),
+            contract_set_id: "contract-set".to_owned(),
+            chain_id: 56,
+            dao_code: Some("ark-dao".to_owned()),
+            governor_address: "0x1000000000000000000000000000000000000000".to_owned(),
+            token_address: "0x2000000000000000000000000000000000000000".to_owned(),
+            account: "0x0000000000000000000000000000000000000001".to_owned(),
+            refresh_balance: true,
+            refresh_power: true,
+            last_seen_block_number: "200".to_owned(),
+            last_seen_block_timestamp: "200000".to_owned(),
+            last_seen_transaction_hash: "0xtx".to_owned(),
+            attempts: 0,
+        };
+
+        let report = reader
+            .read_tasks_with_report(&[task.clone()])
+            .expect("refresh read completes with skipped balance");
+
+        assert_eq!(report.failures, vec![]);
+        assert_eq!(report.values.len(), 1);
+        assert_eq!(report.values[0].balance.as_deref(), None);
+        assert_eq!(report.values[0].power.as_deref(), Some("0"));
+        validate_read_value(&task, &report.values[0])
+            .expect("partial power refresh should not fail on skipped balance");
     }
 
     #[test]
