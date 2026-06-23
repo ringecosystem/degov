@@ -175,6 +175,17 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .context("ensure pending onchain refresh ready claim index")?;
 
     sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_pending_scope_claim_idx
+         ON onchain_refresh_task (
+            chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
+         )
+         WHERE status = 'pending'",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure scoped pending onchain refresh claim index")?;
+
+    sqlx::query(
         "CREATE INDEX IF NOT EXISTS onchain_refresh_task_scope_claim_queue_idx
          ON onchain_refresh_task (
             chain_id, contract_set_id, dao_code, status, next_run_at, updated_at, id
@@ -221,6 +232,18 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .context("ensure failed onchain refresh ready status retry index")?;
 
     sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_scope_retry_idx
+         ON onchain_refresh_task (
+            chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
+         )
+         INCLUDE (attempts)
+         WHERE status = 'failed' AND attempts < 3",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure scoped failed onchain refresh retry index")?;
+
+    sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_retry_idx
          ON onchain_refresh_task (next_run_at, updated_at, id)
          INCLUDE (locked_at, attempts)
@@ -238,6 +261,18 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .execute(&mut *connection)
     .await
     .context("ensure processing onchain refresh lock retry index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_scope_retry_idx
+         ON onchain_refresh_task (
+            chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
+         )
+         INCLUDE (locked_at, attempts)
+         WHERE status = 'processing' AND locked_at IS NOT NULL",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure scoped processing onchain refresh retry index")?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx
@@ -336,6 +371,16 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .execute(&mut *connection)
     .await
     .context("ensure contributor data metric scope index")?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_onchain_refresh_coverage_scope_idx
+         ON contributor (chain_id, contract_set_id, dao_code, block_number, id)
+         INCLUDE (governor_address, token_address, block_timestamp, transaction_hash)
+         WHERE dao_code IS NOT NULL",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("ensure contributor onchain refresh coverage index")?;
 
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS onchain_refresh_data_metric_task (
@@ -529,6 +574,13 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
     drop_invalid_runtime_index(connection, "onchain_refresh_task_processing_retry_idx").await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_processing_lock_retry_idx")
         .await?;
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_pending_scope_claim_idx").await?;
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_scope_retry_idx").await?;
+    drop_invalid_runtime_index(
+        connection,
+        "onchain_refresh_task_processing_scope_retry_idx",
+    )
+    .await?;
     drop_invalid_runtime_index(connection, "delegate_rolling_metadata_preload_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_current_from_scope_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_current_power_refresh_idx").await?;
@@ -536,6 +588,8 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
     drop_invalid_runtime_index(connection, "delegate_mapping_effective_count_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_positive_count_idx").await?;
     drop_invalid_runtime_index(connection, "contributor_data_metric_scope_idx").await?;
+    drop_invalid_runtime_index(connection, "contributor_onchain_refresh_coverage_scope_idx")
+        .await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_data_metric_task_ready_idx").await?;
     drop_invalid_runtime_index(connection, "contributor_graphql_scope_power_idx").await?;
     drop_invalid_runtime_index(connection, "provisional_contributor_live_scope_power_idx").await?;
