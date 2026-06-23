@@ -2343,6 +2343,8 @@ impl EvmRpcChainTool {
                     self.execute_multicall_fallback(calls, &mut report, message);
                 } else if should_try_latest_block_fallback_after_error(&message) {
                     self.execute_multicall_fallback(calls, &mut report, message);
+                } else if should_try_direct_fallback_after_multicall_error(&message) {
+                    self.execute_multicall_fallback(calls, &mut report, message);
                 } else {
                     fail_multicall_group(calls, &mut report, message);
                 }
@@ -2819,6 +2821,10 @@ fn should_try_latest_block_fallback_after_error(message: &str) -> bool {
     (message.contains("historical state") && message.contains("not available"))
         || message.contains("endpoint missing data")
         || message.contains("remote endpoint does not have this data")
+}
+
+fn should_try_direct_fallback_after_multicall_error(message: &str) -> bool {
+    message.to_ascii_lowercase().contains("out of gas")
 }
 
 fn should_try_latest_block_fallback_for_read(
@@ -5009,6 +5015,37 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    struct MulticallOutOfGasFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for MulticallOutOfGasFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            let call_count = self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Uint(U256::from(call_count + 200))]))
+            ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
     struct PartialFailureMockEvmRpcClient;
 
     impl EvmRpcClient for PartialFailureMockEvmRpcClient {
@@ -5373,6 +5410,51 @@ mod tests {
         assert_eq!(
             report.results[1].value,
             ChainReadValue::Integer("101".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_falls_back_to_direct_reads_after_multicall_out_of_gas() {
+        let rpc = MulticallOutOfGasFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("direct fallback reads succeed after multicall out of gas");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(report.metrics.executed_rpc_calls, 2);
+        assert_eq!(report.results.len(), 2);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("201".to_owned())
+        );
+        assert_eq!(
+            report.results[1].value,
+            ChainReadValue::Integer("202".to_owned())
         );
     }
 
