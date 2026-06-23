@@ -639,7 +639,7 @@ async fn test_postgres_lifecycle_stub_preserves_proposal_metadata() -> Result<()
     )?;
 
     let proposal = sqlx::query(
-        "SELECT description_hash, counting_mode, clock_mode
+        "SELECT description_hash, counting_mode, clock_mode, block_interval
          FROM proposal
          WHERE contract_set_id = $1
            AND proposal_id = '42'",
@@ -656,6 +656,7 @@ async fn test_postgres_lifecycle_stub_preserves_proposal_metadata() -> Result<()
         Some("support=bravo&quorum=for,abstain".to_owned())
     );
     assert_eq!(proposal.get::<String, _>("clock_mode"), "timestamp");
+    assert_eq!(proposal.get::<Option<String>, _>("block_interval"), None);
 
     database.cleanup().await?;
 

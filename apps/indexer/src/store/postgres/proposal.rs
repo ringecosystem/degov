@@ -305,6 +305,7 @@ const UPSERT_PROPOSAL_SQL: &str = "INSERT INTO proposal (
              queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
              counting_mode = COALESCE(EXCLUDED.counting_mode, proposal.counting_mode),
              block_interval = CASE
+                 WHEN EXCLUDED.proposer = '' AND EXCLUDED.clock_mode = 'blocknumber' AND proposal.clock_mode <> 'blocknumber' THEN NULL
                  WHEN EXCLUDED.clock_mode <> 'blocknumber' THEN EXCLUDED.block_interval
                  ELSE COALESCE(EXCLUDED.block_interval, proposal.block_interval)
              END,
