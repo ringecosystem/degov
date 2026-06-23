@@ -190,6 +190,12 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "contributor_onchain_refresh_coverage_scope_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "onchain_refresh_data_metric_task_ready_idx",
     )
     .await?;
@@ -221,6 +227,22 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         &database.pool,
         &database.schema,
         "onchain_refresh_task_pending_ready_claim_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_pending_scope_claim_idx",
+    )
+    .await?;
+    assert_index_definition_contains(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_pending_scope_claim_idx",
+        &[
+            "USING btree (chain_id, contract_set_id, dao_code, next_run_at, updated_at, id)",
+            "WHERE (status = 'pending'::text)",
+        ],
     )
     .await?;
     assert_index_definition_contains(
@@ -255,6 +277,18 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         &database.pool,
         &database.schema,
         "onchain_refresh_task_processing_lock_retry_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_failed_scope_retry_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_processing_scope_retry_idx",
     )
     .await?;
     assert_index_exists(
@@ -440,6 +474,10 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("repair_delegate_effective_counts_once"));
     assert!(runtime_migration.contains("onchain_refresh_data_metric_task"));
     assert!(runtime_migration.contains("onchain_refresh_task_pending_ready_claim_idx"));
+    assert!(runtime_migration.contains("onchain_refresh_task_pending_scope_claim_idx"));
+    assert!(runtime_migration.contains("onchain_refresh_task_failed_scope_retry_idx"));
+    assert!(runtime_migration.contains("onchain_refresh_task_processing_scope_retry_idx"));
+    assert!(runtime_migration.contains("contributor_onchain_refresh_coverage_scope_idx"));
     assert!(runtime_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));
     assert!(runtime_migration.contains("WHERE status = 'pending'"));
     assert!(
