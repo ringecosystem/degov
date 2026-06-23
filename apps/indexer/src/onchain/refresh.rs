@@ -521,6 +521,7 @@ where
         let deferred_drain_started_at = Instant::now();
         let deferred_drain_target =
             worker_deferred_drain_target(self.config.deferred_drain_batch_size, batch_size);
+        self.restore_retryable_exhausted_tasks(now_ms).await?;
         self.archive_exhausted_tasks(now_ms).await?;
         let deferred_drain_count = self
             .drain_deferred_onchain_refresh_backlog(deferred_drain_target, scope)
@@ -1166,15 +1167,14 @@ where
         let next_run_at = now_ms.saturating_add(duration_millis_i64(
             onchain_refresh_retry_backoff_delay(self.config.retry_delay, task.attempts),
         ));
-        let status = if task.attempts >= self.config.max_attempts {
-            "exhausted"
-        } else {
-            "failed"
-        };
+        let status = onchain_refresh_failure_status(error, task.attempts, self.config.max_attempts);
+        let attempts =
+            onchain_refresh_failure_attempts(error, task.attempts, self.config.max_attempts);
 
         sqlx::query(
             "UPDATE onchain_refresh_task
              SET status = $5,
+                 attempts = $7,
                  next_run_at = $2::NUMERIC(78, 0),
                  locked_at = NULL,
                  locked_by = NULL,
@@ -1191,6 +1191,45 @@ where
         .bind(now_ms.to_string())
         .bind(status)
         .bind(&self.config.lock_owner)
+        .bind(attempts)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn restore_retryable_exhausted_tasks(
+        &self,
+        now_ms: i64,
+    ) -> Result<(), OnchainRefreshWorkerError> {
+        let attempts = retryable_onchain_refresh_attempts(self.config.max_attempts);
+        let next_run_at = now_ms.saturating_add(duration_millis_i64(
+            onchain_refresh_retry_backoff_delay(self.config.retry_delay, self.config.max_attempts),
+        ));
+        sqlx::query(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'exhausted'
+                  AND COALESCE(error, '') ILIKE '%block not found%'
+                LIMIT $1
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'failed',
+                 attempts = $2,
+                 next_run_at = $3::NUMERIC(78, 0),
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = NULL,
+                 updated_at = $4::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+        )
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
+        .bind(attempts)
+        .bind(next_run_at.to_string())
+        .bind(now_ms.to_string())
         .execute(&self.pool)
         .await?;
 
@@ -1205,6 +1244,7 @@ where
                 FROM onchain_refresh_task
                 WHERE status = 'failed'
                   AND attempts >= $1
+                  AND COALESCE(error, '') NOT ILIKE '%block not found%'
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
              )
@@ -1231,6 +1271,7 @@ where
                   AND attempts >= $1
                   AND locked_at IS NOT NULL
                   AND locked_at <= $2::NUMERIC(78, 0)
+                  AND COALESCE(error, '') NOT ILIKE '%block not found%'
                 LIMIT $3
                 FOR UPDATE SKIP LOCKED
              )
@@ -1256,6 +1297,32 @@ where
 
 fn worker_deferred_drain_target(configured_batch_size: usize, claim_batch_size: usize) -> usize {
     configured_batch_size.max(claim_batch_size)
+}
+
+fn is_retryable_onchain_refresh_task_error(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("block not found")
+}
+
+fn retryable_onchain_refresh_attempts(max_attempts: i32) -> i32 {
+    max_attempts.saturating_sub(1).max(0)
+}
+
+fn onchain_refresh_failure_status(error: &str, attempts: i32, max_attempts: i32) -> &'static str {
+    if is_retryable_onchain_refresh_task_error(error) {
+        "failed"
+    } else if attempts >= max_attempts {
+        "exhausted"
+    } else {
+        "failed"
+    }
+}
+
+fn onchain_refresh_failure_attempts(error: &str, attempts: i32, max_attempts: i32) -> i32 {
+    if is_retryable_onchain_refresh_task_error(error) && attempts >= max_attempts {
+        retryable_onchain_refresh_attempts(max_attempts)
+    } else {
+        attempts
+    }
 }
 
 async fn retry_onchain_refresh_apply_operation<'a, T, F>(
@@ -4864,6 +4931,24 @@ mod tests {
         assert!(is_retryable_onchain_refresh_apply_sqlstate("40P01"));
         assert!(is_retryable_onchain_refresh_apply_sqlstate("40001"));
         assert!(!is_retryable_onchain_refresh_apply_sqlstate("23505"));
+    }
+
+    #[test]
+    fn test_onchain_refresh_block_not_found_does_not_exhaust() {
+        let error = "multicall failed: block not found: 25378785";
+
+        assert!(is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_non_retryable_error_exhausts_at_limit() {
+        let error = "multicall subcall reverted";
+
+        assert!(!is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "exhausted");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 3);
     }
 
     #[tokio::test]
