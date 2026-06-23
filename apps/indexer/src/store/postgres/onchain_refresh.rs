@@ -131,6 +131,138 @@ pub async fn drain_deferred_onchain_refresh_tasks_for_scope(
     drain_deferred_onchain_refresh_tasks_with_scope(pool, max_rows, Some(scope)).await
 }
 
+pub async fn repair_missing_onchain_refresh_contributor_coverage(
+    pool: &PgPool,
+    max_rows: usize,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    repair_missing_onchain_refresh_contributor_coverage_with_scope(pool, max_rows, None).await
+}
+
+pub async fn repair_missing_onchain_refresh_contributor_coverage_for_scope(
+    pool: &PgPool,
+    max_rows: usize,
+    scope: &crate::OnchainRefreshTaskScope,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    repair_missing_onchain_refresh_contributor_coverage_with_scope(pool, max_rows, Some(scope))
+        .await
+}
+
+async fn repair_missing_onchain_refresh_contributor_coverage_with_scope(
+    pool: &PgPool,
+    max_rows: usize,
+    scope: Option<&crate::OnchainRefreshTaskScope>,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    if max_rows == 0 {
+        return Ok(0);
+    }
+
+    let max_rows = i64::try_from(max_rows).map_err(|_| {
+        PostgresIndexerRunnerStoreError::new("contributor coverage repair batch size exceeds i64")
+    })?;
+    let now_ms = unix_time_millis();
+    let mut query = QueryBuilder::<Postgres>::new(
+        "WITH candidates AS (
+            SELECT contributor.contract_set_id,
+                   contributor.chain_id,
+                   COALESCE(contributor.dao_code, '') AS dao_code,
+                   contributor.governor_address,
+                   contributor.token_address,
+                   contributor.id AS account,
+                   contributor.block_number,
+                   contributor.block_timestamp,
+                   contributor.transaction_hash
+            FROM contributor
+            WHERE contributor.dao_code IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1
+                FROM degov_provisional_contributor_power_overlay overlay
+                WHERE overlay.contract_set_id = contributor.contract_set_id
+                  AND overlay.chain_id IS NOT DISTINCT FROM contributor.chain_id
+                  AND overlay.dao_code IS NOT DISTINCT FROM contributor.dao_code
+                  AND overlay.governor_address IS NOT DISTINCT FROM contributor.governor_address
+                  AND overlay.token_address IS NOT DISTINCT FROM contributor.token_address
+                  AND overlay.account = contributor.id
+                  AND overlay.source = 'live-onchain'
+                  AND overlay.status = 'available'
+                  AND overlay.power IS NOT NULL
+                  AND overlay.balance IS NOT NULL
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM onchain_refresh_task task
+                WHERE task.contract_set_id = contributor.contract_set_id
+                  AND task.chain_id = contributor.chain_id
+                  AND task.dao_code IS NOT DISTINCT FROM contributor.dao_code
+                  AND task.governor_address = contributor.governor_address
+                  AND task.token_address = contributor.token_address
+                  AND task.account = contributor.id
+                  AND task.status IN ('pending', 'processing', 'failed')
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM onchain_refresh_deferred_candidate deferred
+                WHERE deferred.contract_set_id = contributor.contract_set_id
+                  AND deferred.chain_id = contributor.chain_id
+                  AND deferred.dao_code IS NOT DISTINCT FROM contributor.dao_code
+                  AND deferred.governor_address = contributor.governor_address
+                  AND deferred.token_address = contributor.token_address
+                  AND deferred.account = contributor.id
+            )",
+    );
+    push_contributor_coverage_repair_scope_filter(&mut query, scope);
+    query
+        .push(
+            "
+            ORDER BY contributor.block_number ASC, contributor.id ASC
+            LIMIT ",
+        )
+        .push_bind(max_rows)
+        .push(
+            "
+        )
+        INSERT INTO onchain_refresh_deferred_candidate (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+            refresh_balance, refresh_power, reason, first_seen_block_number,
+            last_seen_block_number, last_seen_block_timestamp, last_seen_transaction_hash,
+            next_run_at, created_at, updated_at
+        )
+        SELECT
+            candidates.contract_set_id || ':' || candidates.dao_code || ':' ||
+                candidates.chain_id::TEXT || ':' || candidates.governor_address || ':' ||
+                candidates.token_address || ':' || candidates.account,
+            candidates.contract_set_id,
+            candidates.chain_id,
+            candidates.dao_code,
+            candidates.governor_address,
+            candidates.token_address,
+            candidates.account,
+            TRUE,
+            TRUE,
+            'contributor-coverage',
+            candidates.block_number,
+            candidates.block_number,
+            candidates.block_timestamp,
+            candidates.transaction_hash,
+            0::NUMERIC(78, 0),
+            ",
+        )
+        .push_bind(now_ms.to_string())
+        .push(
+            "::NUMERIC(78, 0),
+            ",
+        )
+        .push_bind(now_ms.to_string())
+        .push(
+            "::NUMERIC(78, 0)
+        FROM candidates
+        ON CONFLICT ON CONSTRAINT onchain_refresh_deferred_candidate_account_unique DO NOTHING",
+        );
+
+    let result = query.build().execute(pool).await?;
+
+    Ok(result.rows_affected().try_into().unwrap_or_default())
+}
+
 async fn drain_deferred_onchain_refresh_tasks_with_scope(
     pool: &PgPool,
     max_rows: usize,
@@ -714,6 +846,21 @@ fn push_deferred_onchain_refresh_scope_filter<'args>(
             .push(" AND contract_set_id = ")
             .push_bind(&scope.contract_set_id)
             .push(" AND dao_code IS NOT DISTINCT FROM ")
+            .push_bind(&scope.dao_code);
+    }
+}
+
+fn push_contributor_coverage_repair_scope_filter<'args>(
+    query: &mut QueryBuilder<'args, Postgres>,
+    scope: Option<&'args crate::OnchainRefreshTaskScope>,
+) {
+    if let Some(scope) = scope {
+        query
+            .push(" AND contributor.chain_id = ")
+            .push_bind(scope.chain_id)
+            .push(" AND contributor.contract_set_id = ")
+            .push_bind(&scope.contract_set_id)
+            .push(" AND contributor.dao_code IS NOT DISTINCT FROM ")
             .push_bind(&scope.dao_code);
     }
 }

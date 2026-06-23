@@ -24,6 +24,8 @@ use crate::{
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
     store::postgres::{
         drain_deferred_onchain_refresh_tasks, drain_deferred_onchain_refresh_tasks_for_scope,
+        repair_missing_onchain_refresh_contributor_coverage,
+        repair_missing_onchain_refresh_contributor_coverage_for_scope,
     },
 };
 
@@ -540,7 +542,48 @@ where
                 deferred_drain_started_at.elapsed().as_millis()
             );
         }
-        let tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
+        let mut tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
+        if tasks.is_empty() {
+            let coverage_repair_count = self
+                .repair_missing_contributor_coverage(deferred_drain_target, scope)
+                .await?;
+            if coverage_repair_count > 0 {
+                log::info!(
+                    "onchain refresh worker repaired contributor coverage dao_code={} chain_id={} contract_set_id={} repaired_count={} repair_batch_size={}",
+                    scope
+                        .map(|scope| scope.dao_code.as_str())
+                        .unwrap_or("global"),
+                    scope
+                        .map(|scope| scope.chain_id.to_string())
+                        .unwrap_or_else(|| "global".to_owned()),
+                    scope
+                        .map(|scope| scope.contract_set_id.as_str())
+                        .unwrap_or("global"),
+                    coverage_repair_count,
+                    deferred_drain_target
+                );
+                let repaired_deferred_drain_count = self
+                    .drain_deferred_onchain_refresh_backlog(deferred_drain_target, scope)
+                    .await?;
+                if repaired_deferred_drain_count > 0 {
+                    log::info!(
+                        "onchain refresh worker materialized repaired contributor coverage dao_code={} chain_id={} contract_set_id={} deferred_drain_count={} deferred_drain_target={}",
+                        scope
+                            .map(|scope| scope.dao_code.as_str())
+                            .unwrap_or("global"),
+                        scope
+                            .map(|scope| scope.chain_id.to_string())
+                            .unwrap_or_else(|| "global".to_owned()),
+                        scope
+                            .map(|scope| scope.contract_set_id.as_str())
+                            .unwrap_or("global"),
+                        repaired_deferred_drain_count,
+                        deferred_drain_target
+                    );
+                }
+                tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
+            }
+        }
         if tasks.is_empty() {
             let data_metric_refreshes = self.drain_data_metric_refresh_tasks(now_ms).await?;
             return Ok(OnchainRefreshRunReport {
@@ -718,6 +761,23 @@ where
         }
 
         Ok(drained_total)
+    }
+
+    async fn repair_missing_contributor_coverage(
+        &self,
+        max_rows: usize,
+        scope: Option<&OnchainRefreshTaskScope>,
+    ) -> Result<usize, OnchainRefreshWorkerError> {
+        match scope {
+            Some(scope) => {
+                repair_missing_onchain_refresh_contributor_coverage_for_scope(
+                    &self.pool, max_rows, scope,
+                )
+                .await
+            }
+            None => repair_missing_onchain_refresh_contributor_coverage(&self.pool, max_rows).await,
+        }
+        .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))
     }
 
     async fn drain_data_metric_refresh_tasks(

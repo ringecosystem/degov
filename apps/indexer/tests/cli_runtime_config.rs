@@ -4,9 +4,10 @@ use degov_datalens_indexer::{
     ContractSetConcurrencyLimit, DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig,
     DatalensProvisionalFinality, DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig,
     IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight,
-    MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, OnchainRefreshRuntimeConfig, OnchainRefreshTickConfig,
-    ProposalTimestampBackfillConfig, ProvisionalRuntimeConfig, datalens_retry_config,
-    onchain_refresh_worker_enabled, parse_bool_env_value, parse_i64_env_value,
+    MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, OnchainRefreshRuntimeConfig, OnchainRefreshScopeMode,
+    OnchainRefreshTickConfig, ProposalTimestampBackfillConfig, ProvisionalRuntimeConfig,
+    datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
+    parse_i64_env_value,
 };
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -50,6 +51,63 @@ fn test_onchain_refresh_runtime_config_defaults_debounce() {
             assert_eq!(
                 config.worker_config().debounce,
                 Duration::from_millis(120_000)
+            );
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_defaults_global_scope() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            ("DEGOV_ONCHAIN_REFRESH_SCOPE_MODE", None::<&str>),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", None::<&str>),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.scope_mode, OnchainRefreshScopeMode::Global);
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_uses_all_mode_contract_set_scopes() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            ("DEGOV_ONCHAIN_REFRESH_SCOPE_MODE", None::<&str>),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.scope_mode,
+                OnchainRefreshScopeMode::AllModeConfiguredContractSets
+            );
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_accepts_explicit_contract_set_scope_mode() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            (
+                "DEGOV_ONCHAIN_REFRESH_SCOPE_MODE",
+                Some("configured-contract-sets"),
+            ),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", None::<&str>),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.scope_mode,
+                OnchainRefreshScopeMode::ConfiguredContractSets
             );
         },
     );

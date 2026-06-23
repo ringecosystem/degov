@@ -300,7 +300,10 @@ const UPSERT_PROPOSAL_SQL: &str = "INSERT INTO proposal (
              proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta),
              queue_ready_at = COALESCE(EXCLUDED.queue_ready_at, proposal.queue_ready_at),
              queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
-             block_interval = COALESCE(EXCLUDED.block_interval, proposal.block_interval),
+             block_interval = CASE
+                 WHEN EXCLUDED.clock_mode <> 'blocknumber' THEN EXCLUDED.block_interval
+                 ELSE COALESCE(EXCLUDED.block_interval, proposal.block_interval)
+             END,
              clock_mode = EXCLUDED.clock_mode,
              quorum = CASE WHEN EXCLUDED.quorum = 0::NUMERIC(78, 0) THEN proposal.quorum ELSE EXCLUDED.quorum END,
              decimals = CASE WHEN EXCLUDED.decimals = 0::NUMERIC(78, 0) THEN proposal.decimals ELSE EXCLUDED.decimals END,
@@ -421,6 +424,7 @@ pub struct ProposalReferenceFieldCandidate {
     pub proposal_id: String,
     pub title: String,
     pub block_interval: Option<String>,
+    pub clock_mode: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -508,7 +512,7 @@ pub async fn read_proposal_reference_field_candidates(
     dao_code: &str,
 ) -> Result<Vec<ProposalReferenceFieldCandidate>, PostgresIndexerRunnerStoreError> {
     let rows = sqlx::query(
-        "SELECT id, proposal_id, title, block_interval
+        "SELECT id, proposal_id, title, block_interval, clock_mode
          FROM proposal
          WHERE dao_code = $1
          ORDER BY block_number, transaction_index, log_index, id",
@@ -524,6 +528,7 @@ pub async fn read_proposal_reference_field_candidates(
             proposal_id: row.get("proposal_id"),
             title: row.get("title"),
             block_interval: row.get("block_interval"),
+            clock_mode: row.get("clock_mode"),
         })
         .collect())
 }

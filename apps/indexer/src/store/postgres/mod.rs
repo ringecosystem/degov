@@ -9,5 +9,7 @@ pub use runner_store::{
     ProposalTitleRefreshUpdate, drain_deferred_onchain_refresh_tasks,
     drain_deferred_onchain_refresh_tasks_for_scope, read_proposal_reference_field_candidates,
     read_proposal_timestamp_backfill_candidates, read_proposal_title_refresh_candidates,
+    repair_missing_onchain_refresh_contributor_coverage,
+    repair_missing_onchain_refresh_contributor_coverage_for_scope,
     update_proposal_reference_fields, update_proposal_timestamp_backfill, update_proposal_titles,
 };

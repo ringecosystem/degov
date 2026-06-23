@@ -21,7 +21,10 @@ use degov_datalens_indexer::{
     PostgresProvisionalPowerOverlayStore, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, refresh_live_power_overlays,
-    runtime::apply_migrations,
+    runtime::{
+        apply_migrations,
+        worker::{OnchainRefreshWorkerBatchScope, OnchainRefreshWorkerScopeSchedule},
+    },
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -318,6 +321,67 @@ fn test_onchain_refresh_tick_failure_does_not_advance_schedule() {
         Some(OnchainRefreshTickSkipReason::EmptyQueue)
     );
     assert_eq!(retry_runner.calls, vec![10]);
+}
+
+#[test]
+fn test_onchain_refresh_worker_scope_schedule_uses_global_default_empty_stop() {
+    let mut schedule = OnchainRefreshWorkerScopeSchedule::new(Vec::new());
+
+    assert_eq!(
+        schedule.next_batch_scope(),
+        OnchainRefreshWorkerBatchScope::Global
+    );
+    assert!(!schedule.observe_batch_claimed(0));
+}
+
+#[test]
+fn test_onchain_refresh_worker_scope_schedule_round_robins_scopes_until_empty_cycle() {
+    let scopes = vec![
+        OnchainRefreshTaskScope {
+            chain_id: 1,
+            contract_set_id: "contract-set-a".to_owned(),
+            dao_code: "dao-a".to_owned(),
+        },
+        OnchainRefreshTaskScope {
+            chain_id: 1135,
+            contract_set_id: "contract-set-b".to_owned(),
+            dao_code: "dao-b".to_owned(),
+        },
+    ];
+    let mut schedule = OnchainRefreshWorkerScopeSchedule::new(scopes.clone());
+
+    assert_eq!(
+        schedule.next_batch_scope(),
+        OnchainRefreshWorkerBatchScope::Scoped(scopes[0].clone())
+    );
+    assert!(schedule.observe_batch_claimed(0));
+    assert_eq!(
+        schedule.next_batch_scope(),
+        OnchainRefreshWorkerBatchScope::Scoped(scopes[1].clone())
+    );
+    assert!(!schedule.observe_batch_claimed(0));
+
+    assert_eq!(
+        schedule.next_batch_scope(),
+        OnchainRefreshWorkerBatchScope::Scoped(scopes[0].clone())
+    );
+    assert!(schedule.observe_batch_claimed(0));
+    assert_eq!(
+        schedule.next_batch_scope(),
+        OnchainRefreshWorkerBatchScope::Scoped(scopes[1].clone())
+    );
+    assert!(!schedule.observe_batch_claimed(0));
+
+    assert_eq!(
+        schedule.next_batch_scope(),
+        OnchainRefreshWorkerBatchScope::Scoped(scopes[0].clone())
+    );
+    assert!(schedule.observe_batch_claimed(1));
+    assert_eq!(
+        schedule.next_batch_scope(),
+        OnchainRefreshWorkerBatchScope::Scoped(scopes[1].clone())
+    );
+    assert!(schedule.observe_batch_claimed(0));
 }
 
 #[tokio::test]
@@ -2324,6 +2388,70 @@ async fn test_onchain_refresh_worker_drains_deferred_tasks_to_claim_budget_in_sm
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_repairs_missing_contributor_coverage()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor(&database.pool, ACCOUNT_ONE, "0", Some("0")).await?;
+
+    let task_id = format!("demo-dao:demo-dao:46:{GOVERNOR}:{TOKEN}:{ACCOUNT_ONE}");
+    seed_task(
+        &database.pool,
+        &task_id,
+        ACCOUNT_ONE,
+        "completed",
+        1,
+        true,
+        true,
+    )
+    .await?;
+    seed_contributor_overlay_with_balance(&database.pool, ACCOUNT_ONE, "9", None).await?;
+
+    let reader = MockOnchainRefreshReader::from_values(BTreeMap::from([(
+        task_id.clone(),
+        OnchainRefreshReadValue {
+            task_id: task_id.clone(),
+            balance: Some("17".to_owned()),
+            power: Some("11".to_owned()),
+            checkpoint_balance: Some("17".to_owned()),
+            checkpoint_power: Some("11".to_owned()),
+        },
+    )]));
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 1);
+    assert_eq!(report.completed, 1);
+    assert_eq!(report.failed, 0);
+    assert_eq!(
+        contributor_values(&database.pool, ACCOUNT_ONE).await?,
+        ("11".to_owned(), Some("17".to_owned()))
+    );
+    assert_completed_task(&database.pool, &task_id, 1).await?;
+    assert_task_refresh_flags(&database.pool, &task_id, true, true).await?;
+    assert_contributor_overlay(&database.pool, ACCOUNT_ONE, "11").await?;
+    assert_contributor_overlay_balance(&database.pool, ACCOUNT_ONE, "17").await?;
+    assert_table_count(&database.pool, "onchain_refresh_deferred_candidate", 0).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_fails_only_missing_rpc_chain_group()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -2404,6 +2532,10 @@ impl MockOnchainRefreshReader {
                 .map(|(task_id, value)| (task_id.to_owned(), value))
                 .collect(),
         }
+    }
+
+    fn from_values(values: BTreeMap<String, OnchainRefreshReadValue>) -> Self {
+        Self { values }
     }
 }
 
@@ -3252,6 +3384,30 @@ async fn assert_task_status(
     Ok(())
 }
 
+async fn assert_task_refresh_flags(
+    pool: &PgPool,
+    task_id: &str,
+    expected_refresh_balance: bool,
+    expected_refresh_power: bool,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT refresh_balance, refresh_power
+         FROM onchain_refresh_task
+         WHERE id = $1",
+    )
+    .bind(task_id)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(
+        row.get::<bool, _>("refresh_balance"),
+        expected_refresh_balance
+    );
+    assert_eq!(row.get::<bool, _>("refresh_power"), expected_refresh_power);
+
+    Ok(())
+}
+
 async fn idle_transaction_count(_pool: &PgPool) -> Result<i64, sqlx::Error> {
     let database_url = env::var("DEGOV_INDEXER_TEST_DATABASE_URL").map_err(|error| {
         sqlx::Error::Configuration(
@@ -3536,6 +3692,58 @@ async fn assert_contributor_overlay_with_scope(
     assert_eq!(row.get::<String, _>("source"), "live-onchain");
     assert_eq!(row.get::<String, _>("status"), "available");
     assert_eq!(row.get::<String, _>("anchor_block_number"), "12");
+
+    Ok(())
+}
+
+async fn assert_contributor_overlay_balance(
+    pool: &PgPool,
+    account: &str,
+    balance: &str,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT account, balance::TEXT AS balance
+         FROM degov_provisional_contributor_power_overlay
+         WHERE contract_set_id = 'demo-dao' AND account = $1",
+    )
+    .bind(account)
+    .fetch_one(pool)
+    .await?;
+
+    assert_eq!(row.get::<String, _>("account"), account);
+    assert_eq!(row.get::<String, _>("balance"), balance);
+
+    Ok(())
+}
+
+async fn seed_contributor_overlay_with_balance(
+    pool: &PgPool,
+    account: &str,
+    power: &str,
+    balance: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO degov_provisional_contributor_power_overlay (
+             id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+             account, power, balance, delegates_count_all, delegates_count_effective, source,
+             status, anchor_block_number, anchor_block_timestamp
+         )
+         VALUES (
+             $1, 'demo-dao', 46, 'demo-dao', $2, $3, $4, $5::NUMERIC(78, 0),
+             $6::NUMERIC(78, 0), 0, 0, 'live-onchain', 'available',
+             12::NUMERIC(78, 0), 12000::NUMERIC(78, 0)
+         )",
+    )
+    .bind(format!(
+        "live-onchain:demo-dao:46:{GOVERNOR}:{TOKEN}:{account}"
+    ))
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(account)
+    .bind(power)
+    .bind(balance)
+    .execute(pool)
+    .await?;
 
     Ok(())
 }

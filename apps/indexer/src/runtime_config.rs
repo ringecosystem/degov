@@ -10,9 +10,9 @@ use crate::{
     DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig, DatalensProvisionalFinality,
     DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet, IndexerCheckpointIdentity,
     IndexerRunnerContexts, IndexerRunnerOptions, MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE,
-    OnchainRefreshTickConfig, OnchainRefreshWorkerConfig, ProposalProjectionContext,
-    ProposalTimestampBackfillConfig, SecretString, TimelockProjectionContext,
-    TokenProjectionContext, VoteProjectionContext,
+    OnchainRefreshTaskScope, OnchainRefreshTickConfig, OnchainRefreshWorkerConfig,
+    ProposalProjectionContext, ProposalTimestampBackfillConfig, SecretString,
+    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
     store::postgres::DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
 };
 
@@ -591,6 +591,7 @@ impl IndexerContractSetRuntimeConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshRuntimeConfig {
     pub enabled: bool,
+    pub scope_mode: OnchainRefreshScopeMode,
     pub rpc_chains: BTreeMap<i32, OnchainRefreshRpcChainConfig>,
     pub batch_size: usize,
     pub apply_batch_size: usize,
@@ -607,6 +608,13 @@ pub struct OnchainRefreshRuntimeConfig {
     pub max_concurrency: usize,
     pub multicall_batch_size: usize,
     pub current_power_method: ChainReadMethod,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OnchainRefreshScopeMode {
+    Global,
+    ConfiguredContractSets,
+    AllModeConfiguredContractSets,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -643,6 +651,7 @@ impl OnchainRefreshRuntimeConfig {
     }
 
     fn from_env_with_enabled(enabled: bool) -> Result<Self> {
+        let scope_mode = load_onchain_refresh_scope_mode()?;
         let rpc_chains = load_onchain_refresh_rpc_chains(enabled)?;
         let batch_size = onchain_refresh_batch_size_from_env()?;
         let apply_batch_size = onchain_refresh_apply_batch_size_from_env()?;
@@ -697,6 +706,7 @@ impl OnchainRefreshRuntimeConfig {
 
         Ok(Self {
             enabled,
+            scope_mode,
             rpc_chains,
             batch_size,
             apply_batch_size,
@@ -735,6 +745,55 @@ impl OnchainRefreshRuntimeConfig {
             retry_delay: self.retry_delay,
             lock_owner: format!("degov-onchain-refresh-worker:{}", std::process::id()),
         }
+    }
+
+    pub fn configured_task_scopes(
+        &self,
+        indexer_runtime: &IndexerRuntimeConfig,
+        config: &DatalensConfig,
+    ) -> Result<Vec<OnchainRefreshTaskScope>> {
+        if matches!(self.scope_mode, OnchainRefreshScopeMode::Global) {
+            return Ok(Vec::new());
+        }
+
+        indexer_runtime
+            .configured_contract_sets(config)?
+            .into_iter()
+            .map(|contract_set| {
+                Ok(OnchainRefreshTaskScope {
+                    chain_id: contract_set.contract.chain_id,
+                    contract_set_id: contract_set.contract_set_id,
+                    dao_code: contract_set.dao_code,
+                })
+            })
+            .collect()
+    }
+}
+
+fn load_onchain_refresh_scope_mode() -> Result<OnchainRefreshScopeMode> {
+    if let Some(value) = optional_env("DEGOV_ONCHAIN_REFRESH_SCOPE_MODE")? {
+        return parse_onchain_refresh_scope_mode(&value);
+    }
+
+    if optional_env("DEGOV_INDEXER_CONTRACT_SET_MODE")?
+        .as_deref()
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("all"))
+    {
+        return Ok(OnchainRefreshScopeMode::AllModeConfiguredContractSets);
+    }
+
+    Ok(OnchainRefreshScopeMode::Global)
+}
+
+fn parse_onchain_refresh_scope_mode(value: &str) -> Result<OnchainRefreshScopeMode> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "global" => Ok(OnchainRefreshScopeMode::Global),
+        "configured-contract-sets" | "configured_contract_sets" => {
+            Ok(OnchainRefreshScopeMode::ConfiguredContractSets)
+        }
+        _ => bail!(
+            "DEGOV_ONCHAIN_REFRESH_SCOPE_MODE must be one of global or configured-contract-sets"
+        ),
     }
 }
 

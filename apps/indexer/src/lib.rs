@@ -140,7 +140,7 @@ pub use runner::{
 pub use runtime_config::{
     ContractSetConcurrencyLimit, GraphqlRuntimeConfig, IndexerContractSetMode,
     IndexerContractSetRuntimeConfig, IndexerRuntimeConfig, IndexerTargetHeight,
-    OnchainRefreshRuntimeConfig, ProvisionalRuntimeConfig, datalens_retry_config,
-    onchain_refresh_debounce_from_env, onchain_refresh_worker_enabled, parse_bool_env_value,
-    parse_i64_env_value, required_env,
+    OnchainRefreshRuntimeConfig, OnchainRefreshScopeMode, ProvisionalRuntimeConfig,
+    datalens_retry_config, onchain_refresh_debounce_from_env, onchain_refresh_worker_enabled,
+    parse_bool_env_value, parse_i64_env_value, required_env,
 };

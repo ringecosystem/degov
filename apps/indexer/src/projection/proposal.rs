@@ -1443,10 +1443,15 @@ impl ProposalWrite {
             merged.proposal_eta = self.proposal_eta.clone().or(merged.proposal_eta);
             merged.queue_ready_at = self.queue_ready_at.clone().or(merged.queue_ready_at);
             merged.queue_expires_at = self.queue_expires_at.clone().or(merged.queue_expires_at);
-            merged.block_interval = self.block_interval.clone().or(merged.block_interval);
             if merged.clock_mode == "blocknumber" && self.clock_mode != "blocknumber" {
                 merged.clock_mode = self.clock_mode.clone();
             }
+            merged.block_interval = merge_block_interval(
+                merged.chain_id,
+                &merged.clock_mode,
+                self.block_interval.clone(),
+                next.block_interval.clone(),
+            );
             if merged.quorum == "0" {
                 merged.quorum = self.quorum.clone();
             }
@@ -1507,10 +1512,15 @@ impl ProposalWrite {
                 .queue_expires_at
                 .clone()
                 .or(self.queue_expires_at.clone());
-            self.block_interval = next.block_interval.clone().or(self.block_interval.clone());
             if self.clock_mode == "blocknumber" && next.clock_mode != "blocknumber" {
                 self.clock_mode = next.clock_mode.clone();
             }
+            self.block_interval = merge_block_interval(
+                self.chain_id,
+                &self.clock_mode,
+                next.block_interval.clone(),
+                self.block_interval.clone(),
+            );
             if self.quorum == "0" {
                 self.quorum = next.quorum.clone();
             }
@@ -1759,6 +1769,21 @@ fn block_interval(chain_id: i32, clock_mode: &str) -> Option<String> {
     const ETHEREUM_MAINNET_CHAIN_ID: i32 = 1;
 
     (chain_id == ETHEREUM_MAINNET_CHAIN_ID && clock_mode == "blocknumber").then(|| "12".to_owned())
+}
+
+fn merge_block_interval(
+    chain_id: i32,
+    clock_mode: &str,
+    preferred: Option<String>,
+    fallback: Option<String>,
+) -> Option<String> {
+    (clock_mode == "blocknumber")
+        .then(|| {
+            preferred
+                .or(fallback)
+                .or_else(|| block_interval(chain_id, clock_mode))
+        })
+        .flatten()
 }
 
 fn timepoint_timestamp_for_proposal(proposal: &ProposalWrite, timepoint: &str) -> String {
