@@ -1604,12 +1604,14 @@ async fn increment_contributor_count_by(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO data_metric (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contributor_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contributor_count, member_count
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
-             contributor_count = COALESCE(data_metric.contributor_count, 0) + EXCLUDED.contributor_count",
+             contributor_count = COALESCE(data_metric.contributor_count, 0) + EXCLUDED.contributor_count,
+             member_count = COALESCE(data_metric.member_count, 0) + EXCLUDED.member_count",
     )
     .bind(data_metric_id(
         common.chain_id,

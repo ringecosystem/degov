@@ -472,7 +472,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
         Some("0"),
     )
     .await?;
-    seed_data_metric(&database.pool, "7").await?;
+    seed_data_metric_with_scope(&database.pool, "demo-dao", "7", 7, 7).await?;
     seed_final_delegate_with_scope(
         &database.pool,
         "demo-dao",
@@ -561,7 +561,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     );
     assert_completed_task(&database.pool, "task-one", 1).await?;
     assert_completed_task(&database.pool, "task-two", 2).await?;
-    assert_data_metric_counts(&database.pool, "16", 3, 1, 1, 7).await?;
+    assert_data_metric_counts(&database.pool, "16", 3, 1, 7, 7).await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_TWO, "0", "5", "5").await?;
     assert_balance_checkpoint(&database.pool, ACCOUNT_ONE, "4", "17", "13").await?;
@@ -1827,11 +1827,11 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
     );
     assert_eq!(
         data_metric_values_by_scope(&database.pool, SCOPE_ONE).await?,
-        ("11".to_owned(), 1)
+        ("11".to_owned(), Some(1))
     );
     assert_eq!(
         data_metric_values_by_scope(&database.pool, SCOPE_TWO).await?,
-        ("31".to_owned(), 1)
+        ("31".to_owned(), Some(1))
     );
     assert_table_count(&database.pool, "contributor", 2).await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
@@ -3284,7 +3284,7 @@ async fn assert_contributor_delegate_counts(
 async fn data_metric_values_by_scope(
     pool: &PgPool,
     contract_set_id: &str,
-) -> Result<(String, i32), sqlx::Error> {
+) -> Result<(String, Option<i32>), sqlx::Error> {
     let row = sqlx::query(
         "SELECT power_sum::TEXT AS power_sum, member_count
          FROM data_metric
@@ -3296,7 +3296,7 @@ async fn data_metric_values_by_scope(
 
     Ok((
         row.get::<String, _>("power_sum"),
-        row.get::<i32, _>("member_count"),
+        row.get::<Option<i32>, _>("member_count"),
     ))
 }
 
