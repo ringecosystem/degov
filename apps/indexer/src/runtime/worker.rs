@@ -92,7 +92,7 @@ pub async fn run_worker() -> Result<()> {
             poll_cache_hits += report.cache_hits;
             poll_debounced_tasks += report.debounced_tasks;
 
-            if report.claimed > 0 {
+            if onchain_refresh_report_consumes_poll_batch(&report) {
                 claimed_batches += 1;
             }
 
@@ -120,6 +120,10 @@ pub async fn run_worker() -> Result<()> {
 
         sleep(runtime.poll_interval).await;
     }
+}
+
+fn onchain_refresh_report_consumes_poll_batch(report: &OnchainRefreshRunReport) -> bool {
+    report.claimed > 0 || report.data_metric_refreshes > 0
 }
 
 async fn run_onchain_refresh_worker_batch<R>(
@@ -262,4 +266,36 @@ async fn wait_for_service_shutdown(service_name: &str) -> Result<()> {
     log::info!("{service_name} service is running; stop the process to shut it down");
     future::pending::<()>().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_onchain_refresh_report_consumes_poll_batch_for_data_metric_only_work() {
+        assert!(onchain_refresh_report_consumes_poll_batch(
+            &OnchainRefreshRunReport {
+                data_metric_refreshes: 1,
+                ..OnchainRefreshRunReport::default()
+            }
+        ));
+    }
+
+    #[test]
+    fn test_onchain_refresh_report_consumes_poll_batch_for_claimed_tasks() {
+        assert!(onchain_refresh_report_consumes_poll_batch(
+            &OnchainRefreshRunReport {
+                claimed: 1,
+                ..OnchainRefreshRunReport::default()
+            }
+        ));
+    }
+
+    #[test]
+    fn test_onchain_refresh_report_does_not_consume_poll_batch_when_empty() {
+        assert!(!onchain_refresh_report_consumes_poll_batch(
+            &OnchainRefreshRunReport::default()
+        ));
+    }
 }
