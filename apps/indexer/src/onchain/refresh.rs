@@ -1211,7 +1211,13 @@ where
                 SELECT id
                 FROM onchain_refresh_task
                 WHERE status = 'exhausted'
-                  AND COALESCE(error, '') ILIKE '%block not found%'
+                  AND (
+                    COALESCE(error, '') ILIKE '%block not found%'
+                    OR (
+                      COALESCE(error, '') ILIKE '%historical state%'
+                      AND COALESCE(error, '') ILIKE '%not available%'
+                    )
+                  )
                 LIMIT $1
                 FOR UPDATE SKIP LOCKED
              )
@@ -1244,7 +1250,13 @@ where
                 FROM onchain_refresh_task
                 WHERE status = 'failed'
                   AND attempts >= $1
-                  AND COALESCE(error, '') NOT ILIKE '%block not found%'
+                  AND NOT (
+                    COALESCE(error, '') ILIKE '%block not found%'
+                    OR (
+                      COALESCE(error, '') ILIKE '%historical state%'
+                      AND COALESCE(error, '') ILIKE '%not available%'
+                    )
+                  )
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
              )
@@ -1271,7 +1283,13 @@ where
                   AND attempts >= $1
                   AND locked_at IS NOT NULL
                   AND locked_at <= $2::NUMERIC(78, 0)
-                  AND COALESCE(error, '') NOT ILIKE '%block not found%'
+                  AND NOT (
+                    COALESCE(error, '') ILIKE '%block not found%'
+                    OR (
+                      COALESCE(error, '') ILIKE '%historical state%'
+                      AND COALESCE(error, '') ILIKE '%not available%'
+                    )
+                  )
                 LIMIT $3
                 FOR UPDATE SKIP LOCKED
              )
@@ -1300,7 +1318,9 @@ fn worker_deferred_drain_target(configured_batch_size: usize, claim_batch_size: 
 }
 
 fn is_retryable_onchain_refresh_task_error(error: &str) -> bool {
-    error.to_ascii_lowercase().contains("block not found")
+    let error = error.to_ascii_lowercase();
+    error.contains("block not found")
+        || (error.contains("historical state") && error.contains("not available"))
 }
 
 fn retryable_onchain_refresh_attempts(max_attempts: i32) -> i32 {
@@ -4936,6 +4956,15 @@ mod tests {
     #[test]
     fn test_onchain_refresh_block_not_found_does_not_exhaust() {
         let error = "multicall failed: block not found: 25378785";
+
+        assert!(is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_historical_state_gap_does_not_exhaust() {
+        let error = "multicall failed: historical state abc is not available";
 
         assert!(is_retryable_onchain_refresh_task_error(error));
         assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
