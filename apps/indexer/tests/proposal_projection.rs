@@ -1,10 +1,11 @@
 use degov_datalens_indexer::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadKey,
     ChainReadMethod, ChainReadResult, ChainReadValue, DecodedGovernorEvent,
-    GovernanceTokenStandard, NormalizedEvmLog, ProposalCreatedEvent, ProposalExtendedEvent,
-    ProposalIdEvent, ProposalProjectionContext, ProposalProjectionError, ProposalProjectionEvent,
-    ProposalProjectionRepository, ProposalQueuedEvent, ProposalStateWriteKind, ReadRequirement,
-    TimelockChangeEvent, project_proposal_events,
+    GovernanceTokenStandard, InMemoryProposalProjectionRepository, NormalizedEvmLog,
+    ProposalCreatedEvent, ProposalExtendedEvent, ProposalIdEvent, ProposalProjectionContext,
+    ProposalProjectionError, ProposalProjectionEvent, ProposalProjectionRepository,
+    ProposalQueuedEvent, ProposalStateWriteKind, ReadRequirement, TimelockChangeEvent,
+    project_proposal_events,
 };
 use serde_json::json;
 
@@ -273,6 +274,67 @@ fn test_project_proposal_created_uses_raw_log_id_and_timestamp_clock_enrichment(
         Some("1722633201000")
     );
     assert_eq!(active.end_block_timestamp.as_deref(), Some("1723238001000"));
+}
+
+#[test]
+fn test_project_proposal_created_clears_stub_block_interval_for_timestamp_clock() {
+    let mut repository = InMemoryProposalProjectionRepository::default();
+    let queued_batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: production_log(
+                "0003952206-5710e-000001",
+                3_952_206,
+                0,
+                1,
+                1_722_633_202_000,
+            ),
+            event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                proposal_id: "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb"
+                    .to_owned(),
+                eta_seconds: "1723239001".to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+    repository.apply(&queued_batch).expect("apply queued batch");
+
+    let created_batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: production_log(
+                "0003952205-5710e-000000",
+                3_952_205,
+                0,
+                0,
+                1_722_633_201_000,
+            ),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb"
+                    .to_owned(),
+                proposer: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_owned(),
+                targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+                values: vec!["0".to_owned()],
+                signatures: vec!["".to_owned()],
+                calldatas: vec!["0x".to_owned()],
+                vote_start: "1722633201".to_owned(),
+                vote_end: "1723238001".to_owned(),
+                description: "Production shaped proposal".to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+    repository
+        .apply(&created_batch)
+        .expect("apply created batch");
+
+    let proposal = repository
+        .proposals()
+        .values()
+        .next()
+        .expect("stored proposal");
+    assert_eq!(proposal.clock_mode, "timestamp");
+    assert_eq!(proposal.block_interval, None);
 }
 
 #[test]

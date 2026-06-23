@@ -87,9 +87,8 @@ pub fn plan_proposal_reference_field_updates(
         .filter_map(|candidate| {
             let key = normalize_proposal_id(&candidate.proposal_id)?;
             let reference = reference_by_proposal_id.get(&key)?;
-            if candidate.title == reference.title
-                && candidate.block_interval == reference.block_interval
-            {
+            let block_interval = reference_block_interval(candidate, reference);
+            if candidate.title == reference.title && candidate.block_interval == block_interval {
                 return None;
             }
 
@@ -98,10 +97,19 @@ pub fn plan_proposal_reference_field_updates(
                 previous_title: candidate.title.clone(),
                 previous_block_interval: candidate.block_interval.clone(),
                 title: reference.title.clone(),
-                block_interval: reference.block_interval.clone(),
+                block_interval,
             })
         })
         .collect()
+}
+
+fn reference_block_interval(
+    candidate: &ProposalReferenceFieldCandidate,
+    reference: &ReferenceProposalFields,
+) -> Option<String> {
+    (candidate.clock_mode == "blocknumber")
+        .then(|| reference.block_interval.clone())
+        .flatten()
 }
 
 pub fn normalize_proposal_id(value: &str) -> Option<String> {
@@ -299,12 +307,14 @@ mod tests {
                     proposal_id: "42".to_owned(),
                     title: "local title".to_owned(),
                     block_interval: Some("12".to_owned()),
+                    clock_mode: "blocknumber".to_owned(),
                 },
                 ProposalReferenceFieldCandidate {
                     id: "proposal:2".to_owned(),
                     proposal_id: "7".to_owned(),
                     title: "same title".to_owned(),
                     block_interval: None,
+                    clock_mode: "blocknumber".to_owned(),
                 },
             ],
             &[
@@ -329,6 +339,35 @@ mod tests {
                 previous_block_interval: Some("12".to_owned()),
                 title: "reference title".to_owned(),
                 block_interval: Some("13.333333333333334".to_owned()),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_plan_proposal_reference_field_updates_clears_timestamp_block_interval() {
+        let updates = plan_proposal_reference_field_updates(
+            &[ProposalReferenceFieldCandidate {
+                id: "proposal:1".to_owned(),
+                proposal_id: "42".to_owned(),
+                title: "local title".to_owned(),
+                block_interval: Some("12".to_owned()),
+                clock_mode: "timestamp".to_owned(),
+            }],
+            &[ReferenceProposalFields {
+                proposal_id: "0x2a".to_owned(),
+                title: "reference title".to_owned(),
+                block_interval: Some("13.333333333333334".to_owned()),
+            }],
+        );
+
+        assert_eq!(
+            updates,
+            vec![ProposalReferenceFieldUpdate {
+                id: "proposal:1".to_owned(),
+                previous_title: "local title".to_owned(),
+                previous_block_interval: Some("12".to_owned()),
+                title: "reference title".to_owned(),
+                block_interval: None,
             }]
         );
     }
