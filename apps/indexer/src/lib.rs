@@ -34,7 +34,7 @@ pub use crate::datalens::{
     DatalensQueryConcurrencyConfig, DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey,
     DatalensQueryErrorClass, DatalensWarmupEffectivenessAggregation,
     DatalensWarmupEffectivenessLogFields, classify_datalens_query_error,
-    datalens_selector_fingerprint,
+    datalens_query_error_is_current_head_race, datalens_selector_fingerprint,
 };
 pub use crate::decode::dao_event::{
     CallExecutedEvent, CallSaltEvent, CallScheduledEvent, DaoEventDecodeError, DecodedDaoEvent,

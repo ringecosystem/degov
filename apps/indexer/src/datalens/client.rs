@@ -445,6 +445,13 @@ pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
     DatalensQueryErrorClass::Other
 }
 
+pub fn datalens_query_error_is_current_head_race(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+
+    normalized.contains("invalid_input")
+        && normalized.contains("block range extends beyond current head block")
+}
+
 impl DatalensNativeClient {
     pub fn from_config(config: &DatalensConfig) -> Result<Self, DatalensError> {
         let retry_config = RetryConfig::default();
@@ -950,12 +957,21 @@ impl DatalensProvisionalLogQueryReader for DatalensNativeClient {
         self.query_provisional_with_transient_fallback(input)
             .map_err(|error| {
                 let error_message = error.to_string();
-                warn!(
-                    "Datalens provisional query failed error_class={} max_attempts={} error={}",
-                    classify_datalens_query_error(&error_message).as_str(),
-                    self.retry_config.max_attempts,
-                    error_message
-                );
+                if datalens_query_error_is_current_head_race(&error_message) {
+                    info!(
+                        "Datalens provisional query skipped current head race error_class={} max_attempts={} error={}",
+                        classify_datalens_query_error(&error_message).as_str(),
+                        self.retry_config.max_attempts,
+                        error_message
+                    );
+                } else {
+                    warn!(
+                        "Datalens provisional query failed error_class={} max_attempts={} error={}",
+                        classify_datalens_query_error(&error_message).as_str(),
+                        self.retry_config.max_attempts,
+                        error_message
+                    );
+                }
                 DatalensError::Query(error_message)
             })
     }

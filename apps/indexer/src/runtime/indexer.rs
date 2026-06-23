@@ -20,8 +20,8 @@ use crate::{
     PostgresProvisionalCleanupStore, PostgresProvisionalSegmentStore, ProvisionalWorker,
     ProvisionalWorkerOptions,
     checkpoint::configured_range_progress,
-    classify_datalens_query_error, datalens_retry_config, ensure_datalens_warmup_task,
-    onchain_refresh_debounce_from_env,
+    classify_datalens_query_error, datalens_query_error_is_current_head_race,
+    datalens_retry_config, ensure_datalens_warmup_task, onchain_refresh_debounce_from_env,
     provisional::{DatalensProvisionalSegmentStore, ProvisionalWorkerError},
     required_env,
 };
@@ -1158,9 +1158,26 @@ where
         to_block,
     };
     let mut worker = ProvisionalWorker::new(options, reader, store);
-    let report = worker
-        .run_once()
-        .map_err(provisional_worker_error_to_anyhow)?;
+    let report = match worker.run_once() {
+        Ok(report) => report,
+        Err(error) => {
+            if let Some(reason) = provisional_worker_current_head_race_reason(&error) {
+                log::info!(
+                    "Datalens provisional worker skipped current head race dao_code={} chain_id={} contract_set_id={} from_block={} to_block={} latest_height={} reason={}",
+                    runtime.dao_code,
+                    chain_id,
+                    runtime.checkpoint_contract_set_id,
+                    from_block,
+                    to_block,
+                    latest_height,
+                    reason
+                );
+                return Ok(None);
+            }
+
+            return Err(provisional_worker_error_to_anyhow(error));
+        }
+    };
 
     log::info!(
         "Datalens provisional worker completed dao_code={} chain_id={} contract_set_id={} finality={} range_start_block={} range_end_block={} segments_written={}",
@@ -1196,6 +1213,17 @@ fn provisional_tail_range(
 
 fn provisional_worker_error_to_anyhow(error: ProvisionalWorkerError) -> runtime_anyhow::Error {
     runtime_anyhow::Error::new(error)
+}
+
+fn provisional_worker_current_head_race_reason(error: &ProvisionalWorkerError) -> Option<&str> {
+    match error {
+        ProvisionalWorkerError::Datalens(DatalensError::Query(message))
+            if datalens_query_error_is_current_head_race(message) =>
+        {
+            Some(message)
+        }
+        _ => None,
+    }
 }
 
 fn build_projection_chain_tool(
@@ -1645,6 +1673,84 @@ mod tests {
         assert!(reader.finalities.is_empty());
         assert!(reader.ranges.is_empty());
         assert!(store.writes.is_empty());
+    }
+
+    #[test]
+    fn test_provisional_worker_runtime_ignores_current_head_race() {
+        let runtime = contract_runtime(ProvisionalRuntimeConfig {
+            enabled: true,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        });
+        let config = datalens_config();
+        let contracts = dao_contracts();
+        let mut reader = RecordingProvisionalReader::with_error(DatalensError::Query(
+            r#"Datalens HTTP 400 invalid_input: "block range extends beyond current head block""#
+                .to_owned(),
+        ));
+        let mut store = RecordingProvisionalSegmentStore::default();
+
+        let result = run_provisional_worker_once(
+            &runtime,
+            &config,
+            &contracts,
+            &runner_report_with_remaining_blocks(0),
+            &mut reader,
+            &mut store,
+        )
+        .expect("current head race skips provisional worker run");
+
+        assert_eq!(result, None);
+        assert_eq!(reader.latest_head_calls, 1);
+        assert_eq!(reader.ranges, vec![(21, 25)]);
+        assert_eq!(reader.finalities, vec![Some("safe_to_latest".to_owned())]);
+        assert!(store.writes.is_empty());
+    }
+
+    #[test]
+    fn test_provisional_worker_runtime_keeps_other_datalens_query_errors() {
+        let runtime = contract_runtime(ProvisionalRuntimeConfig {
+            enabled: true,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        });
+        let config = datalens_config();
+        let contracts = dao_contracts();
+        let mut reader = RecordingProvisionalReader::with_error(DatalensError::Query(
+            "Datalens HTTP 400 invalid_input: selector is invalid".to_owned(),
+        ));
+        let mut store = RecordingProvisionalSegmentStore::default();
+
+        let error = run_provisional_worker_once(
+            &runtime,
+            &config,
+            &contracts,
+            &runner_report_with_remaining_blocks(0),
+            &mut reader,
+            &mut store,
+        )
+        .expect_err("unrelated query errors still fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("provisional Datalens query error"),
+            "{error:#}"
+        );
+        assert_eq!(reader.latest_head_calls, 1);
+        assert_eq!(reader.ranges, vec![(21, 25)]);
+        assert!(store.writes.is_empty());
+    }
+
+    #[test]
+    fn test_datalens_query_error_is_current_head_race_is_narrow() {
+        assert!(datalens_query_error_is_current_head_race(
+            r#"Datalens HTTP 400 invalid_input: "block range extends beyond current head block""#
+        ));
+        assert!(!datalens_query_error_is_current_head_race(
+            "Datalens HTTP 400 invalid_input: selector is invalid"
+        ));
+        assert!(!datalens_query_error_is_current_head_race(
+            "Datalens HTTP 400 provider_timeout: block range extends beyond current head block"
+        ));
     }
 
     fn contract_runtime_for_chunk_budget(
@@ -2537,6 +2643,7 @@ mod tests {
         finalities: Vec<Option<String>>,
         latest_head_calls: usize,
         ranges: Vec<(u64, u64)>,
+        next_error: Option<DatalensError>,
         next_segments: Vec<DatalensProvisionalCacheSegment>,
     }
 
@@ -2546,7 +2653,15 @@ mod tests {
                 finalities: Vec::new(),
                 latest_head_calls: 0,
                 ranges: Vec::new(),
+                next_error: None,
                 next_segments,
+            }
+        }
+
+        fn with_error(next_error: DatalensError) -> Self {
+            Self {
+                next_error: Some(next_error),
+                ..Default::default()
             }
         }
     }
@@ -2575,6 +2690,9 @@ mod tests {
         ) -> std::result::Result<DatalensProvisionalLogQueryResult, DatalensError> {
             self.finalities.push(input.finality);
             self.ranges.push((input.range.start, input.range.end));
+            if let Some(error) = self.next_error.take() {
+                return Err(error);
+            }
             let segments = std::mem::take(&mut self.next_segments);
 
             Ok(DatalensProvisionalLogQueryResult {
