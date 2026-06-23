@@ -1330,7 +1330,7 @@ fn push_onchain_refresh_scope_filter<'args>(
             .push_bind(scope.chain_id)
             .push(" AND contract_set_id = ")
             .push_bind(&scope.contract_set_id)
-            .push(" AND dao_code IS NOT DISTINCT FROM ")
+            .push(" AND dao_code = ")
             .push_bind(&scope.dao_code);
     }
 }
@@ -4564,6 +4564,24 @@ mod tests {
         assert!(sql.contains("OFFSET 0"));
         assert!(!sql.contains("from_delegate = ANY"));
         assert!(!sql.contains("IS NOT DISTINCT FROM"));
+    }
+
+    #[test]
+    fn test_onchain_refresh_scope_filter_uses_indexable_dao_code_equality() {
+        let scope = OnchainRefreshTaskScope {
+            chain_id: 1,
+            contract_set_id: "contract-set".to_owned(),
+            dao_code: "dao".to_owned(),
+        };
+        let mut query = QueryBuilder::<Postgres>::new("SELECT 1 WHERE true");
+
+        push_onchain_refresh_scope_filter(&mut query, Some(&scope));
+        let sql = query.sql();
+
+        assert!(sql.contains("chain_id = "));
+        assert!(sql.contains("contract_set_id = "));
+        assert!(sql.contains("dao_code = "));
+        assert!(!sql.contains("dao_code IS NOT DISTINCT FROM"));
     }
 
     #[test]

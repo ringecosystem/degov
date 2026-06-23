@@ -845,7 +845,7 @@ fn push_deferred_onchain_refresh_scope_filter<'args>(
             .push_bind(scope.chain_id)
             .push(" AND contract_set_id = ")
             .push_bind(&scope.contract_set_id)
-            .push(" AND dao_code IS NOT DISTINCT FROM ")
+            .push(" AND dao_code = ")
             .push_bind(&scope.dao_code);
     }
 }
@@ -860,7 +860,7 @@ fn push_contributor_coverage_repair_scope_filter<'args>(
             .push_bind(scope.chain_id)
             .push(" AND contributor.contract_set_id = ")
             .push_bind(&scope.contract_set_id)
-            .push(" AND contributor.dao_code IS NOT DISTINCT FROM ")
+            .push(" AND contributor.dao_code = ")
             .push_bind(&scope.dao_code);
     }
 }
@@ -923,6 +923,27 @@ mod tests {
         let deduped = dedupe_onchain_refresh_tasks(&rows);
 
         assert_eq!(deduped.len(), rows.len());
+    }
+
+    #[test]
+    fn test_deferred_scope_filters_use_indexable_dao_code_equality() {
+        let scope = crate::OnchainRefreshTaskScope {
+            chain_id: 1,
+            contract_set_id: "contract-set".to_owned(),
+            dao_code: "demo-dao".to_owned(),
+        };
+        let mut deferred_query = QueryBuilder::<Postgres>::new("SELECT 1 WHERE true");
+        let mut repair_query = QueryBuilder::<Postgres>::new("SELECT 1 WHERE true");
+
+        push_deferred_onchain_refresh_scope_filter(&mut deferred_query, Some(&scope));
+        push_contributor_coverage_repair_scope_filter(&mut repair_query, Some(&scope));
+
+        let deferred_sql = deferred_query.sql();
+        let repair_sql = repair_query.sql();
+        assert!(deferred_sql.contains("dao_code = "));
+        assert!(!deferred_sql.contains("dao_code IS NOT DISTINCT FROM"));
+        assert!(repair_sql.contains("contributor.dao_code = "));
+        assert!(!repair_sql.contains("contributor.dao_code IS NOT DISTINCT FROM"));
     }
 
     #[test]
