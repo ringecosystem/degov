@@ -272,15 +272,15 @@ const UPSERT_PROPOSAL_SQL: &str = "INSERT INTO proposal (
             vote_start, vote_end, description, block_number, block_timestamp, transaction_hash,
             title, vote_start_timestamp, vote_end_timestamp, description_hash, proposal_snapshot,
             proposal_deadline, proposal_eta, queue_ready_at, queue_expires_at, block_interval,
-            clock_mode, quorum, decimals, timelock_address
+            counting_mode, clock_mode, quorum, decimals, timelock_address
          )
          VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
             $15::NUMERIC(78, 0), $16::NUMERIC(78, 0), $17, $18::NUMERIC(78, 0),
             $19::NUMERIC(78, 0), $20, $21, $22::NUMERIC(78, 0), $23::NUMERIC(78, 0),
             $24, $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27::NUMERIC(78, 0),
-            $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30, $31, $32::NUMERIC(78, 0),
-            $33::NUMERIC(78, 0), $34
+            $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30, $31, $32, $33::NUMERIC(78, 0),
+            $34::NUMERIC(78, 0), $35
          )
          ON CONFLICT (id) DO UPDATE
          SET proposer = CASE WHEN EXCLUDED.proposer = '' THEN proposal.proposer ELSE EXCLUDED.proposer END,
@@ -294,17 +294,24 @@ const UPSERT_PROPOSAL_SQL: &str = "INSERT INTO proposal (
              title = CASE WHEN EXCLUDED.title = '' THEN proposal.title ELSE EXCLUDED.title END,
              vote_start_timestamp = CASE WHEN EXCLUDED.vote_start_timestamp = 0::NUMERIC(78, 0) THEN proposal.vote_start_timestamp ELSE EXCLUDED.vote_start_timestamp END,
              vote_end_timestamp = CASE WHEN EXCLUDED.vote_end_timestamp = 0::NUMERIC(78, 0) THEN proposal.vote_end_timestamp ELSE EXCLUDED.vote_end_timestamp END,
-             description_hash = COALESCE(EXCLUDED.description_hash, proposal.description_hash),
+             description_hash = CASE
+                 WHEN EXCLUDED.proposer = '' AND EXCLUDED.description = '' THEN proposal.description_hash
+                 ELSE COALESCE(EXCLUDED.description_hash, proposal.description_hash)
+             END,
              proposal_snapshot = COALESCE(EXCLUDED.proposal_snapshot, proposal.proposal_snapshot),
              proposal_deadline = COALESCE(EXCLUDED.proposal_deadline, proposal.proposal_deadline),
              proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta),
              queue_ready_at = COALESCE(EXCLUDED.queue_ready_at, proposal.queue_ready_at),
              queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
+             counting_mode = COALESCE(EXCLUDED.counting_mode, proposal.counting_mode),
              block_interval = CASE
                  WHEN EXCLUDED.clock_mode <> 'blocknumber' THEN EXCLUDED.block_interval
                  ELSE COALESCE(EXCLUDED.block_interval, proposal.block_interval)
              END,
-             clock_mode = EXCLUDED.clock_mode,
+             clock_mode = CASE
+                 WHEN EXCLUDED.proposer = '' AND EXCLUDED.clock_mode = 'blocknumber' AND proposal.clock_mode <> 'blocknumber' THEN proposal.clock_mode
+                 ELSE EXCLUDED.clock_mode
+             END,
              quorum = CASE WHEN EXCLUDED.quorum = 0::NUMERIC(78, 0) THEN proposal.quorum ELSE EXCLUDED.quorum END,
              decimals = CASE WHEN EXCLUDED.decimals = 0::NUMERIC(78, 0) THEN proposal.decimals ELSE EXCLUDED.decimals END,
              timelock_address = COALESCE(EXCLUDED.timelock_address, proposal.timelock_address)";
@@ -352,6 +359,7 @@ async fn upsert_proposal(
     .bind(row.queue_ready_at.as_deref())
     .bind(row.queue_expires_at.as_deref())
     .bind(row.block_interval.as_deref())
+    .bind(row.counting_mode.as_deref())
     .bind(&row.clock_mode)
     .bind(&row.quorum)
     .bind(&row.decimals)

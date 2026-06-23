@@ -104,6 +104,14 @@ impl ProposalProjectionBatch {
                 }
                 continue;
             }
+            if result.key.method == ChainReadMethod::CountingMode {
+                if let Some(value) = chain_read_scalar(&result.value) {
+                    for proposal in &mut self.proposals {
+                        proposal.counting_mode = Some(value.clone());
+                    }
+                }
+                continue;
+            }
             if result.key.method == ChainReadMethod::Decimals {
                 if let Some(value) = chain_read_scalar(&result.value) {
                     for proposal in &mut self.proposals {
@@ -381,6 +389,7 @@ pub struct ProposalWrite {
     pub proposal_eta: Option<String>,
     pub queue_ready_at: Option<String>,
     pub queue_expires_at: Option<String>,
+    pub counting_mode: Option<String>,
     pub block_interval: Option<String>,
     pub clock_mode: String,
     pub quorum: String,
@@ -840,6 +849,12 @@ pub fn project_proposal_events(
                 );
                 builder.add_optional_enrichment_read(
                     context.contracts.governor.clone(),
+                    ChainReadMethod::CountingMode,
+                    vec![],
+                    crate::BlockReadMode::Safe,
+                );
+                builder.add_optional_enrichment_read(
+                    context.contracts.governor.clone(),
                     ChainReadMethod::Quorum,
                     vec![event.vote_start.clone()],
                     crate::BlockReadMode::Safe,
@@ -1270,6 +1285,7 @@ fn proposal_write(
         proposal_eta: Some("0".to_owned()),
         queue_ready_at: None,
         queue_expires_at: None,
+        counting_mode: None,
         block_interval,
         clock_mode,
         quorum: "0".to_owned(),
@@ -1416,6 +1432,7 @@ fn lifecycle_stub(common: &ProposalEventCommon, proposal_ref: &str, state: &str)
         proposal_eta: None,
         queue_ready_at: None,
         queue_expires_at: None,
+        counting_mode: None,
         block_interval,
         clock_mode,
         quorum: "0".to_owned(),
@@ -1443,6 +1460,7 @@ impl ProposalWrite {
             merged.proposal_eta = self.proposal_eta.clone().or(merged.proposal_eta);
             merged.queue_ready_at = self.queue_ready_at.clone().or(merged.queue_ready_at);
             merged.queue_expires_at = self.queue_expires_at.clone().or(merged.queue_expires_at);
+            merged.counting_mode = self.counting_mode.clone().or(merged.counting_mode);
             if merged.clock_mode == "blocknumber" && self.clock_mode != "blocknumber" {
                 merged.clock_mode = self.clock_mode.clone();
             }
@@ -1512,6 +1530,7 @@ impl ProposalWrite {
                 .queue_expires_at
                 .clone()
                 .or(self.queue_expires_at.clone());
+            self.counting_mode = next.counting_mode.clone().or(self.counting_mode.clone());
             if self.clock_mode == "blocknumber" && next.clock_mode != "blocknumber" {
                 self.clock_mode = next.clock_mode.clone();
             }

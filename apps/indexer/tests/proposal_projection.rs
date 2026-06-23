@@ -123,6 +123,7 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
             ChainReadMethod::Decimals,
             ChainReadMethod::BlockTimestamp,
             ChainReadMethod::BlockTimestamp,
+            ChainReadMethod::CountingMode,
             ChainReadMethod::ClockMode,
             ChainReadMethod::ProposalSnapshot,
             ChainReadMethod::ProposalDeadline,
@@ -373,6 +374,11 @@ fn test_project_proposal_created_estimates_blocknumber_vote_timestamps_from_prop
                 ChainReadValue::String("mode=blocknumber&from=default".to_owned()),
             ),
             read_result(
+                ChainReadMethod::CountingMode,
+                "",
+                ChainReadValue::String("support=bravo&quorum=for,abstain".to_owned()),
+            ),
+            read_result(
                 ChainReadMethod::BlockTimestamp,
                 "22339716",
                 ChainReadValue::Integer("1745507999000".to_owned()),
@@ -393,6 +399,10 @@ fn test_project_proposal_created_estimates_blocknumber_vote_timestamps_from_prop
     assert_eq!(proposal.vote_start_timestamp, "1745507999000");
     assert_eq!(proposal.vote_end_timestamp, "1746060503000");
     assert_eq!(proposal.block_interval.as_deref(), Some("12"));
+    assert_eq!(
+        proposal.counting_mode.as_deref(),
+        Some("support=bravo&quorum=for,abstain")
+    );
     assert_eq!(
         proposal.timelock_address.as_deref(),
         Some("0x2222222222222222222222222222222222222222")

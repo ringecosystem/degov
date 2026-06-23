@@ -2,7 +2,7 @@
   "proposal": {
     "chain_read_metrics": {
       "deduped_reads": 9,
-      "requested_reads": 17
+      "requested_reads": 18
     },
     "event_order": [
       "evm:1:10000:0x00000000000000000000000000000000000000000000000000000000000f4240:0:0",

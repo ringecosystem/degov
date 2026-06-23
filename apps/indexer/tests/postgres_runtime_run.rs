@@ -556,6 +556,113 @@ async fn test_postgres_proposal_upsert_replaces_estimated_vote_timestamps()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_lifecycle_stub_preserves_proposal_metadata() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let context = proposal_projection_context();
+    let mut created_batch = project_proposal_events(
+        &context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log("evm:1:2:0xtx20:0:0", 2, 0, 0),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "42".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["1".to_owned()],
+                signatures: vec!["upgrade()".to_owned()],
+                calldatas: vec!["0x1234".to_owned()],
+                vote_start: "1700000100".to_owned(),
+                vote_end: "1700000200".to_owned(),
+                description: "Proposal title\n\nProposal body".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("created projection failed: {error:?}"))?;
+    created_batch.apply_chain_read_execution_report(
+        &degov_datalens_indexer::ChainReadExecutionReport {
+            results: vec![
+                degov_datalens_indexer::ChainReadResult {
+                    key: degov_datalens_indexer::ChainReadKey {
+                        chain_id: 1,
+                        contract_address: GOVERNOR.to_owned(),
+                        method: ChainReadMethod::ClockMode,
+                        args: vec![],
+                        block_mode: degov_datalens_indexer::BlockReadMode::Safe,
+                    },
+                    value: degov_datalens_indexer::ChainReadValue::String(
+                        "mode=timestamp".to_owned(),
+                    ),
+                    read_index: 0,
+                },
+                degov_datalens_indexer::ChainReadResult {
+                    key: degov_datalens_indexer::ChainReadKey {
+                        chain_id: 1,
+                        contract_address: GOVERNOR.to_owned(),
+                        method: ChainReadMethod::CountingMode,
+                        args: vec![],
+                        block_mode: degov_datalens_indexer::BlockReadMode::Safe,
+                    },
+                    value: degov_datalens_indexer::ChainReadValue::String(
+                        "support=bravo&quorum=for,abstain".to_owned(),
+                    ),
+                    read_index: 1,
+                },
+            ],
+            ..degov_datalens_indexer::ChainReadExecutionReport::default()
+        },
+    );
+    let lifecycle_batch = project_proposal_events(
+        &context,
+        vec![ProposalProjectionEvent {
+            log: normalized_log("evm:1:3:0xtx30:0:0", 3, 0, 0),
+            event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                proposal_id: "42".to_owned(),
+                eta_seconds: "1700000300".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("lifecycle projection failed: {error:?}"))?;
+
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(created_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(lifecycle_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    let proposal = sqlx::query(
+        "SELECT description_hash, counting_mode, clock_mode
+         FROM proposal
+         WHERE contract_set_id = $1
+           AND proposal_id = '42'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        proposal.get::<String, _>("description_hash"),
+        "0xdd72be29728e0287a2e2e43aff8f556a9102534aea032522240e0cdbd7079e36"
+    );
+    assert_eq!(
+        proposal.get::<Option<String>, _>("counting_mode"),
+        Some("support=bravo&quorum=for,abstain".to_owned())
+    );
+    assert_eq!(proposal.get::<String, _>("clock_mode"), "timestamp");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_vote_totals_include_ref_proposal_id_fallback_groups()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
