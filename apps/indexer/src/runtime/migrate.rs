@@ -174,14 +174,15 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure pending onchain refresh ready claim index")?;
 
-    sqlx::query(
+    execute_concurrent_runtime_index(
+        connection,
+        "onchain_refresh_task_pending_scope_claim_idx",
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_pending_scope_claim_idx
          ON onchain_refresh_task (
             chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
          )
          WHERE status = 'pending'",
     )
-    .execute(&mut *connection)
     .await
     .context("ensure scoped pending onchain refresh claim index")?;
 
@@ -231,7 +232,9 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure failed onchain refresh ready status retry index")?;
 
-    sqlx::query(
+    execute_concurrent_runtime_index(
+        connection,
+        "onchain_refresh_task_failed_scope_retry_idx",
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_failed_scope_retry_idx
          ON onchain_refresh_task (
             chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
@@ -239,7 +242,6 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
          INCLUDE (attempts)
          WHERE status = 'failed' AND attempts < 3",
     )
-    .execute(&mut *connection)
     .await
     .context("ensure scoped failed onchain refresh retry index")?;
 
@@ -262,7 +264,9 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure processing onchain refresh lock retry index")?;
 
-    sqlx::query(
+    execute_concurrent_runtime_index(
+        connection,
+        "onchain_refresh_task_processing_scope_retry_idx",
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_processing_scope_retry_idx
          ON onchain_refresh_task (
             chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
@@ -270,7 +274,6 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
          INCLUDE (locked_at, attempts)
          WHERE status = 'processing' AND locked_at IS NOT NULL",
     )
-    .execute(&mut *connection)
     .await
     .context("ensure scoped processing onchain refresh retry index")?;
 
@@ -372,13 +375,14 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure contributor data metric scope index")?;
 
-    sqlx::query(
+    execute_concurrent_runtime_index(
+        connection,
+        "contributor_onchain_refresh_coverage_scope_idx",
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS contributor_onchain_refresh_coverage_scope_idx
          ON contributor (chain_id, contract_set_id, dao_code, block_number, id)
          INCLUDE (governor_address, token_address, block_timestamp, transaction_hash)
          WHERE dao_code IS NOT NULL",
     )
-    .execute(&mut *connection)
     .await
     .context("ensure contributor onchain refresh coverage index")?;
 
@@ -629,4 +633,43 @@ async fn drop_invalid_runtime_index(connection: &mut PgConnection, index_name: &
     }
 
     Ok(())
+}
+
+async fn execute_concurrent_runtime_index(
+    connection: &mut PgConnection,
+    index_name: &str,
+    statement: &str,
+) -> Result<()> {
+    const MAX_ATTEMPTS: usize = 3;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match sqlx::query(statement).execute(&mut *connection).await {
+            Ok(_) => return Ok(()),
+            Err(error) if attempt < MAX_ATTEMPTS && is_retryable_runtime_index_error(&error) => {
+                let delay = Duration::from_millis(250 * attempt as u64);
+                log::warn!(
+                    "DeGov runtime index retry scheduled index_name={} attempt={} max_attempts={} delay_ms={} error={}",
+                    index_name,
+                    attempt,
+                    MAX_ATTEMPTS,
+                    delay.as_millis(),
+                    error
+                );
+                drop_invalid_runtime_index(connection, index_name).await?;
+                tokio::time::sleep(delay).await;
+            }
+            Err(error) => return Err(error).with_context(|| format!("create {index_name}")),
+        }
+    }
+
+    Ok(())
+}
+
+fn is_retryable_runtime_index_error(error: &sqlx::Error) -> bool {
+    match error {
+        sqlx::Error::Database(database_error) => database_error
+            .code()
+            .is_some_and(|code| matches!(code.as_ref(), "40P01" | "40001")),
+        _ => false,
+    }
 }
