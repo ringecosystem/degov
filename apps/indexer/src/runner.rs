@@ -26,7 +26,7 @@ use crate::{
 };
 
 use crate::OnchainRefreshTickReport;
-use crate::checkpoint::configured_range_progress;
+use crate::checkpoint::{RestoredAdaptiveChunkState, configured_range_progress};
 
 #[derive(Clone, Debug)]
 pub struct IndexerRunnerOptions {
@@ -196,6 +196,30 @@ pub struct AdaptiveChunkSizer {
 
 impl AdaptiveChunkSizer {
     pub fn new(config: AdaptiveChunkSizerConfig) -> Result<Self, CheckpointError> {
+        Self::new_with_current_chunk_size(config, config.initial_chunk_size)
+    }
+
+    pub fn new_restored(
+        config: AdaptiveChunkSizerConfig,
+        restored: RestoredAdaptiveChunkState,
+    ) -> Result<Self, CheckpointError> {
+        let current_chunk_size = match restored
+            .current_chunk_size
+            .filter(|chunk_size| *chunk_size > 0)
+        {
+            Some(chunk_size) if chunk_size < config.min_chunk_size => config.min_chunk_size,
+            Some(chunk_size) if chunk_size > config.max_chunk_size => config.max_chunk_size,
+            Some(chunk_size) => chunk_size,
+            None => config.initial_chunk_size,
+        };
+
+        Self::new_with_current_chunk_size(config, current_chunk_size)
+    }
+
+    fn new_with_current_chunk_size(
+        config: AdaptiveChunkSizerConfig,
+        current_chunk_size: u32,
+    ) -> Result<Self, CheckpointError> {
         if config.initial_chunk_size == 0
             || config.max_chunk_size == 0
             || config.min_chunk_size == 0
@@ -220,6 +244,10 @@ impl AdaptiveChunkSizer {
         {
             return Err(CheckpointError::InvalidRangeLimit);
         }
+        if current_chunk_size < config.min_chunk_size || current_chunk_size > config.max_chunk_size
+        {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
         if config.stable_chunks_to_grow == 0 || config.unstable_chunks_to_shrink == 0 {
             return Err(CheckpointError::InvalidRangeLimit);
         }
@@ -229,7 +257,7 @@ impl AdaptiveChunkSizer {
 
         Ok(Self {
             config,
-            current_chunk_size: config.initial_chunk_size,
+            current_chunk_size,
             stable_chunks: 0,
             unstable_chunks: 0,
         })
@@ -586,6 +614,15 @@ pub trait IndexerRunnerTransaction {
         target_height: Option<i64>,
     ) -> Result<(), Self::Error>;
 
+    fn update_adaptive_chunk_state(
+        &mut self,
+        identity: &IndexerCheckpointIdentity,
+        _adaptive_sizing_decision: &AdaptiveChunkSizingDecision,
+    ) -> Result<(), Self::Error> {
+        let _ = identity;
+        Ok(())
+    }
+
     fn commit(self) -> Result<(), Self::Error>;
 
     fn rollback(self) -> Result<(), Self::Error>;
@@ -717,13 +754,6 @@ where
             .options
             .safe_height
             .map_or(target_height, |safe_height| safe_height.min(target_height));
-        let mut chunk_sizer = AdaptiveChunkSizer::new(
-            self.options
-                .adaptive_chunk_sizer
-                .capped_to_block_range_limit(
-                    self.options.datalens_config.query_limits.block_range_limit,
-                ),
-        )?;
         let mut progress_rate = ProgressRateEstimator::default();
         let mut chunks_processed = 0;
         let mut provider_limit_count_since_summary = 0;
@@ -731,6 +761,16 @@ where
             .store
             .read_or_create_checkpoint(&self.options.checkpoint_identity, self.options.start_block)
             .map_err(to_checkpoint_error)?;
+        let adaptive_chunk_sizer_config = self
+            .options
+            .adaptive_chunk_sizer
+            .capped_to_block_range_limit(
+                self.options.datalens_config.query_limits.block_range_limit,
+            );
+        let mut chunk_sizer = AdaptiveChunkSizer::new_restored(
+            adaptive_chunk_sizer_config,
+            checkpoint.restored_adaptive_chunk_state(),
+        )?;
         let checkpoint_choice = if checkpoint.next_block > self.options.start_block {
             "resume"
         } else {
@@ -899,6 +939,25 @@ where
                     error,
                 ));
             }
+            let local_processing_write_duration = processing.metrics.decode_duration
+                + processing.metrics.project_duration
+                + write_started_at.elapsed();
+            let sizing_decision = chunk_sizer.record_chunk(AdaptiveChunkFeedback {
+                returned_row_count: processing.metrics.returned_row_count,
+                local_processing_write_duration,
+                read_duration: processing.metrics.read_duration,
+                warmup_effectiveness: processing.metrics.warmup_effectiveness.clone(),
+            });
+            if let Err(error) = transaction
+                .update_adaptive_chunk_state(&self.options.checkpoint_identity, &sizing_decision)
+            {
+                return Err(rollback_transaction_after_error(
+                    &checkpoint_identity,
+                    range,
+                    transaction,
+                    error,
+                ));
+            }
             transaction
                 .commit()
                 .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
@@ -909,15 +968,6 @@ where
             self.run_onchain_refresh_tick(range.to_block);
 
             chunks_processed += 1;
-            let local_processing_write_duration = processing.metrics.decode_duration
-                + processing.metrics.project_duration
-                + write_duration;
-            let sizing_decision = chunk_sizer.record_chunk(AdaptiveChunkFeedback {
-                returned_row_count: processing.metrics.returned_row_count,
-                local_processing_write_duration,
-                read_duration: processing.metrics.read_duration,
-                warmup_effectiveness: processing.metrics.warmup_effectiveness.clone(),
-            });
             progress_rate.record(range.to_block, Instant::now());
             let chunk_progress = progress(
                 Some(range.to_block),
@@ -1695,6 +1745,7 @@ pub struct InMemoryIndexerRunnerStore {
     proposal_timestamp_backfill_requests: Vec<(i64, usize)>,
     apply_failures: VecDeque<String>,
     commit_failures: VecDeque<String>,
+    checkpoint_advance_delay: Option<Duration>,
 }
 
 impl InMemoryIndexerRunnerStore {
@@ -1713,6 +1764,7 @@ impl InMemoryIndexerRunnerStore {
             proposal_timestamp_backfill_requests: Vec::new(),
             apply_failures: VecDeque::new(),
             commit_failures: VecDeque::new(),
+            checkpoint_advance_delay: None,
         }
     }
 
@@ -1753,6 +1805,10 @@ impl InMemoryIndexerRunnerStore {
 
     pub fn fail_next_commit(&mut self, message: impl Into<String>) {
         self.commit_failures.push_back(message.into());
+    }
+
+    pub fn delay_next_checkpoint_advance(&mut self, duration: Duration) {
+        self.checkpoint_advance_delay = Some(duration);
     }
 
     pub fn rewind_next_block_for_replay(&mut self, next_block: i64) {
@@ -1921,28 +1977,27 @@ impl IndexerRunnerTransaction for InMemoryIndexerRunnerTransaction<'_> {
         processed_height: i64,
         target_height: Option<i64>,
     ) -> Result<(), Self::Error> {
+        self.advance_checkpoint_inner(identity, processed_height, target_height)
+    }
+
+    fn update_adaptive_chunk_state(
+        &mut self,
+        identity: &IndexerCheckpointIdentity,
+        adaptive_sizing_decision: &AdaptiveChunkSizingDecision,
+    ) -> Result<(), Self::Error> {
         let mut checkpoint = self
-            .store
-            .checkpoint
-            .clone()
+            .staged_checkpoint
+            .take()
+            .or_else(|| self.store.checkpoint.clone())
             .ok_or_else(|| InMemoryIndexerRunnerStoreError::new("checkpoint is missing"))?;
         if checkpoint.identity != *identity {
             return Err(InMemoryIndexerRunnerStoreError::new(
                 "checkpoint identity mismatch",
             ));
         }
-        checkpoint.processed_height = Some(
-            checkpoint
-                .processed_height
-                .map_or(processed_height, |current| current.max(processed_height)),
-        );
-        checkpoint.next_block = checkpoint.next_block.max(processed_height + 1);
-        checkpoint.target_height = match (checkpoint.target_height, target_height) {
-            (Some(current), Some(next)) => Some(current.max(next)),
-            (None, Some(next)) => Some(next),
-            (current, None) => current,
-        };
-        checkpoint.last_error = None;
+        checkpoint.adaptive_chunk_size = Some(adaptive_sizing_decision.current_chunk_size);
+        checkpoint.adaptive_chunk_reason = Some(adaptive_sizing_decision.reason.to_string());
+        checkpoint.adaptive_chunk_updated_at = Some("in-memory".to_owned());
         self.staged_checkpoint = Some(checkpoint);
         Ok(())
     }
@@ -1976,12 +2031,52 @@ impl IndexerRunnerTransaction for InMemoryIndexerRunnerTransaction<'_> {
     }
 }
 
+impl InMemoryIndexerRunnerTransaction<'_> {
+    fn advance_checkpoint_inner(
+        &mut self,
+        identity: &IndexerCheckpointIdentity,
+        processed_height: i64,
+        target_height: Option<i64>,
+    ) -> Result<(), InMemoryIndexerRunnerStoreError> {
+        let mut checkpoint = self
+            .store
+            .checkpoint
+            .clone()
+            .ok_or_else(|| InMemoryIndexerRunnerStoreError::new("checkpoint is missing"))?;
+        if checkpoint.identity != *identity {
+            return Err(InMemoryIndexerRunnerStoreError::new(
+                "checkpoint identity mismatch",
+            ));
+        }
+        if let Some(delay) = self.store.checkpoint_advance_delay.take() {
+            std::thread::sleep(delay);
+        }
+        checkpoint.processed_height = Some(
+            checkpoint
+                .processed_height
+                .map_or(processed_height, |current| current.max(processed_height)),
+        );
+        checkpoint.next_block = checkpoint.next_block.max(processed_height + 1);
+        checkpoint.target_height = match (checkpoint.target_height, target_height) {
+            (Some(current), Some(next)) => Some(current.max(next)),
+            (None, Some(next)) => Some(next),
+            (current, None) => current,
+        };
+        checkpoint.last_error = None;
+        self.staged_checkpoint = Some(checkpoint);
+        Ok(())
+    }
+}
+
 fn checkpoint(identity: IndexerCheckpointIdentity, start_block: i64) -> IndexerCheckpoint {
     IndexerCheckpoint {
         identity,
         next_block: start_block,
         processed_height: None,
         target_height: None,
+        adaptive_chunk_size: None,
+        adaptive_chunk_reason: None,
+        adaptive_chunk_updated_at: None,
         updated_at: "in-memory".to_owned(),
         last_error: None,
         lock_owner: None,

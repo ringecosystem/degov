@@ -4,7 +4,7 @@ use degov_datalens_indexer::checkpoint::configured_range_progress;
 use degov_datalens_indexer::{
     AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig, CheckpointBlockRange,
     DatalensWarmupEffectivenessAggregation, IndexerCheckpoint, IndexerCheckpointIdentity,
-    plan_next_checkpoint_range,
+    RestoredAdaptiveChunkState, plan_next_checkpoint_range,
 };
 
 fn checkpoint(next_block: i64) -> IndexerCheckpoint {
@@ -19,6 +19,9 @@ fn checkpoint(next_block: i64) -> IndexerCheckpoint {
         next_block,
         processed_height: None,
         target_height: None,
+        adaptive_chunk_size: None,
+        adaptive_chunk_reason: None,
+        adaptive_chunk_updated_at: None,
         updated_at: "1970-01-01 00:00:00+00".to_owned(),
         last_error: None,
         lock_owner: None,
@@ -170,6 +173,57 @@ fn test_adaptive_chunk_sizer_plans_contiguous_checkpoint_ranges_after_resize() {
             to_block: 19,
         }
     );
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_restores_checkpoint_size_clamped_to_current_config() {
+    let config = AdaptiveChunkSizerConfig {
+        initial_chunk_size: 100,
+        max_chunk_size: 500,
+        min_chunk_size: 50,
+        ..AdaptiveChunkSizerConfig::for_max_chunk_size(500)
+    };
+    let mut checkpoint = checkpoint(10);
+    checkpoint.adaptive_chunk_size = Some(900);
+
+    let restored =
+        AdaptiveChunkSizer::new_restored(config, checkpoint.restored_adaptive_chunk_state())
+            .expect("valid adaptive chunk config");
+
+    assert_eq!(restored.current_chunk_size(), 500);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_restores_invalid_checkpoint_size_from_initial() {
+    let config = AdaptiveChunkSizerConfig {
+        initial_chunk_size: 100,
+        max_chunk_size: 500,
+        min_chunk_size: 50,
+        ..AdaptiveChunkSizerConfig::for_max_chunk_size(500)
+    };
+
+    let restored =
+        AdaptiveChunkSizer::new_restored(config, RestoredAdaptiveChunkState::new(Some(0)))
+            .expect("valid adaptive chunk config");
+
+    assert_eq!(restored.current_chunk_size(), 100);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_restored_invalid_config_returns_error_without_panic() {
+    let config = AdaptiveChunkSizerConfig {
+        initial_chunk_size: 100,
+        max_chunk_size: 50,
+        min_chunk_size: 100,
+        ..AdaptiveChunkSizerConfig::for_max_chunk_size(100)
+    };
+
+    let result = std::panic::catch_unwind(|| {
+        AdaptiveChunkSizer::new_restored(config, RestoredAdaptiveChunkState::new(Some(75)))
+    });
+
+    assert!(result.is_ok());
+    assert!(result.expect("no panic").is_err());
 }
 
 fn adaptive_feedback(

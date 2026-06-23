@@ -107,7 +107,7 @@ pub use crate::store::postgres::{
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
-    plan_next_checkpoint_range,
+    RestoredAdaptiveChunkState, plan_next_checkpoint_range,
 };
 pub use config::{
     ChainFamily, ChainIdentityConfig, DatalensChainConfig, DatalensConfig,
@@ -130,8 +130,9 @@ pub use provisional::{
     plan_provisional_segment_cleanup,
 };
 pub use runner::{
-    AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig, AdaptiveChunkSizingReason,
-    DaoEventDecoder, InMemoryIndexerRunnerStore, IndexerEventDecoder, IndexerOnchainRefreshTick,
+    AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig,
+    AdaptiveChunkSizingDecision, AdaptiveChunkSizingReason, DaoEventDecoder,
+    InMemoryIndexerRunnerStore, IndexerEventDecoder, IndexerOnchainRefreshTick,
     IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts, IndexerRunnerOptions,
     IndexerRunnerReport, IndexerRunnerStore, IndexerRunnerTransaction,
     ProposalTimestampBackfillConfig, page_rows,

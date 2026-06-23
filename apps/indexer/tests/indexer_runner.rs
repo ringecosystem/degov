@@ -482,6 +482,78 @@ fn test_runner_splits_two_block_transient_failure_to_single_block() {
 }
 
 #[test]
+fn test_runner_restores_adaptive_chunk_size_from_checkpoint_between_passes() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 4);
+    options.adaptive_chunk_sizer.initial_chunk_size = 1;
+    options.adaptive_chunk_sizer.min_chunk_size = 1;
+    options.adaptive_chunk_sizer.stable_chunks_to_grow = 1;
+    let store = InMemoryIndexerRunnerStore::new(identity(), 1);
+    let mut runner = runner_with_store(vec![vec![]], ScriptedDecoder, options, store);
+    runner.request_shutdown_after_chunks(1);
+
+    let first_report = runner.run_to_target(8).expect("first run succeeds");
+    runner.request_shutdown_after_chunks(1);
+    let second_report = runner.run_to_target(8).expect("second run succeeds");
+
+    let checkpoint = runner.store().checkpoint().expect("checkpoint");
+    assert_eq!(first_report.last_progress.processed_height, Some(1));
+    assert_eq!(second_report.last_progress.processed_height, Some(3));
+    assert_eq!(checkpoint.next_block, 4);
+    assert_eq!(checkpoint.adaptive_chunk_size, Some(4));
+    assert_eq!(
+        checkpoint.adaptive_chunk_reason.as_deref(),
+        Some("stable_fast_chunk")
+    );
+    assert!(checkpoint.adaptive_chunk_updated_at.is_some());
+}
+
+#[test]
+fn test_runner_does_not_persist_adaptive_chunk_size_when_commit_fails() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 4);
+    options.adaptive_chunk_sizer.initial_chunk_size = 1;
+    options.adaptive_chunk_sizer.min_chunk_size = 1;
+    options.adaptive_chunk_sizer.stable_chunks_to_grow = 1;
+    let mut runner = runner_with_decoder(vec![vec![]], ScriptedDecoder, options);
+    runner
+        .store_mut()
+        .fail_next_commit("projection write failed");
+
+    runner.run_to_target(4).expect_err("commit fails");
+
+    let checkpoint = runner.store().checkpoint().expect("checkpoint");
+    assert_eq!(checkpoint.next_block, 1);
+    assert_eq!(checkpoint.adaptive_chunk_size, None);
+    assert_eq!(checkpoint.adaptive_chunk_reason, None);
+    assert_eq!(checkpoint.adaptive_chunk_updated_at, None);
+}
+
+#[test]
+fn test_runner_adaptive_decision_includes_checkpoint_advance_duration() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 4);
+    options.adaptive_chunk_sizer.initial_chunk_size = 4;
+    options.adaptive_chunk_sizer.min_chunk_size = 1;
+    options
+        .adaptive_chunk_sizer
+        .local_processing_shrink_threshold = Duration::from_millis(20);
+    let mut runner = runner_with_decoder(vec![vec![]], ScriptedDecoder, options);
+    runner
+        .store_mut()
+        .delay_next_checkpoint_advance(Duration::from_millis(30));
+
+    runner.run_to_target(4).expect("runner succeeds");
+
+    let checkpoint = runner.store().checkpoint().expect("checkpoint");
+    assert_eq!(checkpoint.adaptive_chunk_size, Some(2));
+    assert_eq!(
+        checkpoint.adaptive_chunk_reason.as_deref(),
+        Some("slow_local_processing")
+    );
+}
+
+#[test]
 fn test_runner_keeps_single_block_transient_failure_as_recoverable_pass_error() {
     let mut options = options();
     set_block_range_limit(&mut options, 1);

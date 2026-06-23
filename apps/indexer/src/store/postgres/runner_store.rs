@@ -8,7 +8,7 @@ use std::{
 use sqlx::{PgPool, Postgres, QueryBuilder, Row, Transaction};
 
 use crate::{
-    CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite,
+    AdaptiveChunkSizingDecision, CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite,
     DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, DecodedTimelockEvent,
     DelegateChangedWrite, DelegateRollingWrite, DelegateVotesChangedWrite,
     GovernanceParameterCheckpointWrite, GovernanceTokenStandard, GovernorParameterChangeWrite,
@@ -180,6 +180,24 @@ impl IndexerRunnerTransaction for PostgresIndexerRunnerTransaction<'_> {
             identity,
             processed_height,
             target_height,
+        ))
+        .map_err(PostgresIndexerRunnerStoreError::from)
+    }
+
+    fn update_adaptive_chunk_state(
+        &mut self,
+        identity: &IndexerCheckpointIdentity,
+        adaptive_sizing_decision: &AdaptiveChunkSizingDecision,
+    ) -> Result<(), Self::Error> {
+        let transaction = self
+            .transaction
+            .as_mut()
+            .ok_or_else(|| PostgresIndexerRunnerStoreError::new("transaction is closed"))?;
+
+        block_on_runtime(self.checkpoint_repository.update_adaptive_chunk_state(
+            transaction,
+            identity,
+            adaptive_sizing_decision,
         ))
         .map_err(PostgresIndexerRunnerStoreError::from)
     }
