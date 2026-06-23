@@ -37,6 +37,7 @@ const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 200;
 const MAX_ONCHAIN_REFRESH_DATA_METRIC_REFRESH_ROWS: usize = 200;
 const ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS: usize = 3;
 const ONCHAIN_REFRESH_APPLY_RETRY_BASE_DELAY_MS: u64 = 50;
+const MULTICALL_DIRECT_FALLBACK_MAX_ATTEMPTS: usize = 3;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
 type OnchainRefreshApplyFuture<'a, T> =
     Pin<Box<dyn Future<Output = Result<T, OnchainRefreshWorkerError>> + 'a>>;
@@ -2171,6 +2172,7 @@ impl ChainTool for EvmRpcChainTool {
         let mut failures = PartialChainReadFailureReport::default();
         let mut cache_hits = 0;
         let mut executed_rpc_calls = 0;
+        let mut retries = 0;
         let mut covered_reads = vec![false; plan.reads.len()];
 
         let max_concurrency = plan.execution.max_concurrency.max(1);
@@ -2198,6 +2200,7 @@ impl ChainTool for EvmRpcChainTool {
                 };
                 cache_hits += group_report.cache_hits;
                 executed_rpc_calls += group_report.executed_rpc_calls;
+                retries += group_report.retries;
                 for read_index in group_report.covered_read_indexes {
                     if let Some(covered) = covered_reads.get_mut(read_index) {
                         *covered = true;
@@ -2241,6 +2244,7 @@ impl ChainTool for EvmRpcChainTool {
                 multicall_batch_size: plan.metrics.multicall_batch_size,
                 failures: failures.required_failures.len() + failures.optional_failures.len(),
                 cache_hits,
+                retries,
                 ..ChainReadMetrics::default()
             },
             results,
@@ -2455,24 +2459,93 @@ impl EvmRpcChainTool {
         report: &mut EvmRpcGroupExecutionReport,
         multicall_error: String,
     ) {
+        let retry_direct_fallback =
+            should_try_direct_fallback_after_multicall_error(&multicall_error);
         for call in calls {
             report.covered_read_indexes.push(call.read_index);
-            match self.execute_read(call.read_index, &call.read) {
-                Ok((result, cache_hit)) => {
+            match self.execute_multicall_direct_fallback_read(
+                call.read_index,
+                &call.read,
+                retry_direct_fallback,
+            ) {
+                Ok(DirectFallbackReadOutcome {
+                    result,
+                    cache_hit,
+                    rpc_calls,
+                    retries,
+                }) => {
                     report.cache_hits += usize::from(cache_hit);
-                    report.executed_rpc_calls += usize::from(!cache_hit);
+                    report.executed_rpc_calls += rpc_calls;
+                    report.retries += retries;
                     report.results.push(result);
                 }
-                Err(message) => report.failures.push(ReadFailure {
-                    read_index: call.read_index,
-                    message: format!(
-                        "multicall failed: {multicall_error}; fallback failed: {message}"
-                    ),
-                    kind: ChainReadFailureKind::Transport,
-                    retryable: true,
-                }),
+                Err(outcome) => {
+                    report.executed_rpc_calls += outcome.rpc_calls;
+                    report.retries += outcome.retries;
+                    report.failures.push(ReadFailure {
+                        read_index: call.read_index,
+                        message: format!(
+                            "multicall failed: {multicall_error}; fallback failed: {}",
+                            outcome.message
+                        ),
+                        kind: ChainReadFailureKind::Transport,
+                        retryable: true,
+                    });
+                }
             }
         }
+    }
+
+    fn execute_multicall_direct_fallback_read(
+        &self,
+        read_index: usize,
+        read: &crate::ChainReadRequest,
+        retry: bool,
+    ) -> Result<DirectFallbackReadOutcome, DirectFallbackReadFailure> {
+        if !retry {
+            return self
+                .execute_read(read_index, read)
+                .map(|(result, cache_hit)| DirectFallbackReadOutcome {
+                    result,
+                    cache_hit,
+                    rpc_calls: usize::from(!cache_hit),
+                    retries: 0,
+                })
+                .map_err(|message| DirectFallbackReadFailure {
+                    message,
+                    rpc_calls: 0,
+                    retries: 0,
+                });
+        }
+
+        let mut last_error = None;
+        let mut failed_rpc_calls = 0;
+        for attempt in 0..MULTICALL_DIRECT_FALLBACK_MAX_ATTEMPTS {
+            match self.execute_read(read_index, read) {
+                Ok((result, cache_hit)) => {
+                    return Ok(DirectFallbackReadOutcome {
+                        result,
+                        cache_hit,
+                        rpc_calls: failed_rpc_calls + usize::from(!cache_hit),
+                        retries: attempt,
+                    });
+                }
+                Err(message) => {
+                    let should_retry = should_retry_multicall_direct_fallback_error(&message);
+                    last_error = Some(message);
+                    failed_rpc_calls += 1;
+                    if !should_retry || attempt + 1 >= MULTICALL_DIRECT_FALLBACK_MAX_ATTEMPTS {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Err(DirectFallbackReadFailure {
+            message: last_error.unwrap_or_else(|| "direct fallback failed".to_owned()),
+            rpc_calls: failed_rpc_calls,
+            retries: failed_rpc_calls.saturating_sub(1),
+        })
     }
 
     fn execute_read(
@@ -2831,6 +2904,16 @@ fn should_try_direct_fallback_after_multicall_error(message: &str) -> bool {
     message.to_ascii_lowercase().contains("out of gas")
 }
 
+fn should_retry_multicall_direct_fallback_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("error sending request")
+        || message.contains("timed out")
+        || message.contains("timeout")
+        || message.contains("transport")
+        || message.contains("connection")
+        || message.contains("http 5")
+}
+
 fn is_reverted_balance_read_failure(messages: &[String]) -> bool {
     !messages.is_empty()
         && messages.iter().all(|message| {
@@ -2880,6 +2963,7 @@ struct EvmRpcGroupExecutionReport {
     covered_read_indexes: Vec<usize>,
     cache_hits: usize,
     executed_rpc_calls: usize,
+    retries: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -2888,6 +2972,19 @@ struct ReadFailure {
     message: String,
     kind: ChainReadFailureKind,
     retryable: bool,
+}
+
+struct DirectFallbackReadOutcome {
+    result: ChainReadResult,
+    cache_hit: bool,
+    rpc_calls: usize,
+    retries: usize,
+}
+
+struct DirectFallbackReadFailure {
+    message: String,
+    rpc_calls: usize,
+    retries: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -5070,6 +5167,99 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    struct RetryingMulticallFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+        direct_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for RetryingMulticallFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            let direct_call_count = self.direct_call_count.fetch_add(1, Ordering::SeqCst);
+            if direct_call_count == 0 {
+                return Err("transport unavailable".to_owned());
+            }
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Uint(U256::from(direct_call_count + 200))]))
+            ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RevertingMulticallFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for RevertingMulticallFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            Err("execution reverted: 0x".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RateLimitedMulticallFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for RateLimitedMulticallFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            Err("RPC eth_call failed with HTTP 429".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
     struct RevertingBalanceZeroPowerRefreshMockEvmRpcClient;
 
     impl EvmRpcClient for RevertingBalanceZeroPowerRefreshMockEvmRpcClient {
@@ -5522,6 +5712,109 @@ mod tests {
             report.results[1].value,
             ChainReadValue::Integer("202".to_owned())
         );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_retries_direct_fallback_after_multicall_out_of_gas_transport_error()
+    {
+        let rpc = RetryingMulticallFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("direct fallback read retries after transient transport error");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(report.metrics.executed_rpc_calls, 2);
+        assert_eq!(report.metrics.retries, 1);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("201".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_retry_direct_fallback_revert_after_multicall_out_of_gas() {
+        let rpc = RevertingMulticallFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("direct fallback revert fails without retry");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(failures.required_failures[0].message.contains("reverted"));
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_retry_direct_fallback_rate_limit_after_multicall_out_of_gas()
+     {
+        let rpc = RateLimitedMulticallFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("direct fallback rate limit fails without retry");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(failures.required_failures[0].message.contains("HTTP 429"));
     }
 
     #[test]
