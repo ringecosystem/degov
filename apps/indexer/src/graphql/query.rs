@@ -252,7 +252,7 @@ pub(super) async fn query_data_metrics(
           power_sum::text AS power_sum,
           COALESCE(contributor_count, member_count) AS contributor_count,
           COALESCE(holders_count, member_count) AS holders_count,
-          COALESCE(holders_count, member_count) AS member_count
+          COALESCE(member_count, holders_count, contributor_count) AS member_count
         FROM data_metric
         "#,
     );

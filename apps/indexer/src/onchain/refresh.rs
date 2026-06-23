@@ -3986,20 +3986,14 @@ async fn refresh_data_metric_scope(
                     ELSE count(*)
                 END
             )::INTEGER,
-            (
-                CASE
-                    WHEN count(balance) > 0 THEN count(*) FILTER (WHERE balance > 0)
-                    ELSE count(*)
-                END
-            )::INTEGER
+            count(*)::INTEGER
          FROM contributor
          WHERE contract_set_id = $2 AND chain_id = $3 AND governor_address = $5 AND dao_code IS NOT DISTINCT FROM $4
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              power_sum = EXCLUDED.power_sum,
              contributor_count = EXCLUDED.contributor_count,
-             holders_count = EXCLUDED.holders_count,
-             member_count = EXCLUDED.member_count",
+             holders_count = EXCLUDED.holders_count",
     )
     .bind(metric_id)
     .bind(&scope.contract_set_id)

@@ -262,7 +262,7 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     assert_eq!(data["dataMetrics"][0]["powerSum"], "150");
     assert_eq!(data["dataMetrics"][0]["contributorCount"], 3);
     assert_eq!(data["dataMetrics"][0]["holdersCount"], 2);
-    assert_eq!(data["dataMetrics"][0]["memberCount"], 2);
+    assert_eq!(data["dataMetrics"][0]["memberCount"], 9);
     assert_eq!(data["dataMetricsPage"]["totalCount"], 1);
     assert_eq!(data["dataMetricsPage"]["offset"], 2);
     assert_eq!(data["dataMetricsPage"]["limit"], 0);
@@ -478,7 +478,7 @@ async fn test_graphql_data_metrics_parity_fields_filters_and_ordering() -> Resul
     assert_eq!(data["globalMetric"][0]["powerSum"], "150");
     assert_eq!(data["globalMetric"][0]["contributorCount"], 3);
     assert_eq!(data["globalMetric"][0]["holdersCount"], 2);
-    assert_eq!(data["globalMetric"][0]["memberCount"], 2);
+    assert_eq!(data["globalMetric"][0]["memberCount"], 9);
 
     database.cleanup().await?;
 
@@ -1530,9 +1530,9 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
           votes_weight_abstain_sum, power_sum, contributor_count, holders_count, member_count, proposals_count
         ) VALUES
-          ('global', $1, 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 3, 2, 2, 2),
-          ('0000000800-proposal', $1, 1135, 'lisk-dao', '0xgovernor', 0, 0, 0, 0, 0, 0, 150, 3, 2, 2, 1),
-          ('0000000805-vote', $1, 1135, 'lisk-dao', '0xgovernor', 1, 0, 1, 100, 0, 0, 150, 3, 2, 2, 0)
+          ('global', $1, 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 3, 2, 9, 2),
+          ('0000000800-proposal', $1, 1135, 'lisk-dao', '0xgovernor', 0, 0, 0, 0, 0, 0, 150, 3, 2, 9, 1),
+          ('0000000805-vote', $1, 1135, 'lisk-dao', '0xgovernor', 1, 0, 1, 100, 0, 0, 150, 3, 2, 9, 0)
         "#,
     )
     .bind(CONTRACT_SET_ID)

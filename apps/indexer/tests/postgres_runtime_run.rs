@@ -997,7 +997,7 @@ async fn test_postgres_data_metric_event_snapshots_follow_mixed_batch_event_orde
     );
     assert_eq!(metric.get::<Option<i32>, _>("contributor_count"), Some(1));
     assert_eq!(metric.get::<Option<i32>, _>("holders_count"), Some(0));
-    assert_eq!(metric.get::<Option<i32>, _>("member_count"), Some(0));
+    assert_eq!(metric.get::<Option<i32>, _>("member_count"), Some(1));
 
     database.cleanup().await?;
 
@@ -1568,7 +1568,7 @@ async fn test_postgres_token_repeated_delegate_ensure_keeps_contributor_count_on
     .await?;
     assert_eq!(counts.get::<Option<i32>, _>("contributor_count"), Some(1));
     assert_eq!(counts.get::<Option<i32>, _>("holders_count"), None);
-    assert_eq!(counts.get::<Option<i32>, _>("member_count"), None);
+    assert_eq!(counts.get::<Option<i32>, _>("member_count"), Some(1));
 
     database.cleanup().await?;
 
@@ -1637,7 +1637,7 @@ async fn test_postgres_token_dense_delegate_count_deltas_are_batched() -> Result
     .await?;
     assert_eq!(counts.get::<Option<i32>, _>("contributor_count"), Some(1));
     assert_eq!(counts.get::<Option<i32>, _>("holders_count"), None);
-    assert_eq!(counts.get::<Option<i32>, _>("member_count"), None);
+    assert_eq!(counts.get::<Option<i32>, _>("member_count"), Some(1));
 
     database.cleanup().await?;
 
@@ -1845,7 +1845,7 @@ async fn test_postgres_token_preload_does_not_advance_contributor_count_before_t
         global_counts.get::<Option<i32>, _>("holders_count"),
         Some(2)
     );
-    assert_eq!(global_counts.get::<Option<i32>, _>("member_count"), Some(2));
+    assert_eq!(global_counts.get::<Option<i32>, _>("member_count"), Some(3));
 
     database.cleanup().await?;
 
