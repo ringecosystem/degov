@@ -3028,12 +3028,17 @@ fn should_try_latest_block_fallback_after_error(message: &str) -> bool {
 }
 
 fn should_try_direct_fallback_after_multicall_error(message: &str) -> bool {
-    message.to_ascii_lowercase().contains("out of gas")
+    let message = message.to_ascii_lowercase();
+    message.contains("out of gas")
+        || message.contains("block not found")
+        || message.contains("header not found")
 }
 
 fn should_retry_multicall_direct_fallback_error(message: &str) -> bool {
     let message = message.to_ascii_lowercase();
     message.contains("error sending request")
+        || message.contains("block not found")
+        || message.contains("header not found")
         || message.contains("timed out")
         || message.contains("timeout")
         || message.contains("transport")
@@ -4968,6 +4973,22 @@ mod tests {
         assert!(is_retryable_onchain_refresh_task_error(error));
         assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
         assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_retries_block_not_found_reads_immediately() {
+        let error = "block not found: 25381885";
+
+        assert!(should_try_direct_fallback_after_multicall_error(error));
+        assert!(should_retry_multicall_direct_fallback_error(error));
+    }
+
+    #[test]
+    fn test_onchain_refresh_retries_header_not_found_reads_immediately() {
+        let error = "header not found";
+
+        assert!(should_try_direct_fallback_after_multicall_error(error));
+        assert!(should_retry_multicall_direct_fallback_error(error));
     }
 
     #[test]
