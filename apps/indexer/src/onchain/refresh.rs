@@ -2397,18 +2397,27 @@ impl EvmRpcChainTool {
                     call.read_index,
                     &call.read,
                     call.call_key.method,
+                    true,
                 ) {
-                    PowerMethodFallbackOutcome::Success { result, cache_hit } => {
+                    PowerMethodFallbackOutcome::Success {
+                        result,
+                        cache_hit,
+                        rpc_calls,
+                        retries,
+                    } => {
                         report.cache_hits += usize::from(cache_hit);
-                        report.executed_rpc_calls += usize::from(!cache_hit);
+                        report.executed_rpc_calls += rpc_calls;
+                        report.retries += retries;
                         report.results.push(result);
                         continue;
                     }
                     PowerMethodFallbackOutcome::Failure {
                         failure,
-                        rpc_attempted,
+                        rpc_calls,
+                        retries,
                     } => {
-                        report.executed_rpc_calls += usize::from(rpc_attempted);
+                        report.executed_rpc_calls += rpc_calls;
+                        report.retries += retries;
                         report.failures.push(failure);
                         continue;
                     }
@@ -2594,8 +2603,15 @@ impl EvmRpcChainTool {
                     }
                 }
                 if should_try_power_method_fallback_after_direct_error(&message) {
-                    match self.execute_power_method_fallback(read_index, read, call_key.method) {
-                        PowerMethodFallbackOutcome::Success { result, cache_hit } => {
+                    match self.execute_power_method_fallback(
+                        read_index,
+                        read,
+                        call_key.method,
+                        false,
+                    ) {
+                        PowerMethodFallbackOutcome::Success {
+                            result, cache_hit, ..
+                        } => {
                             return Ok((result, cache_hit));
                         }
                         PowerMethodFallbackOutcome::Failure { failure, .. } => {
@@ -2610,8 +2626,10 @@ impl EvmRpcChainTool {
         let value = match decode_call_value(call_key.method, &result) {
             Ok(value) => value,
             Err(message) => {
-                match self.execute_power_method_fallback(read_index, read, call_key.method) {
-                    PowerMethodFallbackOutcome::Success { result, cache_hit } => {
+                match self.execute_power_method_fallback(read_index, read, call_key.method, false) {
+                    PowerMethodFallbackOutcome::Success {
+                        result, cache_hit, ..
+                    } => {
                         return Ok((result, cache_hit));
                     }
                     PowerMethodFallbackOutcome::Failure { failure, .. } => {
@@ -2690,6 +2708,7 @@ impl EvmRpcChainTool {
         read_index: usize,
         read: &crate::ChainReadRequest,
         failed_method: ChainReadMethod,
+        retry_transport: bool,
     ) -> PowerMethodFallbackOutcome {
         let Some(fallback_method) = alternate_current_power_method(failed_method) else {
             return PowerMethodFallbackOutcome::NotApplicable;
@@ -2707,6 +2726,8 @@ impl EvmRpcChainTool {
                     value,
                 },
                 cache_hit: true,
+                rpc_calls: 0,
+                retries: 0,
             };
         }
 
@@ -2720,24 +2741,41 @@ impl EvmRpcChainTool {
                         ChainReadFailureKind::Internal,
                         false,
                     ),
-                    rpc_attempted: false,
+                    rpc_calls: 0,
+                    retries: 0,
                 };
             }
         };
-        let result = match self.eth_call(&read.key.contract_address, &data, read.key.block_mode) {
-            Ok(result) => result,
-            Err(message) => {
-                return PowerMethodFallbackOutcome::Failure {
-                    failure: power_method_fallback_failure(
-                        read_index,
-                        format!("alternate current power method eth_call failed: {message}"),
-                        ChainReadFailureKind::Transport,
-                        true,
-                    ),
-                    rpc_attempted: true,
-                };
+        let mut failed_rpc_calls = 0;
+        let result = loop {
+            match self.eth_call(&read.key.contract_address, &data, read.key.block_mode) {
+                Ok(result) => break result,
+                Err(message) => {
+                    let should_retry = should_retry_multicall_direct_fallback_error(&message);
+                    failed_rpc_calls += 1;
+                    if !retry_transport
+                        || !should_retry
+                        || failed_rpc_calls >= MULTICALL_DIRECT_FALLBACK_MAX_ATTEMPTS
+                    {
+                        return PowerMethodFallbackOutcome::Failure {
+                            failure: power_method_fallback_failure(
+                                read_index,
+                                format!(
+                                    "alternate current power method eth_call failed: {}",
+                                    message
+                                ),
+                                ChainReadFailureKind::Transport,
+                                true,
+                            ),
+                            rpc_calls: failed_rpc_calls,
+                            retries: failed_rpc_calls.saturating_sub(1),
+                        };
+                    }
+                }
             }
         };
+        let rpc_calls = failed_rpc_calls + 1;
+        let retries = failed_rpc_calls;
         let value = match decode_call_value(fallback_method, &result) {
             Ok(value) => value,
             Err(message) => {
@@ -2748,7 +2786,8 @@ impl EvmRpcChainTool {
                         ChainReadFailureKind::Decode,
                         false,
                     ),
-                    rpc_attempted: true,
+                    rpc_calls,
+                    retries,
                 };
             }
         };
@@ -2764,6 +2803,8 @@ impl EvmRpcChainTool {
                 value,
             },
             cache_hit: false,
+            rpc_calls,
+            retries,
         }
     }
 
@@ -2993,10 +3034,13 @@ enum PowerMethodFallbackOutcome {
     Success {
         result: ChainReadResult,
         cache_hit: bool,
+        rpc_calls: usize,
+        retries: usize,
     },
     Failure {
         failure: ReadFailure,
-        rpc_attempted: bool,
+        rpc_calls: usize,
+        retries: usize,
     },
 }
 
@@ -5260,6 +5304,52 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    struct NestedPowerFallbackRetryMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for NestedPowerFallbackRetryMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    ChainReadMethod::GetVotes
+                )))
+            )) {
+                return Err("execution reverted: 0x".to_owned());
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    ChainReadMethod::CurrentVotes
+                )))
+            )) {
+                return Err("error sending request".to_owned());
+            }
+
+            Err("unexpected eth_call".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
     struct RevertingBalanceZeroPowerRefreshMockEvmRpcClient;
 
     impl EvmRpcClient for RevertingBalanceZeroPowerRefreshMockEvmRpcClient {
@@ -5374,6 +5464,60 @@ mod tests {
                 "0x{}",
                 hex::encode(encode(&[Token::Array(return_data)]))
             ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RetryingPowerMethodFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+        fallback_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for RetryingPowerMethodFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+                let return_data = calls
+                    .into_iter()
+                    .map(|_| Token::Tuple(vec![Token::Bool(false), Token::Bytes(Vec::new())]))
+                    .collect::<Vec<_>>();
+
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Array(return_data)]))
+                ));
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    ChainReadMethod::CurrentVotes
+                )))
+            )) {
+                let fallback_call_count = self.fallback_call_count.fetch_add(1, Ordering::SeqCst);
+                if fallback_call_count == 0 {
+                    return Err("error sending request".to_owned());
+                }
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::from(250))]))
+                ));
+            }
+
+            Err("unexpected eth_call".to_owned())
         }
 
         fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
@@ -5815,6 +5959,42 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert_eq!(failures.required_failures.len(), 1);
         assert!(failures.required_failures[0].message.contains("HTTP 429"));
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_nest_power_fallback_retries_inside_direct_fallback() {
+        let rpc = NestedPowerFallbackRetryMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("direct fallback retries without nested power fallback retry");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 7);
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(
+            failures.required_failures[0]
+                .message
+                .contains("alternate current power method eth_call failed")
+        );
     }
 
     #[test]
@@ -6410,6 +6590,44 @@ mod tests {
         );
         assert_eq!(report.partial_failures.required_failures.len(), 1);
         assert_eq!(report.metrics.executed_rpc_calls, 2);
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_retries_power_method_fallback_transport_error_after_multicall_subcall_failure()
+     {
+        let rpc = RetryingPowerMethodFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("power method fallback retries after transient transport error");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(report.metrics.executed_rpc_calls, 3);
+        assert_eq!(report.metrics.retries, 1);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
     }
 
     #[test]
