@@ -371,6 +371,161 @@ async fn test_migration_can_run_twice_without_deleting_existing_rows() -> Result
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_migration_repairs_token_timestamps_to_millis() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO delegate_changed (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contract_address, log_index, transaction_index, delegator, from_delegate,
+            to_delegate, block_number, block_timestamp, transaction_hash
+        )
+        VALUES (
+            'delegate-change', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+            '0xtoken', 0, 0, '0xdelegator', '0xfrom',
+            '0xto', 10, 1700000010, '0xtx'
+        )
+        "#,
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO delegate_votes_changed (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contract_address, log_index, transaction_index, delegate, previous_votes,
+            new_votes, block_number, block_timestamp, transaction_hash
+        )
+        VALUES (
+            'delegate-votes-change', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+            '0xtoken', 1, 0, '0xdelegate', 0,
+            10, 11, 1700000011, '0xtx'
+        )
+        "#,
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO token_transfer (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contract_address, log_index, transaction_index, "from", "to",
+            value, standard, block_number, block_timestamp, transaction_hash
+        )
+        VALUES (
+            'token-transfer', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+            '0xtoken', 2, 0, '0xfrom', '0xto',
+            10, 'erc20', 12, 1700000012, '0xtx'
+        )
+        "#,
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contract_address, log_index, transaction_index, block_number,
+            block_timestamp, transaction_hash, power, delegates_count_all,
+            delegates_count_effective
+        )
+        VALUES (
+            '0xcontributor', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+            '0xtoken', 3, 0, 13, 1700000013, '0xtx', 0, 0, 0
+        )
+        "#,
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO token_balance_checkpoint (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contract_address, log_index, transaction_index, account, previous_balance,
+            new_balance, delta, source, cause, block_number, block_timestamp,
+            transaction_hash
+        )
+        VALUES (
+            'token-balance-checkpoint', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+            '0xtoken', 4, 0, '0xaccount', 0, 10, 10, 'event', 'transfer',
+            14, 1700000014, '0xtx'
+        )
+        "#,
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO vote_power_checkpoint (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contract_address, log_index, transaction_index, account, clock_mode,
+            timepoint, previous_power, new_power, delta, source, cause, block_number,
+            block_timestamp, transaction_hash
+        )
+        VALUES (
+            'vote-power-checkpoint', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+            '0xtoken', 5, 0, '0xaccount', 'blocknumber', 15, 0, 10, 10,
+            'event', 'delegate-change', 15, 1700000015, '0xtx'
+        )
+        "#,
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "DELETE FROM degov_runtime_repair_marker
+         WHERE id = 'token_timestamps_millis_v1'",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    apply_migrations(&database.pool).await?;
+    apply_migrations(&database.pool).await?;
+
+    let row = sqlx::query(
+        "SELECT
+            (SELECT block_timestamp::TEXT FROM delegate_changed WHERE id = 'delegate-change') AS delegate_changed_timestamp,
+            (SELECT block_timestamp::TEXT FROM delegate_votes_changed WHERE id = 'delegate-votes-change') AS delegate_votes_changed_timestamp,
+            (SELECT block_timestamp::TEXT FROM token_transfer WHERE id = 'token-transfer') AS token_transfer_timestamp,
+            (SELECT block_timestamp::TEXT FROM contributor WHERE id = '0xcontributor') AS contributor_timestamp,
+            (SELECT block_timestamp::TEXT FROM token_balance_checkpoint WHERE id = 'token-balance-checkpoint') AS token_balance_checkpoint_timestamp,
+            (SELECT block_timestamp::TEXT FROM vote_power_checkpoint WHERE id = 'vote-power-checkpoint') AS vote_power_checkpoint_timestamp",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+
+    assert_eq!(
+        row.get::<String, _>("delegate_changed_timestamp"),
+        "1700000010000"
+    );
+    assert_eq!(
+        row.get::<String, _>("delegate_votes_changed_timestamp"),
+        "1700000011000"
+    );
+    assert_eq!(
+        row.get::<String, _>("token_transfer_timestamp"),
+        "1700000012000"
+    );
+    assert_eq!(
+        row.get::<String, _>("contributor_timestamp"),
+        "1700000013000"
+    );
+    assert_eq!(
+        row.get::<String, _>("token_balance_checkpoint_timestamp"),
+        "1700000014000"
+    );
+    assert_eq!(
+        row.get::<String, _>("vote_power_checkpoint_timestamp"),
+        "1700000015000"
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
 
@@ -474,6 +629,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("repair_delegate_effective_counts_once"));
     assert!(runtime_migration.contains("vote_timestamps_millis_v1"));
     assert!(runtime_migration.contains("repair_vote_timestamps_millis_once"));
+    assert!(runtime_migration.contains("token_timestamps_millis_v1"));
+    assert!(runtime_migration.contains("repair_token_timestamps_millis_once"));
     assert!(runtime_migration.contains("onchain_refresh_data_metric_task"));
     assert!(runtime_migration.contains("onchain_refresh_task_pending_ready_claim_idx"));
     assert!(runtime_migration.contains("onchain_refresh_task_pending_scope_claim_idx"));
