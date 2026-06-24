@@ -455,7 +455,7 @@ fn test_project_proposal_created_preserves_fallback_when_block_timestamp_read_fa
 }
 
 #[test]
-fn test_project_proposal_created_omits_block_interval_for_non_ethereum_blocknumber() {
+fn test_project_proposal_created_sets_configured_block_interval_for_base_blocknumber() {
     let mut event_log = production_log(
         "0022339715-afd3c-000054",
         22_339_715,
@@ -486,9 +486,9 @@ fn test_project_proposal_created_omits_block_interval_for_non_ethereum_blocknumb
     let proposal = &batch.proposals[0];
     assert_eq!(proposal.chain_id, 8453);
     assert_eq!(proposal.clock_mode, "blocknumber");
-    assert_eq!(proposal.block_interval, None);
-    assert_eq!(proposal.vote_start_timestamp, "22339716");
-    assert_eq!(proposal.vote_end_timestamp, "22385534");
+    assert_eq!(proposal.block_interval, Some("2".to_owned()));
+    assert_eq!(proposal.vote_start_timestamp, "1745507989000");
+    assert_eq!(proposal.vote_end_timestamp, "1745599625000");
 }
 
 #[test]
@@ -567,7 +567,7 @@ fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
 }
 
 #[test]
-fn test_project_proposal_lifecycle_stub_omits_block_interval_for_non_ethereum_chain() {
+fn test_project_proposal_lifecycle_stub_sets_configured_block_interval_for_base_chain() {
     let mut event_log = log(13, 0, 1);
     event_log.chain_id = 8453;
     let batch = project_proposal_events(
@@ -585,7 +585,7 @@ fn test_project_proposal_lifecycle_stub_omits_block_interval_for_non_ethereum_ch
     let proposal = &batch.proposals[0];
     assert_eq!(proposal.chain_id, 8453);
     assert_eq!(proposal.clock_mode, "blocknumber");
-    assert_eq!(proposal.block_interval, None);
+    assert_eq!(proposal.block_interval, Some("2".to_owned()));
 }
 
 #[test]
