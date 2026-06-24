@@ -80,6 +80,7 @@ pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
         ensure_runtime_indexes(&mut connection).await?;
         repair_delegate_effective_counts_once(&mut connection).await?;
         repair_vote_timestamps_millis_once(&mut connection).await?;
+        repair_token_timestamps_millis_once(&mut connection).await?;
         drop_obsolete_runtime_indexes_for_connection(&mut connection).await?;
 
         Ok(())
@@ -458,6 +459,7 @@ async fn repair_invalid_runtime_indexes_for_connection(
     ensure_runtime_indexes(connection).await?;
     repair_delegate_effective_counts_once(connection).await?;
     repair_vote_timestamps_millis_once(connection).await?;
+    repair_token_timestamps_millis_once(connection).await?;
     drop_obsolete_runtime_indexes_for_connection(connection).await?;
 
     Ok(())
@@ -631,6 +633,159 @@ async fn repair_vote_timestamps_millis_once(connection: &mut PgConnection) -> Re
     .execute(&mut *connection)
     .await
     .context("mark vote timestamp millis runtime repair complete")?;
+
+    Ok(())
+}
+
+async fn repair_token_timestamps_millis_once(connection: &mut PgConnection) -> Result<()> {
+    ensure_runtime_repair_marker_table(connection).await?;
+
+    let already_applied = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM degov_runtime_repair_marker
+            WHERE id = 'token_timestamps_millis_v1'
+         )",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("check token timestamp millis runtime repair marker")?;
+
+    if already_applied {
+        return Ok(());
+    }
+
+    let row =
+        sqlx::query_as::<_, (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)>(
+        "WITH updated_delegate_changed AS (
+            UPDATE delegate_changed
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_delegate_votes_changed AS (
+            UPDATE delegate_votes_changed
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_token_transfer AS (
+            UPDATE token_transfer
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_delegate_rolling AS (
+            UPDATE delegate_rolling
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_delegate_mapping AS (
+            UPDATE delegate_mapping
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_delegate AS (
+            UPDATE delegate
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_contributor AS (
+            UPDATE contributor
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_token_balance_checkpoint AS (
+            UPDATE token_balance_checkpoint
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_vote_power_checkpoint AS (
+            UPDATE vote_power_checkpoint
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_onchain_refresh_task_last_seen AS (
+            UPDATE onchain_refresh_task
+            SET last_seen_block_timestamp = last_seen_block_timestamp * 1000
+            WHERE last_seen_block_timestamp IS NOT NULL
+              AND last_seen_block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_onchain_refresh_task_pending_after_lock AS (
+            UPDATE onchain_refresh_task
+            SET pending_after_lock_block_timestamp = pending_after_lock_block_timestamp * 1000
+            WHERE pending_after_lock_block_timestamp IS NOT NULL
+              AND pending_after_lock_block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_onchain_refresh_deferred_candidate AS (
+            UPDATE onchain_refresh_deferred_candidate
+            SET last_seen_block_timestamp = last_seen_block_timestamp * 1000
+            WHERE last_seen_block_timestamp IS NOT NULL
+              AND last_seen_block_timestamp < 1000000000000
+            RETURNING id
+         )
+         SELECT
+            (SELECT COUNT(*)::BIGINT FROM updated_delegate_changed) AS delegate_changed_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_delegate_votes_changed) AS delegate_votes_changed_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_token_transfer) AS token_transfer_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_delegate_rolling) AS delegate_rolling_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_delegate_mapping) AS delegate_mapping_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_delegate) AS delegate_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_contributor) AS contributor_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_token_balance_checkpoint) AS token_balance_checkpoint_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_vote_power_checkpoint) AS vote_power_checkpoint_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_onchain_refresh_task_last_seen) AS onchain_refresh_task_last_seen_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_onchain_refresh_task_pending_after_lock) AS onchain_refresh_task_pending_after_lock_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_onchain_refresh_deferred_candidate) AS onchain_refresh_deferred_candidate_updates",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("repair token timestamps to milliseconds")?;
+
+    log::info!(
+        "DeGov token timestamps repaired to milliseconds delegate_changed_updates={} delegate_votes_changed_updates={} token_transfer_updates={} delegate_rolling_updates={} delegate_mapping_updates={} delegate_updates={} contributor_updates={} token_balance_checkpoint_updates={} vote_power_checkpoint_updates={} onchain_refresh_task_last_seen_updates={} onchain_refresh_task_pending_after_lock_updates={} onchain_refresh_deferred_candidate_updates={}",
+        row.0,
+        row.1,
+        row.2,
+        row.3,
+        row.4,
+        row.5,
+        row.6,
+        row.7,
+        row.8,
+        row.9,
+        row.10,
+        row.11
+    );
+
+    sqlx::query(
+        "INSERT INTO degov_runtime_repair_marker (id, applied_at)
+         VALUES (
+            'token_timestamps_millis_v1',
+            FLOOR(EXTRACT(EPOCH FROM now()) * 1000)::NUMERIC(78, 0)
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("mark token timestamp millis runtime repair complete")?;
 
     Ok(())
 }
