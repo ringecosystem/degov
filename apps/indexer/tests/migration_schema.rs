@@ -698,6 +698,7 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("repair_vote_timestamps_millis_once"));
     assert!(runtime_migration.contains("token_timestamps_millis_v1"));
     assert!(runtime_migration.contains("repair_token_timestamps_millis_once"));
+    assert!(runtime_migration.contains("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_ENABLED"));
     assert!(runtime_migration.contains("onchain_refresh_data_metric_task"));
     assert!(runtime_migration.contains("onchain_refresh_task_pending_ready_claim_idx"));
     assert!(runtime_migration.contains("onchain_refresh_task_pending_scope_claim_idx"));

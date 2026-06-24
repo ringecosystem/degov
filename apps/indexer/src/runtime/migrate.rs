@@ -639,6 +639,7 @@ async fn repair_vote_timestamps_millis_once(connection: &mut PgConnection) -> Re
 
 async fn repair_token_timestamps_millis_once(connection: &mut PgConnection) -> Result<()> {
     const MARKER_ID: &str = "token_timestamps_millis_v1";
+    const ENABLED_ENV: &str = "DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_ENABLED";
     const MILLIS_THRESHOLD: i64 = 1_000_000_000_000;
     const TARGETS: &[(&str, &str)] = &[
         ("delegate_changed", "block_timestamp"),
@@ -659,6 +660,11 @@ async fn repair_token_timestamps_millis_once(connection: &mut PgConnection) -> R
     ];
 
     ensure_runtime_repair_marker_table(connection).await?;
+
+    if !optional_env_bool(ENABLED_ENV)?.unwrap_or(true) {
+        log::info!("DeGov token timestamp repair skipped because {ENABLED_ENV}=false");
+        return Ok(());
+    }
 
     let already_applied = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (
@@ -730,6 +736,18 @@ async fn repair_timestamp_millis_column(
         .await?;
 
     Ok(result.rows_affected())
+}
+
+fn optional_env_bool(name: &str) -> Result<Option<bool>> {
+    match std::env::var(name) {
+        Ok(value) if value.eq_ignore_ascii_case("true") || value == "1" => Ok(Some(true)),
+        Ok(value) if value.eq_ignore_ascii_case("false") || value == "0" => Ok(Some(false)),
+        Ok(value) => Err(runtime_anyhow::Error::msg(format!(
+            "{name} must be true, false, 1, or 0: {value}"
+        ))),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("read {name}")),
+    }
 }
 
 async fn drop_obsolete_runtime_indexes_for_connection(connection: &mut PgConnection) -> Result<()> {
