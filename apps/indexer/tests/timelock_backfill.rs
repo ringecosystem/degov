@@ -223,6 +223,51 @@ async fn test_repair_timelock_links_backfills_executed_rows() -> Result<(), Box<
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_repair_timelock_links_skips_already_backfilled_rows() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    apply_migrations(&database.pool).await?;
+    seed_proposal_rows(&database.pool, "proposal:rerun", "44", true).await?;
+
+    let options = TimelockProposalLinkBackfillOptions {
+        batch_size: 10,
+        max_batches: 1,
+    };
+    let first_report =
+        repair_timelock_proposal_links_with_pool(&database.pool, context(), options).await?;
+    let second_report =
+        repair_timelock_proposal_links_with_pool(&database.pool, context(), options).await?;
+
+    assert_eq!(first_report.proposals_scanned, 1);
+    assert_eq!(first_report.timelock_operations_projected, 1);
+    assert_eq!(first_report.timelock_calls_projected, 2);
+    assert_eq!(second_report.proposals_scanned, 0);
+    assert_eq!(second_report.timelock_operations_projected, 0);
+    assert_eq!(second_report.timelock_calls_projected, 0);
+
+    let operation_count = sqlx::query(
+        "SELECT COUNT(*)::BIGINT AS count
+         FROM timelock_operation
+         WHERE proposal_ref = 'proposal:rerun'",
+    )
+    .fetch_one(&database.pool)
+    .await?
+    .get::<i64, _>("count");
+    let call_count = sqlx::query(
+        "SELECT COUNT(*)::BIGINT AS count
+         FROM timelock_call
+         WHERE proposal_ref = 'proposal:rerun'",
+    )
+    .fetch_one(&database.pool)
+    .await?
+    .get::<i64, _>("count");
+    assert_eq!(operation_count, 1);
+    assert_eq!(call_count, 2);
+
+    database.cleanup().await?;
+    Ok(())
+}
+
 async fn seed_proposal_rows(
     pool: &PgPool,
     proposal_ref: &str,
