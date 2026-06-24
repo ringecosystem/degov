@@ -496,7 +496,7 @@ where
     }
 
     pub async fn run_once(&self) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(self.config.batch_size, None, false)
+        self.run_once_with_batch_size_and_scope(self.config.batch_size, None, false, true)
             .await
     }
 
@@ -504,7 +504,7 @@ where
         &self,
         batch_size: usize,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, None, true)
+        self.run_once_with_batch_size_and_scope(batch_size, None, true, true)
             .await
     }
 
@@ -513,7 +513,7 @@ where
         batch_size: usize,
         scope: &OnchainRefreshTaskScope,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), true)
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), true, true)
             .await
     }
 
@@ -522,7 +522,7 @@ where
         batch_size: usize,
         scope: &OnchainRefreshTaskScope,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), false)
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), false, false)
             .await
     }
 
@@ -531,6 +531,7 @@ where
         batch_size: usize,
         scope: Option<&OnchainRefreshTaskScope>,
         include_backlog: bool,
+        repair_missing_coverage: bool,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
         let started_at = Instant::now();
         let now_ms = unix_time_millis();
@@ -561,7 +562,7 @@ where
             );
         }
         let mut tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
-        if tasks.is_empty() {
+        if tasks.is_empty() && repair_missing_coverage {
             let coverage_repair_count = self
                 .repair_missing_contributor_coverage(deferred_drain_target, scope)
                 .await?;
