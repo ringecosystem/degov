@@ -75,7 +75,8 @@ pub async fn run_worker() -> Result<()> {
         let mut poll_cache_hits = 0;
         let mut poll_debounced_tasks = 0;
 
-        for _ in 0..runtime.max_batches_per_poll {
+        let mut claimed_batches = 0usize;
+        while claimed_batches < runtime.max_batches_per_poll {
             let batch_scope = scope_schedule.next_batch_scope();
             let report =
                 run_onchain_refresh_worker_batch(&worker, &batch_scope, runtime.batch_size)
@@ -90,6 +91,10 @@ pub async fn run_worker() -> Result<()> {
             poll_db_update_failures += report.db_update_failures;
             poll_cache_hits += report.cache_hits;
             poll_debounced_tasks += report.debounced_tasks;
+
+            if onchain_refresh_report_consumes_poll_batch(&report) {
+                claimed_batches += 1;
+            }
 
             if !scope_schedule.observe_batch_report(&report) {
                 break;
@@ -115,6 +120,10 @@ pub async fn run_worker() -> Result<()> {
 
         sleep(runtime.poll_interval).await;
     }
+}
+
+fn onchain_refresh_report_consumes_poll_batch(report: &OnchainRefreshRunReport) -> bool {
+    report.claimed > 0 || report.data_metric_refreshes > 0
 }
 
 async fn run_onchain_refresh_worker_batch<R>(
@@ -257,4 +266,36 @@ async fn wait_for_service_shutdown(service_name: &str) -> Result<()> {
     log::info!("{service_name} service is running; stop the process to shut it down");
     future::pending::<()>().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_onchain_refresh_report_consumes_poll_batch_for_data_metric_only_work() {
+        assert!(onchain_refresh_report_consumes_poll_batch(
+            &OnchainRefreshRunReport {
+                data_metric_refreshes: 1,
+                ..OnchainRefreshRunReport::default()
+            }
+        ));
+    }
+
+    #[test]
+    fn test_onchain_refresh_report_consumes_poll_batch_for_claimed_tasks() {
+        assert!(onchain_refresh_report_consumes_poll_batch(
+            &OnchainRefreshRunReport {
+                claimed: 1,
+                ..OnchainRefreshRunReport::default()
+            }
+        ));
+    }
+
+    #[test]
+    fn test_onchain_refresh_report_does_not_consume_poll_batch_when_empty() {
+        assert!(!onchain_refresh_report_consumes_poll_batch(
+            &OnchainRefreshRunReport::default()
+        ));
+    }
 }
