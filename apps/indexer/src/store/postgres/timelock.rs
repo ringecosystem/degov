@@ -22,6 +22,123 @@ async fn write_timelock_batch(
     Ok(())
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TimelockProposalLinkBackfillPage {
+    pub proposals_scanned: usize,
+    pub proposal_links: TimelockProposalLinkContext,
+}
+
+pub async fn read_timelock_proposal_link_backfill_page(
+    pool: &PgPool,
+    context: &TimelockProjectionContext,
+    batch_size: usize,
+) -> Result<TimelockProposalLinkBackfillPage, PostgresIndexerRunnerStoreError> {
+    if batch_size == 0 {
+        return Err(PostgresIndexerRunnerStoreError::new(
+            "timelock proposal link backfill batch_size must be greater than zero",
+        ));
+    }
+
+    let governor_address = normalize_identifier(&context.governor_address);
+    let rows = sqlx::query(
+        "WITH selected_proposals AS (
+            SELECT p.id
+              FROM proposal p
+             WHERE p.dao_code IS NOT DISTINCT FROM $1
+               AND p.contract_set_id = $2
+               AND p.governor_address IS NOT DISTINCT FROM $3
+               AND EXISTS (
+                    SELECT 1
+                      FROM proposal_queued pq
+                     WHERE pq.chain_id IS NOT DISTINCT FROM p.chain_id
+                       AND pq.governor_address IS NOT DISTINCT FROM p.governor_address
+                       AND pq.proposal_id = p.proposal_id
+               )
+               AND EXISTS (
+                    SELECT 1
+                      FROM proposal_action pa
+                     WHERE pa.proposal_ref = p.id
+               )
+               AND (
+                    NOT EXISTS (
+                        SELECT 1
+                          FROM timelock_operation existing_operation
+                         WHERE existing_operation.contract_set_id = p.contract_set_id
+                           AND existing_operation.proposal_ref = p.id
+                           AND existing_operation.timelock_type = 'GovernorTimelockControl'
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                          FROM proposal_action missing_action
+                         WHERE missing_action.proposal_ref = p.id
+                           AND NOT EXISTS (
+                                SELECT 1
+                                  FROM timelock_call existing_call
+                                 WHERE existing_call.contract_set_id = p.contract_set_id
+                                   AND existing_call.proposal_action_id = missing_action.id
+                           )
+                    )
+               )
+             ORDER BY p.id
+             LIMIT $4
+        )
+        SELECT p.chain_id, p.governor_address, p.id AS proposal_ref,
+                p.proposal_id AS raw_proposal_id,
+                pq.transaction_hash AS queue_transaction_hash,
+                pq.block_number::TEXT AS queue_block_number,
+                pq.block_timestamp::TEXT AS queue_block_timestamp,
+                pq.log_index AS queue_log_index,
+                pq.transaction_index AS queue_transaction_index,
+                pe.transaction_hash AS execution_transaction_hash,
+                pe.block_number::TEXT AS execution_block_number,
+                pe.block_timestamp::TEXT AS execution_block_timestamp,
+                pq.eta_seconds::TEXT AS queue_eta,
+                pa.id AS proposal_action_id,
+                pa.action_index AS proposal_action_index,
+                pa.target, pa.value, pa.calldata
+          FROM selected_proposals selected
+          JOIN proposal p ON p.id = selected.id
+          JOIN proposal_queued pq
+            ON pq.chain_id IS NOT DISTINCT FROM p.chain_id
+           AND pq.governor_address IS NOT DISTINCT FROM p.governor_address
+           AND pq.proposal_id = p.proposal_id
+          JOIN proposal_action pa ON pa.proposal_ref = p.id
+          LEFT JOIN proposal_executed pe
+            ON pe.chain_id IS NOT DISTINCT FROM p.chain_id
+           AND pe.governor_address IS NOT DISTINCT FROM p.governor_address
+           AND pe.proposal_id = p.proposal_id
+         ORDER BY p.id, pa.action_index, pa.id",
+    )
+    .bind(&context.dao_code)
+    .bind(&context.contract_set_id)
+    .bind(&governor_address)
+    .bind(usize_to_i32(batch_size, "timelock proposal link backfill batch_size")?)
+    .fetch_all(pool)
+    .await?;
+
+    let mut proposal_refs = HashSet::new();
+    let mut proposal_links = TimelockProposalLinkContext::default();
+    for row in rows {
+        proposal_refs.insert(row.get::<String, _>("proposal_ref"));
+        insert_link_from_row(&mut proposal_links, row)?;
+    }
+
+    Ok(TimelockProposalLinkBackfillPage {
+        proposals_scanned: proposal_refs.len(),
+        proposal_links,
+    })
+}
+
+pub async fn write_timelock_proposal_link_backfill_batch(
+    pool: &PgPool,
+    batch: &TimelockProjectionBatch,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let mut transaction = pool.begin().await?;
+    write_timelock_batch(&mut transaction, batch).await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
 async fn read_timelock_proposal_link_context(
     pool: &PgPool,
     context: &TimelockProjectionContext,

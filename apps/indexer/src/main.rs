@@ -1,8 +1,9 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use degov_datalens_indexer::runtime::{
-    migrate, refresh_proposal_reference_fields, refresh_proposal_titles,
-    repair_invalid_runtime_indexes, run_graphql, run_indexer, run_worker, smoke_datalens,
+    TimelockProposalLinkBackfillOptions, migrate, refresh_proposal_reference_fields,
+    refresh_proposal_titles, repair_invalid_runtime_indexes, repair_timelock_proposal_links,
+    run_graphql, run_indexer, run_worker, smoke_datalens,
 };
 
 #[derive(Debug, Parser)]
@@ -29,6 +30,16 @@ enum Command {
         dao_code: String,
         #[arg(long)]
         reference_graphql_endpoint: String,
+    },
+    RepairTimelockProposalLinks {
+        #[arg(long)]
+        dao_code: String,
+        #[arg(long)]
+        contract_set_id: Option<String>,
+        #[arg(long, default_value_t = 500)]
+        batch_size: usize,
+        #[arg(long, default_value_t = 20)]
+        max_batches: usize,
     },
 }
 
@@ -68,6 +79,33 @@ async fn main() -> anyhow::Result<()> {
                 report.reference_scanned,
                 report.planned,
                 report.updated
+            );
+            Ok(())
+        }
+        Command::RepairTimelockProposalLinks {
+            dao_code,
+            contract_set_id,
+            batch_size,
+            max_batches,
+        } => {
+            let report = repair_timelock_proposal_links(
+                dao_code,
+                contract_set_id,
+                TimelockProposalLinkBackfillOptions {
+                    batch_size,
+                    max_batches,
+                },
+            )
+            .await?;
+            log::info!(
+                "timelock proposal link repair completed dao_code={} contract_set_id={} batches_processed={} proposals_scanned={} proposal_links_projected={} timelock_operations_projected={} timelock_calls_projected={}",
+                report.dao_code,
+                report.contract_set_id,
+                report.batches_processed,
+                report.proposals_scanned,
+                report.proposal_links_projected,
+                report.timelock_operations_projected,
+                report.timelock_calls_projected
             );
             Ok(())
         }
