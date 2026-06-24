@@ -128,7 +128,7 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     run_indexer_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 1);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
     assert_table_count(&database.pool, "proposal_created", 1).await?;
     assert_table_count(&database.pool, "proposal", 1).await?;
     assert_table_count(&database.pool, "vote_cast", 1).await?;
@@ -366,7 +366,7 @@ async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
     run_indexer_all_contract_sets_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 0);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 3);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
     assert_checkpoint_scope(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_scope(&database.pool, SECOND_CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_row_count(&database.pool, 2).await?;
@@ -3284,15 +3284,16 @@ fn handle_datalens_request(
     } else {
         query_count.fetch_add(1, Ordering::Relaxed);
         let request_body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
-        let rows = if request_body.contains(GOVERNOR) || request_body.contains(SECOND_GOVERNOR) {
-            matching_datalens_rows(request_body, governor_rows)
-        } else if request_body.contains(TOKEN) || request_body.contains(SECOND_TOKEN) {
-            matching_datalens_rows(request_body, token_rows)
-        } else if request_body.contains(TIMELOCK) || request_body.contains(SECOND_TIMELOCK) {
-            matching_datalens_rows(request_body, timelock_rows)
-        } else {
-            Vec::new()
-        };
+        let mut rows = Vec::new();
+        if request_body.contains(GOVERNOR) || request_body.contains(SECOND_GOVERNOR) {
+            rows.extend(matching_datalens_rows(request_body, governor_rows));
+        }
+        if request_body.contains(TOKEN) || request_body.contains(SECOND_TOKEN) {
+            rows.extend(matching_datalens_rows(request_body, token_rows));
+        }
+        if request_body.contains(TIMELOCK) || request_body.contains(SECOND_TIMELOCK) {
+            rows.extend(matching_datalens_rows(request_body, timelock_rows));
+        }
 
         json!({
             "chain": {},

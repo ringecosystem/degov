@@ -32,32 +32,15 @@ fn test_ensure_datalens_warmup_task_submits_follow_query_when_enabled() {
         outcome,
         DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
     ));
-    assert_eq!(ensurer.requests.len(), 3);
-    let selector_addresses = ensurer
-        .requests
-        .iter()
-        .map(|request| request.selector.addresses.clone())
-        .collect::<Vec<_>>();
+    assert_eq!(ensurer.requests.len(), 1);
+    let selector_addresses = &ensurer.requests[0].selector.addresses;
     assert_eq!(
-        selector_addresses
-            .iter()
-            .filter(|addresses| addresses[0] == "0x1111111111111111111111111111111111111111")
-            .count(),
-        1
-    );
-    assert_eq!(
-        selector_addresses
-            .iter()
-            .filter(|addresses| addresses[0] == "0x2222222222222222222222222222222222222222")
-            .count(),
-        1
-    );
-    assert_eq!(
-        selector_addresses
-            .iter()
-            .filter(|addresses| addresses[0] == "0x3333333333333333333333333333333333333333")
-            .count(),
-        1
+        selector_addresses,
+        &vec![
+            "0x1111111111111111111111111111111111111111".to_owned(),
+            "0x2222222222222222222222222222222222222222".to_owned(),
+            "0x3333333333333333333333333333333333333333".to_owned(),
+        ]
     );
     let topic_counts = ensurer
         .requests
@@ -67,7 +50,7 @@ fn test_ensure_datalens_warmup_task_submits_follow_query_when_enabled() {
             request.selector.topics[0].len()
         })
         .collect::<Vec<_>>();
-    assert_eq!(topic_counts, vec![13, 3, 8]);
+    assert_eq!(topic_counts, vec![24]);
     for request in &ensurer.requests {
         assert_eq!(request.chain.configured_name, "ethereum");
         assert_eq!(request.chain.network_id, Some(1));
@@ -97,7 +80,7 @@ fn test_ensure_datalens_warmup_task_reuses_existing_matching_task() {
         second,
         DatalensWarmupEnsureOutcome::Submitted { created: false, .. }
     ));
-    assert_eq!(ensurer.created_tasks.len(), 3);
+    assert_eq!(ensurer.created_tasks.len(), 1);
 }
 
 #[test]
@@ -115,7 +98,7 @@ fn test_ensure_datalens_warmup_task_submits_distinct_task_for_selector_mismatch(
         second,
         DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
     ));
-    assert_eq!(ensurer.created_tasks.len(), 4);
+    assert_eq!(ensurer.created_tasks.len(), 2);
 }
 
 #[test]

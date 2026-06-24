@@ -239,7 +239,7 @@ fn test_datalens_warmup_ensurer_uses_ensure_endpoint() {
             "created": false
         }),
     );
-    let server = FakeQueryServer::start(vec![response.clone(), response.clone(), response]);
+    let server = FakeQueryServer::start(vec![response]);
     let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
     config.warmup.enabled = true;
     let mut client = DatalensNativeClient::from_config(&config).expect("client");
@@ -247,7 +247,7 @@ fn test_datalens_warmup_ensurer_uses_ensure_endpoint() {
     ensure_datalens_warmup_task(&mut client, &config, &addresses(), 100).expect("warmup ensured");
 
     let requests = server.join();
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 1);
     for request in requests {
         assert!(
             request.starts_with("POST /v1/warmup/tasks/ensure "),

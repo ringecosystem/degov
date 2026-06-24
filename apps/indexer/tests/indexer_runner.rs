@@ -377,9 +377,9 @@ fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subrang
     assert_eq!(runner.store().commit_count(), 2);
     let observed = observed_ranges.lock().expect("observed ranges");
     assert_range_count(&observed, (1, 1_000), 1);
-    assert_range_count(&observed, (1, 500), ALL_SELECTOR_COUNT);
-    assert_range_count(&observed, (501, 1_000), ALL_SELECTOR_COUNT);
-    assert_eq!(observed.len(), 1 + ALL_SELECTOR_COUNT * 2);
+    assert_range_count(&observed, (1, 500), DATALENS_QUERY_SELECTOR_COUNT);
+    assert_range_count(&observed, (501, 1_000), DATALENS_QUERY_SELECTOR_COUNT);
+    assert_eq!(observed.len(), 1 + DATALENS_QUERY_SELECTOR_COUNT * 2);
 }
 
 #[test]
@@ -410,8 +410,8 @@ fn test_runner_splits_transient_range_and_retries_without_pass_error() {
     assert_eq!(runner.store().commit_count(), 1);
     let observed = observed_ranges.lock().expect("observed ranges");
     assert_range_count(&observed, (1, 5_000), 1);
-    assert_range_count(&observed, (1, 2_500), ALL_SELECTOR_COUNT);
-    assert_eq!(observed.len(), 1 + ALL_SELECTOR_COUNT);
+    assert_range_count(&observed, (1, 2_500), DATALENS_QUERY_SELECTOR_COUNT);
+    assert_eq!(observed.len(), 1 + DATALENS_QUERY_SELECTOR_COUNT);
 }
 
 #[test]
@@ -445,8 +445,8 @@ fn test_runner_splits_transient_failure_below_normal_min_and_advances_checkpoint
         &observed[..6],
         &[(1, 101), (1, 50), (1, 25), (1, 12), (1, 6), (1, 3)]
     );
-    assert_range_count(&observed, (1, 1), ALL_SELECTOR_COUNT);
-    assert_eq!(observed.len(), 6 + ALL_SELECTOR_COUNT);
+    assert_range_count(&observed, (1, 1), DATALENS_QUERY_SELECTOR_COUNT);
+    assert_eq!(observed.len(), 6 + DATALENS_QUERY_SELECTOR_COUNT);
 }
 
 #[test]
@@ -477,8 +477,8 @@ fn test_runner_splits_two_block_transient_failure_to_single_block() {
     assert_eq!(runner.store().commit_count(), 1);
     let observed = observed_ranges.lock().expect("observed ranges");
     assert_range_count(&observed, (1, 2), 1);
-    assert_range_count(&observed, (1, 1), ALL_SELECTOR_COUNT);
-    assert_eq!(observed.len(), 1 + ALL_SELECTOR_COUNT);
+    assert_range_count(&observed, (1, 1), DATALENS_QUERY_SELECTOR_COUNT);
+    assert_eq!(observed.len(), 1 + DATALENS_QUERY_SELECTOR_COUNT);
 }
 
 #[test]
@@ -1102,7 +1102,7 @@ fn test_runner_decodes_duplicate_address_token_log_with_token_source() {
         &attempts,
         GOVERNOR_SELECTOR_COUNT,
         GOVERNOR_TOKEN_SELECTOR_COUNT,
-        TIMELOCK_SELECTOR_COUNT,
+        0,
     );
     assert_eq!(
         runner.store().token_repository().delegate_changed().len(),
@@ -1880,5 +1880,4 @@ const TOKEN: &str = "0x2222222222222222222222222222222222222222";
 const GOVERNOR_SELECTOR_COUNT: usize = 1;
 const GOVERNOR_TOKEN_SELECTOR_COUNT: usize = 1;
 const TIMELOCK_SELECTOR_COUNT: usize = 1;
-const ALL_SELECTOR_COUNT: usize =
-    GOVERNOR_SELECTOR_COUNT + GOVERNOR_TOKEN_SELECTOR_COUNT + TIMELOCK_SELECTOR_COUNT;
+const DATALENS_QUERY_SELECTOR_COUNT: usize = 1;
