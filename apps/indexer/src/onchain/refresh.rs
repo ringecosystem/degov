@@ -2557,6 +2557,15 @@ impl EvmRpcChainTool {
             should_try_direct_fallback_after_multicall_error(&multicall_error);
         for call in calls {
             report.covered_read_indexes.push(call.read_index);
+            if should_skip_optional_historical_direct_fallback(&call.read) {
+                report.failures.push(ReadFailure {
+                    read_index: call.read_index,
+                    message: format!("multicall failed: {multicall_error}"),
+                    kind: ChainReadFailureKind::Transport,
+                    retryable: true,
+                });
+                continue;
+            }
             match self.execute_multicall_direct_fallback_read(
                 call.read_index,
                 &call.read,
@@ -2996,6 +3005,11 @@ impl EvmRpcChainTool {
     fn eth_get_block_timestamp(&self, block_number: &str) -> Result<u128, String> {
         self.rpc_client.eth_get_block_timestamp(block_number)
     }
+}
+
+fn should_skip_optional_historical_direct_fallback(read: &crate::ChainReadRequest) -> bool {
+    read.requirement == ReadRequirement::Optional
+        && matches!(read.key.block_mode, BlockReadMode::AtBlock(_))
 }
 
 fn fail_multicall_group(
@@ -6437,7 +6451,7 @@ mod tests {
     }
 
     #[test]
-    fn test_evm_rpc_chain_tool_does_not_fallback_optional_historical_reads_to_latest() {
+    fn test_evm_rpc_chain_tool_skips_optional_historical_direct_fallback() {
         let block_modes = Arc::new(Mutex::new(Vec::new()));
         let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
             block_modes: block_modes.clone(),
@@ -6470,7 +6484,7 @@ mod tests {
         assert_eq!(report.partial_failures.optional_failures.len(), 1);
         assert_eq!(
             *block_modes.lock().expect("block mode lock"),
-            vec![BlockReadMode::AtBlock(200), BlockReadMode::AtBlock(200)]
+            vec![BlockReadMode::AtBlock(200)]
         );
     }
 
@@ -6523,7 +6537,6 @@ mod tests {
                 BlockReadMode::AtBlock(200),
                 BlockReadMode::AtBlock(200),
                 BlockReadMode::Latest,
-                BlockReadMode::AtBlock(200)
             ]
         );
     }
