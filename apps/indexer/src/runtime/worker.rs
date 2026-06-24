@@ -138,7 +138,7 @@ where
         OnchainRefreshWorkerBatchScope::Global => worker.run_once().await,
         OnchainRefreshWorkerBatchScope::Scoped(scope) => {
             worker
-                .run_once_with_batch_size_for_scope(batch_size, scope)
+                .run_once_with_batch_size_for_scope_without_backlog(batch_size, scope)
                 .await
         }
     }
