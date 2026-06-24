@@ -434,6 +434,7 @@ pub struct ProposalReferenceFieldCandidate {
     pub title: String,
     pub block_interval: Option<String>,
     pub clock_mode: String,
+    pub counting_mode: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -442,9 +443,11 @@ pub struct ProposalReferenceFieldUpdate {
     pub previous_title: String,
     pub previous_block_interval: Option<String>,
     pub previous_clock_mode: String,
+    pub previous_counting_mode: Option<String>,
     pub title: String,
     pub clock_mode: String,
     pub block_interval: Option<String>,
+    pub counting_mode: Option<String>,
 }
 
 pub async fn read_proposal_title_refresh_candidates(
@@ -523,7 +526,7 @@ pub async fn read_proposal_reference_field_candidates(
     dao_code: &str,
 ) -> Result<Vec<ProposalReferenceFieldCandidate>, PostgresIndexerRunnerStoreError> {
     let rows = sqlx::query(
-        "SELECT id, proposal_id, title, block_interval, clock_mode
+        "SELECT id, proposal_id, title, block_interval, clock_mode, counting_mode
          FROM proposal
          WHERE dao_code = $1
          ORDER BY block_number, transaction_index, log_index, id",
@@ -540,6 +543,7 @@ pub async fn read_proposal_reference_field_candidates(
             title: row.get("title"),
             block_interval: row.get("block_interval"),
             clock_mode: row.get("clock_mode"),
+            counting_mode: row.get("counting_mode"),
         })
         .collect())
 }
@@ -547,7 +551,8 @@ pub async fn read_proposal_reference_field_candidates(
 const UPDATE_PROPOSAL_REFERENCE_FIELDS_SQL_PREFIX: &str =
     "UPDATE proposal SET title = proposal_reference_fields.title,
          block_interval = proposal_reference_fields.block_interval,
-         clock_mode = proposal_reference_fields.clock_mode
+         clock_mode = proposal_reference_fields.clock_mode,
+         counting_mode = proposal_reference_fields.counting_mode
      FROM (";
 const UPDATE_PROPOSAL_REFERENCE_FIELDS_CHUNK_SIZE: usize = 5_000;
 
@@ -580,19 +585,22 @@ async fn update_proposal_reference_field_chunk(
             .push_bind(&update.previous_title)
             .push_bind(&update.previous_block_interval)
             .push_bind(&update.previous_clock_mode)
+            .push_bind(&update.previous_counting_mode)
             .push_bind(&update.title)
             .push_bind(&update.clock_mode)
-            .push_bind(&update.block_interval);
+            .push_bind(&update.block_interval)
+            .push_bind(&update.counting_mode);
     });
     builder.push(
         ") AS proposal_reference_fields(
-            id, previous_title, previous_block_interval, previous_clock_mode,
-            title, clock_mode, block_interval
+            id, previous_title, previous_block_interval, previous_clock_mode, previous_counting_mode,
+            title, clock_mode, block_interval, counting_mode
          )
          WHERE proposal.id = proposal_reference_fields.id
            AND proposal.title = proposal_reference_fields.previous_title
            AND proposal.block_interval IS NOT DISTINCT FROM proposal_reference_fields.previous_block_interval
            AND proposal.clock_mode = proposal_reference_fields.previous_clock_mode
+           AND proposal.counting_mode IS NOT DISTINCT FROM proposal_reference_fields.previous_counting_mode
            AND proposal.dao_code = ",
     );
     builder.push_bind(dao_code);
@@ -601,6 +609,7 @@ async fn update_proposal_reference_field_chunk(
             proposal.title IS DISTINCT FROM proposal_reference_fields.title
             OR proposal.clock_mode IS DISTINCT FROM proposal_reference_fields.clock_mode
             OR proposal.block_interval IS DISTINCT FROM proposal_reference_fields.block_interval
+            OR proposal.counting_mode IS DISTINCT FROM proposal_reference_fields.counting_mode
          )",
     );
 
