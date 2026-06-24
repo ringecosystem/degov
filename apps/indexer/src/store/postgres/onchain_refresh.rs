@@ -652,7 +652,13 @@ fn onchain_refresh_task_upsert_sql() -> &'static str {
              THEN EXCLUDED.last_seen_transaction_hash
            ELSE NULL
          END,
-         updated_at = EXCLUDED.updated_at"
+         updated_at = EXCLUDED.updated_at
+     WHERE onchain_refresh_task.status <> 'completed'
+        OR EXCLUDED.reason = 'contributor-coverage'
+        OR EXCLUDED.last_seen_block_number > onchain_refresh_task.last_seen_block_number
+        OR EXCLUDED.last_seen_block_timestamp > onchain_refresh_task.last_seen_block_timestamp
+        OR (EXCLUDED.refresh_balance AND NOT onchain_refresh_task.refresh_balance)
+        OR (EXCLUDED.refresh_power AND NOT onchain_refresh_task.refresh_power)"
 }
 
 async fn upsert_deferred_onchain_refresh_candidate_chunk(

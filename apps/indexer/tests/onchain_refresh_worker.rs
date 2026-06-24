@@ -2442,6 +2442,51 @@ async fn test_onchain_refresh_worker_drains_deferred_tasks_to_claim_budget_in_sm
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_skips_stale_completed_deferred_task()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let task_id = "completed-task";
+    seed_task(
+        &database.pool,
+        task_id,
+        ACCOUNT_ONE,
+        "completed",
+        1,
+        false,
+        true,
+    )
+    .await?;
+    seed_deferred_task(&database.pool, "stale-deferred", ACCOUNT_ONE).await?;
+
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([]),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 0);
+    assert_eq!(report.completed, 0);
+    assert_eq!(report.failed, 0);
+    assert_task_status(&database.pool, task_id, "completed", 1).await?;
+    assert_table_count(&database.pool, "onchain_refresh_deferred_candidate", 0).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_repairs_missing_contributor_coverage()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
