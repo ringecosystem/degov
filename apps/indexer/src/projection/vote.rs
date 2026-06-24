@@ -396,7 +396,8 @@ fn common(
         block_number: log.block_number.to_string(),
         block_timestamp: log
             .block_timestamp_ms
-            .map(|timestamp| (timestamp / 1_000).to_string()),
+            .map(normalize_timestamp_millis)
+            .map(|timestamp| timestamp.to_string()),
         transaction_hash: normalize_identifier(&log.transaction_hash),
     }
 }
@@ -711,6 +712,14 @@ fn normalize_identifier(value: &str) -> String {
     value.to_ascii_lowercase()
 }
 
+fn normalize_timestamp_millis(timestamp: u64) -> u64 {
+    if timestamp < 1_000_000_000_000 {
+        timestamp.saturating_mul(1_000)
+    } else {
+        timestamp
+    }
+}
+
 fn extend_map<T: Clone>(target: &mut BTreeMap<String, T>, rows: &[T], key: impl Fn(&T) -> String) {
     for row in rows {
         target.insert(key(row), row.clone());
@@ -782,4 +791,106 @@ fn compare_decimal_strings(left: &str, right: &str) -> Ordering {
     left.len()
         .cmp(&right.len())
         .then_with(|| left.as_str().cmp(right.as_str()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_project_vote_events_normalizes_seconds_timestamp_to_millis() {
+        let context = test_context();
+        let batch = project_vote_events(
+            &context,
+            vec![VoteProjectionEvent {
+                log: test_log(Some(1_700_000_000)),
+                event: DecodedGovernorEvent::VoteCast(VoteCastEvent {
+                    voter: "0xVoter".to_owned(),
+                    proposal_id: "42".to_owned(),
+                    support: 1,
+                    weight: "100".to_owned(),
+                    reason: "for".to_owned(),
+                }),
+            }],
+        )
+        .expect("vote projection");
+
+        assert_eq!(
+            batch.vote_cast[0].block_timestamp.as_deref(),
+            Some("1700000000000")
+        );
+        assert_eq!(
+            batch.vote_cast_groups[0].block_timestamp.as_deref(),
+            Some("1700000000000")
+        );
+        assert_eq!(
+            batch.contributor_vote_signals[0]
+                .last_vote_timestamp
+                .as_deref(),
+            Some("1700000000000")
+        );
+    }
+
+    #[test]
+    fn test_project_vote_events_preserves_millis_timestamp() {
+        let context = test_context();
+        let batch = project_vote_events(
+            &context,
+            vec![VoteProjectionEvent {
+                log: test_log(Some(1_700_000_000_000)),
+                event: DecodedGovernorEvent::VoteCast(VoteCastEvent {
+                    voter: "0xVoter".to_owned(),
+                    proposal_id: "42".to_owned(),
+                    support: 1,
+                    weight: "100".to_owned(),
+                    reason: "for".to_owned(),
+                }),
+            }],
+        )
+        .expect("vote projection");
+
+        assert_eq!(
+            batch.vote_cast[0].block_timestamp.as_deref(),
+            Some("1700000000000")
+        );
+        assert_eq!(
+            batch.contributor_vote_signals[0]
+                .last_vote_timestamp
+                .as_deref(),
+            Some("1700000000000")
+        );
+    }
+
+    fn test_context() -> VoteProjectionContext {
+        VoteProjectionContext {
+            contract_set_id: "contract-set".to_owned(),
+            dao_code: "dao".to_owned(),
+            governor_address: "0xGovernor".to_owned(),
+            contracts: ChainContracts {
+                governor: "0xGovernor".to_owned(),
+                governor_token: "0xToken".to_owned(),
+                timelock: None,
+            },
+            read_plan_config: BatchReadPlanConfig::default().validated(),
+        }
+    }
+
+    fn test_log(block_timestamp_ms: Option<u64>) -> NormalizedEvmLog {
+        NormalizedEvmLog {
+            id: "evm:1135:10:0:1:0xvote".to_owned(),
+            chain_id: 1135,
+            block_number: 10,
+            block_hash: "0xblock".to_owned(),
+            block_timestamp_ms,
+            transaction_hash: "0xvote".to_owned(),
+            transaction_index: 1,
+            log_index: 0,
+            address: "0xGovernor".to_owned(),
+            topics: Vec::new(),
+            data: "0x".to_owned(),
+            removed: false,
+            raw_payload: json!({}),
+        }
+    }
 }

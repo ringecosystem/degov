@@ -79,6 +79,7 @@ pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
         drop_invalid_runtime_indexes_for_connection(&mut connection).await?;
         ensure_runtime_indexes(&mut connection).await?;
         repair_delegate_effective_counts_once(&mut connection).await?;
+        repair_vote_timestamps_millis_once(&mut connection).await?;
         drop_obsolete_runtime_indexes_for_connection(&mut connection).await?;
 
         Ok(())
@@ -456,12 +457,13 @@ async fn repair_invalid_runtime_indexes_for_connection(
     drop_invalid_runtime_indexes_for_connection(connection).await?;
     ensure_runtime_indexes(connection).await?;
     repair_delegate_effective_counts_once(connection).await?;
+    repair_vote_timestamps_millis_once(connection).await?;
     drop_obsolete_runtime_indexes_for_connection(connection).await?;
 
     Ok(())
 }
 
-async fn repair_delegate_effective_counts_once(connection: &mut PgConnection) -> Result<()> {
+async fn ensure_runtime_repair_marker_table(connection: &mut PgConnection) -> Result<()> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS degov_runtime_repair_marker (
             id TEXT PRIMARY KEY,
@@ -471,6 +473,12 @@ async fn repair_delegate_effective_counts_once(connection: &mut PgConnection) ->
     .execute(&mut *connection)
     .await
     .context("ensure DeGov runtime repair marker table")?;
+
+    Ok(())
+}
+
+async fn repair_delegate_effective_counts_once(connection: &mut PgConnection) -> Result<()> {
+    ensure_runtime_repair_marker_table(connection).await?;
 
     let already_applied = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (
@@ -543,6 +551,86 @@ async fn repair_delegate_effective_counts_once(connection: &mut PgConnection) ->
     .execute(&mut *connection)
     .await
     .context("mark delegate effective count runtime repair complete")?;
+
+    Ok(())
+}
+
+async fn repair_vote_timestamps_millis_once(connection: &mut PgConnection) -> Result<()> {
+    ensure_runtime_repair_marker_table(connection).await?;
+
+    let already_applied = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM degov_runtime_repair_marker
+            WHERE id = 'vote_timestamps_millis_v1'
+         )",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("check vote timestamp millis runtime repair marker")?;
+
+    if already_applied {
+        return Ok(());
+    }
+
+    let row = sqlx::query_as::<_, (i64, i64, i64, i64)>(
+        "WITH updated_vote_cast AS (
+            UPDATE vote_cast
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_vote_cast_with_params AS (
+            UPDATE vote_cast_with_params
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_vote_cast_group AS (
+            UPDATE vote_cast_group
+            SET block_timestamp = block_timestamp * 1000
+            WHERE block_timestamp IS NOT NULL
+              AND block_timestamp < 1000000000000
+            RETURNING id
+         ),
+         updated_contributor AS (
+            UPDATE contributor
+            SET last_vote_timestamp = last_vote_timestamp * 1000
+            WHERE last_vote_timestamp IS NOT NULL
+              AND last_vote_timestamp < 1000000000000
+            RETURNING id
+         )
+         SELECT
+            (SELECT COUNT(*)::BIGINT FROM updated_vote_cast) AS vote_cast_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_vote_cast_with_params) AS vote_cast_with_params_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_vote_cast_group) AS vote_cast_group_updates,
+            (SELECT COUNT(*)::BIGINT FROM updated_contributor) AS contributor_updates",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("repair vote timestamps to milliseconds")?;
+
+    log::info!(
+        "DeGov vote timestamps repaired to milliseconds vote_cast_updates={} vote_cast_with_params_updates={} vote_cast_group_updates={} contributor_updates={}",
+        row.0,
+        row.1,
+        row.2,
+        row.3
+    );
+
+    sqlx::query(
+        "INSERT INTO degov_runtime_repair_marker (id, applied_at)
+         VALUES (
+            'vote_timestamps_millis_v1',
+            FLOOR(EXTRACT(EPOCH FROM now()) * 1000)::NUMERIC(78, 0)
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .execute(&mut *connection)
+    .await
+    .context("mark vote timestamp millis runtime repair complete")?;
 
     Ok(())
 }

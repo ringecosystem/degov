@@ -894,6 +894,32 @@ async fn test_postgres_data_metric_event_rows_are_idempotent_and_keep_global()
             .map_err(|error| format!("commit transaction failed: {error}"))?;
     }
 
+    let vote_row = sqlx::query(
+        "SELECT block_timestamp::TEXT AS block_timestamp
+         FROM vote_cast
+         WHERE id = '0000000003-vote'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        vote_row.get::<String, _>("block_timestamp"),
+        "1700000003000"
+    );
+
+    let contributor = sqlx::query(
+        "SELECT last_vote_timestamp::TEXT AS last_vote_timestamp
+         FROM contributor
+         WHERE contract_set_id = $1
+           AND id = '0x4444444444444444444444444444444444444444'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(
+        contributor.get::<Option<String>, _>("last_vote_timestamp"),
+        Some("1700000003000".to_owned())
+    );
+
     let rows = sqlx::query(
         "SELECT id, proposals_count, votes_count, votes_without_params_count,
                 votes_weight_for_sum::TEXT AS votes_weight_for_sum,
