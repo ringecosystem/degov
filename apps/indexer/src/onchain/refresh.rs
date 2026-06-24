@@ -4084,7 +4084,8 @@ async fn refresh_data_metric_scope(
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
              power_sum = EXCLUDED.power_sum,
              contributor_count = EXCLUDED.contributor_count,
-             holders_count = EXCLUDED.holders_count",
+             holders_count = EXCLUDED.holders_count,
+             member_count = EXCLUDED.member_count",
     )
     .bind(metric_id)
     .bind(&scope.contract_set_id)
