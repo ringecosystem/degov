@@ -526,8 +526,8 @@ async fn test_migration_repairs_token_timestamps_to_millis() -> Result<(), Box<d
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_migration_repairs_token_timestamps_across_multiple_batches()
--> Result<(), Box<dyn Error>> {
+async fn test_migration_repairs_token_timestamps_and_marks_completion() -> Result<(), Box<dyn Error>>
+{
     let database = TestDatabase::connect().await?;
 
     apply_migrations(&database.pool).await?;
@@ -540,17 +540,17 @@ async fn test_migration_repairs_token_timestamps_across_multiple_batches()
         )
         VALUES
             (
-                'token-transfer-batch-1', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+                'token-transfer-repair-1', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
                 '0xtoken', 1, 0, '0xfrom', '0xto',
                 10, 'erc20', 12, 1700000012, '0xtx1'
             ),
             (
-                'token-transfer-batch-2', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+                'token-transfer-repair-2', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
                 '0xtoken', 2, 0, '0xfrom', '0xto',
                 10, 'erc20', 13, 1700000013, '0xtx2'
             ),
             (
-                'token-transfer-batch-3', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+                'token-transfer-repair-3', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
                 '0xtoken', 3, 0, '0xfrom', '0xto',
                 10, 'erc20', 14, 1700000014, '0xtx3'
             )
@@ -565,19 +565,7 @@ async fn test_migration_repairs_token_timestamps_across_multiple_batches()
     .execute(&database.pool)
     .await?;
 
-    let previous_batch_size = env::var("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE").ok();
-    unsafe {
-        env::set_var("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE", "2");
-    }
-
     apply_migrations(&database.pool).await?;
-
-    unsafe {
-        match previous_batch_size {
-            Some(value) => env::set_var("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE", value),
-            None => env::remove_var("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE"),
-        }
-    }
 
     let remaining_after_repair: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)
