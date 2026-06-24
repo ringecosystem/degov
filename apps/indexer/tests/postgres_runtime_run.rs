@@ -313,7 +313,8 @@ async fn test_refresh_proposal_reference_fields_command_updates_only_scoped_dao(
     let reference = FakeReferenceGraphqlServer::start(vec![json!({
         "proposalId": "0x2a",
         "title": "Reference demo title",
-        "blockInterval": "13.333333333333334"
+        "blockInterval": "13.333333333333334",
+        "countingMode": "support=bravo&quorum=for,abstain"
     })]);
 
     run_refresh_proposal_reference_fields_command(
@@ -323,25 +324,32 @@ async fn test_refresh_proposal_reference_fields_command_updates_only_scoped_dao(
     )
     .await?;
 
-    let demo_row =
-        sqlx::query("SELECT title, block_interval FROM proposal WHERE dao_code = 'demo-dao'")
-            .fetch_one(&database.pool)
-            .await?;
-    let other_row =
-        sqlx::query("SELECT title, block_interval FROM proposal WHERE dao_code = 'other-dao'")
-            .fetch_one(&database.pool)
-            .await?;
+    let demo_row = sqlx::query(
+        "SELECT title, block_interval, counting_mode FROM proposal WHERE dao_code = 'demo-dao'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    let other_row = sqlx::query(
+        "SELECT title, block_interval, counting_mode FROM proposal WHERE dao_code = 'other-dao'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
 
     assert_eq!(demo_row.get::<String, _>("title"), "Reference demo title");
     assert_eq!(
         demo_row.get::<Option<String>, _>("block_interval"),
         Some("13.333333333333334".to_owned())
     );
+    assert_eq!(
+        demo_row.get::<Option<String>, _>("counting_mode"),
+        Some("support=bravo&quorum=for,abstain".to_owned())
+    );
     assert_eq!(other_row.get::<String, _>("title"), "stale title");
     assert_eq!(
         other_row.get::<Option<String>, _>("block_interval"),
         Some("12".to_owned())
     );
+    assert_eq!(other_row.get::<Option<String>, _>("counting_mode"), None);
 
     database.cleanup().await?;
 

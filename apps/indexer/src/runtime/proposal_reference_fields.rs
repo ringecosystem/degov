@@ -28,6 +28,7 @@ pub struct ReferenceProposalFields {
     pub title: String,
     pub clock_mode: String,
     pub block_interval: Option<String>,
+    pub counting_mode: Option<String>,
 }
 
 pub async fn refresh_proposal_reference_fields(
@@ -92,6 +93,7 @@ pub fn plan_proposal_reference_field_updates(
             if candidate.title == reference.title
                 && candidate.clock_mode == reference.clock_mode
                 && candidate.block_interval == block_interval
+                && candidate.counting_mode == reference.counting_mode
             {
                 return None;
             }
@@ -101,9 +103,11 @@ pub fn plan_proposal_reference_field_updates(
                 previous_title: candidate.title.clone(),
                 previous_block_interval: candidate.block_interval.clone(),
                 previous_clock_mode: candidate.clock_mode.clone(),
+                previous_counting_mode: candidate.counting_mode.clone(),
                 title: reference.title.clone(),
                 clock_mode: reference.clock_mode.clone(),
                 block_interval,
+                counting_mode: reference.counting_mode.clone(),
             })
         })
         .collect()
@@ -235,6 +239,7 @@ async fn fetch_reference_proposal_fields(endpoint: &str) -> Result<Vec<Reference
             title: row.title,
             clock_mode: row.clock_mode,
             block_interval: row.block_interval,
+            counting_mode: row.counting_mode,
         }));
         if row_count < LIMIT as usize {
             return Ok(proposals);
@@ -250,6 +255,7 @@ query ProposalReferenceFields($limit: Int!, $offset: Int!) {
     title
     clockMode
     blockInterval
+    countingMode
   }
 }
 "#;
@@ -286,6 +292,8 @@ struct ReferenceProposalRow {
     clock_mode: String,
     #[serde(rename = "blockInterval")]
     block_interval: Option<String>,
+    #[serde(rename = "countingMode")]
+    counting_mode: Option<String>,
 }
 
 fn default_reference_clock_mode() -> String {
@@ -319,6 +327,7 @@ mod tests {
                     title: "local title".to_owned(),
                     block_interval: Some("12".to_owned()),
                     clock_mode: "blocknumber".to_owned(),
+                    counting_mode: None,
                 },
                 ProposalReferenceFieldCandidate {
                     id: "proposal:2".to_owned(),
@@ -326,6 +335,7 @@ mod tests {
                     title: "same title".to_owned(),
                     block_interval: None,
                     clock_mode: "blocknumber".to_owned(),
+                    counting_mode: Some("support=bravo&quorum=for,abstain".to_owned()),
                 },
             ],
             &[
@@ -334,12 +344,14 @@ mod tests {
                     title: "reference title".to_owned(),
                     clock_mode: "blocknumber".to_owned(),
                     block_interval: Some("13.333333333333334".to_owned()),
+                    counting_mode: Some("support=bravo&quorum=for,abstain".to_owned()),
                 },
                 ReferenceProposalFields {
                     proposal_id: "0x07".to_owned(),
                     title: "same title".to_owned(),
                     clock_mode: "blocknumber".to_owned(),
                     block_interval: None,
+                    counting_mode: Some("support=bravo&quorum=for,abstain".to_owned()),
                 },
             ],
         );
@@ -351,9 +363,11 @@ mod tests {
                 previous_title: "local title".to_owned(),
                 previous_block_interval: Some("12".to_owned()),
                 previous_clock_mode: "blocknumber".to_owned(),
+                previous_counting_mode: None,
                 title: "reference title".to_owned(),
                 clock_mode: "blocknumber".to_owned(),
                 block_interval: Some("13.333333333333334".to_owned()),
+                counting_mode: Some("support=bravo&quorum=for,abstain".to_owned()),
             }]
         );
     }
@@ -367,12 +381,14 @@ mod tests {
                 title: "local title".to_owned(),
                 block_interval: Some("12".to_owned()),
                 clock_mode: "timestamp".to_owned(),
+                counting_mode: None,
             }],
             &[ReferenceProposalFields {
                 proposal_id: "0x2a".to_owned(),
                 title: "reference title".to_owned(),
                 clock_mode: "timestamp".to_owned(),
                 block_interval: Some("13.333333333333334".to_owned()),
+                counting_mode: None,
             }],
         );
 
@@ -383,9 +399,11 @@ mod tests {
                 previous_title: "local title".to_owned(),
                 previous_block_interval: Some("12".to_owned()),
                 previous_clock_mode: "timestamp".to_owned(),
+                previous_counting_mode: None,
                 title: "reference title".to_owned(),
                 clock_mode: "timestamp".to_owned(),
                 block_interval: None,
+                counting_mode: None,
             }]
         );
     }
@@ -399,12 +417,14 @@ mod tests {
                 title: "same title".to_owned(),
                 block_interval: None,
                 clock_mode: "blocknumber".to_owned(),
+                counting_mode: None,
             }],
             &[ReferenceProposalFields {
                 proposal_id: "0x2a".to_owned(),
                 title: "same title".to_owned(),
                 clock_mode: "timestamp".to_owned(),
                 block_interval: Some("13.333333333333334".to_owned()),
+                counting_mode: None,
             }],
         );
 
@@ -415,9 +435,11 @@ mod tests {
                 previous_title: "same title".to_owned(),
                 previous_block_interval: None,
                 previous_clock_mode: "blocknumber".to_owned(),
+                previous_counting_mode: None,
                 title: "same title".to_owned(),
                 clock_mode: "timestamp".to_owned(),
                 block_interval: None,
+                counting_mode: None,
             }]
         );
     }
