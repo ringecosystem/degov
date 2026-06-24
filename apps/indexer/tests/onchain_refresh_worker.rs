@@ -550,7 +550,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_eq!(report.unique_accounts, 2);
     assert_eq!(report.apply_chunks, 2);
     assert_eq!(report.apply_batch_size, 1);
-    assert_eq!(report.data_metric_refreshes, 1);
+    assert_eq!(report.data_metric_refreshes, 0);
     assert_eq!(
         contributor_values(&database.pool, ACCOUNT_ONE).await?,
         ("11".to_owned(), Some("17".to_owned()))
@@ -561,7 +561,8 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     );
     assert_completed_task(&database.pool, "task-one", 1).await?;
     assert_completed_task(&database.pool, "task-two", 2).await?;
-    assert_data_metric_counts(&database.pool, "16", 3, 1, 3, 7).await?;
+    assert_data_metric_counts(&database.pool, "7", 7, 7, 7, 7).await?;
+    assert_table_count(&database.pool, "onchain_refresh_data_metric_task", 1).await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_TWO, "0", "5", "5").await?;
     assert_balance_checkpoint(&database.pool, ACCOUNT_ONE, "4", "17", "13").await?;
@@ -570,6 +571,41 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_contributor_overlay(&database.pool, ACCOUNT_TWO, "5").await?;
     assert_delegate_overlay_with_scope(&database.pool, "demo-dao", ACCOUNT_ONE, ACCOUNT_TWO, "17")
         .await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_drains_data_metric_refresh_on_empty_work()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_data_metric(&database.pool, "7").await?;
+    seed_data_metric_refresh_task(&database.pool).await?;
+
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::from_values(BTreeMap::new()),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 0);
+    assert_eq!(report.completed, 0);
+    assert_eq!(report.data_metric_refreshes, 1);
+    assert_table_count(&database.pool, "onchain_refresh_data_metric_task", 0).await?;
+    assert_data_metric_counts(&database.pool, "0", 0, 0, 0, 7).await?;
 
     database.cleanup().await?;
 
@@ -1772,6 +1808,18 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
     )
     .await?;
     seed_data_metric_with_scope(&database.pool, SCOPE_TWO, "31", 1, 7).await?;
+    seed_contributor_overlay_with_scope_and_balance(
+        &database.pool,
+        SCOPE_TWO,
+        46,
+        "demo-dao",
+        GOVERNOR,
+        TOKEN,
+        ACCOUNT_ONE,
+        "31",
+        Some("41"),
+    )
+    .await?;
     seed_task_with_contract_set(
         &database.pool,
         "task-one",
@@ -1817,6 +1865,7 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
     let report = worker.run_once().await?;
 
     assert_eq!(report.completed, 1);
+    assert_eq!(report.data_metric_refreshes, 0);
     assert_eq!(
         contributor_values_by_scope(&database.pool, SCOPE_ONE, ACCOUNT_ONE).await?,
         ("11".to_owned(), Some("17".to_owned()))
@@ -1825,6 +1874,11 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
         contributor_values_by_scope(&database.pool, SCOPE_TWO, ACCOUNT_ONE).await?,
         ("31".to_owned(), Some("41".to_owned()))
     );
+    assert_table_count(&database.pool, "onchain_refresh_data_metric_task", 1).await?;
+    let empty_report = worker.run_once().await?;
+
+    assert_eq!(empty_report.claimed, 0);
+    assert_eq!(empty_report.data_metric_refreshes, 1);
     assert_eq!(
         data_metric_values_by_scope(&database.pool, SCOPE_ONE).await?,
         ("11".to_owned(), Some(1))
@@ -3060,6 +3114,26 @@ async fn seed_data_metric(pool: &PgPool, power_sum: &str) -> Result<(), sqlx::Er
     seed_data_metric_with_scope(pool, "demo-dao", power_sum, 1, 7).await
 }
 
+async fn seed_data_metric_refresh_task(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO onchain_refresh_data_metric_task (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            created_at, updated_at
+         )
+         VALUES (
+            $1, 'demo-dao', 46, 'demo-dao', $2, $3, 10000::NUMERIC(78, 0),
+            10000::NUMERIC(78, 0)
+         )",
+    )
+    .bind(format!("demo-dao:46:demo-dao:{GOVERNOR}"))
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 async fn seed_data_metric_with_scope(
     pool: &PgPool,
     contract_set_id: &str,
@@ -3722,6 +3796,23 @@ async fn seed_contributor_overlay_with_balance(
     power: &str,
     balance: Option<&str>,
 ) -> Result<(), sqlx::Error> {
+    seed_contributor_overlay_with_scope_and_balance(
+        pool, "demo-dao", 46, "demo-dao", GOVERNOR, TOKEN, account, power, balance,
+    )
+    .await
+}
+
+async fn seed_contributor_overlay_with_scope_and_balance(
+    pool: &PgPool,
+    contract_set_id: &str,
+    chain_id: i32,
+    dao_code: &str,
+    governor_address: &str,
+    token_address: &str,
+    account: &str,
+    power: &str,
+    balance: Option<&str>,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO degov_provisional_contributor_power_overlay (
              id, contract_set_id, chain_id, dao_code, governor_address, token_address,
@@ -3729,16 +3820,19 @@ async fn seed_contributor_overlay_with_balance(
              status, anchor_block_number, anchor_block_timestamp
          )
          VALUES (
-             $1, 'demo-dao', 46, 'demo-dao', $2, $3, $4, $5::NUMERIC(78, 0),
-             $6::NUMERIC(78, 0), 0, 0, 'live-onchain', 'available',
+             $1, $2, $3, $4, $5, $6, $7, $8::NUMERIC(78, 0),
+             $9::NUMERIC(78, 0), 0, 0, 'live-onchain', 'available',
              12::NUMERIC(78, 0), 12000::NUMERIC(78, 0)
          )",
     )
     .bind(format!(
-        "live-onchain:demo-dao:46:{GOVERNOR}:{TOKEN}:{account}"
+        "live-onchain:{contract_set_id}:{chain_id}:{governor_address}:{token_address}:{account}"
     ))
-    .bind(GOVERNOR)
-    .bind(TOKEN)
+    .bind(contract_set_id)
+    .bind(chain_id)
+    .bind(dao_code)
+    .bind(governor_address)
+    .bind(token_address)
     .bind(account)
     .bind(power)
     .bind(balance)

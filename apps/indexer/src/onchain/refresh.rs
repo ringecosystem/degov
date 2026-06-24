@@ -689,7 +689,6 @@ where
                     }
                 }
             }
-            report.data_metric_refreshes += self.drain_data_metric_refresh_tasks(now_ms).await?;
         }
 
         report.duration_ms = started_at.elapsed().as_millis();
