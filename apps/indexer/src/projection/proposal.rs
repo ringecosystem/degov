@@ -1793,7 +1793,7 @@ fn block_interval(chain_id: i32, clock_mode: &str) -> Option<String> {
         1 => Some("12".to_owned()),
         10 => Some("2".to_owned()),
         46 => Some("6".to_owned()),
-        56 => Some("3".to_owned()),
+        56 => Some("0.45".to_owned()),
         1135 => Some("2".to_owned()),
         8453 => Some("2".to_owned()),
         42161 => Some("0.25".to_owned()),
@@ -1903,7 +1903,7 @@ mod tests {
         assert_eq!(block_interval(1, "blocknumber").as_deref(), Some("12"));
         assert_eq!(block_interval(10, "blocknumber").as_deref(), Some("2"));
         assert_eq!(block_interval(46, "blocknumber").as_deref(), Some("6"));
-        assert_eq!(block_interval(56, "blocknumber").as_deref(), Some("3"));
+        assert_eq!(block_interval(56, "blocknumber").as_deref(), Some("0.45"));
         assert_eq!(block_interval(1135, "blocknumber").as_deref(), Some("2"));
         assert_eq!(block_interval(8453, "blocknumber").as_deref(), Some("2"));
         assert_eq!(
