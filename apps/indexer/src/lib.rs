@@ -83,6 +83,7 @@ pub use crate::projection::timelock::{
     TimelockProjectionContext, TimelockProjectionError, TimelockProjectionEvent,
     TimelockProjectionRepository, TimelockProposalActionLink, TimelockProposalLinkContext,
     TimelockRoleEventWrite, project_timelock_events, project_timelock_events_with_proposal_links,
+    project_timelock_proposal_links,
 };
 pub use crate::projection::token::{
     DelegateChangedWrite, DelegateRollingWrite, DelegateVotesChangedWrite,

@@ -22,7 +22,8 @@ use crate::{
     classify_datalens_query_error, datalens_selector_fingerprint, decode_dao_log,
     fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries, plan_next_checkpoint_range,
     plan_proposal_timestamp_backfill_updates, project_proposal_events,
-    project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
+    project_timelock_events_with_proposal_links, project_timelock_proposal_links,
+    project_token_events, project_vote_events,
 };
 
 use crate::OnchainRefreshTickReport;
@@ -1486,8 +1487,8 @@ where
             .contexts
             .timelock
             .as_ref()
-            .filter(|_| !timelock_events.is_empty())
             .cloned()
+            .filter(|_| !timelock_events.is_empty() || proposal.is_some())
         {
             let mut proposal_links = self
                 .store
@@ -1496,14 +1497,21 @@ where
             if let Some(proposal) = &proposal {
                 proposal_links.extend(TimelockProposalLinkContext::from_proposal_batch(proposal));
             }
-            Some(
-                project_timelock_events_with_proposal_links(
-                    &context,
-                    &proposal_links,
-                    timelock_events,
+            if timelock_events.is_empty() {
+                (!proposal_links.is_empty())
+                    .then(|| project_timelock_proposal_links(&context, &proposal_links))
+                    .transpose()
+                    .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?
+            } else {
+                Some(
+                    project_timelock_events_with_proposal_links(
+                        &context,
+                        &proposal_links,
+                        timelock_events,
+                    )
+                    .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?,
                 )
-                .map_err(|error| IndexerRunnerError::Projection(format!("{error:?}")))?,
-            )
+            }
         } else {
             None
         };

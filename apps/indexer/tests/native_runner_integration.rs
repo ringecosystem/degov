@@ -150,6 +150,61 @@ fn test_native_runner_links_timelock_to_proposal_actions_from_previous_range() {
     assert_eq!(runner.store().commit_count, 2);
 }
 
+#[test]
+fn test_native_runner_projects_governor_timelock_control_rows_without_timelock_logs() {
+    let mut runner = native_runner(
+        vec![vec![
+            proposal_created_row(),
+            proposal_queued_row(),
+            proposal_executed_row(),
+        ]],
+        CapturingStore::new(identity(), 1),
+    );
+
+    runner.run_to_target(5).expect("runner succeeds");
+
+    let proposal = runner
+        .store()
+        .proposal_repository
+        .proposals()
+        .values()
+        .next()
+        .expect("proposal");
+    let operation = runner
+        .store()
+        .timelock_repository
+        .timelock_operations()
+        .values()
+        .next()
+        .expect("timelock operation");
+    assert_eq!(operation.operation_id, bytes32_uint(42));
+    assert_eq!(operation.timelock_type, "GovernorTimelockControl");
+    assert_eq!(operation.state, "Done");
+    assert_eq!(
+        operation.proposal_ref.as_deref(),
+        Some(proposal.id.as_str())
+    );
+    assert_eq!(operation.call_count, Some(1));
+    assert_eq!(operation.executed_call_count, Some(1));
+
+    let call = runner
+        .store()
+        .timelock_repository
+        .timelock_calls()
+        .values()
+        .next()
+        .expect("timelock call");
+    assert_eq!(call.operation_ref, operation.id);
+    assert_eq!(call.state, "Done");
+    assert_eq!(call.proposal_ref.as_deref(), Some(proposal.id.as_str()));
+    assert_eq!(
+        call.proposal_action_id.as_deref(),
+        Some(format!("{}:action:0", proposal.id).as_str())
+    );
+    assert_eq!(call.scheduled_transaction_hash.as_deref(), Some("0xtx40"));
+    assert_eq!(call.executed_transaction_hash.as_deref(), Some("0xtx50"));
+}
+
 fn assert_projected_domains(store: &CapturingStore) {
     let proposal = store
         .proposal_repository
@@ -744,6 +799,17 @@ fn proposal_queued_row() -> Value {
     )
 }
 
+fn proposal_executed_row() -> Value {
+    raw_log(
+        5,
+        0,
+        0,
+        GOVERNOR,
+        vec![PROPOSAL_EXECUTED],
+        encode(&[uint(42)]),
+    )
+}
+
 fn vote_cast_row() -> Value {
     raw_log(
         3,
@@ -872,6 +938,10 @@ fn topic_uint(value: u64) -> String {
     format!("0x{value:064x}")
 }
 
+fn bytes32_uint(value: u64) -> String {
+    format!("0x{value:064x}")
+}
+
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
 const TOKEN: &str = "0x2222222222222222222222222222222222222222";
 const TIMELOCK: &str = "0x3333333333333333333333333333333333333333";
@@ -886,6 +956,8 @@ const OPERATION_ID: &str = "0x01010101010101010101010101010101010101010101010101
 
 const PROPOSAL_CREATED: &str = "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0";
 const PROPOSAL_QUEUED: &str = "0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892";
+const PROPOSAL_EXECUTED: &str =
+    "0x712ae1383f79ac853f8d882153778e0260ef8f03b504e2866e0593e04d2b291f";
 const VOTE_CAST: &str = "0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4";
 const TRANSFER: &str = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const DELEGATE_CHANGED: &str = "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f";

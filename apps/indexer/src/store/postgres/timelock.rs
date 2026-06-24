@@ -42,7 +42,13 @@ async fn read_timelock_proposal_link_context(
             "SELECT p.chain_id, p.governor_address, p.id AS proposal_ref,
                     p.proposal_id AS raw_proposal_id,
                     pq.transaction_hash AS queue_transaction_hash,
+                    pq.block_number::TEXT AS queue_block_number,
+                    pq.block_timestamp::TEXT AS queue_block_timestamp,
+                    pq.log_index AS queue_log_index,
+                    pq.transaction_index AS queue_transaction_index,
                     pe.transaction_hash AS execution_transaction_hash,
+                    pe.block_number::TEXT AS execution_block_number,
+                    pe.block_timestamp::TEXT AS execution_block_timestamp,
                     pq.eta_seconds::TEXT AS queue_eta,
                     pa.id AS proposal_action_id,
                     pa.action_index AS proposal_action_index,
@@ -102,7 +108,13 @@ async fn read_timelock_proposal_link_context(
                     "SELECT p.chain_id, p.governor_address, p.id AS proposal_ref,
                             p.proposal_id AS raw_proposal_id,
                             $3::TEXT AS queue_transaction_hash,
+                            $11::TEXT AS queue_block_number,
+                            $12::TEXT AS queue_block_timestamp,
+                            $13::INT AS queue_log_index,
+                            $14::INT AS queue_transaction_index,
                             pe.transaction_hash AS execution_transaction_hash,
+                            pe.block_number::TEXT AS execution_block_number,
+                            pe.block_timestamp::TEXT AS execution_block_timestamp,
                             $4::TEXT AS queue_eta,
                             pa.id AS proposal_action_id,
                             pa.action_index AS proposal_action_index,
@@ -134,10 +146,66 @@ async fn read_timelock_proposal_link_context(
                 .bind(&event.value)
                 .bind(normalize_identifier(&event.data))
                 .bind(&context.contract_set_id)
+                .bind(&queued.common.block_number)
+                .bind(queued.common.block_timestamp.as_deref())
+                .bind(u64_to_i32(queued.common.log_index, "proposal_queued.log_index")?)
+                .bind(u64_to_i32(
+                    queued.common.transaction_index,
+                    "proposal_queued.transaction_index",
+                )?)
                 .fetch_optional(pool)
                 .await?;
 
                 let Some(row) = row else { continue };
+                insert_link_from_row(&mut links, row)?;
+            }
+        }
+
+        for queued in &proposal.proposal_queued {
+            let rows = sqlx::query(
+                "SELECT p.chain_id, p.governor_address, p.id AS proposal_ref,
+                        p.proposal_id AS raw_proposal_id,
+                        $3::TEXT AS queue_transaction_hash,
+                        $4::TEXT AS queue_block_number,
+                        $5::TEXT AS queue_block_timestamp,
+                        $6::INT AS queue_log_index,
+                        $7::INT AS queue_transaction_index,
+                        pe.transaction_hash AS execution_transaction_hash,
+                        pe.block_number::TEXT AS execution_block_number,
+                        pe.block_timestamp::TEXT AS execution_block_timestamp,
+                        $8::TEXT AS queue_eta,
+                        pa.id AS proposal_action_id,
+                        pa.action_index AS proposal_action_index,
+                        pa.target, pa.value, pa.calldata
+                 FROM proposal p
+                 JOIN proposal_action pa ON pa.proposal_ref = p.id
+                 LEFT JOIN proposal_executed pe
+                   ON pe.chain_id IS NOT DISTINCT FROM p.chain_id
+                  AND pe.governor_address IS NOT DISTINCT FROM p.governor_address
+                  AND pe.proposal_id = p.proposal_id
+                 WHERE p.chain_id IS NOT DISTINCT FROM $1
+                   AND p.governor_address IS NOT DISTINCT FROM $2
+                   AND p.contract_set_id = $9
+                   AND p.proposal_id = $10
+                 ORDER BY p.id, pa.action_index, pa.id",
+            )
+            .bind(queued.common.chain_id)
+            .bind(&governor_address)
+            .bind(normalize_identifier(&queued.common.transaction_hash))
+            .bind(&queued.common.block_number)
+            .bind(queued.common.block_timestamp.as_deref())
+            .bind(u64_to_i32(queued.common.log_index, "proposal_queued.log_index")?)
+            .bind(u64_to_i32(
+                queued.common.transaction_index,
+                "proposal_queued.transaction_index",
+            )?)
+            .bind(&queued.eta_seconds)
+            .bind(&context.contract_set_id)
+            .bind(&queued.proposal_id)
+            .fetch_all(pool)
+            .await?;
+
+            for row in rows {
                 insert_link_from_row(&mut links, row)?;
             }
         }
@@ -160,7 +228,17 @@ fn insert_link_from_row(
         proposal_ref: row.get("proposal_ref"),
         raw_proposal_id: row.get("raw_proposal_id"),
         queue_transaction_hash: row.get("queue_transaction_hash"),
+        queue_block_number: row.get("queue_block_number"),
+        queue_block_timestamp: row.get("queue_block_timestamp"),
+        queue_log_index: u64::try_from(row.get::<i32, _>("queue_log_index"))
+            .map_err(|_| PostgresIndexerRunnerStoreError::new("queue_log_index cannot be negative"))?,
+        queue_transaction_index: u64::try_from(row.get::<i32, _>("queue_transaction_index"))
+            .map_err(|_| {
+                PostgresIndexerRunnerStoreError::new("queue_transaction_index cannot be negative")
+            })?,
         execution_transaction_hash: row.get("execution_transaction_hash"),
+        execution_block_number: row.get("execution_block_number"),
+        execution_block_timestamp: row.get("execution_block_timestamp"),
         queue_eta: row.get("queue_eta"),
         proposal_action_id: row.get("proposal_action_id"),
         proposal_action_index,
