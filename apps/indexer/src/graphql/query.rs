@@ -76,7 +76,10 @@ pub(super) async fn query_proposals(
             COALESCE(proposal_overlay.vote_start_timestamp, proposal.vote_start_timestamp) AS vote_start_timestamp,
             COALESCE(proposal_overlay.vote_end_timestamp, proposal.vote_end_timestamp) AS vote_end_timestamp,
             proposal.block_interval,
-            COALESCE(proposal_overlay.description_hash, proposal.description_hash) AS description_hash,
+            CASE
+              WHEN proposal_overlay.description IS NOT NULL THEN proposal_overlay.description_hash
+              ELSE proposal.description_hash
+            END AS description_hash,
             COALESCE(proposal_overlay.clock_mode, proposal.clock_mode) AS clock_mode,
             COALESCE(proposal_overlay.proposal_deadline, proposal.proposal_deadline) AS proposal_deadline,
             COALESCE(proposal_overlay.proposal_eta, proposal.proposal_eta) AS proposal_eta,
