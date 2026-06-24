@@ -856,6 +856,7 @@ async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to
                 proposalId
                 title
                 description
+                descriptionHash
                 proposalEta
                 queueReadyAt
                 queueExpiresAt
@@ -890,6 +891,7 @@ async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to
         data["proposals"][0]["description"],
         "Live launch description"
     );
+    assert!(data["proposals"][0]["descriptionHash"].is_null());
     assert_eq!(data["proposals"][0]["proposalEta"], "1700000300");
     assert_eq!(data["proposals"][0]["queueReadyAt"], "1700000300000");
     assert_eq!(data["proposals"][0]["queueExpiresAt"], "1700000900000");

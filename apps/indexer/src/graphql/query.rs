@@ -51,11 +51,11 @@ pub(super) async fn query_proposals(
           title,
           (CASE WHEN vote_start_timestamp < 1000000000000 THEN vote_start_timestamp * 1000 ELSE vote_start_timestamp END)::text AS vote_start_timestamp,
           (CASE WHEN vote_end_timestamp < 1000000000000 THEN vote_end_timestamp * 1000 ELSE vote_end_timestamp END)::text AS vote_end_timestamp,
-          block_interval, clock_mode,
+          block_interval, description_hash, clock_mode,
           proposal_deadline::text AS proposal_deadline, proposal_eta::text AS proposal_eta,
           (CASE WHEN queue_ready_at IS NULL THEN NULL WHEN queue_ready_at < 1000000000000 THEN queue_ready_at * 1000 ELSE queue_ready_at END)::text AS queue_ready_at,
           (CASE WHEN queue_expires_at IS NULL THEN NULL WHEN queue_expires_at < 1000000000000 THEN queue_expires_at * 1000 ELSE queue_expires_at END)::text AS queue_expires_at,
-          quorum::text AS quorum, decimals::text AS decimals, timelock_address,
+          counting_mode, quorum::text AS quorum, decimals::text AS decimals, timelock_address,
           timelock_grace_period::text AS timelock_grace_period
         FROM (
           SELECT proposal.id, proposal.contract_set_id, proposal.chain_id, proposal.dao_code,
@@ -76,11 +76,16 @@ pub(super) async fn query_proposals(
             COALESCE(proposal_overlay.vote_start_timestamp, proposal.vote_start_timestamp) AS vote_start_timestamp,
             COALESCE(proposal_overlay.vote_end_timestamp, proposal.vote_end_timestamp) AS vote_end_timestamp,
             proposal.block_interval,
+            CASE
+              WHEN proposal_overlay.description IS NOT NULL THEN proposal_overlay.description_hash
+              ELSE proposal.description_hash
+            END AS description_hash,
             COALESCE(proposal_overlay.clock_mode, proposal.clock_mode) AS clock_mode,
             COALESCE(proposal_overlay.proposal_deadline, proposal.proposal_deadline) AS proposal_deadline,
             COALESCE(proposal_overlay.proposal_eta, proposal.proposal_eta) AS proposal_eta,
             COALESCE(proposal_overlay.queue_ready_at, proposal.queue_ready_at) AS queue_ready_at,
             COALESCE(proposal_overlay.queue_expires_at, proposal.queue_expires_at) AS queue_expires_at,
+            COALESCE(proposal_overlay.counting_mode, proposal.counting_mode) AS counting_mode,
             COALESCE(proposal_overlay.quorum, proposal.quorum) AS quorum,
             COALESCE(proposal_overlay.decimals, proposal.decimals) AS decimals,
             COALESCE(proposal_overlay.timelock_address, proposal.timelock_address) AS timelock_address,
