@@ -472,6 +472,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("degov_runtime_repair_marker"));
     assert!(runtime_migration.contains("delegate_effective_counts_v1"));
     assert!(runtime_migration.contains("repair_delegate_effective_counts_once"));
+    assert!(runtime_migration.contains("vote_timestamps_millis_v1"));
+    assert!(runtime_migration.contains("repair_vote_timestamps_millis_once"));
     assert!(runtime_migration.contains("onchain_refresh_data_metric_task"));
     assert!(runtime_migration.contains("onchain_refresh_task_pending_ready_claim_idx"));
     assert!(runtime_migration.contains("onchain_refresh_task_pending_scope_claim_idx"));

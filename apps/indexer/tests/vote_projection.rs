@@ -66,7 +66,7 @@ fn test_project_vote_events_preserves_vote_rows_groups_totals_and_signals() {
     assert_eq!(vote.weight, "100");
     assert_eq!(vote.reason, "looks good");
     assert_eq!(vote.block_number, "10");
-    assert_eq!(vote.block_timestamp.as_deref(), Some("1700000010"));
+    assert_eq!(vote.block_timestamp.as_deref(), Some("1700000010000"));
     assert_eq!(vote.transaction_hash, "0xtx10");
 
     let metric = &batch.data_metrics[0];
