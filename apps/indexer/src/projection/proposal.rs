@@ -1785,9 +1785,20 @@ fn estimate_blocknumber_timestamp(
 }
 
 fn block_interval(chain_id: i32, clock_mode: &str) -> Option<String> {
-    const ETHEREUM_MAINNET_CHAIN_ID: i32 = 1;
+    if clock_mode != "blocknumber" {
+        return None;
+    }
 
-    (chain_id == ETHEREUM_MAINNET_CHAIN_ID && clock_mode == "blocknumber").then(|| "12".to_owned())
+    match chain_id {
+        1 => Some("12".to_owned()),
+        10 => Some("2".to_owned()),
+        46 => Some("6".to_owned()),
+        56 => Some("3".to_owned()),
+        1135 => Some("2".to_owned()),
+        8453 => Some("2".to_owned()),
+        42161 => Some("0.25".to_owned()),
+        _ => None,
+    }
 }
 
 fn merge_block_interval(
@@ -1880,5 +1891,30 @@ fn chain_read_state(value: &ChainReadValue) -> Option<String> {
 fn extend_map<T: Clone>(map: &mut BTreeMap<String, T>, rows: &[T], key: impl Fn(&T) -> String) {
     for row in rows {
         map.insert(key(row), row.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::block_interval;
+
+    #[test]
+    fn test_block_interval_supports_configured_chains() {
+        assert_eq!(block_interval(1, "blocknumber").as_deref(), Some("12"));
+        assert_eq!(block_interval(10, "blocknumber").as_deref(), Some("2"));
+        assert_eq!(block_interval(46, "blocknumber").as_deref(), Some("6"));
+        assert_eq!(block_interval(56, "blocknumber").as_deref(), Some("3"));
+        assert_eq!(block_interval(1135, "blocknumber").as_deref(), Some("2"));
+        assert_eq!(block_interval(8453, "blocknumber").as_deref(), Some("2"));
+        assert_eq!(
+            block_interval(42161, "blocknumber").as_deref(),
+            Some("0.25")
+        );
+    }
+
+    #[test]
+    fn test_block_interval_skips_timestamp_clock_mode() {
+        assert_eq!(block_interval(1, "timestamp"), None);
+        assert_eq!(block_interval(8453, "timestamp"), None);
     }
 }
