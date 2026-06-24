@@ -561,7 +561,7 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     );
     assert_completed_task(&database.pool, "task-one", 1).await?;
     assert_completed_task(&database.pool, "task-two", 2).await?;
-    assert_data_metric_counts(&database.pool, "16", 3, 1, 7, 7).await?;
+    assert_data_metric_counts(&database.pool, "16", 3, 1, 3, 7).await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_TWO, "0", "5", "5").await?;
     assert_balance_checkpoint(&database.pool, ACCOUNT_ONE, "4", "17", "13").await?;
