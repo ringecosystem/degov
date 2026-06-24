@@ -15,30 +15,24 @@ fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelo
     let addresses = addresses();
     let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    assert_eq!(plans.len(), 3);
-    assert_source_queries(
-        &plans,
-        DaoLogSource::Governor,
-        &addresses.governor,
-        GOVERNOR_TOPIC0_VALUES,
-        100,
-        199,
-        "durable_only",
-    );
-    assert_source_queries(
-        &plans,
-        DaoLogSource::GovernorToken,
-        &addresses.governor_token,
-        GOVERNOR_TOKEN_TOPIC0_VALUES,
-        100,
-        199,
-        "durable_only",
-    );
-    assert_source_queries(
-        &plans,
-        DaoLogSource::Timelock,
-        addresses.timelock.as_ref().expect("timelock"),
-        TIMELOCK_TOPIC0_VALUES,
+    assert_eq!(plans.len(), 1);
+    assert_query(
+        &plans[0],
+        &[
+            DaoLogAddressSource {
+                address: addresses.governor.clone(),
+                source: DaoLogSource::Governor,
+            },
+            DaoLogAddressSource {
+                address: addresses.governor_token.clone(),
+                source: DaoLogSource::GovernorToken,
+            },
+            DaoLogAddressSource {
+                address: addresses.timelock.clone().expect("timelock"),
+                source: DaoLogSource::Timelock,
+            },
+        ],
+        &unified_topic0_values(),
         100,
         199,
         "durable_only",
@@ -53,25 +47,25 @@ fn test_plan_dao_log_queries_skips_timelock_when_not_configured() {
 
     let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    assert_eq!(plans.len(), 2);
+    assert_eq!(plans.len(), 1);
     assert_eq!(
-        plans
-            .iter()
-            .filter(|plan| plan.sources[0].source == DaoLogSource::Governor)
-            .count(),
-        1
-    );
-    assert_eq!(
-        plans
-            .iter()
-            .filter(|plan| plan.sources[0].source == DaoLogSource::GovernorToken)
-            .count(),
-        1
+        plans[0].sources,
+        vec![
+            DaoLogAddressSource {
+                address: addresses.governor,
+                source: DaoLogSource::Governor,
+            },
+            DaoLogAddressSource {
+                address: addresses.governor_token,
+                source: DaoLogSource::GovernorToken,
+            },
+        ]
     );
     assert!(
-        plans
+        plans[0]
+            .sources
             .iter()
-            .all(|plan| plan.sources[0].source != DaoLogSource::Timelock)
+            .all(|source| source.source != DaoLogSource::Timelock)
     );
 }
 
@@ -84,7 +78,7 @@ fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
         .map(|plan| (plan.from_block, plan.to_block))
         .collect::<Vec<_>>();
 
-    let plans_per_chunk = 3;
+    let plans_per_chunk = 1;
 
     assert_eq!(ranges.len(), plans_per_chunk * 3);
     assert_eq!(
@@ -196,38 +190,10 @@ fn test_fetch_dao_log_pages_stops_without_later_pages_on_reader_error() {
     assert_eq!(reader.calls.len(), 1);
 }
 
-fn assert_source_queries(
-    plans: &[DaoLogQueryPlan],
-    source: DaoLogSource,
-    address: &str,
-    topic0_values: &[&str],
-    from_block: i32,
-    to_block: i32,
-    finality: &str,
-) {
-    let source_plans = plans
-        .iter()
-        .filter(|plan| plan.sources[0].source == source)
-        .collect::<Vec<_>>();
-
-    assert_eq!(source_plans.len(), 1);
-    assert_query(
-        source_plans[0],
-        &[DaoLogAddressSource {
-            address: address.to_owned(),
-            source,
-        }],
-        topic0_values,
-        from_block,
-        to_block,
-        finality,
-    );
-}
-
 fn assert_query(
     plan: &DaoLogQueryPlan,
     sources: &[DaoLogAddressSource],
-    topic0_values: &[&str],
+    topic0_values: &[String],
     from_block: i32,
     to_block: i32,
     finality: &str,
@@ -261,6 +227,21 @@ fn assert_query(
                 .collect::<Vec<_>>()
         ]
     );
+}
+
+fn unified_topic0_values() -> Vec<String> {
+    let mut topics = Vec::new();
+    for topic in GOVERNOR_TOPIC0_VALUES
+        .iter()
+        .chain(GOVERNOR_TOKEN_TOPIC0_VALUES)
+        .chain(TIMELOCK_TOPIC0_VALUES)
+    {
+        let topic = (*topic).to_owned();
+        if !topics.contains(&topic) {
+            topics.push(topic);
+        }
+    }
+    topics
 }
 
 fn config(block_range_limit: u32, finality: DatalensFinality) -> DatalensConfig {
