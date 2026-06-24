@@ -22,6 +22,10 @@ export interface ProcessOnchainRefreshBatchOptions {
   multicallChunkSize?: number;
   concurrency?: number;
   maxSyncLagBlocks?: number;
+  checkpointDataSource?: QueryableDataSource;
+  checkpointContractSetId?: string;
+  checkpointStreamId?: string;
+  checkpointDataSourceVersion?: string;
   seedReconcile?: boolean;
   reconcileSeedChunkSize?: number;
   reconcileSeedBatchSize?: number;
@@ -82,7 +86,7 @@ export async function processOnchainRefreshBatch(
   let syncLagBlocks: bigint | undefined;
   let reconcileOnly = false;
   if (options.maxSyncLagBlocks !== undefined) {
-    processorHeight = await loadProcessorHeight(dataSource);
+    processorHeight = await loadProcessorHeight(dataSource, options);
     if (processorHeight === undefined) {
       return { claimed: 0, processed: 0, failed: 0, skipped: "processor-unready" };
     }
@@ -189,7 +193,68 @@ export async function processOnchainRefreshBatch(
   };
 }
 
+interface NativeCheckpointHeightResult {
+  available: boolean;
+  height?: bigint;
+}
+
 async function loadProcessorHeight(
+  dataSource: QueryableDataSource,
+  options: ProcessOnchainRefreshBatchOptions,
+): Promise<bigint | undefined> {
+  const nativeCheckpoint = await loadNativeCheckpointHeight(
+    options.checkpointDataSource ?? dataSource,
+    options,
+  );
+  if (nativeCheckpoint.available) {
+    return nativeCheckpoint.height;
+  }
+
+  return loadSquidProcessorHeight(dataSource);
+}
+
+async function loadNativeCheckpointHeight(
+  dataSource: QueryableDataSource,
+  options: ProcessOnchainRefreshBatchOptions,
+): Promise<NativeCheckpointHeightResult> {
+  try {
+    const rows = await dataSource.query(
+      `
+        SELECT
+          MIN(processed_height)::text AS height,
+          COUNT(*)::text AS "rowCount"
+        FROM degov_indexer_checkpoint
+        WHERE chain_id = $1
+          AND ($2::text IS NULL OR dao_code = $2)
+          AND ($3::text IS NULL OR contract_set_id = $3)
+          AND ($4::text IS NULL OR stream_id = $4)
+          AND ($5::text IS NULL OR data_source_version = $5)
+      `,
+      [
+        options.chainId,
+        options.daoCode ?? null,
+        options.checkpointContractSetId ?? null,
+        options.checkpointStreamId ?? null,
+        options.checkpointDataSourceVersion ?? null,
+      ],
+    );
+    const row = rows[0];
+    if (!row || toBigInt(row.rowCount) === 0n) {
+      return { available: false };
+    }
+    if (row.height === undefined || row.height === null) {
+      return { available: true };
+    }
+    return { available: true, height: toBigInt(row.height) };
+  } catch (error) {
+    if (isRelationMissingError(error)) {
+      return { available: false };
+    }
+    throw error;
+  }
+}
+
+async function loadSquidProcessorHeight(
   dataSource: QueryableDataSource,
 ): Promise<bigint | undefined> {
   try {
@@ -937,4 +1002,34 @@ export async function createOnchainRefreshDataSource(): Promise<DataSource> {
   );
   await dataSource.initialize();
   return dataSource;
+}
+
+export async function createOnchainRefreshCheckpointDataSource(): Promise<DataSource | undefined> {
+  const databaseUrl = process.env.DEGOV_ONCHAIN_REFRESH_CHECKPOINT_DATABASE_URL;
+  if (!databaseUrl) {
+    return undefined;
+  }
+  const ssl = parseBooleanEnv(
+    process.env.DEGOV_ONCHAIN_REFRESH_CHECKPOINT_DB_SSL,
+    process.env.DB_SSL === "true",
+  );
+  const dataSource = new DataSource({ type: "postgres", url: databaseUrl, ssl });
+  await dataSource.initialize();
+  return dataSource;
+}
+
+function parseBooleanEnv(value: string | undefined, fallback: boolean) {
+  if (value === undefined || value === "") {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  throw new Error(
+    `DEGOV_ONCHAIN_REFRESH_CHECKPOINT_DB_SSL must be a boolean. Received: ${value}`,
+  );
 }

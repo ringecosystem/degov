@@ -2,6 +2,7 @@ import { DegovDataSource } from "./datasource";
 import { parseIndexerPowerSource } from "./handler/token";
 import { ChainTool } from "./internal/chaintool";
 import {
+  createOnchainRefreshCheckpointDataSource,
   createOnchainRefreshDataSource,
   processOnchainRefreshBatch,
 } from "./onchain-refresh/worker";
@@ -28,6 +29,7 @@ async function main() {
   }
 
   const dataSource = await createOnchainRefreshDataSource();
+  const checkpointDataSource = await createOnchainRefreshCheckpointDataSource();
   const chainTool = new ChainTool();
   const workerId = [
     "onchain-refresh",
@@ -56,6 +58,15 @@ async function main() {
     1_000,
   );
   const lockTtlMs = readIntegerEnv("DEGOV_ONCHAIN_REFRESH_LOCK_TTL_MS", 300_000);
+  const checkpointContractSetId = readStringEnv(
+    "DEGOV_ONCHAIN_REFRESH_CHECKPOINT_CONTRACT_SET_ID",
+  );
+  const checkpointStreamId = readStringEnv(
+    "DEGOV_ONCHAIN_REFRESH_CHECKPOINT_STREAM_ID",
+  );
+  const checkpointDataSourceVersion = readStringEnv(
+    "DEGOV_ONCHAIN_REFRESH_CHECKPOINT_DATA_SOURCE_VERSION",
+  );
   const seedReconcile =
     parseIndexerPowerSource() === "onchain" &&
     !parseOnchainEventReadsEnabled();
@@ -79,6 +90,10 @@ async function main() {
       seedReconcile,
       pollIntervalMs,
       rpcCount: rpcs.length,
+      checkpointDatabaseConfigured: Boolean(checkpointDataSource),
+      checkpointContractSetId,
+      checkpointStreamId,
+      checkpointDataSourceVersion,
     }),
   );
 
@@ -98,6 +113,10 @@ async function main() {
           multicallChunkSize,
           concurrency,
           maxSyncLagBlocks,
+          checkpointDataSource,
+          checkpointContractSetId,
+          checkpointStreamId,
+          checkpointDataSourceVersion,
           lockTtlMs,
           seedReconcile,
           reconcileSeedStartAfterAccount,
@@ -145,6 +164,11 @@ function readIntegerEnv(name: string, fallback: number) {
     throw new Error(`${name} must be a positive integer. Received: ${value}`);
   }
   return parsed;
+}
+
+function readStringEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
 }
 
 function sleep(ms: number) {

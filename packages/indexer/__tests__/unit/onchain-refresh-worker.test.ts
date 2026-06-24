@@ -285,6 +285,187 @@ describe("onchain refresh worker", () => {
     ).toBe(false);
   });
 
+  it("uses the native DeGov checkpoint height before falling back to stale squid processor status", async () => {
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes("FROM degov_indexer_checkpoint")) {
+          return [{ height: "195", rowCount: "1" }];
+        }
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "100" }];
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 200n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      maxSyncLagBlocks: 50,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+    });
+    expect(queries[0].sql).toContain("FROM degov_indexer_checkpoint");
+    expect(queries[0].params).toEqual([
+      1,
+      "demo",
+      null,
+      null,
+      null,
+    ]);
+    expect(
+      queries.some((entry) => entry.sql.includes('"squid_processor".status')),
+    ).toBe(false);
+    expect(
+      queries.some((entry) => entry.sql.includes("FOR UPDATE SKIP LOCKED")),
+    ).toBe(true);
+  });
+
+  it("falls back to squid processor status when the native DeGov checkpoint table is missing", async () => {
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes("FROM degov_indexer_checkpoint")) {
+          throw { code: "42P01" };
+        }
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "195" }];
+        }
+        if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+          return [];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 200n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      maxSyncLagBlocks: 50,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+    });
+    expect(
+      queries.some((entry) => entry.sql.includes('"squid_processor".status')),
+    ).toBe(true);
+  });
+
+  it("keeps the processor unready when a native DeGov checkpoint row exists without a processed height", async () => {
+    const queries: { sql: string; params?: unknown[] }[] = [];
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        if (sql.includes("FROM degov_indexer_checkpoint")) {
+          return [{ height: null, rowCount: "1" }];
+        }
+        if (sql.includes('"squid_processor".status')) {
+          return [{ height: "200" }];
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 200n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    const result = await processOnchainRefreshBatch(dataSource as any, chainTool, {
+      chainId: 1,
+      daoCode: "demo",
+      governorAddress: "0x9999999999999999999999999999999999999999",
+      tokenAddress: "0x8888888888888888888888888888888888888888",
+      rpcs: ["https://rpc.example"],
+      workerId: "worker-1",
+      batchSize: 10,
+      maxSyncLagBlocks: 50,
+      now: 1_700_000_000_000n,
+    });
+
+    expect(result).toEqual({
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+      skipped: "processor-unready",
+    });
+    expect(
+      queries.some((entry) => entry.sql.includes('"squid_processor".status')),
+    ).toBe(false);
+  });
+
+  it("does not mask missing onchain refresh task schema after the native checkpoint guard passes", async () => {
+    const dataSource = {
+      transaction: async (callback: any) => callback(dataSource),
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes("FROM degov_indexer_checkpoint")) {
+          return [{ height: "195", rowCount: "1" }];
+        }
+        if (sql.includes("onchain_refresh_task")) {
+          throw { code: "42P01" };
+        }
+        return [];
+      }),
+    };
+    const chainTool = new ChainTool();
+    jest.spyOn(chainTool, "latestBlock").mockResolvedValue({
+      number: 200n,
+      timestampMs: 1_700_000_000_000n,
+    });
+
+    await expect(
+      processOnchainRefreshBatch(dataSource as any, chainTool, {
+        chainId: 1,
+        daoCode: "demo",
+        governorAddress: "0x9999999999999999999999999999999999999999",
+        tokenAddress: "0x8888888888888888888888888888888888888888",
+        rpcs: ["https://rpc.example"],
+        workerId: "worker-1",
+        batchSize: 10,
+        maxSyncLagBlocks: 50,
+        now: 1_700_000_000_000n,
+      }),
+    ).rejects.toEqual({ code: "42P01" });
+  });
+
   it("seeds and claims only reconcile tasks while the processor is still far behind the chain head", async () => {
     const account = "0x1111111111111111111111111111111111111111";
     let claimCalls = 0;
