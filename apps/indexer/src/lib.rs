@@ -102,9 +102,10 @@ pub use crate::store::postgres::{
     PostgresProvisionalCleanupStore, PostgresProvisionalPowerOverlayStore,
     PostgresProvisionalProposalOverlayStore, PostgresProvisionalSegmentStore,
     ProposalReferenceFieldCandidate, ProposalReferenceFieldUpdate, ProposalTitleRefreshCandidate,
-    ProposalTitleRefreshUpdate, read_proposal_reference_field_candidates,
-    read_proposal_title_refresh_candidates, update_proposal_reference_fields,
-    update_proposal_titles,
+    ProposalTitleRefreshUpdate, TimelockProposalLinkBackfillPage,
+    read_proposal_reference_field_candidates, read_proposal_title_refresh_candidates,
+    read_timelock_proposal_link_backfill_page, update_proposal_reference_fields,
+    update_proposal_titles, write_timelock_proposal_link_backfill_batch,
 };
 pub use checkpoint::{
     CheckpointBlockRange, CheckpointRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
