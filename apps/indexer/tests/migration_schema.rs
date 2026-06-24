@@ -526,6 +526,85 @@ async fn test_migration_repairs_token_timestamps_to_millis() -> Result<(), Box<d
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_migration_repairs_token_timestamps_across_multiple_batches()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO token_transfer (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contract_address, log_index, transaction_index, "from", "to",
+            value, standard, block_number, block_timestamp, transaction_hash
+        )
+        VALUES
+            (
+                'token-transfer-batch-1', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+                '0xtoken', 1, 0, '0xfrom', '0xto',
+                10, 'erc20', 12, 1700000012, '0xtx1'
+            ),
+            (
+                'token-transfer-batch-2', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+                '0xtoken', 2, 0, '0xfrom', '0xto',
+                10, 'erc20', 13, 1700000013, '0xtx2'
+            ),
+            (
+                'token-transfer-batch-3', 'scope', 1, 'dao', '0xgovernor', '0xtoken',
+                '0xtoken', 3, 0, '0xfrom', '0xto',
+                10, 'erc20', 14, 1700000014, '0xtx3'
+            )
+        "#,
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "DELETE FROM degov_runtime_repair_marker
+         WHERE id = 'token_timestamps_millis_v1'",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    let previous_batch_size = env::var("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE").ok();
+    unsafe {
+        env::set_var("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE", "2");
+    }
+
+    apply_migrations(&database.pool).await?;
+
+    unsafe {
+        match previous_batch_size {
+            Some(value) => env::set_var("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE", value),
+            None => env::remove_var("DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE"),
+        }
+    }
+
+    let remaining_after_repair: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)
+         FROM token_transfer
+         WHERE block_timestamp < 1000000000000",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    let marker_after_repair: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM degov_runtime_repair_marker
+            WHERE id = 'token_timestamps_millis_v1'
+         )",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+
+    assert_eq!(remaining_after_repair, 0);
+    assert!(marker_after_repair);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
 

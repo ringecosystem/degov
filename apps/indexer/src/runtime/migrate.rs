@@ -1,7 +1,7 @@
 use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result};
 use sqlx::{PgConnection, PgPool, migrate::Migrator, postgres::PgPoolOptions};
-use std::time::Duration;
+use std::{env, time::Duration};
 
 use crate::required_env;
 
@@ -638,15 +638,37 @@ async fn repair_vote_timestamps_millis_once(connection: &mut PgConnection) -> Re
 }
 
 async fn repair_token_timestamps_millis_once(connection: &mut PgConnection) -> Result<()> {
+    const MARKER_ID: &str = "token_timestamps_millis_v1";
+    const MILLIS_THRESHOLD: i64 = 1_000_000_000_000;
+    const DEFAULT_BATCH_SIZE: i64 = 50_000;
+    const TARGETS: &[(&str, &str)] = &[
+        ("delegate_changed", "block_timestamp"),
+        ("delegate_votes_changed", "block_timestamp"),
+        ("token_transfer", "block_timestamp"),
+        ("delegate_rolling", "block_timestamp"),
+        ("delegate_mapping", "block_timestamp"),
+        ("delegate", "block_timestamp"),
+        ("contributor", "block_timestamp"),
+        ("token_balance_checkpoint", "block_timestamp"),
+        ("vote_power_checkpoint", "block_timestamp"),
+        ("onchain_refresh_task", "last_seen_block_timestamp"),
+        ("onchain_refresh_task", "pending_after_lock_block_timestamp"),
+        (
+            "onchain_refresh_deferred_candidate",
+            "last_seen_block_timestamp",
+        ),
+    ];
+
     ensure_runtime_repair_marker_table(connection).await?;
 
     let already_applied = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (
             SELECT 1
             FROM degov_runtime_repair_marker
-            WHERE id = 'token_timestamps_millis_v1'
+            WHERE id = $1
          )",
     )
+    .bind(MARKER_ID)
     .fetch_one(&mut *connection)
     .await
     .context("check token timestamp millis runtime repair marker")?;
@@ -655,139 +677,133 @@ async fn repair_token_timestamps_millis_once(connection: &mut PgConnection) -> R
         return Ok(());
     }
 
-    let row =
-        sqlx::query_as::<_, (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)>(
-        "WITH updated_delegate_changed AS (
-            UPDATE delegate_changed
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_delegate_votes_changed AS (
-            UPDATE delegate_votes_changed
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_token_transfer AS (
-            UPDATE token_transfer
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_delegate_rolling AS (
-            UPDATE delegate_rolling
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_delegate_mapping AS (
-            UPDATE delegate_mapping
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_delegate AS (
-            UPDATE delegate
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_contributor AS (
-            UPDATE contributor
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_token_balance_checkpoint AS (
-            UPDATE token_balance_checkpoint
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_vote_power_checkpoint AS (
-            UPDATE vote_power_checkpoint
-            SET block_timestamp = block_timestamp * 1000
-            WHERE block_timestamp IS NOT NULL
-              AND block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_onchain_refresh_task_last_seen AS (
-            UPDATE onchain_refresh_task
-            SET last_seen_block_timestamp = last_seen_block_timestamp * 1000
-            WHERE last_seen_block_timestamp IS NOT NULL
-              AND last_seen_block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_onchain_refresh_task_pending_after_lock AS (
-            UPDATE onchain_refresh_task
-            SET pending_after_lock_block_timestamp = pending_after_lock_block_timestamp * 1000
-            WHERE pending_after_lock_block_timestamp IS NOT NULL
-              AND pending_after_lock_block_timestamp < 1000000000000
-            RETURNING id
-         ),
-         updated_onchain_refresh_deferred_candidate AS (
-            UPDATE onchain_refresh_deferred_candidate
-            SET last_seen_block_timestamp = last_seen_block_timestamp * 1000
-            WHERE last_seen_block_timestamp IS NOT NULL
-              AND last_seen_block_timestamp < 1000000000000
-            RETURNING id
-         )
-         SELECT
-            (SELECT COUNT(*)::BIGINT FROM updated_delegate_changed) AS delegate_changed_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_delegate_votes_changed) AS delegate_votes_changed_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_token_transfer) AS token_transfer_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_delegate_rolling) AS delegate_rolling_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_delegate_mapping) AS delegate_mapping_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_delegate) AS delegate_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_contributor) AS contributor_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_token_balance_checkpoint) AS token_balance_checkpoint_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_vote_power_checkpoint) AS vote_power_checkpoint_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_onchain_refresh_task_last_seen) AS onchain_refresh_task_last_seen_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_onchain_refresh_task_pending_after_lock) AS onchain_refresh_task_pending_after_lock_updates,
-            (SELECT COUNT(*)::BIGINT FROM updated_onchain_refresh_deferred_candidate) AS onchain_refresh_deferred_candidate_updates",
-    )
-    .fetch_one(&mut *connection)
-    .await
-    .context("repair token timestamps to milliseconds")?;
-
-    log::info!(
-        "DeGov token timestamps repaired to milliseconds delegate_changed_updates={} delegate_votes_changed_updates={} token_transfer_updates={} delegate_rolling_updates={} delegate_mapping_updates={} delegate_updates={} contributor_updates={} token_balance_checkpoint_updates={} vote_power_checkpoint_updates={} onchain_refresh_task_last_seen_updates={} onchain_refresh_task_pending_after_lock_updates={} onchain_refresh_deferred_candidate_updates={}",
-        row.0,
-        row.1,
-        row.2,
-        row.3,
-        row.4,
-        row.5,
-        row.6,
-        row.7,
-        row.8,
-        row.9,
-        row.10,
-        row.11
+    let batch_size = positive_env_i64(
+        "DEGOV_INDEXER_TOKEN_TIMESTAMP_REPAIR_BATCH_SIZE",
+        DEFAULT_BATCH_SIZE,
     );
+
+    for (table_name, column_name) in TARGETS {
+        let mut target_updates = 0u64;
+
+        loop {
+            let updated = repair_timestamp_millis_batch(
+                connection,
+                table_name,
+                column_name,
+                batch_size,
+                MILLIS_THRESHOLD,
+            )
+            .await
+            .with_context(|| {
+                format!("repair {table_name}.{column_name} timestamps to milliseconds")
+            })?;
+
+            if updated == 0 {
+                break;
+            }
+
+            target_updates += updated;
+        }
+
+        let target_complete = !timestamp_millis_repair_has_remaining(
+            connection,
+            table_name,
+            column_name,
+            MILLIS_THRESHOLD,
+        )
+        .await
+        .with_context(|| format!("check remaining {table_name}.{column_name} second timestamps"))?;
+
+        log::info!(
+            "DeGov token timestamp repair batch table={} column={} updates={} complete={}",
+            table_name,
+            column_name,
+            target_updates,
+            target_complete
+        );
+
+        if !target_complete {
+            return Err(runtime_anyhow::Error::msg(format!(
+                "DeGov token timestamp repair did not complete for {table_name}.{column_name}"
+            )));
+        }
+    }
 
     sqlx::query(
         "INSERT INTO degov_runtime_repair_marker (id, applied_at)
          VALUES (
-            'token_timestamps_millis_v1',
+            $1,
             FLOOR(EXTRACT(EPOCH FROM now()) * 1000)::NUMERIC(78, 0)
          )
          ON CONFLICT (id) DO NOTHING",
     )
+    .bind(MARKER_ID)
     .execute(&mut *connection)
     .await
     .context("mark token timestamp millis runtime repair complete")?;
 
+    log::info!("DeGov token timestamps repaired to milliseconds");
+
     Ok(())
+}
+
+fn positive_env_i64(name: &str, default_value: i64) -> i64 {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default_value)
+}
+
+async fn repair_timestamp_millis_batch(
+    connection: &mut PgConnection,
+    table_name: &str,
+    column_name: &str,
+    batch_size: i64,
+    millis_threshold: i64,
+) -> Result<u64, sqlx::Error> {
+    let sql = format!(
+        "WITH candidate AS (
+            SELECT ctid
+            FROM {table_name}
+            WHERE {column_name} IS NOT NULL
+              AND {column_name} < $2
+            LIMIT $1
+         )
+         UPDATE {table_name}
+         SET {column_name} = {column_name} * 1000
+         FROM candidate
+         WHERE {table_name}.ctid = candidate.ctid"
+    );
+
+    let result = sqlx::query(&sql)
+        .bind(batch_size)
+        .bind(millis_threshold)
+        .execute(&mut *connection)
+        .await?;
+
+    Ok(result.rows_affected())
+}
+
+async fn timestamp_millis_repair_has_remaining(
+    connection: &mut PgConnection,
+    table_name: &str,
+    column_name: &str,
+    millis_threshold: i64,
+) -> Result<bool, sqlx::Error> {
+    let sql = format!(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM {table_name}
+            WHERE {column_name} IS NOT NULL
+              AND {column_name} < $1
+         )"
+    );
+
+    sqlx::query_scalar::<_, bool>(&sql)
+        .bind(millis_threshold)
+        .fetch_one(&mut *connection)
+        .await
 }
 
 async fn drop_obsolete_runtime_indexes_for_connection(connection: &mut PgConnection) -> Result<()> {
