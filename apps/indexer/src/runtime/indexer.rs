@@ -1632,9 +1632,9 @@ mod tests {
 
         assert_eq!(result, Some(1));
         assert_eq!(reader.latest_head_calls, 1);
-        assert_eq!(reader.ranges.len(), 1);
+        assert_eq!(reader.ranges.len(), 2);
         assert!(reader.ranges.iter().all(|range| *range == (21, 25)));
-        assert_eq!(reader.finalities.len(), 1);
+        assert_eq!(reader.finalities.len(), 2);
         assert!(
             reader
                 .finalities

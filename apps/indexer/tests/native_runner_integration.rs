@@ -414,6 +414,13 @@ impl DatalensLogQueryReader for ScriptedReader {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let topic0_values = input
+            .selector
+            .evm_logs
+            .as_ref()
+            .and_then(|selector| selector.topics.first())
+            .cloned()
+            .unwrap_or_default();
         let rows = self
             .rows
             .iter()
@@ -429,9 +436,16 @@ impl DatalensLogQueryReader for ScriptedReader {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_ascii_lowercase();
+                let topic0 = row
+                    .pointer("/topics/0")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
 
                 (input.range.start..=input.range.end).contains(&block_number)
-                    && addresses.iter().any(|candidate| candidate == &address)
+                    && (addresses.is_empty()
+                        || addresses.iter().any(|candidate| candidate == &address))
+                    && (topic0_values.is_empty()
+                        || topic0_values.iter().any(|candidate| candidate == topic0))
             })
             .cloned()
             .collect::<Vec<_>>();

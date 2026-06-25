@@ -185,35 +185,48 @@ fn query_plans(
     from_block: i32,
     to_block: i32,
 ) -> Vec<DaoLogQueryPlan> {
-    let mut sources = vec![
-        DaoLogAddressSource {
-            address: addresses.governor.clone(),
-            source: DaoLogSource::Governor,
-        },
-        DaoLogAddressSource {
-            address: addresses.governor_token.clone(),
-            source: DaoLogSource::GovernorToken,
-        },
-    ];
+    let mut governance_sources = vec![DaoLogAddressSource {
+        address: addresses.governor.clone(),
+        source: DaoLogSource::Governor,
+    }];
     if let Some(timelock) = &addresses.timelock {
-        sources.push(DaoLogAddressSource {
+        governance_sources.push(DaoLogAddressSource {
             address: timelock.clone(),
             source: DaoLogSource::Timelock,
         });
     }
 
-    vec![query_plan(config, sources, from_block, to_block)]
+    vec![
+        query_plan(
+            config,
+            governance_sources,
+            Vec::new(),
+            broad_governance_topic0_filters(),
+            from_block,
+            to_block,
+        ),
+        query_plan(
+            config,
+            vec![DaoLogAddressSource {
+                address: addresses.governor_token.clone(),
+                source: DaoLogSource::GovernorToken,
+            }],
+            vec![addresses.governor_token.clone()],
+            governor_token_topic0_filters(),
+            from_block,
+            to_block,
+        ),
+    ]
 }
 
 fn query_plan(
     config: &DatalensConfig,
     sources: Vec<DaoLogAddressSource>,
+    selector_addresses: Vec<String>,
+    topics: Vec<String>,
     from_block: i32,
     to_block: i32,
 ) -> DaoLogQueryPlan {
-    let addresses = source_addresses(&sources);
-    let topics = unified_topic0_filters();
-
     DaoLogQueryPlan {
         sources,
         from_block,
@@ -237,7 +250,7 @@ fn query_plan(
             selector: QuerySelectorInput {
                 kind: SelectorKindInput::EvmLogs,
                 evm_logs: Some(EvmLogsSelectorInput {
-                    addresses,
+                    addresses: selector_addresses,
                     topics: vec![topics],
                 }),
                 other: None,
@@ -255,29 +268,27 @@ fn query_plan(
     }
 }
 
-fn source_addresses(sources: &[DaoLogAddressSource]) -> Vec<String> {
-    let mut addresses = Vec::new();
-    for source in sources {
-        if !addresses.contains(&source.address) {
-            addresses.push(source.address.clone());
-        }
-    }
-    addresses
+fn broad_governance_topic0_filters() -> Vec<String> {
+    unique_topic0_filters(
+        GOVERNOR_TOPIC0_FILTERS
+            .iter()
+            .chain(TIMELOCK_TOPIC0_FILTERS),
+    )
 }
 
-fn unified_topic0_filters() -> Vec<String> {
-    let mut topics = Vec::new();
-    for topic in GOVERNOR_TOPIC0_FILTERS
-        .iter()
-        .chain(GOVERNOR_TOKEN_TOPIC0_FILTERS)
-        .chain(TIMELOCK_TOPIC0_FILTERS)
-    {
+fn governor_token_topic0_filters() -> Vec<String> {
+    unique_topic0_filters(GOVERNOR_TOKEN_TOPIC0_FILTERS.iter())
+}
+
+fn unique_topic0_filters<'a>(topics: impl Iterator<Item = &'a &'a str>) -> Vec<String> {
+    let mut values = Vec::new();
+    for topic in topics {
         let topic = (*topic).to_owned();
-        if !topics.contains(&topic) {
-            topics.push(topic);
+        if !values.contains(&topic) {
+            values.push(topic);
         }
     }
-    topics
+    values
 }
 
 const GOVERNOR_TOPIC0_FILTERS: &[&str] = &[

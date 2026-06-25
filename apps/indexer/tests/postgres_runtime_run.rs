@@ -128,7 +128,7 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
     run_indexer_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 1);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 2);
     assert_table_count(&database.pool, "proposal_created", 1).await?;
     assert_table_count(&database.pool, "proposal", 1).await?;
     assert_table_count(&database.pool, "vote_cast", 1).await?;
@@ -366,7 +366,7 @@ async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
     run_indexer_all_contract_sets_command(&database.database_url, &datalens.endpoint).await?;
 
     assert_eq!(datalens.head_count.load(Ordering::Relaxed), 0);
-    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
+    assert_eq!(datalens.query_count.load(Ordering::Relaxed), 2);
     assert_checkpoint_scope(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_scope(&database.pool, SECOND_CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_row_count(&database.pool, 2).await?;
@@ -3285,13 +3285,13 @@ fn handle_datalens_request(
         query_count.fetch_add(1, Ordering::Relaxed);
         let request_body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
         let mut rows = Vec::new();
-        if request_body.contains(GOVERNOR) || request_body.contains(SECOND_GOVERNOR) {
+        if request_matches_addresses(&request_body, &[GOVERNOR, SECOND_GOVERNOR]) {
             rows.extend(matching_datalens_rows(request_body, governor_rows));
         }
-        if request_body.contains(TOKEN) || request_body.contains(SECOND_TOKEN) {
+        if request_matches_addresses(&request_body, &[TOKEN, SECOND_TOKEN]) {
             rows.extend(matching_datalens_rows(request_body, token_rows));
         }
-        if request_body.contains(TIMELOCK) || request_body.contains(SECOND_TIMELOCK) {
+        if request_matches_addresses(&request_body, &[TIMELOCK, SECOND_TIMELOCK]) {
             rows.extend(matching_datalens_rows(request_body, timelock_rows));
         }
 
@@ -3313,6 +3313,25 @@ fn handle_datalens_request(
     stream
         .write_all(response.as_bytes())
         .expect("write fake Datalens response");
+}
+
+fn request_matches_addresses(request_body: &str, addresses: &[&str]) -> bool {
+    request_uses_broad_address_selector(request_body)
+        || addresses
+            .iter()
+            .any(|address| request_body.contains(*address))
+}
+
+fn request_uses_broad_address_selector(request_body: &str) -> bool {
+    if request_body.contains(r#""addresses":[]"#) || request_body.contains(r#""addresses": []"#) {
+        return true;
+    }
+
+    serde_json::from_str::<Value>(request_body)
+        .ok()
+        .and_then(|body| body.pointer("/selector/evm_logs/addresses").cloned())
+        .and_then(|addresses| addresses.as_array().map(Vec::is_empty))
+        .unwrap_or(false)
 }
 
 fn matching_datalens_rows(request_body: &str, rows: &[Value]) -> Vec<Value> {
@@ -3370,7 +3389,7 @@ async fn assert_table_count(pool: &PgPool, table: &str, expected: i64) -> Result
         .await?
         .get(0);
 
-    assert_eq!(count, expected);
+    assert_eq!(count, expected, "unexpected row count for table {table}");
 
     Ok(())
 }

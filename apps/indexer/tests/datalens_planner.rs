@@ -15,7 +15,7 @@ fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelo
     let addresses = addresses();
     let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    assert_eq!(plans.len(), 1);
+    assert_eq!(plans.len(), 2);
     assert_query(
         &plans[0],
         &[
@@ -24,19 +24,49 @@ fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelo
                 source: DaoLogSource::Governor,
             },
             DaoLogAddressSource {
-                address: addresses.governor_token.clone(),
-                source: DaoLogSource::GovernorToken,
-            },
-            DaoLogAddressSource {
                 address: addresses.timelock.clone().expect("timelock"),
                 source: DaoLogSource::Timelock,
             },
         ],
-        &unified_topic0_values(),
+        &[],
+        &broad_governance_topic0_values(),
         100,
         199,
         "durable_only",
     );
+    assert_query(
+        &plans[1],
+        &[DaoLogAddressSource {
+            address: addresses.governor_token.clone(),
+            source: DaoLogSource::GovernorToken,
+        }],
+        std::slice::from_ref(&addresses.governor_token),
+        &governor_token_topic0_values(),
+        100,
+        199,
+        "durable_only",
+    );
+}
+
+#[test]
+fn test_plan_dao_log_queries_uses_broad_address_selector_for_reusable_datalens_cache() {
+    let config = config(1_000, DatalensFinality::DurableOnly);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 199).expect("plans");
+
+    let evm_logs = plans[0].input.selector.evm_logs.as_ref().expect("evm logs");
+    assert!(evm_logs.addresses.is_empty());
+    assert_eq!(evm_logs.topics, vec![broad_governance_topic0_values()]);
+}
+
+#[test]
+fn test_plan_dao_log_queries_keeps_token_selector_address_scoped() {
+    let config = config(1_000, DatalensFinality::DurableOnly);
+    let addresses = addresses();
+    let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
+
+    let evm_logs = plans[1].input.selector.evm_logs.as_ref().expect("evm logs");
+    assert_eq!(evm_logs.addresses, vec![addresses.governor_token]);
+    assert_eq!(evm_logs.topics, vec![governor_token_topic0_values()]);
 }
 
 #[test]
@@ -47,19 +77,13 @@ fn test_plan_dao_log_queries_skips_timelock_when_not_configured() {
 
     let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    assert_eq!(plans.len(), 1);
+    assert_eq!(plans.len(), 2);
     assert_eq!(
         plans[0].sources,
-        vec![
-            DaoLogAddressSource {
-                address: addresses.governor,
-                source: DaoLogSource::Governor,
-            },
-            DaoLogAddressSource {
-                address: addresses.governor_token,
-                source: DaoLogSource::GovernorToken,
-            },
-        ]
+        vec![DaoLogAddressSource {
+            address: addresses.governor,
+            source: DaoLogSource::Governor,
+        },]
     );
     assert!(
         plans[0]
@@ -78,7 +102,7 @@ fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
         .map(|plan| (plan.from_block, plan.to_block))
         .collect::<Vec<_>>();
 
-    let plans_per_chunk = 1;
+    let plans_per_chunk = 2;
 
     assert_eq!(ranges.len(), plans_per_chunk * 3);
     assert_eq!(
@@ -193,6 +217,7 @@ fn test_fetch_dao_log_pages_stops_without_later_pages_on_reader_error() {
 fn assert_query(
     plan: &DaoLogQueryPlan,
     sources: &[DaoLogAddressSource],
+    addresses: &[String],
     topic0_values: &[String],
     from_block: i32,
     to_block: i32,
@@ -211,13 +236,7 @@ fn assert_query(
     assert_eq!(plan.input.finality.as_deref(), Some(finality));
 
     let evm_logs = plan.input.selector.evm_logs.as_ref().expect("evm logs");
-    assert_eq!(
-        evm_logs.addresses,
-        sources
-            .iter()
-            .map(|source| source.address.clone())
-            .collect::<Vec<_>>()
-    );
+    assert_eq!(evm_logs.addresses, addresses);
     assert_eq!(
         evm_logs.topics,
         vec![
@@ -229,19 +248,23 @@ fn assert_query(
     );
 }
 
-fn unified_topic0_values() -> Vec<String> {
-    let mut topics = Vec::new();
-    for topic in GOVERNOR_TOPIC0_VALUES
-        .iter()
-        .chain(GOVERNOR_TOKEN_TOPIC0_VALUES)
-        .chain(TIMELOCK_TOPIC0_VALUES)
-    {
+fn broad_governance_topic0_values() -> Vec<String> {
+    unique_topic0_values(GOVERNOR_TOPIC0_VALUES.iter().chain(TIMELOCK_TOPIC0_VALUES))
+}
+
+fn governor_token_topic0_values() -> Vec<String> {
+    unique_topic0_values(GOVERNOR_TOKEN_TOPIC0_VALUES.iter())
+}
+
+fn unique_topic0_values<'a>(topics: impl Iterator<Item = &'a &'a str>) -> Vec<String> {
+    let mut values = Vec::new();
+    for topic in topics {
         let topic = (*topic).to_owned();
-        if !topics.contains(&topic) {
-            topics.push(topic);
+        if !values.contains(&topic) {
+            values.push(topic);
         }
     }
-    topics
+    values
 }
 
 fn config(block_range_limit: u32, finality: DatalensFinality) -> DatalensConfig {

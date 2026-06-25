@@ -1087,10 +1087,38 @@ fn test_runner_decodes_distinct_log_addresses_with_matching_sources() {
 }
 
 #[test]
+fn test_runner_skips_logs_from_broad_datalens_selector_outside_dao_addresses() {
+    let attempts = Arc::new(Mutex::new(Vec::new()));
+    let mut runner = runner_with_decoder(
+        vec![vec![
+            row_at_address(1, 0, 1, FOREIGN),
+            row_at_address(1, 0, 0, GOVERNOR),
+        ]],
+        SourceMatchingDecoder::new(attempts.clone()),
+        options(),
+    );
+
+    runner.run_to_target(1).expect("runner succeeds");
+
+    let attempts = attempts.lock().expect("attempts");
+    assert_source_attempt_counts(&attempts, GOVERNOR_SELECTOR_COUNT, 0, 0);
+    assert_eq!(
+        runner.store().vote_repository().data_metric().votes_count,
+        1
+    );
+}
+
+#[test]
 fn test_runner_decodes_duplicate_address_token_log_with_token_source() {
     let attempts = Arc::new(Mutex::new(Vec::new()));
     let mut runner = runner_with_decoder(
-        vec![vec![row_at_address(1, 0, 1, GOVERNOR)]],
+        vec![vec![row_at_address_with_topic(
+            1,
+            0,
+            1,
+            GOVERNOR,
+            TOKEN_DELEGATE_CHANGED_TOPIC0,
+        )]],
         SourceMatchingDecoder::new(attempts.clone()),
         duplicate_address_options(),
     );
@@ -1098,12 +1126,7 @@ fn test_runner_decodes_duplicate_address_token_log_with_token_source() {
     runner.run_to_target(1).expect("runner succeeds");
 
     let attempts = attempts.lock().expect("attempts");
-    assert_source_attempt_counts(
-        &attempts,
-        GOVERNOR_SELECTOR_COUNT,
-        GOVERNOR_TOKEN_SELECTOR_COUNT,
-        0,
-    );
+    assert_source_attempt_counts(&attempts, 0, GOVERNOR_TOKEN_SELECTOR_COUNT, 0);
     assert_eq!(
         runner.store().token_repository().delegate_changed().len(),
         1
@@ -1125,7 +1148,7 @@ fn test_runner_keeps_duplicate_address_unsupported_topic_unsupported() {
     assert_source_attempt_counts(
         &attempts,
         GOVERNOR_SELECTOR_COUNT,
-        GOVERNOR_TOKEN_SELECTOR_COUNT,
+        0,
         TIMELOCK_SELECTOR_COUNT,
     );
     assert_eq!(
@@ -1200,6 +1223,13 @@ impl DatalensLogQueryReader for ScriptedDatalensReader {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let topic0_values = input
+            .selector
+            .evm_logs
+            .as_ref()
+            .and_then(|selector| selector.topics.first())
+            .cloned()
+            .unwrap_or_default();
         let rows = self
             .rows
             .iter()
@@ -1215,9 +1245,16 @@ impl DatalensLogQueryReader for ScriptedDatalensReader {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_ascii_lowercase();
+                let topic0 = row
+                    .pointer("/topics/0")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
 
                 (input.range.start..=input.range.end).contains(&block_number)
-                    && addresses.iter().any(|candidate| candidate == &address)
+                    && (addresses.is_empty()
+                        || addresses.iter().any(|candidate| candidate == &address))
+                    && (topic0_values.is_empty()
+                        || topic0_values.iter().any(|candidate| candidate == topic0))
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -1847,11 +1884,40 @@ fn row_at_address(
     log_index: u64,
     address: &str,
 ) -> Value {
-    row_with_removed(block_number, transaction_index, log_index, address, false)
+    let topic0 = if address.eq_ignore_ascii_case(TOKEN) {
+        TOKEN_DELEGATE_CHANGED_TOPIC0
+    } else {
+        GOVERNOR_VOTE_CAST_TOPIC0
+    };
+    row_at_address_with_topic(block_number, transaction_index, log_index, address, topic0)
+}
+
+fn row_at_address_with_topic(
+    block_number: u64,
+    transaction_index: u64,
+    log_index: u64,
+    address: &str,
+    topic0: &str,
+) -> Value {
+    row_with_removed(
+        block_number,
+        transaction_index,
+        log_index,
+        address,
+        topic0,
+        false,
+    )
 }
 
 fn removed_row(block_number: u64, transaction_index: u64, log_index: u64) -> Value {
-    row_with_removed(block_number, transaction_index, log_index, GOVERNOR, true)
+    row_with_removed(
+        block_number,
+        transaction_index,
+        log_index,
+        GOVERNOR,
+        GOVERNOR_VOTE_CAST_TOPIC0,
+        true,
+    )
 }
 
 fn row_with_removed(
@@ -1859,6 +1925,7 @@ fn row_with_removed(
     transaction_index: u64,
     log_index: u64,
     address: &str,
+    topic0: &str,
     removed: bool,
 ) -> Value {
     json!({
@@ -1869,7 +1936,7 @@ fn row_with_removed(
         "transaction_index": transaction_index,
         "log_index": log_index,
         "address": address,
-        "topics": ["0x0000000000000000000000000000000000000000000000000000000000000000"],
+        "topics": [topic0],
         "data": "0x",
         "removed": removed
     })
@@ -1877,7 +1944,12 @@ fn row_with_removed(
 
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
 const TOKEN: &str = "0x2222222222222222222222222222222222222222";
+const FOREIGN: &str = "0x9999999999999999999999999999999999999999";
+const GOVERNOR_VOTE_CAST_TOPIC0: &str =
+    "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0";
+const TOKEN_DELEGATE_CHANGED_TOPIC0: &str =
+    "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f";
 const GOVERNOR_SELECTOR_COUNT: usize = 1;
 const GOVERNOR_TOKEN_SELECTOR_COUNT: usize = 1;
 const TIMELOCK_SELECTOR_COUNT: usize = 1;
-const DATALENS_QUERY_SELECTOR_COUNT: usize = 1;
+const DATALENS_QUERY_SELECTOR_COUNT: usize = 2;
