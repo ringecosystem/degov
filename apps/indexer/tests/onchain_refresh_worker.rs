@@ -613,6 +613,41 @@ async fn test_onchain_refresh_worker_drains_data_metric_refresh_on_empty_work()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_waits_for_quiet_data_metric_refresh_task()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_data_metric(&database.pool, "7").await?;
+    seed_recent_data_metric_refresh_task(&database.pool).await?;
+
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::from_values(BTreeMap::new()),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 0);
+    assert_eq!(report.completed, 0);
+    assert_eq!(report.data_metric_refreshes, 0);
+    assert_table_count(&database.pool, "onchain_refresh_data_metric_task", 1).await?;
+    assert_data_metric_counts(&database.pool, "7", 1, 1, 1, 7).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_reconciles_current_delegate_relation_power_from_balance()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1933,6 +1968,7 @@ async fn test_onchain_refresh_worker_updates_only_matching_contract_set_contribu
         ("31".to_owned(), Some("41".to_owned()))
     );
     assert_table_count(&database.pool, "onchain_refresh_data_metric_task", 1).await?;
+    age_data_metric_refresh_tasks(&database.pool).await?;
     let empty_report = worker.run_once().await?;
 
     assert_eq!(empty_report.claimed, 0);
@@ -3301,6 +3337,38 @@ async fn seed_data_metric_refresh_task(pool: &PgPool) -> Result<(), sqlx::Error>
     .bind(format!("demo-dao:46:demo-dao:{GOVERNOR}"))
     .bind(GOVERNOR)
     .bind(TOKEN)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_recent_data_metric_refresh_task(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO onchain_refresh_data_metric_task (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            created_at, updated_at
+         )
+         VALUES (
+            $1, 'demo-dao', 46, 'demo-dao', $2, $3, 10000::NUMERIC(78, 0),
+            $4::NUMERIC(78, 0)
+         )",
+    )
+    .bind(format!("demo-dao:46:demo-dao:{GOVERNOR}"))
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(unix_time_millis_for_test().to_string())
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn age_data_metric_refresh_tasks(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE onchain_refresh_data_metric_task
+         SET updated_at = 10000::NUMERIC(78, 0)",
+    )
     .execute(pool)
     .await?;
 
