@@ -496,7 +496,7 @@ where
     }
 
     pub async fn run_once(&self) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(self.config.batch_size, None, false, true)
+        self.run_once_with_batch_size_and_scope(self.config.batch_size, None, false)
             .await
     }
 
@@ -504,7 +504,7 @@ where
         &self,
         batch_size: usize,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, None, true, true)
+        self.run_once_with_batch_size_and_scope(batch_size, None, true)
             .await
     }
 
@@ -513,7 +513,7 @@ where
         batch_size: usize,
         scope: &OnchainRefreshTaskScope,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), true, true)
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), true)
             .await
     }
 
@@ -522,7 +522,7 @@ where
         batch_size: usize,
         scope: &OnchainRefreshTaskScope,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), false, false)
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), false)
             .await
     }
 
@@ -531,7 +531,6 @@ where
         batch_size: usize,
         scope: Option<&OnchainRefreshTaskScope>,
         include_backlog: bool,
-        repair_missing_coverage: bool,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
         let started_at = Instant::now();
         let now_ms = unix_time_millis();
@@ -539,6 +538,8 @@ where
         let deferred_drain_target =
             worker_deferred_drain_target(self.config.deferred_drain_batch_size, batch_size);
         self.restore_retryable_exhausted_tasks(now_ms).await?;
+        self.restore_retryable_stale_processing_tasks(now_ms)
+            .await?;
         self.archive_exhausted_tasks(now_ms).await?;
         let deferred_drain_count = self
             .drain_deferred_onchain_refresh_backlog(deferred_drain_target, scope)
@@ -562,7 +563,7 @@ where
             );
         }
         let mut tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
-        if tasks.is_empty() && repair_missing_coverage {
+        if tasks.is_empty() {
             let coverage_repair_count = self
                 .repair_missing_contributor_coverage(deferred_drain_target, scope)
                 .await?;
@@ -1242,6 +1243,51 @@ where
              WHERE onchain_refresh_task.id = candidates.id",
             retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
         ))
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
+        .bind(attempts)
+        .bind(next_run_at.to_string())
+        .bind(now_ms.to_string())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn restore_retryable_stale_processing_tasks(
+        &self,
+        now_ms: i64,
+    ) -> Result<(), OnchainRefreshWorkerError> {
+        let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
+        let attempts = retryable_onchain_refresh_attempts(self.config.max_attempts);
+        let next_run_at = now_ms.saturating_add(duration_millis_i64(
+            onchain_refresh_retry_backoff_delay(self.config.retry_delay, self.config.max_attempts),
+        ));
+        sqlx::query(&format!(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'processing'
+                  AND attempts >= $1
+                  AND locked_at IS NOT NULL
+                  AND locked_at <= $2::NUMERIC(78, 0)
+                  AND ({retryable_error_sql})
+                LIMIT $3
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'failed',
+                 attempts = $4,
+                 next_run_at = $5::NUMERIC(78, 0),
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = NULL,
+                 updated_at = $6::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
+        .bind(self.config.max_attempts)
+        .bind(stale_before.to_string())
         .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
         .bind(attempts)
         .bind(next_run_at.to_string())
