@@ -1371,10 +1371,15 @@ where
                     continue;
                 }
                 let Some(candidate_sources) = sources.get(&log.address) else {
-                    return Err(IndexerRunnerError::Normalize(format!(
-                        "Datalens log address {} was not part of the DAO log query plan",
+                    info!(
+                        "skipping Datalens EVM log outside DAO address set dao_code={} chain_id={} log_id={} block_number={} address={}",
+                        self.options.checkpoint_identity.dao_code,
+                        self.options.checkpoint_identity.chain_id,
+                        log.id,
+                        log.block_number,
                         log.address
-                    )));
+                    );
+                    continue;
                 };
                 let mut unsupported_event = None;
                 let mut decoded_event = None;
