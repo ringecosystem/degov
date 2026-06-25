@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -15,7 +16,22 @@ jobs:
       - name: Prepare Vercel root directory
         run: |
           mkdir -p packages
+          rm -rf packages/web
           cp -a apps/web packages/web
+          cp -a apps/web/. .
+          node - <<'NODE'
+          const fs = require("fs");
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          pkg.packageManager = "pnpm@10.32.1";
+          fs.writeFileSync("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+          rm -f pnpm-workspace.yaml
+          cat > vercel.json <<'EOF'
+          {
+            "installCommand": "pnpm install --no-frozen-lockfile",
+            "buildCommand": "pnpm build:vercel"
+          }
+          EOF
 
       - uses: darwinia-network/devops/actions/smart-vercel@main
         name: Deploy degov
