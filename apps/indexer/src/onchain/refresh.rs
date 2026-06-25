@@ -805,18 +805,21 @@ where
     ) -> Result<usize, OnchainRefreshWorkerError> {
         let mut refreshed_total = 0usize;
         let mut attempted_ids = BTreeSet::<String>::new();
+        let ready_before = data_metric_refresh_ready_before(now_ms, self.config.debounce);
         for _ in 0..MAX_ONCHAIN_REFRESH_DATA_METRIC_REFRESH_ROWS {
             let mut transaction = self.pool.begin().await?;
             let skipped_ids = attempted_ids.iter().cloned().collect::<Vec<_>>();
             let row = sqlx::query(
                 "SELECT id, contract_set_id, chain_id, dao_code, governor_address, token_address
                  FROM onchain_refresh_data_metric_task
-                 WHERE NOT (id = ANY($1::TEXT[]))
+                 WHERE updated_at <= $2::NUMERIC(78, 0)
+                   AND NOT (id = ANY($1::TEXT[]))
                  ORDER BY updated_at ASC, id ASC
                  LIMIT 1
                  FOR UPDATE SKIP LOCKED",
             )
             .bind(&skipped_ids)
+            .bind(ready_before.to_string())
             .fetch_optional(&mut *transaction)
             .await?;
             let Some(row) = row else {
@@ -4122,6 +4125,10 @@ fn data_metric_refresh_task_id(scope: &DataMetricRefreshScope) -> String {
     )
 }
 
+fn data_metric_refresh_ready_before(now_ms: i64, debounce: Duration) -> i64 {
+    now_ms.saturating_sub(duration_millis_i64(debounce)).max(0)
+}
+
 async fn refresh_data_metric_scope(
     transaction: &mut Transaction<'_, Postgres>,
     scope: &DataMetricRefreshScope,
@@ -5019,6 +5026,18 @@ mod tests {
     fn test_worker_deferred_drain_target_tracks_claim_budget() {
         assert_eq!(worker_deferred_drain_target(100, 1_000), 1_000);
         assert_eq!(worker_deferred_drain_target(2_000, 1_000), 2_000);
+    }
+
+    #[test]
+    fn test_data_metric_refresh_ready_before_waits_for_quiet_period() {
+        assert_eq!(
+            data_metric_refresh_ready_before(10_000, Duration::from_secs(120)),
+            0
+        );
+        assert_eq!(
+            data_metric_refresh_ready_before(130_000, Duration::from_secs(120)),
+            10_000
+        );
     }
 
     #[test]
