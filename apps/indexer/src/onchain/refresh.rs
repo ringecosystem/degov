@@ -34,6 +34,22 @@ pub const MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
 const DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS: i32 = 3;
 const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
 const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 200;
+const ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL: &str = "
+    COALESCE(error, '') ILIKE '%block not found%'
+    OR (
+      COALESCE(error, '') ILIKE '%historical state%'
+      AND COALESCE(error, '') ILIKE '%not available%'
+    )
+    OR COALESCE(error, '') ILIKE '%error sending request%'
+    OR COALESCE(error, '') ILIKE '%request timed out%'
+    OR COALESCE(error, '') ILIKE '%context canceled%'
+    OR COALESCE(error, '') ILIKE '%connection reset%'
+    OR COALESCE(error, '') ILIKE '%connection refused%'
+    OR COALESCE(error, '') ILIKE '%temporarily unavailable%'
+    OR COALESCE(error, '') ILIKE '%deadline has elapsed%'
+    OR COALESCE(error, '') ILIKE '%too many requests%'
+    OR COALESCE(error, '') ILIKE '%rate limit%'
+";
 const MAX_ONCHAIN_REFRESH_DATA_METRIC_REFRESH_ROWS: usize = 200;
 const ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS: usize = 3;
 const ONCHAIN_REFRESH_APPLY_RETRY_BASE_DELAY_MS: u64 = 50;
@@ -522,6 +538,8 @@ where
         let deferred_drain_target =
             worker_deferred_drain_target(self.config.deferred_drain_batch_size, batch_size);
         self.restore_retryable_exhausted_tasks(now_ms).await?;
+        self.restore_retryable_stale_processing_tasks(now_ms)
+            .await?;
         self.archive_exhausted_tasks(now_ms).await?;
         let deferred_drain_count = self
             .drain_deferred_onchain_refresh_backlog(deferred_drain_target, scope)
@@ -1204,18 +1222,12 @@ where
         let next_run_at = now_ms.saturating_add(duration_millis_i64(
             onchain_refresh_retry_backoff_delay(self.config.retry_delay, self.config.max_attempts),
         ));
-        sqlx::query(
+        sqlx::query(&format!(
             "WITH candidates AS (
                 SELECT id
                 FROM onchain_refresh_task
                 WHERE status = 'exhausted'
-                  AND (
-                    COALESCE(error, '') ILIKE '%block not found%'
-                    OR (
-                      COALESCE(error, '') ILIKE '%historical state%'
-                      AND COALESCE(error, '') ILIKE '%not available%'
-                    )
-                  )
+                  AND ({retryable_error_sql})
                 LIMIT $1
                 FOR UPDATE SKIP LOCKED
              )
@@ -1229,7 +1241,53 @@ where
                  updated_at = $4::NUMERIC(78, 0)
              FROM candidates
              WHERE onchain_refresh_task.id = candidates.id",
-        )
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
+        .bind(attempts)
+        .bind(next_run_at.to_string())
+        .bind(now_ms.to_string())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn restore_retryable_stale_processing_tasks(
+        &self,
+        now_ms: i64,
+    ) -> Result<(), OnchainRefreshWorkerError> {
+        let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
+        let attempts = retryable_onchain_refresh_attempts(self.config.max_attempts);
+        let next_run_at = now_ms.saturating_add(duration_millis_i64(
+            onchain_refresh_retry_backoff_delay(self.config.retry_delay, self.config.max_attempts),
+        ));
+        sqlx::query(&format!(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'processing'
+                  AND attempts >= $1
+                  AND locked_at IS NOT NULL
+                  AND locked_at <= $2::NUMERIC(78, 0)
+                  AND ({retryable_error_sql})
+                LIMIT $3
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'failed',
+                 attempts = $4,
+                 next_run_at = $5::NUMERIC(78, 0),
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = NULL,
+                 updated_at = $6::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
+        .bind(self.config.max_attempts)
+        .bind(stale_before.to_string())
         .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
         .bind(attempts)
         .bind(next_run_at.to_string())
@@ -1242,19 +1300,13 @@ where
 
     async fn archive_exhausted_tasks(&self, now_ms: i64) -> Result<(), OnchainRefreshWorkerError> {
         let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
-        sqlx::query(
+        sqlx::query(&format!(
             "WITH candidates AS (
                 SELECT id
                 FROM onchain_refresh_task
                 WHERE status = 'failed'
                   AND attempts >= $1
-                  AND NOT (
-                    COALESCE(error, '') ILIKE '%block not found%'
-                    OR (
-                      COALESCE(error, '') ILIKE '%historical state%'
-                      AND COALESCE(error, '') ILIKE '%not available%'
-                    )
-                  )
+                  AND NOT ({retryable_error_sql})
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
              )
@@ -1266,14 +1318,15 @@ where
                  updated_at = $3::NUMERIC(78, 0)
              FROM candidates
              WHERE onchain_refresh_task.id = candidates.id",
-        )
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
         .bind(self.config.max_attempts)
         .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
         .bind(now_ms.to_string())
         .execute(&self.pool)
         .await?;
 
-        sqlx::query(
+        sqlx::query(&format!(
             "WITH candidates AS (
                 SELECT id
                 FROM onchain_refresh_task
@@ -1281,13 +1334,7 @@ where
                   AND attempts >= $1
                   AND locked_at IS NOT NULL
                   AND locked_at <= $2::NUMERIC(78, 0)
-                  AND NOT (
-                    COALESCE(error, '') ILIKE '%block not found%'
-                    OR (
-                      COALESCE(error, '') ILIKE '%historical state%'
-                      AND COALESCE(error, '') ILIKE '%not available%'
-                    )
-                  )
+                  AND NOT ({retryable_error_sql})
                 LIMIT $3
                 FOR UPDATE SKIP LOCKED
              )
@@ -1299,7 +1346,8 @@ where
                  updated_at = $4::NUMERIC(78, 0)
              FROM candidates
              WHERE onchain_refresh_task.id = candidates.id",
-        )
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
         .bind(self.config.max_attempts)
         .bind(stale_before.to_string())
         .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
@@ -1319,6 +1367,15 @@ fn is_retryable_onchain_refresh_task_error(error: &str) -> bool {
     let error = error.to_ascii_lowercase();
     error.contains("block not found")
         || (error.contains("historical state") && error.contains("not available"))
+        || error.contains("error sending request")
+        || error.contains("request timed out")
+        || error.contains("context canceled")
+        || error.contains("connection reset")
+        || error.contains("connection refused")
+        || error.contains("temporarily unavailable")
+        || error.contains("deadline has elapsed")
+        || error.contains("too many requests")
+        || error.contains("rate limit")
 }
 
 fn retryable_onchain_refresh_attempts(max_attempts: i32) -> i32 {
@@ -4983,6 +5040,24 @@ mod tests {
     #[test]
     fn test_onchain_refresh_historical_state_gap_does_not_exhaust() {
         let error = "multicall failed: historical state abc is not available";
+
+        assert!(is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_transport_error_does_not_exhaust() {
+        let error = "multicall failed: error sending request for url (<rpc-url>)";
+
+        assert!(is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_context_canceled_does_not_exhaust() {
+        let error = "alternate current power method eth_call failed: context canceled";
 
         assert!(is_retryable_onchain_refresh_task_error(error));
         assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");

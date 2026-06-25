@@ -1234,6 +1234,64 @@ async fn test_onchain_refresh_worker_archives_stale_processing_task_at_max_attem
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_restores_retryable_stale_processing_task_at_max_attempts()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_task(
+        &database.pool,
+        "task-one",
+        ACCOUNT_ONE,
+        "processing",
+        3,
+        false,
+        true,
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE onchain_refresh_task
+         SET locked_at = 0::NUMERIC(78, 0),
+             locked_by = 'stale-worker',
+             error = 'error sending request for url'
+         WHERE id = 'task-one'",
+    )
+    .execute(&database.pool)
+    .await?;
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::ZERO,
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::new([]),
+    );
+
+    let report = worker.run_once().await?;
+
+    assert_eq!(report.claimed, 0);
+    assert_task_status(&database.pool, "task-one", "failed", 2).await?;
+    let row = sqlx::query(
+        "SELECT locked_at::TEXT AS locked_at, locked_by, next_run_at::TEXT AS next_run_at
+         FROM onchain_refresh_task
+         WHERE id = 'task-one'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(row.get::<Option<String>, _>("locked_at"), None);
+    assert_eq!(row.get::<Option<String>, _>("locked_by"), None);
+    assert!(row.get::<String, _>("next_run_at").parse::<i64>()? > 0);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_onchain_refresh_worker_prioritizes_stale_processing_before_pending_tasks()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -2543,6 +2601,76 @@ async fn test_onchain_refresh_worker_repairs_missing_contributor_coverage()
     assert_task_refresh_flags(&database.pool, &task_id, true, true).await?;
     assert_contributor_overlay(&database.pool, ACCOUNT_ONE, "11").await?;
     assert_contributor_overlay_balance(&database.pool, ACCOUNT_ONE, "17").await?;
+    assert_table_count(&database.pool, "onchain_refresh_deferred_candidate", 0).await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_onchain_refresh_worker_repairs_missing_contributor_coverage_without_backlog()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_contributor(&database.pool, ACCOUNT_ONE, "0", Some("0")).await?;
+
+    let task_id = format!("demo-dao:demo-dao:46:{GOVERNOR}:{TOKEN}:{ACCOUNT_ONE}");
+    seed_task(
+        &database.pool,
+        &task_id,
+        ACCOUNT_ONE,
+        "completed",
+        1,
+        true,
+        true,
+    )
+    .await?;
+    seed_contributor_overlay_with_balance(&database.pool, ACCOUNT_ONE, "9", None).await?;
+
+    let reader = MockOnchainRefreshReader::from_values(BTreeMap::from([(
+        task_id.clone(),
+        OnchainRefreshReadValue {
+            task_id: task_id.clone(),
+            balance: Some("17".to_owned()),
+            power: Some("11".to_owned()),
+            checkpoint_balance: Some("17".to_owned()),
+            checkpoint_power: Some("11".to_owned()),
+        },
+    )]));
+    let worker = OnchainRefreshWorker::new(
+        database.pool.clone(),
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        reader,
+    );
+
+    let report = worker
+        .run_once_with_batch_size_for_scope_without_backlog(
+            10,
+            &OnchainRefreshTaskScope {
+                chain_id: 46,
+                contract_set_id: "demo-dao".to_owned(),
+                dao_code: "demo-dao".to_owned(),
+            },
+        )
+        .await?;
+
+    assert_eq!(report.claimed, 1);
+    assert_eq!(report.completed, 1);
+    assert_eq!(report.failed, 0);
+    assert_eq!(
+        contributor_values(&database.pool, ACCOUNT_ONE).await?,
+        ("11".to_owned(), Some("17".to_owned()))
+    );
+    assert_completed_task(&database.pool, &task_id, 1).await?;
     assert_table_count(&database.pool, "onchain_refresh_deferred_candidate", 0).await?;
 
     database.cleanup().await?;
