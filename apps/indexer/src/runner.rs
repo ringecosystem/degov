@@ -977,6 +977,27 @@ where
                 progress_rate.blocks_per_second(),
                 self.options.progress_refresh_lag_blocks,
             );
+            let total_duration = chunk_started_at.elapsed();
+            crate::metrics::record_indexer_chunk_metrics(
+                &self.options.checkpoint_identity,
+                &chunk_progress,
+                crate::metrics::IndexerChunkMetricsObservation {
+                    datalens_request_count: processing.metrics.datalens_request_count,
+                    cache_full_hit_count: processing.metrics.warmup_effectiveness.full_hit_count,
+                    cache_partial_hit_count: processing
+                        .metrics
+                        .warmup_effectiveness
+                        .partial_hit_count,
+                    cache_miss_count: processing.metrics.warmup_effectiveness.miss_count,
+                    cache_provider_fill_count: processing
+                        .metrics
+                        .warmup_effectiveness
+                        .provider_fill_range_count,
+                    chunk_duration_seconds: total_duration.as_secs_f64(),
+                    last_chunk_size: sizing_decision.previous_chunk_size,
+                    current_chunk_size: sizing_decision.current_chunk_size,
+                },
+            );
             info!(
                 "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={} adaptive_cache_full_hit_count={} adaptive_cache_partial_hit_count={} adaptive_cache_miss_count={} adaptive_cache_provider_fill_range_count={} adaptive_query_duration_max_ms={} onchain_refresh_deferred_drain_enabled={} onchain_refresh_deferred_drain_batch_size={} onchain_refresh_deferred_drain_count={} onchain_refresh_deferred_drain_duration_ms={}",
                 self.options.checkpoint_identity.dao_code,
@@ -1001,7 +1022,7 @@ where
                 processing.metrics.project_duration.as_millis(),
                 write_duration.as_millis(),
                 local_processing_write_duration.as_millis(),
-                chunk_started_at.elapsed().as_millis(),
+                total_duration.as_millis(),
                 checkpoint_next_block_before,
                 range.to_block,
                 range.to_block + 1,

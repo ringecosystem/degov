@@ -2,7 +2,7 @@ use anyhow as runtime_anyhow;
 use runtime_anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
 
-use crate::{GraphqlRuntimeConfig, graphql, required_env};
+use crate::{GraphqlRuntimeConfig, MetricsRuntimeConfig, graphql, required_env};
 
 use super::migrate::apply_migrations;
 
@@ -15,6 +15,12 @@ pub async fn run_graphql() -> Result<()> {
         .await
         .context("connect to DeGov indexer Postgres")?;
     apply_migrations(&pool).await?;
+    let _metrics_server = crate::metrics::spawn_metrics_server(
+        pool.clone(),
+        MetricsRuntimeConfig::from_env().context("load metrics runtime configuration")?,
+    )
+    .await
+    .context("start DeGov indexer metrics service")?;
 
     let app = graphql::build_router_with_paths(graphql::build_schema(pool), config.paths.clone());
     let listener = tokio::net::TcpListener::bind(config.bind_address)
