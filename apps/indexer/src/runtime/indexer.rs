@@ -18,7 +18,8 @@ use crate::{
     OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
     OnchainRefreshWorker, OnchainRefreshWorkerError, PostgresIndexerRunnerStore,
     PostgresProvisionalCleanupStore, PostgresProvisionalSegmentStore,
-    ProvisionalProposalOverlayStore, ProvisionalWorker, ProvisionalWorkerOptions,
+    ProvisionalProposalOverlayStore, ProvisionalVoteOverlayStore, ProvisionalWorker,
+    ProvisionalWorkerOptions,
     checkpoint::configured_range_progress,
     classify_datalens_query_error, datalens_query_error_is_current_head_race,
     datalens_retry_config, ensure_datalens_warmup_task,
@@ -1148,7 +1149,9 @@ fn run_provisional_worker_once<R, S>(
 ) -> Result<ProvisionalWorkerRunReport>
 where
     R: DatalensDurableHeadReader + DatalensProvisionalLogQueryReader,
-    S: DatalensProvisionalSegmentStore + ProvisionalProposalOverlayStore,
+    S: DatalensProvisionalSegmentStore
+        + ProvisionalProposalOverlayStore
+        + ProvisionalVoteOverlayStore,
 {
     if !runtime.provisional.enabled {
         log::debug!(
@@ -1184,6 +1187,8 @@ where
             latest_height: Some(latest_height),
             segments_written: None,
             proposal_overlays_written: None,
+            proposal_event_overlays_written: None,
+            vote_overlays_written: None,
         });
     };
     let options = ProvisionalWorkerOptions {
@@ -1216,6 +1221,8 @@ where
                     latest_height: Some(latest_height),
                     segments_written: None,
                     proposal_overlays_written: None,
+                    proposal_event_overlays_written: None,
+                    vote_overlays_written: None,
                 });
             }
 
@@ -1224,7 +1231,7 @@ where
     };
 
     log::info!(
-        "Datalens provisional worker completed dao_code={} chain_id={} contract_set_id={} finality={} range_start_block={} range_end_block={} segments_written={} proposal_overlays_written={}",
+        "Datalens provisional worker completed dao_code={} chain_id={} contract_set_id={} finality={} range_start_block={} range_end_block={} segments_written={} proposal_overlays_written={} proposal_event_overlays_written={} vote_overlays_written={}",
         runtime.dao_code,
         chain_id,
         runtime.checkpoint_contract_set_id,
@@ -1232,13 +1239,17 @@ where
         from_block,
         to_block,
         report.segments_written,
-        report.proposal_overlays_written
+        report.proposal_overlays_written,
+        report.proposal_event_overlays_written,
+        report.vote_overlays_written
     );
 
     Ok(ProvisionalWorkerRunReport {
         latest_height: Some(latest_height),
         segments_written: Some(report.segments_written),
         proposal_overlays_written: Some(report.proposal_overlays_written),
+        proposal_event_overlays_written: Some(report.proposal_event_overlays_written),
+        vote_overlays_written: Some(report.vote_overlays_written),
     })
 }
 
@@ -1247,6 +1258,8 @@ struct ProvisionalWorkerRunReport {
     latest_height: Option<i64>,
     segments_written: Option<usize>,
     proposal_overlays_written: Option<usize>,
+    proposal_event_overlays_written: Option<usize>,
+    vote_overlays_written: Option<usize>,
 }
 
 fn provisional_tail_range(
@@ -1455,8 +1468,9 @@ mod tests {
         ChainFamily, ChainIdentityConfig, DatalensFinality, DatalensProvisionalCacheSegment,
         DatalensProvisionalFinality, DatalensProvisionalLogQueryResult,
         DatalensProvisionalSegmentWrite, DatasetKeyConfig, GovernanceTokenStandard,
-        ProvisionalProposalOverlayWrite, ProvisionalRuntimeConfig,
-        ProvisionalTimelockOperationOverlayWrite, QueryLimitConfig, SecretString,
+        ProvisionalProposalEventOverlayWrite, ProvisionalProposalOverlayWrite,
+        ProvisionalRuntimeConfig, ProvisionalTimelockOperationOverlayWrite,
+        ProvisionalVoteCastGroupOverlayWrite, QueryLimitConfig, SecretString,
     };
 
     use super::*;
@@ -2766,6 +2780,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingProvisionalSegmentStore {
         writes: Vec<DatalensProvisionalSegmentWrite>,
+        vote_writes: Vec<ProvisionalVoteCastGroupOverlayWrite>,
     }
 
     impl DatalensProvisionalSegmentStore for RecordingProvisionalSegmentStore {
@@ -2786,8 +2801,21 @@ mod tests {
         fn write_proposal_overlays(
             &mut self,
             _proposals: &[ProvisionalProposalOverlayWrite],
+            _proposal_events: &[ProvisionalProposalEventOverlayWrite],
             _timelocks: &[ProvisionalTimelockOperationOverlayWrite],
         ) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
+    impl ProvisionalVoteOverlayStore for RecordingProvisionalSegmentStore {
+        type Error = String;
+
+        fn write_vote_overlays(
+            &mut self,
+            votes: &[ProvisionalVoteCastGroupOverlayWrite],
+        ) -> std::result::Result<(), Self::Error> {
+            self.vote_writes.extend_from_slice(votes);
             Ok(())
         }
     }
