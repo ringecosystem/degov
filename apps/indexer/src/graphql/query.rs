@@ -69,9 +69,12 @@ pub(super) async fn query_proposals(
             COALESCE(proposal_overlay.vote_end, proposal.vote_end) AS vote_end,
             COALESCE(proposal_overlay.description, proposal.description) AS description,
             proposal.block_number, proposal.block_timestamp, proposal.transaction_hash,
-            proposal.metrics_votes_count, proposal.metrics_votes_with_params_count,
-            proposal.metrics_votes_without_params_count, proposal.metrics_votes_weight_for_sum,
-            proposal.metrics_votes_weight_against_sum, proposal.metrics_votes_weight_abstain_sum,
+            (COALESCE(proposal.metrics_votes_count, 0) + COALESCE(vote_overlay_totals.votes_count, 0))::INTEGER AS metrics_votes_count,
+            (COALESCE(proposal.metrics_votes_with_params_count, 0) + COALESCE(vote_overlay_totals.votes_with_params_count, 0))::INTEGER AS metrics_votes_with_params_count,
+            (COALESCE(proposal.metrics_votes_without_params_count, 0) + COALESCE(vote_overlay_totals.votes_without_params_count, 0))::INTEGER AS metrics_votes_without_params_count,
+            (COALESCE(proposal.metrics_votes_weight_for_sum, 0) + COALESCE(vote_overlay_totals.votes_weight_for_sum, 0))::NUMERIC(78, 0) AS metrics_votes_weight_for_sum,
+            (COALESCE(proposal.metrics_votes_weight_against_sum, 0) + COALESCE(vote_overlay_totals.votes_weight_against_sum, 0))::NUMERIC(78, 0) AS metrics_votes_weight_against_sum,
+            (COALESCE(proposal.metrics_votes_weight_abstain_sum, 0) + COALESCE(vote_overlay_totals.votes_weight_abstain_sum, 0))::NUMERIC(78, 0) AS metrics_votes_weight_abstain_sum,
             COALESCE(proposal_overlay.title, proposal.title) AS title,
             COALESCE(proposal_overlay.vote_start_timestamp, proposal.vote_start_timestamp) AS vote_start_timestamp,
             COALESCE(proposal_overlay.vote_end_timestamp, proposal.vote_end_timestamp) AS vote_end_timestamp,
@@ -99,6 +102,31 @@ pub(super) async fn query_proposals(
            AND proposal_overlay.proposal_id = proposal.proposal_id
            AND proposal_overlay.source = 'live-onchain'
            AND proposal_overlay.status = 'available'
+          LEFT JOIN LATERAL (
+            SELECT
+              count(*)::INTEGER AS votes_count,
+              count(*) FILTER (WHERE vote_overlay.type = 'vote-cast-with-params')::INTEGER AS votes_with_params_count,
+              count(*) FILTER (WHERE vote_overlay.type = 'vote-cast-without-params')::INTEGER AS votes_without_params_count,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 1 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_for_sum,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 0 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_against_sum,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 2 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_abstain_sum
+            FROM degov_provisional_vote_cast_group_overlay vote_overlay
+            WHERE vote_overlay.status = 'available'
+              AND vote_overlay.contract_set_id = proposal.contract_set_id
+              AND vote_overlay.chain_id IS NOT DISTINCT FROM proposal.chain_id
+              AND vote_overlay.dao_code IS NOT DISTINCT FROM proposal.dao_code
+              AND vote_overlay.governor_address IS NOT DISTINCT FROM proposal.governor_address
+              AND (
+                vote_overlay.proposal_id = proposal.id
+                OR vote_overlay.ref_proposal_id = proposal.proposal_id
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM vote_cast_group durable_vote
+                WHERE durable_vote.contract_set_id = vote_overlay.contract_set_id
+                  AND durable_vote.id = vote_overlay.id
+              )
+          ) vote_overlay_totals ON TRUE
           UNION ALL
           SELECT proposal_overlay.id, proposal_overlay.contract_set_id, proposal_overlay.chain_id,
             proposal_overlay.dao_code, proposal_overlay.governor_address, proposal_overlay.proposal_id,
@@ -113,12 +141,12 @@ pub(super) async fn query_proposals(
             COALESCE(proposal_overlay.block_number, proposal_overlay.anchor_block_number, 0) AS block_number,
             COALESCE(proposal_overlay.block_timestamp, proposal_overlay.anchor_block_timestamp, 0) AS block_timestamp,
             COALESCE(proposal_overlay.transaction_hash, '') AS transaction_hash,
-            NULL::INTEGER AS metrics_votes_count,
-            NULL::INTEGER AS metrics_votes_with_params_count,
-            NULL::INTEGER AS metrics_votes_without_params_count,
-            NULL::NUMERIC(78, 0) AS metrics_votes_weight_for_sum,
-            NULL::NUMERIC(78, 0) AS metrics_votes_weight_against_sum,
-            NULL::NUMERIC(78, 0) AS metrics_votes_weight_abstain_sum,
+            COALESCE(vote_overlay_totals.votes_count, 0)::INTEGER AS metrics_votes_count,
+            COALESCE(vote_overlay_totals.votes_with_params_count, 0)::INTEGER AS metrics_votes_with_params_count,
+            COALESCE(vote_overlay_totals.votes_without_params_count, 0)::INTEGER AS metrics_votes_without_params_count,
+            COALESCE(vote_overlay_totals.votes_weight_for_sum, 0)::NUMERIC(78, 0) AS metrics_votes_weight_for_sum,
+            COALESCE(vote_overlay_totals.votes_weight_against_sum, 0)::NUMERIC(78, 0) AS metrics_votes_weight_against_sum,
+            COALESCE(vote_overlay_totals.votes_weight_abstain_sum, 0)::NUMERIC(78, 0) AS metrics_votes_weight_abstain_sum,
             COALESCE(proposal_overlay.title, '') AS title,
             COALESCE(proposal_overlay.vote_start_timestamp, 0) AS vote_start_timestamp,
             COALESCE(proposal_overlay.vote_end_timestamp, 0) AS vote_end_timestamp,
@@ -135,6 +163,31 @@ pub(super) async fn query_proposals(
             proposal_overlay.timelock_address,
             proposal_overlay.timelock_grace_period
           FROM degov_provisional_proposal_overlay proposal_overlay
+          LEFT JOIN LATERAL (
+            SELECT
+              count(*)::INTEGER AS votes_count,
+              count(*) FILTER (WHERE vote_overlay.type = 'vote-cast-with-params')::INTEGER AS votes_with_params_count,
+              count(*) FILTER (WHERE vote_overlay.type = 'vote-cast-without-params')::INTEGER AS votes_without_params_count,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 1 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_for_sum,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 0 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_against_sum,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 2 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_abstain_sum
+            FROM degov_provisional_vote_cast_group_overlay vote_overlay
+            WHERE vote_overlay.status = 'available'
+              AND vote_overlay.contract_set_id = proposal_overlay.contract_set_id
+              AND vote_overlay.chain_id IS NOT DISTINCT FROM proposal_overlay.chain_id
+              AND vote_overlay.dao_code IS NOT DISTINCT FROM proposal_overlay.dao_code
+              AND vote_overlay.governor_address IS NOT DISTINCT FROM proposal_overlay.governor_address
+              AND (
+                vote_overlay.proposal_id = proposal_overlay.id
+                OR vote_overlay.ref_proposal_id = proposal_overlay.proposal_id
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM vote_cast_group durable_vote
+                WHERE durable_vote.contract_set_id = vote_overlay.contract_set_id
+                  AND durable_vote.id = vote_overlay.id
+              )
+          ) vote_overlay_totals ON TRUE
           WHERE proposal_overlay.status = 'available'
             AND proposal_overlay.source <> 'live-onchain'
             AND NOT EXISTS (
@@ -293,7 +346,26 @@ where
         SELECT id, proposal_id, block_number::text AS block_number,
           (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
           transaction_hash
-        FROM {table}
+        FROM (
+          SELECT id, chain_id, dao_code, governor_address, proposal_id, block_number,
+            block_timestamp, transaction_hash
+          FROM {table}
+          UNION ALL
+          SELECT event_overlay.id, event_overlay.chain_id, event_overlay.dao_code,
+            event_overlay.governor_address, event_overlay.proposal_id, event_overlay.block_number,
+            event_overlay.block_timestamp, event_overlay.transaction_hash
+          FROM degov_provisional_proposal_event_overlay event_overlay
+          WHERE event_overlay.status = 'available'
+            AND event_overlay.event_type = '{table}'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM {table} durable_event
+              WHERE durable_event.id = event_overlay.id
+                AND durable_event.chain_id IS NOT DISTINCT FROM event_overlay.chain_id
+                AND durable_event.dao_code IS NOT DISTINCT FROM event_overlay.dao_code
+                AND durable_event.governor_address IS NOT DISTINCT FROM event_overlay.governor_address
+            )
+        ) {table}
         "#
     ));
     push_event_where(&mut query, implicit_scope, where_);
@@ -313,7 +385,7 @@ pub(super) async fn query_data_metrics(
 ) -> GraphqlResult<Vec<DataMetric>> {
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
-        SELECT id, chain_id, dao_code, governor_address, token_address, contract_address,
+        SELECT id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
           log_index, transaction_index, proposals_count, votes_count, votes_with_params_count,
           votes_without_params_count, votes_weight_for_sum::text AS votes_weight_for_sum,
           votes_weight_against_sum::text AS votes_weight_against_sum,
@@ -322,7 +394,89 @@ pub(super) async fn query_data_metrics(
           COALESCE(contributor_count, member_count) AS contributor_count,
           COALESCE(holders_count, member_count) AS holders_count,
           COALESCE(member_count, holders_count, contributor_count) AS member_count
-        FROM data_metric
+        FROM (
+          SELECT data_metric.id, data_metric.contract_set_id, data_metric.chain_id,
+            data_metric.dao_code, data_metric.governor_address, data_metric.token_address,
+            data_metric.contract_address, data_metric.log_index,
+            data_metric.transaction_index,
+            CASE
+              WHEN data_metric.id = 'global'
+                THEN COALESCE(data_metric.proposals_count, 0) + COALESCE(proposal_overlay_totals.proposals_count, 0)
+              ELSE data_metric.proposals_count
+            END AS proposals_count,
+            CASE
+              WHEN data_metric.id = 'global'
+                THEN COALESCE(data_metric.votes_count, 0) + COALESCE(vote_overlay_totals.votes_count, 0)
+              ELSE data_metric.votes_count
+            END AS votes_count,
+            CASE
+              WHEN data_metric.id = 'global'
+                THEN COALESCE(data_metric.votes_with_params_count, 0) + COALESCE(vote_overlay_totals.votes_with_params_count, 0)
+              ELSE data_metric.votes_with_params_count
+            END AS votes_with_params_count,
+            CASE
+              WHEN data_metric.id = 'global'
+                THEN COALESCE(data_metric.votes_without_params_count, 0) + COALESCE(vote_overlay_totals.votes_without_params_count, 0)
+              ELSE data_metric.votes_without_params_count
+            END AS votes_without_params_count,
+            CASE
+              WHEN data_metric.id = 'global'
+                THEN COALESCE(data_metric.votes_weight_for_sum, 0) + COALESCE(vote_overlay_totals.votes_weight_for_sum, 0)
+              ELSE data_metric.votes_weight_for_sum
+            END AS votes_weight_for_sum,
+            CASE
+              WHEN data_metric.id = 'global'
+                THEN COALESCE(data_metric.votes_weight_against_sum, 0) + COALESCE(vote_overlay_totals.votes_weight_against_sum, 0)
+              ELSE data_metric.votes_weight_against_sum
+            END AS votes_weight_against_sum,
+            CASE
+              WHEN data_metric.id = 'global'
+                THEN COALESCE(data_metric.votes_weight_abstain_sum, 0) + COALESCE(vote_overlay_totals.votes_weight_abstain_sum, 0)
+              ELSE data_metric.votes_weight_abstain_sum
+            END AS votes_weight_abstain_sum,
+            data_metric.power_sum, data_metric.contributor_count, data_metric.holders_count,
+            data_metric.member_count
+          FROM data_metric
+          LEFT JOIN LATERAL (
+            SELECT count(*)::INTEGER AS proposals_count
+            FROM degov_provisional_proposal_overlay proposal_overlay
+            WHERE proposal_overlay.status = 'available'
+              AND proposal_overlay.chain_id IS NOT DISTINCT FROM data_metric.chain_id
+              AND proposal_overlay.contract_set_id = data_metric.contract_set_id
+              AND proposal_overlay.dao_code IS NOT DISTINCT FROM data_metric.dao_code
+              AND proposal_overlay.governor_address IS NOT DISTINCT FROM data_metric.governor_address
+              AND NOT EXISTS (
+                SELECT 1
+                FROM proposal durable_proposal
+                WHERE durable_proposal.contract_set_id = proposal_overlay.contract_set_id
+                  AND durable_proposal.chain_id IS NOT DISTINCT FROM proposal_overlay.chain_id
+                  AND durable_proposal.dao_code IS NOT DISTINCT FROM proposal_overlay.dao_code
+                  AND durable_proposal.governor_address IS NOT DISTINCT FROM proposal_overlay.governor_address
+                  AND durable_proposal.proposal_id = proposal_overlay.proposal_id
+              )
+          ) proposal_overlay_totals ON data_metric.id = 'global'
+          LEFT JOIN LATERAL (
+            SELECT
+              count(*)::INTEGER AS votes_count,
+              count(*) FILTER (WHERE vote_overlay.type = 'vote-cast-with-params')::INTEGER AS votes_with_params_count,
+              count(*) FILTER (WHERE vote_overlay.type = 'vote-cast-without-params')::INTEGER AS votes_without_params_count,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 1 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_for_sum,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 0 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_against_sum,
+              COALESCE(sum(CASE WHEN vote_overlay.support = 2 THEN vote_overlay.weight ELSE 0 END), 0)::NUMERIC(78, 0) AS votes_weight_abstain_sum
+            FROM degov_provisional_vote_cast_group_overlay vote_overlay
+            WHERE vote_overlay.status = 'available'
+              AND vote_overlay.chain_id IS NOT DISTINCT FROM data_metric.chain_id
+              AND vote_overlay.contract_set_id = data_metric.contract_set_id
+              AND vote_overlay.dao_code IS NOT DISTINCT FROM data_metric.dao_code
+              AND vote_overlay.governor_address IS NOT DISTINCT FROM data_metric.governor_address
+              AND NOT EXISTS (
+                SELECT 1
+                FROM vote_cast_group durable_vote
+                WHERE durable_vote.contract_set_id = vote_overlay.contract_set_id
+                  AND durable_vote.id = vote_overlay.id
+              )
+          ) vote_overlay_totals ON data_metric.id = 'global'
+        ) data_metric
         "#,
     );
     push_data_metric_where(&mut query, implicit_scope, where_);
@@ -391,6 +545,25 @@ pub(super) async fn query_contributors(
            AND contributor_power_overlay.account = contributor.id
            AND contributor_power_overlay.source = 'live-onchain'
            AND contributor_power_overlay.status = 'available'
+          UNION ALL
+          SELECT contributor_power_overlay.account AS id,
+            contributor_power_overlay.contract_set_id, contributor_power_overlay.chain_id,
+            contributor_power_overlay.dao_code, contributor_power_overlay.governor_address,
+            COALESCE(contributor_power_overlay.last_vote_block_number, contributor_power_overlay.anchor_block_number, 0) AS block_number,
+            COALESCE(contributor_power_overlay.last_vote_timestamp, contributor_power_overlay.anchor_block_timestamp, 0) AS block_timestamp,
+            '' AS transaction_hash,
+            contributor_power_overlay.last_vote_timestamp,
+            contributor_power_overlay.power,
+            contributor_power_overlay.balance,
+            contributor_power_overlay.delegates_count_all
+          FROM degov_provisional_contributor_power_overlay contributor_power_overlay
+          WHERE contributor_power_overlay.status = 'available'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM contributor durable_contributor
+              WHERE durable_contributor.contract_set_id = contributor_power_overlay.contract_set_id
+                AND durable_contributor.id = contributor_power_overlay.account
+            )
         ) contributor
         "#,
     );
@@ -547,28 +720,36 @@ async fn query_contributors_by_power_desc_candidate_limit(
           SELECT contract_set_id, id FROM base_top
         ),
         candidate_rows AS (
-          SELECT contributor.id, contributor.contract_set_id, contributor.chain_id,
-            contributor.dao_code, contributor.governor_address, contributor.block_number,
-            contributor.block_timestamp, contributor.transaction_hash,
-            contributor.last_vote_timestamp,
+          SELECT contributor_candidates.id,
+            contributor_candidates.contract_set_id,
+            COALESCE(contributor.chain_id, contributor_power_overlay.chain_id) AS chain_id,
+            COALESCE(contributor.dao_code, contributor_power_overlay.dao_code) AS dao_code,
+            COALESCE(contributor.governor_address, contributor_power_overlay.governor_address) AS governor_address,
+            COALESCE(contributor.block_number, contributor_power_overlay.last_vote_block_number, contributor_power_overlay.anchor_block_number, 0) AS block_number,
+            COALESCE(contributor.block_timestamp, contributor_power_overlay.last_vote_timestamp, contributor_power_overlay.anchor_block_timestamp, 0) AS block_timestamp,
+            COALESCE(contributor.transaction_hash, '') AS transaction_hash,
+            COALESCE(contributor_power_overlay.last_vote_timestamp, contributor.last_vote_timestamp) AS last_vote_timestamp,
             COALESCE(contributor_power_overlay.power, contributor.power) AS power,
-            contributor.balance, contributor.delegates_count_all
+            COALESCE(contributor_power_overlay.balance, contributor.balance) AS balance,
+            COALESCE(contributor_power_overlay.delegates_count_all, contributor.delegates_count_all) AS delegates_count_all
           FROM contributor_candidates
-          JOIN contributor
+          LEFT JOIN contributor
             ON contributor.contract_set_id = contributor_candidates.contract_set_id
            AND contributor.id = contributor_candidates.id
           LEFT JOIN degov_provisional_contributor_power_overlay contributor_power_overlay
-            ON contributor_power_overlay.contract_set_id = contributor.contract_set_id
-           AND contributor_power_overlay.chain_id IS NOT DISTINCT FROM contributor.chain_id
-           AND contributor_power_overlay.dao_code IS NOT DISTINCT FROM contributor.dao_code
-           AND contributor_power_overlay.governor_address IS NOT DISTINCT FROM contributor.governor_address
+            ON contributor_power_overlay.contract_set_id = contributor_candidates.contract_set_id
+           AND contributor_power_overlay.account = contributor_candidates.id
+           AND contributor_power_overlay.chain_id IS NOT DISTINCT FROM COALESCE(contributor.chain_id, contributor_power_overlay.chain_id)
+           AND contributor_power_overlay.dao_code IS NOT DISTINCT FROM COALESCE(contributor.dao_code, contributor_power_overlay.dao_code)
+           AND contributor_power_overlay.governor_address IS NOT DISTINCT FROM COALESCE(contributor.governor_address, contributor_power_overlay.governor_address)
            AND (
              contributor_power_overlay.token_address IS NOT DISTINCT FROM contributor.token_address
              OR contributor.token_address IS NULL
            )
-           AND contributor_power_overlay.account = contributor.id
            AND contributor_power_overlay.source = 'live-onchain'
            AND contributor_power_overlay.status = 'available'
+          WHERE contributor.id IS NOT NULL
+             OR contributor_power_overlay.account IS NOT NULL
         ),
         sorted_candidate_rows AS (
           SELECT id, chain_id, dao_code, governor_address, block_number, block_timestamp,
@@ -843,6 +1024,26 @@ pub(super) async fn query_delegates(
            AND delegate_power_overlay.delegate = delegate.to_delegate
            AND delegate_power_overlay.source = 'live-onchain'
            AND delegate_power_overlay.status = 'available'
+          UNION ALL
+          SELECT delegate_power_overlay.id,
+            delegate_power_overlay.contract_set_id, delegate_power_overlay.chain_id,
+            delegate_power_overlay.dao_code, delegate_power_overlay.governor_address,
+            delegate_power_overlay.delegator AS from_delegate,
+            delegate_power_overlay.delegate AS to_delegate,
+            COALESCE(delegate_power_overlay.anchor_block_number, 0) AS block_number,
+            COALESCE(delegate_power_overlay.anchor_block_timestamp, 0) AS block_timestamp,
+            '' AS transaction_hash,
+            delegate_power_overlay.is_current,
+            delegate_power_overlay.power
+          FROM degov_provisional_delegate_power_overlay delegate_power_overlay
+          WHERE delegate_power_overlay.status = 'available'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM delegate durable_delegate
+              WHERE durable_delegate.contract_set_id = delegate_power_overlay.contract_set_id
+                AND durable_delegate.from_delegate = delegate_power_overlay.delegator
+                AND durable_delegate.to_delegate = delegate_power_overlay.delegate
+            )
         ) delegate
         "#,
     );
@@ -867,7 +1068,34 @@ pub(super) async fn query_delegate_mappings(
           block_number::text AS block_number,
           (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
           transaction_hash
-        FROM delegate_mapping
+        FROM (
+          SELECT delegate_mapping.id, delegate_mapping.contract_set_id, delegate_mapping.chain_id,
+            delegate_mapping.dao_code, delegate_mapping.governor_address, delegate_mapping."from",
+            delegate_mapping."to", delegate_mapping.power, delegate_mapping.block_number,
+            delegate_mapping.block_timestamp, delegate_mapping.transaction_hash
+          FROM delegate_mapping
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM degov_provisional_delegate_power_overlay delegate_power_overlay
+            WHERE delegate_power_overlay.status = 'available'
+              AND delegate_power_overlay.contract_set_id = delegate_mapping.contract_set_id
+              AND delegate_power_overlay.chain_id IS NOT DISTINCT FROM delegate_mapping.chain_id
+              AND delegate_power_overlay.dao_code IS NOT DISTINCT FROM delegate_mapping.dao_code
+              AND delegate_power_overlay.governor_address IS NOT DISTINCT FROM delegate_mapping.governor_address
+              AND delegate_power_overlay.delegator = delegate_mapping."from"
+          )
+          UNION ALL
+          SELECT delegate_power_overlay.id, delegate_power_overlay.contract_set_id,
+            delegate_power_overlay.chain_id, delegate_power_overlay.dao_code,
+            delegate_power_overlay.governor_address, delegate_power_overlay.delegator AS "from",
+            delegate_power_overlay.delegate AS "to", delegate_power_overlay.power,
+            COALESCE(delegate_power_overlay.anchor_block_number, 0) AS block_number,
+            COALESCE(delegate_power_overlay.anchor_block_timestamp, 0) AS block_timestamp,
+            '' AS transaction_hash
+          FROM degov_provisional_delegate_power_overlay delegate_power_overlay
+          WHERE delegate_power_overlay.status = 'available'
+            AND delegate_power_overlay.is_current = TRUE
+        ) delegate_mapping
         "#,
     );
     push_delegate_mapping_where(&mut query, implicit_scope, where_);
@@ -903,6 +1131,21 @@ pub(super) async fn count_contributors(
            AND contributor_power_overlay.account = contributor.id
            AND contributor_power_overlay.source = 'live-onchain'
            AND contributor_power_overlay.status = 'available'
+          UNION ALL
+          SELECT contributor_power_overlay.account AS id,
+            contributor_power_overlay.contract_set_id, contributor_power_overlay.chain_id,
+            contributor_power_overlay.dao_code, contributor_power_overlay.governor_address,
+            contributor_power_overlay.power,
+            contributor_power_overlay.last_vote_timestamp,
+            contributor_power_overlay.delegates_count_all
+          FROM degov_provisional_contributor_power_overlay contributor_power_overlay
+          WHERE contributor_power_overlay.status = 'available'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM contributor durable_contributor
+              WHERE durable_contributor.contract_set_id = contributor_power_overlay.contract_set_id
+                AND durable_contributor.id = contributor_power_overlay.account
+            )
         ) contributor
         "#,
     );
@@ -938,6 +1181,23 @@ pub(super) async fn count_delegates(
            AND delegate_power_overlay.delegate = delegate.to_delegate
            AND delegate_power_overlay.source = 'live-onchain'
            AND delegate_power_overlay.status = 'available'
+          UNION ALL
+          SELECT delegate_power_overlay.id,
+            delegate_power_overlay.contract_set_id, delegate_power_overlay.chain_id,
+            delegate_power_overlay.dao_code, delegate_power_overlay.governor_address,
+            delegate_power_overlay.delegator AS from_delegate,
+            delegate_power_overlay.delegate AS to_delegate,
+            delegate_power_overlay.is_current,
+            delegate_power_overlay.power
+          FROM degov_provisional_delegate_power_overlay delegate_power_overlay
+          WHERE delegate_power_overlay.status = 'available'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM delegate durable_delegate
+              WHERE durable_delegate.contract_set_id = delegate_power_overlay.contract_set_id
+                AND durable_delegate.from_delegate = delegate_power_overlay.delegator
+                AND durable_delegate.to_delegate = delegate_power_overlay.delegate
+            )
         ) delegate
         "#,
     );
@@ -974,6 +1234,23 @@ pub(super) async fn count_delegate_profiles(
            AND delegate_power_overlay.delegate = delegate.to_delegate
            AND delegate_power_overlay.source = 'live-onchain'
            AND delegate_power_overlay.status = 'available'
+          UNION ALL
+          SELECT delegate_power_overlay.id,
+            delegate_power_overlay.contract_set_id, delegate_power_overlay.chain_id,
+            delegate_power_overlay.dao_code, delegate_power_overlay.governor_address,
+            delegate_power_overlay.delegator AS from_delegate,
+            delegate_power_overlay.delegate AS to_delegate,
+            delegate_power_overlay.is_current,
+            delegate_power_overlay.power
+          FROM degov_provisional_delegate_power_overlay delegate_power_overlay
+          WHERE delegate_power_overlay.status = 'available'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM delegate durable_delegate
+              WHERE durable_delegate.contract_set_id = delegate_power_overlay.contract_set_id
+                AND durable_delegate.from_delegate = delegate_power_overlay.delegator
+                AND durable_delegate.to_delegate = delegate_power_overlay.delegate
+            )
         ) delegate
         "#,
     );
@@ -993,8 +1270,35 @@ pub(super) async fn count_delegate_mappings(
     implicit_scope: &GraphqlScope,
     where_: Option<&DelegateMappingWhereInput>,
 ) -> GraphqlResult<i64> {
-    let mut query =
-        QueryBuilder::<Postgres>::new("SELECT COUNT(*)::int8 AS total FROM delegate_mapping");
+    let mut query = QueryBuilder::<Postgres>::new(
+        r#"
+        SELECT COUNT(*)::int8 AS total
+        FROM (
+          SELECT delegate_mapping.id, delegate_mapping.contract_set_id, delegate_mapping.chain_id,
+            delegate_mapping.dao_code, delegate_mapping.governor_address, delegate_mapping."from",
+            delegate_mapping."to", delegate_mapping.power
+          FROM delegate_mapping
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM degov_provisional_delegate_power_overlay delegate_power_overlay
+            WHERE delegate_power_overlay.status = 'available'
+              AND delegate_power_overlay.contract_set_id = delegate_mapping.contract_set_id
+              AND delegate_power_overlay.chain_id IS NOT DISTINCT FROM delegate_mapping.chain_id
+              AND delegate_power_overlay.dao_code IS NOT DISTINCT FROM delegate_mapping.dao_code
+              AND delegate_power_overlay.governor_address IS NOT DISTINCT FROM delegate_mapping.governor_address
+              AND delegate_power_overlay.delegator = delegate_mapping."from"
+          )
+          UNION ALL
+          SELECT delegate_power_overlay.id, delegate_power_overlay.contract_set_id,
+            delegate_power_overlay.chain_id, delegate_power_overlay.dao_code,
+            delegate_power_overlay.governor_address, delegate_power_overlay.delegator AS "from",
+            delegate_power_overlay.delegate AS "to", delegate_power_overlay.power
+          FROM degov_provisional_delegate_power_overlay delegate_power_overlay
+          WHERE delegate_power_overlay.status = 'available'
+            AND delegate_power_overlay.is_current = TRUE
+        ) delegate_mapping
+        "#,
+    );
     push_delegate_mapping_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)

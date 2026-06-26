@@ -50,7 +50,37 @@ pub(super) fn push_proposal_filters<'a>(
     }
     if let Some(voters_some) = &where_.voters_some {
         push_and(query, has_condition);
-        query.push("EXISTS (SELECT 1 FROM vote_cast_group v WHERE v.proposal_id = proposal.id");
+        query.push(
+            r#"EXISTS (
+              SELECT 1
+              FROM (
+                SELECT id, contract_set_id, chain_id, dao_code, governor_address, proposal_id,
+                  ref_proposal_id, voter, support
+                FROM vote_cast_group
+                UNION ALL
+                SELECT vote_overlay.id, vote_overlay.contract_set_id, vote_overlay.chain_id,
+                  vote_overlay.dao_code, vote_overlay.governor_address, vote_overlay.proposal_id,
+                  vote_overlay.ref_proposal_id, vote_overlay.voter, vote_overlay.support
+                FROM degov_provisional_vote_cast_group_overlay vote_overlay
+                WHERE vote_overlay.status = 'available'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM vote_cast_group durable_vote
+                    WHERE durable_vote.contract_set_id = vote_overlay.contract_set_id
+                      AND durable_vote.id = vote_overlay.id
+                  )
+              ) v
+              WHERE (
+                v.proposal_id = proposal.id
+                OR (
+                  v.ref_proposal_id = proposal.proposal_id
+                  AND v.contract_set_id = proposal.contract_set_id
+                  AND v.chain_id IS NOT DISTINCT FROM proposal.chain_id
+                  AND v.dao_code IS NOT DISTINCT FROM proposal.dao_code
+                  AND v.governor_address IS NOT DISTINCT FROM proposal.governor_address
+                )
+              )"#,
+        );
         let mut nested_has_condition = true;
         push_implicit_scope_filters(query, &mut nested_has_condition, implicit_scope, "v", true);
         push_vote_cast_group_filters(query, &mut nested_has_condition, voters_some, "v");

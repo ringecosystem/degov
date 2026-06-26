@@ -14,9 +14,10 @@ use degov_datalens_indexer::{
     GovernanceTokenStandard, IndexerCheckpointIdentity, PostgresProvisionalCleanupStore,
     PostgresProvisionalPowerOverlayStore, PostgresProvisionalProposalOverlayStore,
     PostgresProvisionalSegmentStore, ProvisionalContributorPowerOverlayWrite,
-    ProvisionalDelegatePowerOverlayWrite, ProvisionalProposalOverlayWrite,
-    ProvisionalRollbackScope, ProvisionalSegmentCleanupCandidate,
-    ProvisionalSegmentCleanupDecision, ProvisionalTimelockOperationOverlayWrite, ProvisionalWorker,
+    ProvisionalDelegatePowerOverlayWrite, ProvisionalProposalEventOverlayWrite,
+    ProvisionalProposalOverlayWrite, ProvisionalRollbackScope, ProvisionalSegmentCleanupCandidate,
+    ProvisionalSegmentCleanupDecision, ProvisionalTimelockOperationOverlayWrite,
+    ProvisionalVoteCastGroupOverlayWrite, ProvisionalVoteOverlayStore, ProvisionalWorker,
     ProvisionalWorkerOptions, QueryLimitConfig, SecretString, plan_provisional_segment_cleanup,
     runtime::apply_migrations,
 };
@@ -77,6 +78,8 @@ fn test_provisional_worker_writes_proposal_overlay_from_provisional_rows() {
 
     assert_eq!(report.segments_written, 1);
     assert_eq!(report.proposal_overlays_written, 1);
+    assert_eq!(report.proposal_event_overlays_written, 0);
+    assert_eq!(report.vote_overlays_written, 0);
     assert_eq!(store.proposal_writes.len(), 1);
     let proposal = &store.proposal_writes[0];
     assert_eq!(
@@ -88,6 +91,82 @@ fn test_provisional_worker_writes_proposal_overlay_from_provisional_rows() {
     assert_eq!(proposal.block_number.as_deref(), Some("104"));
     assert_eq!(proposal.transaction_hash.as_deref(), Some("0xtx104"));
     assert_eq!(proposal.source, "provider");
+}
+
+#[test]
+fn test_provisional_worker_writes_vote_overlay_from_provisional_rows() {
+    let config = datalens_config();
+    let results = vec![
+        Ok(DatalensProvisionalLogQueryResult {
+            rows: serde_json::json!([vote_cast_log_row(104),]),
+            segments: vec![cache_segment("provider", "latest", 100, 105)],
+        }),
+        Ok(DatalensProvisionalLogQueryResult::rows_only(
+            serde_json::json!([]),
+        )),
+    ];
+    let mut reader = MockProvisionalReader::new(results);
+    let mut store = RecordingProvisionalStore::default();
+    let mut worker = ProvisionalWorker::new(options(&config), &mut reader, &mut store);
+
+    let report = worker.run_once().expect("worker runs once");
+
+    assert_eq!(report.segments_written, 1);
+    assert_eq!(report.proposal_overlays_written, 0);
+    assert_eq!(report.proposal_event_overlays_written, 0);
+    assert_eq!(report.vote_overlays_written, 1);
+    assert_eq!(store.vote_writes.len(), 1);
+    let vote = &store.vote_writes[0];
+    assert_eq!(
+        vote.segment_id.as_deref(),
+        Some(store.writes[0].id.as_str())
+    );
+    assert_eq!(vote.ref_proposal_id, "42");
+    assert_eq!(vote.voter, "0x0000000000000000000000000000000000000b01");
+    assert_eq!(vote.support, 1);
+    assert_eq!(vote.weight, "77");
+    assert_eq!(vote.reason, "aye");
+    assert_eq!(vote.block_number, "104");
+    assert_eq!(vote.transaction_hash, "0xtx104");
+    assert_eq!(vote.source, "provider");
+}
+
+#[test]
+fn test_provisional_worker_writes_proposal_event_overlay_from_provisional_rows() {
+    let config = datalens_config();
+    let results = vec![
+        Ok(DatalensProvisionalLogQueryResult {
+            rows: serde_json::json!([proposal_queued_log_row(104),]),
+            segments: vec![cache_segment("provider", "latest", 100, 105)],
+        }),
+        Ok(DatalensProvisionalLogQueryResult::rows_only(
+            serde_json::json!([]),
+        )),
+    ];
+    let mut reader = MockProvisionalReader::new(results);
+    let mut store = RecordingProvisionalStore::default();
+    let mut worker = ProvisionalWorker::new(options(&config), &mut reader, &mut store);
+
+    let report = worker.run_once().expect("worker runs once");
+
+    assert_eq!(report.segments_written, 1);
+    assert_eq!(report.proposal_overlays_written, 1);
+    assert_eq!(report.proposal_event_overlays_written, 1);
+    assert_eq!(report.vote_overlays_written, 0);
+    assert_eq!(store.proposal_writes.len(), 1);
+    assert_eq!(store.proposal_writes[0].state.as_deref(), Some("Queued"));
+    assert_eq!(store.proposal_event_writes.len(), 1);
+    let event = &store.proposal_event_writes[0];
+    assert_eq!(
+        event.segment_id.as_deref(),
+        Some(store.writes[0].id.as_str())
+    );
+    assert_eq!(event.event_type, "proposal_queued");
+    assert_eq!(event.proposal_id, "42");
+    assert_eq!(event.eta_seconds.as_deref(), Some("1234"));
+    assert_eq!(event.block_number, "104");
+    assert_eq!(event.transaction_hash, "0xtx104");
+    assert_eq!(event.source, "provider");
 }
 
 #[test]
@@ -205,11 +284,11 @@ async fn test_postgres_live_proposal_timelock_overlay_upsert_is_idempotent_and_w
     let timelock = timelock_overlay_write("42", "0xoperation", "Ready");
 
     store
-        .write_proposal_overlays(&[proposal.clone()], &[timelock.clone()])
+        .write_proposal_overlays(&[proposal.clone()], &[], &[timelock.clone()])
         .await
         .expect("first write succeeds");
     store
-        .write_proposal_overlays(&[proposal], &[timelock])
+        .write_proposal_overlays(&[proposal], &[], &[timelock])
         .await
         .expect("retry write succeeds");
 
@@ -521,6 +600,8 @@ async fn test_postgres_cleanup_is_idempotent() -> Result<(), Box<dyn Error>> {
 struct RecordingProvisionalStore {
     writes: Vec<DatalensProvisionalSegmentWrite>,
     proposal_writes: Vec<ProvisionalProposalOverlayWrite>,
+    proposal_event_writes: Vec<ProvisionalProposalEventOverlayWrite>,
+    vote_writes: Vec<ProvisionalVoteCastGroupOverlayWrite>,
 }
 
 impl DatalensProvisionalSegmentStore for RecordingProvisionalStore {
@@ -541,10 +622,25 @@ impl degov_datalens_indexer::ProvisionalProposalOverlayStore for RecordingProvis
     fn write_proposal_overlays(
         &mut self,
         proposals: &[ProvisionalProposalOverlayWrite],
+        proposal_events: &[ProvisionalProposalEventOverlayWrite],
         timelocks: &[ProvisionalTimelockOperationOverlayWrite],
     ) -> Result<(), Self::Error> {
         assert!(timelocks.is_empty());
         self.proposal_writes.extend_from_slice(proposals);
+        self.proposal_event_writes
+            .extend_from_slice(proposal_events);
+        Ok(())
+    }
+}
+
+impl ProvisionalVoteOverlayStore for RecordingProvisionalStore {
+    type Error = String;
+
+    fn write_vote_overlays(
+        &mut self,
+        votes: &[ProvisionalVoteCastGroupOverlayWrite],
+    ) -> Result<(), Self::Error> {
+        self.vote_writes.extend_from_slice(votes);
         Ok(())
     }
 }
@@ -606,6 +702,47 @@ fn proposal_created_log_row(block_number: i64) -> serde_json::Value {
     })
 }
 
+fn proposal_queued_log_row(block_number: i64) -> serde_json::Value {
+    serde_json::json!({
+        "block_number": block_number,
+        "block_hash": "0xblock104",
+        "block_timestamp": 1_700_000_104u64,
+        "transaction_hash": "0xtx104",
+        "transaction_index": 0,
+        "log_index": 1,
+        "address": "0x1111111111111111111111111111111111111111",
+        "topics": [PROPOSAL_QUEUED],
+        "data": format!("0x{}", hex::encode(encode(&[uint(42), uint(1234)]))),
+        "removed": false
+    })
+}
+
+fn vote_cast_log_row(block_number: i64) -> serde_json::Value {
+    serde_json::json!({
+        "block_number": block_number,
+        "block_hash": "0xblock104",
+        "block_timestamp": 1_700_000_104u64,
+        "transaction_hash": "0xtx104",
+        "transaction_index": 0,
+        "log_index": 1,
+        "address": "0x1111111111111111111111111111111111111111",
+        "topics": [
+            VOTE_CAST,
+            topic_address("0x0000000000000000000000000000000000000b01")
+        ],
+        "data": format!(
+            "0x{}",
+            hex::encode(encode(&[
+                uint(42),
+                Token::Uint(1u64.into()),
+                uint(77),
+                Token::String("aye".to_owned())
+            ]))
+        ),
+        "removed": false
+    })
+}
+
 fn proposal_created_data() -> String {
     let tokens = vec![
         Token::Uint(42u64.into()),
@@ -621,6 +758,14 @@ fn proposal_created_data() -> String {
         Token::String("# Live proposal\n\nVisible before safe height".to_owned()),
     ];
     format!("0x{}", hex::encode(encode(&tokens)))
+}
+
+fn uint(value: u64) -> Token {
+    Token::Uint(value.into())
+}
+
+fn topic_address(value: &str) -> String {
+    format!("0x{:0>64}", value.trim_start_matches("0x"))
 }
 
 fn segment_write(
@@ -845,6 +990,9 @@ fn addresses() -> DaoContractAddresses {
     }
 }
 
+const PROPOSAL_QUEUED: &str = "0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892";
+const VOTE_CAST: &str = "0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4";
+
 struct TestDatabase {
     _guard: MutexGuard<'static, ()>,
     pool: PgPool,
@@ -1068,7 +1216,7 @@ async fn insert_available_provisional_rows(
         .write_power_overlays(&[contributor], &[delegate])
         .await?;
     proposal_store
-        .write_proposal_overlays(&[proposal], &[timelock])
+        .write_proposal_overlays(&[proposal], &[], &[timelock])
         .await?;
 
     Ok(())
@@ -1127,7 +1275,7 @@ async fn insert_available_live_onchain_overlay_rows(
         .write_power_overlays(&[contributor], &[delegate])
         .await?;
     proposal_store
-        .write_proposal_overlays(&[proposal], &[timelock])
+        .write_proposal_overlays(&[proposal], &[], &[timelock])
         .await?;
 
     Ok(())

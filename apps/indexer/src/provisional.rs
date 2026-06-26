@@ -9,10 +9,11 @@ use crate::{
     BatchReadPlanConfig, ChainContracts, DaoContractAddresses, DaoLogSource, DatalensConfig,
     DatalensError, DatalensProvisionalCacheSegment, DatalensProvisionalFinality,
     DatalensProvisionalLogQueryReader, DecodedDaoEvent, DecodedGovernorEvent,
-    IndexerCheckpointIdentity, NormalizedEvmLog, ProposalProjectionContext,
-    ProposalProjectionEvent, ProposalWrite, datalens_selector_fingerprint, decode_dao_log,
+    IndexerCheckpointIdentity, NormalizedEvmLog, ProposalIdWrite, ProposalProjectionContext,
+    ProposalProjectionEvent, ProposalQueuedWrite, ProposalWrite, VoteCastGroupWrite,
+    VoteProjectionContext, VoteProjectionEvent, datalens_selector_fingerprint, decode_dao_log,
     fetch_provisional_dao_log_pages, normalize_evm_log_rows, page_rows, plan_dao_log_queries,
-    project_proposal_events,
+    project_proposal_events, project_vote_events,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -184,6 +185,63 @@ pub struct ProvisionalTimelockOperationOverlayWrite {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalVoteCastGroupOverlayWrite {
+    pub id: String,
+    pub segment_id: Option<String>,
+    pub dao_code: Option<String>,
+    pub contract_set_id: String,
+    pub chain_id: Option<i32>,
+    pub chain_name: Option<String>,
+    pub governor_address: Option<String>,
+    pub contract_address: Option<String>,
+    pub log_index: Option<i32>,
+    pub transaction_index: Option<i32>,
+    pub proposal_id: String,
+    pub kind: String,
+    pub voter: String,
+    pub ref_proposal_id: String,
+    pub support: i32,
+    pub weight: String,
+    pub reason: String,
+    pub params: Option<String>,
+    pub block_number: String,
+    pub block_timestamp: String,
+    pub transaction_hash: String,
+    pub source: String,
+    pub status: String,
+    pub anchor_block_number: Option<String>,
+    pub anchor_block_hash: Option<String>,
+    pub anchor_parent_hash: Option<String>,
+    pub anchor_block_timestamp: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionalProposalEventOverlayWrite {
+    pub id: String,
+    pub segment_id: Option<String>,
+    pub dao_code: Option<String>,
+    pub contract_set_id: String,
+    pub chain_id: Option<i32>,
+    pub chain_name: Option<String>,
+    pub governor_address: Option<String>,
+    pub contract_address: Option<String>,
+    pub event_type: String,
+    pub log_index: Option<i32>,
+    pub transaction_index: Option<i32>,
+    pub proposal_id: String,
+    pub eta_seconds: Option<String>,
+    pub block_number: String,
+    pub block_timestamp: String,
+    pub transaction_hash: String,
+    pub source: String,
+    pub status: String,
+    pub anchor_block_number: Option<String>,
+    pub anchor_block_hash: Option<String>,
+    pub anchor_parent_hash: Option<String>,
+    pub anchor_block_timestamp: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProvisionalPowerOverlayScope {
     pub contract_set_id: String,
     pub chain_id: i32,
@@ -210,6 +268,8 @@ pub struct ProvisionalDelegatePowerOverlayRelation {
 pub struct ProvisionalWorkerReport {
     pub segments_written: usize,
     pub proposal_overlays_written: usize,
+    pub proposal_event_overlays_written: usize,
+    pub vote_overlays_written: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -226,7 +286,9 @@ pub struct ProvisionalCleanupReport {
     pub contributor_overlays_marked_finalized: usize,
     pub delegate_overlays_marked_finalized: usize,
     pub proposal_overlays_marked_finalized: usize,
+    pub proposal_event_overlays_marked_finalized: usize,
     pub timelock_overlays_marked_finalized: usize,
+    pub vote_overlays_marked_finalized: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -235,7 +297,9 @@ pub struct ProvisionalRollbackReport {
     pub contributor_overlays_marked_invalid: usize,
     pub delegate_overlays_marked_invalid: usize,
     pub proposal_overlays_marked_invalid: usize,
+    pub proposal_event_overlays_marked_invalid: usize,
     pub timelock_overlays_marked_invalid: usize,
+    pub vote_overlays_marked_invalid: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -301,7 +365,17 @@ pub trait ProvisionalProposalOverlayStore {
     fn write_proposal_overlays(
         &mut self,
         proposals: &[ProvisionalProposalOverlayWrite],
+        proposal_events: &[ProvisionalProposalEventOverlayWrite],
         timelocks: &[ProvisionalTimelockOperationOverlayWrite],
+    ) -> Result<(), Self::Error>;
+}
+
+pub trait ProvisionalVoteOverlayStore {
+    type Error: fmt::Display;
+
+    fn write_vote_overlays(
+        &mut self,
+        votes: &[ProvisionalVoteCastGroupOverlayWrite],
     ) -> Result<(), Self::Error>;
 }
 
@@ -389,7 +463,9 @@ pub struct ProvisionalWorker<'a, R, S> {
 impl<'a, R, S> ProvisionalWorker<'a, R, S>
 where
     R: DatalensProvisionalLogQueryReader,
-    S: DatalensProvisionalSegmentStore + ProvisionalProposalOverlayStore,
+    S: DatalensProvisionalSegmentStore
+        + ProvisionalProposalOverlayStore
+        + ProvisionalVoteOverlayStore,
 {
     pub fn new(options: ProvisionalWorkerOptions, reader: &'a mut R, store: &'a mut S) -> Self {
         Self {
@@ -409,6 +485,8 @@ where
         let pages = fetch_provisional_dao_log_pages(self.reader, &plans, self.options.finality)?;
         let mut writes = Vec::new();
         let mut proposal_writes = Vec::new();
+        let mut proposal_event_writes = Vec::new();
+        let mut vote_writes = Vec::new();
 
         for page in pages {
             let selector = serde_json::to_string(&page.plan.input.selector)
@@ -420,7 +498,10 @@ where
                 .cloned()
                 .map(|segment| self.segment_write(segment, &selector, &selector_fingerprint))
                 .collect::<Vec<_>>();
-            proposal_writes.extend(self.proposal_writes(&page, &segment_writes)?);
+            let proposal_page_writes = self.proposal_writes(&page, &segment_writes)?;
+            proposal_writes.extend(proposal_page_writes.proposals);
+            proposal_event_writes.extend(proposal_page_writes.events);
+            vote_writes.extend(self.vote_writes(&page, &segment_writes)?);
             for segment in segment_writes {
                 writes.push(segment);
             }
@@ -430,12 +511,17 @@ where
             .write_provisional_segments(&writes)
             .map_err(|error| ProvisionalWorkerError::Store(error.to_string()))?;
         self.store
-            .write_proposal_overlays(&proposal_writes, &[])
+            .write_proposal_overlays(&proposal_writes, &proposal_event_writes, &[])
+            .map_err(|error| ProvisionalWorkerError::Store(error.to_string()))?;
+        self.store
+            .write_vote_overlays(&vote_writes)
             .map_err(|error| ProvisionalWorkerError::Store(error.to_string()))?;
 
         Ok(ProvisionalWorkerReport {
             segments_written: writes.len(),
             proposal_overlays_written: proposal_writes.len(),
+            proposal_event_overlays_written: proposal_event_writes.len(),
+            vote_overlays_written: vote_writes.len(),
         })
     }
 
@@ -484,7 +570,7 @@ where
         &self,
         page: &DatalensProvisionalLogPage,
         segments: &[DatalensProvisionalSegmentWrite],
-    ) -> Result<Vec<ProvisionalProposalOverlayWrite>, ProvisionalWorkerError> {
+    ) -> Result<ProvisionalProposalPageWrites, ProvisionalWorkerError> {
         let sources = page
             .plan
             .sources
@@ -515,18 +601,34 @@ where
             proposal_events.push(ProposalProjectionEvent { log, event });
         }
         if proposal_events.is_empty() {
-            return Ok(Vec::new());
+            return Ok(ProvisionalProposalPageWrites::default());
         }
 
         let context = self.proposal_context();
         let batch = project_proposal_events(&context, proposal_events)
             .map_err(|error| ProvisionalWorkerError::Projection(format!("{error:?}")))?;
 
-        Ok(batch
+        let proposals = batch
             .proposals
             .iter()
             .filter_map(|proposal| self.proposal_overlay_write(proposal, segments))
-            .collect())
+            .collect();
+        let mut events = Vec::new();
+        events.extend(batch.proposal_queued.iter().filter_map(|event| {
+            self.queued_event_overlay_write(event, "proposal_queued", segments)
+        }));
+        events.extend(
+            batch.proposal_executed.iter().filter_map(|event| {
+                self.id_event_overlay_write(event, "proposal_executed", segments)
+            }),
+        );
+        events.extend(
+            batch.proposal_canceled.iter().filter_map(|event| {
+                self.id_event_overlay_write(event, "proposal_canceled", segments)
+            }),
+        );
+
+        Ok(ProvisionalProposalPageWrites { proposals, events })
     }
 
     fn decode_proposal_event(
@@ -544,9 +646,104 @@ where
             {
                 return Ok(Some(event));
             }
+            if let DecodedDaoEvent::Governor(
+                event @ (DecodedGovernorEvent::ProposalQueued(_)
+                | DecodedGovernorEvent::ProposalExecuted(_)
+                | DecodedGovernorEvent::ProposalCanceled(_)),
+            ) = event
+            {
+                return Ok(Some(event));
+            }
         }
 
         Ok(None)
+    }
+
+    fn vote_writes(
+        &self,
+        page: &DatalensProvisionalLogPage,
+        segments: &[DatalensProvisionalSegmentWrite],
+    ) -> Result<Vec<ProvisionalVoteCastGroupOverlayWrite>, ProvisionalWorkerError> {
+        let sources = page
+            .plan
+            .sources
+            .iter()
+            .fold(BTreeMap::new(), |mut sources, source| {
+                sources
+                    .entry(source.address.to_ascii_lowercase())
+                    .or_insert_with(Vec::new)
+                    .push(source.source);
+                sources
+            });
+        let rows = page_rows(page.rows.clone())
+            .map_err(|error| ProvisionalWorkerError::Normalize(error.to_string()))?;
+        let logs = normalize_evm_log_rows(self.options.chain_id, rows)
+            .map_err(|error| ProvisionalWorkerError::Normalize(error.to_string()))?;
+        let mut vote_events = Vec::new();
+
+        for log in logs {
+            if log.removed {
+                continue;
+            }
+            let Some(candidate_sources) = sources.get(&log.address) else {
+                continue;
+            };
+            let Some(event) = self.decode_vote_event(candidate_sources, &log)? else {
+                continue;
+            };
+            vote_events.push(VoteProjectionEvent { log, event });
+        }
+        if vote_events.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let context = self.vote_context();
+        let batch = project_vote_events(&context, vote_events)
+            .map_err(|error| ProvisionalWorkerError::Projection(format!("{error:?}")))?;
+
+        Ok(batch
+            .vote_cast_groups
+            .iter()
+            .filter_map(|vote| self.vote_overlay_write(vote, segments))
+            .collect())
+    }
+
+    fn decode_vote_event(
+        &self,
+        candidate_sources: &[DaoLogSource],
+        log: &NormalizedEvmLog,
+    ) -> Result<Option<DecodedGovernorEvent>, ProvisionalWorkerError> {
+        for source in candidate_sources {
+            let token_standard = (*source == DaoLogSource::GovernorToken)
+                .then_some(self.options.addresses.governor_token_standard);
+            let event = decode_dao_log(&self.options.dao_code, *source, token_standard, log)
+                .map_err(|error| ProvisionalWorkerError::Decode(error.to_string()))?;
+            if let DecodedDaoEvent::Governor(
+                event @ (DecodedGovernorEvent::VoteCast(_)
+                | DecodedGovernorEvent::VoteCastWithParams(_)),
+            ) = event
+            {
+                return Ok(Some(event));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn vote_context(&self) -> VoteProjectionContext {
+        let contracts = ChainContracts {
+            governor: self.options.addresses.governor.clone(),
+            governor_token: self.options.addresses.governor_token.clone(),
+            timelock: self.options.addresses.timelock.clone(),
+        };
+
+        VoteProjectionContext {
+            contract_set_id: self.options.contract_set_id.clone(),
+            dao_code: self.options.dao_code.clone(),
+            governor_address: self.options.addresses.governor.clone(),
+            contracts,
+            read_plan_config: BatchReadPlanConfig::default().validated(),
+        }
     }
 
     fn proposal_context(&self) -> ProposalProjectionContext {
@@ -622,6 +819,149 @@ where
                 .map(|value| value.to_string()),
         })
     }
+
+    fn queued_event_overlay_write(
+        &self,
+        event: &ProposalQueuedWrite,
+        event_type: &str,
+        segments: &[DatalensProvisionalSegmentWrite],
+    ) -> Option<ProvisionalProposalEventOverlayWrite> {
+        self.proposal_event_overlay_write(
+            &event.id,
+            &event.common.contract_set_id,
+            event.common.chain_id,
+            &event.common.dao_code,
+            &event.common.governor_address,
+            &event.common.contract_address,
+            event.common.log_index,
+            event.common.transaction_index,
+            &event.proposal_id,
+            Some(event.eta_seconds.clone()),
+            &event.common.block_number,
+            event.common.block_timestamp.as_deref(),
+            &event.common.transaction_hash,
+            event_type,
+            segments,
+        )
+    }
+
+    fn id_event_overlay_write(
+        &self,
+        event: &ProposalIdWrite,
+        event_type: &str,
+        segments: &[DatalensProvisionalSegmentWrite],
+    ) -> Option<ProvisionalProposalEventOverlayWrite> {
+        self.proposal_event_overlay_write(
+            &event.id,
+            &event.common.contract_set_id,
+            event.common.chain_id,
+            &event.common.dao_code,
+            &event.common.governor_address,
+            &event.common.contract_address,
+            event.common.log_index,
+            event.common.transaction_index,
+            &event.proposal_id,
+            None,
+            &event.common.block_number,
+            event.common.block_timestamp.as_deref(),
+            &event.common.transaction_hash,
+            event_type,
+            segments,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn proposal_event_overlay_write(
+        &self,
+        id: &str,
+        contract_set_id: &str,
+        chain_id: i32,
+        dao_code: &str,
+        governor_address: &str,
+        contract_address: &str,
+        log_index: u64,
+        transaction_index: u64,
+        proposal_id: &str,
+        eta_seconds: Option<String>,
+        block_number: &str,
+        block_timestamp: Option<&str>,
+        transaction_hash: &str,
+        event_type: &str,
+        segments: &[DatalensProvisionalSegmentWrite],
+    ) -> Option<ProvisionalProposalEventOverlayWrite> {
+        let segment = matching_segment(segments, block_number)?;
+        Some(ProvisionalProposalEventOverlayWrite {
+            id: id.to_owned(),
+            segment_id: Some(segment.id.clone()),
+            dao_code: Some(dao_code.to_owned()),
+            contract_set_id: contract_set_id.to_owned(),
+            chain_id: Some(chain_id),
+            chain_name: Some(self.options.chain_name.clone()),
+            governor_address: Some(governor_address.to_owned()),
+            contract_address: Some(contract_address.to_owned()),
+            event_type: event_type.to_owned(),
+            log_index: i32::try_from(log_index).ok(),
+            transaction_index: i32::try_from(transaction_index).ok(),
+            proposal_id: proposal_id.to_owned(),
+            eta_seconds,
+            block_number: block_number.to_owned(),
+            block_timestamp: block_timestamp?.to_owned(),
+            transaction_hash: transaction_hash.to_owned(),
+            source: segment.source.clone(),
+            status: "available".to_owned(),
+            anchor_block_number: segment.anchor_block_number.map(|value| value.to_string()),
+            anchor_block_hash: segment.anchor_block_hash.clone(),
+            anchor_parent_hash: segment.anchor_parent_hash.clone(),
+            anchor_block_timestamp: segment
+                .anchor_block_timestamp
+                .map(|value| value.to_string()),
+        })
+    }
+
+    fn vote_overlay_write(
+        &self,
+        vote: &VoteCastGroupWrite,
+        segments: &[DatalensProvisionalSegmentWrite],
+    ) -> Option<ProvisionalVoteCastGroupOverlayWrite> {
+        let segment = matching_segment(segments, vote.block_number.as_str())?;
+        Some(ProvisionalVoteCastGroupOverlayWrite {
+            id: vote.id.clone(),
+            segment_id: Some(segment.id.clone()),
+            dao_code: Some(vote.dao_code.clone()),
+            contract_set_id: vote.contract_set_id.clone(),
+            chain_id: Some(vote.chain_id),
+            chain_name: Some(self.options.chain_name.clone()),
+            governor_address: Some(vote.governor_address.clone()),
+            contract_address: Some(vote.contract_address.clone()),
+            log_index: i32::try_from(vote.log_index).ok(),
+            transaction_index: i32::try_from(vote.transaction_index).ok(),
+            proposal_id: vote.proposal_ref.clone(),
+            kind: vote.kind.clone(),
+            voter: vote.voter.clone(),
+            ref_proposal_id: vote.ref_proposal_id.clone(),
+            support: i32::from(vote.support),
+            weight: vote.weight.clone(),
+            reason: vote.reason.clone(),
+            params: vote.params.clone(),
+            block_number: vote.block_number.clone(),
+            block_timestamp: vote.block_timestamp.clone()?,
+            transaction_hash: vote.transaction_hash.clone(),
+            source: segment.source.clone(),
+            status: "available".to_owned(),
+            anchor_block_number: segment.anchor_block_number.map(|value| value.to_string()),
+            anchor_block_hash: segment.anchor_block_hash.clone(),
+            anchor_parent_hash: segment.anchor_parent_hash.clone(),
+            anchor_block_timestamp: segment
+                .anchor_block_timestamp
+                .map(|value| value.to_string()),
+        })
+    }
+}
+
+#[derive(Default)]
+struct ProvisionalProposalPageWrites {
+    proposals: Vec<ProvisionalProposalOverlayWrite>,
+    events: Vec<ProvisionalProposalEventOverlayWrite>,
 }
 
 fn matching_segment<'a>(

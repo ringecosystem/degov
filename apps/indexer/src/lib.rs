@@ -126,10 +126,12 @@ pub use provisional::{
     DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, ProvisionalCleanupReport,
     ProvisionalCleanupStore, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
-    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ProvisionalProposalOverlayStore,
+    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore,
+    ProvisionalProposalEventOverlayWrite, ProvisionalProposalOverlayStore,
     ProvisionalProposalOverlayWrite, ProvisionalRollbackReport, ProvisionalRollbackScope,
     ProvisionalSegmentCleanupCandidate, ProvisionalSegmentCleanupDecision,
-    ProvisionalTimelockOperationOverlayWrite, ProvisionalWorker, ProvisionalWorkerOptions,
+    ProvisionalTimelockOperationOverlayWrite, ProvisionalVoteCastGroupOverlayWrite,
+    ProvisionalVoteOverlayStore, ProvisionalWorker, ProvisionalWorkerOptions,
     plan_provisional_segment_cleanup,
 };
 pub use runner::{
