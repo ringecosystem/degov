@@ -814,9 +814,9 @@ const UPSERT_PROVISIONAL_PROPOSAL_OVERLAY_SQL: &str =
              $22::NUMERIC(78, 0), $23::NUMERIC(78, 0), $24,
              $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27::NUMERIC(78, 0),
              $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30::NUMERIC(78, 0),
-             $31, $32, $33, $34::NUMERIC(78, 0), $35,
-             $36::NUMERIC(78, 0), $37::NUMERIC(78, 0), $38, $39,
-             $40::NUMERIC(78, 0), $41, $42, $43::NUMERIC(78, 0)
+             $31::NUMERIC(78, 0), $32, $33, $34, $35,
+             $36::NUMERIC(78, 0), $37, $38::NUMERIC(78, 0), $39::NUMERIC(78, 0),
+             $40, $41, $42::NUMERIC(78, 0), $43, $44, $45::NUMERIC(78, 0)
          )
          ON CONFLICT ON CONSTRAINT degov_provisional_proposal_overlay_scope_unique
          DO UPDATE SET
