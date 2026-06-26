@@ -6,9 +6,9 @@ use sqlx::postgres::PgPoolOptions;
 use tokio::time::sleep;
 
 use crate::{
-    DatalensConfig, EvmRpcChainTool, IndexerRuntimeConfig, MultiChainToolOnchainRefreshReader,
-    OnchainRefreshRunReport, OnchainRefreshRuntimeConfig, OnchainRefreshScopeMode,
-    OnchainRefreshTaskScope, OnchainRefreshWorker, required_env,
+    DatalensConfig, EvmRpcChainTool, IndexerRuntimeConfig, MetricsRuntimeConfig,
+    MultiChainToolOnchainRefreshReader, OnchainRefreshRunReport, OnchainRefreshRuntimeConfig,
+    OnchainRefreshScopeMode, OnchainRefreshTaskScope, OnchainRefreshWorker, required_env,
 };
 
 use super::migrate::apply_migrations;
@@ -40,6 +40,12 @@ pub async fn run_worker() -> Result<()> {
         .await
         .context("connect to DeGov indexer Postgres")?;
     apply_migrations(&pool).await?;
+    let _metrics_server = crate::metrics::spawn_metrics_server(
+        pool.clone(),
+        MetricsRuntimeConfig::from_env().context("load metrics runtime configuration")?,
+    )
+    .await
+    .context("start DeGov indexer metrics service")?;
 
     let chain_tools = runtime
         .rpc_chains
@@ -82,6 +88,11 @@ pub async fn run_worker() -> Result<()> {
                 run_onchain_refresh_worker_batch(&worker, &batch_scope, runtime.batch_size)
                     .await
                     .context("run onchain refresh batch")?;
+            let metrics_scope = match &batch_scope {
+                OnchainRefreshWorkerBatchScope::Global => None,
+                OnchainRefreshWorkerBatchScope::Scoped(scope) => Some(scope),
+            };
+            crate::metrics::record_onchain_refresh_worker_report(metrics_scope, &report);
             poll_claimed += report.claimed;
             poll_completed += report.completed;
             poll_failed += report.failed;

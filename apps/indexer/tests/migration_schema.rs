@@ -668,7 +668,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
             "0004_onchain_refresh_claim_retry_indexes.sql",
             "0005_onchain_refresh_failed_ready_retry_index.sql",
             "0006_onchain_refresh_pending_ready_claim_index.sql",
-            "0007_checkpoint_adaptive_chunk_state.sql"
+            "0007_checkpoint_adaptive_chunk_state.sql",
+            "0008_indexer_latest_head.sql"
         ]
     );
 

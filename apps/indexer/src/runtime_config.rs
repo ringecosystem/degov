@@ -24,6 +24,12 @@ pub struct GraphqlRuntimeConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MetricsRuntimeConfig {
+    pub enabled: bool,
+    pub bind_address: SocketAddr,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProvisionalRuntimeConfig {
     pub enabled: bool,
     pub finality: DatalensProvisionalFinality,
@@ -63,6 +69,23 @@ impl GraphqlRuntimeConfig {
             bind_address,
             public_endpoint,
             paths,
+        })
+    }
+}
+
+impl MetricsRuntimeConfig {
+    pub fn from_env() -> Result<Self> {
+        let enabled = optional_env_bool("DEGOV_INDEXER_METRICS_ENABLED")?.unwrap_or(false);
+        let bind_address = match optional_env("DEGOV_INDEXER_METRICS_BIND_ADDRESS")? {
+            Some(address) => parse_bind_address("DEGOV_INDEXER_METRICS_BIND_ADDRESS", &address)?,
+            None => "0.0.0.0:9464"
+                .parse()
+                .expect("default metrics bind address parses"),
+        };
+
+        Ok(Self {
+            enabled,
+            bind_address,
         })
     }
 }

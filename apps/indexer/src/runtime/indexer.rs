@@ -13,7 +13,7 @@ use crate::{
     DatalensQueryConcurrencyGate, DatalensQueryErrorClass, DatalensRuntimeContractSet,
     DatalensWarmupEnsureOutcome, EvmRpcChainTool, IndexerContractSetMode,
     IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner, IndexerRunnerReport,
-    IndexerRunnerStore, IndexerRuntimeConfig, IndexerTargetHeight,
+    IndexerRunnerStore, IndexerRuntimeConfig, IndexerTargetHeight, MetricsRuntimeConfig,
     MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTaskScope,
     OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
     OnchainRefreshWorker, OnchainRefreshWorkerError, PostgresIndexerRunnerStore,
@@ -21,7 +21,9 @@ use crate::{
     ProvisionalWorkerOptions,
     checkpoint::configured_range_progress,
     classify_datalens_query_error, datalens_query_error_is_current_head_race,
-    datalens_retry_config, ensure_datalens_warmup_task, onchain_refresh_debounce_from_env,
+    datalens_retry_config, ensure_datalens_warmup_task,
+    metrics::IndexerLatestHeadRecord,
+    onchain_refresh_debounce_from_env,
     provisional::{DatalensProvisionalSegmentStore, ProvisionalWorkerError},
     required_env,
 };
@@ -53,6 +55,12 @@ pub async fn run_indexer() -> Result<()> {
         .await
         .context("connect to DeGov indexer Postgres")?;
     apply_migrations(&pool).await?;
+    let _metrics_server = crate::metrics::spawn_metrics_server(
+        pool.clone(),
+        MetricsRuntimeConfig::from_env().context("load metrics runtime configuration")?,
+    )
+    .await
+    .context("start DeGov indexer metrics service")?;
     ensure_warmup_on_startup(&runtime, &config).await?;
     let datalens_query_gate = if runtime.datalens_query_concurrency.is_limited() {
         Some(
@@ -1064,8 +1072,9 @@ async fn run_contract_set_pass(
             if let Some(gate) = datalens_query_gate {
                 provisional_client = provisional_client.with_query_concurrency_gate(gate);
             }
+            let metrics_pool = pool.clone();
             let mut provisional_store = PostgresProvisionalSegmentStore::new(pool);
-            if let Err(error) = run_provisional_worker_once(
+            match run_provisional_worker_once(
                 &runtime,
                 &config,
                 &contracts,
@@ -1073,15 +1082,42 @@ async fn run_contract_set_pass(
                 &mut provisional_client,
                 &mut provisional_store,
             )
-            .context("run Datalens provisional worker")
             {
-                log::warn!(
-                    "Datalens provisional worker failed after durable pass dao_code={} chain_id={:?} contract_set_id={} error={:#}",
-                    runtime.dao_code,
-                    config.chain.network_id,
-                    runtime.checkpoint_contract_set_id,
-                    error
-                );
+                Ok(provisional_report) => {
+                    if let (Some(chain_id), Some(latest_height)) =
+                        (config.chain.network_id, provisional_report.latest_height)
+                    {
+                        let record = IndexerLatestHeadRecord {
+                            dao_code: runtime.dao_code.clone(),
+                            chain_id,
+                            contract_set_id: runtime.checkpoint_contract_set_id.clone(),
+                            stream_id: runtime.checkpoint_stream_id.clone(),
+                            data_source_version: runtime.data_source_version.clone(),
+                            latest_height,
+                        };
+                        if let Err(error) = Handle::current().block_on(
+                            crate::metrics::record_indexer_latest_head(&metrics_pool, &record),
+                        ) {
+                            log::warn!(
+                                "record Datalens latest head failed dao_code={} chain_id={} contract_set_id={} latest_height={} error={:#}",
+                                runtime.dao_code,
+                                chain_id,
+                                runtime.checkpoint_contract_set_id,
+                                latest_height,
+                                error
+                            );
+                        }
+                    }
+                }
+                Err(error) => {
+                    log::warn!(
+                        "Datalens provisional worker failed after durable pass dao_code={} chain_id={:?} contract_set_id={} error={:#}",
+                        runtime.dao_code,
+                        config.chain.network_id,
+                        runtime.checkpoint_contract_set_id,
+                        error.context("run Datalens provisional worker")
+                    );
+                }
             }
         } else {
             log::debug!(
@@ -1109,7 +1145,7 @@ fn run_provisional_worker_once<R, S>(
     report: &IndexerRunnerReport,
     reader: &mut R,
     store: &mut S,
-) -> Result<Option<usize>>
+) -> Result<ProvisionalWorkerRunReport>
 where
     R: DatalensDurableHeadReader + DatalensProvisionalLogQueryReader,
     S: DatalensProvisionalSegmentStore,
@@ -1121,7 +1157,7 @@ where
             config.chain.network_id,
             runtime.checkpoint_contract_set_id
         );
-        return Ok(None);
+        return Ok(ProvisionalWorkerRunReport::default());
     }
 
     let Some(chain_id) = config.chain.network_id else {
@@ -1144,7 +1180,10 @@ where
             runtime.target_height,
             latest_height
         );
-        return Ok(None);
+        return Ok(ProvisionalWorkerRunReport {
+            latest_height: Some(latest_height),
+            segments_written: None,
+        });
     };
     let options = ProvisionalWorkerOptions {
         datalens_config: config.clone(),
@@ -1172,7 +1211,10 @@ where
                     latest_height,
                     reason
                 );
-                return Ok(None);
+                return Ok(ProvisionalWorkerRunReport {
+                    latest_height: Some(latest_height),
+                    segments_written: None,
+                });
             }
 
             return Err(provisional_worker_error_to_anyhow(error));
@@ -1190,7 +1232,16 @@ where
         report.segments_written
     );
 
-    Ok(Some(report.segments_written))
+    Ok(ProvisionalWorkerRunReport {
+        latest_height: Some(latest_height),
+        segments_written: Some(report.segments_written),
+    })
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct ProvisionalWorkerRunReport {
+    latest_height: Option<i64>,
+    segments_written: Option<usize>,
 }
 
 fn provisional_tail_range(
@@ -1593,7 +1644,8 @@ mod tests {
         )
         .expect("disabled provisional worker skips cleanly");
 
-        assert_eq!(result, None);
+        assert_eq!(result.segments_written, None);
+        assert_eq!(result.latest_height, None);
         assert_eq!(reader.latest_head_calls, 0);
         assert!(reader.finalities.is_empty());
         assert!(store.writes.is_empty());
@@ -1630,7 +1682,8 @@ mod tests {
         )
         .expect("enabled provisional worker runs");
 
-        assert_eq!(result, Some(1));
+        assert_eq!(result.segments_written, Some(1));
+        assert_eq!(result.latest_height, Some(25));
         assert_eq!(reader.latest_head_calls, 1);
         assert_eq!(reader.ranges.len(), 2);
         assert!(reader.ranges.iter().all(|range| *range == (21, 25)));
@@ -1668,7 +1721,8 @@ mod tests {
         )
         .expect("provisional worker skips while durable pass is behind");
 
-        assert_eq!(result, None);
+        assert_eq!(result.segments_written, None);
+        assert_eq!(result.latest_height, Some(25));
         assert_eq!(reader.latest_head_calls, 1);
         assert!(reader.finalities.is_empty());
         assert!(reader.ranges.is_empty());
@@ -1699,7 +1753,8 @@ mod tests {
         )
         .expect("current head race skips provisional worker run");
 
-        assert_eq!(result, None);
+        assert_eq!(result.segments_written, None);
+        assert_eq!(result.latest_height, Some(25));
         assert_eq!(reader.latest_head_calls, 1);
         assert_eq!(reader.ranges, vec![(21, 25)]);
         assert_eq!(reader.finalities, vec![Some("safe_to_latest".to_owned())]);
