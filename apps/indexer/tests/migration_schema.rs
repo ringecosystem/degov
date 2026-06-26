@@ -782,18 +782,24 @@ fn test_fresh_init_declares_provisional_overlay_schema() {
             "expected provisional overlay unique target {unique_target}"
         );
     }
+}
 
+#[test]
+fn test_runtime_migration_adds_provisional_proposal_event_fields() {
+    let migration = include_str!("../migrations/0009_provisional_proposal_event_fields.sql");
+
+    assert!(migration.contains("ALTER TABLE degov_provisional_proposal_overlay"));
     for column_name in [
-        "log_index INTEGER",
-        "transaction_index INTEGER",
-        "block_number NUMERIC(78, 0)",
-        "block_timestamp NUMERIC(78, 0)",
-        "transaction_hash TEXT",
-        "block_interval TEXT",
+        "ADD COLUMN IF NOT EXISTS log_index INTEGER",
+        "ADD COLUMN IF NOT EXISTS transaction_index INTEGER",
+        "ADD COLUMN IF NOT EXISTS block_number NUMERIC(78, 0)",
+        "ADD COLUMN IF NOT EXISTS block_timestamp NUMERIC(78, 0)",
+        "ADD COLUMN IF NOT EXISTS transaction_hash TEXT",
+        "ADD COLUMN IF NOT EXISTS block_interval TEXT",
     ] {
         assert!(
-            init_migration.contains(column_name),
-            "expected provisional proposal event column {column_name}"
+            migration.contains(column_name),
+            "expected additive provisional proposal event column {column_name}"
         );
     }
 }
