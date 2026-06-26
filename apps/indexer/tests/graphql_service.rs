@@ -1155,6 +1155,67 @@ async fn test_graphql_schema_exposes_provisional_indexer_status_height()
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposals_include_provisional_only_proposal_overlays()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_provisional_only_proposal_overlay(&database.pool).await?;
+    let schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            dao_code: Some("lisk-dao".to_owned()),
+            chain_id: Some(1135),
+            governor_address: Some("0xgovernor".to_owned()),
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+        },
+    );
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query ProvisionalProposal {
+              proposals(
+                where: { proposalId_eq: "999" }
+                orderBy: [blockTimestamp_DESC_NULLS_LAST]
+              ) {
+                id
+                proposalId
+                title
+                blockNumber
+                blockTimestamp
+                transactionHash
+                quorum
+                decimals
+              }
+              proposalsPage(where: { proposalId_eq: "999" }, limit: 10) {
+                totalCount
+                items { id proposalId title }
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["proposals"][0]["proposalId"], "0x3e7");
+    assert_eq!(data["proposals"][0]["title"], "Live provisional title");
+    assert_eq!(data["proposals"][0]["blockNumber"], "950");
+    assert_eq!(data["proposals"][0]["blockTimestamp"], "1700000950000");
+    assert_eq!(data["proposals"][0]["transactionHash"], "0xprovisional999");
+    assert_eq!(data["proposalsPage"]["totalCount"], 1);
+    assert_eq!(data["proposalsPage"]["items"][0]["proposalId"], "0x3e7");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_schema_scope_conflicts_return_no_rows() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_other_scope_rows(&database.pool).await?;
@@ -1888,6 +1949,35 @@ async fn seed_proposal_overlay_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           1700002000, 1000, 2000, 1700000300, 1700000300, 1700000900,
           '0xtimelock', 600, 'mode=blocknumber&from=default', 40, 18,
           'live-onchain', 'available', 900, 1700000200
+        )
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_provisional_only_proposal_overlay(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_proposal_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+          contract_address, log_index, transaction_index, proposal_id, proposer,
+          targets, values, signatures, calldatas, vote_start, vote_end, description,
+          title, state, vote_start_timestamp, vote_end_timestamp, proposal_snapshot,
+          proposal_deadline, proposal_eta, block_number, block_timestamp,
+          transaction_hash, clock_mode, quorum, decimals, source, status,
+          anchor_block_number, anchor_block_timestamp
+        ) VALUES (
+          'overlay:proposal:999', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+          '0xgovernor', 7, 1, '999', '0xproposer', ARRAY['0xtarget'], ARRAY['0'],
+          ARRAY[''], ARRAY['0x'], 1200, 2400, 'Live provisional body',
+          'Live provisional title', 'Pending', 1700001200, 1700002400, 1200,
+          2400, 0, 950, 1700000950, '0xprovisional999',
+          'mode=blocknumber&from=default', 40, 18, 'provider', 'available',
+          960, 1700000960
         )
         "#,
     )

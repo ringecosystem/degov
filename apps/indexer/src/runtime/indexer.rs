@@ -17,8 +17,8 @@ use crate::{
     MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTaskScope,
     OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
     OnchainRefreshWorker, OnchainRefreshWorkerError, PostgresIndexerRunnerStore,
-    PostgresProvisionalCleanupStore, PostgresProvisionalSegmentStore, ProvisionalWorker,
-    ProvisionalWorkerOptions,
+    PostgresProvisionalCleanupStore, PostgresProvisionalSegmentStore,
+    ProvisionalProposalOverlayStore, ProvisionalWorker, ProvisionalWorkerOptions,
     checkpoint::configured_range_progress,
     classify_datalens_query_error, datalens_query_error_is_current_head_race,
     datalens_retry_config, ensure_datalens_warmup_task,
@@ -1148,7 +1148,7 @@ fn run_provisional_worker_once<R, S>(
 ) -> Result<ProvisionalWorkerRunReport>
 where
     R: DatalensDurableHeadReader + DatalensProvisionalLogQueryReader,
-    S: DatalensProvisionalSegmentStore,
+    S: DatalensProvisionalSegmentStore + ProvisionalProposalOverlayStore,
 {
     if !runtime.provisional.enabled {
         log::debug!(
@@ -1183,6 +1183,7 @@ where
         return Ok(ProvisionalWorkerRunReport {
             latest_height: Some(latest_height),
             segments_written: None,
+            proposal_overlays_written: None,
         });
     };
     let options = ProvisionalWorkerOptions {
@@ -1214,6 +1215,7 @@ where
                 return Ok(ProvisionalWorkerRunReport {
                     latest_height: Some(latest_height),
                     segments_written: None,
+                    proposal_overlays_written: None,
                 });
             }
 
@@ -1222,19 +1224,21 @@ where
     };
 
     log::info!(
-        "Datalens provisional worker completed dao_code={} chain_id={} contract_set_id={} finality={} range_start_block={} range_end_block={} segments_written={}",
+        "Datalens provisional worker completed dao_code={} chain_id={} contract_set_id={} finality={} range_start_block={} range_end_block={} segments_written={} proposal_overlays_written={}",
         runtime.dao_code,
         chain_id,
         runtime.checkpoint_contract_set_id,
         runtime.provisional.finality.as_datalens_value(),
         from_block,
         to_block,
-        report.segments_written
+        report.segments_written,
+        report.proposal_overlays_written
     );
 
     Ok(ProvisionalWorkerRunReport {
         latest_height: Some(latest_height),
         segments_written: Some(report.segments_written),
+        proposal_overlays_written: Some(report.proposal_overlays_written),
     })
 }
 
@@ -1242,6 +1246,7 @@ where
 struct ProvisionalWorkerRunReport {
     latest_height: Option<i64>,
     segments_written: Option<usize>,
+    proposal_overlays_written: Option<usize>,
 }
 
 fn provisional_tail_range(
@@ -1450,7 +1455,8 @@ mod tests {
         ChainFamily, ChainIdentityConfig, DatalensFinality, DatalensProvisionalCacheSegment,
         DatalensProvisionalFinality, DatalensProvisionalLogQueryResult,
         DatalensProvisionalSegmentWrite, DatasetKeyConfig, GovernanceTokenStandard,
-        ProvisionalRuntimeConfig, QueryLimitConfig, SecretString,
+        ProvisionalProposalOverlayWrite, ProvisionalRuntimeConfig,
+        ProvisionalTimelockOperationOverlayWrite, QueryLimitConfig, SecretString,
     };
 
     use super::*;
@@ -2770,6 +2776,18 @@ mod tests {
             segments: &[DatalensProvisionalSegmentWrite],
         ) -> std::result::Result<(), Self::Error> {
             self.writes.extend_from_slice(segments);
+            Ok(())
+        }
+    }
+
+    impl ProvisionalProposalOverlayStore for RecordingProvisionalSegmentStore {
+        type Error = String;
+
+        fn write_proposal_overlays(
+            &mut self,
+            _proposals: &[ProvisionalProposalOverlayWrite],
+            _timelocks: &[ProvisionalTimelockOperationOverlayWrite],
+        ) -> std::result::Result<(), Self::Error> {
             Ok(())
         }
     }

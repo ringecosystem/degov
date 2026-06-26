@@ -20,6 +20,7 @@ use degov_datalens_indexer::{
     ProvisionalWorkerOptions, QueryLimitConfig, SecretString, plan_provisional_segment_cleanup,
     runtime::apply_migrations,
 };
+use ethabi::{Token, encode};
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 
@@ -54,6 +55,39 @@ fn test_provisional_worker_writes_segments_without_final_checkpoint_boundary() {
     );
     assert_eq!(store.writes.len(), 1);
     assert_eq!(store.writes[0].segment_finality, "latest");
+}
+
+#[test]
+fn test_provisional_worker_writes_proposal_overlay_from_provisional_rows() {
+    let config = datalens_config();
+    let results = vec![
+        Ok(DatalensProvisionalLogQueryResult {
+            rows: serde_json::json!([proposal_created_log_row(104),]),
+            segments: vec![cache_segment("provider", "latest", 100, 105)],
+        }),
+        Ok(DatalensProvisionalLogQueryResult::rows_only(
+            serde_json::json!([]),
+        )),
+    ];
+    let mut reader = MockProvisionalReader::new(results);
+    let mut store = RecordingProvisionalStore::default();
+    let mut worker = ProvisionalWorker::new(options(&config), &mut reader, &mut store);
+
+    let report = worker.run_once().expect("worker runs once");
+
+    assert_eq!(report.segments_written, 1);
+    assert_eq!(report.proposal_overlays_written, 1);
+    assert_eq!(store.proposal_writes.len(), 1);
+    let proposal = &store.proposal_writes[0];
+    assert_eq!(
+        proposal.segment_id.as_deref(),
+        Some(store.writes[0].id.as_str())
+    );
+    assert_eq!(proposal.proposal_id, "42");
+    assert_eq!(proposal.title.as_deref(), Some("Live proposal"));
+    assert_eq!(proposal.block_number.as_deref(), Some("104"));
+    assert_eq!(proposal.transaction_hash.as_deref(), Some("0xtx104"));
+    assert_eq!(proposal.source, "provider");
 }
 
 #[test]
@@ -486,6 +520,7 @@ async fn test_postgres_cleanup_is_idempotent() -> Result<(), Box<dyn Error>> {
 #[derive(Default)]
 struct RecordingProvisionalStore {
     writes: Vec<DatalensProvisionalSegmentWrite>,
+    proposal_writes: Vec<ProvisionalProposalOverlayWrite>,
 }
 
 impl DatalensProvisionalSegmentStore for RecordingProvisionalStore {
@@ -496,6 +531,20 @@ impl DatalensProvisionalSegmentStore for RecordingProvisionalStore {
         segments: &[DatalensProvisionalSegmentWrite],
     ) -> Result<(), Self::Error> {
         self.writes.extend_from_slice(segments);
+        Ok(())
+    }
+}
+
+impl degov_datalens_indexer::ProvisionalProposalOverlayStore for RecordingProvisionalStore {
+    type Error = String;
+
+    fn write_proposal_overlays(
+        &mut self,
+        proposals: &[ProvisionalProposalOverlayWrite],
+        timelocks: &[ProvisionalTimelockOperationOverlayWrite],
+    ) -> Result<(), Self::Error> {
+        assert!(timelocks.is_empty());
+        self.proposal_writes.extend_from_slice(proposals);
         Ok(())
     }
 }
@@ -540,6 +589,38 @@ fn cache_segment(
         anchor_parent_hash: Some("0xdef".to_owned()),
         anchor_block_timestamp: Some(1_700_000_000),
     }
+}
+
+fn proposal_created_log_row(block_number: i64) -> serde_json::Value {
+    serde_json::json!({
+        "block_number": block_number,
+        "block_hash": "0xblock104",
+        "block_timestamp": 1_700_000_104u64,
+        "transaction_hash": "0xtx104",
+        "transaction_index": 0,
+        "log_index": 1,
+        "address": "0x1111111111111111111111111111111111111111",
+        "topics": ["0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0"],
+        "data": proposal_created_data(),
+        "removed": false
+    })
+}
+
+fn proposal_created_data() -> String {
+    let tokens = vec![
+        Token::Uint(42u64.into()),
+        Token::Address("0000000000000000000000000000000000000abc".parse().unwrap()),
+        Token::Array(vec![Token::Address(
+            "000000000000000000000000000000000000dead".parse().unwrap(),
+        )]),
+        Token::Array(vec![Token::Uint(0u64.into())]),
+        Token::Array(vec![Token::String(String::new())]),
+        Token::Array(vec![Token::Bytes(Vec::new())]),
+        Token::Uint(120u64.into()),
+        Token::Uint(240u64.into()),
+        Token::String("# Live proposal\n\nVisible before safe height".to_owned()),
+    ];
+    format!("0x{}", hex::encode(encode(&tokens)))
 }
 
 fn segment_write(
@@ -633,6 +714,8 @@ fn proposal_overlay_write(proposal_id: &str, state: &str) -> ProvisionalProposal
         chain_name: Some("ethereum".to_owned()),
         governor_address: Some("0xgovernor".to_owned()),
         contract_address: Some("0xgovernor".to_owned()),
+        log_index: Some(0),
+        transaction_index: Some(0),
         proposal_id: proposal_id.to_owned(),
         proposer: Some("0xproposer".to_owned()),
         targets: Some(vec!["0xtarget".to_owned()]),
@@ -652,6 +735,10 @@ fn proposal_overlay_write(proposal_id: &str, state: &str) -> ProvisionalProposal
         proposal_eta: Some("1700000300".to_owned()),
         queue_ready_at: Some("1700000300".to_owned()),
         queue_expires_at: Some("1700000900".to_owned()),
+        block_number: Some("100".to_owned()),
+        block_timestamp: Some("1700000000".to_owned()),
+        transaction_hash: Some("0xproposal".to_owned()),
+        block_interval: Some("12".to_owned()),
         counting_mode: None,
         timelock_address: Some("0xtimelock".to_owned()),
         timelock_grace_period: Some("600".to_owned()),

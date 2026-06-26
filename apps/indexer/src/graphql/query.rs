@@ -99,6 +99,53 @@ pub(super) async fn query_proposals(
            AND proposal_overlay.proposal_id = proposal.proposal_id
            AND proposal_overlay.source = 'live-onchain'
            AND proposal_overlay.status = 'available'
+          UNION ALL
+          SELECT proposal_overlay.id, proposal_overlay.contract_set_id, proposal_overlay.chain_id,
+            proposal_overlay.dao_code, proposal_overlay.governor_address, proposal_overlay.proposal_id,
+            COALESCE(proposal_overlay.proposer, '') AS proposer,
+            COALESCE(proposal_overlay.targets, ARRAY[]::TEXT[]) AS targets,
+            COALESCE(proposal_overlay.values, ARRAY[]::TEXT[]) AS values,
+            COALESCE(proposal_overlay.signatures, ARRAY[]::TEXT[]) AS signatures,
+            COALESCE(proposal_overlay.calldatas, ARRAY[]::TEXT[]) AS calldatas,
+            COALESCE(proposal_overlay.vote_start, 0) AS vote_start,
+            COALESCE(proposal_overlay.vote_end, 0) AS vote_end,
+            COALESCE(proposal_overlay.description, '') AS description,
+            COALESCE(proposal_overlay.block_number, proposal_overlay.anchor_block_number, 0) AS block_number,
+            COALESCE(proposal_overlay.block_timestamp, proposal_overlay.anchor_block_timestamp, 0) AS block_timestamp,
+            COALESCE(proposal_overlay.transaction_hash, '') AS transaction_hash,
+            NULL::INTEGER AS metrics_votes_count,
+            NULL::INTEGER AS metrics_votes_with_params_count,
+            NULL::INTEGER AS metrics_votes_without_params_count,
+            NULL::NUMERIC(78, 0) AS metrics_votes_weight_for_sum,
+            NULL::NUMERIC(78, 0) AS metrics_votes_weight_against_sum,
+            NULL::NUMERIC(78, 0) AS metrics_votes_weight_abstain_sum,
+            COALESCE(proposal_overlay.title, '') AS title,
+            COALESCE(proposal_overlay.vote_start_timestamp, 0) AS vote_start_timestamp,
+            COALESCE(proposal_overlay.vote_end_timestamp, 0) AS vote_end_timestamp,
+            proposal_overlay.block_interval,
+            proposal_overlay.description_hash,
+            COALESCE(proposal_overlay.clock_mode, 'blocknumber') AS clock_mode,
+            proposal_overlay.proposal_deadline,
+            proposal_overlay.proposal_eta,
+            proposal_overlay.queue_ready_at,
+            proposal_overlay.queue_expires_at,
+            proposal_overlay.counting_mode,
+            COALESCE(proposal_overlay.quorum, 0) AS quorum,
+            COALESCE(proposal_overlay.decimals, 0) AS decimals,
+            proposal_overlay.timelock_address,
+            proposal_overlay.timelock_grace_period
+          FROM degov_provisional_proposal_overlay proposal_overlay
+          WHERE proposal_overlay.status = 'available'
+            AND proposal_overlay.source <> 'live-onchain'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM proposal durable_proposal
+              WHERE durable_proposal.contract_set_id = proposal_overlay.contract_set_id
+                AND durable_proposal.chain_id IS NOT DISTINCT FROM proposal_overlay.chain_id
+                AND durable_proposal.dao_code IS NOT DISTINCT FROM proposal_overlay.dao_code
+                AND durable_proposal.governor_address IS NOT DISTINCT FROM proposal_overlay.governor_address
+                AND durable_proposal.proposal_id = proposal_overlay.proposal_id
+            )
         ) proposal
         "#,
     );
@@ -131,6 +178,23 @@ pub(super) async fn count_proposals(
            AND proposal_overlay.proposal_id = proposal.proposal_id
            AND proposal_overlay.source = 'live-onchain'
            AND proposal_overlay.status = 'available'
+          UNION ALL
+          SELECT proposal_overlay.id, proposal_overlay.contract_set_id, proposal_overlay.chain_id,
+            proposal_overlay.dao_code, proposal_overlay.governor_address, proposal_overlay.proposal_id,
+            COALESCE(proposal_overlay.proposer, '') AS proposer,
+            COALESCE(proposal_overlay.description, '') AS description
+          FROM degov_provisional_proposal_overlay proposal_overlay
+          WHERE proposal_overlay.status = 'available'
+            AND proposal_overlay.source <> 'live-onchain'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM proposal durable_proposal
+              WHERE durable_proposal.contract_set_id = proposal_overlay.contract_set_id
+                AND durable_proposal.chain_id IS NOT DISTINCT FROM proposal_overlay.chain_id
+                AND durable_proposal.dao_code IS NOT DISTINCT FROM proposal_overlay.dao_code
+                AND durable_proposal.governor_address IS NOT DISTINCT FROM proposal_overlay.governor_address
+                AND durable_proposal.proposal_id = proposal_overlay.proposal_id
+            )
         ) proposal
         "#,
     );

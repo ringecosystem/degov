@@ -172,6 +172,19 @@ impl DatalensProvisionalSegmentStore for PostgresProvisionalSegmentStore {
     }
 }
 
+impl ProvisionalProposalOverlayStore for PostgresProvisionalSegmentStore {
+    type Error = PostgresIndexerRunnerStoreError;
+
+    fn write_proposal_overlays(
+        &mut self,
+        proposals: &[ProvisionalProposalOverlayWrite],
+        timelocks: &[ProvisionalTimelockOperationOverlayWrite],
+    ) -> Result<(), Self::Error> {
+        let store = PostgresProvisionalProposalOverlayStore::new(self.pool.clone());
+        block_on_runtime(store.write_proposal_overlays(proposals, timelocks))
+    }
+}
+
 #[derive(Clone)]
 pub struct PostgresProvisionalPowerOverlayStore {
     pool: PgPool,
@@ -509,6 +522,8 @@ async fn upsert_provisional_proposal_overlay(
         .bind(&proposal.dao_code)
         .bind(&proposal.governor_address)
         .bind(&proposal.contract_address)
+        .bind(proposal.log_index)
+        .bind(proposal.transaction_index)
         .bind(&proposal.proposal_id)
         .bind(&proposal.proposer)
         .bind(&proposal.targets)
@@ -528,6 +543,10 @@ async fn upsert_provisional_proposal_overlay(
         .bind(&proposal.proposal_eta)
         .bind(&proposal.queue_ready_at)
         .bind(&proposal.queue_expires_at)
+        .bind(&proposal.block_number)
+        .bind(&proposal.block_timestamp)
+        .bind(&proposal.transaction_hash)
+        .bind(&proposal.block_interval)
         .bind(&proposal.counting_mode)
         .bind(&proposal.timelock_address)
         .bind(&proposal.timelock_grace_period)
@@ -779,28 +798,33 @@ const UPSERT_PROVISIONAL_DELEGATE_POWER_OVERLAY_SQL: &str =
 const UPSERT_PROVISIONAL_PROPOSAL_OVERLAY_SQL: &str =
     "INSERT INTO degov_provisional_proposal_overlay (
              id, segment_id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
-             contract_address, proposal_id, proposer, targets, values, signatures, calldatas,
+             contract_address, log_index, transaction_index, proposal_id, proposer, targets,
+             values, signatures, calldatas,
              vote_start, vote_end, description, title, state, vote_start_timestamp,
              vote_end_timestamp, description_hash, proposal_snapshot, proposal_deadline,
-             proposal_eta, queue_ready_at, queue_expires_at, counting_mode, timelock_address,
+             proposal_eta, queue_ready_at, queue_expires_at, block_number, block_timestamp,
+             transaction_hash, block_interval, counting_mode, timelock_address,
              timelock_grace_period, clock_mode, quorum, decimals, source, status,
              anchor_block_number, anchor_block_hash, anchor_parent_hash, anchor_block_timestamp
          )
          VALUES (
              $1, $2, $3, $4, $5, $6, $7,
-             $8, $9, $10, $11, $12, $13, $14,
-             $15::NUMERIC(78, 0), $16::NUMERIC(78, 0), $17, $18, $19,
-             $20::NUMERIC(78, 0), $21::NUMERIC(78, 0), $22,
-             $23::NUMERIC(78, 0), $24::NUMERIC(78, 0), $25::NUMERIC(78, 0),
-             $26::NUMERIC(78, 0), $27::NUMERIC(78, 0), $28, $29,
-             $30::NUMERIC(78, 0), $31, $32::NUMERIC(78, 0), $33::NUMERIC(78, 0),
-             $34, $35, $36::NUMERIC(78, 0), $37, $38, $39::NUMERIC(78, 0)
+             $8, $9, $10, $11, $12, $13, $14, $15, $16,
+             $17::NUMERIC(78, 0), $18::NUMERIC(78, 0), $19, $20, $21,
+             $22::NUMERIC(78, 0), $23::NUMERIC(78, 0), $24,
+             $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27::NUMERIC(78, 0),
+             $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30::NUMERIC(78, 0),
+             $31::NUMERIC(78, 0), $32, $33, $34, $35,
+             $36::NUMERIC(78, 0), $37, $38::NUMERIC(78, 0), $39::NUMERIC(78, 0),
+             $40, $41, $42::NUMERIC(78, 0), $43, $44, $45::NUMERIC(78, 0)
          )
          ON CONFLICT ON CONSTRAINT degov_provisional_proposal_overlay_scope_unique
          DO UPDATE SET
              id = EXCLUDED.id,
              segment_id = EXCLUDED.segment_id,
              contract_address = EXCLUDED.contract_address,
+             log_index = EXCLUDED.log_index,
+             transaction_index = EXCLUDED.transaction_index,
              proposer = EXCLUDED.proposer,
              targets = EXCLUDED.targets,
              values = EXCLUDED.values,
@@ -819,6 +843,10 @@ const UPSERT_PROVISIONAL_PROPOSAL_OVERLAY_SQL: &str =
              proposal_eta = EXCLUDED.proposal_eta,
              queue_ready_at = EXCLUDED.queue_ready_at,
              queue_expires_at = EXCLUDED.queue_expires_at,
+             block_number = EXCLUDED.block_number,
+             block_timestamp = EXCLUDED.block_timestamp,
+             transaction_hash = EXCLUDED.transaction_hash,
+             block_interval = EXCLUDED.block_interval,
              counting_mode = EXCLUDED.counting_mode,
              timelock_address = EXCLUDED.timelock_address,
              timelock_grace_period = EXCLUDED.timelock_grace_period,

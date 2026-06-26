@@ -1,13 +1,18 @@
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 use datalens_sdk::safety::{
     BlockAnchor, DataFinality, DataRange, PromotionDecision, plan_promotion,
 };
 
+use crate::datalens::DatalensProvisionalLogPage;
 use crate::{
-    DaoContractAddresses, DatalensConfig, DatalensError, DatalensProvisionalCacheSegment,
-    DatalensProvisionalFinality, DatalensProvisionalLogQueryReader, IndexerCheckpointIdentity,
-    datalens_selector_fingerprint, fetch_provisional_dao_log_pages, plan_dao_log_queries,
+    BatchReadPlanConfig, ChainContracts, DaoContractAddresses, DaoLogSource, DatalensConfig,
+    DatalensError, DatalensProvisionalCacheSegment, DatalensProvisionalFinality,
+    DatalensProvisionalLogQueryReader, DecodedDaoEvent, DecodedGovernorEvent,
+    IndexerCheckpointIdentity, NormalizedEvmLog, ProposalProjectionContext,
+    ProposalProjectionEvent, ProposalWrite, datalens_selector_fingerprint, decode_dao_log,
+    fetch_provisional_dao_log_pages, normalize_evm_log_rows, page_rows, plan_dao_log_queries,
+    project_proposal_events,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -101,6 +106,8 @@ pub struct ProvisionalProposalOverlayWrite {
     pub chain_name: Option<String>,
     pub governor_address: Option<String>,
     pub contract_address: Option<String>,
+    pub log_index: Option<i32>,
+    pub transaction_index: Option<i32>,
     pub proposal_id: String,
     pub proposer: Option<String>,
     pub targets: Option<Vec<String>>,
@@ -120,6 +127,10 @@ pub struct ProvisionalProposalOverlayWrite {
     pub proposal_eta: Option<String>,
     pub queue_ready_at: Option<String>,
     pub queue_expires_at: Option<String>,
+    pub block_number: Option<String>,
+    pub block_timestamp: Option<String>,
+    pub transaction_hash: Option<String>,
+    pub block_interval: Option<String>,
     pub counting_mode: Option<String>,
     pub timelock_address: Option<String>,
     pub timelock_grace_period: Option<String>,
@@ -198,6 +209,7 @@ pub struct ProvisionalDelegatePowerOverlayRelation {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProvisionalWorkerReport {
     pub segments_written: usize,
+    pub proposal_overlays_written: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -248,6 +260,15 @@ pub enum ProvisionalWorkerError {
 
     #[error("provisional segment store error: {0}")]
     Store(String),
+
+    #[error("provisional log normalization error: {0}")]
+    Normalize(String),
+
+    #[error("provisional log decode error: {0}")]
+    Decode(String),
+
+    #[error("provisional proposal projection error: {0}")]
+    Projection(String),
 }
 
 pub trait DatalensProvisionalSegmentStore {
@@ -368,7 +389,7 @@ pub struct ProvisionalWorker<'a, R, S> {
 impl<'a, R, S> ProvisionalWorker<'a, R, S>
 where
     R: DatalensProvisionalLogQueryReader,
-    S: DatalensProvisionalSegmentStore,
+    S: DatalensProvisionalSegmentStore + ProvisionalProposalOverlayStore,
 {
     pub fn new(options: ProvisionalWorkerOptions, reader: &'a mut R, store: &'a mut S) -> Self {
         Self {
@@ -387,22 +408,34 @@ where
         )?;
         let pages = fetch_provisional_dao_log_pages(self.reader, &plans, self.options.finality)?;
         let mut writes = Vec::new();
+        let mut proposal_writes = Vec::new();
 
         for page in pages {
             let selector = serde_json::to_string(&page.plan.input.selector)
                 .unwrap_or_else(|_| "unavailable".to_owned());
             let selector_fingerprint = datalens_selector_fingerprint(&page.plan.input.selector);
-            for segment in page.segments {
-                writes.push(self.segment_write(segment, &selector, &selector_fingerprint));
+            let segment_writes = page
+                .segments
+                .iter()
+                .cloned()
+                .map(|segment| self.segment_write(segment, &selector, &selector_fingerprint))
+                .collect::<Vec<_>>();
+            proposal_writes.extend(self.proposal_writes(&page, &segment_writes)?);
+            for segment in segment_writes {
+                writes.push(segment);
             }
         }
 
         self.store
             .write_provisional_segments(&writes)
             .map_err(|error| ProvisionalWorkerError::Store(error.to_string()))?;
+        self.store
+            .write_proposal_overlays(&proposal_writes, &[])
+            .map_err(|error| ProvisionalWorkerError::Store(error.to_string()))?;
 
         Ok(ProvisionalWorkerReport {
             segments_written: writes.len(),
+            proposal_overlays_written: proposal_writes.len(),
         })
     }
 
@@ -446,4 +479,157 @@ where
             error: None,
         }
     }
+
+    fn proposal_writes(
+        &self,
+        page: &DatalensProvisionalLogPage,
+        segments: &[DatalensProvisionalSegmentWrite],
+    ) -> Result<Vec<ProvisionalProposalOverlayWrite>, ProvisionalWorkerError> {
+        let sources = page
+            .plan
+            .sources
+            .iter()
+            .fold(BTreeMap::new(), |mut sources, source| {
+                sources
+                    .entry(source.address.to_ascii_lowercase())
+                    .or_insert_with(Vec::new)
+                    .push(source.source);
+                sources
+            });
+        let rows = page_rows(page.rows.clone())
+            .map_err(|error| ProvisionalWorkerError::Normalize(error.to_string()))?;
+        let logs = normalize_evm_log_rows(self.options.chain_id, rows)
+            .map_err(|error| ProvisionalWorkerError::Normalize(error.to_string()))?;
+        let mut proposal_events = Vec::new();
+
+        for log in logs {
+            if log.removed {
+                continue;
+            }
+            let Some(candidate_sources) = sources.get(&log.address) else {
+                continue;
+            };
+            let Some(event) = self.decode_proposal_event(candidate_sources, &log)? else {
+                continue;
+            };
+            proposal_events.push(ProposalProjectionEvent { log, event });
+        }
+        if proposal_events.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let context = self.proposal_context();
+        let batch = project_proposal_events(&context, proposal_events)
+            .map_err(|error| ProvisionalWorkerError::Projection(format!("{error:?}")))?;
+
+        Ok(batch
+            .proposals
+            .iter()
+            .filter_map(|proposal| self.proposal_overlay_write(proposal, segments))
+            .collect())
+    }
+
+    fn decode_proposal_event(
+        &self,
+        candidate_sources: &[DaoLogSource],
+        log: &NormalizedEvmLog,
+    ) -> Result<Option<DecodedGovernorEvent>, ProvisionalWorkerError> {
+        for source in candidate_sources {
+            let token_standard = (*source == DaoLogSource::GovernorToken)
+                .then_some(self.options.addresses.governor_token_standard);
+            let event = decode_dao_log(&self.options.dao_code, *source, token_standard, log)
+                .map_err(|error| ProvisionalWorkerError::Decode(error.to_string()))?;
+            if let DecodedDaoEvent::Governor(event @ DecodedGovernorEvent::ProposalCreated(_)) =
+                event
+            {
+                return Ok(Some(event));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn proposal_context(&self) -> ProposalProjectionContext {
+        let contracts = ChainContracts {
+            governor: self.options.addresses.governor.clone(),
+            governor_token: self.options.addresses.governor_token.clone(),
+            timelock: self.options.addresses.timelock.clone(),
+        };
+
+        ProposalProjectionContext {
+            contract_set_id: self.options.contract_set_id.clone(),
+            dao_code: self.options.dao_code.clone(),
+            governor_address: self.options.addresses.governor.clone(),
+            contracts,
+            token_standard: self.options.addresses.governor_token_standard,
+            read_plan_config: BatchReadPlanConfig::default().validated(),
+        }
+    }
+
+    fn proposal_overlay_write(
+        &self,
+        proposal: &ProposalWrite,
+        segments: &[DatalensProvisionalSegmentWrite],
+    ) -> Option<ProvisionalProposalOverlayWrite> {
+        let segment = matching_segment(segments, proposal.block_number.as_str())?;
+        Some(ProvisionalProposalOverlayWrite {
+            id: proposal.id.clone(),
+            segment_id: Some(segment.id.clone()),
+            dao_code: Some(proposal.dao_code.clone()),
+            contract_set_id: proposal.contract_set_id.clone(),
+            chain_id: Some(proposal.chain_id),
+            chain_name: Some(self.options.chain_name.clone()),
+            governor_address: Some(proposal.governor_address.clone()),
+            contract_address: Some(proposal.contract_address.clone()),
+            log_index: i32::try_from(proposal.log_index).ok(),
+            transaction_index: i32::try_from(proposal.transaction_index).ok(),
+            proposal_id: proposal.proposal_id.clone(),
+            proposer: Some(proposal.proposer.clone()),
+            targets: Some(proposal.targets.clone()),
+            values: Some(proposal.values.clone()),
+            signatures: Some(proposal.signatures.clone()),
+            calldatas: Some(proposal.calldatas.clone()),
+            vote_start: Some(proposal.vote_start.clone()),
+            vote_end: Some(proposal.vote_end.clone()),
+            description: Some(proposal.description.clone()),
+            title: Some(proposal.title.clone()),
+            state: proposal.current_state.clone(),
+            vote_start_timestamp: Some(proposal.vote_start_timestamp.clone()),
+            vote_end_timestamp: Some(proposal.vote_end_timestamp.clone()),
+            description_hash: Some(proposal.description_hash.clone()),
+            proposal_snapshot: proposal.proposal_snapshot.clone(),
+            proposal_deadline: proposal.proposal_deadline.clone(),
+            proposal_eta: proposal.proposal_eta.clone(),
+            queue_ready_at: proposal.queue_ready_at.clone(),
+            queue_expires_at: proposal.queue_expires_at.clone(),
+            block_number: Some(proposal.block_number.clone()),
+            block_timestamp: proposal.block_timestamp.clone(),
+            transaction_hash: Some(proposal.transaction_hash.clone()),
+            block_interval: proposal.block_interval.clone(),
+            counting_mode: proposal.counting_mode.clone(),
+            timelock_address: proposal.timelock_address.clone(),
+            timelock_grace_period: None,
+            clock_mode: Some(proposal.clock_mode.clone()),
+            quorum: Some(proposal.quorum.clone()),
+            decimals: Some(proposal.decimals.clone()),
+            source: segment.source.clone(),
+            status: "available".to_owned(),
+            anchor_block_number: segment.anchor_block_number.map(|value| value.to_string()),
+            anchor_block_hash: segment.anchor_block_hash.clone(),
+            anchor_parent_hash: segment.anchor_parent_hash.clone(),
+            anchor_block_timestamp: segment
+                .anchor_block_timestamp
+                .map(|value| value.to_string()),
+        })
+    }
+}
+
+fn matching_segment<'a>(
+    segments: &'a [DatalensProvisionalSegmentWrite],
+    block_number: &str,
+) -> Option<&'a DatalensProvisionalSegmentWrite> {
+    let block_number = block_number.parse::<i64>().ok()?;
+    segments.iter().find(|segment| {
+        segment.range_start_block <= block_number && block_number <= segment.range_end_block
+    })
 }
