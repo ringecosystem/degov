@@ -669,7 +669,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
             "0005_onchain_refresh_failed_ready_retry_index.sql",
             "0006_onchain_refresh_pending_ready_claim_index.sql",
             "0007_checkpoint_adaptive_chunk_state.sql",
-            "0008_indexer_latest_head.sql"
+            "0008_indexer_latest_head.sql",
+            "0009_provisional_proposal_event_fields.sql"
         ]
     );
 
@@ -779,6 +780,20 @@ fn test_fresh_init_declares_provisional_overlay_schema() {
         assert!(
             init_migration.contains(unique_target),
             "expected provisional overlay unique target {unique_target}"
+        );
+    }
+
+    for column_name in [
+        "log_index INTEGER",
+        "transaction_index INTEGER",
+        "block_number NUMERIC(78, 0)",
+        "block_timestamp NUMERIC(78, 0)",
+        "transaction_hash TEXT",
+        "block_interval TEXT",
+    ] {
+        assert!(
+            init_migration.contains(column_name),
+            "expected provisional proposal event column {column_name}"
         );
     }
 }
