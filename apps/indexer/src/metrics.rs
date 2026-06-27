@@ -248,7 +248,7 @@ impl MetricsSnapshotCache {
             last_success_timestamp_seconds: state.last_success_timestamp_seconds,
             snapshot_age_seconds,
             last_refresh_duration_seconds: state.last_refresh_duration_seconds,
-            last_refresh_success: state.last_refresh_success,
+            last_refresh_success: !self.db_collection_enabled || state.last_refresh_success,
             refresh_errors_total: state.refresh_errors_total,
             stale,
         };
