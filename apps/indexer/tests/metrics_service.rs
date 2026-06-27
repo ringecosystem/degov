@@ -271,6 +271,7 @@ async fn test_metrics_snapshot_cache_disabled_skips_db_refresh() {
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(snapshot.sync_rows.is_empty());
     assert!(!status.db_collection_enabled);
+    assert!(status.last_refresh_success);
 }
 
 fn sample_snapshot(processed_height: i64) -> IndexerMetricsSnapshot {
