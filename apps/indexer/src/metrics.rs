@@ -1,18 +1,21 @@
 use std::{
     collections::BTreeMap,
-    sync::{Mutex, OnceLock},
+    fmt::Display,
+    future::Future,
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
     Router,
     extract::State,
-    http::{HeaderValue, StatusCode, header},
+    http::{HeaderValue, header},
     response::{IntoResponse, Response},
     routing::get,
 };
 use sqlx::{PgPool, Row};
 use thiserror::Error;
-use tokio::task::JoinHandle;
+use tokio::{sync::RwLock, task::JoinHandle, time};
 
 use crate::{IndexerCheckpointIdentity, MetricsRuntimeConfig, runner::IndexerRunnerProgress};
 use crate::{OnchainRefreshRunReport, OnchainRefreshTaskScope};
@@ -24,6 +27,17 @@ pub struct IndexerMetricsSnapshot {
     pub deferred_onchain_backlog_rows: Vec<OnchainRefreshBacklogMetricsRow>,
     pub chunk_runtime_rows: Vec<IndexerChunkRuntimeMetricsRow>,
     pub onchain_worker_rows: Vec<OnchainRefreshWorkerMetricsRow>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetricsCacheStatus {
+    pub db_collection_enabled: bool,
+    pub last_success_timestamp_seconds: Option<f64>,
+    pub snapshot_age_seconds: Option<f64>,
+    pub last_refresh_duration_seconds: Option<f64>,
+    pub last_refresh_success: bool,
+    pub refresh_errors_total: u64,
+    pub stale: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -138,6 +152,32 @@ struct OnchainWorkerMetricsScopeKey {
 
 static RUNTIME_METRICS: OnceLock<Mutex<RuntimeMetricsState>> = OnceLock::new();
 
+#[derive(Clone, Debug)]
+pub struct MetricsSnapshotCache {
+    state: Arc<RwLock<MetricsSnapshotCacheState>>,
+    db_collection_enabled: bool,
+    stale_after: Duration,
+}
+
+#[derive(Clone, Debug, Default)]
+struct MetricsSnapshotCacheState {
+    db_snapshot: IndexerMetricsSnapshot,
+    last_success_at: Option<Instant>,
+    last_success_timestamp_seconds: Option<f64>,
+    last_refresh_duration_seconds: Option<f64>,
+    last_refresh_success: bool,
+    refresh_errors_total: u64,
+    last_error: Option<String>,
+}
+
+#[derive(Clone)]
+struct MetricsServerState {
+    pool: PgPool,
+    cache: MetricsSnapshotCache,
+    refresh_interval: Duration,
+    refresh_timeout: Duration,
+}
+
 #[derive(Debug, Error)]
 pub enum MetricsError {
     #[error("query indexer metrics")]
@@ -149,6 +189,75 @@ pub enum MetricsError {
 pub async fn collect_prometheus_metrics(pool: &PgPool) -> Result<String, MetricsError> {
     let snapshot = collect_indexer_metrics_snapshot(pool).await?;
     Ok(render_prometheus_metrics(&snapshot))
+}
+
+impl MetricsSnapshotCache {
+    pub fn new(db_collection_enabled: bool, stale_after: Duration) -> Self {
+        Self {
+            state: Arc::new(RwLock::new(MetricsSnapshotCacheState::default())),
+            db_collection_enabled,
+            stale_after,
+        }
+    }
+
+    pub async fn refresh_with<F, Fut, E>(&self, collect: F)
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<IndexerMetricsSnapshot, E>>,
+        E: Display,
+    {
+        if !self.db_collection_enabled {
+            return;
+        }
+
+        let started_at = Instant::now();
+        match collect().await {
+            Ok(mut snapshot) => {
+                snapshot.chunk_runtime_rows.clear();
+                snapshot.onchain_worker_rows.clear();
+                let mut state = self.state.write().await;
+                state.db_snapshot = snapshot;
+                state.last_success_at = Some(Instant::now());
+                state.last_success_timestamp_seconds = Some(unix_timestamp_seconds());
+                state.last_refresh_duration_seconds = Some(started_at.elapsed().as_secs_f64());
+                state.last_refresh_success = true;
+                state.last_error = None;
+            }
+            Err(error) => {
+                let mut state = self.state.write().await;
+                state.last_refresh_duration_seconds = Some(started_at.elapsed().as_secs_f64());
+                state.last_refresh_success = false;
+                state.refresh_errors_total = state.refresh_errors_total.saturating_add(1);
+                state.last_error = Some(error.to_string());
+            }
+        }
+    }
+
+    pub async fn snapshot(&self) -> (IndexerMetricsSnapshot, MetricsCacheStatus) {
+        let state = self.state.read().await;
+        let mut snapshot = state.db_snapshot.clone();
+        let snapshot_age_seconds = state
+            .last_success_at
+            .map(|last_success_at| last_success_at.elapsed().as_secs_f64());
+        let stale = self.db_collection_enabled
+            && snapshot_age_seconds
+                .map(|age| age > self.stale_after.as_secs_f64())
+                .unwrap_or(true);
+        let status = MetricsCacheStatus {
+            db_collection_enabled: self.db_collection_enabled,
+            last_success_timestamp_seconds: state.last_success_timestamp_seconds,
+            snapshot_age_seconds,
+            last_refresh_duration_seconds: state.last_refresh_duration_seconds,
+            last_refresh_success: state.last_refresh_success,
+            refresh_errors_total: state.refresh_errors_total,
+            stale,
+        };
+        drop(state);
+
+        snapshot.chunk_runtime_rows = collect_runtime_metrics(&mut snapshot.sync_rows);
+        snapshot.onchain_worker_rows = collect_onchain_worker_runtime_metrics();
+        (snapshot, status)
+    }
 }
 
 pub async fn record_indexer_latest_head(
@@ -196,10 +305,21 @@ pub async fn spawn_metrics_server(
         return Ok(None);
     }
 
-    let app = build_metrics_router(pool);
     let listener = tokio::net::TcpListener::bind(config.bind_address)
         .await
         .map_err(MetricsError::Bind)?;
+
+    let state = MetricsServerState {
+        pool,
+        cache: MetricsSnapshotCache::new(config.db_collection_enabled, config.refresh_interval * 3),
+        refresh_interval: config.refresh_interval,
+        refresh_timeout: config.refresh_timeout,
+    };
+    if state.cache.db_collection_enabled {
+        spawn_metrics_refresh_loop(state.clone());
+    }
+
+    let app = build_metrics_router(state);
     let bind_address = config.bind_address;
     log::info!("DeGov indexer metrics service listening bind_address={bind_address}");
 
@@ -212,28 +332,62 @@ pub async fn spawn_metrics_server(
     Ok(Some(handle))
 }
 
-pub fn build_metrics_router(pool: PgPool) -> Router {
+fn build_metrics_router(state: MetricsServerState) -> Router {
     Router::new()
         .route("/metrics", get(metrics_handler))
-        .with_state(pool)
+        .with_state(state)
+}
+
+fn spawn_metrics_refresh_loop(state: MetricsServerState) {
+    tokio::spawn(async move {
+        refresh_metrics_cache(&state).await;
+        loop {
+            time::sleep(state.refresh_interval).await;
+            refresh_metrics_cache(&state).await;
+        }
+    });
+}
+
+async fn refresh_metrics_cache(state: &MetricsServerState) {
+    let pool = state.pool.clone();
+    let timeout = state.refresh_timeout;
+    state
+        .cache
+        .refresh_with(|| async move {
+            match time::timeout(timeout, collect_db_metrics_snapshot(&pool)).await {
+                Ok(result) => result.map_err(|error| error.to_string()),
+                Err(_) => Err(format!(
+                    "collect DeGov indexer metrics exceeded {}s timeout",
+                    timeout.as_secs_f64()
+                )),
+            }
+        })
+        .await;
 }
 
 pub async fn collect_indexer_metrics_snapshot(
     pool: &PgPool,
 ) -> Result<IndexerMetricsSnapshot, MetricsError> {
-    let mut sync_rows = collect_sync_metrics(pool).await?;
+    let mut snapshot = collect_db_metrics_snapshot(pool).await?;
+    snapshot.chunk_runtime_rows = collect_runtime_metrics(&mut snapshot.sync_rows);
+    snapshot.onchain_worker_rows = collect_onchain_worker_runtime_metrics();
+
+    Ok(snapshot)
+}
+
+async fn collect_db_metrics_snapshot(
+    pool: &PgPool,
+) -> Result<IndexerMetricsSnapshot, MetricsError> {
+    let sync_rows = collect_sync_metrics(pool).await?;
     let onchain_backlog_rows = collect_onchain_refresh_backlog_metrics(pool).await?;
     let deferred_onchain_backlog_rows =
         collect_deferred_onchain_refresh_backlog_metrics(pool).await?;
-    let chunk_runtime_rows = collect_runtime_metrics(&mut sync_rows);
-    let onchain_worker_rows = collect_onchain_worker_runtime_metrics();
 
     Ok(IndexerMetricsSnapshot {
         sync_rows,
         onchain_backlog_rows,
         deferred_onchain_backlog_rows,
-        chunk_runtime_rows,
-        onchain_worker_rows,
+        ..Default::default()
     })
 }
 
@@ -338,30 +492,71 @@ pub fn record_onchain_refresh_worker_report(
     row.last_backlog = report.backlog;
 }
 
-async fn metrics_handler(State(pool): State<PgPool>) -> Response {
-    match collect_prometheus_metrics(&pool).await {
-        Ok(body) => (
-            [(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
-            )],
-            body,
-        )
-            .into_response(),
-        Err(error) => {
-            log::warn!("collect DeGov indexer metrics failed: {error}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("collect DeGov indexer metrics failed: {error}"),
-            )
-                .into_response()
-        }
-    }
+async fn metrics_handler(State(state): State<MetricsServerState>) -> Response {
+    let (snapshot, status) = state.cache.snapshot().await;
+    let body = render_prometheus_metrics_with_status(&snapshot, &status);
+    (
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
+        )],
+        body,
+    )
+        .into_response()
 }
 
 pub fn render_prometheus_metrics(snapshot: &IndexerMetricsSnapshot) -> String {
+    render_prometheus_metrics_with_status(snapshot, &MetricsCacheStatus::default_for_legacy())
+}
+
+pub fn render_prometheus_metrics_with_status(
+    snapshot: &IndexerMetricsSnapshot,
+    status: &MetricsCacheStatus,
+) -> String {
     let mut output = String::new();
 
+    metric_header(
+        &mut output,
+        "degov_metrics_db_collection_enabled",
+        "Whether this metrics endpoint collects DB-backed DeGov indexer metrics.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_metrics_snapshot_last_success_timestamp_seconds",
+        "Unix timestamp of the last successful DB-backed metrics snapshot refresh.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_metrics_snapshot_age_seconds",
+        "Seconds since the last successful DB-backed metrics snapshot refresh.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_metrics_refresh_duration_seconds",
+        "Duration of the most recent DB-backed metrics snapshot refresh.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_metrics_refresh_success",
+        "Whether the most recent DB-backed metrics snapshot refresh succeeded.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_metrics_refresh_errors_total",
+        "Failed DB-backed metrics snapshot refresh attempts.",
+        "counter",
+    );
+    metric_header(
+        &mut output,
+        "degov_metrics_snapshot_stale",
+        "Whether the DB-backed metrics snapshot is older than the configured freshness threshold.",
+        "gauge",
+    );
     metric_header(
         &mut output,
         "degov_indexer_processed_height",
@@ -517,6 +712,49 @@ pub fn render_prometheus_metrics(snapshot: &IndexerMetricsSnapshot) -> String {
         "degov_onchain_refresh_worker_last_backlog",
         "Last observed onchain refresh worker backlog.",
         "gauge",
+    );
+
+    append_metric(
+        &mut output,
+        "degov_metrics_db_collection_enabled",
+        &[],
+        i64::from(status.db_collection_enabled),
+    );
+    append_optional_metric(
+        &mut output,
+        "degov_metrics_snapshot_last_success_timestamp_seconds",
+        &[],
+        status.last_success_timestamp_seconds,
+    );
+    append_optional_metric(
+        &mut output,
+        "degov_metrics_snapshot_age_seconds",
+        &[],
+        status.snapshot_age_seconds,
+    );
+    append_optional_metric(
+        &mut output,
+        "degov_metrics_refresh_duration_seconds",
+        &[],
+        status.last_refresh_duration_seconds,
+    );
+    append_metric(
+        &mut output,
+        "degov_metrics_refresh_success",
+        &[],
+        i64::from(status.last_refresh_success),
+    );
+    append_metric(
+        &mut output,
+        "degov_metrics_refresh_errors_total",
+        &[],
+        status.refresh_errors_total,
+    );
+    append_metric(
+        &mut output,
+        "degov_metrics_snapshot_stale",
+        &[],
+        i64::from(status.stale),
     );
 
     for row in &snapshot.sync_rows {
@@ -751,6 +989,27 @@ pub fn render_prometheus_metrics(snapshot: &IndexerMetricsSnapshot) -> String {
     }
 
     output
+}
+
+impl MetricsCacheStatus {
+    fn default_for_legacy() -> Self {
+        Self {
+            db_collection_enabled: true,
+            last_success_timestamp_seconds: None,
+            snapshot_age_seconds: None,
+            last_refresh_duration_seconds: None,
+            last_refresh_success: true,
+            refresh_errors_total: 0,
+            stale: false,
+        }
+    }
+}
+
+fn unix_timestamp_seconds() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
 }
 
 fn collect_runtime_metrics(

@@ -27,6 +27,9 @@ pub struct GraphqlRuntimeConfig {
 pub struct MetricsRuntimeConfig {
     pub enabled: bool,
     pub bind_address: SocketAddr,
+    pub db_collection_enabled: bool,
+    pub refresh_interval: Duration,
+    pub refresh_timeout: Duration,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -76,6 +79,20 @@ impl GraphqlRuntimeConfig {
 impl MetricsRuntimeConfig {
     pub fn from_env() -> Result<Self> {
         let enabled = optional_env_bool("DEGOV_INDEXER_METRICS_ENABLED")?.unwrap_or(false);
+        let db_collection_enabled =
+            optional_env_bool("DEGOV_INDEXER_METRICS_DB_COLLECTION_ENABLED")?.unwrap_or(true);
+        let refresh_interval_ms =
+            optional_env_u64("DEGOV_INDEXER_METRICS_REFRESH_INTERVAL_MS")?.unwrap_or(15_000);
+        if refresh_interval_ms == 0 {
+            bail!("DEGOV_INDEXER_METRICS_REFRESH_INTERVAL_MS must be greater than zero");
+        }
+        let refresh_timeout_ms =
+            optional_env_u64("DEGOV_INDEXER_METRICS_REFRESH_TIMEOUT_MS")?.unwrap_or(25_000);
+        if refresh_timeout_ms == 0 {
+            bail!("DEGOV_INDEXER_METRICS_REFRESH_TIMEOUT_MS must be greater than zero");
+        }
+        let refresh_interval = Duration::from_millis(refresh_interval_ms);
+        let refresh_timeout = Duration::from_millis(refresh_timeout_ms);
         let bind_address = match optional_env("DEGOV_INDEXER_METRICS_BIND_ADDRESS")? {
             Some(address) => parse_bind_address("DEGOV_INDEXER_METRICS_BIND_ADDRESS", &address)?,
             None => "0.0.0.0:9464"
@@ -86,6 +103,9 @@ impl MetricsRuntimeConfig {
         Ok(Self {
             enabled,
             bind_address,
+            db_collection_enabled,
+            refresh_interval,
+            refresh_timeout,
         })
     }
 }
