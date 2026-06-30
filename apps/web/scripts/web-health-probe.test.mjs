@@ -10,6 +10,7 @@ test("web health route stays dependency-light", () => {
 
   const routeSource = readFileSync(routePath, "utf8");
 
+  assert.match(routeSource, /dynamic\s*=\s*"force-dynamic"/);
   assert.match(routeSource, /export async function GET\(/);
   assert.match(routeSource, /status:\s*"ok"/);
   assert.doesNotMatch(routeSource, /loadConfig|getConfig|DEGOV_CONFIG|remote|graphql|prisma|database/i);
