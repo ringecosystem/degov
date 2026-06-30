@@ -6,6 +6,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceTokenAmount";
 
+import { getProposalQuorumProgress } from "./current-votes-calculation";
+
 const CurrentVotesSkeleton = () => {
   const t = useTranslations("proposalDetail.currentVotes");
   const voteLabels = useTranslations("proposals.voteLabels");
@@ -88,21 +90,23 @@ export const CurrentVotes = ({
   const voteLabels = useTranslations("proposals.voteLabels");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
-  const { totalVotesCast, totalParticipation } = useMemo(() => {
+  const totalVotesCast = useMemo(() => {
     const totalVotesCast =
       proposalVotesData.againstVotes +
       proposalVotesData.forVotes +
       proposalVotesData.abstainVotes;
-    const totalParticipation =
-      proposalVotesData.forVotes + proposalVotesData.abstainVotes;
 
-    return { totalVotesCast, totalParticipation };
+    return totalVotesCast;
   }, [proposalVotesData]);
 
-  const hasReachedQuorum = useMemo(() => {
-    if (quorumRequired === 0n) return false;
-    return totalParticipation >= quorumRequired;
-  }, [quorumRequired, totalParticipation]);
+  const { currentVotes, hasReachedQuorum } = useMemo(
+    () =>
+      getProposalQuorumProgress({
+        ...proposalVotesData,
+        quorumRequired,
+      }),
+    [proposalVotesData, quorumRequired]
+  );
 
   const percentage = useMemo(() => {
     if (totalVotesCast === 0n) {
@@ -150,7 +154,7 @@ export const CurrentVotes = ({
           </div>
           <span className="flex items-center gap-[5px]">
             {t("participation", {
-              current: formatTokenAmount(totalParticipation).formatted,
+              current: formatTokenAmount(currentVotes).formatted,
               required: formatTokenAmount(quorumRequired).formatted,
             })}
           </span>
