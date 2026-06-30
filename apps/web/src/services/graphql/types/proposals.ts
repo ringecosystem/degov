@@ -40,6 +40,7 @@ export type ProposalItem = {
   voteEndTimestamp: string;
   blockInterval?: string | null;
   clockMode: string;
+  countingMode?: string | null;
   proposalDeadline?: string | null;
   proposalEta?: string | null;
   queueReadyAt?: string | null;
