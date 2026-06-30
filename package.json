@@ -16,7 +16,8 @@
     "indexer:smoke-datalens": "cargo run -p degov-datalens-indexer --locked -- smoke-datalens",
     "indexer:worker": "cargo run -p degov-datalens-indexer --locked -- worker",
     "test:indexer": "cargo test -p degov-datalens-indexer --locked",
-    "test:indexer-scripts": "node apps/indexer/scripts/indexer-diagnostics.test.mjs && node apps/indexer/scripts/runtime-packaging.test.mjs && node apps/indexer/scripts/staging-deployment-contract.test.mjs && node apps/indexer/scripts/indexer-accuracy-audit.test.mjs && node apps/indexer/scripts/indexer-accuracy-diagnose.test.mjs && node apps/indexer/scripts/indexer-reconcile-diagnose.test.mjs && node apps/indexer/scripts/v4-parity-audit.test.mjs && node apps/indexer/scripts/indexer-tally-onchain-e2e.test.mjs"
+    "test:indexer-scripts": "node apps/indexer/scripts/indexer-diagnostics.test.mjs && node apps/indexer/scripts/runtime-packaging.test.mjs && node apps/indexer/scripts/staging-deployment-contract.test.mjs && node apps/indexer/scripts/indexer-accuracy-audit.test.mjs && node apps/indexer/scripts/indexer-accuracy-diagnose.test.mjs && node apps/indexer/scripts/indexer-reconcile-diagnose.test.mjs && node apps/indexer/scripts/v4-parity-audit.test.mjs && node apps/indexer/scripts/indexer-tally-onchain-e2e.test.mjs",
+    "test:web-scripts": "node --test apps/web/scripts/*.test.ts apps/web/scripts/*.test.mjs"
   },
   "pnpm": {
     "packageExtensions": {

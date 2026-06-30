@@ -63,4 +63,6 @@ ENV HOSTNAME="0.0.0.0"
 
 EXPOSE 3000
 
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 CMD node -e "const http = require('http'); const req = http.get({ host: '127.0.0.1', port: process.env.PORT || 3000, path: '/api/health', timeout: 2000 }, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.on('timeout', () => { req.destroy(); process.exit(1); });"
+
 ENTRYPOINT [ "/app/apps/web/scripts/entrypoint.sh" ]
