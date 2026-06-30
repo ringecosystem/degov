@@ -408,6 +408,7 @@ export default function ProposalDetailPage() {
             <CurrentVotes
               proposalVotesData={proposalVotesData}
               quorumRequired={quorumRequired}
+              countingMode={data?.countingMode}
               isLoading={isPending || !data}
             />
             <Status
@@ -437,6 +438,7 @@ export default function ProposalDetailPage() {
         <CurrentVotes
           proposalVotesData={proposalVotesData}
           quorumRequired={quorumRequired}
+          countingMode={data?.countingMode}
           isLoading={isPending || !data}
         />
         <Tabs data={data} isFetching={isPending} />

@@ -79,11 +79,13 @@ interface CurrentVotesProps {
     abstainVotes: bigint;
   };
   quorumRequired: bigint;
+  countingMode?: string | null;
   isLoading?: boolean;
 }
 export const CurrentVotes = ({
   proposalVotesData,
   quorumRequired,
+  countingMode,
   isLoading,
 }: CurrentVotesProps) => {
   const t = useTranslations("proposalDetail.currentVotes");
@@ -104,8 +106,9 @@ export const CurrentVotes = ({
       getProposalQuorumProgress({
         ...proposalVotesData,
         quorumRequired,
+        countingMode,
       }),
-    [proposalVotesData, quorumRequired]
+    [proposalVotesData, quorumRequired, countingMode]
   );
 
   const percentage = useMemo(() => {
