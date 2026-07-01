@@ -11,7 +11,7 @@ const readSource = (relativePath: string) =>
 test("demo DAO detection uses the stable DAO code", () => {
   assert.equal(isDemoDaoConfig({ code: "degov-demo-dao" }), true);
   assert.equal(isDemoDaoConfig({ code: "kton-dao" }), false);
-  assert.equal(isDemoDaoConfig({ code: undefined }), false);
+  assert.equal(isDemoDaoConfig(undefined), false);
 });
 
 test("layout and hooks do not detect demo DAO by display name", () => {

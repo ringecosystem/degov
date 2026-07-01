@@ -1663,7 +1663,7 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         r#"
         INSERT INTO degov_indexer_checkpoint (
           dao_code, chain_id, contract_set_id, stream_id, data_source_version, next_block, processed_height, target_height, updated_at
-        ) VALUES ('lisk-dao', 1135, $1, 'evm.logs', 'datalens', 901, 900, 1000, now())
+        ) VALUES ('lisk-dao', 1135, $1, 'datalens-native', 'datalens', 901, 900, 1000, now())
         "#,
     )
     .bind(CONTRACT_SET_ID)
@@ -1696,6 +1696,11 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
             'segment:rolled-back', $1, 1135, 'lisk-dao', 'evm.logs',
             'selector', 'selector', 1121, 1200, 'safe_to_latest',
             'live-onchain', 'rolled_back', 1200, 1700000500
+          ),
+          (
+            'segment:other-dataset', $1, 1135, 'lisk-dao', 'evm.traces',
+            'trace-selector', 'trace-selector', 901, 905, 'safe_to_latest',
+            'live-onchain', 'available', 905, 1700000550
           )
         "#,
     )
