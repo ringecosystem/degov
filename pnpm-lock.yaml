@@ -104,8 +104,8 @@ importers:
         specifier: ^2.11.7
         version: 2.26.3(@tiptap/core@2.26.3(@tiptap/pm@2.26.3))
       '@tiptap/extension-table-row':
-        specifier: ^2.11.7
-        version: 2.26.3(@tiptap/core@2.26.3(@tiptap/pm@2.26.3))
+        specifier: ^3.27.1
+        version: 3.27.1(@tiptap/extension-table@2.26.3(@tiptap/core@2.26.3(@tiptap/pm@2.26.3))(@tiptap/pm@2.26.3))
       '@tiptap/extension-task-item':
         specifier: ^2.11.7
         version: 2.26.3(@tiptap/core@2.26.3(@tiptap/pm@2.26.3))(@tiptap/pm@2.26.3)
@@ -2343,10 +2343,10 @@ packages:
     peerDependencies:
       '@tiptap/core': ^2.7.0
 
-  '@tiptap/extension-table-row@2.26.3':
-    resolution: {integrity: sha512-eJC9/iWAEi/7nxL7I/3d+pUOarp8ns8cQoN0xbZnQ40irSzNXY6vpCskVm+1IulhgCbGyOtjiS8z06wBck1X9Q==}
+  '@tiptap/extension-table-row@3.27.1':
+    resolution: {integrity: sha512-peEcbNRrJJ9Qc/WNKQNFbkwBrJvBvq22Dp5WNqEygn/ZJez1qD9ctd10+D6f3b9GtSyx12sfDgn8yBufWa+Iug==}
     peerDependencies:
-      '@tiptap/core': ^2.7.0
+      '@tiptap/extension-table': 3.27.1
 
   '@tiptap/extension-table@2.26.3':
     resolution: {integrity: sha512-Ycvem797qPazgY+9OUXL8EXS2XCnb45y1IPi6gOhP1DStaGSVMhNBWvuLipSbu8UBpB+yIJ4/sqIvlLqsZQceQ==}
@@ -3049,8 +3049,8 @@ packages:
     resolution: {integrity: sha512-bZES7RzJ14B4WBT3JuOHSOAvCBmUhqznrojQ8xRjN1Fx9X9N7R+rygOFS3k4wXel2nFg4lwzL3luAYzObaDLng==}
     engines: {node: '>=16'}
 
-  bn.js@5.2.3:
-    resolution: {integrity: sha512-EAcmnPkxpntVL+DS7bO1zhcZNvCkxqtkd0ZY53h06GNQ3DEkkGZ/gKgmDv6DdZQGj9BgfSPKtJJ7Dp1GPP8f7w==}
+  bn.js@5.2.4:
+    resolution: {integrity: sha512-QL7sb18rJ1PbdsKsqPA0guxL563vIMwRHgzNrW/uzQuRGN1Cjqd/wonUBAVqHox9KwzHA6vCbM0lXx3k4iQMow==}
 
   borsh@0.7.0:
     resolution: {integrity: sha512-CLCsZGIBCFnPtkNnieW/a8wmreDmfUtjU2m9yHrzPXIlNbqVs0AQrSatSG6vdNYUqdc83tkQi2eHfF98ubzQLA==}
@@ -4874,8 +4874,8 @@ packages:
   preact@10.24.2:
     resolution: {integrity: sha512-1cSoF0aCC8uaARATfrlz4VCBqE8LwZwRfLgkxJOQwAlQt6ayTmi0D9OF7nXid1POI5SZidFuG9CnlXbDfLqY/Q==}
 
-  preact@10.29.2:
-    resolution: {integrity: sha512-7tNmwg/7mzzAoB/8kSg6Hl37JraAZw3Z3A0JSY7VXlZwo82Xn0G7wKbNNs2qoF4ZEEsQGTwDAroNdqKs1ofJxQ==}
+  preact@10.29.3:
+    resolution: {integrity: sha512-D9NL1GAnJZhc3RndVs4gDdxEeU9TcHgywMrhhOsnpdlvFjdbx0gAsLUnH6JEhlJH5giL7Tx5biWPUSEXE/HPzw==}
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -5225,8 +5225,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  semver@7.8.4:
-    resolution: {integrity: sha512-rUCObTnP32Q08R2uuIrt7r9PlEonuTmtuXYcW6s5kjdlj3xbnwe+21yXptAUYcMAABLkYYTtnmzb3w3EDZfueA==}
+  semver@7.8.5:
+    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -6232,14 +6232,14 @@ snapshots:
 
   '@coinbase/wallet-sdk@3.9.3':
     dependencies:
-      bn.js: 5.2.3
+      bn.js: 5.2.4
       buffer: 6.0.3
       clsx: 1.2.1
       eth-block-tracker: 7.1.0
       eth-json-rpc-filters: 6.0.1
       eventemitter3: 5.0.4
       keccak: 3.0.4
-      preact: 10.29.2
+      preact: 10.29.3
       sha.js: 2.4.12
     transitivePeerDependencies:
       - supports-color
@@ -6730,7 +6730,7 @@ snapshots:
       '@ethereumjs/tx': 4.2.0
       '@types/debug': 4.1.13
       debug: 4.4.3
-      semver: 7.8.4
+      semver: 7.8.5
       superstruct: 1.0.4
     transitivePeerDependencies:
       - supports-color
@@ -6756,9 +6756,9 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
       '@types/debug': 4.1.13
-      debug: 4.3.4
+      debug: 4.4.3
       pony-cause: 2.1.11
-      semver: 7.8.4
+      semver: 7.8.5
       uuid: 11.1.1
     transitivePeerDependencies:
       - supports-color
@@ -8142,7 +8142,7 @@ snapshots:
       '@solana/buffer-layout': 4.0.1
       '@solana/codecs-numbers': 2.3.0(typescript@5.9.3)
       agentkeepalive: 4.6.0
-      bn.js: 5.2.3
+      bn.js: 5.2.4
       borsh: 0.7.0
       bs58: 4.0.1
       buffer: 6.0.3
@@ -8461,9 +8461,9 @@ snapshots:
     dependencies:
       '@tiptap/core': 2.26.3(@tiptap/pm@2.26.3)
 
-  '@tiptap/extension-table-row@2.26.3(@tiptap/core@2.26.3(@tiptap/pm@2.26.3))':
+  '@tiptap/extension-table-row@3.27.1(@tiptap/extension-table@2.26.3(@tiptap/core@2.26.3(@tiptap/pm@2.26.3))(@tiptap/pm@2.26.3))':
     dependencies:
-      '@tiptap/core': 2.26.3(@tiptap/pm@2.26.3)
+      '@tiptap/extension-table': 2.26.3(@tiptap/core@2.26.3(@tiptap/pm@2.26.3))(@tiptap/pm@2.26.3)
 
   '@tiptap/extension-table@2.26.3(@tiptap/core@2.26.3(@tiptap/pm@2.26.3))(@tiptap/pm@2.26.3)':
     dependencies:
@@ -9725,11 +9725,11 @@ snapshots:
 
   blo@1.2.0: {}
 
-  bn.js@5.2.3: {}
+  bn.js@5.2.4: {}
 
   borsh@0.7.0:
     dependencies:
-      bn.js: 5.2.3
+      bn.js: 5.2.4
       bs58: 4.0.1
       text-encoding-utf-8: 1.0.2
 
@@ -11695,7 +11695,7 @@ snapshots:
 
   preact@10.24.2: {}
 
-  preact@10.29.2: {}
+  preact@10.29.3: {}
 
   prelude-ls@1.2.1: {}
 
@@ -12051,7 +12051,7 @@ snapshots:
       '@types/uuid': 8.3.4
       '@types/ws': 8.18.1
       buffer: 6.0.3
-      eventemitter3: 5.0.1
+      eventemitter3: 5.0.4
       uuid: 11.1.1
       ws: 8.21.0(bufferutil@4.0.9)(utf-8-validate@5.0.10)
     optionalDependencies:
@@ -12111,7 +12111,7 @@ snapshots:
 
   semver@7.7.4: {}
 
-  semver@7.8.4: {}
+  semver@7.8.5: {}
 
   seq-queue@0.0.5: {}
 
