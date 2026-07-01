@@ -273,6 +273,11 @@ fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
                 AND segment.dao_code = degov_indexer_checkpoint.dao_code
                 AND segment.chain_id IS NOT DISTINCT FROM degov_indexer_checkpoint.chain_id
                 AND segment.contract_set_id = degov_indexer_checkpoint.contract_set_id
+                AND segment.dataset_key = split_part(
+                  substring(degov_indexer_checkpoint.contract_set_id FROM '(^|[|])dataset=[^|]+'),
+                  'dataset=',
+                  2
+                )
               GROUP BY segment.source, segment.selector
             ) selector_coverage
           ) AS provisional_height,
@@ -1302,4 +1307,20 @@ pub(super) async fn count_delegate_mappings(
     push_delegate_mapping_where(&mut query, implicit_scope, where_);
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_indexer_status_provisional_height_matches_contract_dataset_key() {
+        let query = indexer_status_query();
+        let sql = query.sql();
+
+        assert!(
+            sql.contains("segment.dataset_key = split_part"),
+            "indexer status provisional height must scope segments by dataset key:\n{sql}"
+        );
+    }
 }
