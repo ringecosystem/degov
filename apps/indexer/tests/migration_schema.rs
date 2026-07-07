@@ -711,7 +711,7 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_live_graphql_scope_idx
          ON degov_provisional_delegate_power_overlay (
-            contract_set_id, chain_id, dao_code, governor_address, delegator, delegate,
+            contract_set_id, chain_id, dao_code, governor_address, delegator, delegate
          )
          INCLUDE (token_address, power, is_current)
          WHERE source = 'live-onchain' AND status = 'available'"
@@ -719,7 +719,7 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_contributor_live_graphql_scope_idx
          ON degov_provisional_contributor_power_overlay (
-            contract_set_id, chain_id, dao_code, governor_address, account,
+            contract_set_id, chain_id, dao_code, governor_address, account
          )
          INCLUDE (token_address, power, balance, delegates_count_all, last_vote_timestamp)
          WHERE source = 'live-onchain' AND status = 'available'"
