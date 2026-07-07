@@ -43,7 +43,8 @@ pub use crate::decode::dao_event::{
     DelegateVotesChangedEvent, GovernanceTokenStandard, ParameterChangeEvent, ProposalCreatedEvent,
     ProposalExtendedEvent, ProposalIdEvent, ProposalQueuedEvent, RoleAccountEvent,
     RoleAdminChangedEvent, TimelockChangeEvent, TimelockOperationIdEvent, TokenTransferEvent,
-    UnsupportedTopicEvent, VoteCastEvent, VoteCastWithParamsEvent, decode_dao_log,
+    UnsupportedTopicEvent, VoteCastEvent, VoteCastWithParamsEvent, dao_log_source_supports_topic0,
+    decode_dao_log,
 };
 pub use crate::decode::evm_log::{
     EvmLogNormalizationError, NormalizedEvmLog, normalize_evm_log_rows,
