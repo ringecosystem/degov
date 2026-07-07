@@ -455,9 +455,8 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_live_graphql_scope_idx
          ON degov_provisional_delegate_power_overlay (
             contract_set_id, chain_id, dao_code, governor_address, delegator, delegate,
-            token_address
          )
-         INCLUDE (power, is_current)
+         INCLUDE (token_address, power, is_current)
          WHERE source = 'live-onchain' AND status = 'available'",
     )
     .await
@@ -469,9 +468,8 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_contributor_live_graphql_scope_idx
          ON degov_provisional_contributor_power_overlay (
             contract_set_id, chain_id, dao_code, governor_address, account,
-            token_address
          )
-         INCLUDE (power, balance, delegates_count_all, last_vote_timestamp)
+         INCLUDE (token_address, power, balance, delegates_count_all, last_vote_timestamp)
          WHERE source = 'live-onchain' AND status = 'available'",
     )
     .await
