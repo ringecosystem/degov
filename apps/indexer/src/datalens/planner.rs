@@ -185,38 +185,36 @@ fn query_plans(
     from_block: i32,
     to_block: i32,
 ) -> Vec<DaoLogQueryPlan> {
-    let mut governance_sources = vec![DaoLogAddressSource {
-        address: addresses.governor.clone(),
-        source: DaoLogSource::Governor,
-    }];
+    let mut sources = vec![
+        DaoLogAddressSource {
+            address: addresses.governor.clone(),
+            source: DaoLogSource::Governor,
+        },
+        DaoLogAddressSource {
+            address: addresses.governor_token.clone(),
+            source: DaoLogSource::GovernorToken,
+        },
+    ];
     if let Some(timelock) = &addresses.timelock {
-        governance_sources.push(DaoLogAddressSource {
+        sources.push(DaoLogAddressSource {
             address: timelock.clone(),
             source: DaoLogSource::Timelock,
         });
     }
+    let topics = if addresses.timelock.is_some() {
+        broad_dao_topic0_filters()
+    } else {
+        dao_topic0_filters_without_timelock()
+    };
 
-    vec![
-        query_plan(
-            config,
-            governance_sources,
-            Vec::new(),
-            broad_governance_topic0_filters(),
-            from_block,
-            to_block,
-        ),
-        query_plan(
-            config,
-            vec![DaoLogAddressSource {
-                address: addresses.governor_token.clone(),
-                source: DaoLogSource::GovernorToken,
-            }],
-            vec![addresses.governor_token.clone()],
-            governor_token_topic0_filters(),
-            from_block,
-            to_block,
-        ),
-    ]
+    vec![query_plan(
+        config,
+        sources,
+        Vec::new(),
+        topics,
+        from_block,
+        to_block,
+    )]
 }
 
 fn query_plan(
@@ -268,16 +266,21 @@ fn query_plan(
     }
 }
 
-fn broad_governance_topic0_filters() -> Vec<String> {
+fn broad_dao_topic0_filters() -> Vec<String> {
     unique_topic0_filters(
         GOVERNOR_TOPIC0_FILTERS
             .iter()
-            .chain(TIMELOCK_TOPIC0_FILTERS),
+            .chain(TIMELOCK_TOPIC0_FILTERS)
+            .chain(GOVERNOR_TOKEN_TOPIC0_FILTERS),
     )
 }
 
-fn governor_token_topic0_filters() -> Vec<String> {
-    unique_topic0_filters(GOVERNOR_TOKEN_TOPIC0_FILTERS.iter())
+fn dao_topic0_filters_without_timelock() -> Vec<String> {
+    unique_topic0_filters(
+        GOVERNOR_TOPIC0_FILTERS
+            .iter()
+            .chain(GOVERNOR_TOKEN_TOPIC0_FILTERS),
+    )
 }
 
 fn unique_topic0_filters<'a>(topics: impl Iterator<Item = &'a &'a str>) -> Vec<String> {

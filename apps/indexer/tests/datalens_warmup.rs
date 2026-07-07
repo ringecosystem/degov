@@ -32,22 +32,11 @@ fn test_ensure_datalens_warmup_task_submits_follow_query_when_enabled() {
         outcome,
         DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
     ));
-    assert_eq!(ensurer.requests.len(), 2);
-    let selector_addresses = &ensurer.requests[0].selector.addresses;
-    assert!(selector_addresses.is_empty());
-    assert_eq!(
-        ensurer.requests[1].selector.addresses,
-        vec![addresses().governor_token]
-    );
-    let topic_counts = ensurer
-        .requests
-        .iter()
-        .map(|request| {
-            assert_eq!(request.selector.topics.len(), 1);
-            request.selector.topics[0].len()
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(topic_counts, vec![21, 3]);
+    assert_eq!(ensurer.requests.len(), 1);
+    let request = &ensurer.requests[0];
+    assert!(request.selector.addresses.is_empty());
+    assert_eq!(request.selector.topics.len(), 1);
+    assert_eq!(request.selector.topics[0].len(), 24);
     for request in &ensurer.requests {
         assert_eq!(request.chain.configured_name, "ethereum");
         assert_eq!(request.chain.network_id, Some(1));
@@ -77,7 +66,7 @@ fn test_ensure_datalens_warmup_task_reuses_existing_matching_task() {
         second,
         DatalensWarmupEnsureOutcome::Submitted { created: false, .. }
     ));
-    assert_eq!(ensurer.created_tasks.len(), 2);
+    assert_eq!(ensurer.created_tasks.len(), 1);
 }
 
 #[test]
@@ -95,7 +84,7 @@ fn test_ensure_datalens_warmup_task_reuses_broad_selector_for_dao_address_mismat
         second,
         DatalensWarmupEnsureOutcome::Submitted { created: false, .. }
     ));
-    assert_eq!(ensurer.created_tasks.len(), 2);
+    assert_eq!(ensurer.created_tasks.len(), 1);
 }
 
 #[test]

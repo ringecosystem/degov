@@ -47,7 +47,7 @@ fn test_provisional_worker_writes_segments_without_final_checkpoint_boundary() {
     let report = worker.run_once().expect("worker runs once");
 
     assert_eq!(report.segments_written, 1);
-    assert_eq!(reader.calls.len(), 2);
+    assert_eq!(reader.calls.len(), 1);
     assert!(
         reader
             .calls

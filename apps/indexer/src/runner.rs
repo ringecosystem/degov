@@ -19,9 +19,9 @@ use crate::{
     TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
     TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent, TokenProjectionRepository,
     VoteProjectionBatch, VoteProjectionContext, VoteProjectionEvent, VoteProjectionRepository,
-    classify_datalens_query_error, datalens_selector_fingerprint, decode_dao_log,
-    fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries, plan_next_checkpoint_range,
-    plan_proposal_timestamp_backfill_updates, project_proposal_events,
+    classify_datalens_query_error, dao_log_source_supports_topic0, datalens_selector_fingerprint,
+    decode_dao_log, fetch_dao_log_pages, normalize_evm_log_rows, plan_dao_log_queries,
+    plan_next_checkpoint_range, plan_proposal_timestamp_backfill_updates, project_proposal_events,
     project_timelock_events_with_proposal_links, project_timelock_proposal_links,
     project_token_events, project_vote_events,
 };
@@ -1402,9 +1402,20 @@ where
                     );
                     continue;
                 };
+                let Some(topic0) = log.topics.first() else {
+                    continue;
+                };
+                let candidate_sources = candidate_sources
+                    .iter()
+                    .copied()
+                    .filter(|source| dao_log_source_supports_topic0(*source, topic0))
+                    .collect::<Vec<_>>();
+                if candidate_sources.is_empty() {
+                    continue;
+                }
                 let mut unsupported_event = None;
                 let mut decoded_event = None;
-                for source in candidate_sources {
+                for source in &candidate_sources {
                     let token_standard = (*source == DaoLogSource::GovernorToken)
                         .then_some(self.options.addresses.governor_token_standard);
                     let event = self.decoder.decode(

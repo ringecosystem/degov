@@ -377,9 +377,9 @@ fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subrang
     assert_eq!(runner.store().commit_count(), 2);
     let observed = observed_ranges.lock().expect("observed ranges");
     assert_range_count(&observed, (1, 1_000), 1);
-    assert_range_count(&observed, (1, 500), DATALENS_QUERY_SELECTOR_COUNT);
-    assert_range_count(&observed, (501, 1_000), DATALENS_QUERY_SELECTOR_COUNT);
-    assert_eq!(observed.len(), 1 + DATALENS_QUERY_SELECTOR_COUNT * 2);
+    assert_range_count(&observed, (1, 500), 1);
+    assert_range_count(&observed, (501, 1_000), 1);
+    assert_eq!(observed.len(), 3);
 }
 
 #[test]
@@ -410,8 +410,8 @@ fn test_runner_splits_transient_range_and_retries_without_pass_error() {
     assert_eq!(runner.store().commit_count(), 1);
     let observed = observed_ranges.lock().expect("observed ranges");
     assert_range_count(&observed, (1, 5_000), 1);
-    assert_range_count(&observed, (1, 2_500), DATALENS_QUERY_SELECTOR_COUNT);
-    assert_eq!(observed.len(), 1 + DATALENS_QUERY_SELECTOR_COUNT);
+    assert_range_count(&observed, (1, 2_500), 1);
+    assert_eq!(observed.len(), 2);
 }
 
 #[test]
@@ -445,8 +445,8 @@ fn test_runner_splits_transient_failure_below_normal_min_and_advances_checkpoint
         &observed[..6],
         &[(1, 101), (1, 50), (1, 25), (1, 12), (1, 6), (1, 3)]
     );
-    assert_range_count(&observed, (1, 1), DATALENS_QUERY_SELECTOR_COUNT);
-    assert_eq!(observed.len(), 6 + DATALENS_QUERY_SELECTOR_COUNT);
+    assert_range_count(&observed, (1, 1), 1);
+    assert_eq!(observed.len(), 7);
 }
 
 #[test]
@@ -477,8 +477,8 @@ fn test_runner_splits_two_block_transient_failure_to_single_block() {
     assert_eq!(runner.store().commit_count(), 1);
     let observed = observed_ranges.lock().expect("observed ranges");
     assert_range_count(&observed, (1, 2), 1);
-    assert_range_count(&observed, (1, 1), DATALENS_QUERY_SELECTOR_COUNT);
-    assert_eq!(observed.len(), 1 + DATALENS_QUERY_SELECTOR_COUNT);
+    assert_range_count(&observed, (1, 1), 1);
+    assert_eq!(observed.len(), 2);
 }
 
 #[test]
@@ -1145,12 +1145,7 @@ fn test_runner_keeps_duplicate_address_unsupported_topic_unsupported() {
     runner.run_to_target(1).expect("runner succeeds");
 
     let attempts = attempts.lock().expect("attempts");
-    assert_source_attempt_counts(
-        &attempts,
-        GOVERNOR_SELECTOR_COUNT,
-        0,
-        TIMELOCK_SELECTOR_COUNT,
-    );
+    assert_source_attempt_counts(&attempts, GOVERNOR_SELECTOR_COUNT, 0, 0);
     assert_eq!(
         runner.store().checkpoint().expect("checkpoint").next_block,
         2
@@ -1951,5 +1946,3 @@ const TOKEN_DELEGATE_CHANGED_TOPIC0: &str =
     "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f";
 const GOVERNOR_SELECTOR_COUNT: usize = 1;
 const GOVERNOR_TOKEN_SELECTOR_COUNT: usize = 1;
-const TIMELOCK_SELECTOR_COUNT: usize = 1;
-const DATALENS_QUERY_SELECTOR_COUNT: usize = 2;
