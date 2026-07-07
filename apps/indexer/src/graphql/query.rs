@@ -274,9 +274,9 @@ fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
                 AND segment.chain_id IS NOT DISTINCT FROM degov_indexer_checkpoint.chain_id
                 AND segment.contract_set_id = degov_indexer_checkpoint.contract_set_id
                 AND segment.dataset_key = split_part(
-                  substring(degov_indexer_checkpoint.contract_set_id FROM '(^|[|])dataset=[^|]+'),
-                  'dataset=',
-                  2
+                  split_part(degov_indexer_checkpoint.contract_set_id, 'dataset=', 2),
+                  '|',
+                  1
                 )
               GROUP BY segment.source, segment.selector
             ) selector_coverage
@@ -1318,9 +1318,9 @@ mod tests {
         let query = indexer_status_query();
         let sql = query.sql();
 
+        assert!(sql.contains("segment.dataset_key = split_part"));
         assert!(
-            sql.contains("segment.dataset_key = split_part"),
-            "indexer status provisional height must scope segments by dataset key:\n{sql}"
+            sql.contains("split_part(degov_indexer_checkpoint.contract_set_id, 'dataset=', 2)")
         );
     }
 }
