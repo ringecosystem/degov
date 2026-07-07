@@ -449,6 +449,34 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure live contributor overlay account lookup index")?;
 
+    execute_concurrent_runtime_index(
+        connection,
+        "provisional_delegate_live_graphql_scope_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_live_graphql_scope_idx
+         ON degov_provisional_delegate_power_overlay (
+            contract_set_id, chain_id, dao_code, governor_address, delegator, delegate,
+            token_address
+         )
+         INCLUDE (power, is_current)
+         WHERE source = 'live-onchain' AND status = 'available'",
+    )
+    .await
+    .context("ensure live delegate overlay GraphQL scope index")?;
+
+    execute_concurrent_runtime_index(
+        connection,
+        "provisional_contributor_live_graphql_scope_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_contributor_live_graphql_scope_idx
+         ON degov_provisional_contributor_power_overlay (
+            contract_set_id, chain_id, dao_code, governor_address, account,
+            token_address
+         )
+         INCLUDE (power, balance, delegates_count_all, last_vote_timestamp)
+         WHERE source = 'live-onchain' AND status = 'available'",
+    )
+    .await
+    .context("ensure live contributor overlay GraphQL scope index")?;
+
     Ok(())
 }
 
@@ -805,6 +833,9 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
         "provisional_contributor_live_account_lookup_idx",
     )
     .await?;
+    drop_invalid_runtime_index(connection, "provisional_delegate_live_graphql_scope_idx").await?;
+    drop_invalid_runtime_index(connection, "provisional_contributor_live_graphql_scope_idx")
+        .await?;
 
     Ok(())
 }
