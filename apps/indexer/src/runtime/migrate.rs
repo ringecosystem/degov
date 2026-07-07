@@ -39,21 +39,7 @@ pub async fn repair_invalid_runtime_indexes() -> Result<()> {
 
     let result = repair_invalid_runtime_indexes_for_connection(&mut connection).await;
 
-    let unlock_result = sqlx::query_scalar::<_, bool>(
-        "SELECT pg_advisory_unlock(hashtext('degov_indexer_runtime_migration'))",
-    )
-    .fetch_one(&mut *connection)
-    .await
-    .context("release DeGov indexer runtime migration lock")
-    .and_then(|unlocked| {
-        if unlocked {
-            Ok(())
-        } else {
-            Err(runtime_anyhow::Error::msg(
-                "DeGov indexer runtime migration lock was not held",
-            ))
-        }
-    });
+    let unlock_result = release_runtime_migration_lock(&mut connection).await;
 
     result?;
     unlock_result?;
@@ -87,26 +73,56 @@ pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
     }
     .await;
 
-    let unlock_result = sqlx::query_scalar::<_, bool>(
-        "SELECT pg_advisory_unlock(hashtext('degov_indexer_runtime_migration'))",
-    )
-    .fetch_one(&mut *connection)
-    .await
-    .context("release DeGov indexer runtime migration lock")
-    .and_then(|unlocked| {
-        if unlocked {
-            Ok(())
-        } else {
-            Err(runtime_anyhow::Error::msg(
-                "DeGov indexer runtime migration lock was not held",
-            ))
-        }
-    });
+    let unlock_result = release_runtime_migration_lock(&mut connection).await;
 
     result?;
     unlock_result?;
 
     Ok(())
+}
+
+pub async fn apply_schema_migrations(pool: &PgPool) -> Result<()> {
+    let mut connection = pool
+        .acquire()
+        .await
+        .context("acquire DeGov indexer schema migration connection")?;
+
+    acquire_runtime_migration_lock(&mut connection).await?;
+
+    let result: Result<()> = async {
+        MIGRATOR
+            .run(&mut *connection)
+            .await
+            .context("apply Datalens-native DeGov indexer schema migration")?;
+        ensure_onchain_refresh_data_metric_task_table(&mut connection).await?;
+
+        Ok(())
+    }
+    .await;
+
+    let unlock_result = release_runtime_migration_lock(&mut connection).await;
+
+    result?;
+    unlock_result?;
+
+    Ok(())
+}
+
+async fn release_runtime_migration_lock(connection: &mut PgConnection) -> Result<()> {
+    let unlocked = sqlx::query_scalar::<_, bool>(
+        "SELECT pg_advisory_unlock(hashtext('degov_indexer_runtime_migration'))",
+    )
+    .fetch_one(connection)
+    .await
+    .context("release DeGov indexer runtime migration lock")?;
+
+    if unlocked {
+        Ok(())
+    } else {
+        Err(runtime_anyhow::Error::msg(
+            "DeGov indexer runtime migration lock was not held",
+        ))
+    }
 }
 
 async fn acquire_runtime_migration_lock(connection: &mut PgConnection) -> Result<()> {
@@ -388,23 +404,7 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure contributor onchain refresh coverage index")?;
 
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS onchain_refresh_data_metric_task (
-            id TEXT PRIMARY KEY,
-            contract_set_id TEXT NOT NULL,
-            chain_id INTEGER NOT NULL,
-            dao_code TEXT,
-            governor_address TEXT NOT NULL,
-            token_address TEXT NOT NULL,
-            attempts INTEGER NOT NULL DEFAULT 0,
-            last_error TEXT,
-            created_at NUMERIC(78, 0) NOT NULL,
-            updated_at NUMERIC(78, 0) NOT NULL
-         )",
-    )
-    .execute(&mut *connection)
-    .await
-    .context("ensure onchain refresh data metric task table")?;
+    ensure_onchain_refresh_data_metric_task_table(connection).await?;
 
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_data_metric_task_ready_idx
@@ -474,6 +474,30 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     )
     .await
     .context("ensure live contributor overlay GraphQL scope index")?;
+
+    Ok(())
+}
+
+async fn ensure_onchain_refresh_data_metric_task_table(
+    connection: &mut PgConnection,
+) -> Result<()> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS onchain_refresh_data_metric_task (
+            id TEXT PRIMARY KEY,
+            contract_set_id TEXT NOT NULL,
+            chain_id INTEGER NOT NULL,
+            dao_code TEXT,
+            governor_address TEXT NOT NULL,
+            token_address TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at NUMERIC(78, 0) NOT NULL,
+            updated_at NUMERIC(78, 0) NOT NULL
+         )",
+    )
+    .execute(connection)
+    .await
+    .context("ensure onchain refresh data metric task table")?;
 
     Ok(())
 }

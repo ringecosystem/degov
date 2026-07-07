@@ -7,7 +7,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use degov_datalens_indexer::runtime::{apply_migrations, repair_invalid_runtime_indexes};
+use degov_datalens_indexer::runtime::{
+    apply_migrations, apply_schema_migrations, repair_invalid_runtime_indexes,
+};
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
 
@@ -648,6 +650,25 @@ async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Er
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_schema_only_migration_creates_worker_owned_task_table() -> Result<(), Box<dyn Error>>
+{
+    let database = TestDatabase::connect().await?;
+
+    apply_schema_migrations(&database.pool).await?;
+
+    assert_table_exists(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_data_metric_task",
+    )
+    .await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
 #[test]
 fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
 -> Result<(), Box<dyn Error>> {
@@ -708,6 +729,7 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("onchain_refresh_task_failed_scope_retry_idx"));
     assert!(runtime_migration.contains("onchain_refresh_task_processing_scope_retry_idx"));
     assert!(runtime_migration.contains("contributor_onchain_refresh_coverage_scope_idx"));
+    assert!(runtime_migration.contains("release_runtime_migration_lock"));
     assert!(runtime_migration.contains(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_live_graphql_scope_idx
          ON degov_provisional_delegate_power_overlay (
@@ -742,6 +764,23 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     );
 
     Ok(())
+}
+
+#[test]
+fn test_graphql_and_worker_use_schema_only_migrations() {
+    let graphql_runtime = include_str!("../src/runtime/graphql.rs");
+    let worker_runtime = include_str!("../src/runtime/worker.rs");
+    let runtime_module = include_str!("../src/runtime/mod.rs");
+
+    assert!(runtime_module.contains("apply_schema_migrations"));
+    assert!(graphql_runtime.contains("use super::migrate::apply_schema_migrations"));
+    assert!(worker_runtime.contains("use super::migrate::apply_schema_migrations"));
+    assert!(graphql_runtime.contains("apply_schema_migrations(&pool).await?"));
+    assert!(worker_runtime.contains("apply_schema_migrations(&pool).await?"));
+    assert!(!graphql_runtime.contains("use super::migrate::apply_migrations"));
+    assert!(!worker_runtime.contains("use super::migrate::apply_migrations"));
+    assert!(!graphql_runtime.contains("apply_migrations(&pool).await?"));
+    assert!(!worker_runtime.contains("apply_migrations(&pool).await?"));
 }
 
 #[test]

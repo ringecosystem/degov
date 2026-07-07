@@ -11,7 +11,7 @@ use crate::{
     OnchainRefreshScopeMode, OnchainRefreshTaskScope, OnchainRefreshWorker, required_env,
 };
 
-use super::migrate::apply_migrations;
+use super::migrate::apply_schema_migrations;
 
 pub async fn run_worker() -> Result<()> {
     let database_url = required_env("DEGOV_INDEXER_DATABASE_URL")?;
@@ -39,7 +39,7 @@ pub async fn run_worker() -> Result<()> {
         .connect(&database_url)
         .await
         .context("connect to DeGov indexer Postgres")?;
-    apply_migrations(&pool).await?;
+    apply_schema_migrations(&pool).await?;
     let _metrics_server = crate::metrics::spawn_metrics_server(
         pool.clone(),
         MetricsRuntimeConfig::from_env().context("load metrics runtime configuration")?,
