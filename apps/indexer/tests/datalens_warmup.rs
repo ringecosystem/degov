@@ -34,7 +34,14 @@ fn test_ensure_datalens_warmup_task_submits_follow_query_when_enabled() {
     ));
     assert_eq!(ensurer.requests.len(), 1);
     let request = &ensurer.requests[0];
-    assert!(request.selector.addresses.is_empty());
+    assert_eq!(
+        request.selector.addresses,
+        vec![
+            "0x1111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333",
+        ]
+    );
     assert_eq!(request.selector.topics.len(), 1);
     assert_eq!(request.selector.topics[0].len(), 24);
     for request in &ensurer.requests {
@@ -70,7 +77,7 @@ fn test_ensure_datalens_warmup_task_reuses_existing_matching_task() {
 }
 
 #[test]
-fn test_ensure_datalens_warmup_task_reuses_broad_selector_for_dao_address_mismatch() {
+fn test_ensure_datalens_warmup_task_creates_scoped_selector_for_dao_address_mismatch() {
     let config = config();
     let mut ensurer = MockWarmupEnsurer::default();
     let mut other_addresses = addresses();
@@ -82,9 +89,9 @@ fn test_ensure_datalens_warmup_task_reuses_broad_selector_for_dao_address_mismat
 
     assert!(matches!(
         second,
-        DatalensWarmupEnsureOutcome::Submitted { created: false, .. }
+        DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
     ));
-    assert_eq!(ensurer.created_tasks.len(), 1);
+    assert_eq!(ensurer.created_tasks.len(), 2);
 }
 
 #[test]
