@@ -32,7 +32,11 @@ fn test_plan_dao_log_queries_combines_sources_into_single_evm_log_selector() {
                 source: DaoLogSource::Timelock,
             },
         ],
-        &[],
+        &[
+            addresses.governor.clone(),
+            addresses.governor_token.clone(),
+            addresses.timelock.clone().expect("timelock"),
+        ],
         &topic0_union(&[
             GOVERNOR_TOPIC0_VALUES,
             TIMELOCK_TOPIC0_VALUES,
@@ -45,12 +49,20 @@ fn test_plan_dao_log_queries_combines_sources_into_single_evm_log_selector() {
 }
 
 #[test]
-fn test_plan_dao_log_queries_uses_broad_address_selector_for_reusable_datalens_cache() {
+fn test_plan_dao_log_queries_scopes_governance_selector_to_dao_addresses() {
     let config = config(1_000, DatalensFinality::DurableOnly);
-    let plans = plan_dao_log_queries(&config, &addresses(), 100, 199).expect("plans");
+    let addresses = addresses();
+    let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
     let evm_logs = plans[0].input.selector.evm_logs.as_ref().expect("evm logs");
-    assert!(evm_logs.addresses.is_empty());
+    assert_eq!(
+        evm_logs.addresses,
+        vec![
+            addresses.governor,
+            addresses.governor_token,
+            addresses.timelock.expect("timelock"),
+        ]
+    );
     assert_eq!(
         evm_logs.topics,
         vec![topic0_union(&[
@@ -82,7 +94,7 @@ fn test_plan_dao_log_queries_skips_timelock_when_not_configured() {
                 source: DaoLogSource::GovernorToken,
             },
         ],
-        &[],
+        &[addresses.governor.clone(), addresses.governor_token.clone()],
         &topic0_union(&[GOVERNOR_TOPIC0_VALUES, GOVERNOR_TOKEN_TOPIC0_VALUES]),
         100,
         199,
@@ -108,7 +120,8 @@ fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
             .as_ref()
             .expect("evm logs")
             .addresses
-            .is_empty()
+            .len()
+            == 3
     }));
 }
 

@@ -279,8 +279,7 @@ impl AdaptiveChunkSizer {
     pub fn record_chunk(&mut self, feedback: AdaptiveChunkFeedback) -> AdaptiveChunkSizingDecision {
         let previous_chunk_size = self.current_chunk_size;
         let full_cache_hit = feedback.has_only_full_cache_hits();
-        let dense_range = feedback.returned_row_count >= self.config.dense_returned_row_threshold
-            && !full_cache_hit;
+        let dense_range = feedback.returned_row_count >= self.config.dense_returned_row_threshold;
         let slow_local_processing = feedback.local_processing_write_duration
             > self.config.local_processing_shrink_threshold;
         let high_query_duration = feedback.read_duration
@@ -462,6 +461,16 @@ impl AdaptiveChunkFeedback {
                 .query_duration_max()
                 .is_some_and(|duration| duration > threshold)
     }
+}
+
+fn row_matches_address_sources(
+    row: &serde_json::Value,
+    sources: &BTreeMap<String, Vec<DaoLogSource>>,
+) -> bool {
+    row.get("address")
+        .and_then(serde_json::Value::as_str)
+        .map(|address| sources.contains_key(&address.to_ascii_lowercase()))
+        .unwrap_or(true)
 }
 
 fn shrink_chunk_size(chunk_size: u32, min_chunk_size: u32, shrink_factor_percent: u32) -> u32 {
@@ -1378,8 +1387,13 @@ where
                 });
             let rows = page_rows(page.rows)?;
             returned_row_count += rows.len();
-            let logs = normalize_evm_log_rows(self.options.checkpoint_identity.chain_id, rows)
-                .map_err(|error| IndexerRunnerError::Normalize(error.to_string()))?;
+            let scoped_rows = rows
+                .into_iter()
+                .filter(|row| row_matches_address_sources(row, &sources))
+                .collect::<Vec<_>>();
+            let logs =
+                normalize_evm_log_rows(self.options.checkpoint_identity.chain_id, scoped_rows)
+                    .map_err(|error| IndexerRunnerError::Normalize(error.to_string()))?;
             for log in logs {
                 if log.removed {
                     info!(
@@ -2126,5 +2140,33 @@ fn checkpoint(identity: IndexerCheckpointIdentity, start_block: i64) -> IndexerC
         last_error: None,
         lock_owner: None,
         locked_at: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_row_matches_address_sources_filters_rows_before_normalization() {
+        let mut sources = BTreeMap::new();
+        sources.insert(
+            "0xabc0000000000000000000000000000000000000".to_owned(),
+            vec![DaoLogSource::Governor],
+        );
+
+        assert!(row_matches_address_sources(
+            &json!({"address": "0xABC0000000000000000000000000000000000000"}),
+            &sources,
+        ));
+        assert!(!row_matches_address_sources(
+            &json!({"address": "0xdef0000000000000000000000000000000000000"}),
+            &sources,
+        ));
+        assert!(row_matches_address_sources(
+            &json!({"block_number": 1}),
+            &sources
+        ));
     }
 }

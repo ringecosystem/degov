@@ -882,7 +882,7 @@ fn test_adaptive_chunk_sizer_full_hit_high_duration_can_shrink_below_full_hit_fl
 }
 
 #[test]
-fn test_adaptive_chunk_sizer_full_hit_dense_rows_do_not_shrink_by_row_count() {
+fn test_adaptive_chunk_sizer_full_hit_dense_rows_shrink_by_row_count() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 
     let dense = sizer.record_chunk(adaptive_feedback_with_rows(
@@ -891,8 +891,8 @@ fn test_adaptive_chunk_sizer_full_hit_dense_rows_do_not_shrink_by_row_count() {
         5_000,
     ));
 
-    assert_eq!(dense.current_chunk_size, 100);
-    assert_eq!(dense.reason, AdaptiveChunkSizingReason::Hold);
+    assert_eq!(dense.current_chunk_size, 50);
+    assert_eq!(dense.reason, AdaptiveChunkSizingReason::DenseReturnedRows);
 }
 
 #[test]

@@ -209,8 +209,11 @@ fn query_plans(
 
     vec![query_plan(
         config,
-        sources,
-        Vec::new(),
+        sources.clone(),
+        sources
+            .iter()
+            .map(|source| source.address.clone())
+            .collect(),
         topics,
         from_block,
         to_block,
