@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use thiserror::Error;
 
 use crate::{
@@ -1400,7 +1400,7 @@ where
                     .map_err(|error| IndexerRunnerError::Normalize(error.to_string()))?;
             for log in logs {
                 if log.removed {
-                    info!(
+                    debug!(
                         "skipping removed Datalens EVM log before decode dao_code={} chain_id={} log_id={} block_number={}",
                         self.options.checkpoint_identity.dao_code,
                         self.options.checkpoint_identity.chain_id,
@@ -1410,7 +1410,7 @@ where
                     continue;
                 }
                 let Some(candidate_sources) = sources.get(&log.address) else {
-                    info!(
+                    debug!(
                         "skipping Datalens EVM log outside DAO address set dao_code={} chain_id={} log_id={} block_number={} address={}",
                         self.options.checkpoint_identity.dao_code,
                         self.options.checkpoint_identity.chain_id,
