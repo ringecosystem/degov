@@ -206,11 +206,15 @@ fn query_plans(
     } else {
         dao_topic0_filters_without_timelock()
     };
+    let selector_addresses = sources
+        .iter()
+        .map(|source| source.address.clone())
+        .collect();
 
     vec![query_plan(
         config,
         sources,
-        Vec::new(),
+        selector_addresses,
         topics,
         from_block,
         to_block,
