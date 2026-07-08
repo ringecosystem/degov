@@ -469,7 +469,11 @@ fn row_matches_address_sources(
 ) -> bool {
     row.get("address")
         .and_then(serde_json::Value::as_str)
-        .map(|address| sources.contains_key(&address.to_ascii_lowercase()))
+        .map(|address| {
+            sources
+                .keys()
+                .any(|source| source.eq_ignore_ascii_case(address))
+        })
         .unwrap_or(true)
 }
 
