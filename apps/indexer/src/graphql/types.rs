@@ -422,6 +422,12 @@ pub struct ScopeWhereInput {
 pub struct ProposalWhereInput {
     #[graphql(flatten)]
     pub(super) scope: ScopeWhereInput,
+    #[graphql(name = "blockNumber_eq")]
+    pub(super) block_number_eq: Option<String>,
+    #[graphql(name = "blockNumber_gt")]
+    pub(super) block_number_gt: Option<String>,
+    #[graphql(name = "id_gt")]
+    pub(super) id_gt: Option<String>,
     #[graphql(name = "proposalId_eq")]
     pub(super) proposal_id_eq: Option<String>,
     #[graphql(name = "proposer_eq")]
@@ -430,6 +436,10 @@ pub struct ProposalWhereInput {
     pub(super) description_contains_insensitive: Option<String>,
     #[graphql(name = "voters_some")]
     pub(super) voters_some: Option<VoteCastGroupWhereInput>,
+    #[graphql(name = "voteEndTimestamp_gte")]
+    pub(super) vote_end_timestamp_gte: Option<String>,
+    #[graphql(name = "voteEndTimestamp_lt")]
+    pub(super) vote_end_timestamp_lt: Option<String>,
     #[graphql(name = "OR")]
     pub(super) or: Option<Vec<ProposalWhereInput>>,
 }
@@ -552,6 +562,10 @@ pub struct DelegateMappingWhereInput {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Enum)]
 #[graphql(rename_items = "camelCase")]
 pub enum ProposalOrderByInput {
+    #[graphql(name = "blockNumber_ASC_NULLS_FIRST")]
+    BlockNumberAscNullsFirst,
+    #[graphql(name = "blockTimestamp_ASC_NULLS_FIRST")]
+    BlockTimestampAscNullsFirst,
     #[graphql(name = "blockTimestamp_DESC_NULLS_LAST")]
     BlockTimestampDescNullsLast,
     #[graphql(name = "id_ASC")]

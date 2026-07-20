@@ -221,7 +221,9 @@ pub(super) async fn count_proposals(
           SELECT proposal.id, proposal.contract_set_id, proposal.chain_id,
             proposal.dao_code, proposal.governor_address, proposal.proposal_id,
             COALESCE(proposal_overlay.proposer, proposal.proposer) AS proposer,
-            COALESCE(proposal_overlay.description, proposal.description) AS description
+            COALESCE(proposal_overlay.description, proposal.description) AS description,
+            proposal.block_number,
+            COALESCE(proposal_overlay.vote_end_timestamp, proposal.vote_end_timestamp) AS vote_end_timestamp
           FROM proposal
           LEFT JOIN degov_provisional_proposal_overlay proposal_overlay
             ON proposal_overlay.contract_set_id = proposal.contract_set_id
@@ -235,7 +237,9 @@ pub(super) async fn count_proposals(
           SELECT proposal_overlay.id, proposal_overlay.contract_set_id, proposal_overlay.chain_id,
             proposal_overlay.dao_code, proposal_overlay.governor_address, proposal_overlay.proposal_id,
             COALESCE(proposal_overlay.proposer, '') AS proposer,
-            COALESCE(proposal_overlay.description, '') AS description
+            COALESCE(proposal_overlay.description, '') AS description,
+            COALESCE(proposal_overlay.block_number, proposal_overlay.anchor_block_number, 0) AS block_number,
+            COALESCE(proposal_overlay.vote_end_timestamp, 0) AS vote_end_timestamp
           FROM degov_provisional_proposal_overlay proposal_overlay
           WHERE proposal_overlay.status = 'available'
             AND proposal_overlay.source <> 'live-onchain'

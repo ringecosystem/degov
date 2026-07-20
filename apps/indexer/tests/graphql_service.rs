@@ -909,6 +909,121 @@ async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposal_cursor_filters_and_ascending_orders() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE proposal
+         SET block_number = 800, vote_end_timestamp = 1700002100
+         WHERE id = 'proposal:1135:0xgovernor:102'",
+    )
+    .execute(&database.pool)
+    .await?;
+    seed_provisional_only_proposal_overlay(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query ProposalCursorCompatibility(
+              $sameBlock: ProposalWhereInput
+              $incremental: ProposalWhereInput
+              $window: ProposalWhereInput
+              $page: ProposalWhereInput
+              $beyondInt: ProposalWhereInput
+            ) {
+              sameBlock: proposals(
+                where: $sameBlock
+                orderBy: [blockNumber_ASC_NULLS_FIRST, id_ASC]
+              ) {
+                id
+                blockNumber
+              }
+              incremental: proposals(
+                where: $incremental
+                orderBy: [blockNumber_ASC_NULLS_FIRST, id_ASC]
+              ) {
+                id
+                blockNumber
+              }
+              window: proposals(
+                where: $window
+                orderBy: [blockTimestamp_ASC_NULLS_FIRST, id_ASC]
+              ) {
+                id
+                blockTimestamp
+                voteEndTimestamp
+              }
+              byTimestamp: proposals(
+                orderBy: [blockTimestamp_ASC_NULLS_FIRST, id_ASC]
+              ) {
+                id
+                blockTimestamp
+              }
+              page: proposalsPage(where: $page, orderBy: [id_ASC], limit: 10) {
+                totalCount
+                items { id }
+              }
+              beyondInt: proposals(where: $beyondInt) { id }
+            }
+        "#,
+    )
+    .variables(async_graphql::Variables::from_json(json!({
+        "sameBlock": {
+            "blockNumber_eq": "800",
+            "id_gt": "proposal:1135:0xgovernor:101"
+        },
+        "incremental": {
+            "OR": [
+                { "blockNumber_gt": "800" },
+                {
+                    "blockNumber_eq": "800",
+                    "id_gt": "proposal:1135:0xgovernor:101"
+                }
+            ]
+        },
+        "window": {
+            "voteEndTimestamp_gte": "1700002000000",
+            "voteEndTimestamp_lt": "1700002400000"
+        },
+        "page": {
+            "blockNumber_gt": "800",
+            "voteEndTimestamp_gte": "1700002400000",
+            "voteEndTimestamp_lt": "1700002400001"
+        },
+        "beyondInt": { "blockNumber_gt": "9223372036854775808" }
+    })));
+    let response = schema.execute(request).await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["sameBlock"][0]["id"], "proposal:1135:0xgovernor:102");
+    assert_eq!(data["sameBlock"][0]["blockNumber"], "800");
+    assert_eq!(
+        data["sameBlock"].as_array().expect("same block rows").len(),
+        1
+    );
+    assert_eq!(data["incremental"][0]["id"], "proposal:1135:0xgovernor:102");
+    assert_eq!(data["incremental"][1]["id"], "overlay:proposal:999");
+    assert_eq!(data["window"][0]["id"], "proposal:1135:0xgovernor:101");
+    assert_eq!(data["window"][1]["id"], "proposal:1135:0xgovernor:102");
+    assert_eq!(data["window"].as_array().expect("window rows").len(), 2);
+    assert_eq!(data["byTimestamp"][0]["id"], "proposal:1135:0xgovernor:101");
+    assert_eq!(data["byTimestamp"][1]["id"], "proposal:1135:0xgovernor:102");
+    assert_eq!(data["byTimestamp"][2]["id"], "overlay:proposal:999");
+    assert_eq!(data["page"]["totalCount"], 1);
+    assert_eq!(data["page"]["items"][0]["id"], "overlay:proposal:999");
+    assert_eq!(data["beyondInt"].as_array().expect("bigint rows").len(), 0);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_schema_applies_implicit_scope_to_queries_and_pages()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;

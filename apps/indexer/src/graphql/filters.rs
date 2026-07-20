@@ -34,6 +34,29 @@ pub(super) fn push_proposal_filters<'a>(
     table_alias: &str,
 ) {
     push_scope_filters(query, has_condition, &where_.scope, table_alias);
+    if let Some(block_number) = &where_.block_number_eq {
+        push_numeric_column_comparison(
+            query,
+            has_condition,
+            table_alias,
+            "block_number",
+            " = ",
+            block_number,
+        );
+    }
+    if let Some(block_number) = &where_.block_number_gt {
+        push_numeric_column_comparison(
+            query,
+            has_condition,
+            table_alias,
+            "block_number",
+            " > ",
+            block_number,
+        );
+    }
+    if let Some(id) = &where_.id_gt {
+        push_column_comparison(query, has_condition, table_alias, "id", " > ", id);
+    }
     if let Some(proposal_id) = &where_.proposal_id_eq {
         push_proposal_id_eq(query, has_condition, table_alias, proposal_id);
     }
@@ -85,6 +108,26 @@ pub(super) fn push_proposal_filters<'a>(
         push_implicit_scope_filters(query, &mut nested_has_condition, implicit_scope, "v", true);
         push_vote_cast_group_filters(query, &mut nested_has_condition, voters_some, "v");
         query.push(")");
+    }
+    if let Some(timestamp) = &where_.vote_end_timestamp_gte {
+        push_millisecond_timestamp_comparison(
+            query,
+            has_condition,
+            table_alias,
+            "vote_end_timestamp",
+            " >= ",
+            timestamp,
+        );
+    }
+    if let Some(timestamp) = &where_.vote_end_timestamp_lt {
+        push_millisecond_timestamp_comparison(
+            query,
+            has_condition,
+            table_alias,
+            "vote_end_timestamp",
+            " < ",
+            timestamp,
+        );
     }
     if let Some(or) = &where_.or {
         push_or_group(query, has_condition, or, |query, has_condition, filter| {
@@ -513,6 +556,54 @@ pub(super) fn push_numeric_column_eq<'a>(
     query.push(" = ").push_bind(value).push("::numeric");
 }
 
+fn push_column_comparison<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    operator: &'static str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    push_qualified_column(query, table_alias, column);
+    query.push(operator).push_bind(value);
+}
+
+fn push_numeric_column_comparison<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    operator: &'static str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    push_qualified_column(query, table_alias, column);
+    query.push(operator).push_bind(value).push("::numeric");
+}
+
+fn push_millisecond_timestamp_comparison<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    operator: &'static str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    query.push("(CASE WHEN ");
+    push_qualified_column(query, table_alias, column);
+    query.push(" < 1000000000000 THEN ");
+    push_qualified_column(query, table_alias, column);
+    query.push(" * 1000 ELSE ");
+    push_qualified_column(query, table_alias, column);
+    query
+        .push(" END)")
+        .push(operator)
+        .push_bind(value)
+        .push("::numeric");
+}
+
 fn push_proposal_id_eq<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     has_condition: &mut bool,
@@ -560,5 +651,35 @@ pub(super) fn push_and(query: &mut QueryBuilder<'_, Postgres>, has_condition: &m
         query.push(" AND ");
     } else {
         *has_condition = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_push_proposal_where_binds_numeric_cursor_values() {
+        let untrusted_value = "800) OR TRUE --";
+        let where_ = ProposalWhereInput {
+            block_number_eq: Some(untrusted_value.to_owned()),
+            block_number_gt: Some("799".to_owned()),
+            id_gt: Some("proposal:cursor".to_owned()),
+            vote_end_timestamp_gte: Some("1700002000000".to_owned()),
+            vote_end_timestamp_lt: Some("1700002400000".to_owned()),
+            ..ProposalWhereInput::default()
+        };
+        let mut query = QueryBuilder::<Postgres>::new("SELECT * FROM proposal");
+        let scope = GraphqlScope::default();
+
+        push_proposal_where(&mut query, &scope, Some(&where_));
+
+        let sql = query.sql();
+        assert!(!sql.contains(untrusted_value));
+        assert!(sql.contains("proposal.block_number = $1::numeric"));
+        assert!(sql.contains("proposal.block_number > $2::numeric"));
+        assert!(sql.contains("proposal.id > $3"));
+        assert!(sql.contains("proposal.vote_end_timestamp") && sql.contains(">= $4::numeric"));
+        assert!(sql.contains("proposal.vote_end_timestamp") && sql.contains("< $5::numeric"));
     }
 }
