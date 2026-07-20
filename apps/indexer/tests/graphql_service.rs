@@ -929,6 +929,8 @@ async fn test_graphql_proposal_cursor_filters_and_ascending_orders() -> Result<(
               $window: ProposalWhereInput
               $page: ProposalWhereInput
               $beyondInt: ProposalWhereInput
+              $zero: ProposalWhereInput
+              $maxNumeric: ProposalWhereInput
             ) {
               sameBlock: proposals(
                 where: $sameBlock
@@ -963,6 +965,8 @@ async fn test_graphql_proposal_cursor_filters_and_ascending_orders() -> Result<(
                 items { id }
               }
               beyondInt: proposals(where: $beyondInt) { id }
+              zero: proposals(where: $zero) { id }
+              maxNumeric: proposals(where: $maxNumeric) { id }
             }
         "#,
     )
@@ -989,7 +993,9 @@ async fn test_graphql_proposal_cursor_filters_and_ascending_orders() -> Result<(
             "voteEndTimestamp_gte": "1700002400000",
             "voteEndTimestamp_lt": "1700002400001"
         },
-        "beyondInt": { "blockNumber_gt": "9223372036854775808" }
+        "beyondInt": { "blockNumber_gt": "9223372036854775808" },
+        "zero": { "blockNumber_eq": "0" },
+        "maxNumeric": { "blockNumber_gt": "9".repeat(78) }
     })));
     let response = schema.execute(request).await;
 
@@ -1017,8 +1023,128 @@ async fn test_graphql_proposal_cursor_filters_and_ascending_orders() -> Result<(
     assert_eq!(data["page"]["totalCount"], 1);
     assert_eq!(data["page"]["items"][0]["id"], "overlay:proposal:999");
     assert_eq!(data["beyondInt"].as_array().expect("bigint rows").len(), 0);
+    assert_eq!(data["zero"].as_array().expect("zero rows").len(), 0);
+    assert_eq!(
+        data["maxNumeric"]
+            .as_array()
+            .expect("max numeric rows")
+            .len(),
+        0
+    );
 
     database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposal_numeric_filters_reject_noncanonical_values_before_sql()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://127.0.0.1:1/degov")?;
+    let schema = graphql::build_schema(pool);
+    let invalid_values = [
+        ("blockNumber_eq", ""),
+        ("blockNumber_eq", "not-a-number"),
+        ("blockNumber_gt", "NaN"),
+        ("blockNumber_gt", "1.5"),
+        ("voteEndTimestamp_gte", "1e3"),
+        ("voteEndTimestamp_lt", "-1"),
+        ("voteEndTimestamp_gte", " 1"),
+        ("voteEndTimestamp_lt", "01"),
+    ];
+
+    for (field, value) in invalid_values {
+        let mut where_value = serde_json::Map::new();
+        where_value.insert(field.to_owned(), json!(value));
+        let response = schema
+            .execute(
+                Request::new(
+                    r#"
+                    query InvalidProposalNumeric($where: ProposalWhereInput) {
+                      proposals(where: $where) { id }
+                    }
+                    "#,
+                )
+                .variables(async_graphql::Variables::from_json(json!({
+                    "where": where_value
+                }))),
+            )
+            .await;
+
+        assert_eq!(response.errors.len(), 1, "field {field}, value {value:?}");
+        assert!(
+            response.errors[0]
+                .message
+                .contains(&format!("ProposalWhereInput.{field}")),
+            "unexpected error for field {field}, value {value:?}: {:?}",
+            response.errors
+        );
+        assert!(
+            response.errors[0]
+                .message
+                .contains("canonical non-negative base-10 integer with at most 78 digits"),
+            "unexpected error for field {field}, value {value:?}: {:?}",
+            response.errors
+        );
+    }
+
+    let response = schema
+        .execute(
+            Request::new(
+                r#"
+                query InvalidProposalNumeric($where: ProposalWhereInput) {
+                  proposals(where: $where) { id }
+                }
+                "#,
+            )
+            .variables(async_graphql::Variables::from_json(json!({
+                "where": { "blockNumber_gt": "9".repeat(79) }
+            }))),
+        )
+        .await;
+    assert_eq!(response.errors.len(), 1);
+    assert!(
+        response.errors[0]
+            .message
+            .contains("ProposalWhereInput.blockNumber_gt"),
+        "unexpected error: {:?}",
+        response.errors
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposals_page_rejects_recursive_invalid_numeric_before_count_sql()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://127.0.0.1:1/degov")?;
+    let schema = graphql::build_schema(pool);
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query InvalidProposalPageNumeric {
+              proposalsPage(
+                where: { OR: [{ blockNumber_gt: "800" }, { voteEndTimestamp_lt: "NaN" }] }
+              ) {
+                totalCount
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert!(
+        response.errors[0]
+            .message
+            .contains("ProposalWhereInput.voteEndTimestamp_lt"),
+        "unexpected error: {:?}",
+        response.errors
+    );
 
     Ok(())
 }

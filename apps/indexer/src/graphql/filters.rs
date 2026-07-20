@@ -579,7 +579,10 @@ fn push_numeric_column_comparison<'a>(
 ) {
     push_and(query, has_condition);
     push_qualified_column(query, table_alias, column);
-    query.push(operator).push_bind(value).push("::numeric");
+    query
+        .push(operator)
+        .push_bind(value)
+        .push("::numeric(78,0)");
 }
 
 fn push_millisecond_timestamp_comparison<'a>(
@@ -601,7 +604,7 @@ fn push_millisecond_timestamp_comparison<'a>(
         .push(" END)")
         .push(operator)
         .push_bind(value)
-        .push("::numeric");
+        .push("::numeric(78,0)");
 }
 
 fn push_proposal_id_eq<'a>(
@@ -676,10 +679,12 @@ mod tests {
 
         let sql = query.sql();
         assert!(!sql.contains(untrusted_value));
-        assert!(sql.contains("proposal.block_number = $1::numeric"));
-        assert!(sql.contains("proposal.block_number > $2::numeric"));
+        assert!(sql.contains("proposal.block_number = $1::numeric(78,0)"));
+        assert!(sql.contains("proposal.block_number > $2::numeric(78,0)"));
         assert!(sql.contains("proposal.id > $3"));
-        assert!(sql.contains("proposal.vote_end_timestamp") && sql.contains(">= $4::numeric"));
-        assert!(sql.contains("proposal.vote_end_timestamp") && sql.contains("< $5::numeric"));
+        assert!(
+            sql.contains("proposal.vote_end_timestamp") && sql.contains(">= $4::numeric(78,0)")
+        );
+        assert!(sql.contains("proposal.vote_end_timestamp") && sql.contains("< $5::numeric(78,0)"));
     }
 }
