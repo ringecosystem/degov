@@ -1,9 +1,7 @@
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use thiserror::Error;
 
-use super::migrate::apply_migrations;
-
-const ZERO_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
+use crate::delegate_profile::{ZERO_DELEGATE_ADDRESS, acquire_delegate_profile_scope_lock};
 
 #[derive(Debug, Error)]
 pub enum DelegateProfileBackfillError {
@@ -22,8 +20,8 @@ pub enum DelegateProfileBackfillError {
     #[error("connect to DeGov indexer Postgres: {0}")]
     Connect(#[source] sqlx::Error),
 
-    #[error("apply DeGov indexer migrations: {0}")]
-    Migration(String),
+    #[error("delegate profile backfill preflight failed: {0}")]
+    Preflight(String),
 
     #[error("{operation}: {source}")]
     Database {
@@ -91,17 +89,29 @@ pub struct DelegateProfileBackfillOptions {
     pub max_scopes: Option<usize>,
 }
 
+fn validate_options(
+    options: &DelegateProfileBackfillOptions,
+) -> Result<(), DelegateProfileBackfillError> {
+    if options.max_scopes == Some(0) {
+        return Err(DelegateProfileBackfillError::InvalidMaxScopes);
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DelegateProfileBackfillReport {
     pub scopes_processed: usize,
     pub profiles_inserted: usize,
     pub metric_rows_updated: usize,
+    pub profiles_would_insert: usize,
+    pub metric_rows_would_update: usize,
     pub dry_run: bool,
 }
 
 pub async fn repair_delegate_profiles(
     options: DelegateProfileBackfillOptions,
 ) -> Result<DelegateProfileBackfillReport, DelegateProfileBackfillError> {
+    validate_options(&options)?;
     let database_url = std::env::var("DEGOV_INDEXER_DATABASE_URL")
         .map_err(|_| DelegateProfileBackfillError::MissingDatabaseUrl)?;
     let pool = PgPoolOptions::new()
@@ -109,9 +119,6 @@ pub async fn repair_delegate_profiles(
         .connect(&database_url)
         .await
         .map_err(DelegateProfileBackfillError::Connect)?;
-    apply_migrations(&pool)
-        .await
-        .map_err(|error| DelegateProfileBackfillError::Migration(error.to_string()))?;
 
     repair_delegate_profiles_with_pool(&pool, options).await
 }
@@ -120,9 +127,8 @@ pub async fn repair_delegate_profiles_with_pool(
     pool: &PgPool,
     options: DelegateProfileBackfillOptions,
 ) -> Result<DelegateProfileBackfillReport, DelegateProfileBackfillError> {
-    if options.max_scopes == Some(0) {
-        return Err(DelegateProfileBackfillError::InvalidMaxScopes);
-    }
+    validate_options(&options)?;
+    preflight_delegate_profile_backfill(pool).await?;
 
     let scopes = resolve_scopes(pool, &options).await?;
     let mut report = DelegateProfileBackfillReport {
@@ -134,38 +140,16 @@ pub async fn repair_delegate_profiles_with_pool(
         let mut transaction = pool.begin().await.map_err(|source| {
             database_error("begin delegate profile backfill scope transaction", source)
         })?;
-        let lock_key = format!(
-            "degov_delegate_profile:{}:{}:{}",
-            scope.chain_id, scope.dao_code, scope.governor_address
-        );
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-            .bind(lock_key)
-            .execute(&mut *transaction)
-            .await
-            .map_err(|source| {
-                database_error("acquire delegate profile backfill scope lock", source)
-            })?;
-
-        let insert_result = sqlx::query(
-            "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
-             SELECT $1, $2, $3, lower(delegate.to_delegate)
-             FROM delegate
-             WHERE delegate.chain_id = $1
-               AND delegate.dao_code = $2
-               AND lower(delegate.governor_address) = $3
-               AND lower(delegate.to_delegate) <> $4
-             GROUP BY lower(delegate.to_delegate)
-             ON CONFLICT DO NOTHING",
+        acquire_delegate_profile_scope_lock(
+            &mut transaction,
+            scope.chain_id,
+            &scope.dao_code,
+            &scope.governor_address,
         )
-        .bind(scope.chain_id)
-        .bind(&scope.dao_code)
-        .bind(&scope.governor_address)
-        .bind(ZERO_ADDRESS)
-        .execute(&mut *transaction)
         .await
-        .map_err(|source| database_error("insert delegate profiles", source))?;
+        .map_err(|source| database_error("acquire delegate profile backfill scope lock", source))?;
 
-        let registry_count: i64 = sqlx::query_scalar(
+        let existing_registry_count: i64 = sqlx::query_scalar(
             "SELECT count(*)
              FROM delegate_profile
              WHERE chain_id = $1 AND dao_code = $2 AND governor_address = $3",
@@ -176,6 +160,29 @@ pub async fn repair_delegate_profiles_with_pool(
         .fetch_one(&mut *transaction)
         .await
         .map_err(|source| database_error("count delegate profiles", source))?;
+        let profiles_would_insert: i64 = sqlx::query_scalar(
+            "SELECT count(DISTINCT lower(delegate.to_delegate))
+             FROM delegate
+             WHERE delegate.chain_id = $1
+               AND delegate.dao_code = $2
+               AND lower(delegate.governor_address) = $3
+               AND lower(delegate.to_delegate) <> $4
+               AND NOT EXISTS (
+                 SELECT 1
+                 FROM delegate_profile
+                 WHERE delegate_profile.chain_id = $1
+                   AND delegate_profile.dao_code = $2
+                   AND delegate_profile.governor_address = $3
+                   AND delegate_profile.delegate = lower(delegate.to_delegate)
+               )",
+        )
+        .bind(scope.chain_id)
+        .bind(&scope.dao_code)
+        .bind(&scope.governor_address)
+        .bind(ZERO_DELEGATE_ADDRESS)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|source| database_error("count missing delegate profiles", source))?;
         let historical_count: i64 = sqlx::query_scalar(
             "SELECT count(DISTINCT lower(delegate.to_delegate))
              FROM delegate
@@ -187,23 +194,23 @@ pub async fn repair_delegate_profiles_with_pool(
         .bind(scope.chain_id)
         .bind(&scope.dao_code)
         .bind(&scope.governor_address)
-        .bind(ZERO_ADDRESS)
+        .bind(ZERO_DELEGATE_ADDRESS)
         .fetch_one(&mut *transaction)
         .await
         .map_err(|source| database_error("verify delegate profile history", source))?;
-        if registry_count != historical_count {
+        let expected_registry_count = existing_registry_count + profiles_would_insert;
+        if expected_registry_count != historical_count {
             return Err(DelegateProfileBackfillError::Verification {
                 scope: scope_label(&scope),
-                registry_count,
+                registry_count: expected_registry_count,
                 historical_count,
             });
         }
-        let registry_count = i32::try_from(registry_count)
+        let registry_count = i32::try_from(expected_registry_count)
             .map_err(|_| DelegateProfileBackfillError::MetricCountOutOfRange)?;
-
-        let update_result = sqlx::query(
-            "UPDATE data_metric
-             SET delegate_profiles_count = $4
+        let metric_rows_would_update: i64 = sqlx::query_scalar(
+            "SELECT count(*)
+             FROM data_metric
              WHERE id = 'global'
                AND chain_id = $1
                AND dao_code = $2
@@ -212,14 +219,13 @@ pub async fn repair_delegate_profiles_with_pool(
         .bind(scope.chain_id)
         .bind(&scope.dao_code)
         .bind(&scope.governor_address)
-        .bind(registry_count)
-        .execute(&mut *transaction)
+        .fetch_one(&mut *transaction)
         .await
-        .map_err(|source| database_error("update delegate profile metric", source))?;
+        .map_err(|source| database_error("count delegate profile metric rows", source))?;
 
         report.scopes_processed += 1;
-        report.profiles_inserted += rows_affected(insert_result.rows_affected())?;
-        report.metric_rows_updated += rows_affected(update_result.rows_affected())?;
+        report.profiles_would_insert += i64_rows(profiles_would_insert)?;
+        report.metric_rows_would_update += i64_rows(metric_rows_would_update)?;
 
         if options.dry_run {
             transaction.rollback().await.map_err(|source| {
@@ -229,6 +235,41 @@ pub async fn repair_delegate_profiles_with_pool(
                 )
             })?;
         } else {
+            let insert_result = sqlx::query(
+                "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+                 SELECT $1, $2, $3, lower(delegate.to_delegate)
+                 FROM delegate
+                 WHERE delegate.chain_id = $1
+                   AND delegate.dao_code = $2
+                   AND lower(delegate.governor_address) = $3
+                   AND lower(delegate.to_delegate) <> $4
+                 GROUP BY lower(delegate.to_delegate)
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(scope.chain_id)
+            .bind(&scope.dao_code)
+            .bind(&scope.governor_address)
+            .bind(ZERO_DELEGATE_ADDRESS)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|source| database_error("insert delegate profiles", source))?;
+            let update_result = sqlx::query(
+                "UPDATE data_metric
+                 SET delegate_profiles_count = $4
+                 WHERE id = 'global'
+                   AND chain_id = $1
+                   AND dao_code = $2
+                   AND lower(governor_address) = $3",
+            )
+            .bind(scope.chain_id)
+            .bind(&scope.dao_code)
+            .bind(&scope.governor_address)
+            .bind(registry_count)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|source| database_error("update delegate profile metric", source))?;
+            report.profiles_inserted += rows_affected(insert_result.rows_affected())?;
+            report.metric_rows_updated += rows_affected(update_result.rows_affected())?;
             transaction.commit().await.map_err(|source| {
                 database_error("commit delegate profile backfill scope transaction", source)
             })?;
@@ -242,7 +283,7 @@ async fn resolve_scopes(
     pool: &PgPool,
     options: &DelegateProfileBackfillOptions,
 ) -> Result<Vec<DelegateProfileScope>, DelegateProfileBackfillError> {
-    let mut scopes = match &options.selection {
+    let scopes = match &options.selection {
         DelegateProfileBackfillSelection::Scope(scope) => vec![scope.clone()],
         DelegateProfileBackfillSelection::AllScopes => {
             let rows: Vec<(i32, String, String)> = sqlx::query_as(
@@ -261,8 +302,10 @@ async fn resolve_scopes(
                      AND dao_code IS NOT NULL
                      AND governor_address IS NOT NULL
                  ) logical_scope
-                 ORDER BY chain_id, dao_code, governor_address",
+                 ORDER BY chain_id, dao_code, governor_address
+                 LIMIT $1",
             )
+            .bind(i64::try_from(options.max_scopes.unwrap_or(usize::MAX)).unwrap_or(i64::MAX))
             .fetch_all(pool)
             .await
             .map_err(|source| {
@@ -276,11 +319,68 @@ async fn resolve_scopes(
         }
     };
 
-    if let Some(max_scopes) = options.max_scopes {
-        scopes.truncate(max_scopes);
-    }
-
     Ok(scopes)
+}
+
+async fn preflight_delegate_profile_backfill(
+    pool: &PgPool,
+) -> Result<(), DelegateProfileBackfillError> {
+    let catalog_ready: bool = sqlx::query_scalar(
+        "SELECT
+           to_regclass('delegate_profile') IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM information_schema.columns
+             WHERE table_schema = current_schema()
+               AND table_name = 'data_metric'
+               AND column_name = 'delegate_profiles_count'
+           )
+           AND (
+             SELECT count(*) = 4
+             FROM pg_constraint
+             WHERE conrelid = to_regclass('delegate_profile')
+               AND conname IN (
+                 'delegate_profile_pkey',
+                 'delegate_profile_governor_address_normalized',
+                 'delegate_profile_delegate_normalized',
+                 'delegate_profile_delegate_nonzero'
+               )
+               AND convalidated
+           )
+           AND EXISTS (
+             SELECT 1
+             FROM pg_class index_class
+             JOIN pg_index ON pg_index.indexrelid = index_class.oid
+             WHERE index_class.oid = to_regclass('delegate_profile_backfill_scope_target_idx')
+               AND pg_index.indisvalid
+               AND pg_index.indisready
+           )",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|source| database_error("check delegate profile backfill prerequisites", source))?;
+    let migration_table_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('_sqlx_migrations') IS NOT NULL")
+            .fetch_one(pool)
+            .await
+            .map_err(|source| database_error("check SQLx migration history", source))?;
+    let migration_ready = if migration_table_exists {
+        sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM _sqlx_migrations WHERE version = 11 AND success)",
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|source| database_error("check delegate profile migration version", source))?
+    } else {
+        false
+    };
+
+    if catalog_ready && migration_ready {
+        Ok(())
+    } else {
+        Err(DelegateProfileBackfillError::Preflight(
+            "migration 0011 and valid delegate_profile_backfill_scope_target_idx are required; run `degov-datalens-indexer migrate` first".to_owned(),
+        ))
+    }
 }
 
 fn scope_label(scope: &DelegateProfileScope) -> String {
@@ -291,6 +391,10 @@ fn scope_label(scope: &DelegateProfileScope) -> String {
 }
 
 fn rows_affected(value: u64) -> Result<usize, DelegateProfileBackfillError> {
+    usize::try_from(value).map_err(|_| DelegateProfileBackfillError::RowCountOutOfRange)
+}
+
+fn i64_rows(value: i64) -> Result<usize, DelegateProfileBackfillError> {
     usize::try_from(value).map_err(|_| DelegateProfileBackfillError::RowCountOutOfRange)
 }
 

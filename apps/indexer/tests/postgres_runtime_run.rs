@@ -22,9 +22,9 @@ use degov_datalens_indexer::{
     TimelockProjectionContext, TimelockProjectionEvent, TimelockProposalLinkContext,
     TokenEventCommon, TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent,
     TokenTransferEvent, TokenTransferWrite, VoteCastEvent, VoteProjectionContext,
-    VoteProjectionEvent, project_proposal_events, project_timelock_events,
-    project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
-    runtime::apply_migrations,
+    VoteProjectionEvent, delegate_profile_scope_lock_key, project_proposal_events,
+    project_timelock_events, project_timelock_events_with_proposal_links, project_token_events,
+    project_vote_events, runtime::apply_migrations,
 };
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
@@ -1151,6 +1151,254 @@ async fn test_postgres_data_metric_event_snapshots_follow_mixed_batch_event_orde
 
     database.cleanup().await?;
 
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_projection_materializes_delegate_profiles_after_rollout()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_empty_global_metric(&database.pool).await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+           id, contract_set_id, chain_id, dao_code, governor_address, token_address
+         ) VALUES ('global', 'scope-v2', 1, 'demo-dao', $1, $2)",
+    )
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .execute(&database.pool)
+    .await?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    let initial = project_token_events(
+        &token_projection_context(),
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("profile-initial", 1, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: DELEGATOR.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_uppercase(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("profile-duplicate", 1, 0, 2),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: RECEIVER.to_owned(),
+                    from_delegate: ZERO_ADDRESS.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("profile-zero", 1, 0, 3),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: TARGET.to_owned(),
+                    from_delegate: DELEGATE.to_owned(),
+                    to_delegate: ZERO_ADDRESS.to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("initial profile projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(initial.clone()),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(initial),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    assert_eq!(delegate_profile_count(&database.pool, "demo-dao").await?, 1);
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool, "demo-dao").await?,
+        vec![None, None]
+    );
+
+    sqlx::query("UPDATE data_metric SET delegate_profiles_count = 1 WHERE contract_set_id = $1")
+        .bind(CONTRACT_SET_ID)
+        .execute(&database.pool)
+        .await?;
+    let second_scope = token_projection_context_with_scope("scope-v2", "demo-dao", GOVERNOR);
+    let incremental = project_token_events(
+        &second_scope,
+        vec![
+            TokenProjectionEvent {
+                log: normalized_token_log("profile-new", 2, 0, 1),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: TARGET.to_owned(),
+                    from_delegate: DELEGATE.to_owned(),
+                    to_delegate: SECOND_DELEGATE.to_owned(),
+                }),
+            },
+            TokenProjectionEvent {
+                log: normalized_token_log("profile-old-target", 2, 0, 2),
+                event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                    delegator: RECEIVER.to_owned(),
+                    from_delegate: SECOND_DELEGATE.to_owned(),
+                    to_delegate: DELEGATE.to_owned(),
+                }),
+            },
+        ],
+    )
+    .map_err(|error| format!("incremental profile projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(incremental),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    assert_eq!(delegate_profile_count(&database.pool, "demo-dao").await?, 2);
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool, "demo-dao").await?,
+        vec![Some(2), Some(2)]
+    );
+
+    sqlx::query(
+        "INSERT INTO data_metric (
+           id, contract_set_id, chain_id, dao_code, governor_address,
+           token_address, delegate_profiles_count
+         ) VALUES ('global', 'scope-other', 1, 'dao-other', $1, $2, 0)",
+    )
+    .bind(SECOND_GOVERNOR)
+    .bind(TOKEN)
+    .execute(&database.pool)
+    .await?;
+    let other_scope =
+        token_projection_context_with_scope("scope-other", "dao-other", SECOND_GOVERNOR);
+    let other_batch = project_token_events(
+        &other_scope,
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("profile-other-scope", 3, 0, 1),
+            event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                delegator: DELEGATOR.to_owned(),
+                from_delegate: ZERO_ADDRESS.to_owned(),
+                to_delegate: DELEGATE.to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("other profile projection failed: {error:?}"))?;
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            token: Some(other_batch),
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+    assert_eq!(
+        delegate_profile_count(&database.pool, "dao-other").await?,
+        1
+    );
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool, "dao-other").await?,
+        vec![Some(1)]
+    );
+    assert_eq!(delegate_profile_count(&database.pool, "demo-dao").await?, 2);
+
+    let rollback_target = "0x0000000000000000000000000000000000000c05";
+    let rollback_batch = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("profile-rollback", 3, 0, 1),
+            event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                delegator: TARGET.to_owned(),
+                from_delegate: SECOND_DELEGATE.to_owned(),
+                to_delegate: rollback_target.to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("rollback profile projection failed: {error:?}"))?;
+    let mut transaction = store.begin_transaction()?;
+    transaction.apply_projection_batch(&IndexerProjectionBatch {
+        token: Some(rollback_batch),
+        ..IndexerProjectionBatch::default()
+    })?;
+    transaction.rollback()?;
+    assert_eq!(delegate_profile_count(&database.pool, "demo-dao").await?, 2);
+
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_token_projection_waits_for_delegate_profile_backfill_lock()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_empty_global_metric(&database.pool).await?;
+    sqlx::query("UPDATE data_metric SET delegate_profiles_count = 0 WHERE id = 'global'")
+        .execute(&database.pool)
+        .await?;
+    let mut backfill_transaction = database.pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(delegate_profile_scope_lock_key(1, "demo-dao", GOVERNOR))
+        .execute(&mut *backfill_transaction)
+        .await?;
+
+    let writer_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database.database_url)
+        .await?;
+    let batch = project_token_events(
+        &token_projection_context(),
+        vec![TokenProjectionEvent {
+            log: normalized_token_log("profile-race", 4, 0, 1),
+            event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
+                delegator: DELEGATOR.to_owned(),
+                from_delegate: ZERO_ADDRESS.to_owned(),
+                to_delegate: DELEGATE.to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("race profile projection failed: {error:?}"))?;
+    let mut writer = tokio::spawn(async move {
+        let mut store = PostgresIndexerRunnerStore::new(writer_pool);
+        let mut transaction = store
+            .begin_transaction()
+            .map_err(|error| error.to_string())?;
+        transaction
+            .apply_projection_batch(&IndexerProjectionBatch {
+                token: Some(batch),
+                ..IndexerProjectionBatch::default()
+            })
+            .map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())
+    });
+
+    assert!(
+        timeout(Duration::from_millis(200), &mut writer)
+            .await
+            .is_err()
+    );
+    backfill_transaction.commit().await?;
+    timeout(Duration::from_secs(5), writer)
+        .await
+        .map_err(|_| "writer did not resume after backfill lock release")??
+        .map_err(|error| format!("writer failed after lock release: {error}"))?;
+
+    let historical_count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT lower(to_delegate)) FROM delegate
+         WHERE chain_id = 1 AND dao_code = 'demo-dao' AND lower(governor_address) = $1
+           AND lower(to_delegate) <> $2",
+    )
+    .bind(GOVERNOR)
+    .bind(ZERO_ADDRESS)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(historical_count, 1);
+    assert_eq!(delegate_profile_count(&database.pool, "demo-dao").await?, 1);
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool, "demo-dao").await?,
+        vec![Some(1)]
+    );
+
+    database.cleanup().await?;
     Ok(())
 }
 
@@ -4025,6 +4273,41 @@ fn token_projection_context() -> TokenProjectionContext {
         },
         current_power_method: ChainReadMethod::GetVotes,
     }
+}
+
+fn token_projection_context_with_scope(
+    contract_set_id: &str,
+    dao_code: &str,
+    governor_address: &str,
+) -> TokenProjectionContext {
+    TokenProjectionContext {
+        contract_set_id: contract_set_id.to_owned(),
+        dao_code: dao_code.to_owned(),
+        governor_address: governor_address.to_owned(),
+        ..token_projection_context()
+    }
+}
+
+async fn delegate_profile_count(pool: &PgPool, dao_code: &str) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT count(*) FROM delegate_profile WHERE dao_code = $1")
+        .bind(dao_code)
+        .fetch_one(pool)
+        .await
+}
+
+async fn delegate_profile_metric_counts(
+    pool: &PgPool,
+    dao_code: &str,
+) -> Result<Vec<Option<i32>>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT delegate_profiles_count
+         FROM data_metric
+         WHERE id = 'global' AND dao_code = $1
+         ORDER BY contract_set_id",
+    )
+    .bind(dao_code)
+    .fetch_all(pool)
+    .await
 }
 
 async fn seed_global_metric(pool: &PgPool) -> Result<(), sqlx::Error> {

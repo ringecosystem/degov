@@ -160,11 +160,13 @@ async fn main() -> anyhow::Result<()> {
             })
             .await?;
             log::info!(
-                "delegate profile repair completed dry_run={} scopes_processed={} profiles_inserted={} metric_rows_updated={}",
+                "delegate profile repair completed dry_run={} scopes_processed={} profiles_inserted={} metric_rows_updated={} profiles_would_insert={} metric_rows_would_update={}",
                 report.dry_run,
                 report.scopes_processed,
                 report.profiles_inserted,
-                report.metric_rows_updated
+                report.metric_rows_updated,
+                report.profiles_would_insert,
+                report.metric_rows_would_update
             );
             Ok(())
         }

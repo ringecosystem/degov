@@ -7,7 +7,7 @@ use std::{
 
 use degov_datalens_indexer::runtime::{
     DelegateProfileBackfillOptions, DelegateProfileBackfillSelection, DelegateProfileScope,
-    apply_migrations, repair_delegate_profiles_with_pool,
+    apply_migrations, apply_schema_migrations, repair_delegate_profiles_with_pool,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -59,6 +59,84 @@ impl TestDatabase {
         .await?;
         Ok(())
     }
+}
+
+impl Drop for TestDatabase {
+    fn drop(&mut self) {
+        let pool = self.pool.clone();
+        let schema = self.schema.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async move {
+                    let _ = sqlx::query(&format!(r#"DROP SCHEMA IF EXISTS "{schema}" CASCADE"#))
+                        .execute(&pool)
+                        .await;
+                });
+            });
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_invalid_options_and_dry_run_do_not_apply_pending_schema() -> Result<(), Box<dyn Error>>
+{
+    let database = TestDatabase::connect().await?;
+    let invalid = repair_delegate_profiles_with_pool(
+        &database.pool,
+        DelegateProfileBackfillOptions {
+            selection: DelegateProfileBackfillSelection::AllScopes,
+            dry_run: true,
+            max_scopes: Some(0),
+        },
+    )
+    .await
+    .expect_err("zero max scopes is rejected before preflight");
+    assert!(invalid.to_string().contains("max_scopes"));
+
+    let preflight = repair_delegate_profiles_with_pool(
+        &database.pool,
+        DelegateProfileBackfillOptions {
+            selection: DelegateProfileBackfillSelection::AllScopes,
+            dry_run: true,
+            max_scopes: Some(1),
+        },
+    )
+    .await
+    .expect_err("dry run does not apply pending schema");
+    assert!(preflight.to_string().contains("preflight"));
+    let data_metric_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('data_metric') IS NOT NULL")
+            .fetch_one(&database.pool)
+            .await?;
+    assert!(!data_metric_exists);
+
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_backfill_preflight_rejects_missing_runtime_index() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    apply_schema_migrations(&database.pool).await?;
+
+    let error = repair_delegate_profiles_with_pool(
+        &database.pool,
+        DelegateProfileBackfillOptions {
+            selection: DelegateProfileBackfillSelection::AllScopes,
+            dry_run: true,
+            max_scopes: Some(1),
+        },
+    )
+    .await
+    .expect_err("backfill requires its runtime index");
+
+    assert!(
+        error
+            .to_string()
+            .contains("delegate_profile_backfill_scope_target_idx")
+    );
+    database.cleanup().await?;
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -207,8 +285,10 @@ async fn test_all_scopes_dry_run_rolls_back_each_scope() -> Result<(), Box<dyn E
     .await?;
 
     assert_eq!(report.scopes_processed, 3);
-    assert_eq!(report.profiles_inserted, 3);
-    assert_eq!(report.metric_rows_updated, 2);
+    assert_eq!(report.profiles_inserted, 0);
+    assert_eq!(report.metric_rows_updated, 0);
+    assert_eq!(report.profiles_would_insert, 3);
+    assert_eq!(report.metric_rows_would_update, 2);
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT count(*) FROM delegate_profile")
             .fetch_one(&database.pool)
@@ -218,6 +298,56 @@ async fn test_all_scopes_dry_run_rolls_back_each_scope() -> Result<(), Box<dyn E
     assert_eq!(metric_counts(&database.pool, "dao-a").await?, vec![None]);
     assert_eq!(metric_counts(&database.pool, "dao-b").await?, vec![None]);
 
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_backfill_detects_registry_corruption_without_updating_metric()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    apply_migrations(&database.pool).await?;
+    seed_global_metric(&database.pool, "scope-a", 1, "dao-a", "0xgovernora").await?;
+    seed_delegate(
+        &database.pool,
+        "scope-a",
+        "delegate-a",
+        1,
+        "dao-a",
+        "0xgovernora",
+        "0xdelegate1",
+    )
+    .await?;
+    sqlx::query(
+        "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+         VALUES (1, 'dao-a', '0xgovernora', '0xcorrupt')",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query("UPDATE data_metric SET delegate_profiles_count = 99 WHERE dao_code = 'dao-a'")
+        .execute(&database.pool)
+        .await?;
+
+    let error = repair_delegate_profiles_with_pool(
+        &database.pool,
+        DelegateProfileBackfillOptions {
+            selection: DelegateProfileBackfillSelection::Scope(DelegateProfileScope::new(
+                1,
+                "dao-a",
+                "0xgovernora",
+            )?),
+            dry_run: false,
+            max_scopes: None,
+        },
+    )
+    .await
+    .expect_err("registry corruption fails verification");
+
+    assert!(error.to_string().contains("verification failed"));
+    assert_eq!(
+        metric_counts(&database.pool, "dao-a").await?,
+        vec![Some(99)]
+    );
     database.cleanup().await?;
     Ok(())
 }

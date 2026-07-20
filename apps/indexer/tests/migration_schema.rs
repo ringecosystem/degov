@@ -178,6 +178,12 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "delegate_profile_backfill_scope_target_idx",
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "delegate_mapping_positive_count_idx",
     )
     .await?;
@@ -935,6 +941,31 @@ fn test_graphql_and_worker_use_schema_only_migrations() {
     assert!(!worker_runtime.contains("use super::migrate::apply_migrations"));
     assert!(!graphql_runtime.contains("apply_migrations(&pool).await?"));
     assert!(!worker_runtime.contains("apply_migrations(&pool).await?"));
+}
+
+#[test]
+fn test_delegate_profile_backfill_uses_runtime_index_and_read_only_preflight() {
+    let runtime_migration = include_str!("../src/runtime/migrate.rs");
+    let backfill = include_str!("../src/runtime/delegate_profile_backfill.rs");
+
+    assert!(runtime_migration.contains(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_profile_backfill_scope_target_idx"
+    ));
+    assert!(
+        runtime_migration.contains(
+            "ON delegate (chain_id, dao_code, lower(governor_address), lower(to_delegate))"
+        )
+    );
+    assert!(backfill.contains("LIMIT $1"));
+    assert!(!backfill.contains("apply_migrations"));
+    assert!(
+        backfill
+            .find("validate_options")
+            .expect("option validation exists")
+            < backfill
+                .find("std::env::var")
+                .expect("database lookup exists")
+    );
 }
 
 #[test]

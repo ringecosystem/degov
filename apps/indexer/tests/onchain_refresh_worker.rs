@@ -473,6 +473,9 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     )
     .await?;
     seed_data_metric_with_scope(&database.pool, "demo-dao", "7", 7, 7).await?;
+    sqlx::query("UPDATE data_metric SET delegate_profiles_count = 5 WHERE dao_code = 'demo-dao'")
+        .execute(&database.pool)
+        .await?;
     seed_final_delegate_with_scope(
         &database.pool,
         "demo-dao",
@@ -562,6 +565,12 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_completed_task(&database.pool, "task-one", 1).await?;
     assert_completed_task(&database.pool, "task-two", 2).await?;
     assert_data_metric_counts(&database.pool, "7", 7, 7, 7, 7).await?;
+    let delegate_profiles_count: Option<i32> = sqlx::query_scalar(
+        "SELECT delegate_profiles_count FROM data_metric WHERE dao_code = 'demo-dao'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(delegate_profiles_count, Some(5));
     assert_table_count(&database.pool, "onchain_refresh_data_metric_task", 1).await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_TWO, "0", "5", "5").await?;
