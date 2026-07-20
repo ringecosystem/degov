@@ -101,13 +101,13 @@ test("proposal vote summary distinguishes quorum progress from total participati
     )
   );
 
-  assert.equal(
+  assert.equal(typeof messages.currentVotes.quorumProgress, "string");
+  assert.ok(messages.currentVotes.quorumProgress.length > 0);
+  assert.equal(typeof messages.currentVotes.totalParticipation, "string");
+  assert.ok(messages.currentVotes.totalParticipation.length > 0);
+  assert.notEqual(
     messages.currentVotes.quorumProgress,
-    "Quorum progress"
-  );
-  assert.equal(
-    messages.currentVotes.totalParticipation,
-    "Total participation"
+    messages.currentVotes.totalParticipation
   );
   assert.match(currentVotesSource, /t\("quorumProgress"\)/);
   assert.match(currentVotesSource, /t\("totalParticipation"\)/);

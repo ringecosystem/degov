@@ -22,10 +22,11 @@ const parseQuorumBuckets = (countingMode?: string | null) => {
     .map((bucket) => bucket.trim().toLowerCase());
 
   if (
-    quorumBuckets.length === 0 ||
     new Set(quorumBuckets).size !== quorumBuckets.length ||
     quorumBuckets.some(
-      (bucket) => !["for", "against", "abstain"].includes(bucket)
+      (bucket) =>
+        bucket.length === 0 ||
+        !["for", "against", "abstain"].includes(bucket)
     )
   ) {
     return fallbackBuckets;
