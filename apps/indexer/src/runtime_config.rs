@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, env, net::SocketAddr, path::Path, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    env,
+    net::SocketAddr,
+    path::Path,
+    time::Duration,
+};
 
 use anyhow as runtime_anyhow;
 use datalens_sdk::RetryConfig;
@@ -36,6 +42,105 @@ pub struct MetricsRuntimeConfig {
 pub struct ProvisionalRuntimeConfig {
     pub enabled: bool,
     pub finality: DatalensProvisionalFinality,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RealtimeRuntimeConfig {
+    pub enabled: bool,
+    pub dao_codes: Vec<String>,
+    pub datalens_application: Option<String>,
+    pub datalens_token: Option<SecretString>,
+    pub poll_interval: Duration,
+    pub tail_window_blocks: i64,
+    pub max_in_flight: usize,
+    pub per_chain_max_in_flight: usize,
+    pub query_timeout: Duration,
+    pub pass_timeout: Duration,
+}
+
+impl Default for RealtimeRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            dao_codes: Vec::new(),
+            datalens_application: None,
+            datalens_token: None,
+            poll_interval: Duration::from_millis(3_000),
+            tail_window_blocks: 8,
+            max_in_flight: 1,
+            per_chain_max_in_flight: 1,
+            query_timeout: Duration::from_millis(5_000),
+            pass_timeout: Duration::from_millis(15_000),
+        }
+    }
+}
+
+impl RealtimeRuntimeConfig {
+    pub fn from_env() -> Result<Self> {
+        let defaults = Self::default();
+        let poll_interval_ms = optional_env_u64("DEGOV_REALTIME_POLL_INTERVAL_MS")?
+            .unwrap_or(defaults.poll_interval.as_millis() as u64);
+        if poll_interval_ms < 2_000 {
+            bail!("DEGOV_REALTIME_POLL_INTERVAL_MS must be at least 2000");
+        }
+
+        let tail_window_blocks = optional_env_i64("DEGOV_REALTIME_TAIL_WINDOW_BLOCKS")?
+            .unwrap_or(defaults.tail_window_blocks);
+        if tail_window_blocks <= 0 {
+            bail!("DEGOV_REALTIME_TAIL_WINDOW_BLOCKS must be greater than zero");
+        }
+
+        let max_in_flight =
+            optional_env_usize("DEGOV_REALTIME_MAX_IN_FLIGHT")?.unwrap_or(defaults.max_in_flight);
+        if max_in_flight == 0 {
+            bail!("DEGOV_REALTIME_MAX_IN_FLIGHT must be greater than zero");
+        }
+
+        let per_chain_max_in_flight = optional_env_usize("DEGOV_REALTIME_PER_CHAIN_MAX_IN_FLIGHT")?
+            .unwrap_or(defaults.per_chain_max_in_flight);
+        if per_chain_max_in_flight == 0 {
+            bail!("DEGOV_REALTIME_PER_CHAIN_MAX_IN_FLIGHT must be greater than zero");
+        }
+
+        let query_timeout_ms = optional_env_u64("DEGOV_REALTIME_QUERY_TIMEOUT_MS")?
+            .unwrap_or(defaults.query_timeout.as_millis() as u64);
+        if query_timeout_ms == 0 {
+            bail!("DEGOV_REALTIME_QUERY_TIMEOUT_MS must be greater than zero");
+        }
+
+        let pass_timeout_ms = optional_env_u64("DEGOV_REALTIME_PASS_TIMEOUT_MS")?
+            .unwrap_or(defaults.pass_timeout.as_millis() as u64);
+        if pass_timeout_ms < query_timeout_ms {
+            bail!(
+                "DEGOV_REALTIME_PASS_TIMEOUT_MS must be at least DEGOV_REALTIME_QUERY_TIMEOUT_MS"
+            );
+        }
+
+        Ok(Self {
+            enabled: optional_env_bool("DEGOV_REALTIME_WORKER_ENABLED")?
+                .unwrap_or(defaults.enabled),
+            dao_codes: optional_env("DEGOV_REALTIME_DAO_CODES")?
+                .map(|value| {
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|dao_code| !dao_code.is_empty())
+                        .map(ToOwned::to_owned)
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect()
+                })
+                .unwrap_or_default(),
+            datalens_application: optional_env("DEGOV_REALTIME_DATALENS_APPLICATION")?,
+            datalens_token: optional_env("DEGOV_REALTIME_DATALENS_TOKEN")?.map(SecretString::new),
+            poll_interval: Duration::from_millis(poll_interval_ms),
+            tail_window_blocks,
+            max_in_flight,
+            per_chain_max_in_flight,
+            query_timeout: Duration::from_millis(query_timeout_ms),
+            pass_timeout: Duration::from_millis(pass_timeout_ms),
+        })
+    }
 }
 
 impl ProvisionalRuntimeConfig {
@@ -202,6 +307,7 @@ pub struct IndexerRuntimeConfig {
     pub onchain_refresh_deferred_drain_batch_size: usize,
     pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
     pub provisional: ProvisionalRuntimeConfig,
+    pub realtime: RealtimeRuntimeConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -424,6 +530,7 @@ impl IndexerRuntimeConfig {
                 onchain_refresh_deferred_drain_batch_size_from_env()?,
             proposal_timestamp_backfill: load_proposal_timestamp_backfill_config()?,
             provisional: ProvisionalRuntimeConfig::from_env()?,
+            realtime: RealtimeRuntimeConfig::from_env()?,
             poll_interval,
             run_once,
             max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,
