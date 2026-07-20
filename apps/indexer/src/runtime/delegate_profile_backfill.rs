@@ -206,7 +206,7 @@ pub async fn repair_delegate_profiles_with_pool(
                 historical_count,
             });
         }
-        let registry_count = i32::try_from(expected_registry_count)
+        let _planned_registry_count = i32::try_from(expected_registry_count)
             .map_err(|_| DelegateProfileBackfillError::MetricCountOutOfRange)?;
         let metric_rows_would_update: i64 = sqlx::query_scalar(
             "SELECT count(*)
@@ -253,6 +253,41 @@ pub async fn repair_delegate_profiles_with_pool(
             .execute(&mut *transaction)
             .await
             .map_err(|source| database_error("insert delegate profiles", source))?;
+            let actual_registry_count: i64 = sqlx::query_scalar(
+                "SELECT count(*)
+                 FROM delegate_profile
+                 WHERE chain_id = $1 AND dao_code = $2 AND governor_address = $3",
+            )
+            .bind(scope.chain_id)
+            .bind(&scope.dao_code)
+            .bind(&scope.governor_address)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|source| database_error("verify inserted delegate profiles", source))?;
+            let actual_historical_count: i64 = sqlx::query_scalar(
+                "SELECT count(DISTINCT lower(delegate.to_delegate))
+                 FROM delegate
+                 WHERE delegate.chain_id = $1
+                   AND delegate.dao_code = $2
+                   AND lower(delegate.governor_address) = $3
+                   AND lower(delegate.to_delegate) <> $4",
+            )
+            .bind(scope.chain_id)
+            .bind(&scope.dao_code)
+            .bind(&scope.governor_address)
+            .bind(ZERO_DELEGATE_ADDRESS)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|source| database_error("verify inserted delegate profile history", source))?;
+            if actual_registry_count != actual_historical_count {
+                return Err(DelegateProfileBackfillError::Verification {
+                    scope: scope_label(&scope),
+                    registry_count: actual_registry_count,
+                    historical_count: actual_historical_count,
+                });
+            }
+            let verified_registry_count = i32::try_from(actual_registry_count)
+                .map_err(|_| DelegateProfileBackfillError::MetricCountOutOfRange)?;
             let update_result = sqlx::query(
                 "UPDATE data_metric
                  SET delegate_profiles_count = $4
@@ -264,7 +299,7 @@ pub async fn repair_delegate_profiles_with_pool(
             .bind(scope.chain_id)
             .bind(&scope.dao_code)
             .bind(&scope.governor_address)
-            .bind(registry_count)
+            .bind(verified_registry_count)
             .execute(&mut *transaction)
             .await
             .map_err(|source| database_error("update delegate profile metric", source))?;

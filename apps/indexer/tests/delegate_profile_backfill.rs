@@ -6,8 +6,9 @@ use std::{
 };
 
 use degov_datalens_indexer::runtime::{
-    DelegateProfileBackfillOptions, DelegateProfileBackfillSelection, DelegateProfileScope,
-    apply_migrations, apply_schema_migrations, repair_delegate_profiles_with_pool,
+    DelegateProfileBackfillError, DelegateProfileBackfillOptions, DelegateProfileBackfillSelection,
+    DelegateProfileScope, apply_migrations, apply_schema_migrations,
+    repair_delegate_profiles_with_pool,
 };
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use tokio::sync::{Mutex, MutexGuard};
@@ -348,6 +349,90 @@ async fn test_backfill_detects_registry_corruption_without_updating_metric()
         metric_counts(&database.pool, "dao-a").await?,
         vec![Some(99)]
     );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_backfill_verifies_actual_registry_after_insert_before_publishing_metric()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    apply_migrations(&database.pool).await?;
+    seed_global_metric(&database.pool, "scope-a", 1, "dao-a", "0xgovernora").await?;
+    seed_delegate(
+        &database.pool,
+        "scope-a",
+        "delegate-a",
+        1,
+        "dao-a",
+        "0xgovernora",
+        "0xdelegate1",
+    )
+    .await?;
+    sqlx::query("UPDATE data_metric SET delegate_profiles_count = 99 WHERE dao_code = 'dao-a'")
+        .execute(&database.pool)
+        .await?;
+    sqlx::query(
+        "CREATE FUNCTION inject_delegate_profile_corruption() RETURNS trigger
+         LANGUAGE plpgsql AS $$
+         BEGIN
+           IF NEW.delegate <> '0x0000000000000000000000000000000000000bad' THEN
+             INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+             VALUES (
+               NEW.chain_id,
+               NEW.dao_code,
+               NEW.governor_address,
+               '0x0000000000000000000000000000000000000bad'
+             );
+           END IF;
+           RETURN NEW;
+         END
+         $$",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "CREATE TRIGGER inject_delegate_profile_corruption
+         AFTER INSERT ON delegate_profile
+         FOR EACH ROW EXECUTE FUNCTION inject_delegate_profile_corruption()",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    let error = repair_delegate_profiles_with_pool(
+        &database.pool,
+        DelegateProfileBackfillOptions {
+            selection: DelegateProfileBackfillSelection::Scope(DelegateProfileScope::new(
+                1,
+                "dao-a",
+                "0xgovernora",
+            )?),
+            dry_run: false,
+            max_scopes: None,
+        },
+    )
+    .await
+    .expect_err("post-write registry corruption fails verification");
+
+    assert!(matches!(
+        error,
+        DelegateProfileBackfillError::Verification {
+            registry_count: 2,
+            historical_count: 1,
+            ..
+        }
+    ));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM delegate_profile")
+            .fetch_one(&database.pool)
+            .await?,
+        0
+    );
+    assert_eq!(
+        metric_counts(&database.pool, "dao-a").await?,
+        vec![Some(99)]
+    );
+
     database.cleanup().await?;
     Ok(())
 }

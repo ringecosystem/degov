@@ -14,17 +14,20 @@ use std::{
 
 use degov_datalens_indexer::{
     BatchReadPlanConfig, CallExecutedEvent, CallScheduledEvent, ChainContracts, ChainReadMethod,
-    DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS, DecodedGovernorEvent, DecodedTimelockEvent,
-    DecodedTokenEvent, DelegateChangedEvent, DelegateVotesChangedEvent, GovernanceTokenStandard,
-    IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction, NormalizedEvmLog,
-    PostgresIndexerRunnerStore, ProposalCreatedEvent, ProposalExtendedEvent,
-    ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
+    CheckpointRepository, DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS, DecodedGovernorEvent,
+    DecodedTimelockEvent, DecodedTokenEvent, DelegateChangedEvent, DelegateVotesChangedEvent,
+    GovernanceTokenStandard, IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
+    IndexerRunnerTransaction, NormalizedEvmLog, PostgresIndexerRunnerStore, ProposalCreatedEvent,
+    ProposalExtendedEvent, ProposalProjectionContext, ProposalProjectionEvent, ProposalQueuedEvent,
     TimelockProjectionContext, TimelockProjectionEvent, TimelockProposalLinkContext,
     TokenEventCommon, TokenProjectionBatch, TokenProjectionContext, TokenProjectionEvent,
     TokenTransferEvent, TokenTransferWrite, VoteCastEvent, VoteProjectionContext,
-    VoteProjectionEvent, delegate_profile_scope_lock_key, project_proposal_events,
-    project_timelock_events, project_timelock_events_with_proposal_links, project_token_events,
-    project_vote_events, runtime::apply_migrations,
+    VoteProjectionEvent, project_proposal_events, project_timelock_events,
+    project_timelock_events_with_proposal_links, project_token_events, project_vote_events,
+    runtime::{
+        DelegateProfileBackfillOptions, DelegateProfileBackfillSelection, DelegateProfileScope,
+        apply_migrations, repair_delegate_profiles_with_pool,
+    },
 };
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
@@ -1332,31 +1335,126 @@ async fn test_postgres_token_projection_waits_for_delegate_profile_backfill_lock
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_empty_global_metric(&database.pool).await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+           id, contract_set_id, chain_id, dao_code, governor_address,
+           token_address, delegate_profiles_count
+         ) VALUES ('global', 'scope-v2', 1, 'demo-dao', $1, $2, 0)",
+    )
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .execute(&database.pool)
+    .await?;
     sqlx::query("UPDATE data_metric SET delegate_profiles_count = 0 WHERE id = 'global'")
         .execute(&database.pool)
         .await?;
-    let mut backfill_transaction = database.pool.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-        .bind(delegate_profile_scope_lock_key(1, "demo-dao", GOVERNOR))
-        .execute(&mut *backfill_transaction)
+    sqlx::query(
+        "INSERT INTO delegate (
+           id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+           contract_address, log_index, transaction_index, from_delegate, to_delegate,
+           block_number, block_timestamp, transaction_hash, is_current, power
+         ) VALUES (
+           'profile-race-history', $1, 1, 'demo-dao', $2, $3,
+           $3, 0, 0, $4, $5, 1, 1, '0xprofile-race-history', FALSE, 0
+         )",
+    )
+    .bind(CONTRACT_SET_ID)
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .bind(ZERO_ADDRESS)
+    .bind(DELEGATE)
+    .execute(&database.pool)
+    .await?;
+
+    const REPAIR_GATE_LOCK: i64 = 9_202_026;
+    sqlx::query(&format!(
+        "CREATE FUNCTION wait_for_delegate_profile_repair_gate() RETURNS trigger
+         LANGUAGE plpgsql AS $$
+         BEGIN
+           IF NEW.delegate = '{DELEGATE}' THEN
+             PERFORM pg_advisory_xact_lock({REPAIR_GATE_LOCK});
+           END IF;
+           RETURN NEW;
+         END
+         $$"
+    ))
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "CREATE TRIGGER wait_for_delegate_profile_repair_gate
+         BEFORE INSERT ON delegate_profile
+         FOR EACH ROW EXECUTE FUNCTION wait_for_delegate_profile_repair_gate()",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    let controller_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database.database_url)
         .await?;
+    let mut controller = controller_pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1::BIGINT)")
+        .bind(REPAIR_GATE_LOCK)
+        .execute(&mut *controller)
+        .await?;
+
+    let repair_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database.database_url)
+        .await?;
+    let repair_application_name = format!("{}_repair", database.schema);
+    sqlx::query("SELECT set_config('application_name', $1, FALSE)")
+        .bind(&repair_application_name)
+        .execute(&repair_pool)
+        .await?;
+    let repair = tokio::spawn(async move {
+        repair_delegate_profiles_with_pool(
+            &repair_pool,
+            DelegateProfileBackfillOptions {
+                selection: DelegateProfileBackfillSelection::Scope(
+                    DelegateProfileScope::new(1, "demo-dao", GOVERNOR)
+                        .map_err(|error| error.to_string())?,
+                ),
+                dry_run: false,
+                max_scopes: None,
+            },
+        )
+        .await
+        .map_err(|error| error.to_string())
+    });
+    wait_for_advisory_lock(&database.pool, &repair_application_name).await?;
 
     let writer_pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&database.database_url)
         .await?;
+    let writer_application_name = format!("{}_writer", database.schema);
+    sqlx::query("SELECT set_config('application_name', $1, FALSE)")
+        .bind(&writer_application_name)
+        .execute(&writer_pool)
+        .await?;
     let batch = project_token_events(
         &token_projection_context(),
         vec![TokenProjectionEvent {
-            log: normalized_token_log("profile-race", 4, 0, 1),
+            log: normalized_token_log("profile-race-writer", 4, 0, 1),
             event: DecodedTokenEvent::DelegateChanged(DelegateChangedEvent {
                 delegator: DELEGATOR.to_owned(),
-                from_delegate: ZERO_ADDRESS.to_owned(),
-                to_delegate: DELEGATE.to_owned(),
+                from_delegate: DELEGATE.to_owned(),
+                to_delegate: SECOND_DELEGATE.to_owned(),
             }),
         }],
     )
     .map_err(|error| format!("race profile projection failed: {error:?}"))?;
+    let checkpoint_identity = IndexerCheckpointIdentity {
+        dao_code: "demo-dao".to_owned(),
+        chain_id: 1,
+        contract_set_id: CONTRACT_SET_ID.to_owned(),
+        stream_id: "governor-and-token-logs".to_owned(),
+        data_source_version: "datalens-v1".to_owned(),
+    };
+    CheckpointRepository::new(database.pool.clone())
+        .read_or_create(&checkpoint_identity, 1)
+        .await?;
     let mut writer = tokio::spawn(async move {
         let mut store = PostgresIndexerRunnerStore::new(writer_pool);
         let mut transaction = store
@@ -1368,19 +1466,28 @@ async fn test_postgres_token_projection_waits_for_delegate_profile_backfill_lock
                 ..IndexerProjectionBatch::default()
             })
             .map_err(|error| error.to_string())?;
+        transaction
+            .advance_checkpoint(&checkpoint_identity, 4, Some(4))
+            .map_err(|error| error.to_string())?;
         transaction.commit().map_err(|error| error.to_string())
     });
 
-    assert!(
-        timeout(Duration::from_millis(200), &mut writer)
-            .await
-            .is_err()
-    );
-    backfill_transaction.commit().await?;
-    timeout(Duration::from_secs(5), writer)
+    let writer_waited =
+        wait_for_writer_lock_or_completion(&database.pool, &writer_application_name, &writer)
+            .await?;
+    controller.commit().await?;
+    timeout(Duration::from_secs(5), repair)
+        .await
+        .map_err(|_| "repair did not resume after gate release")??
+        .map_err(|error| format!("repair failed after gate release: {error}"))?;
+    timeout(Duration::from_secs(5), &mut writer)
         .await
         .map_err(|_| "writer did not resume after backfill lock release")??
         .map_err(|error| format!("writer failed after lock release: {error}"))?;
+    assert!(
+        writer_waited,
+        "writer completed while the real repair held the scope lock"
+    );
 
     let historical_count: i64 = sqlx::query_scalar(
         "SELECT count(DISTINCT lower(to_delegate)) FROM delegate
@@ -1391,15 +1498,88 @@ async fn test_postgres_token_projection_waits_for_delegate_profile_backfill_lock
     .bind(ZERO_ADDRESS)
     .fetch_one(&database.pool)
     .await?;
-    assert_eq!(historical_count, 1);
-    assert_eq!(delegate_profile_count(&database.pool, "demo-dao").await?, 1);
+    assert_eq!(historical_count, 2);
+    assert_eq!(delegate_profile_count(&database.pool, "demo-dao").await?, 2);
     assert_eq!(
         delegate_profile_metric_counts(&database.pool, "demo-dao").await?,
-        vec![Some(1)]
+        vec![Some(2), Some(2)]
     );
+    let operation_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM delegate_changed
+         WHERE contract_set_id = $1 AND id = 'profile-race-writer'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(operation_count, 1);
+    let checkpoint: (String, String) = sqlx::query_as(
+        "SELECT processed_height::TEXT, next_block::TEXT
+         FROM degov_indexer_checkpoint
+         WHERE contract_set_id = $1 AND dao_code = 'demo-dao'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(checkpoint, ("4".to_owned(), "5".to_owned()));
 
     database.cleanup().await?;
     Ok(())
+}
+
+async fn wait_for_advisory_lock(
+    pool: &PgPool,
+    application_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS (
+                   SELECT 1 FROM pg_stat_activity
+                   WHERE application_name = $1 AND wait_event = 'advisory'
+                 )",
+            )
+            .bind(application_name)
+            .fetch_one(pool)
+            .await?;
+            if waiting {
+                return Ok::<_, sqlx::Error>(());
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .map_err(|_| "connection did not wait on advisory lock")??;
+    Ok(())
+}
+
+async fn wait_for_writer_lock_or_completion(
+    pool: &PgPool,
+    application_name: &str,
+    writer: &tokio::task::JoinHandle<Result<(), String>>,
+) -> Result<bool, Box<dyn Error>> {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if writer.is_finished() {
+                return Ok::<_, sqlx::Error>(false);
+            }
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS (
+                   SELECT 1 FROM pg_stat_activity
+                   WHERE application_name = $1 AND wait_event = 'advisory'
+                 )",
+            )
+            .bind(application_name)
+            .fetch_one(pool)
+            .await?;
+            if waiting {
+                return Ok(true);
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .map_err(|_| "writer neither completed nor waited on the scope lock")?
+    .map_err(Into::into)
 }
 
 #[tokio::test(flavor = "multi_thread")]
