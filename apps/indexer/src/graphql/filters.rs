@@ -362,6 +362,123 @@ pub(super) fn push_delegate_where<'a>(
     }
 }
 
+pub(super) fn push_delegate_profile_where<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
+    where_: Option<&'a DelegateWhereInput>,
+) {
+    if !implicit_scope.is_empty() || where_.is_some() {
+        query.push(" WHERE ");
+        let mut has_condition = false;
+        push_delegate_profile_implicit_scope_filters(query, &mut has_condition, implicit_scope, "");
+        if let Some(where_) = where_ {
+            push_delegate_profile_filters(query, &mut has_condition, where_, "");
+        }
+        if !has_condition {
+            query.push("TRUE");
+        }
+    }
+}
+
+fn push_delegate_profile_implicit_scope_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    scope: &'a GraphqlScope,
+    table_alias: &str,
+) {
+    if let Some(chain_id) = scope.chain_id {
+        push_column_eq(query, has_condition, table_alias, "chain_id", chain_id);
+    }
+    if let Some(governor_address) = &scope.governor_address {
+        push_normalized_address_eq(
+            query,
+            has_condition,
+            table_alias,
+            "governor_address",
+            governor_address,
+        );
+    }
+    if let Some(dao_code) = &scope.dao_code {
+        push_column_eq(query, has_condition, table_alias, "dao_code", dao_code);
+    }
+    if let Some(contract_set_id) = &scope.contract_set_id {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "contract_set_id",
+            contract_set_id,
+        );
+    }
+}
+
+fn push_delegate_profile_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    where_: &'a DelegateWhereInput,
+    table_alias: &str,
+) {
+    if let Some(chain_id) = where_.scope.chain_id_eq {
+        push_column_eq(query, has_condition, table_alias, "chain_id", chain_id);
+    }
+    if let Some(governor_address) = &where_.scope.governor_address_eq {
+        push_normalized_address_eq(
+            query,
+            has_condition,
+            table_alias,
+            "governor_address",
+            governor_address,
+        );
+    }
+    if let Some(dao_code) = &where_.scope.dao_code_eq {
+        push_column_eq(query, has_condition, table_alias, "dao_code", dao_code);
+    }
+    if let Some(from_delegate) = &where_.from_delegate_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "from_delegate",
+            from_delegate,
+        );
+    }
+    if let Some(to_delegate) = &where_.to_delegate_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "to_delegate",
+            to_delegate,
+        );
+    }
+    if let Some(is_current) = where_.is_current_eq {
+        push_column_eq(query, has_condition, table_alias, "is_current", is_current);
+    }
+    if let Some(power) = where_.power_lt {
+        push_and(query, has_condition);
+        push_qualified_column(query, table_alias, "power");
+        query.push(" < ").push_bind(power).push("::numeric");
+    }
+    if let Some(or) = &where_.or {
+        push_or_group(query, has_condition, or, |query, has_condition, filter| {
+            push_delegate_profile_filters(query, has_condition, filter, table_alias);
+        });
+    }
+}
+
+fn push_normalized_address_eq<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    query.push("lower(");
+    push_qualified_column(query, table_alias, column);
+    query.push(") = lower(").push_bind(value).push(")");
+}
+
 pub(super) fn push_delegate_filters<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     has_condition: &mut bool,

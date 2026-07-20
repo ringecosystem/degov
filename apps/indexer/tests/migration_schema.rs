@@ -184,6 +184,22 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "provisional_delegate_profile_delta_scope_idx",
+    )
+    .await?;
+    assert_index_definition_contains(
+        &database.pool,
+        &database.schema,
+        "provisional_delegate_profile_delta_scope_idx",
+        &[
+            "USING btree (chain_id, dao_code, lower(governor_address), lower(delegate))",
+            "WHERE (status = 'available'::text)",
+        ],
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "delegate_mapping_positive_count_idx",
     )
     .await?;
@@ -727,6 +743,56 @@ async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Er
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_migration_repairs_and_plans_delegate_profile_delta_index()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    sqlx::query(
+        "UPDATE pg_index
+         SET indisvalid = false
+         WHERE indexrelid = 'provisional_delegate_profile_delta_scope_idx'::regclass",
+    )
+    .execute(&database.pool)
+    .await?;
+    apply_migrations(&database.pool).await?;
+    assert_index_is_valid(
+        &database.pool,
+        &database.schema,
+        "provisional_delegate_profile_delta_scope_idx",
+    )
+    .await?;
+
+    sqlx::query("SET enable_seqscan = off")
+        .execute(&database.pool)
+        .await?;
+    let plan: Vec<String> = sqlx::query_scalar(
+        "EXPLAIN (COSTS OFF)
+         SELECT COUNT(DISTINCT lower(delegate_overlay.delegate))::int8
+         FROM degov_provisional_delegate_power_overlay delegate_overlay
+         WHERE delegate_overlay.status = 'available'
+           AND delegate_overlay.chain_id = 1135
+           AND delegate_overlay.dao_code = 'lisk-dao'
+           AND lower(delegate_overlay.governor_address) = lower('0xgovernor')",
+    )
+    .fetch_all(&database.pool)
+    .await?;
+    let plan = plan.join("\n");
+    assert!(
+        plan.contains("provisional_delegate_profile_delta_scope_idx"),
+        "expected logical-scope delta index in plan:\n{plan}"
+    );
+    assert!(
+        !plan.contains("Seq Scan on degov_provisional_delegate_power_overlay"),
+        "unexpected overlay sequential scan:\n{plan}"
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_migration_rebuilds_invalid_deferred_candidate_scope_drain_index()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -911,6 +977,16 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     ));
     assert!(runtime_migration.contains(
         "drop_invalid_runtime_index(connection, \"provisional_contributor_live_graphql_scope_idx\")"
+    ));
+    assert!(runtime_migration.contains(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_profile_delta_scope_idx
+         ON degov_provisional_delegate_power_overlay (
+            chain_id, dao_code, lower(governor_address), lower(delegate)
+         )
+         WHERE status = 'available'"
+    ));
+    assert!(runtime_migration.contains(
+        "drop_invalid_runtime_index(connection, \"provisional_delegate_profile_delta_scope_idx\")"
     ));
     assert!(runtime_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));
     assert!(runtime_migration.contains("WHERE status = 'pending'"));

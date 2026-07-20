@@ -1312,7 +1312,7 @@ async fn count_realtime_delegate_profiles(
         ) delegate
         "#,
     );
-    push_delegate_where(&mut query, implicit_scope, where_);
+    push_delegate_profile_where(&mut query, implicit_scope, where_);
     if !implicit_scope.is_empty() || where_.is_some() {
         query.push(" AND ");
     } else {
@@ -1376,7 +1376,7 @@ fn materialized_delegate_profile_scope<'a>(
         || implicit_scope
             .governor_address
             .as_deref()
-            .is_some_and(|implicit| implicit != governor_address)
+            .is_some_and(|implicit| !implicit.eq_ignore_ascii_case(governor_address))
     {
         return None;
     }
@@ -1388,50 +1388,76 @@ fn materialized_delegate_profile_scope<'a>(
     })
 }
 
+#[derive(Debug, FromRow)]
+struct MaterializedDelegateProfileStats {
+    metric_row_count: i64,
+    metric_non_null_count: i64,
+    metric_min: Option<i32>,
+    metric_max: Option<i32>,
+    provisional_delta: i64,
+}
+
+impl MaterializedDelegateProfileStats {
+    fn validated_count(&self) -> Option<i32> {
+        let materialized_count = self.metric_min?;
+        (self.metric_row_count > 0
+            && self.metric_non_null_count == self.metric_row_count
+            && self.metric_max == Some(materialized_count)
+            && materialized_count >= 0)
+            .then_some(materialized_count)
+    }
+}
+
+const MATERIALIZED_DELEGATE_PROFILES_SQL: &str = "WITH metric_stats AS (
+       SELECT COUNT(*)::int8 AS metric_row_count,
+         COUNT(delegate_profiles_count)::int8 AS metric_non_null_count,
+         MIN(delegate_profiles_count) AS metric_min,
+         MAX(delegate_profiles_count) AS metric_max
+       FROM data_metric
+       WHERE id = 'global'
+         AND chain_id = $1
+         AND dao_code = $2
+         AND lower(governor_address) = lower($3)
+     ),
+     provisional_stats AS (
+       SELECT COUNT(DISTINCT lower(delegate_overlay.delegate))::int8 AS provisional_delta
+       FROM degov_provisional_delegate_power_overlay delegate_overlay
+       WHERE delegate_overlay.status = 'available'
+         AND delegate_overlay.chain_id = $1
+         AND delegate_overlay.dao_code = $2
+         AND lower(delegate_overlay.governor_address) = lower($3)
+         AND lower(delegate_overlay.delegate) <> '0x0000000000000000000000000000000000000000'
+         AND NOT EXISTS (
+           SELECT 1
+           FROM delegate_profile durable_profile
+           WHERE durable_profile.chain_id = $1
+             AND durable_profile.dao_code = $2
+             AND durable_profile.governor_address = lower($3)
+             AND durable_profile.delegate = lower(delegate_overlay.delegate)
+         )
+     )
+     SELECT metric_stats.metric_row_count, metric_stats.metric_non_null_count,
+       metric_stats.metric_min, metric_stats.metric_max,
+       provisional_stats.provisional_delta
+     FROM metric_stats
+     CROSS JOIN provisional_stats";
+
 async fn count_materialized_delegate_profiles(
     pool: &PgPool,
     scope: DelegateProfileScope<'_>,
 ) -> GraphqlResult<Option<i64>> {
-    let materialized_count: Option<i32> = sqlx::query_scalar(
-        "SELECT MAX(delegate_profiles_count)
-         FROM data_metric
-         WHERE id = 'global'
-           AND chain_id = $1
-           AND dao_code = $2
-           AND lower(governor_address) = lower($3)",
-    )
-    .bind(scope.chain_id)
-    .bind(scope.dao_code)
-    .bind(scope.governor_address)
-    .fetch_one(pool)
-    .await?;
-    let Some(materialized_count) = materialized_count else {
+    let stats: MaterializedDelegateProfileStats =
+        sqlx::query_as(MATERIALIZED_DELEGATE_PROFILES_SQL)
+            .bind(scope.chain_id)
+            .bind(scope.dao_code)
+            .bind(scope.governor_address)
+            .fetch_one(pool)
+            .await?;
+    let Some(materialized_count) = stats.validated_count() else {
         return Ok(None);
     };
 
-    let provisional_delta: i64 = sqlx::query_scalar(
-        "SELECT COUNT(DISTINCT lower(delegate_overlay.delegate))::int8
-         FROM degov_provisional_delegate_power_overlay delegate_overlay
-         WHERE delegate_overlay.status = 'available'
-           AND delegate_overlay.chain_id = $1
-           AND delegate_overlay.dao_code = $2
-           AND lower(delegate_overlay.governor_address) = lower($3)
-           AND lower(delegate_overlay.delegate) <> '0x0000000000000000000000000000000000000000'
-           AND NOT EXISTS (
-             SELECT 1
-             FROM delegate_profile durable_profile
-             WHERE durable_profile.chain_id = $1
-               AND durable_profile.dao_code = $2
-               AND durable_profile.governor_address = lower($3)
-               AND durable_profile.delegate = lower(delegate_overlay.delegate)
-           )",
-    )
-    .bind(scope.chain_id)
-    .bind(scope.dao_code)
-    .bind(scope.governor_address)
-    .fetch_one(pool)
-    .await?;
-    let provisional_delta = i32::try_from(provisional_delta).map_err(|_| {
+    let provisional_delta = i32::try_from(stats.provisional_delta).map_err(|_| {
         async_graphql::Error::new("delegateProfilesCount provisional delta exceeds GraphQL Int")
     })?;
     let total = materialized_count
@@ -1497,6 +1523,43 @@ pub(super) async fn count_delegate_mappings(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_materialized_delegate_profile_sql_is_one_snapshot_without_durable_delegate_scan() {
+        let normalized = MATERIALIZED_DELEGATE_PROFILES_SQL
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_ascii_lowercase();
+
+        assert!(!normalized.contains(';'));
+        assert!(normalized.contains("with metric_stats as"));
+        assert!(normalized.contains("provisional_stats as"));
+        assert!(normalized.contains("delegate_overlay.status = 'available'"));
+        assert!(!normalized.contains(" from delegate "));
+        assert!(!normalized.contains(" join delegate "));
+        assert!(!normalized.contains("count(distinct lower(to_delegate))"));
+    }
+
+    #[test]
+    fn test_materialized_delegate_profile_stats_fail_closed() {
+        let stats = |metric_row_count, metric_non_null_count, metric_min, metric_max| {
+            MaterializedDelegateProfileStats {
+                metric_row_count,
+                metric_non_null_count,
+                metric_min,
+                metric_max,
+                provisional_delta: 0,
+            }
+        };
+
+        assert_eq!(stats(0, 0, None, None).validated_count(), None);
+        assert_eq!(stats(2, 0, None, None).validated_count(), None);
+        assert_eq!(stats(2, 1, Some(7), Some(7)).validated_count(), None);
+        assert_eq!(stats(2, 2, Some(4), Some(7)).validated_count(), None);
+        assert_eq!(stats(2, 2, Some(-1), Some(-1)).validated_count(), None);
+        assert_eq!(stats(2, 2, Some(7), Some(7)).validated_count(), Some(7));
+    }
 
     #[test]
     fn test_indexer_status_provisional_height_matches_contract_dataset_key() {

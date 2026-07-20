@@ -479,6 +479,18 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
 
     execute_concurrent_runtime_index(
         connection,
+        "provisional_delegate_profile_delta_scope_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_profile_delta_scope_idx
+         ON degov_provisional_delegate_power_overlay (
+            chain_id, dao_code, lower(governor_address), lower(delegate)
+         )
+         WHERE status = 'available'",
+    )
+    .await
+    .context("ensure provisional delegate profile delta scope index")?;
+
+    execute_concurrent_runtime_index(
+        connection,
         "provisional_contributor_live_graphql_scope_idx",
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_contributor_live_graphql_scope_idx
          ON degov_provisional_contributor_power_overlay (
@@ -877,6 +889,7 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
     )
     .await?;
     drop_invalid_runtime_index(connection, "provisional_delegate_live_graphql_scope_idx").await?;
+    drop_invalid_runtime_index(connection, "provisional_delegate_profile_delta_scope_idx").await?;
     drop_invalid_runtime_index(connection, "provisional_contributor_live_graphql_scope_idx")
         .await?;
 

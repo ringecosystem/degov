@@ -322,12 +322,12 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_graphql_delegate_profiles_count_uses_logical_scope_materialized_max()
+async fn test_graphql_delegate_profiles_count_uses_replicated_logical_scope_metric()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     sqlx::query(
         "UPDATE data_metric
-         SET delegate_profiles_count = 4
+         SET delegate_profiles_count = 7
          WHERE contract_set_id = $1 AND id = 'global'",
     )
     .bind(CONTRACT_SET_ID)
@@ -377,11 +377,165 @@ async fn test_graphql_delegate_profiles_count_uses_logical_scope_materialized_ma
     );
     let data = response.data.into_json()?;
     assert_eq!(data["delegateProfilesCount"], 7);
-    assert_eq!(data["dataMetrics"][0]["delegateProfilesCount"], 4);
+    assert_eq!(data["dataMetrics"][0]["delegateProfilesCount"], 7);
     assert_eq!(data["dataMetrics"][1]["delegateProfilesCount"], 7);
     assert_eq!(
         data["eventMetric"][0]["delegateProfilesCount"],
         serde_json::Value::Null
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_falls_back_for_invalid_metric_replicas()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+           id, contract_set_id, chain_id, dao_code, governor_address, delegate_profiles_count
+         ) VALUES ('global', 'lisk-second-contract-set', 1135, 'lisk-dao', '0xgovernor', 7)",
+    )
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let request = || {
+        Request::new(
+            r#"
+            query InvalidMaterializedDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        )
+    };
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = CASE contract_set_id WHEN $1 THEN 4 ELSE 7 END
+         WHERE id = 'global' AND chain_id = 1135 AND dao_code = 'lisk-dao'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let drift = schema.execute(request()).await;
+    assert!(
+        drift.errors.is_empty(),
+        "unexpected errors: {:?}",
+        drift.errors
+    );
+    assert_eq!(drift.data.into_json()?["delegateProfilesCount"], 2);
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = CASE contract_set_id WHEN $1 THEN 4 ELSE NULL END
+         WHERE id = 'global' AND chain_id = 1135 AND dao_code = 'lisk-dao'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let mixed_null = schema.execute(request()).await;
+    assert!(
+        mixed_null.errors.is_empty(),
+        "unexpected errors: {:?}",
+        mixed_null.errors
+    );
+    assert_eq!(mixed_null.data.into_json()?["delegateProfilesCount"], 2);
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = -1
+         WHERE id = 'global' AND chain_id = 1135 AND dao_code = 'lisk-dao'",
+    )
+    .execute(&database.pool)
+    .await?;
+    let negative = schema.execute(request()).await;
+    assert!(
+        negative.errors.is_empty(),
+        "unexpected errors: {:?}",
+        negative.errors
+    );
+    assert_eq!(negative.data.into_json()?["delegateProfilesCount"], 2);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_normalizes_governor_case_across_paths()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = 7
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query MixedCaseGovernorDelegateProfiles {
+              materialized: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xGoVeRnOr"
+              })
+              realtime: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xGoVeRnOr"
+                fromDelegate_eq: "0xdelegator"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    let data = response.data.into_json()?;
+    assert_eq!(data["materialized"], 7);
+    assert_eq!(data["realtime"], 1);
+
+    let implicit_schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            governor_address: Some("0xgovernor".to_owned()),
+            ..graphql::GraphqlScope::default()
+        },
+    );
+    let implicit_response = implicit_schema
+        .execute(Request::new(
+            r#"
+            query ImplicitMixedCaseGovernorDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xGoVeRnOr"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        implicit_response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        implicit_response.errors
+    );
+    assert_eq!(
+        implicit_response.data.into_json()?["delegateProfilesCount"],
+        7
     );
 
     database.cleanup().await?;
@@ -616,20 +770,20 @@ async fn test_graphql_delegate_profiles_count_falls_back_for_null_or_filtered_sc
 }
 
 #[test]
-fn test_graphql_delegate_profile_fast_path_source_does_not_scan_delegate() {
+fn test_graphql_delegate_profile_fast_path_uses_one_database_query() {
     let source = include_str!("../src/graphql/query.rs");
     let start = source
-        .find("async fn count_materialized_delegate_profiles")
-        .expect("materialized delegate profile count helper");
+        .find("const MATERIALIZED_DELEGATE_PROFILES_SQL")
+        .expect("materialized delegate profile combined statement");
     let end = source[start..]
         .find("pub(super) async fn count_delegate_profiles")
         .map(|offset| start + offset)
         .expect("public delegate profile count function");
     let fast_path = &source[start..end];
 
-    assert!(fast_path.contains("MAX(delegate_profiles_count)"));
-    assert!(!fast_path.contains("FROM delegate\n"));
-    assert!(!fast_path.contains("COUNT(DISTINCT lower(to_delegate))"));
+    assert_eq!(fast_path.matches(".fetch_one(pool)").count(), 1);
+    assert_eq!(fast_path.matches("sqlx::query_as").count(), 1);
+    assert!(!fast_path.contains("sqlx::query_scalar"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
