@@ -22,6 +22,7 @@ use crate::{
     MulticallReadGroup, PartialChainReadFailureReport, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
+    delegate_profile::acquire_delegate_profile_scope_lock,
     store::postgres::{
         drain_deferred_onchain_refresh_tasks, drain_deferred_onchain_refresh_tasks_for_scope,
         repair_missing_onchain_refresh_contributor_coverage,
@@ -4133,6 +4134,15 @@ async fn refresh_data_metric_scope(
     transaction: &mut Transaction<'_, Postgres>,
     scope: &DataMetricRefreshScope,
 ) -> Result<(), sqlx::Error> {
+    if let Some(dao_code) = &scope.dao_code {
+        acquire_delegate_profile_scope_lock(
+            transaction,
+            scope.chain_id,
+            dao_code,
+            &scope.governor_address,
+        )
+        .await?;
+    }
     let metric_id = data_metric_id(
         scope.chain_id,
         &scope.governor_address,
@@ -4140,9 +4150,24 @@ async fn refresh_data_metric_scope(
     );
 
     sqlx::query(
-        "INSERT INTO data_metric (
+        "WITH rollout AS (
+            SELECT COALESCE(bool_or(delegate_profiles_count IS NOT NULL), FALSE) AS initialized
+            FROM data_metric
+            WHERE id = 'global'
+              AND chain_id = $3
+              AND dao_code IS NOT DISTINCT FROM $4
+              AND lower(governor_address) = lower($5)
+         ), profile_count AS (
+            SELECT count(*)::INTEGER AS value
+            FROM delegate_profile
+            WHERE chain_id = $3
+              AND dao_code IS NOT DISTINCT FROM $4
+              AND governor_address = lower($5)
+         )
+         INSERT INTO data_metric (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address,
-            power_sum, contributor_count, holders_count, member_count
+            power_sum, contributor_count, holders_count, member_count,
+            delegate_profiles_count
          )
          SELECT
             $1, $2, $3, $4, $5, $6,
@@ -4154,7 +4179,9 @@ async fn refresh_data_metric_scope(
                     ELSE count(*)
                 END
             )::INTEGER,
-            count(*)::INTEGER
+            count(*)::INTEGER,
+            (SELECT CASE WHEN rollout.initialized THEN profile_count.value END
+             FROM rollout, profile_count)
          FROM contributor
          WHERE contract_set_id = $2 AND chain_id = $3 AND governor_address = $5 AND dao_code IS NOT DISTINCT FROM $4
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
@@ -4162,7 +4189,11 @@ async fn refresh_data_metric_scope(
              power_sum = EXCLUDED.power_sum,
              contributor_count = EXCLUDED.contributor_count,
              holders_count = EXCLUDED.holders_count,
-             member_count = EXCLUDED.member_count",
+             member_count = EXCLUDED.member_count,
+             delegate_profiles_count = COALESCE(
+                 EXCLUDED.delegate_profiles_count,
+                 data_metric.delegate_profiles_count
+             )",
     )
     .bind(metric_id)
     .bind(&scope.contract_set_id)

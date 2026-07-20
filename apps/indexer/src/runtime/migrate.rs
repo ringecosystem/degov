@@ -361,6 +361,19 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure current delegate power refresh index")?;
 
+    execute_concurrent_runtime_index(
+        connection,
+        "delegate_profile_backfill_scope_target_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_profile_backfill_scope_target_idx
+         ON delegate (chain_id, dao_code, lower(governor_address), lower(to_delegate))
+         WHERE chain_id IS NOT NULL
+           AND dao_code IS NOT NULL
+           AND governor_address IS NOT NULL
+           AND lower(to_delegate) <> '0x0000000000000000000000000000000000000000'",
+    )
+    .await
+    .context("ensure delegate profile backfill scope target index")?;
+
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS delegate_mapping_to_lookup_idx
          ON delegate_mapping (contract_set_id, \"to\") INCLUDE (id, power)",
@@ -463,6 +476,18 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     )
     .await
     .context("ensure live delegate overlay GraphQL scope index")?;
+
+    execute_concurrent_runtime_index(
+        connection,
+        "provisional_delegate_profile_delta_scope_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_profile_delta_scope_idx
+         ON degov_provisional_delegate_power_overlay (
+            chain_id, dao_code, lower(governor_address), lower(delegate)
+         )
+         WHERE status = 'available'",
+    )
+    .await
+    .context("ensure provisional delegate profile delta scope index")?;
 
     execute_concurrent_runtime_index(
         connection,
@@ -848,6 +873,7 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
     drop_invalid_runtime_index(connection, "delegate_rolling_metadata_preload_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_current_from_scope_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_current_power_refresh_idx").await?;
+    drop_invalid_runtime_index(connection, "delegate_profile_backfill_scope_target_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_to_lookup_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_effective_count_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_mapping_positive_count_idx").await?;
@@ -863,6 +889,7 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
     )
     .await?;
     drop_invalid_runtime_index(connection, "provisional_delegate_live_graphql_scope_idx").await?;
+    drop_invalid_runtime_index(connection, "provisional_delegate_profile_delta_scope_idx").await?;
     drop_invalid_runtime_index(connection, "provisional_contributor_live_graphql_scope_idx")
         .await?;
 

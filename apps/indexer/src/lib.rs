@@ -3,6 +3,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod datalens;
 pub mod decode;
+mod delegate_profile;
 pub mod error;
 pub mod graphql;
 pub mod metrics;
@@ -13,6 +14,8 @@ pub mod runner;
 pub mod runtime;
 pub mod runtime_config;
 pub mod store;
+
+pub use crate::delegate_profile::delegate_profile_scope_lock_key;
 
 pub use crate::chain::tool::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadFailure,

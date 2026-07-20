@@ -63,6 +63,180 @@ fn recompute_delegate_count_effective_chunk_size() -> usize {
     )
 }
 
+fn delegate_profile_scopes(batch: &IndexerProjectionBatch) -> BTreeSet<(i32, String, String)> {
+    let mut scopes = BTreeSet::new();
+    if let Some(token) = &batch.token {
+        for operation in &token.operations {
+            let common = token_operation_common(operation);
+            insert_delegate_profile_scope(
+                &mut scopes,
+                common.chain_id,
+                &common.dao_code,
+                &common.governor_address,
+            );
+        }
+        for row in &token.delegate_changed {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.delegate_votes_changed {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.token_transfers {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.delegate_rollings {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+    }
+    if let Some(proposal) = &batch.proposal {
+        for row in &proposal.proposals {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+        for row in &proposal.data_metrics {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+    }
+    if let Some(vote) = &batch.vote {
+        for row in &vote.contributor_vote_signals {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+        for row in &vote.data_metrics {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+    }
+    scopes
+}
+
+fn insert_token_delegate_profile_scope(
+    scopes: &mut BTreeSet<(i32, String, String)>,
+    common: &TokenEventCommon,
+) {
+    insert_delegate_profile_scope(
+        scopes,
+        common.chain_id,
+        &common.dao_code,
+        &common.governor_address,
+    );
+}
+
+fn insert_delegate_profile_scope(
+    scopes: &mut BTreeSet<(i32, String, String)>,
+    chain_id: i32,
+    dao_code: &str,
+    governor_address: &str,
+) {
+    scopes.insert((
+        chain_id,
+        dao_code.to_owned(),
+        governor_address.to_lowercase(),
+    ));
+}
+
+async fn insert_delegate_profiles(
+    transaction: &mut Transaction<'_, Postgres>,
+    batch: &TokenProjectionBatch,
+    inserted_operation_keys: &[(String, String)],
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let inserted_operation_keys = inserted_operation_keys
+        .iter()
+        .map(|(contract_set_id, id)| (contract_set_id.as_str(), id.as_str()))
+        .collect::<HashSet<_>>();
+    let profiles = batch
+        .delegate_changed
+        .iter()
+        .filter(|row| {
+            inserted_operation_keys.contains(&(row.common.contract_set_id.as_str(), row.id.as_str()))
+        })
+        .filter_map(|row| {
+            let delegate = row.to_delegate.to_lowercase();
+            (delegate != ZERO_DELEGATE_ADDRESS).then(|| {
+                (
+                    row.common.chain_id,
+                    row.common.dao_code.clone(),
+                    row.common.governor_address.to_lowercase(),
+                    delegate,
+                )
+            })
+        })
+        .collect::<BTreeSet<_>>();
+
+    if profiles.is_empty() {
+        return Ok(());
+    }
+
+    let mut query = QueryBuilder::<Postgres>::new(
+        "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate) ",
+    );
+    query.push_values(&profiles, |mut values, profile| {
+        values
+            .push_bind(profile.0)
+            .push_bind(&profile.1)
+            .push_bind(&profile.2)
+            .push_bind(&profile.3);
+    });
+    query.push(" ON CONFLICT DO NOTHING");
+    query.build().execute(&mut **transaction).await?;
+
+    Ok(())
+}
+
+async fn synchronize_delegate_profile_metrics(
+    transaction: &mut Transaction<'_, Postgres>,
+    scopes: &BTreeSet<(i32, String, String)>,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    for (chain_id, dao_code, governor_address) in scopes {
+        sqlx::query(
+            "WITH rollout AS (
+               SELECT COALESCE(bool_or(delegate_profiles_count IS NOT NULL), FALSE) AS initialized
+               FROM data_metric
+               WHERE id = 'global'
+                 AND chain_id = $1
+                 AND dao_code = $2
+                 AND lower(governor_address) = $3
+             ), profile_count AS (
+               SELECT count(*)::INTEGER AS value
+               FROM delegate_profile
+               WHERE chain_id = $1 AND dao_code = $2 AND governor_address = $3
+             )
+             UPDATE data_metric
+             SET delegate_profiles_count = profile_count.value
+             FROM rollout, profile_count
+             WHERE rollout.initialized
+               AND data_metric.id = 'global'
+               AND data_metric.chain_id = $1
+               AND data_metric.dao_code = $2
+               AND lower(data_metric.governor_address) = $3",
+        )
+        .bind(*chain_id)
+        .bind(dao_code)
+        .bind(governor_address)
+        .execute(&mut **transaction)
+        .await?;
+    }
+
+    Ok(())
+}
+
 fn chunk_count(row_count: usize, chunk_size: usize) -> usize {
     if row_count == 0 {
         0

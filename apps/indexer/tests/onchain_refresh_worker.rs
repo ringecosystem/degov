@@ -20,9 +20,11 @@ use degov_datalens_indexer::{
     OnchainRefreshWorker, OnchainRefreshWorkerConfig, PartialChainReadFailureReport,
     PostgresProvisionalPowerOverlayStore, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
-    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, refresh_live_power_overlays,
+    ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, delegate_profile_scope_lock_key,
+    refresh_live_power_overlays,
     runtime::{
-        apply_migrations,
+        DelegateProfileBackfillOptions, DelegateProfileBackfillSelection, DelegateProfileScope,
+        apply_migrations, repair_delegate_profiles_with_pool,
         worker::{OnchainRefreshWorkerBatchScope, OnchainRefreshWorkerScopeSchedule},
     },
 };
@@ -394,6 +396,7 @@ struct TestDatabase {
     _guard: MutexGuard<'static, ()>,
     pool: PgPool,
     schema: String,
+    database_url: String,
 }
 
 impl TestDatabase {
@@ -401,20 +404,24 @@ impl TestDatabase {
         let guard = DATABASE_TEST_LOCK.lock().await;
         let database_url = env::var("DEGOV_INDEXER_TEST_DATABASE_URL")
             .map_err(|_| "DEGOV_INDEXER_TEST_DATABASE_URL is required")?;
-        let pool = PgPoolOptions::new()
+        let setup_pool = PgPoolOptions::new()
             .max_connections(1)
             .connect(&database_url)
             .await?;
         let schema = unique_schema_name();
 
         sqlx::query("DROP SCHEMA IF EXISTS squid_processor CASCADE")
-            .execute(&pool)
+            .execute(&setup_pool)
             .await?;
         sqlx::query(&format!(r#"CREATE SCHEMA "{schema}""#))
-            .execute(&pool)
+            .execute(&setup_pool)
             .await?;
-        sqlx::query(&format!(r#"SET search_path TO "{schema}""#))
-            .execute(&pool)
+        setup_pool.close().await;
+
+        let database_url = database_url_with_search_path(&database_url, &schema);
+        let pool = PgPoolOptions::new()
+            .max_connections(4)
+            .connect(&database_url)
             .await?;
         apply_migrations(&pool).await?;
 
@@ -422,6 +429,7 @@ impl TestDatabase {
             _guard: guard,
             pool,
             schema,
+            database_url,
         })
     }
 
@@ -473,6 +481,9 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     )
     .await?;
     seed_data_metric_with_scope(&database.pool, "demo-dao", "7", 7, 7).await?;
+    sqlx::query("UPDATE data_metric SET delegate_profiles_count = 5 WHERE dao_code = 'demo-dao'")
+        .execute(&database.pool)
+        .await?;
     seed_final_delegate_with_scope(
         &database.pool,
         "demo-dao",
@@ -562,6 +573,12 @@ async fn test_onchain_refresh_worker_updates_contributors_tasks_and_metrics()
     assert_completed_task(&database.pool, "task-one", 1).await?;
     assert_completed_task(&database.pool, "task-two", 2).await?;
     assert_data_metric_counts(&database.pool, "7", 7, 7, 7, 7).await?;
+    let delegate_profiles_count: Option<i32> = sqlx::query_scalar(
+        "SELECT delegate_profiles_count FROM data_metric WHERE dao_code = 'demo-dao'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(delegate_profiles_count, Some(5));
     assert_table_count(&database.pool, "onchain_refresh_data_metric_task", 1).await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_ONE, "3", "11", "8").await?;
     assert_power_checkpoint(&database.pool, ACCOUNT_TWO, "0", "5", "5").await?;
@@ -644,6 +661,146 @@ async fn test_onchain_refresh_worker_waits_for_quiet_data_metric_refresh_task()
 
     database.cleanup().await?;
 
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_data_metric_refresh_waits_for_backfill_scope_lock_and_publishes_exact_metric()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_data_metric_with_scope(&database.pool, "scope-v1", "0", 0, 0).await?;
+    sqlx::query("UPDATE data_metric SET delegate_profiles_count = 1")
+        .execute(&database.pool)
+        .await?;
+    sqlx::query(
+        "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+         VALUES (46, 'demo-dao', $1, $2)",
+    )
+    .bind(GOVERNOR)
+    .bind(ACCOUNT_TWO)
+    .execute(&database.pool)
+    .await?;
+    seed_data_metric_refresh_task_with_scope(&database.pool, "scope-v2").await?;
+
+    let mut backfill_transaction = database.pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(delegate_profile_scope_lock_key(46, "demo-dao", GOVERNOR))
+        .execute(&mut *backfill_transaction)
+        .await?;
+    let worker_pool = named_test_pool(&database.database_url, "refresh-after-backfill").await?;
+    let worker = test_data_metric_refresh_worker(worker_pool);
+    let worker_future = worker.run_once();
+    tokio::pin!(worker_future);
+
+    tokio::select! {
+        result = &mut worker_future => {
+            result?;
+            return Err("refresh completed while backfill owned the logical scope lock".into());
+        }
+        result = wait_for_advisory_lock(&database.pool, "refresh-after-backfill") => result?,
+    }
+    backfill_transaction.commit().await?;
+    let report = worker_future.await?;
+
+    assert_eq!(report.data_metric_refreshes, 1);
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool).await?,
+        vec![Some(1), Some(1)]
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_backfill_waits_for_data_metric_refresh_scope_lock_and_repairs_new_replica()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_data_metric_with_scope(&database.pool, "scope-v1", "0", 0, 0).await?;
+    seed_final_delegate_with_scope(
+        &database.pool,
+        "scope-v1",
+        "demo-dao",
+        46,
+        ACCOUNT_ONE,
+        ACCOUNT_TWO,
+        "1",
+    )
+    .await?;
+    seed_data_metric_refresh_task_with_scope(&database.pool, "scope-v2").await?;
+
+    const INSERT_GATE: i64 = 920_002;
+    sqlx::query(
+        "CREATE FUNCTION wait_before_refresh_metric_insert() RETURNS trigger
+         LANGUAGE plpgsql AS $$
+         BEGIN
+           IF NEW.contract_set_id = 'scope-v2' THEN
+             PERFORM pg_advisory_xact_lock(920002);
+           END IF;
+           RETURN NEW;
+         END
+         $$",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "CREATE TRIGGER wait_before_refresh_metric_insert
+         BEFORE INSERT ON data_metric
+         FOR EACH ROW EXECUTE FUNCTION wait_before_refresh_metric_insert()",
+    )
+    .execute(&database.pool)
+    .await?;
+    let mut gate_transaction = database.pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(INSERT_GATE)
+        .execute(&mut *gate_transaction)
+        .await?;
+
+    let worker_pool = named_test_pool(&database.database_url, "refresh-before-backfill").await?;
+    let worker = test_data_metric_refresh_worker(worker_pool);
+    let worker_future = worker.run_once();
+    tokio::pin!(worker_future);
+    tokio::select! {
+        result = &mut worker_future => {
+            result?;
+            return Err("refresh completed before reaching the insert gate".into());
+        }
+        result = wait_for_advisory_lock(&database.pool, "refresh-before-backfill") => result?,
+    }
+    let repair_pool = named_test_pool(&database.database_url, "backfill-after-refresh").await?;
+    let repair_future = async move {
+        repair_delegate_profiles_with_pool(
+            &repair_pool,
+            DelegateProfileBackfillOptions {
+                selection: DelegateProfileBackfillSelection::Scope(DelegateProfileScope::new(
+                    46, "demo-dao", GOVERNOR,
+                )?),
+                dry_run: false,
+                max_scopes: None,
+            },
+        )
+        .await
+    };
+    tokio::pin!(repair_future);
+
+    tokio::select! {
+        result = &mut repair_future => {
+            result?;
+            return Err("backfill completed while refresh owned the logical scope lock".into());
+        }
+        result = wait_for_advisory_lock(&database.pool, "backfill-after-refresh") => result?,
+    }
+    gate_transaction.commit().await?;
+    let (worker_report, backfill_report) = tokio::join!(&mut worker_future, &mut repair_future);
+    let worker_report = worker_report?;
+    let backfill_report = backfill_report?;
+
+    assert_eq!(worker_report.data_metric_refreshes, 1);
+    assert_eq!(backfill_report.metric_rows_updated, 2);
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool).await?,
+        vec![Some(1), Some(1)]
+    );
+    database.cleanup().await?;
     Ok(())
 }
 
@@ -3343,6 +3500,95 @@ async fn seed_data_metric_refresh_task(pool: &PgPool) -> Result<(), sqlx::Error>
     Ok(())
 }
 
+async fn seed_data_metric_refresh_task_with_scope(
+    pool: &PgPool,
+    contract_set_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO onchain_refresh_data_metric_task (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            created_at, updated_at
+         ) VALUES ($1, $2, 46, 'demo-dao', $3, $4, 10000, 10000)",
+    )
+    .bind(format!("{contract_set_id}:46:demo-dao:{GOVERNOR}"))
+    .bind(contract_set_id)
+    .bind(GOVERNOR)
+    .bind(TOKEN)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn test_data_metric_refresh_worker(pool: PgPool) -> OnchainRefreshWorker<MockOnchainRefreshReader> {
+    OnchainRefreshWorker::new(
+        pool,
+        OnchainRefreshWorkerConfig {
+            batch_size: 10,
+            apply_batch_size: 1_000,
+            max_attempts: 3,
+            deferred_drain_batch_size: 100,
+            debounce: Duration::from_secs(120),
+            lock_ttl: Duration::from_secs(60),
+            retry_delay: Duration::from_secs(30),
+            lock_owner: "test-worker".to_owned(),
+        },
+        MockOnchainRefreshReader::from_values(BTreeMap::new()),
+    )
+}
+
+async fn named_test_pool(
+    database_url: &str,
+    application_name: &str,
+) -> Result<PgPool, sqlx::Error> {
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(database_url)
+        .await?;
+    sqlx::query("SELECT set_config('application_name', $1, FALSE)")
+        .bind(application_name)
+        .execute(&pool)
+        .await?;
+    Ok(pool)
+}
+
+async fn wait_for_advisory_lock(
+    pool: &PgPool,
+    application_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS (
+                   SELECT 1 FROM pg_stat_activity
+                   WHERE application_name = $1 AND wait_event = 'advisory'
+                 )",
+            )
+            .bind(application_name)
+            .fetch_one(pool)
+            .await?;
+            if waiting {
+                return Ok::<_, sqlx::Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .map_err(|_| "connection did not wait on advisory lock")??;
+    Ok(())
+}
+
+async fn delegate_profile_metric_counts(pool: &PgPool) -> Result<Vec<Option<i32>>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT delegate_profiles_count
+         FROM data_metric
+         WHERE chain_id = 46 AND dao_code = 'demo-dao' AND lower(governor_address) = $1
+         ORDER BY contract_set_id",
+    )
+    .bind(GOVERNOR)
+    .fetch_all(pool)
+    .await
+}
+
 async fn seed_recent_data_metric_refresh_task(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO onchain_refresh_data_metric_task (
@@ -4115,6 +4361,11 @@ fn unique_schema_name() -> String {
         millis,
         sequence
     )
+}
+
+fn database_url_with_search_path(database_url: &str, schema: &str) -> String {
+    let separator = if database_url.contains('?') { '&' } else { '?' };
+    format!("{database_url}{separator}options=-csearch_path%3D{schema}")
 }
 
 fn unix_time_millis_for_test() -> i64 {
