@@ -447,6 +447,8 @@ pub struct ProposalWhereInput {
 #[derive(Clone, Debug, Default, InputObject)]
 #[graphql(rename_fields = "camelCase")]
 pub struct VoteCastGroupWhereInput {
+    #[graphql(name = "id_eq")]
+    pub(super) id_eq: Option<String>,
     #[graphql(name = "voter_eq")]
     pub(super) voter_eq: Option<String>,
     #[graphql(name = "support_eq")]

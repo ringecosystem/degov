@@ -322,6 +322,68 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_nested_voters_filter_by_exact_punctuated_id() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            dao_code: Some("lisk-dao".to_owned()),
+            chain_id: Some(1135),
+            governor_address: Some("0xgovernor".to_owned()),
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+        },
+    );
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query NestedVoteIdFilter {
+              proposals(where: { proposalId_eq: "101" }) {
+                exact: voters(where: { id_eq: "vote:101:2" }) {
+                  id
+                  voter
+                  support
+                }
+                recursive: voters(
+                  where: {
+                    OR: [
+                      { id_eq: "vote:missing" }
+                      { id_eq: "vote:101:2", voter_eq: "0xvoter2", support_eq: 0 }
+                    ]
+                  }
+                ) {
+                  id
+                }
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    let data = response.data.into_json()?;
+    assert_eq!(data["proposals"][0]["exact"][0]["id"], "vote:101:2");
+    assert_eq!(data["proposals"][0]["exact"][0]["voter"], "0xvoter2");
+    assert_eq!(data["proposals"][0]["exact"][0]["support"], 0);
+    assert_eq!(
+        data["proposals"][0]["exact"]
+            .as_array()
+            .expect("exact voters")
+            .len(),
+        1
+    );
+    assert_eq!(data["proposals"][0]["recursive"][0]["id"], "vote:101:2");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_schema_rejects_removed_connection_fields() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let schema = graphql::build_schema(database.pool.clone());

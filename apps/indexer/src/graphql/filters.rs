@@ -154,6 +154,9 @@ pub(super) fn push_vote_cast_group_filters<'a>(
     where_: &'a VoteCastGroupWhereInput,
     table_alias: &str,
 ) {
+    if let Some(id) = &where_.id_eq {
+        push_column_eq(query, has_condition, table_alias, "id", id);
+    }
     if let Some(voter) = &where_.voter_eq {
         push_column_eq(query, has_condition, table_alias, "voter", voter);
     }
@@ -686,5 +689,21 @@ mod tests {
             sql.contains("proposal.vote_end_timestamp") && sql.contains(">= $4::numeric(78,0)")
         );
         assert!(sql.contains("proposal.vote_end_timestamp") && sql.contains("< $5::numeric(78,0)"));
+    }
+
+    #[test]
+    fn test_push_vote_cast_group_filters_binds_id() {
+        let untrusted_id = "vote:101:2') OR TRUE --";
+        let where_ = VoteCastGroupWhereInput {
+            id_eq: Some(untrusted_id.to_owned()),
+            ..VoteCastGroupWhereInput::default()
+        };
+        let mut query = QueryBuilder::<Postgres>::new("SELECT * FROM vote_cast_group WHERE ");
+        let mut has_condition = false;
+
+        push_vote_cast_group_filters(&mut query, &mut has_condition, &where_, "vote_cast_group");
+
+        assert!(!query.sql().contains(untrusted_id));
+        assert!(query.sql().contains("vote_cast_group.id = $1"));
     }
 }
