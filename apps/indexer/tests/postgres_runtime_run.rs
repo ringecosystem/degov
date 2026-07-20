@@ -844,6 +844,9 @@ async fn test_postgres_data_metric_event_rows_are_idempotent_and_keep_global()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     seed_global_metric(&database.pool).await?;
+    sqlx::query("UPDATE data_metric SET delegate_profiles_count = 5 WHERE id = 'global'")
+        .execute(&database.pool)
+        .await?;
     let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
     let proposal_batch = project_proposal_events(
         &proposal_projection_context(),
@@ -965,6 +968,11 @@ async fn test_postgres_data_metric_event_rows_are_idempotent_and_keep_global()
         .fetch_one(&database.pool)
         .await?;
     assert_eq!(global.get::<String, _>("id"), "global");
+    let delegate_profiles_count: Option<i32> =
+        sqlx::query_scalar("SELECT delegate_profiles_count FROM data_metric WHERE id = 'global'")
+            .fetch_one(&database.pool)
+            .await?;
+    assert_eq!(delegate_profiles_count, Some(5));
 
     database.cleanup().await?;
 

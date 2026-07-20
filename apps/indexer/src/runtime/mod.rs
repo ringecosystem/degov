@@ -1,4 +1,5 @@
 pub mod datalens;
+pub mod delegate_profile_backfill;
 pub mod graphql;
 pub mod indexer;
 pub mod migrate;
@@ -8,6 +9,11 @@ pub mod timelock_proposal_link_backfill;
 pub mod worker;
 
 pub use datalens::smoke_datalens;
+pub use delegate_profile_backfill::{
+    DelegateProfileBackfillError, DelegateProfileBackfillOptions, DelegateProfileBackfillReport,
+    DelegateProfileBackfillSelection, DelegateProfileScope, repair_delegate_profiles,
+    repair_delegate_profiles_with_pool,
+};
 pub use graphql::run_graphql;
 pub use indexer::run_indexer;
 pub use migrate::{

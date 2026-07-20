@@ -49,6 +49,7 @@ const REQUIRED_TABLES: &[&str] = &[
     "timelock_role_event",
     "timelock_min_delay_change",
     "data_metric",
+    "delegate_profile",
     "delegate_rolling",
     "delegate",
     "contributor",
@@ -148,6 +149,20 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     for table_name in REQUIRED_TABLES {
         assert_table_exists(&database.pool, &database.schema, table_name).await?;
     }
+    assert_column_exists(
+        &database.pool,
+        &database.schema,
+        "data_metric",
+        "delegate_profiles_count",
+    )
+    .await?;
+    assert_primary_key_columns(
+        &database.pool,
+        &database.schema,
+        "delegate_profile",
+        &["chain_id", "dao_code", "governor_address", "delegate"],
+    )
+    .await?;
     assert_index_exists(
         &database.pool,
         &database.schema,
@@ -335,6 +350,61 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
 
     database.cleanup().await?;
 
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_delegate_profile_migration_rerun_preserves_materialized_data()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    apply_schema_migrations(&database.pool).await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+           id, contract_set_id, chain_id, dao_code, governor_address, delegate_profiles_count
+         ) VALUES ('global', 'scope-a', 1, 'dao-a', '0xgovernora', 1)",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+         VALUES (1, 'dao-a', '0xgovernora', '0xdelegate1')",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    assert!(
+        sqlx::query(
+            "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+             VALUES (1, 'dao-a', '0xGovernorA', '0xdelegate2')",
+        )
+        .execute(&database.pool)
+        .await
+        .is_err()
+    );
+    assert!(
+        sqlx::query(
+            "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+             VALUES (1, 'dao-a', '0xgovernora', '0x0000000000000000000000000000000000000000')",
+        )
+        .execute(&database.pool)
+        .await
+        .is_err()
+    );
+
+    apply_schema_migrations(&database.pool).await?;
+
+    let profile_count: i64 = sqlx::query_scalar("SELECT count(*) FROM delegate_profile")
+        .fetch_one(&database.pool)
+        .await?;
+    let metric_count: Option<i32> = sqlx::query_scalar(
+        "SELECT delegate_profiles_count FROM data_metric WHERE contract_set_id = 'scope-a'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(profile_count, 1);
+    assert_eq!(metric_count, Some(1));
+
+    database.cleanup().await?;
     Ok(())
 }
 
@@ -772,7 +842,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
             "0007_checkpoint_adaptive_chunk_state.sql",
             "0008_indexer_latest_head.sql",
             "0009_provisional_proposal_event_fields.sql",
-            "0010_provisional_vote_overlays.sql"
+            "0010_provisional_vote_overlays.sql",
+            "0011_delegate_profile_materialization.sql"
         ]
     );
 
@@ -995,6 +1066,62 @@ async fn assert_table_exists(
     .await?;
 
     assert!(exists, "expected table {schema}.{table_name} to exist");
+
+    Ok(())
+}
+
+async fn assert_column_exists(
+    pool: &PgPool,
+    schema: &str,
+    table_name: &str,
+    column_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+           SELECT 1
+           FROM information_schema.columns
+           WHERE table_schema = $1 AND table_name = $2 AND column_name = $3
+         )",
+    )
+    .bind(schema)
+    .bind(table_name)
+    .bind(column_name)
+    .fetch_one(pool)
+    .await?;
+
+    assert!(
+        exists,
+        "expected column {schema}.{table_name}.{column_name} to exist"
+    );
+
+    Ok(())
+}
+
+async fn assert_primary_key_columns(
+    pool: &PgPool,
+    schema: &str,
+    table_name: &str,
+    expected: &[&str],
+) -> Result<(), Box<dyn Error>> {
+    let columns: Vec<String> = sqlx::query_scalar(
+        "SELECT attribute.attname
+         FROM pg_constraint constraint_definition
+         JOIN pg_class table_definition ON table_definition.oid = constraint_definition.conrelid
+         JOIN pg_namespace namespace ON namespace.oid = table_definition.relnamespace
+         JOIN unnest(constraint_definition.conkey) WITH ORDINALITY key(attnum, ordinal) ON TRUE
+         JOIN pg_attribute attribute
+           ON attribute.attrelid = table_definition.oid AND attribute.attnum = key.attnum
+         WHERE constraint_definition.contype = 'p'
+           AND namespace.nspname = $1
+           AND table_definition.relname = $2
+         ORDER BY key.ordinal",
+    )
+    .bind(schema)
+    .bind(table_name)
+    .fetch_all(pool)
+    .await?;
+
+    assert_eq!(columns, expected);
 
     Ok(())
 }

@@ -1,9 +1,10 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use degov_datalens_indexer::runtime::{
+    DelegateProfileBackfillOptions, DelegateProfileBackfillSelection, DelegateProfileScope,
     TimelockProposalLinkBackfillOptions, migrate, refresh_proposal_reference_fields,
-    refresh_proposal_titles, repair_invalid_runtime_indexes, repair_timelock_proposal_links,
-    run_graphql, run_indexer, run_worker, smoke_datalens,
+    refresh_proposal_titles, repair_delegate_profiles, repair_invalid_runtime_indexes,
+    repair_timelock_proposal_links, run_graphql, run_indexer, run_worker, smoke_datalens,
 };
 
 #[derive(Debug, Parser)]
@@ -40,6 +41,25 @@ enum Command {
         batch_size: usize,
         #[arg(long, default_value_t = 20)]
         max_batches: usize,
+    },
+    #[command(group(
+        clap::ArgGroup::new("delegate_profile_selection")
+            .required(true)
+            .args(["all_scopes", "chain_id"])
+    ))]
+    RepairDelegateProfiles {
+        #[arg(long, conflicts_with_all = ["chain_id", "dao_code", "governor_address"])]
+        all_scopes: bool,
+        #[arg(long, requires_all = ["dao_code", "governor_address"])]
+        chain_id: Option<i32>,
+        #[arg(long, requires_all = ["chain_id", "governor_address"])]
+        dao_code: Option<String>,
+        #[arg(long, requires_all = ["chain_id", "dao_code"])]
+        governor_address: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        max_scopes: Option<usize>,
     },
 }
 
@@ -109,6 +129,45 @@ async fn main() -> anyhow::Result<()> {
             );
             Ok(())
         }
+        Command::RepairDelegateProfiles {
+            all_scopes,
+            chain_id,
+            dao_code,
+            governor_address,
+            dry_run,
+            max_scopes,
+        } => {
+            let selection = if all_scopes {
+                DelegateProfileBackfillSelection::AllScopes
+            } else {
+                let (Some(chain_id), Some(dao_code), Some(governor_address)) =
+                    (chain_id, dao_code, governor_address)
+                else {
+                    anyhow::bail!(
+                        "delegate profile repair requires --all-scopes or a complete logical scope"
+                    );
+                };
+                DelegateProfileBackfillSelection::Scope(DelegateProfileScope::new(
+                    chain_id,
+                    dao_code,
+                    governor_address,
+                )?)
+            };
+            let report = repair_delegate_profiles(DelegateProfileBackfillOptions {
+                selection,
+                dry_run,
+                max_scopes,
+            })
+            .await?;
+            log::info!(
+                "delegate profile repair completed dry_run={} scopes_processed={} profiles_inserted={} metric_rows_updated={}",
+                report.dry_run,
+                report.scopes_processed,
+                report.profiles_inserted,
+                report.metric_rows_updated
+            );
+            Ok(())
+        }
     }
 }
 
@@ -118,4 +177,83 @@ fn init_logging() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init()
         .map_err(|error| anyhow::anyhow!("initialize tracing subscriber: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, Command};
+    use clap::Parser;
+
+    #[test]
+    fn test_repair_delegate_profiles_parses_scoped_canary() {
+        let cli = Cli::try_parse_from([
+            "degov-datalens-indexer",
+            "repair-delegate-profiles",
+            "--chain-id",
+            "1",
+            "--dao-code",
+            "dao-a",
+            "--governor-address",
+            "0xGovernorA",
+            "--dry-run",
+        ])
+        .expect("scoped delegate profile repair parses");
+
+        assert!(matches!(
+            cli.command,
+            Command::RepairDelegateProfiles {
+                all_scopes: false,
+                chain_id: Some(1),
+                dao_code: Some(ref dao_code),
+                governor_address: Some(ref governor_address),
+                dry_run: true,
+                max_scopes: None,
+            } if dao_code == "dao-a" && governor_address == "0xGovernorA"
+        ));
+    }
+
+    #[test]
+    fn test_repair_delegate_profiles_requires_explicit_scope_selection() {
+        assert!(
+            Cli::try_parse_from(["degov-datalens-indexer", "repair-delegate-profiles"]).is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "degov-datalens-indexer",
+                "repair-delegate-profiles",
+                "--all-scopes",
+                "--chain-id",
+                "1",
+                "--dao-code",
+                "dao-a",
+                "--governor-address",
+                "0xgovernora",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_repair_delegate_profiles_parses_all_scopes_limit() {
+        let cli = Cli::try_parse_from([
+            "degov-datalens-indexer",
+            "repair-delegate-profiles",
+            "--all-scopes",
+            "--max-scopes",
+            "25",
+        ])
+        .expect("all-scope delegate profile repair parses");
+
+        assert!(matches!(
+            cli.command,
+            Command::RepairDelegateProfiles {
+                all_scopes: true,
+                chain_id: None,
+                dao_code: None,
+                governor_address: None,
+                dry_run: false,
+                max_scopes: Some(25),
+            }
+        ));
+    }
 }
