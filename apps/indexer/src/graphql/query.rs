@@ -1419,21 +1419,26 @@ const MATERIALIZED_DELEGATE_PROFILES_SQL: &str = "WITH metric_stats AS (
          AND dao_code = $2
          AND lower(governor_address) = lower($3)
      ),
-     provisional_stats AS (
-       SELECT COUNT(DISTINCT lower(delegate_overlay.delegate))::int8 AS provisional_delta
+     overlay_delegates AS (
+       SELECT DISTINCT lower(delegate_overlay.delegate) AS delegate
        FROM degov_provisional_delegate_power_overlay delegate_overlay
        WHERE delegate_overlay.status = 'available'
+         AND delegate_overlay.source <> 'live-onchain'
          AND delegate_overlay.chain_id = $1
          AND delegate_overlay.dao_code = $2
          AND lower(delegate_overlay.governor_address) = lower($3)
          AND lower(delegate_overlay.delegate) <> '0x0000000000000000000000000000000000000000'
-         AND NOT EXISTS (
+     ),
+     provisional_stats AS (
+       SELECT COUNT(*)::int8 AS provisional_delta
+       FROM overlay_delegates overlay_delegate
+       WHERE NOT EXISTS (
            SELECT 1
            FROM delegate_profile durable_profile
            WHERE durable_profile.chain_id = $1
              AND durable_profile.dao_code = $2
              AND durable_profile.governor_address = lower($3)
-             AND durable_profile.delegate = lower(delegate_overlay.delegate)
+             AND durable_profile.delegate = overlay_delegate.delegate
          )
      )
      SELECT metric_stats.metric_row_count, metric_stats.metric_non_null_count,
@@ -1535,7 +1540,13 @@ mod tests {
         assert!(!normalized.contains(';'));
         assert!(normalized.contains("with metric_stats as"));
         assert!(normalized.contains("provisional_stats as"));
+        assert!(normalized.contains("overlay_delegates as"));
         assert!(normalized.contains("delegate_overlay.status = 'available'"));
+        assert!(normalized.contains("delegate_overlay.source <> 'live-onchain'"));
+        assert!(
+            normalized.contains("select distinct lower(delegate_overlay.delegate) as delegate")
+        );
+        assert!(normalized.contains("durable_profile.delegate = overlay_delegate.delegate"));
         assert!(!normalized.contains(" from delegate "));
         assert!(!normalized.contains(" join delegate "));
         assert!(!normalized.contains("count(distinct lower(to_delegate))"));

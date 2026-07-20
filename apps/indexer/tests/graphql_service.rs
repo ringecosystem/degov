@@ -544,7 +544,7 @@ async fn test_graphql_delegate_profiles_count_normalizes_governor_case_across_pa
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_graphql_delegate_profiles_count_adds_only_new_available_overlay_targets()
+async fn test_graphql_delegate_profiles_count_adds_only_distinct_nonlive_overlay_targets()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     sqlx::query(
@@ -570,17 +570,21 @@ async fn test_graphql_delegate_profiles_count_adds_only_new_available_overlay_ta
           delegator, delegate, power, is_current, source, status
         ) VALUES
           ('overlay:new-a', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
-           '0xnew-a', '0xNeW', 1, TRUE, 'live-onchain', 'available'),
+           '0xnew-a', '0xNeW', 1, TRUE, 'provider', 'available'),
           ('overlay:new-b', 'lisk-second-contract-set', 1135, 'lisk', 'lisk-dao', '0xGOVERNOR',
-           '0xnew-b', '0xnew', 1, TRUE, 'live-onchain', 'available'),
+           '0xnew-b', '0xnew', 1, TRUE, 'safe-to-latest', 'available'),
+          ('overlay:new-c', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xnew-c', '0xNEW', 1, TRUE, 'provider', 'available'),
           ('overlay:registry', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
-           '0xregistry', '0xDELEGATE', 1, TRUE, 'live-onchain', 'available'),
+           '0xregistry', '0xDELEGATE', 1, TRUE, 'provider', 'available'),
           ('overlay:zero', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
-           '0xzero', '0x0000000000000000000000000000000000000000', 1, TRUE, 'live-onchain', 'available'),
+           '0xzero', '0x0000000000000000000000000000000000000000', 1, TRUE, 'provider', 'available'),
           ('overlay:invalid', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
-           '0xinvalid', '0xinvalid', 1, TRUE, 'live-onchain', 'invalid'),
+           '0xinvalid', '0xinvalid', 1, TRUE, 'provider', 'invalid'),
           ('overlay:finalized', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
-           '0xfinalized', '0xfinalized', 1, TRUE, 'live-onchain', 'finalized')
+           '0xfinalized', '0xfinalized', 1, TRUE, 'provider', 'finalized'),
+          ('overlay:live-novel', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xlive', '0xnovel-live-only', 1, TRUE, 'live-onchain', 'available')
         "#,
     )
     .bind(CONTRACT_SET_ID)

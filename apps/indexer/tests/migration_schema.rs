@@ -187,13 +187,20 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
         "provisional_delegate_profile_delta_scope_idx",
     )
     .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
+        "provisional_delegate_profile_delta_nonlive_cover_idx",
+    )
+    .await?;
     assert_index_definition_contains(
         &database.pool,
         &database.schema,
-        "provisional_delegate_profile_delta_scope_idx",
+        "provisional_delegate_profile_delta_nonlive_cover_idx",
         &[
             "USING btree (chain_id, dao_code, lower(governor_address), lower(delegate))",
-            "WHERE (status = 'available'::text)",
+            "INCLUDE (governor_address, delegate)",
+            "WHERE ((status = 'available'::text) AND (source <> 'live-onchain'::text) AND (lower(delegate) <> '0x0000000000000000000000000000000000000000'::text))",
         ],
     )
     .await?;
@@ -751,7 +758,7 @@ async fn test_migration_repairs_and_plans_delegate_profile_delta_index()
     sqlx::query(
         "UPDATE pg_index
          SET indisvalid = false
-         WHERE indexrelid = 'provisional_delegate_profile_delta_scope_idx'::regclass",
+         WHERE indexrelid = 'provisional_delegate_profile_delta_nonlive_cover_idx'::regclass",
     )
     .execute(&database.pool)
     .await?;
@@ -759,7 +766,7 @@ async fn test_migration_repairs_and_plans_delegate_profile_delta_index()
     assert_index_is_valid(
         &database.pool,
         &database.schema,
-        "provisional_delegate_profile_delta_scope_idx",
+        "provisional_delegate_profile_delta_nonlive_cover_idx",
     )
     .await?;
 
@@ -768,18 +775,31 @@ async fn test_migration_repairs_and_plans_delegate_profile_delta_index()
         .await?;
     let plan: Vec<String> = sqlx::query_scalar(
         "EXPLAIN (COSTS OFF)
-         SELECT COUNT(DISTINCT lower(delegate_overlay.delegate))::int8
-         FROM degov_provisional_delegate_power_overlay delegate_overlay
-         WHERE delegate_overlay.status = 'available'
-           AND delegate_overlay.chain_id = 1135
-           AND delegate_overlay.dao_code = 'lisk-dao'
-           AND lower(delegate_overlay.governor_address) = lower('0xgovernor')",
+         WITH overlay_delegates AS (
+           SELECT DISTINCT lower(delegate_overlay.delegate) AS delegate
+           FROM degov_provisional_delegate_power_overlay delegate_overlay
+           WHERE delegate_overlay.status = 'available'
+             AND delegate_overlay.source <> 'live-onchain'
+             AND delegate_overlay.chain_id = 1135
+             AND delegate_overlay.dao_code = 'lisk-dao'
+             AND lower(delegate_overlay.governor_address) = lower('0xgovernor')
+             AND lower(delegate_overlay.delegate) <> '0x0000000000000000000000000000000000000000'
+         )
+         SELECT COUNT(*)::int8
+         FROM overlay_delegates overlay_delegate
+         WHERE NOT EXISTS (
+           SELECT 1 FROM delegate_profile durable_profile
+           WHERE durable_profile.chain_id = 1135
+             AND durable_profile.dao_code = 'lisk-dao'
+             AND durable_profile.governor_address = lower('0xgovernor')
+             AND durable_profile.delegate = overlay_delegate.delegate
+         )",
     )
     .fetch_all(&database.pool)
     .await?;
     let plan = plan.join("\n");
     assert!(
-        plan.contains("provisional_delegate_profile_delta_scope_idx"),
+        plan.contains("provisional_delegate_profile_delta_nonlive_cover_idx"),
         "expected logical-scope delta index in plan:\n{plan}"
     );
     assert!(
@@ -790,6 +810,136 @@ async fn test_migration_repairs_and_plans_delegate_profile_delta_index()
     database.cleanup().await?;
 
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_delegate_profile_delta_plan_deduplicates_nonlive_targets_before_durable_probes()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    sqlx::query(
+        "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+         VALUES (1135, 'lisk-dao', '0xgovernor', '0xprovider0000')",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO degov_provisional_delegate_power_overlay (
+           id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+           delegator, delegate, power, is_current, source, status
+         )
+         SELECT 'live:' || value, 'contract:' || (value % 7), 1135, 'lisk', 'lisk-dao',
+           CASE WHEN value % 2 = 0 THEN '0xgovernor' ELSE '0xGoVeRnOr' END,
+           '0xlive' || value, '0xlive-target' || value, 1, TRUE, 'live-onchain', 'available'
+         FROM generate_series(1, 5000) AS value",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO degov_provisional_delegate_power_overlay (
+           id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+           delegator, delegate, power, is_current, source, status
+         )
+         SELECT 'provider:' || value, 'contract:' || (value % 11), 1135, 'lisk', 'lisk-dao',
+           CASE WHEN value % 2 = 0 THEN '0xgovernor' ELSE '0xGoVeRnOr' END,
+           '0xprovider' || value, '0xprovider' || lpad((value % 4)::text, 4, '0'),
+           1, TRUE, 'provider', 'available'
+         FROM generate_series(1, 4000) AS value",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query("VACUUM (ANALYZE) degov_provisional_delegate_power_overlay")
+        .execute(&database.pool)
+        .await?;
+    sqlx::query("VACUUM (ANALYZE) delegate_profile")
+        .execute(&database.pool)
+        .await?;
+    sqlx::query("SET enable_seqscan = off")
+        .execute(&database.pool)
+        .await?;
+    sqlx::query("SET enable_hashagg = off")
+        .execute(&database.pool)
+        .await?;
+
+    let explain: serde_json::Value = sqlx::query_scalar(
+        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+         WITH overlay_delegates AS (
+           SELECT DISTINCT lower(delegate_overlay.delegate) AS delegate
+           FROM degov_provisional_delegate_power_overlay delegate_overlay
+           WHERE delegate_overlay.status = 'available'
+             AND delegate_overlay.source <> 'live-onchain'
+             AND delegate_overlay.chain_id = 1135
+             AND delegate_overlay.dao_code = 'lisk-dao'
+             AND lower(delegate_overlay.governor_address) = lower('0xgovernor')
+             AND lower(delegate_overlay.delegate) <> '0x0000000000000000000000000000000000000000'
+         )
+         SELECT COUNT(*)::int8
+         FROM overlay_delegates overlay_delegate
+         WHERE NOT EXISTS (
+           SELECT 1 FROM delegate_profile durable_profile
+           WHERE durable_profile.chain_id = 1135
+             AND durable_profile.dao_code = 'lisk-dao'
+             AND durable_profile.governor_address = lower('0xgovernor')
+             AND durable_profile.delegate = overlay_delegate.delegate
+         )",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    let root = &explain[0]["Plan"];
+    let nodes = collect_plan_nodes(root);
+    let overlay_scan = nodes
+        .iter()
+        .copied()
+        .find(|node| {
+            node["Node Type"] == "Index Only Scan"
+                && node["Index Name"] == "provisional_delegate_profile_delta_nonlive_cover_idx"
+        })
+        .unwrap_or_else(|| panic!("expected covering overlay index-only scan:\n{explain:#}"));
+    assert_eq!(overlay_scan["Heap Fetches"].as_u64(), Some(0));
+    assert!(
+        !nodes.iter().any(|node| {
+            node["Node Type"] == "Seq Scan"
+                && node["Relation Name"] == "degov_provisional_delegate_power_overlay"
+        }),
+        "unexpected overlay sequential scan:\n{explain:#}"
+    );
+    let anti_join = nodes
+        .iter()
+        .copied()
+        .find(|node| node["Join Type"] == "Anti")
+        .unwrap_or_else(|| panic!("expected anti-join:\n{explain:#}"));
+    assert!(
+        collect_plan_nodes(&anti_join["Plans"][0])
+            .iter()
+            .any(|node| node["Node Type"] == "Unique"),
+        "expected provider target deduplication before anti-join:\n{explain:#}"
+    );
+    let durable_probe = nodes
+        .iter()
+        .copied()
+        .find(|node| node["Relation Name"] == "delegate_profile")
+        .unwrap_or_else(|| panic!("expected durable delegate-profile probe:\n{explain:#}"));
+    assert!(
+        durable_probe["Actual Loops"]
+            .as_u64()
+            .is_some_and(|loops| loops <= 4),
+        "durable probes must be bounded by four distinct provider targets:\n{explain:#}"
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+fn collect_plan_nodes(plan: &serde_json::Value) -> Vec<&serde_json::Value> {
+    let mut nodes = vec![plan];
+    if let Some(children) = plan["Plans"].as_array() {
+        for child in children {
+            nodes.extend(collect_plan_nodes(child));
+        }
+    }
+    nodes
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -979,15 +1129,22 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
         "drop_invalid_runtime_index(connection, \"provisional_contributor_live_graphql_scope_idx\")"
     ));
     assert!(runtime_migration.contains(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_profile_delta_scope_idx
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_profile_delta_nonlive_cover_idx
          ON degov_provisional_delegate_power_overlay (
             chain_id, dao_code, lower(governor_address), lower(delegate)
          )
-         WHERE status = 'available'"
+         INCLUDE (governor_address, delegate)
+         WHERE status = 'available'
+           AND source <> 'live-onchain'
+           AND lower(delegate) <> '0x0000000000000000000000000000000000000000'"
     ));
     assert!(runtime_migration.contains(
-        "drop_invalid_runtime_index(connection, \"provisional_delegate_profile_delta_scope_idx\")"
+        "drop_invalid_runtime_index(
+        connection,
+        \"provisional_delegate_profile_delta_nonlive_cover_idx\",
+    )"
     ));
+    assert!(runtime_migration.contains("provisional_delegate_profile_delta_scope_idx"));
     assert!(runtime_migration.contains("ON onchain_refresh_task (next_run_at, updated_at, id)"));
     assert!(runtime_migration.contains("WHERE status = 'pending'"));
     assert!(
