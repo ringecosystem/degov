@@ -40,12 +40,13 @@ pub enum DelegateProfileBackfillError {
     },
 
     #[error(
-        "delegate profile metric verification failed for {scope}: expected_count={expected_count} intended_replicas={intended_replicas} actual_replicas={actual_replicas} populated_replicas={populated_replicas} min_count={min_count:?} max_count={max_count:?}"
+        "delegate profile metric verification failed for {scope}: expected_count={expected_count} intended_replicas={intended_replicas} updated_replicas={updated_replicas} actual_replicas={actual_replicas} populated_replicas={populated_replicas} min_count={min_count:?} max_count={max_count:?}"
     )]
     MetricVerification {
         scope: String,
         expected_count: i32,
         intended_replicas: u64,
+        updated_replicas: u64,
         actual_replicas: i64,
         populated_replicas: i64,
         min_count: Option<i32>,
@@ -233,10 +234,12 @@ pub async fn repair_delegate_profiles_with_pool(
         .fetch_one(&mut *transaction)
         .await
         .map_err(|source| database_error("count delegate profile metric rows", source))?;
+        let intended_metric_replicas = u64::try_from(metric_rows_would_update)
+            .map_err(|_| DelegateProfileBackfillError::RowCountOutOfRange)?;
 
         report.scopes_processed += 1;
         report.profiles_would_insert += i64_rows(profiles_would_insert)?;
-        report.metric_rows_would_update += i64_rows(metric_rows_would_update)?;
+        report.metric_rows_would_update += rows_affected(intended_metric_replicas)?;
 
         if options.dry_run {
             transaction.rollback().await.map_err(|source| {
@@ -335,16 +338,18 @@ pub async fn repair_delegate_profiles_with_pool(
             .fetch_one(&mut *transaction)
             .await
             .map_err(|source| database_error("verify delegate profile metric replicas", source))?;
-            let intended_replicas = update_result.rows_affected();
-            let replicas_match = u64::try_from(actual_replicas) == Ok(intended_replicas)
-                && populated_replicas == actual_replicas
+            let updated_replicas = update_result.rows_affected();
+            let replicas_match = updated_replicas == intended_metric_replicas
+                && u64::try_from(actual_replicas) == Ok(intended_metric_replicas)
+                && u64::try_from(populated_replicas) == Ok(intended_metric_replicas)
                 && min_count == Some(verified_registry_count)
                 && max_count == Some(verified_registry_count);
             if !replicas_match {
                 return Err(DelegateProfileBackfillError::MetricVerification {
                     scope: scope_label(&scope),
                     expected_count: verified_registry_count,
-                    intended_replicas,
+                    intended_replicas: intended_metric_replicas,
+                    updated_replicas,
                     actual_replicas,
                     populated_replicas,
                     min_count,
@@ -352,7 +357,7 @@ pub async fn repair_delegate_profiles_with_pool(
                 });
             }
             report.profiles_inserted += rows_affected(insert_result.rows_affected())?;
-            report.metric_rows_updated += rows_affected(intended_replicas)?;
+            report.metric_rows_updated += rows_affected(updated_replicas)?;
             transaction.commit().await.map_err(|source| {
                 database_error("commit delegate profile backfill scope transaction", source)
             })?;

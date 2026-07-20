@@ -599,6 +599,77 @@ async fn test_backfill_rejects_replica_introduced_during_metric_update()
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_backfill_rejects_update_that_skips_an_intended_metric_replica()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    apply_migrations(&database.pool).await?;
+    seed_global_metric(&database.pool, "scope-a-v1", 1, "dao-a", "0xgovernora").await?;
+    seed_global_metric(&database.pool, "scope-a-v2", 1, "dao-a", "0xgovernora").await?;
+    seed_delegate(
+        &database.pool,
+        "scope-a-v1",
+        "delegate-a",
+        1,
+        "dao-a",
+        "0xgovernora",
+        "0xdelegate1",
+    )
+    .await?;
+    sqlx::query(
+        "CREATE FUNCTION skip_one_delegate_profile_metric() RETURNS trigger
+         LANGUAGE plpgsql AS $$
+         BEGIN
+           IF OLD.contract_set_id = 'scope-a-v2' THEN
+             RETURN NULL;
+           END IF;
+           RETURN NEW;
+         END
+         $$",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "CREATE TRIGGER skip_one_delegate_profile_metric
+         BEFORE UPDATE OF delegate_profiles_count ON data_metric
+         FOR EACH ROW EXECUTE FUNCTION skip_one_delegate_profile_metric()",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    let error = repair_delegate_profiles_with_pool(
+        &database.pool,
+        DelegateProfileBackfillOptions {
+            selection: DelegateProfileBackfillSelection::Scope(DelegateProfileScope::new(
+                1,
+                "dao-a",
+                "0xgovernora",
+            )?),
+            dry_run: false,
+            max_scopes: None,
+        },
+    )
+    .await
+    .expect_err("skipping an intended replica fails verification");
+
+    let message = error.to_string();
+    assert!(message.contains("intended_replicas=2"), "{message}");
+    assert!(message.contains("updated_replicas=1"), "{message}");
+    assert!(message.contains("actual_replicas=2"), "{message}");
+    assert_eq!(
+        metric_counts(&database.pool, "dao-a").await?,
+        vec![None, None]
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM delegate_profile")
+            .fetch_one(&database.pool)
+            .await?,
+        0
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
 async fn seed_global_metric(
     pool: &PgPool,
     contract_set_id: &str,
