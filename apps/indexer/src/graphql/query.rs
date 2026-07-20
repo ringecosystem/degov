@@ -451,7 +451,8 @@ pub(super) async fn query_data_metrics(
           power_sum::text AS power_sum,
           COALESCE(contributor_count, member_count) AS contributor_count,
           COALESCE(holders_count, member_count) AS holders_count,
-          COALESCE(member_count, holders_count, contributor_count) AS member_count
+          COALESCE(member_count, holders_count, contributor_count) AS member_count,
+          delegate_profiles_count
         FROM (
           SELECT data_metric.id, data_metric.contract_set_id, data_metric.chain_id,
             data_metric.dao_code, data_metric.governor_address, data_metric.token_address,
@@ -493,7 +494,7 @@ pub(super) async fn query_data_metrics(
               ELSE data_metric.votes_weight_abstain_sum
             END AS votes_weight_abstain_sum,
             data_metric.power_sum, data_metric.contributor_count, data_metric.holders_count,
-            data_metric.member_count
+            data_metric.member_count, data_metric.delegate_profiles_count
           FROM data_metric
           LEFT JOIN LATERAL (
             SELECT count(*)::INTEGER AS proposals_count
@@ -1264,12 +1265,11 @@ pub(super) async fn count_delegates(
     Ok(total)
 }
 
-pub(super) async fn count_delegate_profiles(
+async fn count_realtime_delegate_profiles(
     pool: &PgPool,
     implicit_scope: &GraphqlScope,
     where_: Option<&DelegateWhereInput>,
 ) -> GraphqlResult<i64> {
-    // TODO: switch this realtime count to dataMetrics/materialized metrics.
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
         SELECT COUNT(DISTINCT lower(to_delegate))::int8 AS total
@@ -1321,6 +1321,138 @@ pub(super) async fn count_delegate_profiles(
     query.push("lower(to_delegate) <> '0x0000000000000000000000000000000000000000'");
     let (total,): (i64,) = query.build_query_as().fetch_one(pool).await?;
     Ok(total)
+}
+
+#[derive(Copy, Clone, Debug)]
+struct DelegateProfileScope<'a> {
+    chain_id: i32,
+    dao_code: &'a str,
+    governor_address: &'a str,
+}
+
+fn materialized_delegate_profile_scope<'a>(
+    implicit_scope: &GraphqlScope,
+    where_: Option<&'a DelegateWhereInput>,
+) -> Option<DelegateProfileScope<'a>> {
+    if implicit_scope.contract_set_id.is_some() {
+        return None;
+    }
+
+    let DelegateWhereInput {
+        scope,
+        from_delegate_eq,
+        to_delegate_eq,
+        is_current_eq,
+        power_lt,
+        or,
+    } = where_?;
+    if from_delegate_eq.is_some()
+        || to_delegate_eq.is_some()
+        || is_current_eq.is_some()
+        || power_lt.is_some()
+        || or.is_some()
+    {
+        return None;
+    }
+
+    let ScopeWhereInput {
+        chain_id_eq,
+        governor_address_eq,
+        dao_code_eq,
+    } = scope;
+    let chain_id = (*chain_id_eq)?;
+    let dao_code = dao_code_eq.as_deref().filter(|value| !value.is_empty())?;
+    let governor_address = governor_address_eq
+        .as_deref()
+        .filter(|value| !value.is_empty())?;
+
+    if implicit_scope
+        .chain_id
+        .is_some_and(|implicit| implicit != chain_id)
+        || implicit_scope
+            .dao_code
+            .as_deref()
+            .is_some_and(|implicit| implicit != dao_code)
+        || implicit_scope
+            .governor_address
+            .as_deref()
+            .is_some_and(|implicit| implicit != governor_address)
+    {
+        return None;
+    }
+
+    Some(DelegateProfileScope {
+        chain_id,
+        dao_code,
+        governor_address,
+    })
+}
+
+async fn count_materialized_delegate_profiles(
+    pool: &PgPool,
+    scope: DelegateProfileScope<'_>,
+) -> GraphqlResult<Option<i64>> {
+    let materialized_count: Option<i32> = sqlx::query_scalar(
+        "SELECT MAX(delegate_profiles_count)
+         FROM data_metric
+         WHERE id = 'global'
+           AND chain_id = $1
+           AND dao_code = $2
+           AND lower(governor_address) = lower($3)",
+    )
+    .bind(scope.chain_id)
+    .bind(scope.dao_code)
+    .bind(scope.governor_address)
+    .fetch_one(pool)
+    .await?;
+    let Some(materialized_count) = materialized_count else {
+        return Ok(None);
+    };
+
+    let provisional_delta: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT lower(delegate_overlay.delegate))::int8
+         FROM degov_provisional_delegate_power_overlay delegate_overlay
+         WHERE delegate_overlay.status = 'available'
+           AND delegate_overlay.chain_id = $1
+           AND delegate_overlay.dao_code = $2
+           AND lower(delegate_overlay.governor_address) = lower($3)
+           AND lower(delegate_overlay.delegate) <> '0x0000000000000000000000000000000000000000'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM delegate_profile durable_profile
+             WHERE durable_profile.chain_id = $1
+               AND durable_profile.dao_code = $2
+               AND durable_profile.governor_address = lower($3)
+               AND durable_profile.delegate = lower(delegate_overlay.delegate)
+           )",
+    )
+    .bind(scope.chain_id)
+    .bind(scope.dao_code)
+    .bind(scope.governor_address)
+    .fetch_one(pool)
+    .await?;
+    let provisional_delta = i32::try_from(provisional_delta).map_err(|_| {
+        async_graphql::Error::new("delegateProfilesCount provisional delta exceeds GraphQL Int")
+    })?;
+    let total = materialized_count
+        .checked_add(provisional_delta)
+        .ok_or_else(|| async_graphql::Error::new("delegateProfilesCount exceeds GraphQL Int"))?;
+
+    Ok(Some(i64::from(total)))
+}
+
+pub(super) async fn count_delegate_profiles(
+    pool: &PgPool,
+    implicit_scope: &GraphqlScope,
+    where_: Option<&DelegateWhereInput>,
+) -> GraphqlResult<i64> {
+    if let Some(scope) = materialized_delegate_profile_scope(implicit_scope, where_)
+        && let Some(total) = count_materialized_delegate_profiles(pool, scope).await?
+    {
+        return Ok(total);
+    }
+
+    count_realtime_delegate_profiles(pool, implicit_scope, where_).await
 }
 
 pub(super) async fn count_delegate_mappings(

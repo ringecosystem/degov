@@ -149,6 +149,7 @@ pub struct DataMetric {
     pub(super) contributor_count: Option<i32>,
     pub(super) holders_count: Option<i32>,
     pub(super) member_count: Option<i32>,
+    pub(super) delegate_profiles_count: Option<i32>,
 }
 
 #[derive(Clone, Debug, FromRow, SimpleObject)]

@@ -322,6 +322,317 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_uses_logical_scope_materialized_max()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = 4
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+           id, contract_set_id, chain_id, dao_code, governor_address, delegate_profiles_count
+         ) VALUES ('global', 'lisk-second-contract-set', 1135, 'lisk-dao', '0xgovernor', 7)",
+    )
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query MaterializedDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+              dataMetrics(
+                where: {
+                  id_eq: "global"
+                  chainId_eq: 1135
+                  daoCode_eq: "lisk-dao"
+                  governorAddress_eq: "0xgovernor"
+                }
+                orderBy: id_ASC
+              ) {
+                delegateProfilesCount
+              }
+              eventMetric: dataMetrics(where: { id_eq: "0000000800-proposal" }) {
+                delegateProfilesCount
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    let data = response.data.into_json()?;
+    assert_eq!(data["delegateProfilesCount"], 7);
+    assert_eq!(data["dataMetrics"][0]["delegateProfilesCount"], 4);
+    assert_eq!(data["dataMetrics"][1]["delegateProfilesCount"], 7);
+    assert_eq!(
+        data["eventMetric"][0]["delegateProfilesCount"],
+        serde_json::Value::Null
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_adds_only_new_available_overlay_targets()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = 7
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+         VALUES
+           (1135, 'lisk-dao', '0xgovernor', '0xdelegate'),
+           (1135, 'lisk-dao', '0xgovernor', '0xformer')",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_delegate_power_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+          delegator, delegate, power, is_current, source, status
+        ) VALUES
+          ('overlay:new-a', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xnew-a', '0xNeW', 1, TRUE, 'live-onchain', 'available'),
+          ('overlay:new-b', 'lisk-second-contract-set', 1135, 'lisk', 'lisk-dao', '0xGOVERNOR',
+           '0xnew-b', '0xnew', 1, TRUE, 'live-onchain', 'available'),
+          ('overlay:registry', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xregistry', '0xDELEGATE', 1, TRUE, 'live-onchain', 'available'),
+          ('overlay:zero', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xzero', '0x0000000000000000000000000000000000000000', 1, TRUE, 'live-onchain', 'available'),
+          ('overlay:invalid', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xinvalid', '0xinvalid', 1, TRUE, 'live-onchain', 'invalid'),
+          ('overlay:finalized', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xfinalized', '0xfinalized', 1, TRUE, 'live-onchain', 'finalized')
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query OverlayDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    assert_eq!(response.data.into_json()?["delegateProfilesCount"], 8);
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = $1
+         WHERE contract_set_id = $2 AND id = 'global'",
+    )
+    .bind(i32::MAX)
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let overflow_response = schema
+        .execute(Request::new(
+            r#"
+            query OverflowingDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert_eq!(overflow_response.errors.len(), 1);
+    assert!(
+        overflow_response.errors[0]
+            .message
+            .contains("delegateProfilesCount exceeds GraphQL Int")
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_falls_back_for_null_or_filtered_scopes()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = NULL
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let null_metric_response = schema
+        .execute(Request::new(
+            r#"
+            query NullMetricDelegateProfileFallback {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        null_metric_response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        null_metric_response.errors
+    );
+    assert_eq!(
+        null_metric_response.data.into_json()?["delegateProfilesCount"],
+        2
+    );
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = 99
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query FilteredDelegateProfileFallbacks {
+              incomplete: delegateProfilesCount(where: { daoCode_eq: "lisk-dao" })
+              from: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+                fromDelegate_eq: "0xdelegator"
+              })
+              current: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+                isCurrent_eq: true
+              })
+              power: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+                power_lt: 1
+              })
+              recursive: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+                OR: [{ toDelegate_eq: "0xformer" }]
+              })
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    let data = response.data.into_json()?;
+    assert_eq!(data["incomplete"], 2);
+    assert_eq!(data["from"], 1);
+    assert_eq!(data["current"], 1);
+    assert_eq!(data["power"], 1);
+    assert_eq!(data["recursive"], 1);
+
+    let contract_scoped_schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+            ..graphql::GraphqlScope::default()
+        },
+    );
+    let contract_scoped_response = contract_scoped_schema
+        .execute(Request::new(
+            r#"
+            query ContractScopedDelegateProfileFallback {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        contract_scoped_response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        contract_scoped_response.errors
+    );
+    assert_eq!(
+        contract_scoped_response.data.into_json()?["delegateProfilesCount"],
+        2
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[test]
+fn test_graphql_delegate_profile_fast_path_source_does_not_scan_delegate() {
+    let source = include_str!("../src/graphql/query.rs");
+    let start = source
+        .find("async fn count_materialized_delegate_profiles")
+        .expect("materialized delegate profile count helper");
+    let end = source[start..]
+        .find("pub(super) async fn count_delegate_profiles")
+        .map(|offset| start + offset)
+        .expect("public delegate profile count function");
+    let fast_path = &source[start..end];
+
+    assert!(fast_path.contains("MAX(delegate_profiles_count)"));
+    assert!(!fast_path.contains("FROM delegate\n"));
+    assert!(!fast_path.contains("COUNT(DISTINCT lower(to_delegate))"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_nested_voters_filter_by_exact_punctuated_id() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
     let schema = graphql::build_schema_with_scope(
