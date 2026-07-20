@@ -11,7 +11,8 @@ pub use datalens::smoke_datalens;
 pub use graphql::run_graphql;
 pub use indexer::run_indexer;
 pub use migrate::{
-    apply_migrations, apply_schema_migrations, migrate, repair_invalid_runtime_indexes,
+    apply_migrations, apply_runtime_maintenance, apply_schema_migrations, migrate,
+    repair_invalid_runtime_indexes,
 };
 pub use proposal_reference_fields::refresh_proposal_reference_fields;
 pub use proposal_title_refresh::refresh_proposal_titles;

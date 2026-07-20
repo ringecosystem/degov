@@ -4,6 +4,8 @@ use anyhow as runtime_anyhow;
 use datalens_sdk::RetryConfig;
 use runtime_anyhow::{Context, Result, bail};
 use sqlx::postgres::PgPoolOptions;
+#[cfg(test)]
+use tokio::time::timeout;
 use tokio::{runtime::Handle, sync::Semaphore, task, time::sleep};
 
 use crate::runner::IndexerRunnerProgress;
@@ -29,7 +31,10 @@ use crate::{
     required_env,
 };
 
-use super::{datalens::verify_datalens, migrate::apply_migrations};
+use super::{
+    datalens::verify_datalens,
+    migrate::{apply_runtime_maintenance, apply_schema_migrations},
+};
 
 pub async fn run_indexer() -> Result<()> {
     let config = DatalensConfig::from_env().context("load Datalens configuration")?;
@@ -55,14 +60,21 @@ pub async fn run_indexer() -> Result<()> {
         .connect(&database_url)
         .await
         .context("connect to DeGov indexer Postgres")?;
-    apply_migrations(&pool).await?;
-    let _metrics_server = crate::metrics::spawn_metrics_server(
-        pool.clone(),
-        MetricsRuntimeConfig::from_env().context("load metrics runtime configuration")?,
+    apply_schema_migrations(&pool).await?;
+    let _metrics_server = run_post_schema_startup(
+        || spawn_realtime_worker_if_enabled(&runtime, &config, pool.clone()),
+        || async {
+            crate::metrics::spawn_metrics_server(
+                pool.clone(),
+                MetricsRuntimeConfig::from_env().context("load metrics runtime configuration")?,
+            )
+            .await
+            .context("start DeGov indexer metrics service")
+        },
+        || ensure_warmup_on_startup(&runtime, &config),
+        || apply_runtime_maintenance(&pool),
     )
-    .await
-    .context("start DeGov indexer metrics service")?;
-    ensure_warmup_on_startup(&runtime, &config).await?;
+    .await?;
     let datalens_query_gate = if runtime.datalens_query_concurrency.is_limited() {
         Some(
             DatalensQueryConcurrencyGate::new(runtime.datalens_query_concurrency)
@@ -106,6 +118,614 @@ pub async fn run_indexer() -> Result<()> {
 
         sleep(runtime.poll_interval).await;
     }
+}
+
+async fn run_post_schema_startup<
+    MetricsServer,
+    StartMetrics,
+    StartMetricsFuture,
+    EnsureWarmup,
+    EnsureWarmupFuture,
+    ApplyRuntimeMaintenance,
+    ApplyRuntimeMaintenanceFuture,
+>(
+    start_realtime: impl FnOnce() -> Result<()>,
+    start_metrics: StartMetrics,
+    ensure_warmup: EnsureWarmup,
+    apply_runtime_maintenance: ApplyRuntimeMaintenance,
+) -> Result<MetricsServer>
+where
+    StartMetrics: FnOnce() -> StartMetricsFuture,
+    StartMetricsFuture: Future<Output = Result<MetricsServer>>,
+    EnsureWarmup: FnOnce() -> EnsureWarmupFuture,
+    EnsureWarmupFuture: Future<Output = Result<()>>,
+    ApplyRuntimeMaintenance: FnOnce() -> ApplyRuntimeMaintenanceFuture,
+    ApplyRuntimeMaintenanceFuture: Future<Output = Result<()>>,
+{
+    start_realtime()?;
+    let metrics_server = start_metrics().await?;
+    ensure_warmup().await?;
+    apply_runtime_maintenance().await?;
+
+    Ok(metrics_server)
+}
+
+fn spawn_realtime_worker_if_enabled(
+    runtime: &IndexerRuntimeConfig,
+    config: &DatalensConfig,
+    pool: sqlx::PgPool,
+) -> Result<()> {
+    if !realtime_worker_is_eligible(
+        runtime.run_once,
+        runtime.realtime.enabled,
+        runtime.provisional.enabled,
+        &runtime.realtime.dao_codes,
+    ) {
+        log::info!(
+            "Datalens realtime worker is inert run_once={} enabled={} provisional_enabled={}",
+            runtime.run_once,
+            runtime.realtime.enabled,
+            runtime.provisional.enabled
+        );
+        return Ok(());
+    }
+    let Some(realtime_datalens_config) = realtime_datalens_config(&runtime.realtime, config) else {
+        log::warn!(
+            "Datalens realtime worker is inert because DEGOV_REALTIME_DATALENS_APPLICATION must differ from DATALENS_APPLICATION and DEGOV_REALTIME_DATALENS_TOKEN is required"
+        );
+        return Ok(());
+    };
+
+    let contract_sets = runtime
+        .configured_contract_sets(config)
+        .context("select configured realtime contract sets")?;
+    let configured_dao_codes = contract_sets
+        .iter()
+        .map(|contract_set| contract_set.dao_code.clone())
+        .collect::<Vec<_>>();
+    if !realtime_worker_has_configured_dao_match(&configured_dao_codes, &runtime.realtime.dao_codes)
+    {
+        log::warn!(
+            "Datalens realtime worker is inert because no configured DAO matches DEGOV_REALTIME_DAO_CODES dao_codes={:?}",
+            runtime.realtime.dao_codes
+        );
+        return Ok(());
+    }
+    let contract_sets = contract_sets
+        .into_iter()
+        .filter(|contract_set| {
+            is_realtime_dao_allowlisted(&contract_set.dao_code, &runtime.realtime.dao_codes)
+        })
+        .collect::<Vec<_>>();
+    if contract_sets.is_empty() {
+        log::warn!(
+            "Datalens realtime worker is inert because no configured DAO matches DEGOV_REALTIME_DAO_CODES dao_codes={:?}",
+            runtime.realtime.dao_codes
+        );
+        return Ok(());
+    }
+
+    let runtime = runtime.clone();
+    task::spawn(async move {
+        run_realtime_worker_loop(runtime, contract_sets, pool, realtime_datalens_config).await;
+    });
+    Ok(())
+}
+
+async fn run_realtime_worker_loop(
+    runtime: IndexerRuntimeConfig,
+    contract_sets: Vec<DatalensRuntimeContractSet>,
+    pool: sqlx::PgPool,
+    realtime_datalens_config: DatalensConfig,
+) {
+    let mut passes = RealtimePassRegistry::default();
+    let mut observed_heads = BTreeMap::new();
+
+    loop {
+        run_realtime_cycle(
+            &runtime,
+            &contract_sets,
+            pool.clone(),
+            &realtime_datalens_config,
+            &mut passes,
+            &mut observed_heads,
+        )
+        .await;
+        sleep(runtime.realtime.poll_interval).await;
+    }
+}
+
+async fn run_realtime_cycle(
+    runtime: &IndexerRuntimeConfig,
+    contract_sets: &[DatalensRuntimeContractSet],
+    pool: sqlx::PgPool,
+    realtime_datalens_config: &DatalensConfig,
+    passes: &mut RealtimePassRegistry<RealtimeContractSetPassReport>,
+    observed_heads: &mut BTreeMap<String, i64>,
+) {
+    for completed_pass in passes.reap_finished().await {
+        match completed_pass.result {
+            RealtimePassPoll::Completed(report) => {
+                let observed_head = realtime_observed_head_after_pass(&report);
+                if let Some(observed_head) = observed_head {
+                    observed_heads.insert(report.contract_set_id.clone(), observed_head);
+                }
+                log::info!(
+                    "Datalens realtime cycle completed dao_code={} chain_id={} contract_set_id={} range_start_block={:?} range_end_block={:?} latest_head={} current_head_race={} segments_written={:?} proposal_overlays_written={:?} proposal_event_overlays_written={:?} vote_overlays_written={:?}",
+                    report.dao_code,
+                    report.chain_id,
+                    report.contract_set_id,
+                    report.range.map(|range| range.0),
+                    report.range.map(|range| range.1),
+                    report.latest_head,
+                    report.provisional.current_head_race,
+                    report.provisional.segments_written,
+                    report.provisional.proposal_overlays_written,
+                    report.provisional.proposal_event_overlays_written,
+                    report.provisional.vote_overlays_written
+                );
+            }
+            RealtimePassPoll::Failed(error) => log::warn!(
+                "Datalens realtime pass failed chain_id={} contract_set_id={} error={error:#}",
+                completed_pass.chain_id,
+                completed_pass.key
+            ),
+            #[cfg(test)]
+            RealtimePassPoll::TimedOut | RealtimePassPoll::InFlight => {
+                unreachable!("a finished realtime pass must complete or fail")
+            }
+        }
+    }
+
+    for timed_out_pass in passes.mark_timed_out(runtime.realtime.pass_timeout) {
+        log::warn!(
+            "Datalens realtime pass lease timed out; retaining the in-flight pass until it completes contract_set_id={} chain_id={} pass_timeout_ms={}",
+            timed_out_pass.key,
+            timed_out_pass.chain_id,
+            runtime.realtime.pass_timeout.as_millis()
+        );
+    }
+
+    let schedule_order = realtime_schedule_order(
+        contract_sets,
+        passes.last_started_keys(),
+        passes.last_started_chain_id(),
+        |contract_set| contract_set.contract_set_id.as_str(),
+        |contract_set| contract_set.contract.chain_id,
+    );
+    for contract_set_index in schedule_order {
+        let contract_set = contract_sets[contract_set_index].clone();
+        let previous_head = observed_heads.get(&contract_set.contract_set_id).copied();
+        let pass_key = contract_set.contract_set_id.clone();
+        let dao_code = contract_set.dao_code.clone();
+        let chain_id = contract_set.contract.chain_id;
+        let contract_set_id = contract_set.contract_set_id.clone();
+        if !passes.try_start(
+            &pass_key,
+            chain_id,
+            runtime.realtime.max_in_flight,
+            runtime.realtime.per_chain_max_in_flight,
+            {
+                let runtime = runtime.clone();
+                let pool = pool.clone();
+                let realtime_datalens_config = realtime_datalens_config.clone();
+                move || {
+                    run_realtime_contract_set_pass(
+                        runtime,
+                        contract_set,
+                        pool,
+                        realtime_datalens_config,
+                        previous_head,
+                    )
+                }
+            },
+        ) {
+            if passes.contains(&pass_key) {
+                log::debug!(
+                    "Datalens realtime cycle skipped an in-flight pass dao_code={} chain_id={} contract_set_id={}",
+                    dao_code,
+                    chain_id,
+                    contract_set_id
+                );
+            } else {
+                log::debug!(
+                    "Datalens realtime cycle skipped because realtime pass capacity is reached dao_code={} chain_id={} active_passes={} active_chain_passes={} max_in_flight={} per_chain_max_in_flight={}",
+                    dao_code,
+                    chain_id,
+                    passes.len(),
+                    passes.chain_active_count(chain_id),
+                    runtime.realtime.max_in_flight,
+                    runtime.realtime.per_chain_max_in_flight
+                );
+            }
+        } else {
+            log::debug!(
+                "Datalens realtime pass started dao_code={} chain_id={} contract_set_id={} active_passes={} active_chain_passes={}",
+                dao_code,
+                chain_id,
+                contract_set_id,
+                passes.len(),
+                passes.chain_active_count(chain_id)
+            );
+        }
+    }
+}
+
+fn realtime_observed_head_after_pass(report: &RealtimeContractSetPassReport) -> Option<i64> {
+    (!report.provisional.current_head_race).then_some(report.latest_head)
+}
+
+fn realtime_schedule_order<T>(
+    items: &[T],
+    last_started_keys: &BTreeMap<i32, String>,
+    last_started_chain_id: Option<i32>,
+    key: impl for<'a> Fn(&'a T) -> &'a str,
+    chain_id: impl Fn(&T) -> i32,
+) -> Vec<usize> {
+    let mut chain_lengths = BTreeMap::new();
+    let mut chain_order = Vec::new();
+    for item in items {
+        let chain_id = chain_id(item);
+        let chain_length = chain_lengths.entry(chain_id).or_insert(0usize);
+        if *chain_length == 0 {
+            chain_order.push(chain_id);
+        }
+        *chain_length += 1;
+    }
+    let global_chain_start = last_started_chain_id
+        .and_then(|last_started_chain_id| {
+            chain_order
+                .iter()
+                .position(|chain_id| *chain_id == last_started_chain_id)
+        })
+        .map(|last_started_chain_index| (last_started_chain_index + 1) % chain_order.len())
+        .unwrap_or(0);
+    let global_chain_ranks = chain_order
+        .iter()
+        .enumerate()
+        .map(|(chain_index, chain_id)| {
+            (
+                *chain_id,
+                (chain_index + chain_order.len() - global_chain_start) % chain_order.len(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut chain_ordinals = BTreeMap::new();
+    let mut candidates = Vec::with_capacity(items.len());
+    let mut last_started_ordinals = BTreeMap::new();
+    for (index, item) in items.iter().enumerate() {
+        let chain_id = chain_id(item);
+        let ordinal = chain_ordinals.entry(chain_id).or_insert(0usize);
+        if last_started_keys
+            .get(&chain_id)
+            .is_some_and(|last_started_key| key(item) == last_started_key)
+        {
+            last_started_ordinals.insert(chain_id, *ordinal);
+        }
+        candidates.push((index, chain_id, *ordinal));
+        *ordinal += 1;
+    }
+
+    candidates.sort_by_key(|(index, chain_id, ordinal)| {
+        let rank = last_started_ordinals
+            .get(chain_id)
+            .map(|last_started_ordinal| {
+                (ordinal + chain_lengths[chain_id] - last_started_ordinal - 1)
+                    % chain_lengths[chain_id]
+            })
+            .unwrap_or(*ordinal);
+        (rank, global_chain_ranks[chain_id], *index)
+    });
+    candidates.into_iter().map(|(index, _, _)| index).collect()
+}
+
+async fn run_realtime_contract_set_pass(
+    runtime: IndexerRuntimeConfig,
+    contract_set: DatalensRuntimeContractSet,
+    pool: sqlx::PgPool,
+    realtime_datalens_config: DatalensConfig,
+    previous_head: Option<i64>,
+) -> Result<RealtimeContractSetPassReport> {
+    let dao_code = contract_set.dao_code.clone();
+    let chain_id = contract_set.contract.chain_id;
+    let contract_set_id = contract_set.contract_set_id.clone();
+    task::spawn_blocking(move || -> Result<_> {
+        let mut contract_runtime = runtime
+            .for_configured_contract_set_at_target(&contract_set, contract_set.contract.start_block)
+            .context("build realtime contract set runtime")?;
+        contract_runtime.provisional = runtime.provisional.clone();
+        let config = realtime_datalens_config_for_contract_set(
+            &realtime_datalens_config,
+            &contract_set.config,
+        );
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &config,
+            datalens_retry_config(contract_runtime.query_max_attempts),
+        )
+        .context("create Datalens realtime client")?;
+        let latest_head = client
+            .latest_head_height(&config)
+            .context("resolve Datalens realtime latest head")?;
+        let range = plan_realtime_tail_range(
+            previous_head,
+            latest_head,
+            contract_runtime.start_block,
+            runtime.realtime.tail_window_blocks,
+        );
+        let provisional = match range {
+            Some((from_block, to_block)) => {
+                let mut store = PostgresProvisionalSegmentStore::new(pool);
+                run_provisional_worker_for_range(
+                    &contract_runtime,
+                    &config,
+                    &contract_set.addresses,
+                    from_block,
+                    to_block,
+                    latest_head,
+                    &mut client,
+                    &mut store,
+                )?
+            }
+            None => ProvisionalWorkerRunReport::default(),
+        };
+        Ok(RealtimeContractSetPassReport {
+            dao_code,
+            chain_id,
+            contract_set_id,
+            latest_head,
+            range,
+            provisional,
+        })
+    })
+    .await
+    .context("join Datalens realtime blocking pass")?
+}
+
+struct RealtimeContractSetPassReport {
+    dao_code: String,
+    chain_id: i32,
+    contract_set_id: String,
+    latest_head: i64,
+    range: Option<(i64, i64)>,
+    provisional: ProvisionalWorkerRunReport,
+}
+
+struct RealtimePassRegistry<T> {
+    passes: BTreeMap<String, RealtimePass<T>>,
+    last_started_keys: BTreeMap<i32, String>,
+    last_started_chain_id: Option<i32>,
+}
+
+struct RealtimePass<T> {
+    chain_id: i32,
+    started_at: tokio::time::Instant,
+    timeout_logged: bool,
+    handle: task::JoinHandle<Result<T>>,
+}
+
+impl<T> RealtimePass<T> {
+    fn new(chain_id: i32, handle: task::JoinHandle<Result<T>>) -> Self {
+        Self {
+            chain_id,
+            started_at: tokio::time::Instant::now(),
+            timeout_logged: false,
+            handle,
+        }
+    }
+}
+
+struct RealtimePassCompletion<T> {
+    key: String,
+    chain_id: i32,
+    result: RealtimePassPoll<T>,
+}
+
+struct RealtimePassTimeout {
+    key: String,
+    chain_id: i32,
+}
+
+impl<T> Default for RealtimePassRegistry<T> {
+    fn default() -> Self {
+        Self {
+            passes: BTreeMap::new(),
+            last_started_keys: BTreeMap::new(),
+            last_started_chain_id: None,
+        }
+    }
+}
+
+impl<T> RealtimePassRegistry<T> {
+    fn last_started_keys(&self) -> &BTreeMap<i32, String> {
+        &self.last_started_keys
+    }
+
+    fn last_started_chain_id(&self) -> Option<i32> {
+        self.last_started_chain_id
+    }
+
+    fn contains(&self, key: &str) -> bool {
+        self.passes.contains_key(key)
+    }
+
+    fn len(&self) -> usize {
+        self.passes.len()
+    }
+
+    fn chain_active_count(&self, chain_id: i32) -> usize {
+        self.passes
+            .values()
+            .filter(|pass| pass.chain_id == chain_id)
+            .count()
+    }
+
+    fn has_capacity(
+        &self,
+        chain_id: i32,
+        max_in_flight: usize,
+        per_chain_max_in_flight: usize,
+    ) -> bool {
+        self.len() < max_in_flight && self.chain_active_count(chain_id) < per_chain_max_in_flight
+    }
+
+    fn try_start<F, Fut>(
+        &mut self,
+        key: &str,
+        chain_id: i32,
+        max_in_flight: usize,
+        per_chain_max_in_flight: usize,
+        start: F,
+    ) -> bool
+    where
+        T: Send + 'static,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T>> + Send + 'static,
+    {
+        if self.contains(key)
+            || !self.has_capacity(chain_id, max_in_flight, per_chain_max_in_flight)
+        {
+            return false;
+        }
+
+        self.passes.insert(
+            key.to_owned(),
+            RealtimePass::new(chain_id, task::spawn(start())),
+        );
+        self.last_started_keys.insert(chain_id, key.to_owned());
+        self.last_started_chain_id = Some(chain_id);
+        true
+    }
+
+    async fn reap_finished(&mut self) -> Vec<RealtimePassCompletion<T>>
+    where
+        T: Send + 'static,
+    {
+        let finished_keys = self
+            .passes
+            .iter()
+            .filter_map(|(key, pass)| pass.handle.is_finished().then_some(key.clone()))
+            .collect::<Vec<_>>();
+        let mut completions = Vec::with_capacity(finished_keys.len());
+
+        for key in finished_keys {
+            let pass = self
+                .passes
+                .remove(&key)
+                .expect("finished realtime pass remains registered");
+            let chain_id = pass.chain_id;
+            let result = match pass.handle.await {
+                Ok(Ok(report)) => RealtimePassPoll::Completed(report),
+                Ok(Err(error)) => RealtimePassPoll::Failed(error),
+                Err(error) => RealtimePassPoll::Failed(
+                    runtime_anyhow::Error::new(error).context("join Datalens realtime pass"),
+                ),
+            };
+            completions.push(RealtimePassCompletion {
+                key,
+                chain_id,
+                result,
+            });
+        }
+
+        completions
+    }
+
+    fn mark_timed_out(&mut self, timeout_duration: Duration) -> Vec<RealtimePassTimeout> {
+        let now = tokio::time::Instant::now();
+
+        self.passes
+            .iter_mut()
+            .filter_map(|(key, pass)| {
+                (!pass.timeout_logged
+                    && !pass.handle.is_finished()
+                    && now.duration_since(pass.started_at) >= timeout_duration)
+                    .then(|| {
+                        pass.timeout_logged = true;
+                        RealtimePassTimeout {
+                            key: key.clone(),
+                            chain_id: pass.chain_id,
+                        }
+                    })
+            })
+            .collect()
+    }
+}
+
+enum RealtimePassPoll<T> {
+    Completed(T),
+    Failed(runtime_anyhow::Error),
+    #[cfg(test)]
+    TimedOut,
+    #[cfg(test)]
+    InFlight,
+}
+
+#[cfg(test)]
+async fn poll_realtime_pass<T, F, Fut>(
+    registry: &mut RealtimePassRegistry<T>,
+    key: &str,
+    chain_id: i32,
+    timeout_duration: Duration,
+    start: F,
+) -> RealtimePassPoll<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T>> + Send + 'static,
+{
+    let mut pass = match registry.passes.remove(key) {
+        Some(pass) if pass.handle.is_finished() => pass.handle,
+        Some(pass) => {
+            registry.passes.insert(key.to_owned(), pass);
+            return RealtimePassPoll::InFlight;
+        }
+        None => task::spawn(start()),
+    };
+
+    match poll_realtime_pass_handle(&mut pass, timeout_duration).await {
+        RealtimePassPoll::TimedOut => {
+            registry
+                .passes
+                .insert(key.to_owned(), RealtimePass::new(chain_id, pass));
+            RealtimePassPoll::TimedOut
+        }
+        result => result,
+    }
+}
+
+#[cfg(test)]
+async fn poll_realtime_pass_handle<T>(
+    pass: &mut task::JoinHandle<Result<T>>,
+    timeout_duration: Duration,
+) -> RealtimePassPoll<T>
+where
+    T: Send + 'static,
+{
+    match timeout(timeout_duration, pass).await {
+        Ok(Ok(Ok(report))) => RealtimePassPoll::Completed(report),
+        Ok(Ok(Err(error))) => RealtimePassPoll::Failed(error),
+        Ok(Err(error)) => RealtimePassPoll::Failed(
+            runtime_anyhow::Error::new(error).context("join Datalens realtime pass"),
+        ),
+        Err(_) => RealtimePassPoll::TimedOut,
+    }
+}
+
+#[cfg(test)]
+async fn poll_realtime_pass_with_runtime<T, F, Fut>(
+    registry: &mut RealtimePassRegistry<T>,
+    key: &str,
+    chain_id: i32,
+    runtime: &crate::RealtimeRuntimeConfig,
+    start: F,
+) -> RealtimePassPoll<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T>> + Send + 'static,
+{
+    poll_realtime_pass(registry, key, chain_id, runtime.pass_timeout, start).await
 }
 
 async fn run_configured_contract_sets_pass(
@@ -1185,11 +1805,47 @@ where
         );
         return Ok(ProvisionalWorkerRunReport {
             latest_height: Some(latest_height),
+            current_head_race: false,
             segments_written: None,
             proposal_overlays_written: None,
             proposal_event_overlays_written: None,
             vote_overlays_written: None,
         });
+    };
+    run_provisional_worker_for_range(
+        runtime,
+        config,
+        contracts,
+        from_block,
+        to_block,
+        latest_height,
+        reader,
+        store,
+    )
+}
+
+fn run_provisional_worker_for_range<R, S>(
+    runtime: &IndexerContractSetRuntimeConfig,
+    config: &DatalensConfig,
+    contracts: &DaoContractAddresses,
+    from_block: i64,
+    to_block: i64,
+    latest_height: i64,
+    reader: &mut R,
+    store: &mut S,
+) -> Result<ProvisionalWorkerRunReport>
+where
+    R: DatalensProvisionalLogQueryReader,
+    S: DatalensProvisionalSegmentStore
+        + ProvisionalProposalOverlayStore
+        + ProvisionalVoteOverlayStore,
+{
+    let Some(chain_id) = config.chain.network_id else {
+        bail!(
+            "missing Datalens chain network_id for provisional worker dao_code={} contract_set_id={}",
+            runtime.dao_code,
+            runtime.checkpoint_contract_set_id
+        );
     };
     let options = ProvisionalWorkerOptions {
         datalens_config: config.clone(),
@@ -1219,6 +1875,7 @@ where
                 );
                 return Ok(ProvisionalWorkerRunReport {
                     latest_height: Some(latest_height),
+                    current_head_race: true,
                     segments_written: None,
                     proposal_overlays_written: None,
                     proposal_event_overlays_written: None,
@@ -1246,6 +1903,7 @@ where
 
     Ok(ProvisionalWorkerRunReport {
         latest_height: Some(latest_height),
+        current_head_race: false,
         segments_written: Some(report.segments_written),
         proposal_overlays_written: Some(report.proposal_overlays_written),
         proposal_event_overlays_written: Some(report.proposal_event_overlays_written),
@@ -1256,6 +1914,7 @@ where
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct ProvisionalWorkerRunReport {
     latest_height: Option<i64>,
+    current_head_race: bool,
     segments_written: Option<usize>,
     proposal_overlays_written: Option<usize>,
     proposal_event_overlays_written: Option<usize>,
@@ -1278,6 +1937,80 @@ fn provisional_tail_range(
             .max(runtime.start_block),
         latest_height,
     ))
+}
+
+fn plan_realtime_tail_range(
+    previous_head: Option<i64>,
+    latest_head: i64,
+    start_block: i64,
+    tail_window_blocks: i64,
+) -> Option<(i64, i64)> {
+    if previous_head.is_some_and(|head| latest_head <= head) || latest_head < start_block {
+        return None;
+    }
+
+    let tail_start = latest_head
+        .saturating_sub(tail_window_blocks.saturating_sub(1))
+        .max(start_block);
+    let from_block = previous_head
+        .map(|head| head.saturating_add(1))
+        .unwrap_or(tail_start)
+        .max(tail_start);
+
+    (from_block <= latest_head).then_some((from_block, latest_head))
+}
+
+fn is_realtime_dao_allowlisted(dao_code: &str, dao_codes: &[String]) -> bool {
+    dao_codes.iter().any(|allowed| allowed == dao_code)
+}
+
+fn realtime_worker_is_eligible(
+    run_once: bool,
+    realtime_enabled: bool,
+    provisional_enabled: bool,
+    dao_codes: &[String],
+) -> bool {
+    !run_once && realtime_enabled && provisional_enabled && !dao_codes.is_empty()
+}
+
+fn realtime_datalens_config(
+    realtime: &crate::RealtimeRuntimeConfig,
+    durable_config: &DatalensConfig,
+) -> Option<DatalensConfig> {
+    let application = realtime.datalens_application.as_ref()?.trim();
+    let token = realtime.datalens_token.as_ref()?;
+    if application.is_empty()
+        || application == durable_config.application
+        || token.expose_secret().trim().is_empty()
+    {
+        return None;
+    }
+
+    let mut config = durable_config.clone();
+    config.application = application.to_owned();
+    config.bearer_token = token.clone();
+    config.timeout = realtime.query_timeout;
+    Some(config)
+}
+
+fn realtime_datalens_config_for_contract_set(
+    realtime_config: &DatalensConfig,
+    contract_set_config: &DatalensConfig,
+) -> DatalensConfig {
+    let mut config = contract_set_config.clone();
+    config.application = realtime_config.application.clone();
+    config.bearer_token = realtime_config.bearer_token.clone();
+    config.timeout = realtime_config.timeout;
+    config
+}
+
+fn realtime_worker_has_configured_dao_match(
+    configured_dao_codes: &[String],
+    allowlist: &[String],
+) -> bool {
+    configured_dao_codes
+        .iter()
+        .any(|dao_code| is_realtime_dao_allowlisted(dao_code, allowlist))
 }
 
 fn provisional_worker_error_to_anyhow(error: ProvisionalWorkerError) -> runtime_anyhow::Error {
@@ -1455,11 +2188,12 @@ async fn resolve_contract_set_target_height(
 #[cfg(test)]
 mod tests {
     use std::{
+        fs,
         sync::{
             Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
         },
-        time::Duration,
+        time::{Duration, Instant},
     };
 
     use datalens_sdk::native::QueryInput;
@@ -1470,10 +2204,110 @@ mod tests {
         DatalensProvisionalSegmentWrite, DatasetKeyConfig, GovernanceTokenStandard,
         ProvisionalProposalEventOverlayWrite, ProvisionalProposalOverlayWrite,
         ProvisionalRuntimeConfig, ProvisionalTimelockOperationOverlayWrite,
-        ProvisionalVoteCastGroupOverlayWrite, QueryLimitConfig, SecretString,
+        ProvisionalVoteCastGroupOverlayWrite, QueryLimitConfig, RealtimeRuntimeConfig,
+        SecretString,
     };
 
     use super::*;
+
+    async fn start_blocked_realtime_pass(
+        starts: Arc<AtomicUsize>,
+        release: Arc<tokio::sync::Semaphore>,
+    ) -> task::JoinHandle<Result<()>> {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let handle = task::spawn(async move {
+            starts.fetch_add(1, Ordering::SeqCst);
+            started_tx
+                .send(())
+                .expect("realtime pass start signal is received");
+            let _permit = release
+                .acquire()
+                .await
+                .expect("release semaphore remains open");
+            Ok::<_, runtime_anyhow::Error>(())
+        });
+
+        started_rx
+            .await
+            .expect("realtime pass signals startup before its lease is polled");
+        handle
+    }
+
+    #[tokio::test]
+    async fn test_post_schema_startup_starts_realtime_before_runtime_maintenance() {
+        let (realtime_started_tx, realtime_started_rx) = tokio::sync::oneshot::channel();
+        let (maintenance_started_tx, maintenance_started_rx) = tokio::sync::oneshot::channel();
+        let realtime_start_count = Arc::new(AtomicUsize::new(0));
+        let realtime_start_count_for_startup = realtime_start_count.clone();
+        let release_maintenance = Arc::new(tokio::sync::Semaphore::new(0));
+        let release_maintenance_for_startup = release_maintenance.clone();
+
+        let startup = task::spawn(async move {
+            run_post_schema_startup(
+                || {
+                    realtime_start_count_for_startup.fetch_add(1, Ordering::SeqCst);
+                    realtime_started_tx
+                        .send(())
+                        .expect("realtime startup signal is received");
+                    Ok(())
+                },
+                || async { Ok(()) },
+                || async { Ok(()) },
+                || async move {
+                    maintenance_started_tx
+                        .send(())
+                        .expect("runtime maintenance startup signal is received");
+                    let _permit = release_maintenance_for_startup
+                        .acquire()
+                        .await
+                        .expect("runtime maintenance release semaphore remains open");
+                    Ok(())
+                },
+            )
+            .await
+        });
+
+        timeout(Duration::from_secs(1), realtime_started_rx)
+            .await
+            .expect("realtime startup begins promptly after schema migration")
+            .expect("realtime startup signal is sent");
+        timeout(Duration::from_secs(1), maintenance_started_rx)
+            .await
+            .expect("runtime maintenance begins after realtime startup")
+            .expect("runtime maintenance startup signal is sent");
+        assert!(
+            !startup.is_finished(),
+            "runtime maintenance remains independent from already-started realtime work"
+        );
+
+        release_maintenance.add_permits(1);
+        startup
+            .await
+            .expect("post-schema startup task joins")
+            .expect("post-schema startup succeeds");
+        assert_eq!(realtime_start_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_run_indexer_starts_realtime_worker_once_in_post_schema_startup() {
+        let indexer_runtime = fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/runtime/indexer.rs"
+        ))
+        .expect("read indexer runtime source");
+
+        let worker_start_call = [
+            "spawn_realtime_worker_if_enabled",
+            "(&runtime, &config, pool.clone())",
+        ]
+        .concat();
+
+        assert_eq!(
+            indexer_runtime.matches(&worker_start_call).count(),
+            1,
+            "run_indexer delegates the realtime worker start to post-schema startup exactly once"
+        );
+    }
 
     #[test]
     fn test_resolve_contract_set_max_chunks_per_run_adapts_all_mode_from_remaining_blocks() {
@@ -1586,6 +2420,466 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_realtime_tail_planner_uses_latest_tail_on_first_observation() {
+        assert_eq!(
+            plan_realtime_tail_range(None, 105, 100, 8),
+            Some((100, 105))
+        );
+    }
+
+    #[test]
+    fn test_realtime_tail_planner_uses_only_new_blocks_after_first_observation() {
+        assert_eq!(
+            plan_realtime_tail_range(Some(105), 108, 100, 8),
+            Some((106, 108))
+        );
+    }
+
+    #[test]
+    fn test_realtime_tail_planner_bounds_large_recovery_gap_to_tail_window() {
+        assert_eq!(
+            plan_realtime_tail_range(Some(100), 200, 1, 8),
+            Some((193, 200))
+        );
+    }
+
+    #[test]
+    fn test_realtime_tail_planner_skips_unchanged_or_regressed_heads() {
+        assert_eq!(plan_realtime_tail_range(Some(105), 105, 100, 8), None);
+        assert_eq!(plan_realtime_tail_range(Some(105), 104, 100, 8), None);
+    }
+
+    #[test]
+    fn test_realtime_tail_planner_never_precedes_start_block() {
+        assert_eq!(
+            plan_realtime_tail_range(None, 102, 100, 8),
+            Some((100, 102))
+        );
+    }
+
+    #[test]
+    fn test_realtime_allowlist_only_selects_explicit_configured_dao_codes() {
+        let allowlist = vec!["demo-dao".to_owned()];
+
+        assert!(is_realtime_dao_allowlisted("demo-dao", &allowlist));
+        assert!(!is_realtime_dao_allowlisted("other-dao", &allowlist));
+    }
+
+    #[test]
+    fn test_realtime_empty_allowlist_is_inert() {
+        assert!(!is_realtime_dao_allowlisted("demo-dao", &[]));
+    }
+
+    #[test]
+    fn test_realtime_datalens_config_requires_application_distinct_from_durable() {
+        let durable = datalens_config();
+        let shared_application = RealtimeRuntimeConfig {
+            datalens_application: Some(durable.application.clone()),
+            datalens_token: Some(SecretString::new("dedicated-realtime-token")),
+            query_timeout: Duration::from_secs(5),
+            ..Default::default()
+        };
+        let realtime = RealtimeRuntimeConfig {
+            datalens_application: Some("degov-realtime".to_owned()),
+            datalens_token: Some(SecretString::new("dedicated-realtime-token")),
+            query_timeout: Duration::from_secs(5),
+            ..Default::default()
+        };
+
+        assert!(realtime_datalens_config(&shared_application, &durable).is_none());
+        let dedicated = realtime_datalens_config(&realtime, &durable)
+            .expect("dedicated realtime Datalens configuration is complete");
+
+        assert_eq!(dedicated.application, "degov-realtime");
+        assert_eq!(
+            dedicated.bearer_token.expose_secret(),
+            "dedicated-realtime-token"
+        );
+        assert_eq!(dedicated.timeout, Duration::from_secs(5));
+        assert_eq!(durable.application, "degov-test");
+        assert_eq!(
+            durable.bearer_token.expose_secret(),
+            "unit-test-redacted-value"
+        );
+        assert_eq!(durable.timeout, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_realtime_worker_gating_requires_long_running_provisional_allowlisted_mode() {
+        let dao_codes = vec!["demo-dao".to_owned()];
+
+        assert!(realtime_worker_is_eligible(false, true, true, &dao_codes));
+        assert!(!realtime_worker_is_eligible(true, true, true, &dao_codes));
+        assert!(!realtime_worker_is_eligible(false, false, true, &dao_codes));
+        assert!(!realtime_worker_is_eligible(false, true, false, &dao_codes));
+        assert!(!realtime_worker_is_eligible(false, true, true, &[]));
+    }
+
+    #[test]
+    fn test_realtime_worker_gating_rejects_unmatched_allowlist() {
+        let configured = vec!["other-dao".to_owned()];
+        let allowlist = vec!["demo-dao".to_owned()];
+
+        assert!(!realtime_worker_has_configured_dao_match(
+            &configured,
+            &allowlist
+        ));
+    }
+
+    #[test]
+    fn test_realtime_current_head_race_keeps_observed_head_unadvanced_for_tail_retry() {
+        let report = RealtimeContractSetPassReport {
+            dao_code: "demo-dao".to_owned(),
+            chain_id: 1,
+            contract_set_id: "demo-dao:1".to_owned(),
+            latest_head: 105,
+            range: Some((100, 105)),
+            provisional: ProvisionalWorkerRunReport {
+                current_head_race: true,
+                ..Default::default()
+            },
+        };
+
+        let observed_head = realtime_observed_head_after_pass(&report);
+
+        assert_eq!(observed_head, None);
+        assert_eq!(
+            plan_realtime_tail_range(observed_head, 106, 100, 8),
+            Some((100, 106))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_realtime_pass_lease_allows_completion_after_query_deadline() {
+        let mut registry = RealtimePassRegistry::default();
+        let realtime = RealtimeRuntimeConfig {
+            query_timeout: Duration::from_millis(5),
+            pass_timeout: Duration::from_millis(20),
+            ..Default::default()
+        };
+
+        let result =
+            poll_realtime_pass_with_runtime(&mut registry, "demo-dao:1", 1, &realtime, || async {
+                sleep(Duration::from_millis(10)).await;
+                Ok::<_, runtime_anyhow::Error>(())
+            })
+            .await;
+
+        assert!(matches!(result, RealtimePassPoll::Completed(())));
+    }
+
+    #[tokio::test]
+    async fn test_realtime_pass_registry_times_out_without_starting_an_overlapping_pass() {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let mut registry = RealtimePassRegistry::default();
+
+        let mut pass = start_blocked_realtime_pass(starts.clone(), release.clone()).await;
+        let started_at = Instant::now();
+        let first = poll_realtime_pass_handle(&mut pass, Duration::from_millis(5)).await;
+        assert!(matches!(first, RealtimePassPoll::TimedOut));
+        assert!(started_at.elapsed() < Duration::from_millis(100));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        registry
+            .passes
+            .insert("demo-dao:1".to_owned(), RealtimePass::new(1, pass));
+
+        let second = poll_realtime_pass(
+            &mut registry,
+            "demo-dao:1",
+            1,
+            Duration::from_millis(5),
+            || async { panic!("an in-flight chain must not start another realtime pass") },
+        )
+        .await;
+        assert!(matches!(second, RealtimePassPoll::InFlight));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+
+        release.add_permits(1);
+        let completed = tokio::time::timeout(Duration::from_millis(100), async {
+            loop {
+                let result = poll_realtime_pass(
+                    &mut registry,
+                    "demo-dao:1",
+                    1,
+                    Duration::from_millis(5),
+                    || async {
+                        panic!("completed pass must be collected before a new pass can start")
+                    },
+                )
+                .await;
+                if !matches!(result, RealtimePassPoll::InFlight) {
+                    return result;
+                }
+                task::yield_now().await;
+            }
+        })
+        .await
+        .expect("timed out pass eventually completes");
+        assert!(matches!(completed, RealtimePassPoll::Completed(())));
+    }
+
+    #[tokio::test]
+    async fn test_realtime_pass_registry_allows_two_distinct_daos_on_one_chain_at_capacity_two() {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let mut registry = RealtimePassRegistry::default();
+
+        for key in ["dao-a:1", "dao-b:1"] {
+            assert!(registry.has_capacity(1, 2, 2));
+            let mut pass = start_blocked_realtime_pass(starts.clone(), release.clone()).await;
+            let result = poll_realtime_pass_handle(&mut pass, Duration::from_millis(5)).await;
+            assert!(matches!(result, RealtimePassPoll::TimedOut));
+            registry
+                .passes
+                .insert(key.to_owned(), RealtimePass::new(1, pass));
+        }
+
+        assert_eq!(starts.load(Ordering::SeqCst), 2);
+        assert_eq!(registry.len(), 2);
+        release.add_permits(2);
+    }
+
+    #[tokio::test]
+    async fn test_realtime_scheduler_starts_two_distinct_passes_at_global_capacity_two() {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let mut registry = RealtimePassRegistry::default();
+
+        assert!(registry.try_start("dao-a:1", 1, 2, 1, {
+            let starts = starts.clone();
+            let release = release.clone();
+            move || async move {
+                starts.fetch_add(1, Ordering::SeqCst);
+                let _permit = release
+                    .acquire()
+                    .await
+                    .expect("release semaphore remains open");
+                Ok::<_, runtime_anyhow::Error>(())
+            }
+        },));
+        assert!(registry.try_start("dao-b:2", 2, 2, 1, {
+            let starts = starts.clone();
+            let release = release.clone();
+            move || async move {
+                starts.fetch_add(1, Ordering::SeqCst);
+                let _permit = release
+                    .acquire()
+                    .await
+                    .expect("release semaphore remains open");
+                Ok::<_, runtime_anyhow::Error>(())
+            }
+        },));
+
+        tokio::time::timeout(Duration::from_millis(100), async {
+            while starts.load(Ordering::SeqCst) != 2 {
+                task::yield_now().await;
+            }
+        })
+        .await
+        .expect("both admitted realtime passes start without waiting for a lease");
+        assert_eq!(registry.len(), 2);
+        release.add_permits(2);
+    }
+
+    #[tokio::test]
+    async fn test_realtime_scheduler_respects_per_chain_capacity_when_starting_passes() {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let mut registry = RealtimePassRegistry::default();
+
+        assert!(registry.try_start("dao-a:1", 1, 2, 1, {
+            let starts = starts.clone();
+            let release = release.clone();
+            move || async move {
+                starts.fetch_add(1, Ordering::SeqCst);
+                let _permit = release
+                    .acquire()
+                    .await
+                    .expect("release semaphore remains open");
+                Ok::<_, runtime_anyhow::Error>(())
+            }
+        },));
+        assert!(!registry.try_start("dao-b:1", 1, 2, 1, || async {
+            panic!("per-chain capacity must prevent a second realtime pass")
+        }));
+
+        tokio::time::timeout(Duration::from_millis(100), async {
+            while starts.load(Ordering::SeqCst) != 1 {
+                task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the admitted realtime pass starts");
+        assert_eq!(registry.len(), 1);
+        release.add_permits(1);
+    }
+
+    #[tokio::test]
+    async fn test_realtime_scheduler_rotates_same_chain_admission_after_a_pass_completes() {
+        let keys = ["dao-a:1", "dao-b:1"];
+        let mut registry = RealtimePassRegistry::default();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+        assert!(registry.try_start("dao-a:1", 1, 1, 1, move || async move {
+            started_tx
+                .send(())
+                .expect("first realtime pass start signal is received");
+            Ok::<_, runtime_anyhow::Error>(())
+        }));
+        started_rx
+            .await
+            .expect("first realtime pass starts before it is reaped");
+
+        let completed = tokio::time::timeout(Duration::from_millis(100), async {
+            loop {
+                let completed = registry.reap_finished().await;
+                if !completed.is_empty() {
+                    return completed;
+                }
+                task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first realtime pass completes");
+        assert_eq!(completed.len(), 1);
+
+        let next_start = realtime_schedule_order(
+            &keys,
+            registry.last_started_keys(),
+            registry.last_started_chain_id(),
+            |key| *key,
+            |_| 1,
+        )[0];
+        assert_eq!(keys[next_start], "dao-b:1");
+        assert!(registry.try_start(keys[next_start], 1, 1, 1, || async {
+            Ok::<_, runtime_anyhow::Error>(())
+        }));
+    }
+
+    #[test]
+    fn test_realtime_scheduler_keeps_waiting_chain_work_ahead_of_a_restarted_peer() {
+        let contract_sets = [
+            ("dao-a:1", 1),
+            ("dao-c:2", 2),
+            ("dao-b:1", 1),
+            ("dao-d:2", 2),
+        ];
+        let last_started_keys =
+            BTreeMap::from([(1, "dao-a:1".to_owned()), (2, "dao-d:2".to_owned())]);
+
+        let order = realtime_schedule_order(
+            &contract_sets,
+            &last_started_keys,
+            None,
+            |(key, _)| *key,
+            |(_, chain_id)| *chain_id,
+        );
+
+        let waiting_chain_work = order
+            .iter()
+            .position(|index| *index == 2)
+            .expect("waiting same-chain work is scheduled");
+        let restarted_peer = order
+            .iter()
+            .position(|index| *index == 0)
+            .expect("previously started same-chain work is scheduled");
+
+        assert!(waiting_chain_work < restarted_peer);
+    }
+
+    #[tokio::test]
+    async fn test_realtime_scheduler_rotates_global_capacity_between_grouped_chains() {
+        let contract_sets = [
+            ("dao-a:1", 1),
+            ("dao-b:1", 1),
+            ("dao-c:2", 2),
+            ("dao-d:2", 2),
+        ];
+        let mut registry = RealtimePassRegistry::default();
+        assert!(registry.try_start("dao-a:1", 1, 1, 1, || async {
+            Ok::<_, runtime_anyhow::Error>(())
+        }));
+        tokio::time::timeout(Duration::from_millis(100), async {
+            loop {
+                if !registry.reap_finished().await.is_empty() {
+                    return;
+                }
+                task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first chain pass completes");
+
+        let after_chain_one = realtime_schedule_order(
+            &contract_sets,
+            registry.last_started_keys(),
+            registry.last_started_chain_id(),
+            |(key, _)| *key,
+            |(_, chain_id)| *chain_id,
+        );
+        assert_eq!(after_chain_one[0], 2);
+        assert!(registry.try_start("dao-c:2", 2, 1, 1, || async {
+            Ok::<_, runtime_anyhow::Error>(())
+        }));
+        tokio::time::timeout(Duration::from_millis(100), async {
+            loop {
+                if !registry.reap_finished().await.is_empty() {
+                    return;
+                }
+                task::yield_now().await;
+            }
+        })
+        .await
+        .expect("second chain pass completes");
+
+        let after_chain_two = realtime_schedule_order(
+            &contract_sets,
+            registry.last_started_keys(),
+            registry.last_started_chain_id(),
+            |(key, _)| *key,
+            |(_, chain_id)| *chain_id,
+        );
+        assert_eq!(after_chain_two[0], 1);
+    }
+
+    #[test]
+    fn test_realtime_scheduler_interleaves_chains_after_global_rotation() {
+        let contract_sets = [
+            ("dao-a:1", 1),
+            ("dao-b:1", 1),
+            ("dao-c:2", 2),
+            ("dao-d:2", 2),
+        ];
+        let last_started_keys = BTreeMap::from([(1, "dao-a:1".to_owned())]);
+
+        let order = realtime_schedule_order(
+            &contract_sets,
+            &last_started_keys,
+            Some(1),
+            |(key, _)| *key,
+            |(_, chain_id)| *chain_id,
+        );
+
+        assert_eq!(order, vec![2, 1, 3, 0]);
+    }
+
+    #[tokio::test]
+    async fn test_realtime_pass_registry_rejects_second_dao_when_per_chain_capacity_is_one() {
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let mut registry = RealtimePassRegistry::default();
+        let mut pass =
+            start_blocked_realtime_pass(Arc::new(AtomicUsize::new(0)), release.clone()).await;
+        let first = poll_realtime_pass_handle(&mut pass, Duration::from_millis(5)).await;
+        assert!(matches!(first, RealtimePassPoll::TimedOut));
+        registry
+            .passes
+            .insert("dao-a:1".to_owned(), RealtimePass::new(1, pass));
+        assert!(!registry.has_capacity(1, 2, 1));
+        release.add_permits(1);
+    }
+
     #[tokio::test]
     async fn test_resolve_contract_set_target_height_keeps_fixed_numeric_target_without_datalens() {
         let runtime = IndexerRuntimeConfig {
@@ -1612,6 +2906,7 @@ mod tests {
                 enabled: false,
                 finality: DatalensProvisionalFinality::SafeToLatest,
             },
+            realtime: Default::default(),
         };
         let config = DatalensConfig {
             endpoint: "http://127.0.0.1:1".to_owned(),
@@ -1718,6 +3013,46 @@ mod tests {
         assert_eq!(store.writes[0].segment_finality, "safe_to_latest");
         assert_eq!(store.writes[0].range_start_block, 21);
         assert_eq!(store.writes[0].range_end_block, 25);
+    }
+
+    #[test]
+    fn test_provisional_worker_range_path_reuses_safe_to_latest_projection() {
+        let runtime = contract_runtime(ProvisionalRuntimeConfig {
+            enabled: true,
+            finality: DatalensProvisionalFinality::SafeToLatest,
+        });
+        let config = datalens_config();
+        let contracts = dao_contracts();
+        let mut reader =
+            RecordingProvisionalReader::with_segments(vec![DatalensProvisionalCacheSegment {
+                source: "provider".to_owned(),
+                finality: "safe_to_latest".to_owned(),
+                range_start_block: 17,
+                range_end_block: 19,
+                anchor_block_number: Some(19),
+                anchor_block_hash: Some("0xanchor".to_owned()),
+                anchor_parent_hash: Some("0xparent".to_owned()),
+                anchor_block_timestamp: Some(1_700_000_000),
+            }]);
+        let mut store = RecordingProvisionalSegmentStore::default();
+
+        let result = run_provisional_worker_for_range(
+            &runtime,
+            &config,
+            &contracts,
+            17,
+            19,
+            19,
+            &mut reader,
+            &mut store,
+        )
+        .expect("range path writes provisional overlays");
+
+        assert_eq!(result.segments_written, Some(1));
+        assert_eq!(reader.latest_head_calls, 0);
+        assert_eq!(reader.ranges, vec![(17, 19)]);
+        assert_eq!(reader.finalities, vec![Some("safe_to_latest".to_owned())]);
+        assert_eq!(store.writes.len(), 1);
     }
 
     #[test]
@@ -2710,6 +4045,7 @@ mod tests {
                 enabled: false,
                 finality: DatalensProvisionalFinality::SafeToLatest,
             },
+            realtime: Default::default(),
         }
     }
 

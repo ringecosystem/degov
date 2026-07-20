@@ -651,6 +651,50 @@ async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Er
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_migration_rebuilds_invalid_deferred_candidate_scope_drain_index()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    sqlx::query("DROP INDEX onchain_refresh_deferred_candidate_scope_drain_idx")
+        .execute(&database.pool)
+        .await?;
+    sqlx::query(
+        "CREATE INDEX onchain_refresh_deferred_candidate_scope_drain_idx
+         ON onchain_refresh_deferred_candidate (id)",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "UPDATE pg_index
+         SET indisvalid = false
+         WHERE indexrelid = 'onchain_refresh_deferred_candidate_scope_drain_idx'::regclass",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    apply_migrations(&database.pool).await?;
+
+    assert_index_is_valid(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_deferred_candidate_scope_drain_idx",
+    )
+    .await?;
+    assert_index_definition_contains(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_deferred_candidate_scope_drain_idx",
+        &["chain_id, contract_set_id, dao_code, next_run_at, updated_at, id"],
+    )
+    .await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_schema_only_migration_creates_worker_owned_task_table() -> Result<(), Box<dyn Error>>
 {
     let database = TestDatabase::connect().await?;
@@ -663,6 +707,42 @@ async fn test_schema_only_migration_creates_worker_owned_task_table() -> Result<
         "onchain_refresh_data_metric_task",
     )
     .await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_schema_only_migration_creates_realtime_overlay_tables_and_scope_constraints()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_schema_migrations(&database.pool).await?;
+
+    for table_name in [
+        "degov_provisional_segment",
+        "degov_provisional_contributor_power_overlay",
+        "degov_provisional_delegate_power_overlay",
+        "degov_provisional_proposal_overlay",
+        "degov_provisional_timelock_operation_overlay",
+        "degov_provisional_vote_cast_group_overlay",
+        "degov_provisional_proposal_event_overlay",
+    ] {
+        assert_table_exists(&database.pool, &database.schema, table_name).await?;
+    }
+
+    for constraint_name in [
+        "degov_provisional_segment_scope_unique",
+        "degov_provisional_contributor_power_overlay_scope_unique",
+        "degov_provisional_delegate_power_overlay_scope_unique",
+        "degov_provisional_proposal_overlay_scope_unique",
+        "degov_provisional_timelock_operation_overlay_scope_unique",
+        "degov_provisional_vote_cast_group_overlay_scope_unique",
+        "degov_provisional_proposal_event_overlay_scope_unique",
+    ] {
+        assert_constraint_exists(&database.pool, &database.schema, constraint_name).await?;
+    }
 
     database.cleanup().await?;
 
@@ -728,6 +808,9 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("onchain_refresh_task_pending_scope_claim_idx"));
     assert!(runtime_migration.contains("onchain_refresh_task_failed_scope_retry_idx"));
     assert!(runtime_migration.contains("onchain_refresh_task_processing_scope_retry_idx"));
+    assert!(runtime_migration.contains(
+        "execute_concurrent_runtime_index(\n        connection,\n        \"onchain_refresh_deferred_candidate_scope_drain_idx\",\n        \"CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx"
+    ));
     assert!(runtime_migration.contains("contributor_onchain_refresh_coverage_scope_idx"));
     assert!(runtime_migration.contains("release_runtime_migration_lock"));
     assert!(runtime_migration.contains(
@@ -912,6 +995,35 @@ async fn assert_table_exists(
     .await?;
 
     assert!(exists, "expected table {schema}.{table_name} to exist");
+
+    Ok(())
+}
+
+async fn assert_constraint_exists(
+    pool: &PgPool,
+    schema: &str,
+    constraint_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let exists: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          JOIN pg_namespace ON pg_namespace.oid = pg_constraint.connamespace
+          WHERE pg_namespace.nspname = $1
+            AND pg_constraint.conname = $2
+        )
+        "#,
+    )
+    .bind(schema)
+    .bind(constraint_name)
+    .fetch_one(pool)
+    .await?;
+
+    assert!(
+        exists,
+        "expected constraint {schema}.{constraint_name} to exist"
+    );
 
     Ok(())
 }
