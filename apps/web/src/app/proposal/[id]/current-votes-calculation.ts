@@ -16,11 +16,22 @@ const parseQuorumBuckets = (countingMode?: string | null) => {
     return fallbackBuckets;
   }
 
-  return quorumConfig
+  const quorumBuckets = quorumConfig
     .slice("quorum=".length)
     .split(",")
-    .map((bucket) => bucket.trim().toLowerCase())
-    .filter(Boolean);
+    .map((bucket) => bucket.trim().toLowerCase());
+
+  if (
+    quorumBuckets.length === 0 ||
+    new Set(quorumBuckets).size !== quorumBuckets.length ||
+    quorumBuckets.some(
+      (bucket) => !["for", "against", "abstain"].includes(bucket)
+    )
+  ) {
+    return fallbackBuckets;
+  }
+
+  return quorumBuckets;
 };
 
 export const getProposalQuorumProgress = ({
@@ -30,6 +41,7 @@ export const getProposalQuorumProgress = ({
   quorumRequired,
   countingMode,
 }: ProposalQuorumProgressInput) => {
+  const totalVotesCast = againstVotes + forVotes + abstainVotes;
   const quorumBuckets = parseQuorumBuckets(countingMode);
   const currentVotes = quorumBuckets.reduce((total, bucket) => {
     if (bucket === "for") return total + forVotes;
@@ -40,5 +52,5 @@ export const getProposalQuorumProgress = ({
   const hasReachedQuorum =
     quorumRequired === 0n ? false : currentVotes >= quorumRequired;
 
-  return { currentVotes, hasReachedQuorum };
+  return { currentVotes, hasReachedQuorum, totalVotesCast };
 };
