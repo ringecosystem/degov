@@ -6,6 +6,53 @@ use super::order::*;
 use super::pagination::push_page;
 use super::types::*;
 
+const PROPOSAL_NUMERIC_INPUT_ERROR: &str =
+    "must be a canonical non-negative base-10 integer with at most 78 digits";
+
+fn validate_proposal_where(where_: Option<&ProposalWhereInput>) -> GraphqlResult<()> {
+    let Some(where_) = where_ else {
+        return Ok(());
+    };
+
+    for (field, value) in [
+        ("blockNumber_eq", where_.block_number_eq.as_deref()),
+        ("blockNumber_gt", where_.block_number_gt.as_deref()),
+        (
+            "voteEndTimestamp_gte",
+            where_.vote_end_timestamp_gte.as_deref(),
+        ),
+        (
+            "voteEndTimestamp_lt",
+            where_.vote_end_timestamp_lt.as_deref(),
+        ),
+    ] {
+        if value.is_some_and(|value| !is_canonical_numeric_78(value)) {
+            return Err(async_graphql::Error::new(format!(
+                "ProposalWhereInput.{field} {PROPOSAL_NUMERIC_INPUT_ERROR}"
+            )));
+        }
+    }
+
+    if let Some(or) = &where_.or {
+        for filter in or {
+            validate_proposal_where(Some(filter))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn is_canonical_numeric_78(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() || bytes.len() > 78 {
+        return false;
+    }
+    if bytes == b"0" {
+        return true;
+    }
+    matches!(bytes[0], b'1'..=b'9') && bytes[1..].iter().all(u8::is_ascii_digit)
+}
+
 pub(super) async fn query_indexer_status(
     pool: &PgPool,
     implicit_scope: &GraphqlScope,
@@ -37,6 +84,7 @@ pub(super) async fn query_proposals(
     offset: Option<i32>,
     limit: Option<i32>,
 ) -> GraphqlResult<Vec<Proposal>> {
+    validate_proposal_where(where_)?;
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
         SELECT id, contract_set_id, chain_id, dao_code, governor_address, proposal_id, proposer,
@@ -214,6 +262,7 @@ pub(super) async fn count_proposals(
     implicit_scope: &GraphqlScope,
     where_: Option<&ProposalWhereInput>,
 ) -> GraphqlResult<i64> {
+    validate_proposal_where(where_)?;
     let mut query = QueryBuilder::<Postgres>::new(
         r#"
         SELECT COUNT(*)::int8 AS total
@@ -221,7 +270,9 @@ pub(super) async fn count_proposals(
           SELECT proposal.id, proposal.contract_set_id, proposal.chain_id,
             proposal.dao_code, proposal.governor_address, proposal.proposal_id,
             COALESCE(proposal_overlay.proposer, proposal.proposer) AS proposer,
-            COALESCE(proposal_overlay.description, proposal.description) AS description
+            COALESCE(proposal_overlay.description, proposal.description) AS description,
+            proposal.block_number,
+            COALESCE(proposal_overlay.vote_end_timestamp, proposal.vote_end_timestamp) AS vote_end_timestamp
           FROM proposal
           LEFT JOIN degov_provisional_proposal_overlay proposal_overlay
             ON proposal_overlay.contract_set_id = proposal.contract_set_id
@@ -235,7 +286,9 @@ pub(super) async fn count_proposals(
           SELECT proposal_overlay.id, proposal_overlay.contract_set_id, proposal_overlay.chain_id,
             proposal_overlay.dao_code, proposal_overlay.governor_address, proposal_overlay.proposal_id,
             COALESCE(proposal_overlay.proposer, '') AS proposer,
-            COALESCE(proposal_overlay.description, '') AS description
+            COALESCE(proposal_overlay.description, '') AS description,
+            COALESCE(proposal_overlay.block_number, proposal_overlay.anchor_block_number, 0) AS block_number,
+            COALESCE(proposal_overlay.vote_end_timestamp, 0) AS vote_end_timestamp
           FROM degov_provisional_proposal_overlay proposal_overlay
           WHERE proposal_overlay.status = 'available'
             AND proposal_overlay.source <> 'live-onchain'
@@ -1322,5 +1375,28 @@ mod tests {
         assert!(
             sql.contains("split_part(degov_indexer_checkpoint.contract_set_id, 'dataset=', 2)")
         );
+    }
+
+    #[test]
+    fn test_canonical_numeric_78_accepts_boundaries_and_rejects_other_forms() {
+        assert!(is_canonical_numeric_78("0"));
+        assert!(is_canonical_numeric_78("9223372036854775808"));
+        assert!(is_canonical_numeric_78(&"9".repeat(78)));
+
+        for invalid in [
+            "",
+            "not-a-number",
+            "NaN",
+            "1.5",
+            "1e3",
+            "-1",
+            "+1",
+            " 1",
+            "1 ",
+            "01",
+            &"9".repeat(79),
+        ] {
+            assert!(!is_canonical_numeric_78(invalid), "accepted {invalid:?}");
+        }
     }
 }
