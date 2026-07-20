@@ -21,9 +21,18 @@ const CurrentVotesSkeleton = () => {
         <div className="flex items-center justify-between gap-[10px]">
           <div className="flex items-center gap-[5px]">
             <Skeleton className="h-[20px] w-[20px] rounded-full" />
-            <span className="text-[14px] font-normal">{t("quorum")}</span>
+            <span className="text-[14px] font-normal">
+              {t("quorumProgress")}
+            </span>
           </div>
           <Skeleton className="h-[18px] w-[120px]" />
+        </div>
+
+        <div className="flex items-center justify-between gap-[10px]">
+          <span className="text-[14px] font-normal">
+            {t("totalParticipation")}
+          </span>
+          <Skeleton className="h-[18px] w-[80px]" />
         </div>
 
         <div className="flex flex-col gap-[10px]">
@@ -92,16 +101,7 @@ export const CurrentVotes = ({
   const voteLabels = useTranslations("proposals.voteLabels");
   const formatTokenAmount = useFormatGovernanceTokenAmount();
 
-  const totalVotesCast = useMemo(() => {
-    const totalVotesCast =
-      proposalVotesData.againstVotes +
-      proposalVotesData.forVotes +
-      proposalVotesData.abstainVotes;
-
-    return totalVotesCast;
-  }, [proposalVotesData]);
-
-  const { currentVotes, hasReachedQuorum } = useMemo(
+  const { currentVotes, hasReachedQuorum, totalVotesCast } = useMemo(
     () =>
       getProposalQuorumProgress({
         ...proposalVotesData,
@@ -153,14 +153,23 @@ export const CurrentVotes = ({
                 className="rounded-full text-current"
               />
             )}
-            <span className="text-[14px] font-normal">{t("quorum")}</span>
+            <span className="text-[14px] font-normal">
+              {t("quorumProgress")}
+            </span>
           </div>
           <span className="flex items-center gap-[5px]">
-            {t("participation", {
+            {t("quorumParticipation", {
               current: formatTokenAmount(currentVotes).formatted,
               required: formatTokenAmount(quorumRequired).formatted,
             })}
           </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-[10px]">
+          <span className="text-[14px] font-normal">
+            {t("totalParticipation")}
+          </span>
+          <span>{formatTokenAmount(totalVotesCast).formatted}</span>
         </div>
 
         <div className="flex flex-col gap-[10px]">

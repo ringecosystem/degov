@@ -40,11 +40,12 @@
   },
   "currentVotes": {
     "title": "Current Votes",
-    "quorum": "Quorum",
+    "quorumProgress": "Quorum progress",
+    "totalParticipation": "Total participation",
     "majoritySupport": "Majority support",
     "yes": "Yes",
     "no": "No",
-    "participation": "{current} of {required}"
+    "quorumParticipation": "{current} of {required}"
   },
   "status": {
     "title": "Status",
