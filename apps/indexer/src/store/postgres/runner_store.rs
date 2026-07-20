@@ -271,16 +271,14 @@ async fn write_projection_batch(
     onchain_refresh_debounce: Duration,
     onchain_refresh_deferred_drain_batch_size: usize,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    if let Some(token) = &batch.token {
-        for (chain_id, dao_code, governor_address) in delegate_profile_scopes(token) {
-            acquire_delegate_profile_scope_lock(
-                transaction,
-                chain_id,
-                &dao_code,
-                &governor_address,
-            )
+    let delegate_profile_scopes = batch
+        .token
+        .as_ref()
+        .map(delegate_profile_scopes)
+        .unwrap_or_default();
+    for (chain_id, dao_code, governor_address) in &delegate_profile_scopes {
+        acquire_delegate_profile_scope_lock(transaction, *chain_id, dao_code, governor_address)
             .await?;
-        }
     }
     if let Some(proposal) = &batch.proposal {
         write_proposal_batch_rows(transaction, proposal).await?;
@@ -290,7 +288,7 @@ async fn write_projection_batch(
     }
     let inserted_operation_ids = if let Some(token) = &batch.token {
         let inserted_operation_ids = write_token_batch_rows(transaction, token).await?;
-        maintain_delegate_profiles(transaction, token, &inserted_operation_ids).await?;
+        insert_delegate_profiles(transaction, token, &inserted_operation_ids).await?;
         inserted_operation_ids
     } else {
         Vec::new()
@@ -309,6 +307,7 @@ async fn write_projection_batch(
     if let Some(vote) = &batch.vote {
         refresh_vote_data_metric(transaction, &vote.contributor_vote_signals).await?;
     }
+    synchronize_delegate_profile_metrics(transaction, &delegate_profile_scopes).await?;
     if let Some(token) = &batch.token {
         upsert_onchain_refresh_tasks(
             transaction,

@@ -1,7 +1,7 @@
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use thiserror::Error;
 
-use crate::delegate_profile::{ZERO_DELEGATE_ADDRESS, acquire_delegate_profile_scope_lock};
+use crate::delegate_profile::acquire_delegate_profile_scope_lock;
 
 #[derive(Debug, Error)]
 pub enum DelegateProfileBackfillError {
@@ -166,7 +166,7 @@ pub async fn repair_delegate_profiles_with_pool(
              WHERE delegate.chain_id = $1
                AND delegate.dao_code = $2
                AND lower(delegate.governor_address) = $3
-               AND lower(delegate.to_delegate) <> $4
+               AND lower(delegate.to_delegate) <> '0x0000000000000000000000000000000000000000'
                AND NOT EXISTS (
                  SELECT 1
                  FROM delegate_profile
@@ -179,7 +179,6 @@ pub async fn repair_delegate_profiles_with_pool(
         .bind(scope.chain_id)
         .bind(&scope.dao_code)
         .bind(&scope.governor_address)
-        .bind(ZERO_DELEGATE_ADDRESS)
         .fetch_one(&mut *transaction)
         .await
         .map_err(|source| database_error("count missing delegate profiles", source))?;
@@ -189,12 +188,11 @@ pub async fn repair_delegate_profiles_with_pool(
              WHERE delegate.chain_id = $1
                AND delegate.dao_code = $2
                AND lower(delegate.governor_address) = $3
-               AND lower(delegate.to_delegate) <> $4",
+               AND lower(delegate.to_delegate) <> '0x0000000000000000000000000000000000000000'",
         )
         .bind(scope.chain_id)
         .bind(&scope.dao_code)
         .bind(&scope.governor_address)
-        .bind(ZERO_DELEGATE_ADDRESS)
         .fetch_one(&mut *transaction)
         .await
         .map_err(|source| database_error("verify delegate profile history", source))?;
@@ -242,14 +240,13 @@ pub async fn repair_delegate_profiles_with_pool(
                  WHERE delegate.chain_id = $1
                    AND delegate.dao_code = $2
                    AND lower(delegate.governor_address) = $3
-                   AND lower(delegate.to_delegate) <> $4
+                   AND lower(delegate.to_delegate) <> '0x0000000000000000000000000000000000000000'
                  GROUP BY lower(delegate.to_delegate)
                  ON CONFLICT DO NOTHING",
             )
             .bind(scope.chain_id)
             .bind(&scope.dao_code)
             .bind(&scope.governor_address)
-            .bind(ZERO_DELEGATE_ADDRESS)
             .execute(&mut *transaction)
             .await
             .map_err(|source| database_error("insert delegate profiles", source))?;
@@ -270,12 +267,11 @@ pub async fn repair_delegate_profiles_with_pool(
                  WHERE delegate.chain_id = $1
                    AND delegate.dao_code = $2
                    AND lower(delegate.governor_address) = $3
-                   AND lower(delegate.to_delegate) <> $4",
+                   AND lower(delegate.to_delegate) <> '0x0000000000000000000000000000000000000000'",
             )
             .bind(scope.chain_id)
             .bind(&scope.dao_code)
             .bind(&scope.governor_address)
-            .bind(ZERO_DELEGATE_ADDRESS)
             .fetch_one(&mut *transaction)
             .await
             .map_err(|source| database_error("verify inserted delegate profile history", source))?;
@@ -386,8 +382,17 @@ async fn preflight_delegate_profile_backfill(
              FROM pg_class index_class
              JOIN pg_index ON pg_index.indexrelid = index_class.oid
              WHERE index_class.oid = to_regclass('delegate_profile_backfill_scope_target_idx')
+               AND pg_index.indrelid = to_regclass('delegate')
                AND pg_index.indisvalid
                AND pg_index.indisready
+               AND pg_index.indnkeyatts = 4
+               AND pg_index.indnatts = 4
+               AND pg_get_indexdef(index_class.oid, 1, TRUE) = 'chain_id'
+               AND pg_get_indexdef(index_class.oid, 2, TRUE) = 'dao_code'
+               AND pg_get_indexdef(index_class.oid, 3, TRUE) = 'lower(governor_address)'
+               AND pg_get_indexdef(index_class.oid, 4, TRUE) = 'lower(to_delegate)'
+               AND pg_get_expr(pg_index.indpred, pg_index.indrelid, TRUE) =
+                 'chain_id IS NOT NULL AND dao_code IS NOT NULL AND governor_address IS NOT NULL AND lower(to_delegate) <> ''0x0000000000000000000000000000000000000000''::text'
            )",
     )
     .fetch_one(pool)

@@ -141,6 +141,38 @@ async fn test_backfill_preflight_rejects_missing_runtime_index() -> Result<(), B
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_backfill_preflight_rejects_wrong_runtime_index_definition()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    apply_schema_migrations(&database.pool).await?;
+    sqlx::query(
+        "CREATE INDEX delegate_profile_backfill_scope_target_idx
+         ON delegate (chain_id)",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    let error = repair_delegate_profiles_with_pool(
+        &database.pool,
+        DelegateProfileBackfillOptions {
+            selection: DelegateProfileBackfillSelection::AllScopes,
+            dry_run: true,
+            max_scopes: Some(1),
+        },
+    )
+    .await
+    .expect_err("backfill rejects a valid index with the wrong definition");
+
+    assert!(
+        error
+            .to_string()
+            .contains("delegate_profile_backfill_scope_target_idx")
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_scoped_backfill_deduplicates_and_repairs_metric_drift() -> Result<(), Box<dyn Error>>
 {
     let database = TestDatabase::connect().await?;

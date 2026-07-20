@@ -64,20 +64,37 @@ fn recompute_delegate_count_effective_chunk_size() -> usize {
 }
 
 fn delegate_profile_scopes(batch: &TokenProjectionBatch) -> BTreeSet<(i32, String, String)> {
-    batch
-        .delegate_changed
-        .iter()
-        .map(|row| {
-            (
-                row.common.chain_id,
-                row.common.dao_code.clone(),
-                row.common.governor_address.to_lowercase(),
-            )
-        })
-        .collect()
+    let mut scopes = BTreeSet::new();
+    for operation in &batch.operations {
+        insert_delegate_profile_scope(&mut scopes, token_operation_common(operation));
+    }
+    for row in &batch.delegate_changed {
+        insert_delegate_profile_scope(&mut scopes, &row.common);
+    }
+    for row in &batch.delegate_votes_changed {
+        insert_delegate_profile_scope(&mut scopes, &row.common);
+    }
+    for row in &batch.token_transfers {
+        insert_delegate_profile_scope(&mut scopes, &row.common);
+    }
+    for row in &batch.delegate_rollings {
+        insert_delegate_profile_scope(&mut scopes, &row.common);
+    }
+    scopes
 }
 
-async fn maintain_delegate_profiles(
+fn insert_delegate_profile_scope(
+    scopes: &mut BTreeSet<(i32, String, String)>,
+    common: &TokenEventCommon,
+) {
+    scopes.insert((
+        common.chain_id,
+        common.dao_code.clone(),
+        common.governor_address.to_lowercase(),
+    ));
+}
+
+async fn insert_delegate_profiles(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &TokenProjectionBatch,
     inserted_operation_keys: &[(String, String)],
@@ -122,12 +139,13 @@ async fn maintain_delegate_profiles(
     query.push(" ON CONFLICT DO NOTHING");
     query.build().execute(&mut **transaction).await?;
 
-    let scopes = profiles
-        .iter()
-        .map(|(chain_id, dao_code, governor_address, _)| {
-            (*chain_id, dao_code.as_str(), governor_address.as_str())
-        })
-        .collect::<BTreeSet<_>>();
+    Ok(())
+}
+
+async fn synchronize_delegate_profile_metrics(
+    transaction: &mut Transaction<'_, Postgres>,
+    scopes: &BTreeSet<(i32, String, String)>,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
     for (chain_id, dao_code, governor_address) in scopes {
         sqlx::query(
             "WITH rollout AS (
@@ -151,7 +169,7 @@ async fn maintain_delegate_profiles(
                AND data_metric.dao_code = $2
                AND lower(data_metric.governor_address) = $3",
         )
-        .bind(chain_id)
+        .bind(*chain_id)
         .bind(dao_code)
         .bind(governor_address)
         .execute(&mut **transaction)
