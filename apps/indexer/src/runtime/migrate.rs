@@ -50,18 +50,19 @@ pub async fn repair_invalid_runtime_indexes() -> Result<()> {
 }
 
 pub async fn apply_migrations(pool: &PgPool) -> Result<()> {
+    apply_schema_migrations(pool).await?;
+    apply_runtime_maintenance(pool).await
+}
+
+pub async fn apply_runtime_maintenance(pool: &PgPool) -> Result<()> {
     let mut connection = pool
         .acquire()
         .await
-        .context("acquire DeGov indexer migration connection")?;
+        .context("acquire DeGov indexer runtime maintenance connection")?;
 
     acquire_runtime_migration_lock(&mut connection).await?;
 
     let result: Result<()> = async {
-        MIGRATOR
-            .run(&mut *connection)
-            .await
-            .context("apply Datalens-native DeGov indexer init migration")?;
         drop_invalid_runtime_indexes_for_connection(&mut connection).await?;
         ensure_runtime_indexes(&mut connection).await?;
         repair_delegate_effective_counts_once(&mut connection).await?;
@@ -295,13 +296,14 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure scoped processing onchain refresh retry index")?;
 
-    sqlx::query(
-        "CREATE INDEX IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx
+    execute_concurrent_runtime_index(
+        connection,
+        "onchain_refresh_deferred_candidate_scope_drain_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx
          ON onchain_refresh_deferred_candidate (
             chain_id, contract_set_id, dao_code, next_run_at, updated_at, id
          )",
     )
-    .execute(&mut *connection)
     .await
     .context("ensure scoped onchain refresh deferred drain index")?;
 

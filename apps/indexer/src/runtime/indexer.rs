@@ -31,7 +31,10 @@ use crate::{
     required_env,
 };
 
-use super::{datalens::verify_datalens, migrate::apply_migrations};
+use super::{
+    datalens::verify_datalens,
+    migrate::{apply_runtime_maintenance, apply_schema_migrations},
+};
 
 pub async fn run_indexer() -> Result<()> {
     let config = DatalensConfig::from_env().context("load Datalens configuration")?;
@@ -57,14 +60,21 @@ pub async fn run_indexer() -> Result<()> {
         .connect(&database_url)
         .await
         .context("connect to DeGov indexer Postgres")?;
-    apply_migrations(&pool).await?;
-    let _metrics_server = crate::metrics::spawn_metrics_server(
-        pool.clone(),
-        MetricsRuntimeConfig::from_env().context("load metrics runtime configuration")?,
+    apply_schema_migrations(&pool).await?;
+    let _metrics_server = run_post_schema_startup(
+        || spawn_realtime_worker_if_enabled(&runtime, &config, pool.clone()),
+        || async {
+            crate::metrics::spawn_metrics_server(
+                pool.clone(),
+                MetricsRuntimeConfig::from_env().context("load metrics runtime configuration")?,
+            )
+            .await
+            .context("start DeGov indexer metrics service")
+        },
+        || ensure_warmup_on_startup(&runtime, &config),
+        || apply_runtime_maintenance(&pool),
     )
-    .await
-    .context("start DeGov indexer metrics service")?;
-    ensure_warmup_on_startup(&runtime, &config).await?;
+    .await?;
     let datalens_query_gate = if runtime.datalens_query_concurrency.is_limited() {
         Some(
             DatalensQueryConcurrencyGate::new(runtime.datalens_query_concurrency)
@@ -110,6 +120,36 @@ pub async fn run_indexer() -> Result<()> {
 
         sleep(runtime.poll_interval).await;
     }
+}
+
+async fn run_post_schema_startup<
+    MetricsServer,
+    StartMetrics,
+    StartMetricsFuture,
+    EnsureWarmup,
+    EnsureWarmupFuture,
+    ApplyRuntimeMaintenance,
+    ApplyRuntimeMaintenanceFuture,
+>(
+    start_realtime: impl FnOnce() -> Result<()>,
+    start_metrics: StartMetrics,
+    ensure_warmup: EnsureWarmup,
+    apply_runtime_maintenance: ApplyRuntimeMaintenance,
+) -> Result<MetricsServer>
+where
+    StartMetrics: FnOnce() -> StartMetricsFuture,
+    StartMetricsFuture: Future<Output = Result<MetricsServer>>,
+    EnsureWarmup: FnOnce() -> EnsureWarmupFuture,
+    EnsureWarmupFuture: Future<Output = Result<()>>,
+    ApplyRuntimeMaintenance: FnOnce() -> ApplyRuntimeMaintenanceFuture,
+    ApplyRuntimeMaintenanceFuture: Future<Output = Result<()>>,
+{
+    start_realtime()?;
+    let metrics_server = start_metrics().await?;
+    ensure_warmup().await?;
+    apply_runtime_maintenance().await?;
+
+    Ok(metrics_server)
 }
 
 fn spawn_realtime_worker_if_enabled(
@@ -2192,6 +2232,57 @@ mod tests {
             .await
             .expect("realtime pass signals startup before its lease is polled");
         handle
+    }
+
+    #[tokio::test]
+    async fn test_post_schema_startup_starts_realtime_before_runtime_maintenance() {
+        let (realtime_started_tx, realtime_started_rx) = tokio::sync::oneshot::channel();
+        let (maintenance_started_tx, maintenance_started_rx) = tokio::sync::oneshot::channel();
+        let release_maintenance = Arc::new(tokio::sync::Semaphore::new(0));
+        let release_maintenance_for_startup = release_maintenance.clone();
+
+        let startup = task::spawn(async move {
+            run_post_schema_startup(
+                || {
+                    realtime_started_tx
+                        .send(())
+                        .expect("realtime startup signal is received");
+                    Ok(())
+                },
+                || async { Ok(()) },
+                || async { Ok(()) },
+                || async move {
+                    maintenance_started_tx
+                        .send(())
+                        .expect("runtime maintenance startup signal is received");
+                    let _permit = release_maintenance_for_startup
+                        .acquire()
+                        .await
+                        .expect("runtime maintenance release semaphore remains open");
+                    Ok(())
+                },
+            )
+            .await
+        });
+
+        timeout(Duration::from_secs(1), realtime_started_rx)
+            .await
+            .expect("realtime startup begins promptly after schema migration")
+            .expect("realtime startup signal is sent");
+        timeout(Duration::from_secs(1), maintenance_started_rx)
+            .await
+            .expect("runtime maintenance begins after realtime startup")
+            .expect("runtime maintenance startup signal is sent");
+        assert!(
+            !startup.is_finished(),
+            "runtime maintenance remains independent from already-started realtime work"
+        );
+
+        release_maintenance.add_permits(1);
+        startup
+            .await
+            .expect("post-schema startup task joins")
+            .expect("post-schema startup succeeds");
     }
 
     #[test]
