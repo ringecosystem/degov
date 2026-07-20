@@ -651,6 +651,50 @@ async fn test_migration_repairs_invalid_runtime_index() -> Result<(), Box<dyn Er
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_migration_rebuilds_invalid_deferred_candidate_scope_drain_index()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    sqlx::query("DROP INDEX onchain_refresh_deferred_candidate_scope_drain_idx")
+        .execute(&database.pool)
+        .await?;
+    sqlx::query(
+        "CREATE INDEX onchain_refresh_deferred_candidate_scope_drain_idx
+         ON onchain_refresh_deferred_candidate (id)",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "UPDATE pg_index
+         SET indisvalid = false
+         WHERE indexrelid = 'onchain_refresh_deferred_candidate_scope_drain_idx'::regclass",
+    )
+    .execute(&database.pool)
+    .await?;
+
+    apply_migrations(&database.pool).await?;
+
+    assert_index_is_valid(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_deferred_candidate_scope_drain_idx",
+    )
+    .await?;
+    assert_index_definition_contains(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_deferred_candidate_scope_drain_idx",
+        &["chain_id, contract_set_id, dao_code, next_run_at, updated_at, id"],
+    )
+    .await?;
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_schema_only_migration_creates_worker_owned_task_table() -> Result<(), Box<dyn Error>>
 {
     let database = TestDatabase::connect().await?;

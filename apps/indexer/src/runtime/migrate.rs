@@ -833,6 +833,11 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
     drop_invalid_runtime_index(connection, "onchain_refresh_task_processing_retry_idx").await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_processing_lock_retry_idx")
         .await?;
+    drop_invalid_runtime_index(
+        connection,
+        "onchain_refresh_deferred_candidate_scope_drain_idx",
+    )
+    .await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_pending_scope_claim_idx").await?;
     drop_invalid_runtime_index(connection, "onchain_refresh_task_failed_scope_retry_idx").await?;
     drop_invalid_runtime_index(
