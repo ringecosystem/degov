@@ -975,7 +975,7 @@ async fn test_postgres_data_metric_event_rows_are_idempotent_and_keep_global()
         sqlx::query_scalar("SELECT delegate_profiles_count FROM data_metric WHERE id = 'global'")
             .fetch_one(&database.pool)
             .await?;
-    assert_eq!(delegate_profiles_count, Some(5));
+    assert_eq!(delegate_profiles_count, Some(0));
 
     database.cleanup().await?;
 
@@ -1504,6 +1504,146 @@ async fn test_postgres_delegate_profile_metric_keeps_new_contract_set_null_befor
     )?;
 
     assert_eq!(delegate_profile_count(&database.pool, "demo-dao").await?, 1);
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool, "demo-dao").await?,
+        vec![None, None]
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_delegate_profile_metric_syncs_proposal_only_new_contract_set()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_initialized_delegate_profile_scope(&database.pool).await?;
+    let proposal_batch = project_proposal_events(
+        &proposal_projection_context_with_scope(
+            "scope-v2", 1, GOVERNOR, TOKEN, TIMELOCK, "demo-dao",
+        ),
+        vec![ProposalProjectionEvent {
+            log: normalized_log("profile-proposal-only", 1, 0, 1),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "921".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["0".to_owned()],
+                signatures: vec!["proposalOnly()".to_owned()],
+                calldatas: vec!["0x".to_owned()],
+                vote_start: "10".to_owned(),
+                vote_end: "20".to_owned(),
+                description: "Proposal-only rollout".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("proposal-only projection failed: {error:?}"))?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(proposal_batch),
+            token: None,
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool, "demo-dao").await?,
+        vec![Some(1), Some(1)]
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_delegate_profile_metric_syncs_vote_only_new_contract_set()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_initialized_delegate_profile_scope(&database.pool).await?;
+    sqlx::query(
+        "INSERT INTO proposal (
+           id, contract_set_id, chain_id, dao_code, governor_address, proposal_id,
+           proposer, targets, values, signatures, calldatas, vote_start, vote_end,
+           description, block_number, block_timestamp, transaction_hash, title,
+           vote_start_timestamp, vote_end_timestamp, clock_mode, quorum, decimals
+         ) VALUES (
+           'profile-vote-only-proposal', 'scope-v2', 1, 'demo-dao', $1, '921',
+           $2, ARRAY[]::TEXT[], ARRAY[]::TEXT[], ARRAY[]::TEXT[], ARRAY[]::TEXT[],
+           10, 20, 'Vote-only rollout fixture', 1, 1, '0xprofile-vote-only-proposal',
+           'Vote-only rollout fixture', 10, 20, 'blocknumber', 0, 18
+         )",
+    )
+    .bind(GOVERNOR)
+    .bind(PROPOSER)
+    .execute(&database.pool)
+    .await?;
+    let vote_batch = project_vote_events(
+        &vote_projection_context_with_scope("scope-v2", 1, GOVERNOR, TOKEN, TIMELOCK, "demo-dao"),
+        vec![VoteProjectionEvent {
+            log: normalized_log("profile-vote-only", 1, 0, 1),
+            event: DecodedGovernorEvent::VoteCast(VoteCastEvent {
+                voter: RECEIVER.to_owned(),
+                proposal_id: "921".to_owned(),
+                support: 1,
+                weight: "10".to_owned(),
+                reason: "rollout".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("vote-only projection failed: {error:?}"))?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            vote: Some(vote_batch),
+            token: None,
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
+    assert_eq!(
+        delegate_profile_metric_counts(&database.pool, "demo-dao").await?,
+        vec![Some(1), Some(1)]
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_delegate_profile_metric_keeps_proposal_only_scope_null_before_backfill()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_empty_global_metric(&database.pool).await?;
+    let proposal_batch = project_proposal_events(
+        &proposal_projection_context_with_scope(
+            "scope-v2", 1, GOVERNOR, TOKEN, TIMELOCK, "demo-dao",
+        ),
+        vec![ProposalProjectionEvent {
+            log: normalized_log("profile-proposal-only-uninitialized", 1, 0, 1),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "922".to_owned(),
+                proposer: PROPOSER.to_owned(),
+                targets: vec![TARGET.to_owned()],
+                values: vec!["0".to_owned()],
+                signatures: vec!["uninitialized()".to_owned()],
+                calldatas: vec!["0x".to_owned()],
+                vote_start: "10".to_owned(),
+                vote_end: "20".to_owned(),
+                description: "Uninitialized proposal-only rollout".to_owned(),
+            }),
+        }],
+    )
+    .map_err(|error| format!("uninitialized proposal-only projection failed: {error:?}"))?;
+    let mut store = PostgresIndexerRunnerStore::new(database.pool.clone());
+    apply_projection_batch(
+        &mut store,
+        IndexerProjectionBatch {
+            proposal: Some(proposal_batch),
+            token: None,
+            ..IndexerProjectionBatch::default()
+        },
+    )?;
+
     assert_eq!(
         delegate_profile_metric_counts(&database.pool, "demo-dao").await?,
         vec![None, None]

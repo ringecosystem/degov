@@ -271,11 +271,7 @@ async fn write_projection_batch(
     onchain_refresh_debounce: Duration,
     onchain_refresh_deferred_drain_batch_size: usize,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let delegate_profile_scopes = batch
-        .token
-        .as_ref()
-        .map(delegate_profile_scopes)
-        .unwrap_or_default();
+    let delegate_profile_scopes = delegate_profile_scopes(batch);
     for (chain_id, dao_code, governor_address) in &delegate_profile_scopes {
         acquire_delegate_profile_scope_lock(transaction, *chain_id, dao_code, governor_address)
             .await?;

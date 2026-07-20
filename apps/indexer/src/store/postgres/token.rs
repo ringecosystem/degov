@@ -63,34 +63,92 @@ fn recompute_delegate_count_effective_chunk_size() -> usize {
     )
 }
 
-fn delegate_profile_scopes(batch: &TokenProjectionBatch) -> BTreeSet<(i32, String, String)> {
+fn delegate_profile_scopes(batch: &IndexerProjectionBatch) -> BTreeSet<(i32, String, String)> {
     let mut scopes = BTreeSet::new();
-    for operation in &batch.operations {
-        insert_delegate_profile_scope(&mut scopes, token_operation_common(operation));
+    if let Some(token) = &batch.token {
+        for operation in &token.operations {
+            let common = token_operation_common(operation);
+            insert_delegate_profile_scope(
+                &mut scopes,
+                common.chain_id,
+                &common.dao_code,
+                &common.governor_address,
+            );
+        }
+        for row in &token.delegate_changed {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.delegate_votes_changed {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.token_transfers {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.delegate_rollings {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
     }
-    for row in &batch.delegate_changed {
-        insert_delegate_profile_scope(&mut scopes, &row.common);
+    if let Some(proposal) = &batch.proposal {
+        for row in &proposal.proposals {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+        for row in &proposal.data_metrics {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
     }
-    for row in &batch.delegate_votes_changed {
-        insert_delegate_profile_scope(&mut scopes, &row.common);
-    }
-    for row in &batch.token_transfers {
-        insert_delegate_profile_scope(&mut scopes, &row.common);
-    }
-    for row in &batch.delegate_rollings {
-        insert_delegate_profile_scope(&mut scopes, &row.common);
+    if let Some(vote) = &batch.vote {
+        for row in &vote.contributor_vote_signals {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+        for row in &vote.data_metrics {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
     }
     scopes
 }
 
-fn insert_delegate_profile_scope(
+fn insert_token_delegate_profile_scope(
     scopes: &mut BTreeSet<(i32, String, String)>,
     common: &TokenEventCommon,
 ) {
-    scopes.insert((
+    insert_delegate_profile_scope(
+        scopes,
         common.chain_id,
-        common.dao_code.clone(),
-        common.governor_address.to_lowercase(),
+        &common.dao_code,
+        &common.governor_address,
+    );
+}
+
+fn insert_delegate_profile_scope(
+    scopes: &mut BTreeSet<(i32, String, String)>,
+    chain_id: i32,
+    dao_code: &str,
+    governor_address: &str,
+) {
+    scopes.insert((
+        chain_id,
+        dao_code.to_owned(),
+        governor_address.to_lowercase(),
     ));
 }
 
