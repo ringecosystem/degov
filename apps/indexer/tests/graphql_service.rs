@@ -772,18 +772,30 @@ async fn test_graphql_delegate_profiles_count_falls_back_for_null_or_filtered_sc
 #[test]
 fn test_graphql_delegate_profile_fast_path_uses_one_database_query() {
     let source = include_str!("../src/graphql/query.rs");
-    let start = source
+    let sql_start = source
         .find("const MATERIALIZED_DELEGATE_PROFILES_SQL")
         .expect("materialized delegate profile combined statement");
-    let end = source[start..]
+    let fast_path_start = source[sql_start..]
+        .find("async fn count_materialized_delegate_profiles")
+        .map(|offset| sql_start + offset)
+        .expect("materialized delegate profile fast path");
+    let fast_path_end = source[fast_path_start..]
         .find("pub(super) async fn count_delegate_profiles")
-        .map(|offset| start + offset)
+        .map(|offset| fast_path_start + offset)
         .expect("public delegate profile count function");
-    let fast_path = &source[start..end];
+    let combined_sql = source[sql_start..fast_path_start]
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase();
+    let fast_path = &source[fast_path_start..fast_path_end];
 
     assert_eq!(fast_path.matches(".fetch_one(pool)").count(), 1);
     assert_eq!(fast_path.matches("sqlx::query_as").count(), 1);
     assert!(!fast_path.contains("sqlx::query_scalar"));
+    assert!(!combined_sql.contains(" from delegate "));
+    assert!(!combined_sql.contains(" join delegate "));
+    assert!(!combined_sql.contains("count(distinct lower(to_delegate))"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
