@@ -28,13 +28,6 @@ const CurrentVotesSkeleton = () => {
           <Skeleton className="h-[18px] w-[120px]" />
         </div>
 
-        <div className="flex items-center justify-between gap-[10px]">
-          <span className="text-[14px] font-normal">
-            {t("totalParticipation")}
-          </span>
-          <Skeleton className="h-[18px] w-[80px]" />
-        </div>
-
         <div className="flex flex-col gap-[10px]">
           <div className="flex items-center justify-between gap-[10px]">
             <div className="flex items-center gap-[5px]">
@@ -163,13 +156,6 @@ export const CurrentVotes = ({
               required: formatTokenAmount(quorumRequired).formatted,
             })}
           </span>
-        </div>
-
-        <div className="flex items-center justify-between gap-[10px]">
-          <span className="text-[14px] font-normal">
-            {t("totalParticipation")}
-          </span>
-          <span>{formatTokenAmount(totalVotesCast).formatted}</span>
         </div>
 
         <div className="flex flex-col gap-[10px]">
