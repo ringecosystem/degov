@@ -89,7 +89,7 @@ test("proposal quorum progress rejects duplicate counting mode buckets", () => {
   assert.equal(progress.currentVotes, 15n);
 });
 
-test("proposal vote summary distinguishes quorum progress from total participation", () => {
+test("proposal vote summary hides total participation while preserving quorum progress", () => {
   const currentVotesSource = readFileSync(
     new URL("../src/app/proposal/[id]/current-votes.tsx", import.meta.url),
     "utf8"
@@ -103,13 +103,10 @@ test("proposal vote summary distinguishes quorum progress from total participati
 
   assert.equal(typeof messages.currentVotes.quorumProgress, "string");
   assert.ok(messages.currentVotes.quorumProgress.length > 0);
-  assert.equal(typeof messages.currentVotes.totalParticipation, "string");
-  assert.ok(messages.currentVotes.totalParticipation.length > 0);
-  assert.notEqual(
-    messages.currentVotes.quorumProgress,
-    messages.currentVotes.totalParticipation
-  );
   assert.match(currentVotesSource, /t\("quorumProgress"\)/);
-  assert.match(currentVotesSource, /t\("totalParticipation"\)/);
-  assert.match(currentVotesSource, /formatTokenAmount\(totalVotesCast\)/);
+  assert.doesNotMatch(currentVotesSource, /t\("totalParticipation"\)/);
+  assert.doesNotMatch(
+    currentVotesSource,
+    /formatTokenAmount\(totalVotesCast\)/
+  );
 });
