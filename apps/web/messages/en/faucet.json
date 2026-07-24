@@ -1,0 +1,18 @@
+{
+  "eyebrow": "Base Playground",
+  "title": "Get ready to govern",
+  "description": "Claim 10 GTK, then delegate the voting power to yourself. You can use it to create, vote on, and execute a Playground proposal.",
+  "claimTitle": "Claim your test governance tokens",
+  "claimDescription": "Each wallet can claim 10 GTK once.",
+  "claim": "Claim 10 GTK",
+  "claimed": "10 GTK claimed",
+  "connectWallet": "Connect wallet",
+  "switchNetwork": "Switch to {network}",
+  "notConfigured": "The Faucet contract has not been configured for this DAO yet.",
+  "delegateTitle": "Activate your voting power",
+  "delegateDescription": "GTK only counts toward governance after you delegate it. Delegate to your own wallet to continue.",
+  "delegate": "Delegate to myself",
+  "delegated": "Voting power activated",
+  "viewTransaction": "View transaction",
+  "gasNotice": "This Playground runs on Base Mainnet. Your wallet needs a small amount of ETH to pay gas for claiming, delegating, and governance transactions."
+}

@@ -15,6 +15,7 @@ eth_rpc_url  = "https://erpc.ringdao.com/main/evm/46"
 
 [rpc_endpoints]
 darwinia = "https://rpc.darwinia.network"
+base = "https://base-rpc.publicnode.com"
 
 [etherscan]
 darwinia = { key = "xxx", url = "https://explorer.darwinia.network/api", chain = 46 }

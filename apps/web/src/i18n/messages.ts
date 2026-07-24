@@ -16,6 +16,7 @@ async function loadEnglishMessages(): Promise<AbstractIntlMessages> {
     notifications,
     proposalEditor,
     aiAnalysis,
+    faucet,
   ] = await Promise.all([
     import("../../messages/en/common.json"),
     import("../../messages/en/navigation.json"),
@@ -29,6 +30,7 @@ async function loadEnglishMessages(): Promise<AbstractIntlMessages> {
     import("../../messages/en/notifications.json"),
     import("../../messages/en/proposal-editor.json"),
     import("../../messages/en/ai-analysis.json"),
+    import("../../messages/en/faucet.json"),
   ]);
 
   return {
@@ -44,6 +46,7 @@ async function loadEnglishMessages(): Promise<AbstractIntlMessages> {
     notifications: notifications.default,
     proposalEditor: proposalEditor.default,
     aiAnalysis: aiAnalysis.default,
+    faucet: faucet.default,
   };
 }
 

@@ -74,6 +74,11 @@ interface AppItem {
   description: string;
   icon: string;
   link: string;
+  params?: {
+    contract?: string;
+    faucetAddress?: string;
+    [key: string]: unknown;
+  };
 }
 
 interface FaqItem {
