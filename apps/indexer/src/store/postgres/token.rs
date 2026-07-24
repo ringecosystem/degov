@@ -8,6 +8,7 @@ const CONTRIBUTOR_ENSURE_BULK_BINDS_PER_ROW: usize = 16;
 const TOKEN_EVENT_BULK_BINDS_PER_ROW: usize = 19;
 const DELEGATE_ROLLING_VOTE_UPDATE_BINDS_PER_ROW: usize = 6;
 const VOTE_POWER_CHECKPOINT_BULK_BINDS_PER_ROW: usize = 21;
+const RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_BINDS_PER_ROW: usize = 2;
 
 fn bulk_chunk_size_from_env(
     env_name: &str,
@@ -54,6 +55,196 @@ fn vote_power_checkpoint_bulk_chunk_size() -> usize {
     )
 }
 
+fn recompute_delegate_count_effective_chunk_size() -> usize {
+    bulk_chunk_size_from_env(
+        "DEGOV_INDEXER_RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_CHUNK_SIZE",
+        TOKEN_EVENT_BULK_CHUNK_SIZE_DEFAULT,
+        RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_BINDS_PER_ROW,
+    )
+}
+
+fn delegate_profile_scopes(batch: &IndexerProjectionBatch) -> BTreeSet<(i32, String, String)> {
+    let mut scopes = BTreeSet::new();
+    if let Some(token) = &batch.token {
+        for operation in &token.operations {
+            let common = token_operation_common(operation);
+            insert_delegate_profile_scope(
+                &mut scopes,
+                common.chain_id,
+                &common.dao_code,
+                &common.governor_address,
+            );
+        }
+        for row in &token.delegate_changed {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.delegate_votes_changed {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.token_transfers {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+        for row in &token.delegate_rollings {
+            insert_token_delegate_profile_scope(&mut scopes, &row.common);
+        }
+    }
+    if let Some(proposal) = &batch.proposal {
+        for row in &proposal.proposals {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+        for row in &proposal.data_metrics {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+    }
+    if let Some(vote) = &batch.vote {
+        for row in &vote.contributor_vote_signals {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+        for row in &vote.data_metrics {
+            insert_delegate_profile_scope(
+                &mut scopes,
+                row.chain_id,
+                &row.dao_code,
+                &row.governor_address,
+            );
+        }
+    }
+    scopes
+}
+
+fn insert_token_delegate_profile_scope(
+    scopes: &mut BTreeSet<(i32, String, String)>,
+    common: &TokenEventCommon,
+) {
+    insert_delegate_profile_scope(
+        scopes,
+        common.chain_id,
+        &common.dao_code,
+        &common.governor_address,
+    );
+}
+
+fn insert_delegate_profile_scope(
+    scopes: &mut BTreeSet<(i32, String, String)>,
+    chain_id: i32,
+    dao_code: &str,
+    governor_address: &str,
+) {
+    scopes.insert((
+        chain_id,
+        dao_code.to_owned(),
+        governor_address.to_lowercase(),
+    ));
+}
+
+async fn insert_delegate_profiles(
+    transaction: &mut Transaction<'_, Postgres>,
+    batch: &TokenProjectionBatch,
+    inserted_operation_keys: &[(String, String)],
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let inserted_operation_keys = inserted_operation_keys
+        .iter()
+        .map(|(contract_set_id, id)| (contract_set_id.as_str(), id.as_str()))
+        .collect::<HashSet<_>>();
+    let profiles = batch
+        .delegate_changed
+        .iter()
+        .filter(|row| {
+            inserted_operation_keys.contains(&(row.common.contract_set_id.as_str(), row.id.as_str()))
+        })
+        .filter_map(|row| {
+            let delegate = row.to_delegate.to_lowercase();
+            (delegate != ZERO_DELEGATE_ADDRESS).then(|| {
+                (
+                    row.common.chain_id,
+                    row.common.dao_code.clone(),
+                    row.common.governor_address.to_lowercase(),
+                    delegate,
+                )
+            })
+        })
+        .collect::<BTreeSet<_>>();
+
+    if profiles.is_empty() {
+        return Ok(());
+    }
+
+    let mut query = QueryBuilder::<Postgres>::new(
+        "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate) ",
+    );
+    query.push_values(&profiles, |mut values, profile| {
+        values
+            .push_bind(profile.0)
+            .push_bind(&profile.1)
+            .push_bind(&profile.2)
+            .push_bind(&profile.3);
+    });
+    query.push(" ON CONFLICT DO NOTHING");
+    query.build().execute(&mut **transaction).await?;
+
+    Ok(())
+}
+
+async fn synchronize_delegate_profile_metrics(
+    transaction: &mut Transaction<'_, Postgres>,
+    scopes: &BTreeSet<(i32, String, String)>,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    for (chain_id, dao_code, governor_address) in scopes {
+        sqlx::query(
+            "WITH rollout AS (
+               SELECT COALESCE(bool_or(delegate_profiles_count IS NOT NULL), FALSE) AS initialized
+               FROM data_metric
+               WHERE id = 'global'
+                 AND chain_id = $1
+                 AND dao_code = $2
+                 AND lower(governor_address) = $3
+             ), profile_count AS (
+               SELECT count(*)::INTEGER AS value
+               FROM delegate_profile
+               WHERE chain_id = $1 AND dao_code = $2 AND governor_address = $3
+             )
+             UPDATE data_metric
+             SET delegate_profiles_count = profile_count.value
+             FROM rollout, profile_count
+             WHERE rollout.initialized
+               AND data_metric.id = 'global'
+               AND data_metric.chain_id = $1
+               AND data_metric.dao_code = $2
+               AND lower(data_metric.governor_address) = $3",
+        )
+        .bind(*chain_id)
+        .bind(dao_code)
+        .bind(governor_address)
+        .execute(&mut **transaction)
+        .await?;
+    }
+
+    Ok(())
+}
+
+fn chunk_count(row_count: usize, chunk_size: usize) -> usize {
+    if row_count == 0 {
+        0
+    } else {
+        (row_count - 1) / chunk_size + 1
+    }
+}
+
 async fn write_token_batch_rows(
     transaction: &mut Transaction<'_, Postgres>,
     batch: &TokenProjectionBatch,
@@ -88,15 +279,21 @@ async fn write_token_batch_rows(
     let vote_power_checkpoint_duration = vote_power_checkpoint_started_at.elapsed();
 
     if let Some(common) = token_batch_common(batch) {
+        let token_event_chunk_size = token_event_bulk_chunk_size();
         log::info!(
-            "Datalens indexer token row write phases dao_code={} chain_id={} contract_set_id={} delegate_changed_count={} delegate_votes_changed_count={} token_transfer_count={} delegate_rolling_count={} inserted_operation_count={} delegate_changed_duration_ms={} delegate_votes_changed_duration_ms={} token_transfer_duration_ms={} delegate_rolling_duration_ms={} metadata_preload_duration_ms={} vote_power_checkpoint_duration_ms={} total_duration_ms={}",
+            "Datalens indexer token row write phases dao_code={} chain_id={} contract_set_id={} token_event_chunk_size={} delegate_changed_count={} delegate_changed_chunk_count={} delegate_votes_changed_count={} delegate_votes_changed_chunk_count={} token_transfer_count={} token_transfer_chunk_count={} delegate_rolling_count={} delegate_rolling_chunk_count={} inserted_operation_count={} delegate_changed_duration_ms={} delegate_votes_changed_duration_ms={} token_transfer_duration_ms={} delegate_rolling_duration_ms={} metadata_preload_duration_ms={} vote_power_checkpoint_duration_ms={} total_duration_ms={}",
             common.dao_code,
             common.chain_id,
             common.contract_set_id,
+            token_event_chunk_size,
             batch.delegate_changed.len(),
+            chunk_count(batch.delegate_changed.len(), token_event_chunk_size),
             batch.delegate_votes_changed.len(),
+            chunk_count(batch.delegate_votes_changed.len(), token_event_chunk_size),
             batch.token_transfers.len(),
+            chunk_count(batch.token_transfers.len(), token_event_chunk_size),
             batch.delegate_rollings.len(),
+            chunk_count(batch.delegate_rollings.len(), token_event_chunk_size),
             inserted_operation_keys.len(),
             delegate_changed_duration.as_millis(),
             delegate_votes_changed_duration.as_millis(),
@@ -246,63 +443,126 @@ async fn insert_token_transfer_batch(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[TokenTransferWrite],
 ) -> Result<Vec<(String, String)>, PostgresIndexerRunnerStoreError> {
+    let started_at = std::time::Instant::now();
+    let chunk_size = token_event_bulk_chunk_size();
     let mut inserted = Vec::new();
-    for rows in rows.chunks(token_event_bulk_chunk_size()) {
-        let mut query = QueryBuilder::<Postgres>::new(
+    for rows in rows.chunks(chunk_size) {
+        let mut ids = Vec::with_capacity(rows.len());
+        let mut contract_set_ids = Vec::with_capacity(rows.len());
+        let mut chain_ids = Vec::with_capacity(rows.len());
+        let mut dao_codes = Vec::with_capacity(rows.len());
+        let mut governor_addresses = Vec::with_capacity(rows.len());
+        let mut token_addresses = Vec::with_capacity(rows.len());
+        let mut contract_addresses = Vec::with_capacity(rows.len());
+        let mut log_indexes = Vec::with_capacity(rows.len());
+        let mut transaction_indexes = Vec::with_capacity(rows.len());
+        let mut from_accounts = Vec::with_capacity(rows.len());
+        let mut to_accounts = Vec::with_capacity(rows.len());
+        let mut values = Vec::with_capacity(rows.len());
+        let mut standards = Vec::with_capacity(rows.len());
+        let mut block_numbers = Vec::with_capacity(rows.len());
+        let mut block_timestamps = Vec::with_capacity(rows.len());
+        let mut transaction_hashes = Vec::with_capacity(rows.len());
+
+        for row in rows {
+            let common = &row.common;
+            ids.push(row.id.clone());
+            contract_set_ids.push(common.contract_set_id.clone());
+            chain_ids.push(common.chain_id);
+            dao_codes.push(common.dao_code.clone());
+            governor_addresses.push(common.governor_address.clone());
+            token_addresses.push(common.token_address.clone());
+            contract_addresses.push(common.contract_address.clone());
+            log_indexes.push(u64_to_i32(common.log_index, "token_transfer.log_index")?);
+            transaction_indexes.push(u64_to_i32(
+                common.transaction_index,
+                "token_transfer.transaction_index",
+            )?);
+            from_accounts.push(row.from.clone());
+            to_accounts.push(row.to.clone());
+            values.push(row.value.clone());
+            standards.push(row.standard.clone());
+            block_numbers.push(common.block_number.clone());
+            block_timestamps.push(
+                required_numeric(&common.block_timestamp, "token_transfer.block_timestamp")?
+                    .to_owned(),
+            );
+            transaction_hashes.push(common.transaction_hash.clone());
+        }
+
+        let inserted_rows = sqlx::query(
             "INSERT INTO token_transfer (
                 id, contract_set_id, chain_id, dao_code, governor_address, token_address,
                 contract_address, log_index, transaction_index, \"from\", \"to\", value, standard,
                 block_number, block_timestamp, transaction_hash
-             ) VALUES ",
+             )
+             SELECT
+                source.id,
+                source.contract_set_id,
+                source.chain_id,
+                source.dao_code,
+                source.governor_address,
+                source.token_address,
+                source.contract_address,
+                source.log_index,
+                source.transaction_index,
+                source.from_account,
+                source.to_account,
+                source.value::NUMERIC(78, 0),
+                source.standard,
+                source.block_number::NUMERIC(78, 0),
+                source.block_timestamp::NUMERIC(78, 0),
+                source.transaction_hash
+             FROM UNNEST(
+                $1::TEXT[], $2::TEXT[], $3::INT4[], $4::TEXT[], $5::TEXT[], $6::TEXT[],
+                $7::TEXT[], $8::INT4[], $9::INT4[], $10::TEXT[], $11::TEXT[], $12::TEXT[],
+                $13::TEXT[], $14::TEXT[], $15::TEXT[], $16::TEXT[]
+             ) AS source(
+                id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+                contract_address, log_index, transaction_index, from_account, to_account, value,
+                standard, block_number, block_timestamp, transaction_hash
+             )
+             ON CONFLICT (contract_set_id, id) DO NOTHING
+             RETURNING contract_set_id, id",
+        )
+        .bind(&ids)
+        .bind(&contract_set_ids)
+        .bind(&chain_ids)
+        .bind(&dao_codes)
+        .bind(&governor_addresses)
+        .bind(&token_addresses)
+        .bind(&contract_addresses)
+        .bind(&log_indexes)
+        .bind(&transaction_indexes)
+        .bind(&from_accounts)
+        .bind(&to_accounts)
+        .bind(&values)
+        .bind(&standards)
+        .bind(&block_numbers)
+        .bind(&block_timestamps)
+        .bind(&transaction_hashes)
+        .fetch_all(&mut **transaction)
+        .await?;
+        inserted.extend(inserted_rows.into_iter().map(|row| {
+            (
+                row.get::<String, _>("contract_set_id"),
+                row.get::<String, _>("id"),
+            )
+        }));
+    }
+
+    if let Some(common) = rows.first().map(|row| &row.common) {
+        log::info!(
+            "Datalens indexer token transfer row write completed dao_code={} chain_id={} contract_set_id={} row_count={} chunk_size={} chunk_count={} inserted_count={} duration_ms={}",
+            common.dao_code,
+            common.chain_id,
+            common.contract_set_id,
+            rows.len(),
+            chunk_size,
+            chunk_count(rows.len(), chunk_size),
+            inserted.len(),
+            started_at.elapsed().as_millis()
         );
-        for (index, row) in rows.iter().enumerate() {
-            if index > 0 {
-                query.push(", ");
-            }
-            let common = &row.common;
-            query
-                .push("(")
-                .push_bind(&row.id)
-                .push(", ")
-                .push_bind(&common.contract_set_id)
-                .push(", ")
-                .push_bind(common.chain_id)
-                .push(", ")
-                .push_bind(&common.dao_code)
-                .push(", ")
-                .push_bind(&common.governor_address)
-                .push(", ")
-                .push_bind(&common.token_address)
-                .push(", ")
-                .push_bind(&common.contract_address)
-                .push(", ")
-                .push_bind(u64_to_i32(common.log_index, "token_transfer.log_index")?)
-                .push(", ")
-                .push_bind(u64_to_i32(
-                    common.transaction_index,
-                    "token_transfer.transaction_index",
-                )?)
-                .push(", ")
-                .push_bind(&row.from)
-                .push(", ")
-                .push_bind(&row.to)
-                .push(", ")
-                .push_bind(&row.value)
-                .push("::NUMERIC(78, 0), ")
-                .push_bind(&row.standard)
-                .push(", ")
-                .push_bind(&common.block_number)
-                .push("::NUMERIC(78, 0), ")
-                .push_bind(required_numeric(
-                    &common.block_timestamp,
-                    "token_transfer.block_timestamp",
-                )?)
-                .push("::NUMERIC(78, 0), ")
-                .push_bind(&common.transaction_hash)
-                .push(")");
-        }
-        query.push(" ON CONFLICT (contract_set_id, id) DO NOTHING RETURNING contract_set_id, id");
-        inserted.extend(fetch_inserted_operation_keys(transaction, query).await?);
     }
 
     Ok(inserted)
@@ -1373,12 +1633,13 @@ impl ContributorEnsureCache {
     async fn flush_contributor_count_deltas(
         &mut self,
         transaction: &mut Transaction<'_, Postgres>,
-    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    ) -> Result<usize, PostgresIndexerRunnerStoreError> {
         let deltas = std::mem::take(&mut self.contributor_count_deltas)
             .into_iter()
             .collect::<Vec<_>>();
+        let delta_count = deltas.len();
         if deltas.is_empty() {
-            return Ok(());
+            return Ok(0);
         }
 
         for rows in deltas.chunks(token_event_bulk_chunk_size()) {
@@ -1458,7 +1719,7 @@ impl ContributorEnsureCache {
             query.build().execute(&mut **transaction).await?;
         }
 
-        Ok(())
+        Ok(delta_count)
     }
 
     async fn flush_contributor_count_increments(
@@ -1517,12 +1778,14 @@ async fn increment_contributor_count_by(
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
     sqlx::query(
         "INSERT INTO data_metric (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, contributor_count
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            contributor_count, member_count
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
          SET token_address = COALESCE(data_metric.token_address, EXCLUDED.token_address),
-             contributor_count = COALESCE(data_metric.contributor_count, 0) + EXCLUDED.contributor_count",
+             contributor_count = COALESCE(data_metric.contributor_count, 0) + EXCLUDED.contributor_count,
+             member_count = COALESCE(data_metric.member_count, 0) + EXCLUDED.member_count",
     )
     .bind(data_metric_id(
         common.chain_id,
@@ -1777,59 +2040,81 @@ impl DelegateMappingCache {
         }
 
         for rows in relation_upserts.chunks(token_event_bulk_chunk_size()) {
-            let mut query = QueryBuilder::<Postgres>::new(
+            let mut ids = Vec::with_capacity(rows.len());
+            let mut contract_set_ids = Vec::with_capacity(rows.len());
+            let mut chain_ids = Vec::with_capacity(rows.len());
+            let mut dao_codes = Vec::with_capacity(rows.len());
+            let mut governor_addresses = Vec::with_capacity(rows.len());
+            let mut token_addresses = Vec::with_capacity(rows.len());
+            let mut contract_addresses = Vec::with_capacity(rows.len());
+            let mut log_indexes = Vec::with_capacity(rows.len());
+            let mut transaction_indexes = Vec::with_capacity(rows.len());
+            let mut froms = Vec::with_capacity(rows.len());
+            let mut tos = Vec::with_capacity(rows.len());
+            let mut powers = Vec::with_capacity(rows.len());
+            let mut block_numbers = Vec::with_capacity(rows.len());
+            let mut block_timestamps = Vec::with_capacity(rows.len());
+            let mut transaction_hashes = Vec::with_capacity(rows.len());
+            for row in rows {
+                let common = &row.common;
+                ids.push(delegate_mapping_ref(common, &row.from));
+                contract_set_ids.push(common.contract_set_id.clone());
+                chain_ids.push(common.chain_id);
+                dao_codes.push(common.dao_code.clone());
+                governor_addresses.push(common.governor_address.clone());
+                token_addresses.push(common.token_address.clone());
+                contract_addresses.push(common.contract_address.clone());
+                log_indexes.push(u64_to_i32(
+                    common.log_index,
+                    "delegate_mapping.log_index",
+                )?);
+                transaction_indexes.push(u64_to_i32(
+                    common.transaction_index,
+                    "delegate_mapping.transaction_index",
+                )?);
+                froms.push(row.from.clone());
+                tos.push(row.to.clone());
+                powers.push(row.power.clone());
+                block_numbers.push(common.block_number.clone());
+                block_timestamps.push(
+                    required_numeric(&common.block_timestamp, "delegate_mapping.block_timestamp")?
+                        .to_owned(),
+                );
+                transaction_hashes.push(common.transaction_hash.clone());
+            }
+            sqlx::query(
                 r#"INSERT INTO delegate_mapping (
                     id, contract_set_id, chain_id, dao_code, governor_address, token_address, contract_address,
                     log_index, transaction_index, "from", "to", power, block_number, block_timestamp,
                     transaction_hash
-                 ) VALUES "#,
-            );
-            for (index, row) in rows.iter().enumerate() {
-                if index > 0 {
-                    query.push(", ");
-                }
-                let common = &row.common;
-                query
-                    .push("(")
-                    .push_bind(delegate_mapping_ref(common, &row.from))
-                    .push(", ")
-                    .push_bind(&common.contract_set_id)
-                    .push(", ")
-                    .push_bind(common.chain_id)
-                    .push(", ")
-                    .push_bind(&common.dao_code)
-                    .push(", ")
-                    .push_bind(&common.governor_address)
-                    .push(", ")
-                    .push_bind(&common.token_address)
-                    .push(", ")
-                    .push_bind(&common.contract_address)
-                    .push(", ")
-                    .push_bind(u64_to_i32(common.log_index, "delegate_mapping.log_index")?)
-                    .push(", ")
-                    .push_bind(u64_to_i32(
-                        common.transaction_index,
-                        "delegate_mapping.transaction_index",
-                    )?)
-                    .push(", ")
-                    .push_bind(&row.from)
-                    .push(", ")
-                    .push_bind(&row.to)
-                    .push(", ")
-                    .push_bind(&row.power)
-                    .push("::NUMERIC(78, 0), ")
-                    .push_bind(&common.block_number)
-                    .push("::NUMERIC(78, 0), ")
-                    .push_bind(required_numeric(
-                        &common.block_timestamp,
-                        "delegate_mapping.block_timestamp",
-                    )?)
-                    .push("::NUMERIC(78, 0), ")
-                    .push_bind(&common.transaction_hash)
-                    .push(")");
-            }
-            query.push(
-                r#" ON CONFLICT (contract_set_id, id) DO UPDATE
+                 )
+                 SELECT
+                    id,
+                    contract_set_id,
+                    chain_id,
+                    dao_code,
+                    governor_address,
+                    token_address,
+                    contract_address,
+                    log_index,
+                    transaction_index,
+                    "from",
+                    "to",
+                    power_text::NUMERIC(78, 0),
+                    block_number_text::NUMERIC(78, 0),
+                    block_timestamp_text::NUMERIC(78, 0),
+                    transaction_hash
+                 FROM unnest(
+                    $1::TEXT[], $2::TEXT[], $3::INT4[], $4::TEXT[], $5::TEXT[],
+                    $6::TEXT[], $7::TEXT[], $8::INT4[], $9::INT4[], $10::TEXT[],
+                    $11::TEXT[], $12::TEXT[], $13::TEXT[], $14::TEXT[], $15::TEXT[]
+                 ) AS source(
+                    id, contract_set_id, chain_id, dao_code, governor_address,
+                    token_address, contract_address, log_index, transaction_index,
+                    "from", "to", power_text, block_number_text, block_timestamp_text,
+                    transaction_hash
+                 )
+                 ON CONFLICT (contract_set_id, id) DO UPDATE
                  SET chain_id = EXCLUDED.chain_id,
                      dao_code = EXCLUDED.dao_code,
                      governor_address = EXCLUDED.governor_address,
@@ -1843,35 +2128,47 @@ impl DelegateMappingCache {
                      block_number = EXCLUDED.block_number,
                      block_timestamp = EXCLUDED.block_timestamp,
                      transaction_hash = EXCLUDED.transaction_hash"#,
-            );
-            query.build().execute(&mut **transaction).await?;
+            )
+            .bind(ids)
+            .bind(contract_set_ids)
+            .bind(chain_ids)
+            .bind(dao_codes)
+            .bind(governor_addresses)
+            .bind(token_addresses)
+            .bind(contract_addresses)
+            .bind(log_indexes)
+            .bind(transaction_indexes)
+            .bind(froms)
+            .bind(tos)
+            .bind(powers)
+            .bind(block_numbers)
+            .bind(block_timestamps)
+            .bind(transaction_hashes)
+            .execute(&mut **transaction)
+            .await?;
         }
 
         for rows in power_updates.chunks(token_event_bulk_chunk_size()) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "UPDATE delegate_mapping AS target
-                 SET power = source.power::NUMERIC(78, 0)
-                 FROM (VALUES ",
-            );
-            for (index, row) in rows.iter().enumerate() {
-                if index > 0 {
-                    query.push(", ");
-                }
-                query
-                    .push("(")
-                    .push_bind(&row.common.contract_set_id)
-                    .push(", ")
-                    .push_bind(delegate_mapping_ref(&row.common, &row.from))
-                    .push(", ")
-                    .push_bind(&row.power)
-                    .push("::NUMERIC(78, 0))");
+            let mut contract_set_ids = Vec::with_capacity(rows.len());
+            let mut ids = Vec::with_capacity(rows.len());
+            let mut powers = Vec::with_capacity(rows.len());
+            for row in rows {
+                contract_set_ids.push(row.common.contract_set_id.clone());
+                ids.push(delegate_mapping_ref(&row.common, &row.from));
+                powers.push(row.power.clone());
             }
-            query.push(
-                ") AS source(contract_set_id, id, power)
+            sqlx::query(
+                "UPDATE delegate_mapping AS target
+                 SET power = source.power_text::NUMERIC(78, 0)
+                 FROM unnest($1::TEXT[], $2::TEXT[], $3::TEXT[]) AS source(contract_set_id, id, power_text)
                  WHERE target.contract_set_id = source.contract_set_id
                    AND target.id = source.id",
-            );
-            query.build().execute(&mut **transaction).await?;
+            )
+            .bind(contract_set_ids)
+            .bind(ids)
+            .bind(powers)
+            .execute(&mut **transaction)
+            .await?;
         }
 
         Ok(effective_count_delegates)
@@ -1886,39 +2183,38 @@ async fn recompute_delegate_count_effective(
         return Ok(());
     }
 
-    for rows in delegates.chunks(token_event_bulk_chunk_size()) {
-        let mut query = QueryBuilder::<Postgres>::new(
-            "UPDATE contributor
+    let chunk_size = recompute_delegate_count_effective_chunk_size();
+    for rows in delegates.chunks(chunk_size) {
+        let contract_set_ids = rows
+            .iter()
+            .map(|(contract_set_id, _id)| contract_set_id.clone())
+            .collect::<Vec<_>>();
+        let ids = rows
+            .iter()
+            .map(|(_contract_set_id, id)| id.clone())
+            .collect::<Vec<_>>();
+        sqlx::query(
+            r#"UPDATE contributor
              SET delegates_count_effective = counts.positive_count
              FROM (
                 SELECT affected.contract_set_id,
                        affected.id,
-                       COUNT(delegate_mapping.id) FILTER (WHERE delegate_mapping.power > 0)::INT AS positive_count
-                FROM (VALUES ",
-        );
-        for (index, (contract_set_id, id)) in rows.iter().enumerate() {
-            if index > 0 {
-                query.push(", ");
-            }
-            query
-                .push("(")
-                .push_bind(contract_set_id)
-                .push(", ")
-                .push_bind(id)
-                .push(")");
-        }
-        query.push(
-            r#") AS affected(contract_set_id, id)
+                       COUNT(delegate_mapping.id)::INT AS positive_count
+                FROM unnest($1::TEXT[], $2::TEXT[]) AS affected(contract_set_id, id)
                 LEFT JOIN delegate_mapping
                   ON delegate_mapping.contract_set_id = affected.contract_set_id
                  AND delegate_mapping."to" = affected.id
+                 AND delegate_mapping.power > 0
                 GROUP BY affected.contract_set_id, affected.id
              ) AS counts
              WHERE contributor.contract_set_id = counts.contract_set_id
                AND contributor.id = counts.id
                AND contributor.delegates_count_effective IS DISTINCT FROM counts.positive_count"#,
-        );
-        query.build().execute(&mut **transaction).await?;
+        )
+        .bind(contract_set_ids)
+        .bind(ids)
+        .execute(&mut **transaction)
+        .await?;
     }
 
     Ok(())
@@ -2021,7 +2317,7 @@ impl BatchTokenMetadataCache {
     ) -> Result<Self, PostgresIndexerRunnerStoreError> {
         let keys = collect_transaction_metadata_keys(batch);
         let mut cache = Self::default();
-        cache.preload_transfer_counts(transaction, &keys).await?;
+        cache.preload_transfer_counts(batch, &keys);
         cache.preload_rollings(transaction, &keys).await?;
         Ok(cache)
     }
@@ -2206,36 +2502,21 @@ impl BatchTokenMetadataCache {
         Ok(())
     }
 
-    async fn preload_transfer_counts(
+    fn preload_transfer_counts(
         &mut self,
-        transaction: &mut Transaction<'_, Postgres>,
+        batch: &TokenProjectionBatch,
         keys: &[TransactionMetadataKey],
-    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    ) {
         for key in keys {
             self.transfer_counts.entry(key.clone()).or_default();
         }
-        for (contract_set_id, transaction_hashes) in group_transaction_hashes_by_contract_set(keys) {
-            let rows = sqlx::query(
-                "SELECT transaction_hash, count(*)::BIGINT AS transfer_count
-                 FROM token_transfer
-                 WHERE contract_set_id = $1 AND transaction_hash = ANY($2)
-                 GROUP BY transaction_hash",
-            )
-            .bind(&contract_set_id)
-            .bind(&transaction_hashes)
-            .fetch_all(&mut **transaction)
-            .await?;
-            for row in rows {
-                self.transfer_counts.insert(
-                    TransactionMetadataKey {
-                        contract_set_id: contract_set_id.clone(),
-                        transaction_hash: row.get("transaction_hash"),
-                    },
-                    row.get("transfer_count"),
-                );
-            }
+        for row in &batch.token_transfers {
+            let key = TransactionMetadataKey::new(&row.common);
+            let Some(count) = self.transfer_counts.get_mut(&key) else {
+                continue;
+            };
+            *count += 1;
         }
-        Ok(())
     }
 
     async fn preload_rollings(

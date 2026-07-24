@@ -185,60 +185,52 @@ fn query_plans(
     from_block: i32,
     to_block: i32,
 ) -> Vec<DaoLogQueryPlan> {
-    let mut plans = vec![
-        query_plan(
-            config,
-            DaoLogAddressSource {
-                address: addresses.governor.clone(),
-                source: DaoLogSource::Governor,
-            },
-            GOVERNOR_TOPIC0_FILTERS,
-            from_block,
-            to_block,
-        ),
-        query_plan(
-            config,
-            DaoLogAddressSource {
-                address: addresses.governor_token.clone(),
-                source: DaoLogSource::GovernorToken,
-            },
-            GOVERNOR_TOKEN_TOPIC0_FILTERS,
-            from_block,
-            to_block,
-        ),
+    let mut sources = vec![
+        DaoLogAddressSource {
+            address: addresses.governor.clone(),
+            source: DaoLogSource::Governor,
+        },
+        DaoLogAddressSource {
+            address: addresses.governor_token.clone(),
+            source: DaoLogSource::GovernorToken,
+        },
     ];
-
     if let Some(timelock) = &addresses.timelock {
-        plans.push(query_plan(
-            config,
-            DaoLogAddressSource {
-                address: timelock.clone(),
-                source: DaoLogSource::Timelock,
-            },
-            TIMELOCK_TOPIC0_FILTERS,
-            from_block,
-            to_block,
-        ));
+        sources.push(DaoLogAddressSource {
+            address: timelock.clone(),
+            source: DaoLogSource::Timelock,
+        });
     }
+    let topics = if addresses.timelock.is_some() {
+        broad_dao_topic0_filters()
+    } else {
+        dao_topic0_filters_without_timelock()
+    };
+    let selector_addresses = sources
+        .iter()
+        .map(|source| source.address.clone())
+        .collect();
 
-    plans
+    vec![query_plan(
+        config,
+        sources,
+        selector_addresses,
+        topics,
+        from_block,
+        to_block,
+    )]
 }
 
 fn query_plan(
     config: &DatalensConfig,
-    source: DaoLogAddressSource,
-    topic0_filters: &[&str],
+    sources: Vec<DaoLogAddressSource>,
+    selector_addresses: Vec<String>,
+    topics: Vec<String>,
     from_block: i32,
     to_block: i32,
 ) -> DaoLogQueryPlan {
-    let topics = topic0_filters
-        .iter()
-        .map(|topic| topic.to_string())
-        .collect();
-    let address = source.address.clone();
-
     DaoLogQueryPlan {
-        sources: vec![source],
+        sources,
         from_block,
         to_block,
         input: QueryInput {
@@ -260,7 +252,7 @@ fn query_plan(
             selector: QuerySelectorInput {
                 kind: SelectorKindInput::EvmLogs,
                 evm_logs: Some(EvmLogsSelectorInput {
-                    addresses: vec![address],
+                    addresses: selector_addresses,
                     topics: vec![topics],
                 }),
                 other: None,
@@ -276,6 +268,34 @@ fn query_plan(
             fields: None,
         },
     }
+}
+
+fn broad_dao_topic0_filters() -> Vec<String> {
+    unique_topic0_filters(
+        GOVERNOR_TOPIC0_FILTERS
+            .iter()
+            .chain(TIMELOCK_TOPIC0_FILTERS)
+            .chain(GOVERNOR_TOKEN_TOPIC0_FILTERS),
+    )
+}
+
+fn dao_topic0_filters_without_timelock() -> Vec<String> {
+    unique_topic0_filters(
+        GOVERNOR_TOPIC0_FILTERS
+            .iter()
+            .chain(GOVERNOR_TOKEN_TOPIC0_FILTERS),
+    )
+}
+
+fn unique_topic0_filters<'a>(topics: impl Iterator<Item = &'a &'a str>) -> Vec<String> {
+    let mut values = Vec::new();
+    for topic in topics {
+        let topic = (*topic).to_owned();
+        if !values.contains(&topic) {
+            values.push(topic);
+        }
+    }
+    values
 }
 
 const GOVERNOR_TOPIC0_FILTERS: &[&str] = &[

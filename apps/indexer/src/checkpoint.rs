@@ -1,6 +1,6 @@
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
-use crate::CheckpointError;
+use crate::{AdaptiveChunkSizingDecision, CheckpointError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IndexerCheckpointIdentity {
@@ -17,10 +17,40 @@ pub struct IndexerCheckpoint {
     pub next_block: i64,
     pub processed_height: Option<i64>,
     pub target_height: Option<i64>,
+    pub adaptive_chunk_size: Option<u32>,
+    pub adaptive_chunk_reason: Option<String>,
+    pub adaptive_chunk_updated_at: Option<String>,
     pub updated_at: String,
     pub last_error: Option<String>,
     pub lock_owner: Option<String>,
     pub locked_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RestoredAdaptiveChunkState {
+    pub current_chunk_size: Option<u32>,
+    pub reason: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+impl RestoredAdaptiveChunkState {
+    pub fn new(current_chunk_size: Option<u32>) -> Self {
+        Self {
+            current_chunk_size,
+            reason: None,
+            updated_at: None,
+        }
+    }
+}
+
+impl IndexerCheckpoint {
+    pub fn restored_adaptive_chunk_state(&self) -> RestoredAdaptiveChunkState {
+        RestoredAdaptiveChunkState {
+            current_chunk_size: self.adaptive_chunk_size,
+            reason: self.adaptive_chunk_reason.clone(),
+            updated_at: self.adaptive_chunk_updated_at.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -94,6 +124,9 @@ impl CheckpointRepository {
                 next_block::BIGINT AS next_block,
                 processed_height::BIGINT AS processed_height,
                 target_height::BIGINT AS target_height,
+                adaptive_chunk_size,
+                adaptive_chunk_reason,
+                adaptive_chunk_updated_at::TEXT AS adaptive_chunk_updated_at,
                 updated_at::TEXT AS updated_at,
                 last_error,
                 lock_owner,
@@ -196,6 +229,45 @@ impl CheckpointRepository {
 
         Ok(())
     }
+
+    pub async fn update_adaptive_chunk_state(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        identity: &IndexerCheckpointIdentity,
+        adaptive_sizing_decision: &AdaptiveChunkSizingDecision,
+    ) -> Result<(), CheckpointError> {
+        if adaptive_sizing_decision.current_chunk_size == 0 {
+            return Err(CheckpointError::InvalidRangeLimit);
+        }
+
+        let result = sqlx::query(
+            "UPDATE degov_indexer_checkpoint
+             SET adaptive_chunk_size = $6::BIGINT,
+                 adaptive_chunk_reason = $7::TEXT,
+                 adaptive_chunk_updated_at = now(),
+                 updated_at = now()
+             WHERE dao_code = $1
+               AND chain_id = $2
+               AND contract_set_id = $3
+               AND stream_id = $4
+               AND data_source_version = $5",
+        )
+        .bind(&identity.dao_code)
+        .bind(identity.chain_id)
+        .bind(&identity.contract_set_id)
+        .bind(&identity.stream_id)
+        .bind(&identity.data_source_version)
+        .bind(i64::from(adaptive_sizing_decision.current_chunk_size))
+        .bind(adaptive_sizing_decision.reason.to_string())
+        .execute(&mut **transaction)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(missing_checkpoint(identity));
+        }
+
+        Ok(())
+    }
 }
 
 pub fn plan_next_checkpoint_range(
@@ -274,6 +346,11 @@ fn checkpoint_from_row(row: &sqlx::postgres::PgRow) -> Result<IndexerCheckpoint,
         next_block: row.try_get("next_block")?,
         processed_height: row.try_get("processed_height")?,
         target_height: row.try_get("target_height")?,
+        adaptive_chunk_size: row
+            .try_get::<Option<i64>, _>("adaptive_chunk_size")?
+            .and_then(|size| u32::try_from(size).ok()),
+        adaptive_chunk_reason: row.try_get("adaptive_chunk_reason")?,
+        adaptive_chunk_updated_at: row.try_get("adaptive_chunk_updated_at")?,
         updated_at: row.try_get("updated_at")?,
         last_error: row.try_get("last_error")?,
         lock_owner: row.try_get("lock_owner")?,

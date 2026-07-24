@@ -23,6 +23,12 @@ pub(super) fn push_proposal_order(
         query,
         order_by.unwrap_or(&[ProposalOrderByInput::IdAsc]),
         |order| match order {
+            ProposalOrderByInput::BlockNumberAscNullsFirst => {
+                "proposal.block_number ASC NULLS FIRST"
+            }
+            ProposalOrderByInput::BlockTimestampAscNullsFirst => {
+                "proposal.block_timestamp ASC NULLS FIRST"
+            }
             ProposalOrderByInput::BlockTimestampDescNullsLast => {
                 "proposal.block_timestamp DESC NULLS LAST"
             }
@@ -153,5 +159,29 @@ pub(super) fn push_order<T>(
     let mut separated = query.separated(", ");
     for order in order_by {
         separated.push(to_sql(order));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_push_proposal_order_uses_qualified_compatibility_fragments() {
+        let mut query = QueryBuilder::<Postgres>::new("SELECT * FROM proposal");
+
+        push_proposal_order(
+            &mut query,
+            Some(&[
+                ProposalOrderByInput::BlockNumberAscNullsFirst,
+                ProposalOrderByInput::BlockTimestampAscNullsFirst,
+                ProposalOrderByInput::IdAsc,
+            ]),
+        );
+
+        assert_eq!(
+            query.sql(),
+            "SELECT * FROM proposal ORDER BY proposal.block_number ASC NULLS FIRST, proposal.block_timestamp ASC NULLS FIRST, proposal.id ASC"
+        );
     }
 }

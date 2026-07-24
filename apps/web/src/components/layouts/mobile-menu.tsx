@@ -24,7 +24,13 @@ export const MobileMenu = ({
   open,
   onMenuToggle,
 }: MobileMenuProps) => {
-  const { currentBlock, indexedBlock, syncPercentage, status } = useBlockSync();
+  const {
+    currentBlock,
+    indexedBlock,
+    durableProcessedBlock,
+    syncPercentage,
+    status,
+  } = useBlockSync();
   const showNotification = useNotificationVisibility();
 
   return (
@@ -58,6 +64,7 @@ export const MobileMenu = ({
               <IndexerStatus
                 currentBlock={currentBlock}
                 indexedBlock={indexedBlock}
+                durableProcessedBlock={durableProcessedBlock}
                 syncPercentage={syncPercentage}
                 status={status}
               />

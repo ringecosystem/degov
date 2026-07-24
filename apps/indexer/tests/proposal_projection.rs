@@ -1,9 +1,10 @@
 use degov_datalens_indexer::{
     BatchReadPlanConfig, BlockReadMode, ChainContracts, ChainReadExecutionReport, ChainReadKey,
     ChainReadMethod, ChainReadResult, ChainReadValue, DecodedGovernorEvent,
-    GovernanceTokenStandard, NormalizedEvmLog, ProposalCreatedEvent, ProposalExtendedEvent,
-    ProposalIdEvent, ProposalProjectionContext, ProposalProjectionError, ProposalProjectionEvent,
-    ProposalProjectionRepository, ProposalQueuedEvent, ProposalStateWriteKind, ReadRequirement,
+    GovernanceTokenStandard, InMemoryProposalProjectionRepository, NormalizedEvmLog,
+    ProposalCreatedEvent, ProposalExtendedEvent, ProposalIdEvent, ProposalProjectionContext,
+    ProposalProjectionError, ProposalProjectionEvent, ProposalProjectionRepository,
+    ProposalQueuedEvent, ProposalStateWriteKind, ReadRequirement, TimelockChangeEvent,
     project_proposal_events,
 };
 use serde_json::json;
@@ -122,6 +123,7 @@ fn test_project_proposal_created_builds_aggregate_actions_and_chain_reads() {
             ChainReadMethod::Decimals,
             ChainReadMethod::BlockTimestamp,
             ChainReadMethod::BlockTimestamp,
+            ChainReadMethod::CountingMode,
             ChainReadMethod::ClockMode,
             ChainReadMethod::ProposalSnapshot,
             ChainReadMethod::ProposalDeadline,
@@ -276,6 +278,67 @@ fn test_project_proposal_created_uses_raw_log_id_and_timestamp_clock_enrichment(
 }
 
 #[test]
+fn test_project_proposal_created_clears_stub_block_interval_for_timestamp_clock() {
+    let mut repository = InMemoryProposalProjectionRepository::default();
+    let queued_batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: production_log(
+                "0003952206-5710e-000001",
+                3_952_206,
+                0,
+                1,
+                1_722_633_202_000,
+            ),
+            event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                proposal_id: "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb"
+                    .to_owned(),
+                eta_seconds: "1723239001".to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+    repository.apply(&queued_batch).expect("apply queued batch");
+
+    let created_batch = project_proposal_events(
+        &context(),
+        vec![ProposalProjectionEvent {
+            log: production_log(
+                "0003952205-5710e-000000",
+                3_952_205,
+                0,
+                0,
+                1_722_633_201_000,
+            ),
+            event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                proposal_id: "0xa26d54b01695a650afc589fdce860697298a329911503f71d6cb187cb297ffeb"
+                    .to_owned(),
+                proposer: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_owned(),
+                targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+                values: vec!["0".to_owned()],
+                signatures: vec!["".to_owned()],
+                calldatas: vec!["0x".to_owned()],
+                vote_start: "1722633201".to_owned(),
+                vote_end: "1723238001".to_owned(),
+                description: "Production shaped proposal".to_owned(),
+            }),
+        }],
+    )
+    .expect("projection succeeds");
+    repository
+        .apply(&created_batch)
+        .expect("apply created batch");
+
+    let proposal = repository
+        .proposals()
+        .values()
+        .next()
+        .expect("stored proposal");
+    assert_eq!(proposal.clock_mode, "timestamp");
+    assert_eq!(proposal.block_interval, None);
+}
+
+#[test]
 fn test_project_proposal_created_estimates_blocknumber_vote_timestamps_from_proposal_block() {
     let mut batch = project_proposal_events(
         &context(),
@@ -311,6 +374,11 @@ fn test_project_proposal_created_estimates_blocknumber_vote_timestamps_from_prop
                 ChainReadValue::String("mode=blocknumber&from=default".to_owned()),
             ),
             read_result(
+                ChainReadMethod::CountingMode,
+                "",
+                ChainReadValue::String("support=bravo&quorum=for,abstain".to_owned()),
+            ),
+            read_result(
                 ChainReadMethod::BlockTimestamp,
                 "22339716",
                 ChainReadValue::Integer("1745507999000".to_owned()),
@@ -331,6 +399,10 @@ fn test_project_proposal_created_estimates_blocknumber_vote_timestamps_from_prop
     assert_eq!(proposal.vote_start_timestamp, "1745507999000");
     assert_eq!(proposal.vote_end_timestamp, "1746060503000");
     assert_eq!(proposal.block_interval.as_deref(), Some("12"));
+    assert_eq!(
+        proposal.counting_mode.as_deref(),
+        Some("support=bravo&quorum=for,abstain")
+    );
     assert_eq!(
         proposal.timelock_address.as_deref(),
         Some("0x2222222222222222222222222222222222222222")
@@ -383,7 +455,7 @@ fn test_project_proposal_created_preserves_fallback_when_block_timestamp_read_fa
 }
 
 #[test]
-fn test_project_proposal_created_omits_block_interval_for_non_ethereum_blocknumber() {
+fn test_project_proposal_created_sets_configured_block_interval_for_base_blocknumber() {
     let mut event_log = production_log(
         "0022339715-afd3c-000054",
         22_339_715,
@@ -414,9 +486,9 @@ fn test_project_proposal_created_omits_block_interval_for_non_ethereum_blocknumb
     let proposal = &batch.proposals[0];
     assert_eq!(proposal.chain_id, 8453);
     assert_eq!(proposal.clock_mode, "blocknumber");
-    assert_eq!(proposal.block_interval, None);
-    assert_eq!(proposal.vote_start_timestamp, "22339716");
-    assert_eq!(proposal.vote_end_timestamp, "22385534");
+    assert_eq!(proposal.block_interval, Some("2".to_owned()));
+    assert_eq!(proposal.vote_start_timestamp, "1745507989000");
+    assert_eq!(proposal.vote_end_timestamp, "1745599625000");
 }
 
 #[test]
@@ -495,7 +567,7 @@ fn test_project_proposal_lifecycle_events_builds_metadata_and_state_epochs() {
 }
 
 #[test]
-fn test_project_proposal_lifecycle_stub_omits_block_interval_for_non_ethereum_chain() {
+fn test_project_proposal_lifecycle_stub_sets_configured_block_interval_for_base_chain() {
     let mut event_log = log(13, 0, 1);
     event_log.chain_id = 8453;
     let batch = project_proposal_events(
@@ -513,7 +585,135 @@ fn test_project_proposal_lifecycle_stub_omits_block_interval_for_non_ethereum_ch
     let proposal = &batch.proposals[0];
     assert_eq!(proposal.chain_id, 8453);
     assert_eq!(proposal.clock_mode, "blocknumber");
-    assert_eq!(proposal.block_interval, None);
+    assert_eq!(proposal.block_interval, Some("2".to_owned()));
+}
+
+#[test]
+fn test_project_governor_parameter_events_builds_event_rows_and_checkpoints() {
+    let batch = project_proposal_events(
+        &context(),
+        vec![
+            ProposalProjectionEvent {
+                log: log(20, 0, 1),
+                event: parameter_change("VotingDelaySet", "1", "2"),
+            },
+            ProposalProjectionEvent {
+                log: log(21, 0, 2),
+                event: parameter_change("VotingPeriodSet", "10", "20"),
+            },
+            ProposalProjectionEvent {
+                log: log(22, 0, 3),
+                event: parameter_change("ProposalThresholdSet", "100", "200"),
+            },
+            ProposalProjectionEvent {
+                log: log(23, 0, 4),
+                event: parameter_change("QuorumNumeratorUpdated", "4", "5"),
+            },
+            ProposalProjectionEvent {
+                log: log(24, 0, 5),
+                event: parameter_change("LateQuorumVoteExtensionSet", "6", "7"),
+            },
+            ProposalProjectionEvent {
+                log: log(25, 0, 6),
+                event: DecodedGovernorEvent::TimelockChange(TimelockChangeEvent {
+                    old_timelock: "0x2222222222222222222222222222222222222222".to_owned(),
+                    new_timelock: "0x3333333333333333333333333333333333333333".to_owned(),
+                }),
+            },
+        ],
+    )
+    .expect("projection succeeds");
+
+    assert_eq!(batch.voting_delay_set.len(), 1);
+    assert_eq!(batch.voting_delay_set[0].old_value, "1");
+    assert_eq!(batch.voting_delay_set[0].new_value, "2");
+    assert_eq!(batch.voting_period_set.len(), 1);
+    assert_eq!(batch.voting_period_set[0].old_value, "10");
+    assert_eq!(batch.voting_period_set[0].new_value, "20");
+    assert_eq!(batch.proposal_threshold_set.len(), 1);
+    assert_eq!(batch.proposal_threshold_set[0].old_value, "100");
+    assert_eq!(batch.proposal_threshold_set[0].new_value, "200");
+    assert_eq!(batch.quorum_numerator_updated.len(), 1);
+    assert_eq!(batch.quorum_numerator_updated[0].old_value, "4");
+    assert_eq!(batch.quorum_numerator_updated[0].new_value, "5");
+    assert_eq!(batch.late_quorum_vote_extension_set.len(), 1);
+    assert_eq!(batch.late_quorum_vote_extension_set[0].old_value, "6");
+    assert_eq!(batch.late_quorum_vote_extension_set[0].new_value, "7");
+    assert_eq!(batch.timelock_change.len(), 1);
+    assert_eq!(
+        batch.timelock_change[0].old_timelock,
+        "0x2222222222222222222222222222222222222222"
+    );
+    assert_eq!(
+        batch.timelock_change[0].new_timelock,
+        "0x3333333333333333333333333333333333333333"
+    );
+
+    let checkpoints = batch
+        .governance_parameter_checkpoints
+        .iter()
+        .map(|row| {
+            (
+                row.event_name.as_str(),
+                row.parameter_name.as_str(),
+                row.value_type.as_str(),
+                row.old_value.as_deref(),
+                row.new_value.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        checkpoints,
+        vec![
+            ("VotingDelaySet", "voting_delay", "uint256", Some("1"), "2"),
+            (
+                "VotingPeriodSet",
+                "voting_period",
+                "uint256",
+                Some("10"),
+                "20"
+            ),
+            (
+                "ProposalThresholdSet",
+                "proposal_threshold",
+                "uint256",
+                Some("100"),
+                "200"
+            ),
+            (
+                "QuorumNumeratorUpdated",
+                "quorum_numerator",
+                "uint256",
+                Some("4"),
+                "5"
+            ),
+            (
+                "LateQuorumVoteExtensionSet",
+                "late_quorum_vote_extension",
+                "uint256",
+                Some("6"),
+                "7"
+            ),
+            (
+                "TimelockChange",
+                "timelock",
+                "address",
+                Some("0x2222222222222222222222222222222222222222"),
+                "0x3333333333333333333333333333333333333333"
+            ),
+        ]
+    );
+    assert_eq!(
+        batch.event_order,
+        vec![
+            "evm:1:20:0xtx20:0:1",
+            "evm:1:21:0xtx21:0:2",
+            "evm:1:22:0xtx22:0:3",
+            "evm:1:23:0xtx23:0:4",
+            "evm:1:24:0xtx24:0:5",
+            "evm:1:25:0xtx25:0:6",
+        ]
+    );
 }
 
 #[test]
@@ -1025,6 +1225,22 @@ fn proposal_created(proposal_id: &str, description: &str) -> DecodedGovernorEven
         vote_end: "40".to_owned(),
         description: description.to_owned(),
     })
+}
+
+fn parameter_change(event_name: &str, old_value: &str, new_value: &str) -> DecodedGovernorEvent {
+    let event = degov_datalens_indexer::ParameterChangeEvent {
+        old_value: old_value.to_owned(),
+        new_value: new_value.to_owned(),
+    };
+
+    match event_name {
+        "VotingDelaySet" => DecodedGovernorEvent::VotingDelaySet(event),
+        "VotingPeriodSet" => DecodedGovernorEvent::VotingPeriodSet(event),
+        "ProposalThresholdSet" => DecodedGovernorEvent::ProposalThresholdSet(event),
+        "QuorumNumeratorUpdated" => DecodedGovernorEvent::QuorumNumeratorUpdated(event),
+        "LateQuorumVoteExtensionSet" => DecodedGovernorEvent::LateQuorumVoteExtensionSet(event),
+        _ => panic!("unexpected parameter change event {event_name}"),
+    }
 }
 
 fn read_result(

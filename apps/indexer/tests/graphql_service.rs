@@ -187,12 +187,24 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
                 limit
                 items { id }
               }
+              contributorsWithDelegatorsPage: contributorsPage(
+                where: { delegatesCountAll_gt: 0 }
+                orderBy: id_ASC
+                limit: 1
+                offset: 0
+              ) {
+                totalCount
+                offset
+                limit
+                items { id delegatesCountAll }
+              }
               delegatesPage(where: { fromDelegate_eq: "0xdelegator" }, orderBy: [id_ASC], limit: 1, offset: 0) {
                 totalCount
                 offset
                 limit
                 items { id }
               }
+              delegateProfilesCount
               delegateMappingsPage(where: { from_eq: "0xdelegator" }, orderBy: [id_ASC], limit: 1, offset: 0) {
                 totalCount
                 offset
@@ -250,7 +262,7 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
     assert_eq!(data["dataMetrics"][0]["powerSum"], "150");
     assert_eq!(data["dataMetrics"][0]["contributorCount"], 3);
     assert_eq!(data["dataMetrics"][0]["holdersCount"], 2);
-    assert_eq!(data["dataMetrics"][0]["memberCount"], 2);
+    assert_eq!(data["dataMetrics"][0]["memberCount"], 9);
     assert_eq!(data["dataMetricsPage"]["totalCount"], 1);
     assert_eq!(data["dataMetricsPage"]["offset"], 2);
     assert_eq!(data["dataMetricsPage"]["limit"], 0);
@@ -284,13 +296,568 @@ async fn test_graphql_schema_serves_current_web_compatibility_queries() -> Resul
             .len(),
         1
     );
+    assert_eq!(data["contributorsWithDelegatorsPage"]["totalCount"], 1);
+    assert_eq!(data["contributorsWithDelegatorsPage"]["offset"], 0);
+    assert_eq!(data["contributorsWithDelegatorsPage"]["limit"], 1);
+    assert_eq!(
+        data["contributorsWithDelegatorsPage"]["items"][0]["id"],
+        "0xvoter1"
+    );
+    assert_eq!(
+        data["contributorsWithDelegatorsPage"]["items"][0]["delegatesCountAll"],
+        1
+    );
     assert_eq!(data["delegatesPage"]["totalCount"], 1);
     assert_eq!(data["delegatesPage"]["offset"], 0);
     assert_eq!(data["delegatesPage"]["limit"], 1);
+    assert_eq!(data["delegateProfilesCount"], 2);
     assert_eq!(data["delegateMappingsPage"]["totalCount"], 1);
     assert_eq!(data["delegateMappingsPage"]["offset"], 0);
     assert_eq!(data["delegateMappingsPage"]["limit"], 1);
     assert_eq!(data["delegateMappingsPage"]["items"][0]["to"], "0xdelegate");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_uses_replicated_logical_scope_metric()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = 7
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+           id, contract_set_id, chain_id, dao_code, governor_address, delegate_profiles_count
+         ) VALUES ('global', 'lisk-second-contract-set', 1135, 'lisk-dao', '0xgovernor', 7)",
+    )
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query MaterializedDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+              dataMetrics(
+                where: {
+                  id_eq: "global"
+                  chainId_eq: 1135
+                  daoCode_eq: "lisk-dao"
+                  governorAddress_eq: "0xgovernor"
+                }
+                orderBy: id_ASC
+              ) {
+                delegateProfilesCount
+              }
+              eventMetric: dataMetrics(where: { id_eq: "0000000800-proposal" }) {
+                delegateProfilesCount
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    let data = response.data.into_json()?;
+    assert_eq!(data["delegateProfilesCount"], 7);
+    assert_eq!(data["dataMetrics"][0]["delegateProfilesCount"], 7);
+    assert_eq!(data["dataMetrics"][1]["delegateProfilesCount"], 7);
+    assert_eq!(
+        data["eventMetric"][0]["delegateProfilesCount"],
+        serde_json::Value::Null
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_falls_back_for_invalid_metric_replicas()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "INSERT INTO data_metric (
+           id, contract_set_id, chain_id, dao_code, governor_address, delegate_profiles_count
+         ) VALUES ('global', 'lisk-second-contract-set', 1135, 'lisk-dao', '0xgovernor', 7)",
+    )
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let request = || {
+        Request::new(
+            r#"
+            query InvalidMaterializedDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        )
+    };
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = CASE contract_set_id WHEN $1 THEN 4 ELSE 7 END
+         WHERE id = 'global' AND chain_id = 1135 AND dao_code = 'lisk-dao'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let drift = schema.execute(request()).await;
+    assert!(
+        drift.errors.is_empty(),
+        "unexpected errors: {:?}",
+        drift.errors
+    );
+    assert_eq!(drift.data.into_json()?["delegateProfilesCount"], 2);
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = CASE contract_set_id WHEN $1 THEN 4 ELSE NULL END
+         WHERE id = 'global' AND chain_id = 1135 AND dao_code = 'lisk-dao'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let mixed_null = schema.execute(request()).await;
+    assert!(
+        mixed_null.errors.is_empty(),
+        "unexpected errors: {:?}",
+        mixed_null.errors
+    );
+    assert_eq!(mixed_null.data.into_json()?["delegateProfilesCount"], 2);
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = -1
+         WHERE id = 'global' AND chain_id = 1135 AND dao_code = 'lisk-dao'",
+    )
+    .execute(&database.pool)
+    .await?;
+    let negative = schema.execute(request()).await;
+    assert!(
+        negative.errors.is_empty(),
+        "unexpected errors: {:?}",
+        negative.errors
+    );
+    assert_eq!(negative.data.into_json()?["delegateProfilesCount"], 2);
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_normalizes_governor_case_across_paths()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = 7
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query MixedCaseGovernorDelegateProfiles {
+              materialized: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xGoVeRnOr"
+              })
+              realtime: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xGoVeRnOr"
+                fromDelegate_eq: "0xdelegator"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    let data = response.data.into_json()?;
+    assert_eq!(data["materialized"], 7);
+    assert_eq!(data["realtime"], 1);
+
+    let implicit_schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            governor_address: Some("0xgovernor".to_owned()),
+            ..graphql::GraphqlScope::default()
+        },
+    );
+    let implicit_response = implicit_schema
+        .execute(Request::new(
+            r#"
+            query ImplicitMixedCaseGovernorDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xGoVeRnOr"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        implicit_response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        implicit_response.errors
+    );
+    assert_eq!(
+        implicit_response.data.into_json()?["delegateProfilesCount"],
+        7
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_adds_only_distinct_nonlive_overlay_targets()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = 7
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO delegate_profile (chain_id, dao_code, governor_address, delegate)
+         VALUES
+           (1135, 'lisk-dao', '0xgovernor', '0xdelegate'),
+           (1135, 'lisk-dao', '0xgovernor', '0xformer')",
+    )
+    .execute(&database.pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_delegate_power_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+          delegator, delegate, power, is_current, source, status
+        ) VALUES
+          ('overlay:new-a', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xnew-a', '0xNeW', 1, TRUE, 'provider', 'available'),
+          ('overlay:new-b', 'lisk-second-contract-set', 1135, 'lisk', 'lisk-dao', '0xGOVERNOR',
+           '0xnew-b', '0xnew', 1, TRUE, 'safe-to-latest', 'available'),
+          ('overlay:new-c', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xnew-c', '0xNEW', 1, TRUE, 'provider', 'available'),
+          ('overlay:registry', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xregistry', '0xDELEGATE', 1, TRUE, 'provider', 'available'),
+          ('overlay:zero', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xzero', '0x0000000000000000000000000000000000000000', 1, TRUE, 'provider', 'available'),
+          ('overlay:invalid', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xinvalid', '0xinvalid', 1, TRUE, 'provider', 'invalid'),
+          ('overlay:finalized', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xfinalized', '0xfinalized', 1, TRUE, 'provider', 'finalized'),
+          ('overlay:live-novel', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+           '0xlive', '0xnovel-live-only', 1, TRUE, 'live-onchain', 'available')
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query OverlayDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    assert_eq!(response.data.into_json()?["delegateProfilesCount"], 8);
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = $1
+         WHERE contract_set_id = $2 AND id = 'global'",
+    )
+    .bind(i32::MAX)
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let overflow_response = schema
+        .execute(Request::new(
+            r#"
+            query OverflowingDelegateProfiles {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert_eq!(overflow_response.errors.len(), 1);
+    assert!(
+        overflow_response.errors[0]
+            .message
+            .contains("delegateProfilesCount exceeds GraphQL Int")
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_delegate_profiles_count_falls_back_for_null_or_filtered_scopes()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = NULL
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let null_metric_response = schema
+        .execute(Request::new(
+            r#"
+            query NullMetricDelegateProfileFallback {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        null_metric_response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        null_metric_response.errors
+    );
+    assert_eq!(
+        null_metric_response.data.into_json()?["delegateProfilesCount"],
+        2
+    );
+
+    sqlx::query(
+        "UPDATE data_metric
+         SET delegate_profiles_count = 99
+         WHERE contract_set_id = $1 AND id = 'global'",
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(&database.pool)
+    .await?;
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query FilteredDelegateProfileFallbacks {
+              incomplete: delegateProfilesCount(where: { daoCode_eq: "lisk-dao" })
+              from: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+                fromDelegate_eq: "0xdelegator"
+              })
+              current: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+                isCurrent_eq: true
+              })
+              power: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+                power_lt: 1
+              })
+              recursive: delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+                OR: [{ toDelegate_eq: "0xformer" }]
+              })
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    let data = response.data.into_json()?;
+    assert_eq!(data["incomplete"], 2);
+    assert_eq!(data["from"], 1);
+    assert_eq!(data["current"], 1);
+    assert_eq!(data["power"], 1);
+    assert_eq!(data["recursive"], 1);
+
+    let contract_scoped_schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+            ..graphql::GraphqlScope::default()
+        },
+    );
+    let contract_scoped_response = contract_scoped_schema
+        .execute(Request::new(
+            r#"
+            query ContractScopedDelegateProfileFallback {
+              delegateProfilesCount(where: {
+                chainId_eq: 1135
+                daoCode_eq: "lisk-dao"
+                governorAddress_eq: "0xgovernor"
+              })
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        contract_scoped_response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        contract_scoped_response.errors
+    );
+    assert_eq!(
+        contract_scoped_response.data.into_json()?["delegateProfilesCount"],
+        2
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[test]
+fn test_graphql_delegate_profile_fast_path_uses_one_database_query() {
+    let source = include_str!("../src/graphql/query.rs");
+    let sql_start = source
+        .find("const MATERIALIZED_DELEGATE_PROFILES_SQL")
+        .expect("materialized delegate profile combined statement");
+    let fast_path_start = source[sql_start..]
+        .find("async fn count_materialized_delegate_profiles")
+        .map(|offset| sql_start + offset)
+        .expect("materialized delegate profile fast path");
+    let fast_path_end = source[fast_path_start..]
+        .find("pub(super) async fn count_delegate_profiles")
+        .map(|offset| fast_path_start + offset)
+        .expect("public delegate profile count function");
+    let combined_sql = source[sql_start..fast_path_start]
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase();
+    let fast_path = &source[fast_path_start..fast_path_end];
+
+    assert_eq!(fast_path.matches(".fetch_one(pool)").count(), 1);
+    assert_eq!(fast_path.matches("sqlx::query_as").count(), 1);
+    assert!(!fast_path.contains("sqlx::query_scalar"));
+    assert!(!combined_sql.contains(" from delegate "));
+    assert!(!combined_sql.contains(" join delegate "));
+    assert!(!combined_sql.contains("count(distinct lower(to_delegate))"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_nested_voters_filter_by_exact_punctuated_id() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    let schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            dao_code: Some("lisk-dao".to_owned()),
+            chain_id: Some(1135),
+            governor_address: Some("0xgovernor".to_owned()),
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+        },
+    );
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query NestedVoteIdFilter {
+              proposals(where: { proposalId_eq: "101" }) {
+                exact: voters(where: { id_eq: "vote:101:2" }) {
+                  id
+                  voter
+                  support
+                }
+                recursive: voters(
+                  where: {
+                    OR: [
+                      { id_eq: "vote:missing" }
+                      { id_eq: "vote:101:2", voter_eq: "0xvoter2", support_eq: 0 }
+                    ]
+                  }
+                ) {
+                  id
+                }
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+    let data = response.data.into_json()?;
+    assert_eq!(data["proposals"][0]["exact"][0]["id"], "vote:101:2");
+    assert_eq!(data["proposals"][0]["exact"][0]["voter"], "0xvoter2");
+    assert_eq!(data["proposals"][0]["exact"][0]["support"], 0);
+    assert_eq!(
+        data["proposals"][0]["exact"]
+            .as_array()
+            .expect("exact voters")
+            .len(),
+        1
+    );
+    assert_eq!(data["proposals"][0]["recursive"][0]["id"], "vote:101:2");
 
     database.cleanup().await?;
 
@@ -454,7 +1021,7 @@ async fn test_graphql_data_metrics_parity_fields_filters_and_ordering() -> Resul
     assert_eq!(data["globalMetric"][0]["powerSum"], "150");
     assert_eq!(data["globalMetric"][0]["contributorCount"], 3);
     assert_eq!(data["globalMetric"][0]["holdersCount"], 2);
-    assert_eq!(data["globalMetric"][0]["memberCount"], 2);
+    assert_eq!(data["globalMetric"][0]["memberCount"], 9);
 
     database.cleanup().await?;
 
@@ -713,6 +1280,112 @@ async fn test_graphql_power_fields_prefer_provisional_overlay_and_fallback_to_fi
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_contributors_power_desc_uses_live_overlay_with_stable_pagination()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_power_overlay_rows(&database.pool).await?;
+    seed_contributor_power_order_rows(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query ContributorPowerOrder {
+              firstPage: contributors(
+                where: {
+                  chainId_eq: 1135
+                  governorAddress_eq: "0xgovernor"
+                  daoCode_eq: "lisk-dao"
+                  id_not_eq: "0xbot"
+                }
+                orderBy: [power_DESC]
+                limit: 3
+              ) {
+                id
+                power
+              }
+              secondPage: contributors(
+                where: {
+                  chainId_eq: 1135
+                  governorAddress_eq: "0xgovernor"
+                  daoCode_eq: "lisk-dao"
+                  id_not_eq: "0xbot"
+                }
+                orderBy: [power_DESC]
+                limit: 2
+                offset: 2
+              ) {
+                id
+                power
+              }
+            }
+            "#,
+    );
+    let response = schema.execute(request).await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = serde_json::to_value(response.data)?;
+    assert_eq!(data["firstPage"][0]["id"], "0xoverlay-top");
+    assert_eq!(data["firstPage"][0]["power"], "1000");
+    assert_eq!(data["firstPage"][1]["id"], "0xvoter1");
+    assert_eq!(data["firstPage"][1]["power"], "999");
+    assert_eq!(data["firstPage"][2]["id"], "0xbase-top");
+    assert_eq!(data["firstPage"][2]["power"], "900");
+    assert_eq!(data["secondPage"][0]["id"], "0xbase-top");
+    assert_eq!(data["secondPage"][1]["id"], "0xbase-tie-a");
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_contributors_power_desc_errors_when_cap_cannot_prove_pagination()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_many_contributor_power_rows(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query ContributorPowerOrder {
+              contributors(
+                where: {
+                  chainId_eq: 1135
+                  governorAddress_eq: "0xgovernor"
+                  daoCode_eq: "lisk-dao"
+                }
+                orderBy: [power_DESC]
+                limit: 1
+                offset: 20000
+              ) {
+                id
+                power
+              }
+            }
+            "#,
+    );
+    let response = schema.execute(request).await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert!(
+        response.errors[0]
+            .message
+            .contains("could not prove exact pagination"),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to_final()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -726,6 +1399,7 @@ async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to
                 proposalId
                 title
                 description
+                descriptionHash
                 proposalEta
                 queueReadyAt
                 queueExpiresAt
@@ -760,6 +1434,7 @@ async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to
         data["proposals"][0]["description"],
         "Live launch description"
     );
+    assert!(data["proposals"][0]["descriptionHash"].is_null());
     assert_eq!(data["proposals"][0]["proposalEta"], "1700000300");
     assert_eq!(data["proposals"][0]["queueReadyAt"], "1700000300000");
     assert_eq!(data["proposals"][0]["queueExpiresAt"], "1700000900000");
@@ -772,6 +1447,247 @@ async fn test_graphql_proposal_fields_prefer_provisional_overlay_and_fallback_to
     assert!(data["fallbackDetail"][0]["proposalEta"].is_null());
 
     database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposal_cursor_filters_and_ascending_orders() -> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    sqlx::query(
+        "UPDATE proposal
+         SET block_number = 800, vote_end_timestamp = 1700002100
+         WHERE id = 'proposal:1135:0xgovernor:102'",
+    )
+    .execute(&database.pool)
+    .await?;
+    seed_provisional_only_proposal_overlay(&database.pool).await?;
+    let schema = graphql::build_schema(database.pool.clone());
+
+    let request = Request::new(
+        r#"
+            query ProposalCursorCompatibility(
+              $sameBlock: ProposalWhereInput
+              $incremental: ProposalWhereInput
+              $window: ProposalWhereInput
+              $page: ProposalWhereInput
+              $beyondInt: ProposalWhereInput
+              $zero: ProposalWhereInput
+              $maxNumeric: ProposalWhereInput
+            ) {
+              sameBlock: proposals(
+                where: $sameBlock
+                orderBy: [blockNumber_ASC_NULLS_FIRST, id_ASC]
+              ) {
+                id
+                blockNumber
+              }
+              incremental: proposals(
+                where: $incremental
+                orderBy: [blockNumber_ASC_NULLS_FIRST, id_ASC]
+              ) {
+                id
+                blockNumber
+              }
+              window: proposals(
+                where: $window
+                orderBy: [blockTimestamp_ASC_NULLS_FIRST, id_ASC]
+              ) {
+                id
+                blockTimestamp
+                voteEndTimestamp
+              }
+              byTimestamp: proposals(
+                orderBy: [blockTimestamp_ASC_NULLS_FIRST, id_ASC]
+              ) {
+                id
+                blockTimestamp
+              }
+              page: proposalsPage(where: $page, orderBy: [id_ASC], limit: 10) {
+                totalCount
+                items { id }
+              }
+              beyondInt: proposals(where: $beyondInt) { id }
+              zero: proposals(where: $zero) { id }
+              maxNumeric: proposals(where: $maxNumeric) { id }
+            }
+        "#,
+    )
+    .variables(async_graphql::Variables::from_json(json!({
+        "sameBlock": {
+            "blockNumber_eq": "800",
+            "id_gt": "proposal:1135:0xgovernor:101"
+        },
+        "incremental": {
+            "OR": [
+                { "blockNumber_gt": "800" },
+                {
+                    "blockNumber_eq": "800",
+                    "id_gt": "proposal:1135:0xgovernor:101"
+                }
+            ]
+        },
+        "window": {
+            "voteEndTimestamp_gte": "1700002000000",
+            "voteEndTimestamp_lt": "1700002400000"
+        },
+        "page": {
+            "blockNumber_gt": "800",
+            "voteEndTimestamp_gte": "1700002400000",
+            "voteEndTimestamp_lt": "1700002400001"
+        },
+        "beyondInt": { "blockNumber_gt": "9223372036854775808" },
+        "zero": { "blockNumber_eq": "0" },
+        "maxNumeric": { "blockNumber_gt": "9".repeat(78) }
+    })));
+    let response = schema.execute(request).await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["sameBlock"][0]["id"], "proposal:1135:0xgovernor:102");
+    assert_eq!(data["sameBlock"][0]["blockNumber"], "800");
+    assert_eq!(
+        data["sameBlock"].as_array().expect("same block rows").len(),
+        1
+    );
+    assert_eq!(data["incremental"][0]["id"], "proposal:1135:0xgovernor:102");
+    assert_eq!(data["incremental"][1]["id"], "overlay:proposal:999");
+    assert_eq!(data["window"][0]["id"], "proposal:1135:0xgovernor:101");
+    assert_eq!(data["window"][1]["id"], "proposal:1135:0xgovernor:102");
+    assert_eq!(data["window"].as_array().expect("window rows").len(), 2);
+    assert_eq!(data["byTimestamp"][0]["id"], "proposal:1135:0xgovernor:101");
+    assert_eq!(data["byTimestamp"][1]["id"], "proposal:1135:0xgovernor:102");
+    assert_eq!(data["byTimestamp"][2]["id"], "overlay:proposal:999");
+    assert_eq!(data["page"]["totalCount"], 1);
+    assert_eq!(data["page"]["items"][0]["id"], "overlay:proposal:999");
+    assert_eq!(data["beyondInt"].as_array().expect("bigint rows").len(), 0);
+    assert_eq!(data["zero"].as_array().expect("zero rows").len(), 0);
+    assert_eq!(
+        data["maxNumeric"]
+            .as_array()
+            .expect("max numeric rows")
+            .len(),
+        0
+    );
+
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposal_numeric_filters_reject_noncanonical_values_before_sql()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://127.0.0.1:1/degov")?;
+    let schema = graphql::build_schema(pool);
+    let invalid_values = [
+        ("blockNumber_eq", ""),
+        ("blockNumber_eq", "not-a-number"),
+        ("blockNumber_gt", "NaN"),
+        ("blockNumber_gt", "1.5"),
+        ("voteEndTimestamp_gte", "1e3"),
+        ("voteEndTimestamp_lt", "-1"),
+        ("voteEndTimestamp_gte", " 1"),
+        ("voteEndTimestamp_lt", "01"),
+    ];
+
+    for (field, value) in invalid_values {
+        let mut where_value = serde_json::Map::new();
+        where_value.insert(field.to_owned(), json!(value));
+        let response = schema
+            .execute(
+                Request::new(
+                    r#"
+                    query InvalidProposalNumeric($where: ProposalWhereInput) {
+                      proposals(where: $where) { id }
+                    }
+                    "#,
+                )
+                .variables(async_graphql::Variables::from_json(json!({
+                    "where": where_value
+                }))),
+            )
+            .await;
+
+        assert_eq!(response.errors.len(), 1, "field {field}, value {value:?}");
+        assert!(
+            response.errors[0]
+                .message
+                .contains(&format!("ProposalWhereInput.{field}")),
+            "unexpected error for field {field}, value {value:?}: {:?}",
+            response.errors
+        );
+        assert!(
+            response.errors[0]
+                .message
+                .contains("canonical non-negative base-10 integer with at most 78 digits"),
+            "unexpected error for field {field}, value {value:?}: {:?}",
+            response.errors
+        );
+    }
+
+    let response = schema
+        .execute(
+            Request::new(
+                r#"
+                query InvalidProposalNumeric($where: ProposalWhereInput) {
+                  proposals(where: $where) { id }
+                }
+                "#,
+            )
+            .variables(async_graphql::Variables::from_json(json!({
+                "where": { "blockNumber_gt": "9".repeat(79) }
+            }))),
+        )
+        .await;
+    assert_eq!(response.errors.len(), 1);
+    assert!(
+        response.errors[0]
+            .message
+            .contains("ProposalWhereInput.blockNumber_gt"),
+        "unexpected error: {:?}",
+        response.errors
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposals_page_rejects_recursive_invalid_numeric_before_count_sql()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://127.0.0.1:1/degov")?;
+    let schema = graphql::build_schema(pool);
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query InvalidProposalPageNumeric {
+              proposalsPage(
+                where: { OR: [{ blockNumber_gt: "800" }, { voteEndTimestamp_lt: "NaN" }] }
+              ) {
+                totalCount
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert!(
+        response.errors[0]
+            .message
+            .contains("ProposalWhereInput.voteEndTimestamp_lt"),
+        "unexpected error: {:?}",
+        response.errors
+    );
 
     Ok(())
 }
@@ -810,7 +1726,7 @@ async fn test_graphql_schema_applies_implicit_scope_to_queries_and_pages()
               proposalsPage { totalCount offset limit items { id } }
               dataMetricsPage { totalCount offset limit items { id } }
               contributorsPage { totalCount offset limit items { id } }
-              delegatesPage { totalCount offset limit items { id } }
+              delegatesPage(where: { isCurrent_eq: true }) { totalCount offset limit items { id } }
               delegateMappingsPage { totalCount offset limit items { id } }
             }
             "#,
@@ -888,6 +1804,7 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
                 chainId
                 contractSetId
                 processedHeight
+                provisionalHeight
                 targetHeight
                 syncedPercentage
                 isSynced
@@ -912,12 +1829,14 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
     assert_eq!(statuses.len(), 2);
     assert_eq!(statuses[0]["daoCode"], "ens-dao");
     assert_eq!(statuses[0]["processedHeight"], 1200);
+    assert_eq!(statuses[0]["provisionalHeight"], serde_json::Value::Null);
     assert_eq!(statuses[0]["targetHeight"], 1200);
     assert_eq!(statuses[0]["syncedPercentage"], 100.0);
     assert_eq!(statuses[0]["isSynced"], true);
     assert_eq!(statuses[0]["lastError"], "caught up after retry");
     assert_eq!(statuses[1]["daoCode"], "lisk-dao");
     assert_eq!(statuses[1]["processedHeight"], 900);
+    assert_eq!(statuses[1]["provisionalHeight"], 1115);
     assert_eq!(statuses[1]["targetHeight"], 1000);
     assert_eq!(statuses[1]["syncedPercentage"], 90.0);
     assert_eq!(statuses[1]["isSynced"], false);
@@ -941,6 +1860,7 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
                 chainId
                 contractSetId
                 processedHeight
+                provisionalHeight
                 targetHeight
                 syncedPercentage
                 isSynced
@@ -965,6 +1885,7 @@ async fn test_graphql_schema_exposes_checkpoint_statuses_with_implicit_scope()
     let scoped_data = scoped_response.data.into_json()?;
     assert_eq!(scoped_data["indexerStatus"]["daoCode"], "lisk-dao");
     assert_eq!(scoped_data["indexerStatus"]["processedHeight"], 900);
+    assert_eq!(scoped_data["indexerStatus"]["provisionalHeight"], 1115);
     assert_eq!(scoped_data["indexerStatus"]["targetHeight"], 1000);
     assert_eq!(scoped_data["indexerStatus"]["syncedPercentage"], 90.0);
     assert_eq!(scoped_data["indexerStatus"]["isSynced"], false);
@@ -998,6 +1919,82 @@ async fn test_graphql_schema_rejects_removed_squid_status_compatibility()
         !sdl.contains(&removed_type),
         "schema still exposes removed status type:\n{sdl}"
     );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_schema_exposes_provisional_indexer_status_height()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/degov")?;
+    let schema = graphql::build_schema(pool);
+    let sdl = schema.sdl();
+
+    assert!(
+        sdl.contains("provisionalHeight: Int"),
+        "schema does not expose provisionalHeight on indexer status:\n{sdl}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_proposals_include_provisional_only_proposal_overlays()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+    seed_provisional_only_proposal_overlay(&database.pool).await?;
+    let schema = graphql::build_schema_with_scope(
+        database.pool.clone(),
+        graphql::GraphqlScope {
+            dao_code: Some("lisk-dao".to_owned()),
+            chain_id: Some(1135),
+            governor_address: Some("0xgovernor".to_owned()),
+            contract_set_id: Some(CONTRACT_SET_ID.to_owned()),
+        },
+    );
+
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query ProvisionalProposal {
+              proposals(
+                where: { proposalId_eq: "999" }
+                orderBy: [blockTimestamp_DESC_NULLS_LAST]
+              ) {
+                id
+                proposalId
+                title
+                blockNumber
+                blockTimestamp
+                transactionHash
+                quorum
+                decimals
+              }
+              proposalsPage(where: { proposalId_eq: "999" }, limit: 10) {
+                totalCount
+                items { id proposalId title }
+              }
+            }
+            "#,
+        ))
+        .await;
+
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors: {:?}",
+        response.errors
+    );
+
+    let data = response.data.into_json()?;
+    assert_eq!(data["proposals"][0]["proposalId"], "0x3e7");
+    assert_eq!(data["proposals"][0]["title"], "Live provisional title");
+    assert_eq!(data["proposals"][0]["blockNumber"], "950");
+    assert_eq!(data["proposals"][0]["blockTimestamp"], "1700000950000");
+    assert_eq!(data["proposals"][0]["transactionHash"], "0xprovisional999");
+    assert_eq!(data["proposalsPage"]["totalCount"], 1);
+    assert_eq!(data["proposalsPage"]["items"][0]["proposalId"], "0x3e7");
+
+    database.cleanup().await?;
 
     Ok(())
 }
@@ -1157,6 +2154,97 @@ async fn test_graphql_http_endpoint_serves_configured_dao_path() -> Result<(), B
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_endpoint_serves_cors_preflight_on_configured_dao_path()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/degov")?;
+    let schema = graphql::build_schema(pool);
+    let app = graphql::build_router_with_paths(schema, ["/ens-dao/graphql".to_owned()]);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let endpoint = format!("http://{}/ens-dao/graphql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new()
+            .request(reqwest::Method::OPTIONS, endpoint)
+            .header("origin", "https://ens.next.degov.ai")
+            .header("access-control-request-method", "POST")
+            .header("access-control-request-headers", "content-type")
+            .send(),
+    )
+    .await??;
+
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .expect("allow origin")
+            .to_str()?,
+        "*"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-methods")
+            .expect("allow methods")
+            .to_str()?,
+        "GET,POST,OPTIONS"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-headers")
+            .expect("allow headers")
+            .to_str()?,
+        "*"
+    );
+
+    server.abort();
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_graphql_http_endpoint_adds_cors_header_to_configured_dao_post_response()
+-> Result<(), Box<dyn Error>> {
+    let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/degov")?;
+    let schema = graphql::build_schema(pool);
+    let app = graphql::build_router_with_paths(schema, ["/ens-dao/graphql".to_owned()]);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let endpoint = format!("http://{}/ens-dao/graphql", listener.local_addr()?);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let response = timeout(
+        Duration::from_secs(5),
+        Client::new()
+            .post(endpoint)
+            .header("origin", "https://ens.next.degov.ai")
+            .json(&json!({
+                "query": "query { __typename }"
+            }))
+            .send(),
+    )
+    .await??;
+
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .expect("allow origin")
+            .to_str()?,
+        "*"
+    );
+    let body: serde_json::Value = response.json().await?;
+    assert_eq!(body["data"]["__typename"], "QueryRoot");
+
+    server.abort();
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_graphql_http_endpoint_serves_configured_dao_graphiql_path()
 -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
@@ -1289,9 +2377,9 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           votes_without_params_count, votes_weight_for_sum, votes_weight_against_sum,
           votes_weight_abstain_sum, power_sum, contributor_count, holders_count, member_count, proposals_count
         ) VALUES
-          ('global', $1, 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 3, 2, 2, 2),
-          ('0000000800-proposal', $1, 1135, 'lisk-dao', '0xgovernor', 0, 0, 0, 0, 0, 0, 150, 3, 2, 2, 1),
-          ('0000000805-vote', $1, 1135, 'lisk-dao', '0xgovernor', 1, 0, 1, 100, 0, 0, 150, 3, 2, 2, 0)
+          ('global', $1, 1135, 'lisk-dao', '0xgovernor', 2, 1, 1, 100, 25, 0, 150, 3, 2, 9, 2),
+          ('0000000800-proposal', $1, 1135, 'lisk-dao', '0xgovernor', 0, 0, 0, 0, 0, 0, 150, 3, 2, 9, 1),
+          ('0000000805-vote', $1, 1135, 'lisk-dao', '0xgovernor', 1, 0, 1, 100, 0, 0, 150, 3, 2, 9, 0)
         "#,
     )
     .bind(CONTRACT_SET_ID)
@@ -1335,7 +2423,10 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         INSERT INTO delegate (
           id, contract_set_id, chain_id, dao_code, governor_address, from_delegate, to_delegate, block_number,
           block_timestamp, transaction_hash, is_current, power
-        ) VALUES ('0xdelegator_0xdelegate', $1, 1135, 'lisk-dao', '0xgovernor', '0xdelegator', '0xdelegate', 807, 1700000125, '0xdelegate', TRUE, 75)
+        ) VALUES
+          ('0xdelegator_0xdelegate', $1, 1135, 'lisk-dao', '0xgovernor', '0xdelegator', '0xdelegate', 807, 1700000125, '0xdelegate', TRUE, 75),
+          ('0xolddelegator_0xformer', $1, 1135, 'lisk-dao', '0xgovernor', '0xolddelegator', '0xformer', 808, 1700000126, '0xformer', FALSE, 0),
+          ('0xotherdelegator_0xformer', $1, 1135, 'lisk-dao', '0xgovernor', '0xotherdelegator', '0xformer', 809, 1700000127, '0xformer2', FALSE, 0)
         "#,
     )
     .bind(CONTRACT_SET_ID)
@@ -1356,7 +2447,45 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         r#"
         INSERT INTO degov_indexer_checkpoint (
           dao_code, chain_id, contract_set_id, stream_id, data_source_version, next_block, processed_height, target_height, updated_at
-        ) VALUES ('lisk-dao', 1135, $1, 'evm.logs', 'datalens', 901, 900, 1000, now())
+        ) VALUES ('lisk-dao', 1135, $1, 'datalens-native', 'datalens', 901, 900, 1000, now())
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_segment (
+          id, contract_set_id, chain_id, dao_code, dataset_key, selector,
+          selector_fingerprint, range_start_block, range_end_block,
+          segment_finality, source, status, anchor_block_number,
+          anchor_block_timestamp
+        ) VALUES
+          (
+            'segment:available:old', $1, 1135, 'lisk-dao', 'evm.logs',
+            'selector', 'selector', 901, 1100, 'safe_to_latest',
+            'live-onchain', 'available', 1100, 1700000300
+          ),
+          (
+            'segment:available:new', $1, 1135, 'lisk-dao', 'evm.logs',
+            'selector', 'selector', 1101, 1120, 'safe_to_latest',
+            'live-onchain', 'available', 1120, 1700000400
+          ),
+          (
+            'segment:available:lagging-selector', $1, 1135, 'lisk-dao',
+            'evm.logs', 'other-selector', 'other-selector', 901, 1115,
+            'safe_to_latest', 'live-onchain', 'available', 1115, 1700000450
+          ),
+          (
+            'segment:rolled-back', $1, 1135, 'lisk-dao', 'evm.logs',
+            'selector', 'selector', 1121, 1200, 'safe_to_latest',
+            'live-onchain', 'rolled_back', 1200, 1700000500
+          ),
+          (
+            'segment:other-dataset', $1, 1135, 'lisk-dao', 'evm.traces',
+            'trace-selector', 'trace-selector', 901, 905, 'safe_to_latest',
+            'live-onchain', 'available', 905, 1700000550
+          )
         "#,
     )
     .bind(CONTRACT_SET_ID)
@@ -1500,6 +2629,96 @@ async fn seed_power_overlay_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+async fn seed_contributor_power_order_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+          id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
+          last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all, delegates_count_effective
+        )
+        SELECT
+          '0xdownranked-' || lpad(i::text, 3, '0'), $1, 1135, 'lisk-dao', '0xgovernor',
+          700 + i, 1700000000 + i, '0xdownranked' || i, 700 + i, 1700000000 + i,
+          5000 - i, 1, 0, 0
+        FROM generate_series(1, 105) AS i
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_contributor_power_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address, token_address,
+          account, power, delegates_count_all, delegates_count_effective, source, status,
+          anchor_block_number, anchor_block_timestamp
+        )
+        SELECT
+          'overlay:contributor:0xdownranked-' || lpad(i::text, 3, '0'), $1, 1135, 'lisk', 'lisk-dao',
+          '0xgovernor', '0xtoken', '0xdownranked-' || lpad(i::text, 3, '0'),
+          1, 0, 0, 'live-onchain', 'available', 900, 1700000200
+        FROM generate_series(1, 105) AS i
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+          id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
+          last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all, delegates_count_effective
+        ) VALUES
+          ('0xoverlay-top', $1, 1135, 'lisk-dao', '0xgovernor', 810, 1700000210, '0xoverlaytop', 810, 1700000210, 10, 1, 0, 0),
+          ('0xbase-top', $1, 1135, 'lisk-dao', '0xgovernor', 811, 1700000220, '0xbasetop', 811, 1700000220, 900, 1, 0, 0),
+          ('0xbase-tie-b', $1, 1135, 'lisk-dao', '0xgovernor', 812, 1700000230, '0xbasetieb', 812, 1700000230, 800, 1, 0, 0),
+          ('0xbase-tie-a', $1, 1135, 'lisk-dao', '0xgovernor', 813, 1700000240, '0xbasetiea', 813, 1700000240, 800, 1, 0, 0),
+          ('0xbot', $1, 1135, 'lisk-dao', '0xgovernor', 814, 1700000250, '0xbotvote', 814, 1700000250, 2000, 1, 0, 0)
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_contributor_power_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address, token_address,
+          account, power, delegates_count_all, delegates_count_effective, source, status,
+          anchor_block_number, anchor_block_timestamp
+        ) VALUES (
+          'overlay:contributor:0xoverlay-top', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor', '0xtoken',
+          '0xoverlay-top', 1000, 0, 0, 'live-onchain', 'available', 900, 1700000200
+        )
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_many_contributor_power_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO contributor (
+          id, contract_set_id, chain_id, dao_code, governor_address, block_number, block_timestamp, transaction_hash,
+          last_vote_block_number, last_vote_timestamp, power, balance, delegates_count_all, delegates_count_effective
+        )
+        SELECT
+          '0xcap-' || lpad(i::text, 5, '0'), $1, 1135, 'lisk-dao', '0xgovernor',
+          100000 + i, 1700100000 + i, '0xcap' || i, 100000 + i, 1700100000 + i,
+          200000 - i, 1, 0, 0
+        FROM generate_series(1, 20001) AS i
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 async fn seed_proposal_overlay_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
@@ -1519,6 +2738,35 @@ async fn seed_proposal_overlay_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
           1700002000, 1000, 2000, 1700000300, 1700000300, 1700000900,
           '0xtimelock', 600, 'mode=blocknumber&from=default', 40, 18,
           'live-onchain', 'available', 900, 1700000200
+        )
+        "#,
+    )
+    .bind(CONTRACT_SET_ID)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_provisional_only_proposal_overlay(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO degov_provisional_proposal_overlay (
+          id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+          contract_address, log_index, transaction_index, proposal_id, proposer,
+          targets, values, signatures, calldatas, vote_start, vote_end, description,
+          title, state, vote_start_timestamp, vote_end_timestamp, proposal_snapshot,
+          proposal_deadline, proposal_eta, block_number, block_timestamp,
+          transaction_hash, clock_mode, quorum, decimals, source, status,
+          anchor_block_number, anchor_block_timestamp
+        ) VALUES (
+          'overlay:proposal:999', $1, 1135, 'lisk', 'lisk-dao', '0xgovernor',
+          '0xgovernor', 7, 1, '999', '0xproposer', ARRAY['0xtarget'], ARRAY['0'],
+          ARRAY[''], ARRAY['0x'], 1200, 2400, 'Live provisional body',
+          'Live provisional title', 'Pending', 1700001200, 1700002400, 1200,
+          2400, 0, 950, 1700000950, '0xprovisional999',
+          'mode=blocknumber&from=default', 40, 18, 'provider', 'available',
+          960, 1700000960
         )
         "#,
     )

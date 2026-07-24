@@ -680,7 +680,7 @@ fn common(
         block_number: log.block_number.to_string(),
         block_timestamp: log
             .block_timestamp_ms
-            .map(|timestamp| (timestamp / 1_000).to_string()),
+            .map(|timestamp| timestamp.to_string()),
         transaction_hash: normalize_identifier(&log.transaction_hash),
     }
 }

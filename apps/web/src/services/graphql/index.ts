@@ -72,6 +72,7 @@ type ContributorWhere = GovernanceScope & {
   id_in?: string[];
   id_not_eq?: string;
   id_eq?: string;
+  delegatesCountAll_gt?: number;
 };
 
 const normalizeScopeAddress = (address?: string | null) => {
@@ -518,8 +519,36 @@ export const delegateService = {
   },
 };
 
+const unsupportedProvisionalHeightEndpoints = new Set<string>();
+
 export const indexerStatusService = {
   getIndexerStatus: async (endpoint: string) => {
+    const useBaseQuery = unsupportedProvisionalHeightEndpoints.has(endpoint);
+
+    if (useBaseQuery) {
+      const response = await request<Types.IndexerStatusResponse>(
+        endpoint,
+        Queries.GET_INDEXER_STATUS
+      );
+      return response?.indexerStatus;
+    }
+
+    try {
+      const response = await request<Types.IndexerStatusResponse>(
+        endpoint,
+        Queries.GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT
+      );
+      return response?.indexerStatus;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("provisionalHeight")
+      ) {
+        throw error;
+      }
+      unsupportedProvisionalHeightEndpoints.add(endpoint);
+    }
+
     const response = await request<Types.IndexerStatusResponse>(
       endpoint,
       Queries.GET_INDEXER_STATUS
@@ -546,6 +575,48 @@ export const treasuryService = {
 };
 
 export const contributorService = {
+  getDelegateProfilesCount: async (
+    endpoint: string,
+    options: {
+      where?: DelegateWhere;
+    } = {}
+  ) => {
+    const response = await request<Types.DelegateProfilesCountResponse>(
+      endpoint,
+      Queries.GET_DELEGATE_PROFILES_COUNT,
+      {
+        where: options.where,
+      }
+    );
+    return response?.delegateProfilesCount ?? 0;
+  },
+  getContributorsPage: async (
+    endpoint: string,
+    options: {
+      limit: number;
+      offset: number;
+      orderBy?: string | string[];
+      where?: ContributorWhere;
+    }
+  ) => {
+    const orderByInput = Array.isArray(options?.orderBy)
+      ? options?.orderBy
+      : options?.orderBy
+      ? [options.orderBy]
+      : ["id_ASC"];
+
+    const response = await request<Types.ContributorPageResponse>(
+      endpoint,
+      Queries.GET_CONTRIBUTORS_PAGE,
+      {
+        limit: options.limit,
+        offset: options.offset,
+        orderBy: orderByInput,
+        where: options.where,
+      }
+    );
+    return response?.contributorsPage;
+  },
   getAllContributors: async (
     endpoint: string,
     options: {

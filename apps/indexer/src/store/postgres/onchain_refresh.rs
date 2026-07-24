@@ -1,5 +1,5 @@
 // Onchain refresh task persistence.
-const MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS: usize = 1_000;
+const MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS: usize = 200;
 pub const DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS: usize = 100;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,17 +27,40 @@ fn plan_onchain_refresh_enqueue_with_drain_budget(
     }
 }
 
+#[cfg(test)]
+fn should_update_deferred_candidate_conflict(
+    existing_next_run_at: i64,
+    now_ms: i64,
+    existing_refresh_balance: bool,
+    incoming_refresh_balance: bool,
+    existing_refresh_power: bool,
+    incoming_refresh_power: bool,
+    existing_first_seen_block_number: u64,
+    incoming_first_seen_block_number: u64,
+    existing_last_seen_block_number: u64,
+    incoming_last_seen_block_number: u64,
+) -> bool {
+    existing_next_run_at > now_ms
+        || (incoming_refresh_balance && !existing_refresh_balance)
+        || (incoming_refresh_power && !existing_refresh_power)
+        || existing_first_seen_block_number > incoming_first_seen_block_number
+        || existing_last_seen_block_number < incoming_last_seen_block_number
+}
+
 async fn upsert_onchain_refresh_tasks(
     transaction: &mut Transaction<'_, Postgres>,
     rows: &[PowerReconcileCandidate],
     debounce: Duration,
     deferred_drain_batch_size: usize,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let total_started_at = std::time::Instant::now();
     let original_count = rows.len();
+    let dedupe_started_at = std::time::Instant::now();
     let mut rows = dedupe_onchain_refresh_tasks(rows)
         .into_iter()
         .map(OnchainRefreshTaskWrite::from)
         .collect::<Vec<_>>();
+    let dedupe_duration = dedupe_started_at.elapsed();
     let now_ms = unix_time_millis();
     let next_run_at = now_ms.saturating_add(duration_millis_i64(debounce));
     for row in &mut rows {
@@ -46,13 +69,20 @@ async fn upsert_onchain_refresh_tasks(
 
     let plan =
         plan_onchain_refresh_enqueue_with_drain_budget(rows.len(), debounce, deferred_drain_batch_size);
+    let mut deferred_candidate_write_count = 0;
+    let deferred_upsert_started_at = std::time::Instant::now();
     for chunk in rows.chunks(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS) {
-        upsert_deferred_onchain_refresh_candidate_chunk(transaction, chunk, now_ms, next_run_at)
-            .await?;
+        deferred_candidate_write_count +=
+            upsert_deferred_onchain_refresh_candidate_chunk(transaction, chunk, now_ms, next_run_at)
+                .await?;
     }
+    let deferred_upsert_duration = deferred_upsert_started_at.elapsed();
+    let reschedule_started_at = std::time::Instant::now();
     let rescheduled_count =
         reschedule_materialized_onchain_refresh_tasks(transaction, &rows, next_run_at, now_ms)
             .await?;
+    let reschedule_duration = reschedule_started_at.elapsed();
+    let ready_drain_started_at = std::time::Instant::now();
     let drained_count = drain_deferred_onchain_refresh_tasks_in_transaction(
         transaction,
         plan.ready_drain_count,
@@ -60,18 +90,27 @@ async fn upsert_onchain_refresh_tasks(
         None,
     )
     .await?;
+    let ready_drain_duration = ready_drain_started_at.elapsed();
 
     log::info!(
-        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} deduped_duplicate_count={} inline_upsert_count={} deferred_count={} rescheduled_materialized_count={} ready_drain_batch_size={} ready_drain_count={} materialized_count={}",
+        "onchain refresh enqueue planned original_candidate_count={} deduped_unique_count={} deduped_duplicate_count={} inline_upsert_count={} deferred_count={} deferred_chunk_size={} deferred_chunk_count={} deferred_candidate_write_count={} rescheduled_materialized_count={} ready_drain_batch_size={} ready_drain_count={} materialized_count={} dedupe_duration_ms={} deferred_upsert_duration_ms={} reschedule_duration_ms={} ready_drain_duration_ms={} total_duration_ms={}",
         original_count,
         rows.len(),
         original_count.saturating_sub(rows.len()),
         plan.inline_upsert_count,
         plan.deferred_candidate_count,
+        MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS,
+        chunk_count(rows.len(), MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS),
+        deferred_candidate_write_count,
         rescheduled_count,
         deferred_drain_batch_size,
         plan.ready_drain_count,
-        drained_count
+        drained_count,
+        dedupe_duration.as_millis(),
+        deferred_upsert_duration.as_millis(),
+        reschedule_duration.as_millis(),
+        ready_drain_duration.as_millis(),
+        total_started_at.elapsed().as_millis()
     );
 
     Ok(())
@@ -90,6 +129,138 @@ pub async fn drain_deferred_onchain_refresh_tasks_for_scope(
     scope: &crate::OnchainRefreshTaskScope,
 ) -> Result<usize, PostgresIndexerRunnerStoreError> {
     drain_deferred_onchain_refresh_tasks_with_scope(pool, max_rows, Some(scope)).await
+}
+
+pub async fn repair_missing_onchain_refresh_contributor_coverage(
+    pool: &PgPool,
+    max_rows: usize,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    repair_missing_onchain_refresh_contributor_coverage_with_scope(pool, max_rows, None).await
+}
+
+pub async fn repair_missing_onchain_refresh_contributor_coverage_for_scope(
+    pool: &PgPool,
+    max_rows: usize,
+    scope: &crate::OnchainRefreshTaskScope,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    repair_missing_onchain_refresh_contributor_coverage_with_scope(pool, max_rows, Some(scope))
+        .await
+}
+
+async fn repair_missing_onchain_refresh_contributor_coverage_with_scope(
+    pool: &PgPool,
+    max_rows: usize,
+    scope: Option<&crate::OnchainRefreshTaskScope>,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    if max_rows == 0 {
+        return Ok(0);
+    }
+
+    let max_rows = i64::try_from(max_rows).map_err(|_| {
+        PostgresIndexerRunnerStoreError::new("contributor coverage repair batch size exceeds i64")
+    })?;
+    let now_ms = unix_time_millis();
+    let mut query = QueryBuilder::<Postgres>::new(
+        "WITH candidates AS (
+            SELECT contributor.contract_set_id,
+                   contributor.chain_id,
+                   COALESCE(contributor.dao_code, '') AS dao_code,
+                   contributor.governor_address,
+                   contributor.token_address,
+                   contributor.id AS account,
+                   contributor.block_number,
+                   contributor.block_timestamp,
+                   contributor.transaction_hash
+            FROM contributor
+            WHERE contributor.dao_code IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1
+                FROM degov_provisional_contributor_power_overlay overlay
+                WHERE overlay.contract_set_id = contributor.contract_set_id
+                  AND overlay.chain_id IS NOT DISTINCT FROM contributor.chain_id
+                  AND overlay.dao_code IS NOT DISTINCT FROM contributor.dao_code
+                  AND overlay.governor_address IS NOT DISTINCT FROM contributor.governor_address
+                  AND overlay.token_address IS NOT DISTINCT FROM contributor.token_address
+                  AND overlay.account = contributor.id
+                  AND overlay.source = 'live-onchain'
+                  AND overlay.status = 'available'
+                  AND overlay.power IS NOT NULL
+                  AND overlay.balance IS NOT NULL
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM onchain_refresh_task task
+                WHERE task.contract_set_id = contributor.contract_set_id
+                  AND task.chain_id = contributor.chain_id
+                  AND task.dao_code IS NOT DISTINCT FROM contributor.dao_code
+                  AND task.governor_address = contributor.governor_address
+                  AND task.token_address = contributor.token_address
+                  AND task.account = contributor.id
+                  AND task.status IN ('pending', 'processing', 'failed')
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM onchain_refresh_deferred_candidate deferred
+                WHERE deferred.contract_set_id = contributor.contract_set_id
+                  AND deferred.chain_id = contributor.chain_id
+                  AND deferred.dao_code IS NOT DISTINCT FROM contributor.dao_code
+                  AND deferred.governor_address = contributor.governor_address
+                  AND deferred.token_address = contributor.token_address
+                  AND deferred.account = contributor.id
+            )",
+    );
+    push_contributor_coverage_repair_scope_filter(&mut query, scope);
+    query
+        .push(
+            "
+            ORDER BY contributor.block_number ASC, contributor.id ASC
+            LIMIT ",
+        )
+        .push_bind(max_rows)
+        .push(
+            "
+        )
+        INSERT INTO onchain_refresh_deferred_candidate (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+            refresh_balance, refresh_power, reason, first_seen_block_number,
+            last_seen_block_number, last_seen_block_timestamp, last_seen_transaction_hash,
+            next_run_at, created_at, updated_at
+        )
+        SELECT
+            candidates.contract_set_id || ':' || candidates.dao_code || ':' ||
+                candidates.chain_id::TEXT || ':' || candidates.governor_address || ':' ||
+                candidates.token_address || ':' || candidates.account,
+            candidates.contract_set_id,
+            candidates.chain_id,
+            candidates.dao_code,
+            candidates.governor_address,
+            candidates.token_address,
+            candidates.account,
+            TRUE,
+            TRUE,
+            'contributor-coverage',
+            candidates.block_number,
+            candidates.block_number,
+            candidates.block_timestamp,
+            candidates.transaction_hash,
+            0::NUMERIC(78, 0),
+            ",
+        )
+        .push_bind(now_ms.to_string())
+        .push(
+            "::NUMERIC(78, 0),
+            ",
+        )
+        .push_bind(now_ms.to_string())
+        .push(
+            "::NUMERIC(78, 0)
+        FROM candidates
+        ON CONFLICT ON CONSTRAINT onchain_refresh_deferred_candidate_account_unique DO NOTHING",
+        );
+
+    let result = query.build().execute(pool).await?;
+
+    Ok(result.rows_affected().try_into().unwrap_or_default())
 }
 
 async fn drain_deferred_onchain_refresh_tasks_with_scope(
@@ -378,105 +549,116 @@ async fn upsert_onchain_refresh_task_chunk(
     rows: &[OnchainRefreshTaskWrite],
     now_ms: i64,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let mut query = QueryBuilder::<Postgres>::new(
-        "INSERT INTO onchain_refresh_task (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account, refresh_balance,
-            refresh_power, reason, first_seen_block_number, last_seen_block_number,
-            last_seen_block_timestamp, last_seen_transaction_hash, status, attempts,
-            next_run_at, pending_after_lock, created_at, updated_at
-         )
-         ",
-    );
-    query.push_values(rows, |mut values, row| {
-        values
-            .push_bind(&row.id)
-            .push_bind(&row.contract_set_id)
-            .push_bind(row.chain_id)
-            .push_bind(&row.dao_code)
-            .push_bind(&row.governor_address)
-            .push_bind(&row.token_address)
-            .push_bind(&row.account)
-            .push_bind(row.refresh_balance)
-            .push_bind(row.refresh_power)
-            .push_bind(&row.reason)
-            .push_bind(&row.first_seen_block_number)
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(&row.last_seen_block_number)
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(&row.last_seen_block_timestamp)
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(&row.last_seen_transaction_hash)
-            .push("'pending'")
-            .push("0")
-            .push_bind(&row.next_run_at)
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push("false")
-            .push_bind(now_ms.to_string())
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(now_ms.to_string())
-            .push_unseparated("::NUMERIC(78, 0)");
-    });
-    query.push(
-        "
-         ON CONFLICT ON CONSTRAINT onchain_refresh_task_account_unique DO UPDATE
-         SET refresh_balance = onchain_refresh_task.refresh_balance OR EXCLUDED.refresh_balance,
-             refresh_power = onchain_refresh_task.refresh_power OR EXCLUDED.refresh_power,
-             reason = EXCLUDED.reason,
-             status = CASE
-               WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.status
-               ELSE 'pending'
-             END,
-             attempts = CASE
-               WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.attempts
-               ELSE 0
-             END,
-             next_run_at = CASE
-               WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.next_run_at
-               ELSE EXCLUDED.next_run_at
-             END,
-             processed_at = CASE
-               WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.processed_at
-               ELSE NULL
-             END,
-             error = CASE
-               WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.error
-               ELSE NULL
-             END,
-             first_seen_block_number = LEAST(onchain_refresh_task.first_seen_block_number, EXCLUDED.first_seen_block_number),
-             last_seen_block_number = GREATEST(onchain_refresh_task.last_seen_block_number, EXCLUDED.last_seen_block_number),
-             last_seen_block_timestamp = GREATEST(onchain_refresh_task.last_seen_block_timestamp, EXCLUDED.last_seen_block_timestamp),
-             last_seen_transaction_hash = EXCLUDED.last_seen_transaction_hash,
-             pending_after_lock = onchain_refresh_task.pending_after_lock
-               OR onchain_refresh_task.status = 'processing',
-             pending_after_lock_block_number = CASE
-               WHEN onchain_refresh_task.status = 'processing'
-                 THEN GREATEST(
-                   COALESCE(onchain_refresh_task.pending_after_lock_block_number, onchain_refresh_task.last_seen_block_number),
-                   EXCLUDED.last_seen_block_number
-                 )
-               ELSE NULL
-             END,
-             pending_after_lock_block_timestamp = CASE
-               WHEN onchain_refresh_task.status = 'processing'
-                 THEN GREATEST(
-                   COALESCE(onchain_refresh_task.pending_after_lock_block_timestamp, onchain_refresh_task.last_seen_block_timestamp),
-                   EXCLUDED.last_seen_block_timestamp
-                 )
-               ELSE NULL
-             END,
-             pending_after_lock_transaction_hash = CASE
-               WHEN onchain_refresh_task.status = 'processing'
-                 THEN EXCLUDED.last_seen_transaction_hash
-               ELSE NULL
-             END,
-             updated_at = EXCLUDED.updated_at",
-    );
-    query
-        .build()
+    let rows = OnchainRefreshTaskArrays::from_rows(rows);
+    sqlx::query(onchain_refresh_task_upsert_sql())
+        .bind(&rows.ids)
+        .bind(&rows.contract_set_ids)
+        .bind(&rows.chain_ids)
+        .bind(&rows.dao_codes)
+        .bind(&rows.governor_addresses)
+        .bind(&rows.token_addresses)
+        .bind(&rows.accounts)
+        .bind(&rows.refresh_balances)
+        .bind(&rows.refresh_powers)
+        .bind(&rows.reasons)
+        .bind(&rows.first_seen_block_numbers)
+        .bind(&rows.last_seen_block_numbers)
+        .bind(&rows.last_seen_block_timestamps)
+        .bind(&rows.last_seen_transaction_hashes)
+        .bind(&rows.next_run_ats)
+        .bind(now_ms.to_string())
         .execute(&mut **transaction)
         .await?;
 
     Ok(())
+}
+
+fn onchain_refresh_task_upsert_sql() -> &'static str {
+    "INSERT INTO onchain_refresh_task (
+        id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+        refresh_balance, refresh_power, reason, first_seen_block_number, last_seen_block_number,
+        last_seen_block_timestamp, last_seen_transaction_hash, status, attempts,
+        next_run_at, pending_after_lock, created_at, updated_at
+     )
+     SELECT
+        id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+        refresh_balance, refresh_power, reason,
+        first_seen_block_number::NUMERIC(78, 0),
+        last_seen_block_number::NUMERIC(78, 0),
+        last_seen_block_timestamp::NUMERIC(78, 0),
+        last_seen_transaction_hash,
+        'pending', 0,
+        next_run_at::NUMERIC(78, 0),
+        false,
+        $16::NUMERIC(78, 0),
+        $16::NUMERIC(78, 0)
+     FROM UNNEST(
+        $1::TEXT[], $2::TEXT[], $3::INT4[], $4::TEXT[], $5::TEXT[], $6::TEXT[], $7::TEXT[],
+        $8::BOOL[], $9::BOOL[], $10::TEXT[], $11::TEXT[], $12::TEXT[], $13::TEXT[], $14::TEXT[],
+        $15::TEXT[]
+     ) AS rows(
+        id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+        refresh_balance, refresh_power, reason, first_seen_block_number, last_seen_block_number,
+        last_seen_block_timestamp, last_seen_transaction_hash, next_run_at
+     )
+     ON CONFLICT ON CONSTRAINT onchain_refresh_task_account_unique DO UPDATE
+     SET refresh_balance = onchain_refresh_task.refresh_balance OR EXCLUDED.refresh_balance,
+         refresh_power = onchain_refresh_task.refresh_power OR EXCLUDED.refresh_power,
+         reason = EXCLUDED.reason,
+         status = CASE
+           WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.status
+           ELSE 'pending'
+         END,
+         attempts = CASE
+           WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.attempts
+           ELSE 0
+         END,
+         next_run_at = CASE
+           WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.next_run_at
+           ELSE EXCLUDED.next_run_at
+         END,
+         processed_at = CASE
+           WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.processed_at
+           ELSE NULL
+         END,
+         error = CASE
+           WHEN onchain_refresh_task.status = 'processing' THEN onchain_refresh_task.error
+           ELSE NULL
+         END,
+         first_seen_block_number = LEAST(onchain_refresh_task.first_seen_block_number, EXCLUDED.first_seen_block_number),
+         last_seen_block_number = GREATEST(onchain_refresh_task.last_seen_block_number, EXCLUDED.last_seen_block_number),
+         last_seen_block_timestamp = GREATEST(onchain_refresh_task.last_seen_block_timestamp, EXCLUDED.last_seen_block_timestamp),
+         last_seen_transaction_hash = EXCLUDED.last_seen_transaction_hash,
+         pending_after_lock = onchain_refresh_task.pending_after_lock
+           OR onchain_refresh_task.status = 'processing',
+         pending_after_lock_block_number = CASE
+           WHEN onchain_refresh_task.status = 'processing'
+             THEN GREATEST(
+               COALESCE(onchain_refresh_task.pending_after_lock_block_number, onchain_refresh_task.last_seen_block_number),
+               EXCLUDED.last_seen_block_number
+             )
+           ELSE NULL
+         END,
+         pending_after_lock_block_timestamp = CASE
+           WHEN onchain_refresh_task.status = 'processing'
+             THEN GREATEST(
+               COALESCE(onchain_refresh_task.pending_after_lock_block_timestamp, onchain_refresh_task.last_seen_block_timestamp),
+               EXCLUDED.last_seen_block_timestamp
+             )
+           ELSE NULL
+         END,
+         pending_after_lock_transaction_hash = CASE
+           WHEN onchain_refresh_task.status = 'processing'
+             THEN EXCLUDED.last_seen_transaction_hash
+           ELSE NULL
+         END,
+         updated_at = EXCLUDED.updated_at
+     WHERE onchain_refresh_task.status <> 'completed'
+        OR EXCLUDED.reason = 'contributor-coverage'
+        OR EXCLUDED.last_seen_block_number > onchain_refresh_task.last_seen_block_number
+        OR EXCLUDED.last_seen_block_timestamp > onchain_refresh_task.last_seen_block_timestamp
+        OR (EXCLUDED.refresh_balance AND NOT onchain_refresh_task.refresh_balance)
+        OR (EXCLUDED.refresh_power AND NOT onchain_refresh_task.refresh_power)"
 }
 
 async fn upsert_deferred_onchain_refresh_candidate_chunk(
@@ -484,57 +666,124 @@ async fn upsert_deferred_onchain_refresh_candidate_chunk(
     rows: &[OnchainRefreshTaskWrite],
     now_ms: i64,
     next_run_at: i64,
-) -> Result<(), PostgresIndexerRunnerStoreError> {
-    let mut query = QueryBuilder::<Postgres>::new(
-        "INSERT INTO onchain_refresh_deferred_candidate (
-            id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
-            refresh_balance, refresh_power, reason, first_seen_block_number, last_seen_block_number,
-            last_seen_block_timestamp, last_seen_transaction_hash, next_run_at, created_at, updated_at
-         )
-         ",
-    );
-    query.push_values(rows, |mut values, row| {
-        values
-            .push_bind(&row.id)
-            .push_bind(&row.contract_set_id)
-            .push_bind(row.chain_id)
-            .push_bind(&row.dao_code)
-            .push_bind(&row.governor_address)
-            .push_bind(&row.token_address)
-            .push_bind(&row.account)
-            .push_bind(row.refresh_balance)
-            .push_bind(row.refresh_power)
-            .push_bind(&row.reason)
-            .push_bind(&row.first_seen_block_number)
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(&row.last_seen_block_number)
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(&row.last_seen_block_timestamp)
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(&row.last_seen_transaction_hash)
-            .push_bind(next_run_at.to_string())
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(now_ms.to_string())
-            .push_unseparated("::NUMERIC(78, 0)")
-            .push_bind(now_ms.to_string())
-            .push_unseparated("::NUMERIC(78, 0)");
-    });
-    query.push(
-        "
-         ON CONFLICT ON CONSTRAINT onchain_refresh_deferred_candidate_account_unique DO UPDATE
-         SET refresh_balance = onchain_refresh_deferred_candidate.refresh_balance OR EXCLUDED.refresh_balance,
-             refresh_power = onchain_refresh_deferred_candidate.refresh_power OR EXCLUDED.refresh_power,
-             reason = EXCLUDED.reason,
-             first_seen_block_number = LEAST(onchain_refresh_deferred_candidate.first_seen_block_number, EXCLUDED.first_seen_block_number),
-             last_seen_block_number = GREATEST(onchain_refresh_deferred_candidate.last_seen_block_number, EXCLUDED.last_seen_block_number),
-             last_seen_block_timestamp = GREATEST(onchain_refresh_deferred_candidate.last_seen_block_timestamp, EXCLUDED.last_seen_block_timestamp),
-             last_seen_transaction_hash = EXCLUDED.last_seen_transaction_hash,
-             next_run_at = GREATEST(onchain_refresh_deferred_candidate.next_run_at, EXCLUDED.next_run_at),
-             updated_at = EXCLUDED.updated_at",
-    );
-    query.build().execute(&mut **transaction).await?;
+) -> Result<u64, PostgresIndexerRunnerStoreError> {
+    let mut rows = OnchainRefreshTaskArrays::from_rows(rows);
+    rows.next_run_ats.fill(next_run_at.to_string());
+    let result = sqlx::query(deferred_onchain_refresh_candidate_upsert_sql())
+        .bind(&rows.ids)
+        .bind(&rows.contract_set_ids)
+        .bind(&rows.chain_ids)
+        .bind(&rows.dao_codes)
+        .bind(&rows.governor_addresses)
+        .bind(&rows.token_addresses)
+        .bind(&rows.accounts)
+        .bind(&rows.refresh_balances)
+        .bind(&rows.refresh_powers)
+        .bind(&rows.reasons)
+        .bind(&rows.first_seen_block_numbers)
+        .bind(&rows.last_seen_block_numbers)
+        .bind(&rows.last_seen_block_timestamps)
+        .bind(&rows.last_seen_transaction_hashes)
+        .bind(&rows.next_run_ats)
+        .bind(now_ms.to_string())
+        .execute(&mut **transaction)
+        .await?;
 
-    Ok(())
+    Ok(result.rows_affected())
+}
+
+fn deferred_onchain_refresh_candidate_upsert_sql() -> &'static str {
+    "INSERT INTO onchain_refresh_deferred_candidate (
+        id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+        refresh_balance, refresh_power, reason, first_seen_block_number, last_seen_block_number,
+        last_seen_block_timestamp, last_seen_transaction_hash, next_run_at, created_at, updated_at
+     )
+     SELECT
+        id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+        refresh_balance, refresh_power, reason,
+        first_seen_block_number::NUMERIC(78, 0),
+        last_seen_block_number::NUMERIC(78, 0),
+        last_seen_block_timestamp::NUMERIC(78, 0),
+        last_seen_transaction_hash,
+        next_run_at::NUMERIC(78, 0),
+        $16::NUMERIC(78, 0),
+        $16::NUMERIC(78, 0)
+     FROM UNNEST(
+        $1::TEXT[], $2::TEXT[], $3::INT4[], $4::TEXT[], $5::TEXT[], $6::TEXT[], $7::TEXT[],
+        $8::BOOL[], $9::BOOL[], $10::TEXT[], $11::TEXT[], $12::TEXT[], $13::TEXT[], $14::TEXT[],
+        $15::TEXT[]
+     ) AS rows(
+        id, contract_set_id, chain_id, dao_code, governor_address, token_address, account,
+        refresh_balance, refresh_power, reason, first_seen_block_number, last_seen_block_number,
+        last_seen_block_timestamp, last_seen_transaction_hash, next_run_at
+     )
+     ON CONFLICT ON CONSTRAINT onchain_refresh_deferred_candidate_account_unique DO UPDATE
+     SET refresh_balance = onchain_refresh_deferred_candidate.refresh_balance OR EXCLUDED.refresh_balance,
+         refresh_power = onchain_refresh_deferred_candidate.refresh_power OR EXCLUDED.refresh_power,
+         reason = EXCLUDED.reason,
+         first_seen_block_number = LEAST(onchain_refresh_deferred_candidate.first_seen_block_number, EXCLUDED.first_seen_block_number),
+         last_seen_block_number = GREATEST(onchain_refresh_deferred_candidate.last_seen_block_number, EXCLUDED.last_seen_block_number),
+         last_seen_block_timestamp = GREATEST(onchain_refresh_deferred_candidate.last_seen_block_timestamp, EXCLUDED.last_seen_block_timestamp),
+         last_seen_transaction_hash = EXCLUDED.last_seen_transaction_hash,
+         next_run_at = GREATEST(onchain_refresh_deferred_candidate.next_run_at, EXCLUDED.next_run_at),
+         updated_at = EXCLUDED.updated_at
+     WHERE onchain_refresh_deferred_candidate.next_run_at > EXCLUDED.updated_at
+        OR (EXCLUDED.refresh_balance AND NOT onchain_refresh_deferred_candidate.refresh_balance)
+        OR (EXCLUDED.refresh_power AND NOT onchain_refresh_deferred_candidate.refresh_power)
+        OR onchain_refresh_deferred_candidate.first_seen_block_number > EXCLUDED.first_seen_block_number
+        OR onchain_refresh_deferred_candidate.last_seen_block_number < EXCLUDED.last_seen_block_number"
+}
+
+struct OnchainRefreshTaskArrays {
+    ids: Vec<String>,
+    contract_set_ids: Vec<String>,
+    chain_ids: Vec<i32>,
+    dao_codes: Vec<String>,
+    governor_addresses: Vec<String>,
+    token_addresses: Vec<String>,
+    accounts: Vec<String>,
+    refresh_balances: Vec<bool>,
+    refresh_powers: Vec<bool>,
+    reasons: Vec<String>,
+    first_seen_block_numbers: Vec<String>,
+    last_seen_block_numbers: Vec<String>,
+    last_seen_block_timestamps: Vec<String>,
+    last_seen_transaction_hashes: Vec<String>,
+    next_run_ats: Vec<String>,
+}
+
+impl OnchainRefreshTaskArrays {
+    fn from_rows(rows: &[OnchainRefreshTaskWrite]) -> Self {
+        Self {
+            ids: rows.iter().map(|row| row.id.clone()).collect(),
+            contract_set_ids: rows.iter().map(|row| row.contract_set_id.clone()).collect(),
+            chain_ids: rows.iter().map(|row| row.chain_id).collect(),
+            dao_codes: rows.iter().map(|row| row.dao_code.clone()).collect(),
+            governor_addresses: rows.iter().map(|row| row.governor_address.clone()).collect(),
+            token_addresses: rows.iter().map(|row| row.token_address.clone()).collect(),
+            accounts: rows.iter().map(|row| row.account.clone()).collect(),
+            refresh_balances: rows.iter().map(|row| row.refresh_balance).collect(),
+            refresh_powers: rows.iter().map(|row| row.refresh_power).collect(),
+            reasons: rows.iter().map(|row| row.reason.clone()).collect(),
+            first_seen_block_numbers: rows
+                .iter()
+                .map(|row| row.first_seen_block_number.clone())
+                .collect(),
+            last_seen_block_numbers: rows
+                .iter()
+                .map(|row| row.last_seen_block_number.clone())
+                .collect(),
+            last_seen_block_timestamps: rows
+                .iter()
+                .map(|row| row.last_seen_block_timestamp.clone())
+                .collect(),
+            last_seen_transaction_hashes: rows
+                .iter()
+                .map(|row| row.last_seen_transaction_hash.clone())
+                .collect(),
+            next_run_ats: rows.iter().map(|row| row.next_run_at.clone()).collect(),
+        }
+    }
 }
 
 async fn read_deferred_onchain_refresh_candidates(
@@ -602,7 +851,22 @@ fn push_deferred_onchain_refresh_scope_filter<'args>(
             .push_bind(scope.chain_id)
             .push(" AND contract_set_id = ")
             .push_bind(&scope.contract_set_id)
-            .push(" AND dao_code IS NOT DISTINCT FROM ")
+            .push(" AND dao_code = ")
+            .push_bind(&scope.dao_code);
+    }
+}
+
+fn push_contributor_coverage_repair_scope_filter<'args>(
+    query: &mut QueryBuilder<'args, Postgres>,
+    scope: Option<&'args crate::OnchainRefreshTaskScope>,
+) {
+    if let Some(scope) = scope {
+        query
+            .push(" AND contributor.chain_id = ")
+            .push_bind(scope.chain_id)
+            .push(" AND contributor.contract_set_id = ")
+            .push_bind(&scope.contract_set_id)
+            .push(" AND contributor.dao_code = ")
             .push_bind(&scope.dao_code);
     }
 }
@@ -668,6 +932,27 @@ mod tests {
     }
 
     #[test]
+    fn test_deferred_scope_filters_use_indexable_dao_code_equality() {
+        let scope = crate::OnchainRefreshTaskScope {
+            chain_id: 1,
+            contract_set_id: "contract-set".to_owned(),
+            dao_code: "demo-dao".to_owned(),
+        };
+        let mut deferred_query = QueryBuilder::<Postgres>::new("SELECT 1 WHERE true");
+        let mut repair_query = QueryBuilder::<Postgres>::new("SELECT 1 WHERE true");
+
+        push_deferred_onchain_refresh_scope_filter(&mut deferred_query, Some(&scope));
+        push_contributor_coverage_repair_scope_filter(&mut repair_query, Some(&scope));
+
+        let deferred_sql = deferred_query.sql();
+        let repair_sql = repair_query.sql();
+        assert!(deferred_sql.contains("dao_code = "));
+        assert!(!deferred_sql.contains("dao_code IS NOT DISTINCT FROM"));
+        assert!(repair_sql.contains("contributor.dao_code = "));
+        assert!(!repair_sql.contains("contributor.dao_code IS NOT DISTINCT FROM"));
+    }
+
+    #[test]
     fn test_plan_onchain_refresh_enqueue_buffers_dense_candidates() {
         let debounced = plan_onchain_refresh_enqueue_with_drain_budget(
             1_205,
@@ -699,6 +984,53 @@ mod tests {
         assert_eq!(immediate.inline_upsert_count, 0);
         assert_eq!(immediate.deferred_candidate_count, 1_205);
         assert_eq!(immediate.ready_drain_count, 1_000);
+    }
+
+    #[test]
+    fn test_deferred_candidate_conflict_skips_ready_metadata_only_update() {
+        assert!(!should_update_deferred_candidate_conflict(
+            1_000, 1_234, true, false, true, true, 30, 31, 40, 40,
+        ));
+    }
+
+    #[test]
+    fn test_deferred_candidate_conflict_updates_behavioral_changes() {
+        assert!(should_update_deferred_candidate_conflict(
+            2_000, 1_234, true, false, true, true, 30, 31, 40, 40,
+        ));
+        assert!(should_update_deferred_candidate_conflict(
+            1_000, 1_234, false, true, true, true, 30, 31, 40, 40,
+        ));
+        assert!(should_update_deferred_candidate_conflict(
+            1_000, 1_234, true, false, false, true, 30, 31, 40, 40,
+        ));
+        assert!(should_update_deferred_candidate_conflict(
+            1_000, 1_234, true, false, true, true, 30, 29, 40, 40,
+        ));
+        assert!(should_update_deferred_candidate_conflict(
+            1_000, 1_234, true, false, true, true, 30, 31, 40, 41,
+        ));
+    }
+
+    #[test]
+    fn test_onchain_refresh_task_upsert_chunk_size_keeps_writes_bounded() {
+        assert_eq!(MAX_ONCHAIN_REFRESH_TASK_UPSERT_ROWS, 200);
+    }
+
+    #[test]
+    fn test_onchain_refresh_task_upsert_uses_fixed_unnest_sql() {
+        let sql = onchain_refresh_task_upsert_sql();
+
+        assert!(sql.contains("FROM UNNEST("));
+        assert!(!sql.contains("VALUES ("));
+    }
+
+    #[test]
+    fn test_deferred_candidate_upsert_uses_fixed_unnest_sql() {
+        let sql = deferred_onchain_refresh_candidate_upsert_sql();
+
+        assert!(sql.contains("FROM UNNEST("));
+        assert!(!sql.contains("VALUES ("));
     }
 
     fn candidate(

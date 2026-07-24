@@ -34,6 +34,29 @@ pub(super) fn push_proposal_filters<'a>(
     table_alias: &str,
 ) {
     push_scope_filters(query, has_condition, &where_.scope, table_alias);
+    if let Some(block_number) = &where_.block_number_eq {
+        push_numeric_column_comparison(
+            query,
+            has_condition,
+            table_alias,
+            "block_number",
+            " = ",
+            block_number,
+        );
+    }
+    if let Some(block_number) = &where_.block_number_gt {
+        push_numeric_column_comparison(
+            query,
+            has_condition,
+            table_alias,
+            "block_number",
+            " > ",
+            block_number,
+        );
+    }
+    if let Some(id) = &where_.id_gt {
+        push_column_comparison(query, has_condition, table_alias, "id", " > ", id);
+    }
     if let Some(proposal_id) = &where_.proposal_id_eq {
         push_proposal_id_eq(query, has_condition, table_alias, proposal_id);
     }
@@ -50,11 +73,61 @@ pub(super) fn push_proposal_filters<'a>(
     }
     if let Some(voters_some) = &where_.voters_some {
         push_and(query, has_condition);
-        query.push("EXISTS (SELECT 1 FROM vote_cast_group v WHERE v.proposal_id = proposal.id");
+        query.push(
+            r#"EXISTS (
+              SELECT 1
+              FROM (
+                SELECT id, contract_set_id, chain_id, dao_code, governor_address, proposal_id,
+                  ref_proposal_id, voter, support
+                FROM vote_cast_group
+                UNION ALL
+                SELECT vote_overlay.id, vote_overlay.contract_set_id, vote_overlay.chain_id,
+                  vote_overlay.dao_code, vote_overlay.governor_address, vote_overlay.proposal_id,
+                  vote_overlay.ref_proposal_id, vote_overlay.voter, vote_overlay.support
+                FROM degov_provisional_vote_cast_group_overlay vote_overlay
+                WHERE vote_overlay.status = 'available'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM vote_cast_group durable_vote
+                    WHERE durable_vote.contract_set_id = vote_overlay.contract_set_id
+                      AND durable_vote.id = vote_overlay.id
+                  )
+              ) v
+              WHERE (
+                v.proposal_id = proposal.id
+                OR (
+                  v.ref_proposal_id = proposal.proposal_id
+                  AND v.contract_set_id = proposal.contract_set_id
+                  AND v.chain_id IS NOT DISTINCT FROM proposal.chain_id
+                  AND v.dao_code IS NOT DISTINCT FROM proposal.dao_code
+                  AND v.governor_address IS NOT DISTINCT FROM proposal.governor_address
+                )
+              )"#,
+        );
         let mut nested_has_condition = true;
         push_implicit_scope_filters(query, &mut nested_has_condition, implicit_scope, "v", true);
         push_vote_cast_group_filters(query, &mut nested_has_condition, voters_some, "v");
         query.push(")");
+    }
+    if let Some(timestamp) = &where_.vote_end_timestamp_gte {
+        push_millisecond_timestamp_comparison(
+            query,
+            has_condition,
+            table_alias,
+            "vote_end_timestamp",
+            " >= ",
+            timestamp,
+        );
+    }
+    if let Some(timestamp) = &where_.vote_end_timestamp_lt {
+        push_millisecond_timestamp_comparison(
+            query,
+            has_condition,
+            table_alias,
+            "vote_end_timestamp",
+            " < ",
+            timestamp,
+        );
     }
     if let Some(or) = &where_.or {
         push_or_group(query, has_condition, or, |query, has_condition, filter| {
@@ -81,6 +154,9 @@ pub(super) fn push_vote_cast_group_filters<'a>(
     where_: &'a VoteCastGroupWhereInput,
     table_alias: &str,
 ) {
+    if let Some(id) = &where_.id_eq {
+        push_column_eq(query, has_condition, table_alias, "id", id);
+    }
     if let Some(voter) = &where_.voter_eq {
         push_column_eq(query, has_condition, table_alias, "voter", voter);
     }
@@ -256,6 +332,11 @@ pub(super) fn push_contributor_filters<'a>(
         push_qualified_column(query, table_alias, "power");
         query.push(" < ").push_bind(power).push("::numeric");
     }
+    if let Some(count) = where_.delegates_count_all_gt {
+        push_and(query, has_condition);
+        push_qualified_column(query, table_alias, "delegates_count_all");
+        query.push(" > ").push_bind(count);
+    }
     if let Some(or) = &where_.or {
         push_or_group(query, has_condition, or, |query, has_condition, filter| {
             push_contributor_filters(query, has_condition, filter, table_alias);
@@ -279,6 +360,123 @@ pub(super) fn push_delegate_where<'a>(
             query.push("TRUE");
         }
     }
+}
+
+pub(super) fn push_delegate_profile_where<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    implicit_scope: &'a GraphqlScope,
+    where_: Option<&'a DelegateWhereInput>,
+) {
+    if !implicit_scope.is_empty() || where_.is_some() {
+        query.push(" WHERE ");
+        let mut has_condition = false;
+        push_delegate_profile_implicit_scope_filters(query, &mut has_condition, implicit_scope, "");
+        if let Some(where_) = where_ {
+            push_delegate_profile_filters(query, &mut has_condition, where_, "");
+        }
+        if !has_condition {
+            query.push("TRUE");
+        }
+    }
+}
+
+fn push_delegate_profile_implicit_scope_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    scope: &'a GraphqlScope,
+    table_alias: &str,
+) {
+    if let Some(chain_id) = scope.chain_id {
+        push_column_eq(query, has_condition, table_alias, "chain_id", chain_id);
+    }
+    if let Some(governor_address) = &scope.governor_address {
+        push_normalized_address_eq(
+            query,
+            has_condition,
+            table_alias,
+            "governor_address",
+            governor_address,
+        );
+    }
+    if let Some(dao_code) = &scope.dao_code {
+        push_column_eq(query, has_condition, table_alias, "dao_code", dao_code);
+    }
+    if let Some(contract_set_id) = &scope.contract_set_id {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "contract_set_id",
+            contract_set_id,
+        );
+    }
+}
+
+fn push_delegate_profile_filters<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    where_: &'a DelegateWhereInput,
+    table_alias: &str,
+) {
+    if let Some(chain_id) = where_.scope.chain_id_eq {
+        push_column_eq(query, has_condition, table_alias, "chain_id", chain_id);
+    }
+    if let Some(governor_address) = &where_.scope.governor_address_eq {
+        push_normalized_address_eq(
+            query,
+            has_condition,
+            table_alias,
+            "governor_address",
+            governor_address,
+        );
+    }
+    if let Some(dao_code) = &where_.scope.dao_code_eq {
+        push_column_eq(query, has_condition, table_alias, "dao_code", dao_code);
+    }
+    if let Some(from_delegate) = &where_.from_delegate_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "from_delegate",
+            from_delegate,
+        );
+    }
+    if let Some(to_delegate) = &where_.to_delegate_eq {
+        push_column_eq(
+            query,
+            has_condition,
+            table_alias,
+            "to_delegate",
+            to_delegate,
+        );
+    }
+    if let Some(is_current) = where_.is_current_eq {
+        push_column_eq(query, has_condition, table_alias, "is_current", is_current);
+    }
+    if let Some(power) = where_.power_lt {
+        push_and(query, has_condition);
+        push_qualified_column(query, table_alias, "power");
+        query.push(" < ").push_bind(power).push("::numeric");
+    }
+    if let Some(or) = &where_.or {
+        push_or_group(query, has_condition, or, |query, has_condition, filter| {
+            push_delegate_profile_filters(query, has_condition, filter, table_alias);
+        });
+    }
+}
+
+fn push_normalized_address_eq<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    query.push("lower(");
+    push_qualified_column(query, table_alias, column);
+    query.push(") = lower(").push_bind(value).push(")");
 }
 
 pub(super) fn push_delegate_filters<'a>(
@@ -478,6 +676,57 @@ pub(super) fn push_numeric_column_eq<'a>(
     query.push(" = ").push_bind(value).push("::numeric");
 }
 
+fn push_column_comparison<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    operator: &'static str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    push_qualified_column(query, table_alias, column);
+    query.push(operator).push_bind(value);
+}
+
+fn push_numeric_column_comparison<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    operator: &'static str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    push_qualified_column(query, table_alias, column);
+    query
+        .push(operator)
+        .push_bind(value)
+        .push("::numeric(78,0)");
+}
+
+fn push_millisecond_timestamp_comparison<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    has_condition: &mut bool,
+    table_alias: &str,
+    column: &str,
+    operator: &'static str,
+    value: &'a str,
+) {
+    push_and(query, has_condition);
+    query.push("(CASE WHEN ");
+    push_qualified_column(query, table_alias, column);
+    query.push(" < 1000000000000 THEN ");
+    push_qualified_column(query, table_alias, column);
+    query.push(" * 1000 ELSE ");
+    push_qualified_column(query, table_alias, column);
+    query
+        .push(" END)")
+        .push(operator)
+        .push_bind(value)
+        .push("::numeric(78,0)");
+}
+
 fn push_proposal_id_eq<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
     has_condition: &mut bool,
@@ -525,5 +774,53 @@ pub(super) fn push_and(query: &mut QueryBuilder<'_, Postgres>, has_condition: &m
         query.push(" AND ");
     } else {
         *has_condition = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_push_proposal_where_binds_numeric_cursor_values() {
+        let untrusted_value = "800) OR TRUE --";
+        let where_ = ProposalWhereInput {
+            block_number_eq: Some(untrusted_value.to_owned()),
+            block_number_gt: Some("799".to_owned()),
+            id_gt: Some("proposal:cursor".to_owned()),
+            vote_end_timestamp_gte: Some("1700002000000".to_owned()),
+            vote_end_timestamp_lt: Some("1700002400000".to_owned()),
+            ..ProposalWhereInput::default()
+        };
+        let mut query = QueryBuilder::<Postgres>::new("SELECT * FROM proposal");
+        let scope = GraphqlScope::default();
+
+        push_proposal_where(&mut query, &scope, Some(&where_));
+
+        let sql = query.sql();
+        assert!(!sql.contains(untrusted_value));
+        assert!(sql.contains("proposal.block_number = $1::numeric(78,0)"));
+        assert!(sql.contains("proposal.block_number > $2::numeric(78,0)"));
+        assert!(sql.contains("proposal.id > $3"));
+        assert!(
+            sql.contains("proposal.vote_end_timestamp") && sql.contains(">= $4::numeric(78,0)")
+        );
+        assert!(sql.contains("proposal.vote_end_timestamp") && sql.contains("< $5::numeric(78,0)"));
+    }
+
+    #[test]
+    fn test_push_vote_cast_group_filters_binds_id() {
+        let untrusted_id = "vote:101:2') OR TRUE --";
+        let where_ = VoteCastGroupWhereInput {
+            id_eq: Some(untrusted_id.to_owned()),
+            ..VoteCastGroupWhereInput::default()
+        };
+        let mut query = QueryBuilder::<Postgres>::new("SELECT * FROM vote_cast_group WHERE ");
+        let mut has_condition = false;
+
+        push_vote_cast_group_filters(&mut query, &mut has_condition, &where_, "vote_cast_group");
+
+        assert!(!query.sql().contains(untrusted_id));
+        assert!(query.sql().contains("vote_cast_group.id = $1"));
     }
 }

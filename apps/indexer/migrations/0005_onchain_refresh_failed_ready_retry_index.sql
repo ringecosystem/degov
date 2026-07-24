@@ -1,0 +1,3 @@
+-- Runtime indexes are created by the application with CREATE INDEX CONCURRENTLY.
+-- This marker records that onchain_refresh_task_failed_ready_retry_idx is part of
+-- the expected runtime schema without blocking fresh migrations on index builds.

@@ -13,6 +13,7 @@ import { buildSiteMetadata } from "@/lib/metadata";
 import { ConfigProvider } from "@/providers/config.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
 import type { Config } from "@/types/config";
+import { isDemoDaoConfig } from "@/utils/is-demo-dao";
 import { isDegovApiConfiguredServer } from "@/utils/remote-api";
 import { parseOrigin } from "@/utils/url";
 
@@ -97,7 +98,7 @@ export default async function RootLayout({
   const indexerOrigin = parseOrigin(initialConfig?.indexer?.endpoint);
   const rpcOrigin = parseOrigin(initialConfig?.chain?.rpcs?.[0]);
   const siteOrigin = parseOrigin(initialConfig?.siteUrl);
-  const isDemoDao = initialConfig?.name === "DeGov Demo DAO";
+  const isDemoDao = isDemoDaoConfig(initialConfig);
 
   return (
     <html lang={locale} suppressHydrationWarning>

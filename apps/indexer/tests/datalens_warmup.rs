@@ -32,20 +32,18 @@ fn test_ensure_datalens_warmup_task_submits_follow_query_when_enabled() {
         outcome,
         DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
     ));
-    assert_eq!(ensurer.requests.len(), 3);
-    let selector_addresses: Vec<_> = ensurer
-        .requests
-        .iter()
-        .map(|request| request.selector.addresses.clone())
-        .collect();
+    assert_eq!(ensurer.requests.len(), 1);
+    let request = &ensurer.requests[0];
     assert_eq!(
-        selector_addresses,
+        request.selector.addresses,
         vec![
-            vec!["0x1111111111111111111111111111111111111111".to_owned()],
-            vec!["0x2222222222222222222222222222222222222222".to_owned()],
-            vec!["0x3333333333333333333333333333333333333333".to_owned()],
+            "0x1111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333",
         ]
     );
+    assert_eq!(request.selector.topics.len(), 1);
+    assert_eq!(request.selector.topics[0].len(), 24);
     for request in &ensurer.requests {
         assert_eq!(request.chain.configured_name, "ethereum");
         assert_eq!(request.chain.network_id, Some(1));
@@ -54,7 +52,6 @@ fn test_ensure_datalens_warmup_task_submits_follow_query_when_enabled() {
         assert_eq!(request.start, 100);
         assert_eq!(request.end, None);
         assert_eq!(request.mode, "follow_query");
-        assert_eq!(request.selector.topics.len(), 1);
     }
 }
 
@@ -76,11 +73,11 @@ fn test_ensure_datalens_warmup_task_reuses_existing_matching_task() {
         second,
         DatalensWarmupEnsureOutcome::Submitted { created: false, .. }
     ));
-    assert_eq!(ensurer.created_tasks.len(), 3);
+    assert_eq!(ensurer.created_tasks.len(), 1);
 }
 
 #[test]
-fn test_ensure_datalens_warmup_task_submits_distinct_task_for_selector_mismatch() {
+fn test_ensure_datalens_warmup_task_creates_scoped_selector_for_dao_address_mismatch() {
     let config = config();
     let mut ensurer = MockWarmupEnsurer::default();
     let mut other_addresses = addresses();
@@ -94,7 +91,7 @@ fn test_ensure_datalens_warmup_task_submits_distinct_task_for_selector_mismatch(
         second,
         DatalensWarmupEnsureOutcome::Submitted { created: true, .. }
     ));
-    assert_eq!(ensurer.created_tasks.len(), 4);
+    assert_eq!(ensurer.created_tasks.len(), 2);
 }
 
 #[test]

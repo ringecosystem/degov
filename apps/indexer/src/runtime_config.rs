@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, env, net::SocketAddr, path::Path, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    env,
+    net::SocketAddr,
+    path::Path,
+    time::Duration,
+};
 
 use anyhow as runtime_anyhow;
 use datalens_sdk::RetryConfig;
@@ -9,9 +15,10 @@ use crate::{
     AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainReadMethod,
     DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig, DatalensProvisionalFinality,
     DatalensQueryConcurrencyConfig, DatalensRuntimeContractSet, IndexerCheckpointIdentity,
-    IndexerRunnerContexts, IndexerRunnerOptions, OnchainRefreshTickConfig,
-    OnchainRefreshWorkerConfig, ProposalProjectionContext, ProposalTimestampBackfillConfig,
-    SecretString, TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
+    IndexerRunnerContexts, IndexerRunnerOptions, MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE,
+    OnchainRefreshTaskScope, OnchainRefreshTickConfig, OnchainRefreshWorkerConfig,
+    ProposalProjectionContext, ProposalTimestampBackfillConfig, SecretString,
+    TimelockProjectionContext, TokenProjectionContext, VoteProjectionContext,
     store::postgres::DEFAULT_ONCHAIN_REFRESH_DEFERRED_DRAIN_ROWS,
 };
 
@@ -23,9 +30,117 @@ pub struct GraphqlRuntimeConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MetricsRuntimeConfig {
+    pub enabled: bool,
+    pub bind_address: SocketAddr,
+    pub db_collection_enabled: bool,
+    pub refresh_interval: Duration,
+    pub refresh_timeout: Duration,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProvisionalRuntimeConfig {
     pub enabled: bool,
     pub finality: DatalensProvisionalFinality,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RealtimeRuntimeConfig {
+    pub enabled: bool,
+    pub dao_codes: Vec<String>,
+    pub datalens_application: Option<String>,
+    pub datalens_token: Option<SecretString>,
+    pub poll_interval: Duration,
+    pub tail_window_blocks: i64,
+    pub max_in_flight: usize,
+    pub per_chain_max_in_flight: usize,
+    pub query_timeout: Duration,
+    pub pass_timeout: Duration,
+}
+
+impl Default for RealtimeRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            dao_codes: Vec::new(),
+            datalens_application: None,
+            datalens_token: None,
+            poll_interval: Duration::from_millis(3_000),
+            tail_window_blocks: 8,
+            max_in_flight: 1,
+            per_chain_max_in_flight: 1,
+            query_timeout: Duration::from_millis(5_000),
+            pass_timeout: Duration::from_millis(15_000),
+        }
+    }
+}
+
+impl RealtimeRuntimeConfig {
+    pub fn from_env() -> Result<Self> {
+        let defaults = Self::default();
+        let poll_interval_ms = optional_env_u64("DEGOV_REALTIME_POLL_INTERVAL_MS")?
+            .unwrap_or(defaults.poll_interval.as_millis() as u64);
+        if poll_interval_ms < 2_000 {
+            bail!("DEGOV_REALTIME_POLL_INTERVAL_MS must be at least 2000");
+        }
+
+        let tail_window_blocks = optional_env_i64("DEGOV_REALTIME_TAIL_WINDOW_BLOCKS")?
+            .unwrap_or(defaults.tail_window_blocks);
+        if tail_window_blocks <= 0 {
+            bail!("DEGOV_REALTIME_TAIL_WINDOW_BLOCKS must be greater than zero");
+        }
+
+        let max_in_flight =
+            optional_env_usize("DEGOV_REALTIME_MAX_IN_FLIGHT")?.unwrap_or(defaults.max_in_flight);
+        if max_in_flight == 0 {
+            bail!("DEGOV_REALTIME_MAX_IN_FLIGHT must be greater than zero");
+        }
+
+        let per_chain_max_in_flight = optional_env_usize("DEGOV_REALTIME_PER_CHAIN_MAX_IN_FLIGHT")?
+            .unwrap_or(defaults.per_chain_max_in_flight);
+        if per_chain_max_in_flight == 0 {
+            bail!("DEGOV_REALTIME_PER_CHAIN_MAX_IN_FLIGHT must be greater than zero");
+        }
+
+        let query_timeout_ms = optional_env_u64("DEGOV_REALTIME_QUERY_TIMEOUT_MS")?
+            .unwrap_or(defaults.query_timeout.as_millis() as u64);
+        if query_timeout_ms == 0 {
+            bail!("DEGOV_REALTIME_QUERY_TIMEOUT_MS must be greater than zero");
+        }
+
+        let pass_timeout_ms = optional_env_u64("DEGOV_REALTIME_PASS_TIMEOUT_MS")?
+            .unwrap_or(defaults.pass_timeout.as_millis() as u64);
+        if pass_timeout_ms < query_timeout_ms {
+            bail!(
+                "DEGOV_REALTIME_PASS_TIMEOUT_MS must be at least DEGOV_REALTIME_QUERY_TIMEOUT_MS"
+            );
+        }
+
+        Ok(Self {
+            enabled: optional_env_bool("DEGOV_REALTIME_WORKER_ENABLED")?
+                .unwrap_or(defaults.enabled),
+            dao_codes: optional_env("DEGOV_REALTIME_DAO_CODES")?
+                .map(|value| {
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|dao_code| !dao_code.is_empty())
+                        .map(ToOwned::to_owned)
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect()
+                })
+                .unwrap_or_default(),
+            datalens_application: optional_env("DEGOV_REALTIME_DATALENS_APPLICATION")?,
+            datalens_token: optional_env("DEGOV_REALTIME_DATALENS_TOKEN")?.map(SecretString::new),
+            poll_interval: Duration::from_millis(poll_interval_ms),
+            tail_window_blocks,
+            max_in_flight,
+            per_chain_max_in_flight,
+            query_timeout: Duration::from_millis(query_timeout_ms),
+            pass_timeout: Duration::from_millis(pass_timeout_ms),
+        })
+    }
 }
 
 impl ProvisionalRuntimeConfig {
@@ -66,6 +181,40 @@ impl GraphqlRuntimeConfig {
     }
 }
 
+impl MetricsRuntimeConfig {
+    pub fn from_env() -> Result<Self> {
+        let enabled = optional_env_bool("DEGOV_INDEXER_METRICS_ENABLED")?.unwrap_or(false);
+        let db_collection_enabled =
+            optional_env_bool("DEGOV_INDEXER_METRICS_DB_COLLECTION_ENABLED")?.unwrap_or(true);
+        let refresh_interval_ms =
+            optional_env_u64("DEGOV_INDEXER_METRICS_REFRESH_INTERVAL_MS")?.unwrap_or(15_000);
+        if refresh_interval_ms == 0 {
+            bail!("DEGOV_INDEXER_METRICS_REFRESH_INTERVAL_MS must be greater than zero");
+        }
+        let refresh_timeout_ms =
+            optional_env_u64("DEGOV_INDEXER_METRICS_REFRESH_TIMEOUT_MS")?.unwrap_or(25_000);
+        if refresh_timeout_ms == 0 {
+            bail!("DEGOV_INDEXER_METRICS_REFRESH_TIMEOUT_MS must be greater than zero");
+        }
+        let refresh_interval = Duration::from_millis(refresh_interval_ms);
+        let refresh_timeout = Duration::from_millis(refresh_timeout_ms);
+        let bind_address = match optional_env("DEGOV_INDEXER_METRICS_BIND_ADDRESS")? {
+            Some(address) => parse_bind_address("DEGOV_INDEXER_METRICS_BIND_ADDRESS", &address)?,
+            None => "0.0.0.0:9464"
+                .parse()
+                .expect("default metrics bind address parses"),
+        };
+
+        Ok(Self {
+            enabled,
+            bind_address,
+            db_collection_enabled,
+            refresh_interval,
+            refresh_timeout,
+        })
+    }
+}
+
 fn parse_bind_address(env_name: &str, value: &str) -> Result<SocketAddr> {
     value
         .parse()
@@ -95,8 +244,10 @@ fn graphql_paths(endpoint: Option<&str>, configured_path: Option<&str>) -> Resul
     if let Some(path) = endpoint.and_then(endpoint_graphql_path) {
         push_graphql_path(&mut paths, &path)?;
     }
-    if let Some(path) = configured_path {
-        push_graphql_path(&mut paths, path)?;
+    if let Some(paths_config) = configured_path {
+        for path in paths_config.split([',', '\n', '\r', '\t', ' ']) {
+            push_graphql_path(&mut paths, path)?;
+        }
     }
     Ok(paths)
 }
@@ -152,9 +303,11 @@ pub struct IndexerRuntimeConfig {
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+    pub onchain_refresh_deferred_drain_enabled: bool,
     pub onchain_refresh_deferred_drain_batch_size: usize,
     pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
     pub provisional: ProvisionalRuntimeConfig,
+    pub realtime: RealtimeRuntimeConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -244,8 +397,10 @@ pub struct IndexerContractSetRuntimeConfig {
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub max_chunks_per_run: Option<u64>,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
+    pub onchain_refresh_deferred_drain_enabled: bool,
     pub onchain_refresh_deferred_drain_batch_size: usize,
     pub proposal_timestamp_backfill: ProposalTimestampBackfillConfig,
+    pub provisional: ProvisionalRuntimeConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -253,6 +408,7 @@ pub struct AdaptiveChunkSizerRuntimeConfig {
     pub min_chunk_size: u32,
     pub transient_query_failure_min_chunk_size: u32,
     pub full_hit_dense_floor: u32,
+    pub initial_chunk_size: Option<u32>,
     pub max_chunk_size: Option<u32>,
     pub fast_chunk_duration_threshold: Duration,
     pub high_query_duration_threshold: Duration,
@@ -268,6 +424,7 @@ impl Default for AdaptiveChunkSizerRuntimeConfig {
             min_chunk_size: 100,
             transient_query_failure_min_chunk_size: 1,
             full_hit_dense_floor: 1_000,
+            initial_chunk_size: None,
             max_chunk_size: None,
             fast_chunk_duration_threshold: Duration::from_secs(1),
             high_query_duration_threshold: Duration::from_secs(10),
@@ -286,8 +443,13 @@ impl AdaptiveChunkSizerRuntimeConfig {
             .unwrap_or(block_range_limit)
             .min(block_range_limit);
         let min_chunk_size = self.min_chunk_size.min(max_chunk_size);
+        let initial_chunk_size = self
+            .initial_chunk_size
+            .unwrap_or(max_chunk_size)
+            .min(max_chunk_size)
+            .max(min_chunk_size);
         AdaptiveChunkSizerConfig {
-            initial_chunk_size: max_chunk_size,
+            initial_chunk_size,
             max_chunk_size,
             min_chunk_size,
             transient_query_failure_min_chunk_size: self
@@ -333,6 +495,12 @@ impl IndexerRuntimeConfig {
         );
         let run_once = optional_env_bool("DEGOV_INDEXER_RUN_ONCE")?.unwrap_or(false);
 
+        let onchain_refresh_tick = load_onchain_refresh_tick_config()?;
+        let onchain_refresh_deferred_drain_enabled = load_onchain_refresh_deferred_drain_enabled(
+            contract_set_mode,
+            onchain_refresh_tick.enabled,
+        )?;
+
         Ok(Self {
             dao_filter,
             contract_set_mode,
@@ -356,11 +524,13 @@ impl IndexerRuntimeConfig {
             )?
             .unwrap_or(100),
             adaptive_chunk_sizer: load_adaptive_chunk_sizer_runtime_config()?,
-            onchain_refresh_tick: load_onchain_refresh_tick_config()?,
+            onchain_refresh_tick,
+            onchain_refresh_deferred_drain_enabled,
             onchain_refresh_deferred_drain_batch_size:
                 onchain_refresh_deferred_drain_batch_size_from_env()?,
             proposal_timestamp_backfill: load_proposal_timestamp_backfill_config()?,
             provisional: ProvisionalRuntimeConfig::from_env()?,
+            realtime: RealtimeRuntimeConfig::from_env()?,
             poll_interval,
             run_once,
             max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,
@@ -428,14 +598,26 @@ impl IndexerRuntimeConfig {
             adaptive_chunk_sizer: self.adaptive_chunk_sizer,
             max_chunks_per_run: self.max_chunks_per_run,
             onchain_refresh_tick: self.onchain_refresh_tick.clone(),
+            onchain_refresh_deferred_drain_enabled: self.onchain_refresh_deferred_drain_enabled,
             onchain_refresh_deferred_drain_batch_size: self
                 .onchain_refresh_deferred_drain_batch_size,
             proposal_timestamp_backfill: self.proposal_timestamp_backfill,
+            provisional: self.provisional_for_target(),
         };
 
         Ok(runtime
             .with_start_block(contract_set.contract.start_block)?
             .with_contract_set_scope(contract_set.contract_set_id.clone()))
+    }
+
+    fn provisional_for_target(&self) -> ProvisionalRuntimeConfig {
+        match self.target_height {
+            IndexerTargetHeight::Latest => self.provisional.clone(),
+            IndexerTargetHeight::Fixed(_) => ProvisionalRuntimeConfig {
+                enabled: false,
+                finality: self.provisional.finality,
+            },
+        }
     }
 
     pub fn should_skip_contract_set_start_after_target(&self, start_block: i64) -> bool {
@@ -498,6 +680,7 @@ impl IndexerContractSetRuntimeConfig {
             adaptive_chunk_sizer: self
                 .adaptive_chunk_sizer
                 .for_block_range_limit(config.query_limits.block_range_limit),
+            onchain_refresh_deferred_drain_enabled: self.onchain_refresh_deferred_drain_enabled,
             onchain_refresh_deferred_drain_batch_size: self
                 .onchain_refresh_deferred_drain_batch_size,
             proposal_timestamp_backfill: self.proposal_timestamp_backfill,
@@ -558,6 +741,7 @@ impl IndexerContractSetRuntimeConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshRuntimeConfig {
     pub enabled: bool,
+    pub scope_mode: OnchainRefreshScopeMode,
     pub rpc_chains: BTreeMap<i32, OnchainRefreshRpcChainConfig>,
     pub batch_size: usize,
     pub apply_batch_size: usize,
@@ -574,6 +758,13 @@ pub struct OnchainRefreshRuntimeConfig {
     pub max_concurrency: usize,
     pub multicall_batch_size: usize,
     pub current_power_method: ChainReadMethod,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OnchainRefreshScopeMode {
+    Global,
+    ConfiguredContractSets,
+    AllModeConfiguredContractSets,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -610,6 +801,7 @@ impl OnchainRefreshRuntimeConfig {
     }
 
     fn from_env_with_enabled(enabled: bool) -> Result<Self> {
+        let scope_mode = load_onchain_refresh_scope_mode()?;
         let rpc_chains = load_onchain_refresh_rpc_chains(enabled)?;
         let batch_size = onchain_refresh_batch_size_from_env()?;
         let apply_batch_size = onchain_refresh_apply_batch_size_from_env()?;
@@ -664,6 +856,7 @@ impl OnchainRefreshRuntimeConfig {
 
         Ok(Self {
             enabled,
+            scope_mode,
             rpc_chains,
             batch_size,
             apply_batch_size,
@@ -702,6 +895,55 @@ impl OnchainRefreshRuntimeConfig {
             retry_delay: self.retry_delay,
             lock_owner: format!("degov-onchain-refresh-worker:{}", std::process::id()),
         }
+    }
+
+    pub fn configured_task_scopes(
+        &self,
+        indexer_runtime: &IndexerRuntimeConfig,
+        config: &DatalensConfig,
+    ) -> Result<Vec<OnchainRefreshTaskScope>> {
+        if matches!(self.scope_mode, OnchainRefreshScopeMode::Global) {
+            return Ok(Vec::new());
+        }
+
+        indexer_runtime
+            .configured_contract_sets(config)?
+            .into_iter()
+            .map(|contract_set| {
+                Ok(OnchainRefreshTaskScope {
+                    chain_id: contract_set.contract.chain_id,
+                    contract_set_id: contract_set.contract_set_id,
+                    dao_code: contract_set.dao_code,
+                })
+            })
+            .collect()
+    }
+}
+
+fn load_onchain_refresh_scope_mode() -> Result<OnchainRefreshScopeMode> {
+    if let Some(value) = optional_env("DEGOV_ONCHAIN_REFRESH_SCOPE_MODE")? {
+        return parse_onchain_refresh_scope_mode(&value);
+    }
+
+    if optional_env("DEGOV_INDEXER_CONTRACT_SET_MODE")?
+        .as_deref()
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("all"))
+    {
+        return Ok(OnchainRefreshScopeMode::AllModeConfiguredContractSets);
+    }
+
+    Ok(OnchainRefreshScopeMode::Global)
+}
+
+fn parse_onchain_refresh_scope_mode(value: &str) -> Result<OnchainRefreshScopeMode> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "global" => Ok(OnchainRefreshScopeMode::Global),
+        "configured-contract-sets" | "configured_contract_sets" => {
+            Ok(OnchainRefreshScopeMode::ConfiguredContractSets)
+        }
+        _ => bail!(
+            "DEGOV_ONCHAIN_REFRESH_SCOPE_MODE must be one of global or configured-contract-sets"
+        ),
     }
 }
 
@@ -742,6 +984,21 @@ fn load_onchain_refresh_tick_config() -> Result<OnchainRefreshTickConfig> {
     }
 
     Ok(config)
+}
+
+fn load_onchain_refresh_deferred_drain_enabled(
+    contract_set_mode: IndexerContractSetMode,
+    tick_enabled: bool,
+) -> Result<bool> {
+    let default_enabled = match contract_set_mode {
+        IndexerContractSetMode::Single => true,
+        IndexerContractSetMode::All => tick_enabled,
+    };
+
+    Ok(
+        optional_env_bool("DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED")?
+            .unwrap_or(default_enabled),
+    )
 }
 
 fn load_proposal_timestamp_backfill_config() -> Result<ProposalTimestampBackfillConfig> {
@@ -800,6 +1057,7 @@ fn load_adaptive_chunk_sizer_runtime_config() -> Result<AdaptiveChunkSizerRuntim
             "DEGOV_INDEXER_ADAPTIVE_CHUNK_FULL_HIT_DENSE_FLOOR_BLOCKS",
         )?
         .unwrap_or(defaults.full_hit_dense_floor),
+        initial_chunk_size: optional_env_u32("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS")?,
         max_chunk_size: optional_env_u32("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS")?,
         fast_chunk_duration_threshold: Duration::from_millis(
             optional_env_u64("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS")?
@@ -853,6 +1111,29 @@ fn load_adaptive_chunk_sizer_runtime_config() -> Result<AdaptiveChunkSizerRuntim
         bail!(
             "DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS must be less than or equal to DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS"
         );
+    }
+    if config
+        .initial_chunk_size
+        .is_some_and(|initial_chunk_size| initial_chunk_size == 0)
+    {
+        bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS must be greater than zero");
+    }
+    if config
+        .initial_chunk_size
+        .is_some_and(|initial_chunk_size| initial_chunk_size < config.min_chunk_size)
+    {
+        bail!(
+            "DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS must be greater than or equal to DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS"
+        );
+    }
+    if let (Some(initial_chunk_size), Some(max_chunk_size)) =
+        (config.initial_chunk_size, config.max_chunk_size)
+    {
+        if initial_chunk_size > max_chunk_size {
+            bail!(
+                "DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS must be less than or equal to DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS"
+            );
+        }
     }
     if config.fast_chunk_duration_threshold.is_zero() {
         bail!("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS must be greater than zero");
@@ -1170,10 +1451,10 @@ pub fn onchain_refresh_apply_batch_size_from_env() -> Result<usize> {
     if batch_size == 0 {
         bail!("DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE must be greater than zero");
     }
-    if batch_size > DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE {
+    if batch_size > MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE {
         bail!(
             "DEGOV_INDEXER_ONCHAIN_REFRESH_APPLY_BATCH_SIZE must be less than or equal to {}",
-            DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+            MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
         );
     }
 

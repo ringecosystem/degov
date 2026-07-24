@@ -14,6 +14,8 @@ test("block sync hook reads native indexer status", () => {
 
   assert.match(source, /indexerStatusService\.getIndexerStatus/);
   assert.match(source, /syncedPercentage/);
+  assert.match(source, /refetchInterval:\s*CACHE_TIMES\.TWO_SECONDS/);
+  assert.doesNotMatch(source, /refetchInterval:\s*CACHE_TIMES\.THIRTY_SECONDS/);
   assert.doesNotMatch(source, new RegExp(removedStatusField));
   assert.doesNotMatch(source, new RegExp(removedStatusService));
 });
@@ -28,5 +30,7 @@ test("indexer status query requests native status fields", () => {
   assert.match(source, /targetHeight/);
   assert.match(source, /syncedPercentage/);
   assert.match(source, /isSynced/);
+  assert.match(source, /GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT/);
+  assert.match(source, /provisionalHeight/);
   assert.doesNotMatch(source, new RegExp(removedStatusField));
 });

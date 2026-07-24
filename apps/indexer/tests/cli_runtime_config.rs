@@ -3,7 +3,8 @@ use std::{sync::Mutex, time::Duration};
 use degov_datalens_indexer::{
     ContractSetConcurrencyLimit, DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, DatalensConfig,
     DatalensProvisionalFinality, DatalensQueryConcurrencyConfig, GraphqlRuntimeConfig,
-    IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight, OnchainRefreshRuntimeConfig,
+    IndexerContractSetMode, IndexerRuntimeConfig, IndexerTargetHeight,
+    MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, OnchainRefreshRuntimeConfig, OnchainRefreshScopeMode,
     OnchainRefreshTickConfig, ProposalTimestampBackfillConfig, ProvisionalRuntimeConfig,
     datalens_retry_config, onchain_refresh_worker_enabled, parse_bool_env_value,
     parse_i64_env_value,
@@ -37,6 +38,141 @@ fn test_onchain_refresh_worker_enabled_rejects_ambiguous_values() {
 }
 
 #[test]
+fn test_indexer_runtime_config_defaults_realtime_worker_to_disabled() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("test-dao")),
+            ("DEGOV_REALTIME_WORKER_ENABLED", None::<&str>),
+            ("DEGOV_REALTIME_DAO_CODES", None::<&str>),
+            ("DEGOV_REALTIME_POLL_INTERVAL_MS", None::<&str>),
+            ("DEGOV_REALTIME_TAIL_WINDOW_BLOCKS", None::<&str>),
+            ("DEGOV_REALTIME_MAX_IN_FLIGHT", None::<&str>),
+            ("DEGOV_REALTIME_PER_CHAIN_MAX_IN_FLIGHT", None::<&str>,),
+            ("DEGOV_REALTIME_QUERY_TIMEOUT_MS", None::<&str>),
+            ("DEGOV_REALTIME_PASS_TIMEOUT_MS", None::<&str>),
+            ("DEGOV_REALTIME_DATALENS_APPLICATION", None::<&str>),
+            ("DEGOV_REALTIME_DATALENS_TOKEN", None::<&str>),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(!config.realtime.enabled);
+            assert!(config.realtime.dao_codes.is_empty());
+            assert_eq!(config.realtime.poll_interval, Duration::from_millis(3_000));
+            assert_eq!(config.realtime.tail_window_blocks, 8);
+            assert_eq!(config.realtime.max_in_flight, 1);
+            assert_eq!(config.realtime.per_chain_max_in_flight, 1);
+            assert_eq!(config.realtime.query_timeout, Duration::from_millis(5_000));
+            assert_eq!(config.realtime.pass_timeout, Duration::from_millis(15_000));
+            assert_eq!(config.realtime.datalens_application, None);
+            assert_eq!(config.realtime.datalens_token, None);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_parses_realtime_dao_allowlist() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("test-dao")),
+            ("DEGOV_REALTIME_WORKER_ENABLED", Some("true")),
+            (
+                "DEGOV_REALTIME_DAO_CODES",
+                Some(" demo-dao, test-dao, demo-dao , ,\ttest-dao "),
+            ),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.realtime.dao_codes,
+                vec!["demo-dao".to_owned(), "test-dao".to_owned()]
+            );
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_accepts_realtime_worker_overrides() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("test-dao")),
+            ("DEGOV_REALTIME_WORKER_ENABLED", Some("true")),
+            ("DEGOV_REALTIME_POLL_INTERVAL_MS", Some("2500")),
+            ("DEGOV_REALTIME_TAIL_WINDOW_BLOCKS", Some("12")),
+            ("DEGOV_REALTIME_MAX_IN_FLIGHT", Some("3")),
+            ("DEGOV_REALTIME_PER_CHAIN_MAX_IN_FLIGHT", Some("2")),
+            ("DEGOV_REALTIME_QUERY_TIMEOUT_MS", Some("7500")),
+            ("DEGOV_REALTIME_PASS_TIMEOUT_MS", Some("15000")),
+            (
+                "DEGOV_REALTIME_DATALENS_APPLICATION",
+                Some("degov-realtime"),
+            ),
+            ("DEGOV_REALTIME_DATALENS_TOKEN", Some("realtime-test-token")),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(config.realtime.enabled);
+            assert_eq!(config.realtime.poll_interval, Duration::from_millis(2_500));
+            assert_eq!(config.realtime.tail_window_blocks, 12);
+            assert_eq!(config.realtime.max_in_flight, 3);
+            assert_eq!(config.realtime.per_chain_max_in_flight, 2);
+            assert_eq!(config.realtime.query_timeout, Duration::from_millis(7_500));
+            assert_eq!(config.realtime.pass_timeout, Duration::from_millis(15_000));
+            assert_eq!(
+                config.realtime.datalens_application.as_deref(),
+                Some("degov-realtime")
+            );
+            assert_eq!(
+                config
+                    .realtime
+                    .datalens_token
+                    .as_ref()
+                    .map(degov_datalens_indexer::SecretString::expose_secret),
+                Some("realtime-test-token")
+            );
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_rejects_invalid_realtime_worker_boundaries() {
+    for (name, value) in [
+        ("DEGOV_REALTIME_POLL_INTERVAL_MS", "0"),
+        ("DEGOV_REALTIME_POLL_INTERVAL_MS", "1999"),
+        ("DEGOV_REALTIME_TAIL_WINDOW_BLOCKS", "0"),
+        ("DEGOV_REALTIME_MAX_IN_FLIGHT", "0"),
+        ("DEGOV_REALTIME_PER_CHAIN_MAX_IN_FLIGHT", "0"),
+        ("DEGOV_REALTIME_QUERY_TIMEOUT_MS", "0"),
+        ("DEGOV_REALTIME_PASS_TIMEOUT_MS", "0"),
+        ("DEGOV_REALTIME_PASS_TIMEOUT_MS", "4999"),
+    ] {
+        with_env_vars!(
+            [
+                ("DEGOV_INDEXER_DAO_CODE", Some("test-dao")),
+                ("DEGOV_REALTIME_WORKER_ENABLED", Some("true")),
+                ("DEGOV_REALTIME_POLL_INTERVAL_MS", None::<&str>),
+                ("DEGOV_REALTIME_TAIL_WINDOW_BLOCKS", None::<&str>),
+                ("DEGOV_REALTIME_MAX_IN_FLIGHT", None::<&str>),
+                ("DEGOV_REALTIME_PER_CHAIN_MAX_IN_FLIGHT", None::<&str>,),
+                ("DEGOV_REALTIME_QUERY_TIMEOUT_MS", None::<&str>),
+                ("DEGOV_REALTIME_PASS_TIMEOUT_MS", None::<&str>),
+                ("DEGOV_REALTIME_DATALENS_APPLICATION", None::<&str>),
+                ("DEGOV_REALTIME_DATALENS_TOKEN", None::<&str>),
+                (name, Some(value)),
+            ],
+            || {
+                let error = IndexerRuntimeConfig::from_env()
+                    .expect_err("invalid realtime worker boundary is rejected");
+
+                assert!(error.to_string().contains(name));
+            },
+        );
+    }
+}
+
+#[test]
 fn test_onchain_refresh_runtime_config_defaults_debounce() {
     with_env_vars!(
         [
@@ -50,6 +186,63 @@ fn test_onchain_refresh_runtime_config_defaults_debounce() {
             assert_eq!(
                 config.worker_config().debounce,
                 Duration::from_millis(120_000)
+            );
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_defaults_global_scope() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            ("DEGOV_ONCHAIN_REFRESH_SCOPE_MODE", None::<&str>),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", None::<&str>),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(config.scope_mode, OnchainRefreshScopeMode::Global);
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_uses_all_mode_contract_set_scopes() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            ("DEGOV_ONCHAIN_REFRESH_SCOPE_MODE", None::<&str>),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.scope_mode,
+                OnchainRefreshScopeMode::AllModeConfiguredContractSets
+            );
+        },
+    );
+}
+
+#[test]
+fn test_onchain_refresh_runtime_config_accepts_explicit_contract_set_scope_mode() {
+    with_env_vars!(
+        [
+            ("DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED", Some("false")),
+            (
+                "DEGOV_ONCHAIN_REFRESH_SCOPE_MODE",
+                Some("configured-contract-sets"),
+            ),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", None::<&str>),
+        ],
+        || {
+            let config = OnchainRefreshRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.scope_mode,
+                OnchainRefreshScopeMode::ConfiguredContractSets
             );
         },
     );
@@ -172,11 +365,11 @@ fn test_onchain_refresh_runtime_config_accepts_max_apply_batch() {
 
             assert_eq!(
                 config.apply_batch_size,
-                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+                MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
             );
             assert_eq!(
                 config.worker_config().apply_batch_size,
-                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+                MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
             );
         },
     );
@@ -260,6 +453,32 @@ fn test_graphql_runtime_config_keeps_public_endpoint_separate_from_bind_address(
             assert_eq!(
                 config.paths,
                 vec!["/graphql".to_owned(), "/degov-demo-dao/graphql".to_owned()]
+            );
+        },
+    );
+}
+
+#[test]
+fn test_graphql_runtime_config_accepts_multiple_paths() {
+    with_env_vars!(
+        [
+            (
+                "DEGOV_INDEXER_GRAPHQL_PATH",
+                Some("/ens-dao/graphql,/lisk-dao/graphql\n/rn-dao/graphql"),
+            ),
+            ("DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS", Some("0.0.0.0:4350")),
+        ],
+        || {
+            let config = GraphqlRuntimeConfig::from_env().expect("graphql config parses");
+
+            assert_eq!(
+                config.paths,
+                vec![
+                    "/graphql".to_owned(),
+                    "/ens-dao/graphql".to_owned(),
+                    "/lisk-dao/graphql".to_owned(),
+                    "/rn-dao/graphql".to_owned(),
+                ]
             );
         },
     );
@@ -573,6 +792,7 @@ fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bound
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED", None,),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", None),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN", None),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_DURATION_MS", None),
@@ -593,6 +813,26 @@ fn test_indexer_runtime_config_defaults_onchain_refresh_ticks_disabled_and_bound
                 Duration::from_millis(500)
             );
             assert_eq!(config.onchain_refresh_tick.min_blocks_between_ticks, 100);
+            assert!(config.onchain_refresh_deferred_drain_enabled);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_all_mode_defaults_to_enqueue_only_onchain_refresh() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", None),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED", None,),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(!config.onchain_refresh_tick.enabled);
+            assert!(!config.onchain_refresh_deferred_drain_enabled);
         },
     );
 }
@@ -604,6 +844,7 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", Some("true")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED", None,),
             ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS", Some("3")),
             (
                 "DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_MAX_TASKS_PER_RUN",
@@ -626,6 +867,29 @@ fn test_indexer_runtime_config_accepts_onchain_refresh_tick_overrides() {
                 Duration::from_millis(25)
             );
             assert_eq!(config.onchain_refresh_tick.min_blocks_between_ticks, 5);
+            assert!(config.onchain_refresh_deferred_drain_enabled);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_all_mode_accepts_explicit_deferred_drain_enable() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", None),
+            ("DEGOV_INDEXER_CONTRACT_SET_MODE", Some("all")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_ONCHAIN_REFRESH_TICK_ENABLED", None),
+            (
+                "DEGOV_INDEXER_ONCHAIN_REFRESH_DEFERRED_DRAIN_ENABLED",
+                Some("true"),
+            ),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert!(!config.onchain_refresh_tick.enabled);
+            assert!(config.onchain_refresh_deferred_drain_enabled);
         },
     );
 }
@@ -646,7 +910,10 @@ fn test_indexer_runtime_config_inherits_onchain_refresh_tick_run_budget_from_tot
             let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
 
             assert_eq!(config.onchain_refresh_tick.max_tasks_per_tick, 1000);
-            assert_eq!(config.onchain_refresh_tick.max_tasks_per_run, 1000);
+            assert_eq!(
+                config.onchain_refresh_tick.max_tasks_per_run,
+                DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE
+            );
         },
     );
 }
@@ -808,12 +1075,14 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_enabled: false,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
-            enabled: false,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            enabled: true,
+            finality: DatalensProvisionalFinality::LatestOnly,
         },
+        realtime: Default::default(),
     };
     let selected = config
         .configured_contract_sets(Some("lisk-dao"))
@@ -828,6 +1097,11 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
 
     assert_eq!(planned.dao_code, "lisk-dao");
     assert_eq!(planned.start_block, 568752);
+    assert!(!planned.provisional.enabled);
+    assert_eq!(
+        planned.provisional.finality,
+        DatalensProvisionalFinality::LatestOnly
+    );
     assert_eq!(options.checkpoint_identity.chain_id, 1135);
     assert_eq!(
         options.checkpoint_identity.contract_set_id,
@@ -890,12 +1164,14 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_enabled: false,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
             finality: DatalensProvisionalFinality::SafeToLatest,
         },
+        realtime: Default::default(),
     };
     let selected = config
         .configured_contract_sets(Some("lisk-dao"))
@@ -932,12 +1208,14 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         max_chunks_per_run: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
+        onchain_refresh_deferred_drain_enabled: false,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
             finality: DatalensProvisionalFinality::SafeToLatest,
         },
+        realtime: Default::default(),
     };
 
     assert!(!runtime.should_skip_contract_set_start_after_target(568752));

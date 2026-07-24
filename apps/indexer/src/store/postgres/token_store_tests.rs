@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     BatchReadPlanConfig, ChainContracts, ChainReadMethod, PowerReconcileContext,
-    plan_power_reconcile,
+    plan_power_reconcile, runtime::apply_migrations,
 };
 
 #[test]
@@ -21,12 +21,17 @@ fn test_bulk_chunk_size_defaults_to_preferred_values() {
                 "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
                 None::<&str>,
             ),
+            (
+                "DEGOV_INDEXER_RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_CHUNK_SIZE",
+                None::<&str>,
+            ),
         ],
         || {
             assert_eq!(token_event_bulk_chunk_size(), 3_000);
             assert_eq!(contributor_ensure_bulk_chunk_size(), 3_000);
             assert_eq!(delegate_rolling_vote_update_chunk_size(), 1_000);
             assert_eq!(vote_power_checkpoint_bulk_chunk_size(), 3_000);
+            assert_eq!(recompute_delegate_count_effective_chunk_size(), 3_000);
         },
     );
 }
@@ -48,6 +53,10 @@ fn test_bulk_chunk_size_env_values_are_capped_to_postgres_bind_limit() {
                 "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
                 Some("100000"),
             ),
+            (
+                "DEGOV_INDEXER_RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_CHUNK_SIZE",
+                Some("100000"),
+            ),
         ],
         || {
             assert_eq!(
@@ -65,6 +74,10 @@ fn test_bulk_chunk_size_env_values_are_capped_to_postgres_bind_limit() {
             assert_eq!(
                 vote_power_checkpoint_bulk_chunk_size(),
                 POSTGRES_BIND_PARAMETER_LIMIT / VOTE_POWER_CHECKPOINT_BULK_BINDS_PER_ROW
+            );
+            assert_eq!(
+                recompute_delegate_count_effective_chunk_size(),
+                POSTGRES_BIND_PARAMETER_LIMIT / RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_BINDS_PER_ROW
             );
         },
     );
@@ -87,12 +100,17 @@ fn test_bulk_chunk_size_invalid_env_values_fall_back_to_defaults() {
                 "DEGOV_INDEXER_VOTE_POWER_CHECKPOINT_BULK_CHUNK_SIZE",
                 Some("not-a-number"),
             ),
+            (
+                "DEGOV_INDEXER_RECOMPUTE_DELEGATE_COUNT_EFFECTIVE_CHUNK_SIZE",
+                Some("0"),
+            ),
         ],
         || {
             assert_eq!(token_event_bulk_chunk_size(), 3_000);
             assert_eq!(contributor_ensure_bulk_chunk_size(), 3_000);
             assert_eq!(delegate_rolling_vote_update_chunk_size(), 1_000);
             assert_eq!(vote_power_checkpoint_bulk_chunk_size(), 3_000);
+            assert_eq!(recompute_delegate_count_effective_chunk_size(), 3_000);
         },
     );
 }
@@ -309,6 +327,42 @@ fn test_batch_token_metadata_cache_uses_delegate_specific_rolling_candidates() {
             .find_rolling_match(&common, "0xtarget", "1", 8)
             .is_none()
     );
+}
+
+#[test]
+fn test_batch_token_metadata_cache_counts_transfers_from_current_batch() {
+    let common = token_common("scope", "0xtx1", 10, 1);
+    let other_transaction = token_common("scope", "0xtx2", 10, 2);
+    let untracked_scope = token_common("untracked-scope", "0xtx1", 10, 3);
+    let batch = TokenProjectionBatch {
+        event_order: Vec::new(),
+        delegate_changed: Vec::new(),
+        delegate_votes_changed: vec![
+            delegate_votes_changed("votes-1", common.clone(), "0xdelegate1", "0", "1"),
+            delegate_votes_changed(
+                "votes-2",
+                other_transaction.clone(),
+                "0xdelegate2",
+                "1",
+                "2",
+            ),
+        ],
+        token_transfers: vec![
+            token_transfer("transfer-1", common.clone(), "0xfrom1", "0xto1", "10"),
+            token_transfer("transfer-2", common.clone(), "0xfrom2", "0xto2", "20"),
+            token_transfer("transfer-3", untracked_scope, "0xfrom3", "0xto3", "30"),
+        ],
+        delegate_rollings: Vec::new(),
+        operations: Vec::new(),
+        reconcile_plan: empty_reconcile_plan(),
+    };
+    let keys = collect_transaction_metadata_keys(&batch);
+    let mut cache = BatchTokenMetadataCache::default();
+
+    cache.preload_transfer_counts(&batch, &keys);
+
+    assert_eq!(cache.transfer_count(&common), 2);
+    assert_eq!(cache.transfer_count(&other_transaction), 0);
 }
 
 #[test]
@@ -591,6 +645,149 @@ fn test_collect_vote_power_checkpoint_inserts_keeps_delegate_votes_changed_cause
     assert_eq!(rows[0].to_delegate, None);
 }
 
+#[tokio::test]
+async fn test_write_token_batch_rows_applies_same_tx_mint_self_delegation_vote_power() {
+    let Ok(database_url) = std::env::var("DEGOV_INDEXER_TEST_DATABASE_URL") else {
+        return;
+    };
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .expect("connect test database");
+    apply_migrations(&pool).await.expect("apply migrations");
+
+    let mut transaction = pool.begin().await.expect("begin transaction");
+    let account = "0xb00c12b64c0ad418513e9a5d934c921d86b6615";
+    let zero = "0x0000000000000000000000000000000000000000";
+    let power = "1000000000000000";
+    let base_common = TokenEventCommon {
+        contract_set_id: format!("token-timeline-regression-{}", std::process::id()),
+        chain_id: 1,
+        dao_code: "bytom-dao".to_owned(),
+        governor_address: "0xgovernor".to_owned(),
+        token_address: "0xtoken".to_owned(),
+        contract_address: "0xtoken".to_owned(),
+        log_index: 0,
+        transaction_index: 42,
+        block_number: "19624062".to_owned(),
+        block_timestamp: Some("1710000000".to_owned()),
+        transaction_hash: "0xff65c789b44935908b54018c9b7c5fd4acec93138c13a64790626d18ef03898e"
+            .to_owned(),
+    };
+    let transfer_common = TokenEventCommon {
+        log_index: 256,
+        ..base_common.clone()
+    };
+    let changed_common = TokenEventCommon {
+        log_index: 257,
+        ..base_common.clone()
+    };
+    let votes_common = TokenEventCommon {
+        log_index: 258,
+        ..base_common.clone()
+    };
+    let batch = TokenProjectionBatch {
+        event_order: vec![
+            "transfer".to_owned(),
+            "changed".to_owned(),
+            "votes".to_owned(),
+        ],
+        delegate_changed: vec![DelegateChangedWrite {
+            id: "changed".to_owned(),
+            common: changed_common.clone(),
+            delegator: account.to_owned(),
+            from_delegate: zero.to_owned(),
+            to_delegate: account.to_owned(),
+        }],
+        delegate_votes_changed: vec![delegate_votes_changed(
+            "votes",
+            votes_common.clone(),
+            account,
+            "0",
+            power,
+        )],
+        token_transfers: vec![TokenTransferWrite {
+            id: "transfer".to_owned(),
+            common: transfer_common.clone(),
+            from: zero.to_owned(),
+            to: account.to_owned(),
+            value: power.to_owned(),
+            standard: "erc20".to_owned(),
+        }],
+        delegate_rollings: vec![DelegateRollingWrite {
+            id: "changed".to_owned(),
+            common: changed_common.clone(),
+            delegator: account.to_owned(),
+            from_delegate: zero.to_owned(),
+            to_delegate: account.to_owned(),
+            from_previous_votes: None,
+            from_new_votes: None,
+            to_previous_votes: None,
+            to_new_votes: None,
+        }],
+        operations: vec![
+            TokenProjectionOperation::Transfer {
+                id: "transfer".to_owned(),
+                common: transfer_common,
+                from: zero.to_owned(),
+                to: account.to_owned(),
+                value: power.to_owned(),
+                standard: GovernanceTokenStandard::Erc20,
+            },
+            TokenProjectionOperation::DelegateChanged {
+                id: "changed".to_owned(),
+                common: changed_common,
+                delegator: account.to_owned(),
+                from_delegate: zero.to_owned(),
+                to_delegate: account.to_owned(),
+            },
+            TokenProjectionOperation::DelegateVotesChanged {
+                id: "votes".to_owned(),
+                common: votes_common,
+                delegate: account.to_owned(),
+                previous_votes: "0".to_owned(),
+                new_votes: power.to_owned(),
+            },
+        ],
+        reconcile_plan: empty_reconcile_plan(),
+    };
+
+    let inserted = write_token_batch_rows(&mut transaction, &batch)
+        .await
+        .expect("write token rows");
+    write_data_metric_timeline(&mut transaction, &inserted, None, None, Some(&batch))
+        .await
+        .expect("write token timeline");
+
+    let mapping_power = sqlx::query_scalar::<_, String>(
+        r#"SELECT power::TEXT
+           FROM delegate_mapping
+           WHERE contract_set_id = $1 AND id = $2"#,
+    )
+    .bind(&base_common.contract_set_id)
+    .bind(contributor_ref(account))
+    .fetch_one(&mut *transaction)
+    .await
+    .expect("delegate mapping power");
+    let delegate_power = sqlx::query_scalar::<_, String>(
+        r#"SELECT power::TEXT
+           FROM delegate
+           WHERE contract_set_id = $1 AND id = $2 AND is_current"#,
+    )
+    .bind(&base_common.contract_set_id)
+    .bind(delegate_ref(&base_common, account, account))
+    .fetch_one(&mut *transaction)
+    .await
+    .expect("delegate snapshot power");
+
+    assert_eq!(inserted.len(), 3);
+    assert_eq!(mapping_power, power);
+    assert_eq!(delegate_power, power);
+
+    transaction.rollback().await.expect("rollback transaction");
+}
+
 #[test]
 fn test_delegate_snapshot_cache_keeps_only_final_dirty_state_per_relation() {
     let common = token_common("scope", "0xtx1", 10, 5);
@@ -674,6 +871,23 @@ fn delegate_votes_changed(
         delegate: delegate.to_owned(),
         previous_votes: previous_votes.to_owned(),
         new_votes: new_votes.to_owned(),
+    }
+}
+
+fn token_transfer(
+    id: &str,
+    common: TokenEventCommon,
+    from: &str,
+    to: &str,
+    value: &str,
+) -> TokenTransferWrite {
+    TokenTransferWrite {
+        id: id.to_owned(),
+        common,
+        from: from.to_owned(),
+        to: to.to_owned(),
+        value: value.to_owned(),
+        standard: "erc20".to_owned(),
     }
 }
 

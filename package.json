@@ -1,6 +1,6 @@
 {
   "name": "degov",
-  "version": "2.0.0",
+  "version": "3.0.1",
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
@@ -16,7 +16,8 @@
     "indexer:smoke-datalens": "cargo run -p degov-datalens-indexer --locked -- smoke-datalens",
     "indexer:worker": "cargo run -p degov-datalens-indexer --locked -- worker",
     "test:indexer": "cargo test -p degov-datalens-indexer --locked",
-    "test:indexer-scripts": "node apps/indexer/scripts/indexer-diagnostics.test.mjs && node apps/indexer/scripts/runtime-packaging.test.mjs && node apps/indexer/scripts/staging-deployment-contract.test.mjs && node apps/indexer/scripts/indexer-accuracy-audit.test.mjs && node apps/indexer/scripts/indexer-accuracy-diagnose.test.mjs && node apps/indexer/scripts/indexer-reconcile-diagnose.test.mjs && node apps/indexer/scripts/v4-parity-audit.test.mjs && node apps/indexer/scripts/indexer-tally-onchain-e2e.test.mjs"
+    "test:indexer-scripts": "node apps/indexer/scripts/indexer-diagnostics.test.mjs && node apps/indexer/scripts/runtime-packaging.test.mjs && node apps/indexer/scripts/staging-deployment-contract.test.mjs && node apps/indexer/scripts/indexer-accuracy-audit.test.mjs && node apps/indexer/scripts/indexer-accuracy-diagnose.test.mjs && node apps/indexer/scripts/indexer-reconcile-diagnose.test.mjs && node apps/indexer/scripts/v4-parity-audit.test.mjs && node apps/indexer/scripts/indexer-tally-onchain-e2e.test.mjs",
+    "test:web-scripts": "node --test apps/web/scripts/*.test.ts apps/web/scripts/*.test.mjs"
   },
   "pnpm": {
     "packageExtensions": {
@@ -34,10 +35,20 @@
     "overrides": {
       "axios": "^1.16.1",
       "follow-redirects": "^1.16.0",
-      "hono": "^4.12.19",
+      "@babel/core": "^7.29.6",
+      "dompurify": "^3.4.11",
+      "form-data": "^4.0.6",
+      "hono": "^4.12.25",
       "@hono/node-server": "^1.19.13",
       "effect": "^3.20.0",
+      "js-cookie": "^3.0.7",
+      "js-yaml": "^4.2.0",
       "lodash": "^4.18.0",
+      "markdown-it": "^14.2.0",
+      "postcss": "^8.5.13",
+      "uuid@<11.1.1": "11.1.1",
+      "ws@>=7.0.0 <8": "7.5.11",
+      "ws@>=8.0.0 <9": "8.21.0",
       "xml2js": "^0.5.0"
     }
   }

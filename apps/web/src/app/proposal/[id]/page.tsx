@@ -4,12 +4,12 @@ import { isNil } from "lodash-es";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useReadContract } from "wagmi";
 
 import NotFound from "@/components/not-found";
 import { ProposalNotification } from "@/components/proposal-notification";
-import { LoadingState } from "@/components/ui/loading-spinner";
+import { ErrorState, LoadingState } from "@/components/ui/loading-spinner";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useNotificationVisibility } from "@/hooks/useNotificationVisibility";
@@ -20,6 +20,7 @@ import { parseDescription } from "@/utils";
 import { CACHE_TIMES } from "@/utils/query-config";
 
 import { CurrentVotes } from "./current-votes";
+import { getProposalMissingState } from "./proposal-indexing-state";
 import Status from "./status";
 import { Summary } from "./summary";
 import { Tabs } from "./tabs";
@@ -91,6 +92,10 @@ export default function ProposalDetailPage() {
     () => buildGovernanceScope(daoConfig),
     [daoConfig]
   );
+  const [missingObservedAt, setMissingObservedAt] = useState<number | null>(
+    null
+  );
+  const [now, setNow] = useState(() => Date.now());
 
   const {
     data: allData,
@@ -114,6 +119,10 @@ export default function ProposalDetailPage() {
     enabled: !!validId && !!daoConfig?.indexer.endpoint,
     refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
   });
+  const chainExists = !isNil(proposalStatus?.data);
+  const isProposalMissingFromIndexer =
+    !isPending && (!allData || allData.length === 0);
+  const shouldPollMissingProposal = isProposalMissingFromIndexer && chainExists;
 
   const data = useMemo(() => {
     if (allData?.[0]) {
@@ -217,6 +226,30 @@ export default function ProposalDetailPage() {
 
   const wasActiveRef = useRef(false);
   useEffect(() => {
+    if (isProposalMissingFromIndexer) {
+      setMissingObservedAt((observedAt) => observedAt ?? Date.now());
+      return;
+    }
+
+    setMissingObservedAt(null);
+  }, [isProposalMissingFromIndexer]);
+
+  useEffect(() => {
+    if (!shouldPollMissingProposal) {
+      return;
+    }
+
+    setNow(Date.now());
+    void refetchProposal();
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+      void refetchProposal();
+    }, CACHE_TIMES.TEN_SECONDS);
+
+    return () => window.clearInterval(interval);
+  }, [refetchProposal, shouldPollMissingProposal]);
+
+  useEffect(() => {
     if (wasActiveRef.current && !isActive) {
       void refetchProposal();
       void refetchProposalCanceledById();
@@ -301,8 +334,48 @@ export default function ProposalDetailPage() {
     );
   }
 
-  if (!allData || allData.length === 0) {
-    return <NotFound />;
+  if (isProposalMissingFromIndexer) {
+    const missingState = getProposalMissingState({
+      chainExists,
+      chainCheckPending:
+        proposalStatus?.isPending || proposalStatus?.isLoading || false,
+      chainCheckError: proposalStatus?.error,
+      missingObservedAt,
+      now,
+    });
+
+    if (missingState === "not-found") {
+      return <NotFound />;
+    }
+
+    if (missingState === "problem") {
+      return (
+        <div className="w-full h-full flex items-center justify-center">
+          <ErrorState
+            title={t("indexingProblemTitle")}
+            description={t("indexingProblemDescription")}
+            onRetry={refetchProposal}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <LoadingState
+          title={
+            missingState === "checking"
+              ? t("checkingProposalTitle")
+              : t("indexingTitle")
+          }
+          description={
+            missingState === "checking"
+              ? t("checkingProposalDescription")
+              : t("indexingDescription")
+          }
+        />
+      </div>
+    );
   }
   return (
     <div className="flex w-full flex-col gap-[20px] h-full min-h-0">
@@ -335,6 +408,7 @@ export default function ProposalDetailPage() {
             <CurrentVotes
               proposalVotesData={proposalVotesData}
               quorumRequired={quorumRequired}
+              countingMode={data?.countingMode}
               isLoading={isPending || !data}
             />
             <Status
@@ -364,6 +438,7 @@ export default function ProposalDetailPage() {
         <CurrentVotes
           proposalVotesData={proposalVotesData}
           quorumRequired={quorumRequired}
+          countingMode={data?.countingMode}
           isLoading={isPending || !data}
         />
         <Tabs data={data} isFetching={isPending} />

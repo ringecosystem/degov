@@ -322,6 +322,51 @@ pub fn decode_dao_log(
     }
 }
 
+pub fn dao_log_source_supports_topic0(source: DaoLogSource, topic0: &str) -> bool {
+    match source {
+        DaoLogSource::Governor => governor_topic0_supported(topic0),
+        DaoLogSource::GovernorToken => token_topic0_supported(topic0),
+        DaoLogSource::Timelock => timelock_topic0_supported(topic0),
+    }
+}
+
+fn governor_topic0_supported(topic0: &str) -> bool {
+    matches!(
+        topic0,
+        PROPOSAL_CREATED
+            | PROPOSAL_QUEUED
+            | PROPOSAL_EXTENDED
+            | PROPOSAL_EXECUTED
+            | PROPOSAL_CANCELED
+            | VOTING_DELAY_SET
+            | VOTING_PERIOD_SET
+            | PROPOSAL_THRESHOLD_SET
+            | QUORUM_NUMERATOR_UPDATED
+            | LATE_QUORUM_VOTE_EXTENSION_SET
+            | TIMELOCK_CHANGE
+            | VOTE_CAST
+            | VOTE_CAST_WITH_PARAMS
+    )
+}
+
+fn token_topic0_supported(topic0: &str) -> bool {
+    matches!(topic0, DELEGATE_CHANGED | DELEGATE_VOTES_CHANGED | TRANSFER)
+}
+
+fn timelock_topic0_supported(topic0: &str) -> bool {
+    matches!(
+        topic0,
+        CALL_SCHEDULED
+            | CALL_EXECUTED
+            | CALL_SALT
+            | CANCELLED
+            | MIN_DELAY_CHANGE
+            | ROLE_GRANTED
+            | ROLE_REVOKED
+            | ROLE_ADMIN_CHANGED
+    )
+}
+
 fn decode_governor_event(
     context: &DecodeContext<'_>,
     topic0: &str,

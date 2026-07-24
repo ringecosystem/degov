@@ -27,6 +27,7 @@
   },
   "indexer": {
     "currentlyAtBlock": "Currently at block {indexedBlock} of {currentBlock}",
+    "confirmedSafeHeight": "Confirmed safe height: {processedHeight}",
     "poweredBy": "Powered by",
     "brand": "DeGov.AI"
   },

@@ -1,6 +1,8 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt,
+    future::Future,
+    pin::Pin,
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -20,14 +22,42 @@ use crate::{
     MulticallReadGroup, PartialChainReadFailureReport, ProvisionalContributorPowerOverlayWrite,
     ProvisionalDelegatePowerOverlayRelation, ProvisionalDelegatePowerOverlayWrite,
     ProvisionalPowerOverlayScope, ProvisionalPowerOverlayStore, ReadRequirement,
+    delegate_profile::acquire_delegate_profile_scope_lock,
     store::postgres::{
         drain_deferred_onchain_refresh_tasks, drain_deferred_onchain_refresh_tasks_for_scope,
+        repair_missing_onchain_refresh_contributor_coverage,
+        repair_missing_onchain_refresh_contributor_coverage_for_scope,
     },
 };
 
-pub const DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
-const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
+pub const DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 200;
+pub const MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE: usize = 1_000;
+const DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS: i32 = 3;
+const MAX_ONCHAIN_REFRESH_APPLY_ROWS: usize = MAX_ONCHAIN_REFRESH_APPLY_BATCH_SIZE;
+const MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS: i64 = 200;
+const ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL: &str = "
+    COALESCE(error, '') ILIKE '%block not found%'
+    OR (
+      COALESCE(error, '') ILIKE '%historical state%'
+      AND COALESCE(error, '') ILIKE '%not available%'
+    )
+    OR COALESCE(error, '') ILIKE '%error sending request%'
+    OR COALESCE(error, '') ILIKE '%request timed out%'
+    OR COALESCE(error, '') ILIKE '%context canceled%'
+    OR COALESCE(error, '') ILIKE '%connection reset%'
+    OR COALESCE(error, '') ILIKE '%connection refused%'
+    OR COALESCE(error, '') ILIKE '%temporarily unavailable%'
+    OR COALESCE(error, '') ILIKE '%deadline has elapsed%'
+    OR COALESCE(error, '') ILIKE '%too many requests%'
+    OR COALESCE(error, '') ILIKE '%rate limit%'
+";
+const MAX_ONCHAIN_REFRESH_DATA_METRIC_REFRESH_ROWS: usize = 200;
+const ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS: usize = 3;
+const ONCHAIN_REFRESH_APPLY_RETRY_BASE_DELAY_MS: u64 = 50;
+const MULTICALL_DIRECT_FALLBACK_MAX_ATTEMPTS: usize = 3;
 const MULTICALL3_ADDRESS: &str = "0xca11bde05977b3631167028862be2a173976ca11";
+type OnchainRefreshApplyFuture<'a, T> =
+    Pin<Box<dyn Future<Output = Result<T, OnchainRefreshWorkerError>> + 'a>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OnchainRefreshWorkerConfig {
@@ -67,6 +97,13 @@ pub struct OnchainRefreshTaskScope {
     pub chain_id: i32,
     pub contract_set_id: String,
     pub dao_code: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OnchainRefreshClaimQueue {
+    Pending,
+    FailedRetry,
+    StaleProcessing,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -334,19 +371,40 @@ pub struct OnchainRefreshTask {
     pub attempts: i32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct OnchainRefreshReadValue {
     pub task_id: String,
     pub balance: Option<String>,
     pub power: Option<String>,
+    pub checkpoint_balance: Option<String>,
+    pub checkpoint_power: Option<String>,
+}
+
+impl OnchainRefreshReadValue {
+    fn balance_for_current_update(&self) -> Option<&str> {
+        self.balance
+            .as_deref()
+            .or(self.checkpoint_balance.as_deref())
+    }
+
+    fn power_for_current_update(&self) -> Option<&str> {
+        self.power.as_deref().or(self.checkpoint_power.as_deref())
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct OnchainRefreshReadReport {
     pub values: Vec<OnchainRefreshReadValue>,
+    pub failures: Vec<OnchainRefreshReadFailure>,
     pub rpc_reads_requested: usize,
     pub rpc_reads_deduped: usize,
     pub cache_hits: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OnchainRefreshReadFailure {
+    pub task_id: String,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -439,14 +497,15 @@ where
     }
 
     pub async fn run_once(&self) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size(self.config.batch_size).await
+        self.run_once_with_batch_size_and_scope(self.config.batch_size, None, false)
+            .await
     }
 
     pub async fn run_once_with_batch_size(
         &self,
         batch_size: usize,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, None)
+        self.run_once_with_batch_size_and_scope(batch_size, None, true)
             .await
     }
 
@@ -455,7 +514,16 @@ where
         batch_size: usize,
         scope: &OnchainRefreshTaskScope,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
-        self.run_once_with_batch_size_and_scope(batch_size, Some(scope))
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), true)
+            .await
+    }
+
+    pub async fn run_once_with_batch_size_for_scope_without_backlog(
+        &self,
+        batch_size: usize,
+        scope: &OnchainRefreshTaskScope,
+    ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
+        self.run_once_with_batch_size_and_scope(batch_size, Some(scope), false)
             .await
     }
 
@@ -463,29 +531,23 @@ where
         &self,
         batch_size: usize,
         scope: Option<&OnchainRefreshTaskScope>,
+        include_backlog: bool,
     ) -> Result<OnchainRefreshRunReport, OnchainRefreshWorkerError> {
         let started_at = Instant::now();
         let now_ms = unix_time_millis();
         let deferred_drain_started_at = Instant::now();
-        let deferred_drain_batch_size =
-            worker_deferred_drain_batch_size(self.config.deferred_drain_batch_size, batch_size);
-        let deferred_drain_count = match scope {
-            Some(scope) => {
-                drain_deferred_onchain_refresh_tasks_for_scope(
-                    &self.pool,
-                    deferred_drain_batch_size,
-                    scope,
-                )
-                .await
-            }
-            None => {
-                drain_deferred_onchain_refresh_tasks(&self.pool, deferred_drain_batch_size).await
-            }
-        }
-        .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
+        let deferred_drain_target =
+            worker_deferred_drain_target(self.config.deferred_drain_batch_size, batch_size);
+        self.restore_retryable_exhausted_tasks(now_ms).await?;
+        self.restore_retryable_stale_processing_tasks(now_ms)
+            .await?;
+        self.archive_exhausted_tasks(now_ms).await?;
+        let deferred_drain_count = self
+            .drain_deferred_onchain_refresh_backlog(deferred_drain_target, scope)
+            .await?;
         if deferred_drain_count > 0 {
             log::info!(
-                "onchain refresh worker materialized deferred tasks dao_code={} chain_id={} contract_set_id={} deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_duration_ms={}",
+                "onchain refresh worker materialized deferred tasks dao_code={} chain_id={} contract_set_id={} deferred_drain_count={} deferred_drain_batch_size={} deferred_drain_target={} deferred_drain_duration_ms={}",
                 scope
                     .map(|scope| scope.dao_code.as_str())
                     .unwrap_or("global"),
@@ -496,13 +558,59 @@ where
                     .map(|scope| scope.contract_set_id.as_str())
                     .unwrap_or("global"),
                 deferred_drain_count,
-                deferred_drain_batch_size,
+                self.config.deferred_drain_batch_size,
+                deferred_drain_target,
                 deferred_drain_started_at.elapsed().as_millis()
             );
         }
-        let tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
+        let mut tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
         if tasks.is_empty() {
-            return Ok(OnchainRefreshRunReport::default());
+            let coverage_repair_count = self
+                .repair_missing_contributor_coverage(deferred_drain_target, scope)
+                .await?;
+            if coverage_repair_count > 0 {
+                log::info!(
+                    "onchain refresh worker repaired contributor coverage dao_code={} chain_id={} contract_set_id={} repaired_count={} repair_batch_size={}",
+                    scope
+                        .map(|scope| scope.dao_code.as_str())
+                        .unwrap_or("global"),
+                    scope
+                        .map(|scope| scope.chain_id.to_string())
+                        .unwrap_or_else(|| "global".to_owned()),
+                    scope
+                        .map(|scope| scope.contract_set_id.as_str())
+                        .unwrap_or("global"),
+                    coverage_repair_count,
+                    deferred_drain_target
+                );
+                let repaired_deferred_drain_count = self
+                    .drain_deferred_onchain_refresh_backlog(deferred_drain_target, scope)
+                    .await?;
+                if repaired_deferred_drain_count > 0 {
+                    log::info!(
+                        "onchain refresh worker materialized repaired contributor coverage dao_code={} chain_id={} contract_set_id={} deferred_drain_count={} deferred_drain_target={}",
+                        scope
+                            .map(|scope| scope.dao_code.as_str())
+                            .unwrap_or("global"),
+                        scope
+                            .map(|scope| scope.chain_id.to_string())
+                            .unwrap_or_else(|| "global".to_owned()),
+                        scope
+                            .map(|scope| scope.contract_set_id.as_str())
+                            .unwrap_or("global"),
+                        repaired_deferred_drain_count,
+                        deferred_drain_target
+                    );
+                }
+                tasks = self.claim_tasks(now_ms, batch_size, scope).await?;
+            }
+        }
+        if tasks.is_empty() {
+            let data_metric_refreshes = self.drain_data_metric_refresh_tasks(now_ms).await?;
+            return Ok(OnchainRefreshRunReport {
+                data_metric_refreshes,
+                ..OnchainRefreshRunReport::default()
+            });
         }
 
         let mut report = OnchainRefreshRunReport {
@@ -534,6 +642,11 @@ where
             report.rpc_reads_requested += read_report.rpc_reads_requested;
             report.rpc_reads_deduped += read_report.rpc_reads_deduped;
             report.cache_hits += read_report.cache_hits;
+            let failures = read_report
+                .failures
+                .into_iter()
+                .map(|failure| (failure.task_id.clone(), failure.message))
+                .collect::<BTreeMap<_, _>>();
 
             let values = read_report
                 .values
@@ -554,23 +667,32 @@ where
                         }
                     },
                     None => {
-                        self.mark_task_failed(task, "missing reader result", now_ms)
-                            .await?;
-                        report.failed += 1;
-                        report.validation_failures += 1;
+                        if let Some(message) = failures.get(&task.id) {
+                            self.mark_task_failed(task, message, now_ms).await?;
+                            report.failed += 1;
+                            report.rpc_error_failures += 1;
+                        } else {
+                            self.mark_task_failed(task, "missing reader result", now_ms)
+                                .await?;
+                            report.failed += 1;
+                            report.validation_failures += 1;
+                        }
                     }
                 }
             }
             if !successes.is_empty() {
                 for chunk in onchain_refresh_apply_chunks(&successes, self.config.apply_batch_size)
                 {
+                    let data_metric_scopes = data_metric_refresh_scopes_for_chunk(chunk);
                     report.apply_chunks += 1;
-                    match self.apply_success_batch(chunk, now_ms).await {
+                    match self
+                        .apply_success_batch(chunk, now_ms, &data_metric_scopes)
+                        .await
+                    {
                         Ok(batch_report) => {
                             report.completed += batch_report.completed;
                             report.debounced_tasks += batch_report.debounced_tasks;
                             report.skipped_tasks += batch_report.debounced_tasks;
-                            report.data_metric_refreshes += batch_report.data_metric_refreshes;
                         }
                         Err(error) => {
                             let message = error.to_string();
@@ -589,10 +711,12 @@ where
         }
 
         report.duration_ms = started_at.elapsed().as_millis();
-        report.backlog = match scope {
-            Some(scope) => self.ready_backlog_for_scope(scope).await.ok(),
-            None => self.ready_backlog().await.ok(),
-        };
+        if include_backlog {
+            report.backlog = match scope {
+                Some(scope) => self.ready_backlog_for_scope(scope).await.ok(),
+                None => self.ready_backlog().await.ok(),
+            };
+        }
 
         log::info!(
             "onchain refresh batch completed dao_code={} chain_id={} contract_set_id={} claimed={} completed={} failed={} skipped_tasks={} rpc_error_failures={} validation_failures={} db_update_failures={} unique_accounts={} rpc_reads_requested={} rpc_reads_deduped={} cache_hits={} debounced_tasks={} data_metric_refreshes={} apply_chunks={} apply_batch_size={} duration_ms={} backlog={}",
@@ -628,6 +752,123 @@ where
         );
 
         Ok(report)
+    }
+
+    async fn drain_deferred_onchain_refresh_backlog(
+        &self,
+        target_rows: usize,
+        scope: Option<&OnchainRefreshTaskScope>,
+    ) -> Result<usize, OnchainRefreshWorkerError> {
+        let mut drained_total = 0usize;
+        while drained_total < target_rows {
+            let batch_size = self
+                .config
+                .deferred_drain_batch_size
+                .min(target_rows - drained_total);
+            let drained = match scope {
+                Some(scope) => {
+                    drain_deferred_onchain_refresh_tasks_for_scope(&self.pool, batch_size, scope)
+                        .await
+                }
+                None => drain_deferred_onchain_refresh_tasks(&self.pool, batch_size).await,
+            }
+            .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))?;
+
+            drained_total += drained;
+            if drained < batch_size {
+                break;
+            }
+        }
+
+        Ok(drained_total)
+    }
+
+    async fn repair_missing_contributor_coverage(
+        &self,
+        max_rows: usize,
+        scope: Option<&OnchainRefreshTaskScope>,
+    ) -> Result<usize, OnchainRefreshWorkerError> {
+        match scope {
+            Some(scope) => {
+                repair_missing_onchain_refresh_contributor_coverage_for_scope(
+                    &self.pool, max_rows, scope,
+                )
+                .await
+            }
+            None => repair_missing_onchain_refresh_contributor_coverage(&self.pool, max_rows).await,
+        }
+        .map_err(|error| OnchainRefreshWorkerError::DeferredDrain(error.to_string()))
+    }
+
+    async fn drain_data_metric_refresh_tasks(
+        &self,
+        now_ms: i64,
+    ) -> Result<usize, OnchainRefreshWorkerError> {
+        let mut refreshed_total = 0usize;
+        let mut attempted_ids = BTreeSet::<String>::new();
+        let ready_before = data_metric_refresh_ready_before(now_ms, self.config.debounce);
+        for _ in 0..MAX_ONCHAIN_REFRESH_DATA_METRIC_REFRESH_ROWS {
+            let mut transaction = self.pool.begin().await?;
+            let skipped_ids = attempted_ids.iter().cloned().collect::<Vec<_>>();
+            let row = sqlx::query(
+                "SELECT id, contract_set_id, chain_id, dao_code, governor_address, token_address
+                 FROM onchain_refresh_data_metric_task
+                 WHERE updated_at <= $2::NUMERIC(78, 0)
+                   AND NOT (id = ANY($1::TEXT[]))
+                 ORDER BY updated_at ASC, id ASC
+                 LIMIT 1
+                 FOR UPDATE SKIP LOCKED",
+            )
+            .bind(&skipped_ids)
+            .bind(ready_before.to_string())
+            .fetch_optional(&mut *transaction)
+            .await?;
+            let Some(row) = row else {
+                transaction.commit().await?;
+                break;
+            };
+
+            let id: String = row.get("id");
+            attempted_ids.insert(id.clone());
+            let scope = DataMetricRefreshScope {
+                contract_set_id: row.get("contract_set_id"),
+                chain_id: row.get("chain_id"),
+                dao_code: row.get("dao_code"),
+                governor_address: row.get("governor_address"),
+                token_address: row.get("token_address"),
+            };
+
+            if let Err(error) = refresh_data_metric_scope(&mut transaction, &scope).await {
+                sqlx::query(
+                    "UPDATE onchain_refresh_data_metric_task
+                     SET attempts = attempts + 1,
+                         last_error = $2,
+                         updated_at = $3::NUMERIC(78, 0)
+                     WHERE id = $1",
+                )
+                .bind(&id)
+                .bind(truncate_error(&error.to_string()))
+                .bind(now_ms.to_string())
+                .execute(&mut *transaction)
+                .await?;
+                transaction.commit().await?;
+                log::warn!(
+                    "onchain refresh data metric refresh failed id={} error={}",
+                    id,
+                    error
+                );
+                continue;
+            }
+
+            sqlx::query("DELETE FROM onchain_refresh_data_metric_task WHERE id = $1")
+                .bind(&id)
+                .execute(&mut *transaction)
+                .await?;
+            transaction.commit().await?;
+            refreshed_total += 1;
+        }
+
+        Ok(refreshed_total)
     }
 
     pub async fn ready_backlog(&self) -> Result<u64, OnchainRefreshWorkerError> {
@@ -692,6 +933,46 @@ where
         batch_size: usize,
         scope: Option<&OnchainRefreshTaskScope>,
     ) -> Result<Vec<OnchainRefreshTask>, OnchainRefreshWorkerError> {
+        let mut tasks = Vec::new();
+        let queues = [
+            OnchainRefreshClaimQueue::StaleProcessing,
+            OnchainRefreshClaimQueue::FailedRetry,
+            OnchainRefreshClaimQueue::Pending,
+        ];
+        let mut remaining_batch_size = batch_size;
+        let fair_queue_batch_size = batch_size.div_ceil(queues.len());
+        for queue in queues.iter().copied() {
+            if remaining_batch_size == 0 {
+                break;
+            }
+            let queue_batch_size = fair_queue_batch_size.min(remaining_batch_size);
+            let claimed = self
+                .claim_tasks_from_queue(now_ms, queue_batch_size, scope, queue)
+                .await?;
+            remaining_batch_size = remaining_batch_size.saturating_sub(claimed.len());
+            tasks.extend(claimed);
+        }
+        for queue in queues {
+            if remaining_batch_size == 0 {
+                break;
+            }
+            let claimed = self
+                .claim_tasks_from_queue(now_ms, remaining_batch_size, scope, queue)
+                .await?;
+            remaining_batch_size = remaining_batch_size.saturating_sub(claimed.len());
+            tasks.extend(claimed);
+        }
+
+        Ok(tasks)
+    }
+
+    async fn claim_tasks_from_queue(
+        &self,
+        now_ms: i64,
+        batch_size: usize,
+        scope: Option<&OnchainRefreshTaskScope>,
+        queue: OnchainRefreshClaimQueue,
+    ) -> Result<Vec<OnchainRefreshTask>, OnchainRefreshWorkerError> {
         let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
         let batch_size =
             i64::try_from(batch_size).map_err(|_| OnchainRefreshWorkerError::BatchSizeOverflow)?;
@@ -700,32 +981,27 @@ where
             "WITH candidates AS (
                 SELECT id
                 FROM onchain_refresh_task
-                WHERE (
-                    status = 'pending'
-                    OR (
-                        status = 'failed'
-                        AND attempts < ",
+                WHERE status = ",
         );
-        query.push_bind(self.config.max_attempts).push(
-            "
-                    )
-                    OR (
-                        status = 'processing'
-                        AND locked_at IS NOT NULL
-                        AND locked_at <= ",
-        );
-        query.push_bind(stale_before.to_string()).push(
-            "::NUMERIC(78, 0)
-                        AND attempts < ",
-        );
+        match queue {
+            OnchainRefreshClaimQueue::Pending => {
+                query.push("'pending'");
+            }
+            OnchainRefreshClaimQueue::FailedRetry => {
+                query.push("'failed' AND attempts < ");
+                push_attempt_limit(&mut query, self.config.max_attempts);
+            }
+            OnchainRefreshClaimQueue::StaleProcessing => {
+                query
+                    .push("'processing'")
+                    .push(" AND locked_at IS NOT NULL AND locked_at <= ")
+                    .push_bind(stale_before.to_string())
+                    .push("::NUMERIC(78, 0) AND attempts < ");
+                push_attempt_limit(&mut query, self.config.max_attempts);
+            }
+        }
         query
-            .push_bind(self.config.max_attempts)
-            .push(
-                "
-                    )
-                )
-                AND next_run_at <= ",
-            )
+            .push(" AND next_run_at <= ")
             .push_bind(now_ms.to_string())
             .push("::NUMERIC(78, 0)");
         push_onchain_refresh_scope_filter(&mut query, scope);
@@ -750,7 +1026,6 @@ where
             .push_bind(&self.config.lock_owner)
             .push(
                 ",
-                 error = NULL,
                  updated_at = ",
             )
             .push_bind(now_ms.to_string())
@@ -799,6 +1074,20 @@ where
         &self,
         successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
         now_ms: i64,
+        data_metric_scopes: &BTreeSet<DataMetricRefreshScope>,
+    ) -> Result<OnchainRefreshApplyBatchReport, OnchainRefreshWorkerError> {
+        retry_onchain_refresh_apply_operation(
+            || Box::pin(self.apply_success_batch_once(successes, now_ms, data_metric_scopes)),
+            Duration::from_millis(ONCHAIN_REFRESH_APPLY_RETRY_BASE_DELAY_MS),
+        )
+        .await
+    }
+
+    async fn apply_success_batch_once(
+        &self,
+        successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+        now_ms: i64,
+        data_metric_scopes: &BTreeSet<DataMetricRefreshScope>,
     ) -> Result<OnchainRefreshApplyBatchReport, OnchainRefreshWorkerError> {
         let mut transaction = self.pool.begin().await?;
 
@@ -815,14 +1104,21 @@ where
                 self.current_power_method,
             )
             .await?;
-            let data_metric_refreshes = refresh_data_metrics(&mut transaction, successes).await?;
-            let debounced_tasks =
-                complete_tasks(&mut transaction, successes, now_ms, self.config.debounce).await?;
+            enqueue_data_metric_refresh_scopes(&mut transaction, data_metric_scopes, now_ms)
+                .await?;
+            let debounced_tasks = complete_tasks(
+                &mut transaction,
+                successes,
+                now_ms,
+                self.config.debounce,
+                &self.config.lock_owner,
+            )
+            .await?;
 
-            Ok::<_, OnchainRefreshWorkerError>((data_metric_refreshes, debounced_tasks))
+            Ok::<_, OnchainRefreshWorkerError>(debounced_tasks)
         }
         .await;
-        let (data_metric_refreshes, debounced_tasks) = match result {
+        let debounced_tasks = match result {
             Ok(report) => report,
             Err(error) => {
                 if let Err(rollback_error) = transaction.rollback().await {
@@ -845,7 +1141,7 @@ where
         Ok(OnchainRefreshApplyBatchReport {
             completed: successes.len().saturating_sub(debounced_tasks),
             debounced_tasks,
-            data_metric_refreshes,
+            data_metric_refreshes: 0,
         })
     }
 
@@ -891,21 +1187,174 @@ where
         let next_run_at = now_ms.saturating_add(duration_millis_i64(
             onchain_refresh_retry_backoff_delay(self.config.retry_delay, task.attempts),
         ));
+        let status = onchain_refresh_failure_status(error, task.attempts, self.config.max_attempts);
+        let attempts =
+            onchain_refresh_failure_attempts(error, task.attempts, self.config.max_attempts);
 
         sqlx::query(
             "UPDATE onchain_refresh_task
-             SET status = 'failed',
+             SET status = $5,
+                 attempts = $7,
                  next_run_at = $2::NUMERIC(78, 0),
                  locked_at = NULL,
                  locked_by = NULL,
                  processed_at = NULL,
                  error = $3,
                  updated_at = $4::NUMERIC(78, 0)
-             WHERE id = $1",
+             WHERE id = $1
+               AND status = 'processing'
+               AND locked_by = $6",
         )
         .bind(&task.id)
         .bind(next_run_at.to_string())
         .bind(truncate_error(error))
+        .bind(now_ms.to_string())
+        .bind(status)
+        .bind(&self.config.lock_owner)
+        .bind(attempts)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn restore_retryable_exhausted_tasks(
+        &self,
+        now_ms: i64,
+    ) -> Result<(), OnchainRefreshWorkerError> {
+        let attempts = retryable_onchain_refresh_attempts(self.config.max_attempts);
+        let next_run_at = now_ms.saturating_add(duration_millis_i64(
+            onchain_refresh_retry_backoff_delay(self.config.retry_delay, self.config.max_attempts),
+        ));
+        sqlx::query(&format!(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'exhausted'
+                  AND ({retryable_error_sql})
+                LIMIT $1
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'failed',
+                 attempts = $2,
+                 next_run_at = $3::NUMERIC(78, 0),
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = NULL,
+                 updated_at = $4::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
+        .bind(attempts)
+        .bind(next_run_at.to_string())
+        .bind(now_ms.to_string())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn restore_retryable_stale_processing_tasks(
+        &self,
+        now_ms: i64,
+    ) -> Result<(), OnchainRefreshWorkerError> {
+        let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
+        let attempts = retryable_onchain_refresh_attempts(self.config.max_attempts);
+        let next_run_at = now_ms.saturating_add(duration_millis_i64(
+            onchain_refresh_retry_backoff_delay(self.config.retry_delay, self.config.max_attempts),
+        ));
+        sqlx::query(&format!(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'processing'
+                  AND attempts >= $1
+                  AND locked_at IS NOT NULL
+                  AND locked_at <= $2::NUMERIC(78, 0)
+                  AND ({retryable_error_sql})
+                LIMIT $3
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'failed',
+                 attempts = $4,
+                 next_run_at = $5::NUMERIC(78, 0),
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = NULL,
+                 updated_at = $6::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
+        .bind(self.config.max_attempts)
+        .bind(stale_before.to_string())
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
+        .bind(attempts)
+        .bind(next_run_at.to_string())
+        .bind(now_ms.to_string())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn archive_exhausted_tasks(&self, now_ms: i64) -> Result<(), OnchainRefreshWorkerError> {
+        let stale_before = now_ms.saturating_sub(duration_millis_i64(self.config.lock_ttl));
+        sqlx::query(&format!(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'failed'
+                  AND attempts >= $1
+                  AND NOT ({retryable_error_sql})
+                LIMIT $2
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'exhausted',
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = COALESCE(processed_at, $3::NUMERIC(78, 0)),
+                 updated_at = $3::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
+        .bind(self.config.max_attempts)
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
+        .bind(now_ms.to_string())
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(&format!(
+            "WITH candidates AS (
+                SELECT id
+                FROM onchain_refresh_task
+                WHERE status = 'processing'
+                  AND attempts >= $1
+                  AND locked_at IS NOT NULL
+                  AND locked_at <= $2::NUMERIC(78, 0)
+                  AND NOT ({retryable_error_sql})
+                LIMIT $3
+                FOR UPDATE SKIP LOCKED
+             )
+             UPDATE onchain_refresh_task
+             SET status = 'exhausted',
+                 locked_at = NULL,
+                 locked_by = NULL,
+                 processed_at = COALESCE(processed_at, $4::NUMERIC(78, 0)),
+                 updated_at = $4::NUMERIC(78, 0)
+             FROM candidates
+             WHERE onchain_refresh_task.id = candidates.id",
+            retryable_error_sql = ONCHAIN_REFRESH_RETRYABLE_ERROR_SQL,
+        ))
+        .bind(self.config.max_attempts)
+        .bind(stale_before.to_string())
+        .bind(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS)
         .bind(now_ms.to_string())
         .execute(&self.pool)
         .await?;
@@ -914,11 +1363,93 @@ where
     }
 }
 
-fn worker_deferred_drain_batch_size(
-    configured_batch_size: usize,
-    claim_batch_size: usize,
-) -> usize {
+fn worker_deferred_drain_target(configured_batch_size: usize, claim_batch_size: usize) -> usize {
     configured_batch_size.max(claim_batch_size)
+}
+
+fn is_retryable_onchain_refresh_task_error(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    error.contains("block not found")
+        || (error.contains("historical state") && error.contains("not available"))
+        || error.contains("error sending request")
+        || error.contains("request timed out")
+        || error.contains("context canceled")
+        || error.contains("connection reset")
+        || error.contains("connection refused")
+        || error.contains("temporarily unavailable")
+        || error.contains("deadline has elapsed")
+        || error.contains("too many requests")
+        || error.contains("rate limit")
+}
+
+fn retryable_onchain_refresh_attempts(max_attempts: i32) -> i32 {
+    max_attempts.saturating_sub(1).max(0)
+}
+
+fn onchain_refresh_failure_status(error: &str, attempts: i32, max_attempts: i32) -> &'static str {
+    if is_retryable_onchain_refresh_task_error(error) {
+        "failed"
+    } else if attempts >= max_attempts {
+        "exhausted"
+    } else {
+        "failed"
+    }
+}
+
+fn onchain_refresh_failure_attempts(error: &str, attempts: i32, max_attempts: i32) -> i32 {
+    if is_retryable_onchain_refresh_task_error(error) && attempts >= max_attempts {
+        retryable_onchain_refresh_attempts(max_attempts)
+    } else {
+        attempts
+    }
+}
+
+async fn retry_onchain_refresh_apply_operation<'a, T, F>(
+    mut operation: F,
+    base_delay: Duration,
+) -> Result<T, OnchainRefreshWorkerError>
+where
+    F: FnMut() -> OnchainRefreshApplyFuture<'a, T>,
+{
+    let mut attempt = 1usize;
+    loop {
+        match operation().await {
+            Ok(report) => return Ok(report),
+            Err(error)
+                if attempt < ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS
+                    && is_retryable_onchain_refresh_apply_error(&error) =>
+            {
+                log::warn!(
+                    "onchain refresh success batch retry scheduled attempt={} max_attempts={} error={}",
+                    attempt + 1,
+                    ONCHAIN_REFRESH_APPLY_MAX_ATTEMPTS,
+                    error
+                );
+                tokio::time::sleep(onchain_refresh_apply_retry_delay(base_delay, attempt)).await;
+                attempt += 1;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn is_retryable_onchain_refresh_apply_error(error: &OnchainRefreshWorkerError) -> bool {
+    match error {
+        OnchainRefreshWorkerError::Database(sqlx::Error::Database(error)) => error
+            .code()
+            .as_deref()
+            .is_some_and(is_retryable_onchain_refresh_apply_sqlstate),
+        _ => false,
+    }
+}
+
+fn is_retryable_onchain_refresh_apply_sqlstate(code: &str) -> bool {
+    matches!(code, "40P01" | "40001")
+}
+
+fn onchain_refresh_apply_retry_delay(base_delay: Duration, attempt: usize) -> Duration {
+    let multiplier = u32::try_from(attempt).unwrap_or(u32::MAX).max(1);
+    base_delay.saturating_mul(multiplier)
 }
 
 fn onchain_refresh_retry_backoff_delay(base_delay: Duration, attempts: i32) -> Duration {
@@ -926,6 +1457,14 @@ fn onchain_refresh_retry_backoff_delay(base_delay: Duration, attempts: i32) -> D
     let multiplier = 1u32.checked_shl(exponent).unwrap_or(32);
 
     base_delay.saturating_mul(multiplier)
+}
+
+fn push_attempt_limit(query: &mut QueryBuilder<'_, Postgres>, max_attempts: i32) {
+    if max_attempts == DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS {
+        query.push(DEFAULT_ONCHAIN_REFRESH_MAX_ATTEMPTS);
+    } else {
+        query.push_bind(max_attempts);
+    }
 }
 
 fn push_onchain_refresh_scope_filter<'args>(
@@ -938,7 +1477,7 @@ fn push_onchain_refresh_scope_filter<'args>(
             .push_bind(scope.chain_id)
             .push(" AND contract_set_id = ")
             .push_bind(&scope.contract_set_id)
-            .push(" AND dao_code IS NOT DISTINCT FROM ")
+            .push(" AND dao_code = ")
             .push_bind(&scope.dao_code);
     }
 }
@@ -1004,6 +1543,7 @@ where
             read_report.rpc_reads_deduped += chain_report.rpc_reads_deduped;
             read_report.cache_hits += chain_report.cache_hits;
             read_report.values.extend(chain_report.values);
+            read_report.failures.extend(chain_report.failures);
         }
 
         Ok(read_report)
@@ -1058,45 +1598,85 @@ where
                 .push(task);
         }
 
-        let mut values_by_key = BTreeMap::<(i32, String, String, ChainReadMethod), String>::new();
+        let mut values_by_key =
+            BTreeMap::<(i32, String, String, ChainReadMethod, BlockReadMode), String>::new();
+        let mut failures_by_key =
+            BTreeMap::<(i32, String, String, ChainReadMethod, BlockReadMode), Vec<String>>::new();
         let mut read_report = OnchainRefreshReadReport::default();
         for ((chain_id, governor_address, token_address), group_tasks) in groups {
             let mut builder = ChainReadPlanBuilder::new(
                 chain_id,
                 ChainContracts {
                     governor: governor_address,
-                    governor_token: token_address,
+                    governor_token: token_address.clone(),
                     timelock: None,
                 },
                 self.read_plan_config,
             );
 
             for task in group_tasks {
+                let activity_block = parse_u64(&task.last_seen_block_number)?;
                 if task.refresh_power {
-                    builder.add_account_power_refresh_with_method(
+                    builder.add_account_latest_power_refresh_with_method(
                         &task.account,
-                        parse_u64(&task.last_seen_block_number)?,
+                        activity_block,
                         crate::ChainReadReason::TokenActivityPowerRefresh,
                         self.current_power_method,
                     );
+                    builder.add_optional_enrichment_read(
+                        token_address.clone(),
+                        self.current_power_method,
+                        vec![task.account.clone()],
+                        BlockReadMode::AtBlock(activity_block),
+                    );
                 }
                 if task.refresh_balance {
-                    builder.add_account_balance_refresh(
+                    builder.add_account_latest_balance_refresh(
                         &task.account,
-                        parse_u64(&task.last_seen_block_number)?,
+                        activity_block,
                         crate::ChainReadReason::TokenActivityPowerRefresh,
+                    );
+                    builder.add_optional_enrichment_read(
+                        token_address.clone(),
+                        ChainReadMethod::BalanceOf,
+                        vec![task.account.clone()],
+                        BlockReadMode::AtBlock(activity_block),
                     );
                 }
             }
 
             let plan = builder.build();
-            let report = self
-                .chain_tool
-                .execute_read_plan(&plan)
-                .map_err(|failures| OnchainRefreshReaderError::new(format_failures(&failures)))?;
+            let report = self.chain_tool.execute_read_plan_partial(&plan);
             read_report.rpc_reads_requested += report.metrics.requested_reads;
             read_report.rpc_reads_deduped += report.metrics.deduped_reads;
             read_report.cache_hits += report.metrics.cache_hits;
+            for failure in report.partial_failures.required_failures {
+                let Some(account) = failure.key.args.first() else {
+                    return Err(OnchainRefreshReaderError::new(format!(
+                        "missing account for failed {:?} read",
+                        failure.key.method
+                    )));
+                };
+                failures_by_key
+                    .entry((
+                        failure.key.chain_id,
+                        normalize_identifier(&failure.key.contract_address),
+                        normalize_identifier(account),
+                        failure.key.method,
+                        failure.key.block_mode,
+                    ))
+                    .or_default()
+                    .push(failure.message);
+            }
+            for failure in report.partial_failures.optional_failures {
+                log::warn!(
+                    "onchain refresh optional checkpoint read failed chain_id={} method={:?} block_mode={:?} error={}",
+                    failure.key.chain_id,
+                    failure.key.method,
+                    failure.key.block_mode,
+                    failure.message
+                );
+            }
 
             for result in report.results {
                 let Some(account) = result.key.args.first() else {
@@ -1114,66 +1694,113 @@ where
                 values_by_key.insert(
                     (
                         result.key.chain_id,
-                        result.key.contract_address.clone(),
-                        account.clone(),
+                        normalize_identifier(&result.key.contract_address),
+                        normalize_identifier(account),
                         result.key.method,
+                        result.key.block_mode,
                     ),
                     value,
                 );
             }
         }
 
-        read_report.values = tasks
-            .iter()
-            .map(|task| {
-                let power = if task.refresh_power {
-                    Some(
-                        values_by_key
-                            .get(&(
-                                task.chain_id,
-                                normalize_identifier(&task.token_address),
-                                normalize_identifier(&task.account),
-                                self.current_power_method,
-                            ))
-                            .cloned()
-                            .ok_or_else(|| {
-                                OnchainRefreshReaderError::new(format!(
-                                    "missing power read for {}",
-                                    task.account
-                                ))
-                            })?,
-                    )
-                } else {
-                    None
-                };
-                let balance = if task.refresh_balance {
-                    Some(
-                        values_by_key
-                            .get(&(
-                                task.chain_id,
-                                normalize_identifier(&task.token_address),
-                                normalize_identifier(&task.account),
-                                ChainReadMethod::BalanceOf,
-                            ))
-                            .cloned()
-                            .ok_or_else(|| {
-                                OnchainRefreshReaderError::new(format!(
-                                    "missing balance read for {}",
-                                    task.account
-                                ))
-                            })?,
-                    )
-                } else {
-                    None
-                };
+        for task in tasks {
+            let mut task_failures = Vec::<String>::new();
+            let activity_block = parse_u64(&task.last_seen_block_number)?;
+            let power = if task.refresh_power {
+                let key = (
+                    task.chain_id,
+                    normalize_identifier(&task.token_address),
+                    normalize_identifier(&task.account),
+                    self.current_power_method,
+                    BlockReadMode::Latest,
+                );
+                match values_by_key.get(&key).cloned() {
+                    Some(value) => Some(value),
+                    None => {
+                        if let Some(messages) = failures_by_key.get(&key) {
+                            task_failures.extend(messages.iter().cloned());
+                            None
+                        } else {
+                            return Err(OnchainRefreshReaderError::new(format!(
+                                "missing power read for {}",
+                                task.account
+                            )));
+                        }
+                    }
+                }
+            } else {
+                None
+            };
+            let checkpoint_power = if task.refresh_power {
+                let key = (
+                    task.chain_id,
+                    normalize_identifier(&task.token_address),
+                    normalize_identifier(&task.account),
+                    self.current_power_method,
+                    BlockReadMode::AtBlock(activity_block),
+                );
+                values_by_key.get(&key).cloned()
+            } else {
+                None
+            };
+            let balance = if task.refresh_balance {
+                let key = (
+                    task.chain_id,
+                    normalize_identifier(&task.token_address),
+                    normalize_identifier(&task.account),
+                    ChainReadMethod::BalanceOf,
+                    BlockReadMode::Latest,
+                );
+                match values_by_key.get(&key).cloned() {
+                    Some(value) => Some(value),
+                    None => {
+                        if let Some(messages) = failures_by_key.get(&key) {
+                            if power.is_some() && is_reverted_balance_read_failure(messages) {
+                                None
+                            } else {
+                                task_failures.extend(messages.iter().cloned());
+                                None
+                            }
+                        } else {
+                            return Err(OnchainRefreshReaderError::new(format!(
+                                "missing balance read for {}",
+                                task.account
+                            )));
+                        }
+                    }
+                }
+            } else {
+                None
+            };
+            let checkpoint_balance = if task.refresh_balance {
+                let key = (
+                    task.chain_id,
+                    normalize_identifier(&task.token_address),
+                    normalize_identifier(&task.account),
+                    ChainReadMethod::BalanceOf,
+                    BlockReadMode::AtBlock(activity_block),
+                );
+                values_by_key.get(&key).cloned()
+            } else {
+                None
+            };
 
-                Ok(OnchainRefreshReadValue {
+            if task_failures.is_empty() {
+                read_report.values.push(OnchainRefreshReadValue {
                     task_id: task.id.clone(),
                     balance,
                     power,
-                })
-            })
-            .collect::<Result<Vec<_>, OnchainRefreshReaderError>>()?;
+                    checkpoint_balance,
+                    checkpoint_power,
+                });
+            } else {
+                read_report.failures.push(OnchainRefreshReadFailure {
+                    task_id: task.id.clone(),
+                    message: task_failures.join("; "),
+                });
+            }
+        }
 
         Ok(read_report)
     }
@@ -1244,7 +1871,7 @@ where
                     crate::ChainReadReason::TokenActivityPowerRefresh,
                     self.current_power_method,
                 );
-                builder.add_account_balance_refresh(
+                builder.add_account_latest_balance_refresh(
                     &task.account,
                     parse_u64(&task.last_seen_block_number)?,
                     crate::ChainReadReason::TokenActivityPowerRefresh,
@@ -1348,6 +1975,7 @@ where
 pub struct EvmRpcChainTool {
     rpc_client: Arc<dyn EvmRpcClient>,
     cache: ChainReadCache,
+    current_power_methods: CurrentPowerMethodPreferences,
 }
 
 impl EvmRpcChainTool {
@@ -1360,6 +1988,7 @@ impl EvmRpcChainTool {
         Ok(Self {
             rpc_client: Arc::new(ReqwestEvmRpcClient { rpc_url, client }),
             cache: ChainReadCache::default(),
+            current_power_methods: CurrentPowerMethodPreferences::default(),
         })
     }
 
@@ -1371,6 +2000,7 @@ impl EvmRpcChainTool {
         Self {
             rpc_client: Arc::new(rpc_client),
             cache: ChainReadCache::default(),
+            current_power_methods: CurrentPowerMethodPreferences::default(),
         }
     }
 }
@@ -1543,6 +2173,50 @@ impl ChainReadCache {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct CurrentPowerMethodPreferences {
+    methods: Arc<Mutex<BTreeMap<CurrentPowerMethodPreferenceKey, ChainReadMethod>>>,
+}
+
+impl CurrentPowerMethodPreferences {
+    fn get(&self, key: &ChainReadKey) -> Option<ChainReadMethod> {
+        let key = CurrentPowerMethodPreferenceKey::from_read_key(key)?;
+        let methods = self.methods.lock().ok()?;
+        methods.get(&key).copied()
+    }
+
+    fn insert(&self, key: &ChainReadKey, method: ChainReadMethod) {
+        if !is_current_power_method(method) {
+            return;
+        }
+        let Some(key) = CurrentPowerMethodPreferenceKey::from_read_key(key) else {
+            return;
+        };
+        if let Ok(mut methods) = self.methods.lock() {
+            methods.insert(key, method);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct CurrentPowerMethodPreferenceKey {
+    chain_id: i32,
+    contract_address: String,
+}
+
+impl CurrentPowerMethodPreferenceKey {
+    fn from_read_key(key: &ChainReadKey) -> Option<Self> {
+        if !is_current_power_method(key.method) {
+            return None;
+        }
+
+        Some(Self {
+            chain_id: key.chain_id,
+            contract_address: normalize_identifier(&key.contract_address),
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 struct CachedChainReadValue {
     value: ChainReadValue,
@@ -1631,10 +2305,20 @@ impl ChainTool for EvmRpcChainTool {
         &self,
         plan: &ChainReadPlan,
     ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport> {
+        let report = self.execute_read_plan_partial(plan);
+        if !report.partial_failures.required_failures.is_empty() {
+            return Err(report.partial_failures);
+        }
+
+        Ok(report)
+    }
+
+    fn execute_read_plan_partial(&self, plan: &ChainReadPlan) -> ChainReadExecutionReport {
         let mut results = Vec::new();
         let mut failures = PartialChainReadFailureReport::default();
         let mut cache_hits = 0;
         let mut executed_rpc_calls = 0;
+        let mut retries = 0;
         let mut covered_reads = vec![false; plan.reads.len()];
 
         let max_concurrency = plan.execution.max_concurrency.max(1);
@@ -1662,6 +2346,7 @@ impl ChainTool for EvmRpcChainTool {
                 };
                 cache_hits += group_report.cache_hits;
                 executed_rpc_calls += group_report.executed_rpc_calls;
+                retries += group_report.retries;
                 for read_index in group_report.covered_read_indexes {
                     if let Some(covered) = covered_reads.get_mut(read_index) {
                         *covered = true;
@@ -1697,11 +2382,7 @@ impl ChainTool for EvmRpcChainTool {
             }
         }
 
-        if !failures.required_failures.is_empty() {
-            return Err(failures);
-        }
-
-        Ok(ChainReadExecutionReport {
+        ChainReadExecutionReport {
             metrics: ChainReadMetrics {
                 requested_reads: plan.metrics.requested_reads,
                 deduped_reads: plan.metrics.deduped_reads,
@@ -1709,12 +2390,13 @@ impl ChainTool for EvmRpcChainTool {
                 multicall_batch_size: plan.metrics.multicall_batch_size,
                 failures: failures.required_failures.len() + failures.optional_failures.len(),
                 cache_hits,
+                retries,
                 ..ChainReadMetrics::default()
             },
             results,
             partial_failures: failures,
             ..ChainReadExecutionReport::default()
-        })
+        }
     }
 }
 
@@ -1746,10 +2428,12 @@ impl EvmRpcChainTool {
                 continue;
             }
 
-            match encode_call_data(read.key.method, &read.key.args) {
+            let call_key = self.current_power_call_key(&read.key);
+            match encode_call_data(call_key.method, &call_key.args) {
                 Ok(call_data) => calls.push(EvmMulticallRead {
                     read_index: *read_index,
                     read: read.clone(),
+                    call_key,
                     call_data,
                 }),
                 Err(message) => {
@@ -1789,35 +2473,7 @@ impl EvmRpcChainTool {
                 report.executed_rpc_calls += 1;
                 match decode_aggregate3_results(&value, calls.len()) {
                     Ok(results) => {
-                        for (call, result) in calls.into_iter().zip(results) {
-                            report.covered_read_indexes.push(call.read_index);
-                            if !result.success {
-                                report.failures.push(ReadFailure {
-                                    read_index: call.read_index,
-                                    message: "multicall subcall reverted".to_owned(),
-                                    kind: ChainReadFailureKind::Reverted,
-                                    retryable: false,
-                                });
-                                continue;
-                            }
-
-                            match decode_call_value(call.read.key.method, &result.return_data) {
-                                Ok(value) => {
-                                    self.cache.insert(&call.read.key, value.clone());
-                                    report.results.push(ChainReadResult {
-                                        read_index: call.read_index,
-                                        key: call.read.key,
-                                        value,
-                                    });
-                                }
-                                Err(message) => report.failures.push(ReadFailure {
-                                    read_index: call.read_index,
-                                    message,
-                                    kind: ChainReadFailureKind::Decode,
-                                    retryable: false,
-                                }),
-                            }
-                        }
+                        self.apply_multicall_results(calls, results, &mut report, false);
                     }
                     Err(message) => {
                         report.executed_rpc_calls = report.executed_rpc_calls.saturating_sub(1);
@@ -1826,11 +2482,130 @@ impl EvmRpcChainTool {
                 }
             }
             Err(message) => {
-                fail_multicall_group(calls, &mut report, message);
+                let latest_fallback_applicable = calls.iter().all(|call| {
+                    should_try_latest_block_fallback_for_read(&call.read, call.call_key.method)
+                });
+                if should_try_latest_block_fallback_after_error(&message)
+                    && latest_fallback_applicable
+                {
+                    if self
+                        .execute_latest_multicall_fallback(calls.clone(), &mut report)
+                        .is_ok()
+                    {
+                        return report;
+                    }
+                    self.execute_multicall_fallback(calls, &mut report, message);
+                } else if should_try_latest_block_fallback_after_error(&message) {
+                    self.execute_multicall_fallback(calls, &mut report, message);
+                } else if should_try_direct_fallback_after_multicall_error(&message) {
+                    self.execute_multicall_fallback(calls, &mut report, message);
+                } else {
+                    fail_multicall_group(calls, &mut report, message);
+                }
             }
         }
 
         report
+    }
+
+    fn execute_latest_multicall_fallback(
+        &self,
+        calls: Vec<EvmMulticallRead>,
+        report: &mut EvmRpcGroupExecutionReport,
+    ) -> Result<(), String> {
+        if !calls
+            .iter()
+            .all(|call| should_try_latest_block_fallback_for_read(&call.read, call.call_key.method))
+        {
+            return Err("latest multicall fallback is not applicable".to_owned());
+        }
+
+        let call_data = encode_aggregate3_call_data(&calls)?;
+        let value = self.eth_call(MULTICALL3_ADDRESS, &call_data, BlockReadMode::Latest)?;
+        report.executed_rpc_calls += 1;
+        let results = decode_aggregate3_results(&value, calls.len())?;
+        self.apply_multicall_results(calls, results, report, true);
+
+        Ok(())
+    }
+
+    fn apply_multicall_results(
+        &self,
+        calls: Vec<EvmMulticallRead>,
+        results: Vec<Aggregate3Result>,
+        report: &mut EvmRpcGroupExecutionReport,
+        cache_latest_key: bool,
+    ) {
+        for (call, result) in calls.into_iter().zip(results) {
+            report.covered_read_indexes.push(call.read_index);
+            if !result.success {
+                match self.execute_power_method_fallback(
+                    call.read_index,
+                    &call.read,
+                    call.call_key.method,
+                    true,
+                ) {
+                    PowerMethodFallbackOutcome::Success {
+                        result,
+                        cache_hit,
+                        rpc_calls,
+                        retries,
+                    } => {
+                        report.cache_hits += usize::from(cache_hit);
+                        report.executed_rpc_calls += rpc_calls;
+                        report.retries += retries;
+                        report.results.push(result);
+                        continue;
+                    }
+                    PowerMethodFallbackOutcome::Failure {
+                        failure,
+                        rpc_calls,
+                        retries,
+                    } => {
+                        report.executed_rpc_calls += rpc_calls;
+                        report.retries += retries;
+                        report.failures.push(failure);
+                        continue;
+                    }
+                    PowerMethodFallbackOutcome::NotApplicable => {}
+                }
+                report.failures.push(ReadFailure {
+                    read_index: call.read_index,
+                    message: "multicall subcall reverted".to_owned(),
+                    kind: ChainReadFailureKind::Reverted,
+                    retryable: false,
+                });
+                continue;
+            }
+
+            match decode_call_value(call.call_key.method, &result.return_data) {
+                Ok(value) => {
+                    let cache_key = if cache_latest_key {
+                        ChainReadKey {
+                            block_mode: BlockReadMode::Latest,
+                            ..call.call_key.clone()
+                        }
+                    } else {
+                        call.call_key.clone()
+                    };
+                    self.cache.insert(&cache_key, value.clone());
+                    self.cache.insert(&call.read.key, value.clone());
+                    self.current_power_methods
+                        .insert(&call.read.key, call.call_key.method);
+                    report.results.push(ChainReadResult {
+                        read_index: call.read_index,
+                        key: call.read.key,
+                        value,
+                    });
+                }
+                Err(message) => report.failures.push(ReadFailure {
+                    read_index: call.read_index,
+                    message,
+                    kind: ChainReadFailureKind::Decode,
+                    retryable: false,
+                }),
+            }
+        }
     }
 
     fn execute_multicall_fallback(
@@ -1839,24 +2614,102 @@ impl EvmRpcChainTool {
         report: &mut EvmRpcGroupExecutionReport,
         multicall_error: String,
     ) {
+        let retry_direct_fallback =
+            should_try_direct_fallback_after_multicall_error(&multicall_error);
         for call in calls {
             report.covered_read_indexes.push(call.read_index);
-            match self.execute_read(call.read_index, &call.read) {
-                Ok((result, cache_hit)) => {
-                    report.cache_hits += usize::from(cache_hit);
-                    report.executed_rpc_calls += usize::from(!cache_hit);
-                    report.results.push(result);
-                }
-                Err(message) => report.failures.push(ReadFailure {
+            if should_skip_optional_historical_direct_fallback(&call.read) {
+                report.failures.push(ReadFailure {
                     read_index: call.read_index,
-                    message: format!(
-                        "multicall failed: {multicall_error}; fallback failed: {message}"
-                    ),
+                    message: format!("multicall failed: {multicall_error}"),
                     kind: ChainReadFailureKind::Transport,
                     retryable: true,
-                }),
+                });
+                continue;
+            }
+            match self.execute_multicall_direct_fallback_read(
+                call.read_index,
+                &call.read,
+                retry_direct_fallback,
+            ) {
+                Ok(DirectFallbackReadOutcome {
+                    result,
+                    cache_hit,
+                    rpc_calls,
+                    retries,
+                }) => {
+                    report.cache_hits += usize::from(cache_hit);
+                    report.executed_rpc_calls += rpc_calls;
+                    report.retries += retries;
+                    report.results.push(result);
+                }
+                Err(outcome) => {
+                    report.executed_rpc_calls += outcome.rpc_calls;
+                    report.retries += outcome.retries;
+                    report.failures.push(ReadFailure {
+                        read_index: call.read_index,
+                        message: format!(
+                            "multicall failed: {multicall_error}; fallback failed: {}",
+                            outcome.message
+                        ),
+                        kind: ChainReadFailureKind::Transport,
+                        retryable: true,
+                    });
+                }
             }
         }
+    }
+
+    fn execute_multicall_direct_fallback_read(
+        &self,
+        read_index: usize,
+        read: &crate::ChainReadRequest,
+        retry: bool,
+    ) -> Result<DirectFallbackReadOutcome, DirectFallbackReadFailure> {
+        if !retry {
+            return self
+                .execute_read(read_index, read)
+                .map(|(result, cache_hit)| DirectFallbackReadOutcome {
+                    result,
+                    cache_hit,
+                    rpc_calls: usize::from(!cache_hit),
+                    retries: 0,
+                })
+                .map_err(|message| DirectFallbackReadFailure {
+                    message,
+                    rpc_calls: 0,
+                    retries: 0,
+                });
+        }
+
+        let mut last_error = None;
+        let mut failed_rpc_calls = 0;
+        for attempt in 0..MULTICALL_DIRECT_FALLBACK_MAX_ATTEMPTS {
+            match self.execute_read(read_index, read) {
+                Ok((result, cache_hit)) => {
+                    return Ok(DirectFallbackReadOutcome {
+                        result,
+                        cache_hit,
+                        rpc_calls: failed_rpc_calls + usize::from(!cache_hit),
+                        retries: attempt,
+                    });
+                }
+                Err(message) => {
+                    let should_retry = should_retry_multicall_direct_fallback_error(&message);
+                    last_error = Some(message);
+                    failed_rpc_calls += 1;
+                    if !should_retry || attempt + 1 >= MULTICALL_DIRECT_FALLBACK_MAX_ATTEMPTS {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Err(DirectFallbackReadFailure {
+            message: last_error.unwrap_or_else(|| "direct fallback failed".to_owned()),
+            rpc_calls: failed_rpc_calls,
+            retries: failed_rpc_calls.saturating_sub(1),
+        })
     }
 
     fn execute_read(
@@ -1886,10 +2739,65 @@ impl EvmRpcChainTool {
             ));
         }
 
-        let data = encode_call_data(read.key.method, &read.key.args)?;
-        let result = self.eth_call(&read.key.contract_address, &data, read.key.block_mode)?;
-        let value = decode_call_value(read.key.method, &result)?;
+        let call_key = self.current_power_call_key(&read.key);
+        let data = encode_call_data(call_key.method, &call_key.args)?;
+        let result = match self.eth_call(&call_key.contract_address, &data, call_key.block_mode) {
+            Ok(result) => result,
+            Err(message) => {
+                if should_try_latest_block_fallback_after_error(&message) {
+                    match self.execute_latest_block_fallback(read_index, read, call_key.method) {
+                        Ok((result, cache_hit)) => return Ok((result, cache_hit)),
+                        Err(fallback_message) => {
+                            log::warn!(
+                                "latest block fallback failed after historical state read error read_method={:?} error={} fallback_error={}",
+                                call_key.method,
+                                message,
+                                fallback_message
+                            );
+                        }
+                    }
+                }
+                if should_try_power_method_fallback_after_direct_error(&message) {
+                    match self.execute_power_method_fallback(
+                        read_index,
+                        read,
+                        call_key.method,
+                        false,
+                    ) {
+                        PowerMethodFallbackOutcome::Success {
+                            result, cache_hit, ..
+                        } => {
+                            return Ok((result, cache_hit));
+                        }
+                        PowerMethodFallbackOutcome::Failure { failure, .. } => {
+                            return Err(failure.message);
+                        }
+                        PowerMethodFallbackOutcome::NotApplicable => {}
+                    }
+                }
+                return Err(message);
+            }
+        };
+        let value = match decode_call_value(call_key.method, &result) {
+            Ok(value) => value,
+            Err(message) => {
+                match self.execute_power_method_fallback(read_index, read, call_key.method, false) {
+                    PowerMethodFallbackOutcome::Success {
+                        result, cache_hit, ..
+                    } => {
+                        return Ok((result, cache_hit));
+                    }
+                    PowerMethodFallbackOutcome::Failure { failure, .. } => {
+                        return Err(failure.message);
+                    }
+                    PowerMethodFallbackOutcome::NotApplicable => return Err(message),
+                }
+            }
+        };
+        self.cache.insert(&call_key, value.clone());
         self.cache.insert(&read.key, value.clone());
+        self.current_power_methods
+            .insert(&read.key, call_key.method);
 
         Ok((
             ChainReadResult {
@@ -1899,6 +2807,160 @@ impl EvmRpcChainTool {
             },
             false,
         ))
+    }
+
+    fn execute_latest_block_fallback(
+        &self,
+        read_index: usize,
+        read: &crate::ChainReadRequest,
+        method: ChainReadMethod,
+    ) -> Result<(ChainReadResult, bool), String> {
+        if !should_try_latest_block_fallback_for_read(read, method) {
+            return Err("latest block fallback is not applicable".to_owned());
+        }
+
+        let fallback_key = ChainReadKey {
+            method,
+            block_mode: BlockReadMode::Latest,
+            ..read.key.clone()
+        };
+        if let Some(value) = self.cache.get(&fallback_key) {
+            self.cache.insert(&read.key, value.clone());
+            return Ok((
+                ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value,
+                },
+                true,
+            ));
+        }
+
+        let data = encode_call_data(fallback_key.method, &fallback_key.args)?;
+        let result = self.eth_call(
+            &fallback_key.contract_address,
+            &data,
+            fallback_key.block_mode,
+        )?;
+        let value = decode_call_value(fallback_key.method, &result)?;
+        self.cache.insert(&fallback_key, value.clone());
+        self.cache.insert(&read.key, value.clone());
+        self.current_power_methods
+            .insert(&read.key, fallback_key.method);
+
+        Ok((
+            ChainReadResult {
+                read_index,
+                key: read.key.clone(),
+                value,
+            },
+            false,
+        ))
+    }
+
+    fn execute_power_method_fallback(
+        &self,
+        read_index: usize,
+        read: &crate::ChainReadRequest,
+        failed_method: ChainReadMethod,
+        retry_transport: bool,
+    ) -> PowerMethodFallbackOutcome {
+        let Some(fallback_method) = alternate_current_power_method(failed_method) else {
+            return PowerMethodFallbackOutcome::NotApplicable;
+        };
+        let fallback_key = ChainReadKey {
+            method: fallback_method,
+            ..read.key.clone()
+        };
+        if let Some(value) = self.cache.get(&fallback_key) {
+            self.cache.insert(&read.key, value.clone());
+            return PowerMethodFallbackOutcome::Success {
+                result: ChainReadResult {
+                    read_index,
+                    key: read.key.clone(),
+                    value,
+                },
+                cache_hit: true,
+                rpc_calls: 0,
+                retries: 0,
+            };
+        }
+
+        let data = match encode_call_data(fallback_method, &read.key.args) {
+            Ok(data) => data,
+            Err(message) => {
+                return PowerMethodFallbackOutcome::Failure {
+                    failure: power_method_fallback_failure(
+                        read_index,
+                        format!("alternate current power method encode failed: {message}"),
+                        ChainReadFailureKind::Internal,
+                        false,
+                    ),
+                    rpc_calls: 0,
+                    retries: 0,
+                };
+            }
+        };
+        let mut failed_rpc_calls = 0;
+        let result = loop {
+            match self.eth_call(&read.key.contract_address, &data, read.key.block_mode) {
+                Ok(result) => break result,
+                Err(message) => {
+                    let should_retry = should_retry_multicall_direct_fallback_error(&message);
+                    failed_rpc_calls += 1;
+                    if !retry_transport
+                        || !should_retry
+                        || failed_rpc_calls >= MULTICALL_DIRECT_FALLBACK_MAX_ATTEMPTS
+                    {
+                        return PowerMethodFallbackOutcome::Failure {
+                            failure: power_method_fallback_failure(
+                                read_index,
+                                format!(
+                                    "alternate current power method eth_call failed: {}",
+                                    message
+                                ),
+                                ChainReadFailureKind::Transport,
+                                true,
+                            ),
+                            rpc_calls: failed_rpc_calls,
+                            retries: failed_rpc_calls.saturating_sub(1),
+                        };
+                    }
+                }
+            }
+        };
+        let rpc_calls = failed_rpc_calls + 1;
+        let retries = failed_rpc_calls;
+        let value = match decode_call_value(fallback_method, &result) {
+            Ok(value) => value,
+            Err(message) => {
+                return PowerMethodFallbackOutcome::Failure {
+                    failure: power_method_fallback_failure(
+                        read_index,
+                        format!("alternate current power method decode failed: {message}"),
+                        ChainReadFailureKind::Decode,
+                        false,
+                    ),
+                    rpc_calls,
+                    retries,
+                };
+            }
+        };
+        self.cache.insert(&fallback_key, value.clone());
+        self.cache.insert(&read.key, value.clone());
+        self.current_power_methods
+            .insert(&read.key, fallback_method);
+
+        PowerMethodFallbackOutcome::Success {
+            result: ChainReadResult {
+                read_index,
+                key: read.key.clone(),
+                value,
+            },
+            cache_hit: false,
+            rpc_calls,
+            retries,
+        }
     }
 
     fn execute_block_timestamp(
@@ -1923,6 +2985,20 @@ impl EvmRpcChainTool {
                     .to_string(),
             ),
         })
+    }
+
+    fn current_power_call_key(&self, key: &ChainReadKey) -> ChainReadKey {
+        let Some(method) = self.current_power_methods.get(key) else {
+            return key.clone();
+        };
+        if method == key.method {
+            return key.clone();
+        }
+
+        ChainReadKey {
+            method,
+            ..key.clone()
+        }
     }
 
     fn execute_timelock_operation_state(
@@ -1992,6 +3068,11 @@ impl EvmRpcChainTool {
     }
 }
 
+fn should_skip_optional_historical_direct_fallback(read: &crate::ChainReadRequest) -> bool {
+    read.requirement == ReadRequirement::Optional
+        && matches!(read.key.block_mode, BlockReadMode::AtBlock(_))
+}
+
 fn fail_multicall_group(
     calls: Vec<EvmMulticallRead>,
     report: &mut EvmRpcGroupExecutionReport,
@@ -2008,10 +3089,76 @@ fn fail_multicall_group(
     }
 }
 
+fn should_try_power_method_fallback_after_direct_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("execution reverted") || message.contains("revert")
+}
+
+fn should_try_latest_block_fallback_after_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    (message.contains("historical state") && message.contains("not available"))
+        || message.contains("endpoint missing data")
+        || message.contains("remote endpoint does not have this data")
+}
+
+fn should_try_direct_fallback_after_multicall_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("out of gas")
+        || message.contains("block not found")
+        || message.contains("header not found")
+}
+
+fn should_retry_multicall_direct_fallback_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("error sending request")
+        || message.contains("block not found")
+        || message.contains("header not found")
+        || message.contains("timed out")
+        || message.contains("timeout")
+        || message.contains("transport")
+        || message.contains("connection")
+        || message.contains("http 5")
+}
+
+fn is_reverted_balance_read_failure(messages: &[String]) -> bool {
+    !messages.is_empty()
+        && messages.iter().all(|message| {
+            let message = message.to_ascii_lowercase();
+            message.contains("revert")
+        })
+}
+
+fn should_try_latest_block_fallback_for_read(
+    read: &crate::ChainReadRequest,
+    method: ChainReadMethod,
+) -> bool {
+    read.requirement == ReadRequirement::Required
+        && matches!(read.key.block_mode, BlockReadMode::AtBlock(_))
+        && matches!(
+            method,
+            ChainReadMethod::BalanceOf | ChainReadMethod::GetVotes | ChainReadMethod::CurrentVotes
+        )
+}
+
+fn power_method_fallback_failure(
+    read_index: usize,
+    message: String,
+    kind: ChainReadFailureKind,
+    retryable: bool,
+) -> ReadFailure {
+    ReadFailure {
+        read_index,
+        message: format!("multicall subcall reverted; {message}"),
+        kind,
+        retryable,
+    }
+}
+
 #[derive(Clone, Debug)]
 struct EvmMulticallRead {
     read_index: usize,
     read: ChainReadRequest,
+    call_key: ChainReadKey,
     call_data: String,
 }
 
@@ -2022,6 +3169,7 @@ struct EvmRpcGroupExecutionReport {
     covered_read_indexes: Vec<usize>,
     cache_hits: usize,
     executed_rpc_calls: usize,
+    retries: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -2030,6 +3178,35 @@ struct ReadFailure {
     message: String,
     kind: ChainReadFailureKind,
     retryable: bool,
+}
+
+struct DirectFallbackReadOutcome {
+    result: ChainReadResult,
+    cache_hit: bool,
+    rpc_calls: usize,
+    retries: usize,
+}
+
+struct DirectFallbackReadFailure {
+    message: String,
+    rpc_calls: usize,
+    retries: usize,
+}
+
+#[derive(Clone, Debug)]
+enum PowerMethodFallbackOutcome {
+    NotApplicable,
+    Success {
+        result: ChainReadResult,
+        cache_hit: bool,
+        rpc_calls: usize,
+        retries: usize,
+    },
+    Failure {
+        failure: ReadFailure,
+        rpc_calls: usize,
+        retries: usize,
+    },
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2049,7 +3226,11 @@ fn validate_read_value(
             field: "power",
         });
     }
-    if task.refresh_balance && value.balance.is_none() {
+    if task.refresh_balance
+        && value.balance.is_none()
+        && value.checkpoint_balance.is_none()
+        && !effective_refresh_power(task, value)
+    {
         return Err(OnchainRefreshWorkerError::MissingReadValue {
             task_id: task.id.clone(),
             field: "balance",
@@ -2068,7 +3249,8 @@ async fn upsert_contributor_refresh(
             let group = successes
                 .iter()
                 .filter(|(task, _value)| {
-                    task.refresh_power == refresh_power && task.refresh_balance == refresh_balance
+                    effective_refresh_power(task, _value) == refresh_power
+                        && effective_refresh_balance(task, _value) == refresh_balance
                 })
                 .collect::<Vec<_>>();
             if group.is_empty() {
@@ -2113,14 +3295,14 @@ async fn upsert_contributor_refresh_group(
             .push_unseparated("::NUMERIC(78, 0)")
             .push_bind(&task.last_seen_transaction_hash)
             .push("CASE WHEN ")
-            .push_bind_unseparated(task.refresh_power)
+            .push_bind_unseparated(effective_refresh_power(task, value))
             .push_unseparated(" THEN ")
-            .push_bind_unseparated(value.power.as_deref())
+            .push_bind_unseparated(value.power_for_current_update())
             .push_unseparated("::NUMERIC(78, 0) ELSE 0::NUMERIC(78, 0) END")
             .push("CASE WHEN ")
-            .push_bind_unseparated(task.refresh_balance)
+            .push_bind_unseparated(effective_refresh_balance(task, value))
             .push_unseparated(" THEN ")
-            .push_bind_unseparated(value.balance.as_deref())
+            .push_bind_unseparated(value.balance_for_current_update())
             .push_unseparated("::NUMERIC(78, 0) ELSE NULL END")
             .push("0")
             .push("0");
@@ -2170,7 +3352,10 @@ async fn reconcile_current_delegate_relation_power_from_balance(
 ) -> Result<(), sqlx::Error> {
     let mut refreshes_by_key = BTreeMap::new();
     for (task, value) in successes {
-        let Some(balance) = value.balance.as_ref().filter(|_| task.refresh_balance) else {
+        let Some(balance) = value
+            .balance_for_current_update()
+            .filter(|_| effective_refresh_balance(task, value))
+        else {
             continue;
         };
         let key = DelegateRelationBalanceRefreshKey {
@@ -2185,7 +3370,7 @@ async fn reconcile_current_delegate_relation_power_from_balance(
             key.clone(),
             DelegateRelationBalanceRefresh {
                 key,
-                balance: balance.clone(),
+                balance: balance.to_owned(),
             },
         );
     }
@@ -2196,25 +3381,80 @@ async fn reconcile_current_delegate_relation_power_from_balance(
 
     let refreshes = refreshes_by_key.into_values().collect::<Vec<_>>();
     for chunk in refreshes.chunks(MAX_ONCHAIN_REFRESH_APPLY_ROWS) {
-        let mut query = QueryBuilder::<Postgres>::new(
-            "WITH refreshed (
-                contract_set_id, chain_id, dao_code, governor_address, token_address,
-                delegator, balance
-             ) AS (",
-        );
-        query.push_values(chunk, |mut values, refresh| {
-            values
-                .push_bind(&refresh.key.contract_set_id)
-                .push_bind(refresh.key.chain_id)
-                .push_bind(&refresh.key.dao_code)
-                .push_bind(&refresh.key.governor_address)
-                .push_bind(&refresh.key.token_address)
-                .push_bind(&refresh.key.account)
-                .push_bind(&refresh.balance)
-                .push_unseparated("::NUMERIC(78, 0)");
-        });
-        query.push(
-            "),
+        let mut query = QueryBuilder::<Postgres>::new("");
+        push_delegate_relation_balance_refresh_query(&mut query, chunk);
+        query.build().fetch_one(&mut **transaction).await?;
+    }
+
+    Ok(())
+}
+
+fn push_delegate_relation_balance_refresh_query<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    refreshes: &[DelegateRelationBalanceRefresh],
+) {
+    let contract_set_ids = refreshes
+        .iter()
+        .map(|refresh| refresh.key.contract_set_id.clone())
+        .collect::<Vec<_>>();
+    let chain_ids = refreshes
+        .iter()
+        .map(|refresh| refresh.key.chain_id)
+        .collect::<Vec<_>>();
+    let dao_codes = refreshes
+        .iter()
+        .map(|refresh| refresh.key.dao_code.clone())
+        .collect::<Vec<_>>();
+    let governor_addresses = refreshes
+        .iter()
+        .map(|refresh| refresh.key.governor_address.clone())
+        .collect::<Vec<_>>();
+    let token_addresses = refreshes
+        .iter()
+        .map(|refresh| refresh.key.token_address.clone())
+        .collect::<Vec<_>>();
+    let delegators = refreshes
+        .iter()
+        .map(|refresh| refresh.key.account.clone())
+        .collect::<Vec<_>>();
+    let balances = refreshes
+        .iter()
+        .map(|refresh| refresh.balance.clone())
+        .collect::<Vec<_>>();
+
+    query
+        .push(
+            "WITH refreshed AS MATERIALIZED (
+                SELECT
+                    contract_set_id,
+                    chain_id,
+                    dao_code,
+                    governor_address,
+                    token_address,
+                    delegator,
+                    balance_text::NUMERIC(78, 0) AS balance
+                FROM unnest(",
+        )
+        .push_bind(contract_set_ids)
+        .push("::TEXT[], ")
+        .push_bind(chain_ids)
+        .push("::INT4[], ")
+        .push_bind(dao_codes)
+        .push("::TEXT[], ")
+        .push_bind(governor_addresses)
+        .push("::TEXT[], ")
+        .push_bind(token_addresses)
+        .push("::TEXT[], ")
+        .push_bind(delegators)
+        .push("::TEXT[], ")
+        .push_bind(balances)
+        .push(
+            "::TEXT[]
+                ) AS refreshed_input (
+                    contract_set_id, chain_id, dao_code, governor_address, token_address,
+                    delegator, balance_text
+                )
+             ),
              current_edges AS (
                 SELECT DISTINCT ON (delegate.contract_set_id, delegate.id)
                     delegate.contract_set_id,
@@ -2237,11 +3477,26 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                 WHERE delegate.is_current = TRUE
                 ORDER BY delegate.contract_set_id, delegate.id
              ),
-             affected_delegates AS (
-                SELECT DISTINCT
-                    contract_set_id,
-                    to_delegate
-                FROM current_edges
+             mapping_edges AS (
+                SELECT
+                    delegate_mapping.contract_set_id,
+                    delegate_mapping.id,
+                    delegate_mapping.\"from\",
+                    delegate_mapping.\"to\" AS to_delegate,
+                    delegate_mapping.power AS previous_power,
+                    current_edges.new_power,
+                    CASE
+                        WHEN delegate_mapping.power <= 0 AND current_edges.new_power > 0 THEN 1
+                        WHEN delegate_mapping.power > 0 AND current_edges.new_power <= 0 THEN -1
+                        ELSE 0
+                    END AS effective_count_delta
+                FROM delegate_mapping
+                JOIN current_edges
+                  ON current_edges.contract_set_id = delegate_mapping.contract_set_id
+                 AND current_edges.from_delegate = delegate_mapping.id
+                 AND current_edges.from_delegate = delegate_mapping.\"from\"
+                 AND current_edges.to_delegate = delegate_mapping.\"to\"
+                WHERE delegate_mapping.power IS DISTINCT FROM current_edges.new_power
              ),
              updated_delegates AS (
                 UPDATE delegate
@@ -2250,43 +3505,38 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                 WHERE delegate.contract_set_id = current_edges.contract_set_id
                   AND delegate.id = current_edges.id
                   AND delegate.power IS DISTINCT FROM current_edges.new_power
-                RETURNING delegate.id
+                RETURNING delegate.contract_set_id, delegate.to_delegate
              ),
              updated_delegate_mappings AS (
                 UPDATE delegate_mapping
-                SET power = current_edges.new_power
-                FROM current_edges
-                WHERE delegate_mapping.contract_set_id = current_edges.contract_set_id
-                  AND delegate_mapping.id = current_edges.from_delegate
-                  AND delegate_mapping.\"from\" = current_edges.from_delegate
-                  AND delegate_mapping.\"to\" = current_edges.to_delegate
-                  AND delegate_mapping.power IS DISTINCT FROM current_edges.new_power
-                RETURNING delegate_mapping.id
+                SET power = mapping_edges.new_power
+                FROM mapping_edges
+                WHERE delegate_mapping.contract_set_id = mapping_edges.contract_set_id
+                  AND delegate_mapping.id = mapping_edges.id
+                  AND delegate_mapping.\"from\" = mapping_edges.\"from\"
+                  AND delegate_mapping.\"to\" = mapping_edges.to_delegate
+                  AND delegate_mapping.power IS DISTINCT FROM mapping_edges.new_power
+                RETURNING
+                    mapping_edges.contract_set_id,
+                    mapping_edges.to_delegate,
+                    mapping_edges.effective_count_delta
              ),
-             effective_counts AS (
+             effective_count_deltas AS (
                 SELECT
-                    affected_delegates.contract_set_id,
-                    affected_delegates.to_delegate,
-                    COUNT(delegate_mapping.id) FILTER (
-                        WHERE COALESCE(current_edges.new_power, delegate_mapping.power) > 0
-                    )::INT AS positive_count
-                FROM affected_delegates
-                LEFT JOIN delegate_mapping
-                  ON delegate_mapping.contract_set_id = affected_delegates.contract_set_id
-                 AND delegate_mapping.\"to\" = affected_delegates.to_delegate
-                LEFT JOIN current_edges
-                  ON current_edges.contract_set_id = delegate_mapping.contract_set_id
-                 AND current_edges.from_delegate = delegate_mapping.\"from\"
-                 AND current_edges.to_delegate = delegate_mapping.\"to\"
-                GROUP BY affected_delegates.contract_set_id, affected_delegates.to_delegate
+                    contract_set_id,
+                    to_delegate,
+                    SUM(effective_count_delta)::INT AS count_delta
+                FROM updated_delegate_mappings
+                WHERE effective_count_delta <> 0
+                GROUP BY contract_set_id, to_delegate
              ),
              updated_effective_counts AS (
                 UPDATE contributor
-                SET delegates_count_effective = effective_counts.positive_count
-                FROM effective_counts
-                WHERE contributor.contract_set_id = effective_counts.contract_set_id
-                  AND contributor.id = effective_counts.to_delegate
-                  AND contributor.delegates_count_effective IS DISTINCT FROM effective_counts.positive_count
+                SET delegates_count_effective =
+                    GREATEST(0, contributor.delegates_count_effective + effective_count_deltas.count_delta)
+                FROM effective_count_deltas
+                WHERE contributor.contract_set_id = effective_count_deltas.contract_set_id
+                  AND contributor.id = effective_count_deltas.to_delegate
                 RETURNING contributor.id
              )
              SELECT
@@ -2294,10 +3544,6 @@ async fn reconcile_current_delegate_relation_power_from_balance(
                 (SELECT count(*)::BIGINT FROM updated_delegate_mappings) AS mapping_updates,
                 (SELECT count(*)::BIGINT FROM updated_effective_counts) AS count_updates",
         );
-        query.build().fetch_one(&mut **transaction).await?;
-    }
-
-    Ok(())
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2349,7 +3595,7 @@ async fn insert_refresh_checkpoints(
 ) -> Result<(), sqlx::Error> {
     let balance_successes = successes
         .iter()
-        .filter(|(task, _value)| task.refresh_balance)
+        .filter(|(task, value)| checkpoint_balance_value(task, value).is_some())
         .collect::<Vec<_>>();
     if !balance_successes.is_empty() {
         let mut query = QueryBuilder::<Postgres>::new(
@@ -2366,7 +3612,7 @@ async fn insert_refresh_checkpoints(
                 .cloned()
                 .unwrap_or_default();
             let previous_balance = previous.balance.unwrap_or_else(|| "0".to_owned());
-            let new_balance = value.balance.as_deref().unwrap_or("0");
+            let new_balance = checkpoint_balance_value(task, value).unwrap_or("0");
             values
                 .push_bind(format!(
                     "onchain-refresh-balance-{}",
@@ -2402,7 +3648,7 @@ async fn insert_refresh_checkpoints(
 
     let power_successes = successes
         .iter()
-        .filter(|(task, _value)| task.refresh_power)
+        .filter(|(task, value)| checkpoint_power_value(task, value).is_some())
         .collect::<Vec<_>>();
     if !power_successes.is_empty() {
         let source = current_power_checkpoint_source(current_power_method);
@@ -2420,7 +3666,7 @@ async fn insert_refresh_checkpoints(
                 .cloned()
                 .unwrap_or_default();
             let previous_power = previous.power.unwrap_or_else(|| "0".to_owned());
-            let new_power = value.power.as_deref().unwrap_or("0");
+            let new_power = checkpoint_power_value(task, value).unwrap_or("0");
             values
                 .push_bind(format!(
                     "onchain-refresh-power-{}",
@@ -2460,6 +3706,32 @@ async fn insert_refresh_checkpoints(
     Ok(())
 }
 
+fn checkpoint_balance_value<'a>(
+    task: &OnchainRefreshTask,
+    value: &'a OnchainRefreshReadValue,
+) -> Option<&'a str> {
+    effective_refresh_balance(task, value)
+        .then_some(value.checkpoint_balance.as_deref())
+        .flatten()
+}
+
+fn checkpoint_power_value<'a>(
+    task: &OnchainRefreshTask,
+    value: &'a OnchainRefreshReadValue,
+) -> Option<&'a str> {
+    effective_refresh_power(task, value)
+        .then_some(value.checkpoint_power.as_deref())
+        .flatten()
+}
+
+fn effective_refresh_balance(task: &OnchainRefreshTask, value: &OnchainRefreshReadValue) -> bool {
+    task.refresh_balance && value.balance_for_current_update().is_some()
+}
+
+fn effective_refresh_power(task: &OnchainRefreshTask, value: &OnchainRefreshReadValue) -> bool {
+    task.refresh_power && value.power_for_current_update().is_some()
+}
+
 async fn upsert_live_power_overlays(
     transaction: &mut Transaction<'_, Postgres>,
     successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
@@ -2483,31 +3755,30 @@ fn live_contributor_power_overlay_writes(
     successes
         .iter()
         .filter_map(|(task, value)| {
-            let power = value.power.as_ref()?;
-            task.refresh_power
-                .then(|| ProvisionalContributorPowerOverlayWrite {
-                    id: provisional_contributor_power_overlay_id(task),
-                    segment_id: None,
-                    dao_code: task.dao_code.clone(),
-                    contract_set_id: task.contract_set_id.clone(),
-                    chain_id: Some(task.chain_id),
-                    chain_name: None,
-                    governor_address: Some(normalize_identifier(&task.governor_address)),
-                    token_address: Some(normalize_identifier(&task.token_address)),
-                    account: normalize_identifier(&task.account),
-                    power: power.clone(),
-                    balance: value.balance.clone(),
-                    delegates_count_all: 0,
-                    delegates_count_effective: 0,
-                    last_vote_block_number: None,
-                    last_vote_timestamp: None,
-                    source: "live-onchain".to_owned(),
-                    status: "available".to_owned(),
-                    anchor_block_number: Some(task.last_seen_block_number.clone()),
-                    anchor_block_hash: None,
-                    anchor_parent_hash: None,
-                    anchor_block_timestamp: Some(task.last_seen_block_timestamp.clone()),
-                })
+            let power = value.power_for_current_update()?;
+            effective_refresh_power(task, value).then(|| ProvisionalContributorPowerOverlayWrite {
+                id: provisional_contributor_power_overlay_id(task),
+                segment_id: None,
+                dao_code: task.dao_code.clone(),
+                contract_set_id: task.contract_set_id.clone(),
+                chain_id: Some(task.chain_id),
+                chain_name: None,
+                governor_address: Some(normalize_identifier(&task.governor_address)),
+                token_address: Some(normalize_identifier(&task.token_address)),
+                account: normalize_identifier(&task.account),
+                power: power.to_owned(),
+                balance: value.balance_for_current_update().map(str::to_owned),
+                delegates_count_all: 0,
+                delegates_count_effective: 0,
+                last_vote_block_number: None,
+                last_vote_timestamp: None,
+                source: "live-onchain".to_owned(),
+                status: "available".to_owned(),
+                anchor_block_number: Some(task.last_seen_block_number.clone()),
+                anchor_block_hash: None,
+                anchor_parent_hash: None,
+                anchor_block_timestamp: Some(task.last_seen_block_timestamp.clone()),
+            })
         })
         .collect()
 }
@@ -2611,27 +3882,9 @@ async fn read_live_delegate_power_overlay_relations(
     for (scope, mut accounts) in accounts_by_scope {
         accounts.sort();
         accounts.dedup();
-        let rows = sqlx::query(
-            "SELECT
-                 contract_set_id, chain_id, dao_code, governor_address, token_address,
-                 from_delegate, to_delegate, is_current
-             FROM delegate
-             WHERE contract_set_id = $1
-               AND chain_id IS NOT DISTINCT FROM $2
-               AND dao_code IS NOT DISTINCT FROM $3
-               AND governor_address IS NOT DISTINCT FROM $4
-               AND (token_address IS NOT DISTINCT FROM $5 OR token_address IS NULL)
-               AND from_delegate = ANY($6)
-               AND is_current = TRUE",
-        )
-        .bind(&scope.contract_set_id)
-        .bind(scope.chain_id)
-        .bind(&scope.dao_code)
-        .bind(&scope.governor_address)
-        .bind(&scope.token_address)
-        .bind(&accounts)
-        .fetch_all(&mut **transaction)
-        .await?;
+        let mut query = QueryBuilder::<Postgres>::new("");
+        push_live_delegate_power_overlay_relations_query(&mut query, &scope, &accounts);
+        let rows = query.build().fetch_all(&mut **transaction).await?;
 
         relations.extend(rows.into_iter().map(|row| {
             ProvisionalDelegatePowerOverlayRelation {
@@ -2651,6 +3904,90 @@ async fn read_live_delegate_power_overlay_relations(
     }
 
     Ok(relations)
+}
+
+fn push_live_delegate_power_overlay_relations_query<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    scope: &'a LiveDelegateRelationScope,
+    accounts: &'a [String],
+) {
+    query
+        .push("WITH scoped_accounts AS MATERIALIZED (SELECT account FROM unnest(")
+        .push_bind(accounts)
+        .push(
+            "::TEXT[]) AS account)
+         SELECT
+             delegate.contract_set_id,
+             delegate.chain_id,
+             delegate.dao_code,
+             delegate.governor_address,
+             COALESCE(delegate.token_address, ",
+        )
+        .push_bind(&scope.token_address)
+        .push(
+            ") AS token_address,
+             delegate.from_delegate,
+             delegate.to_delegate,
+             delegate.is_current
+         FROM scoped_accounts
+         JOIN LATERAL (
+             SELECT
+                 contract_set_id, chain_id, dao_code, governor_address, token_address,
+                 from_delegate, to_delegate, is_current
+             FROM delegate
+             WHERE contract_set_id = ",
+        )
+        .push_bind(&scope.contract_set_id);
+
+    push_optional_i32_predicate(query, "chain_id", scope.chain_id);
+    push_optional_string_predicate(query, "dao_code", &scope.dao_code);
+    push_optional_string_predicate(query, "governor_address", &scope.governor_address);
+
+    query.push(" AND from_delegate = scoped_accounts.account");
+    match &scope.token_address {
+        Some(token_address) => {
+            query
+                .push(" AND (token_address = ")
+                .push_bind(token_address)
+                .push(" OR token_address IS NULL)");
+        }
+        None => {
+            query.push(" AND token_address IS NULL");
+        }
+    }
+    query.push(" AND is_current = TRUE OFFSET 0) delegate ON TRUE");
+}
+
+fn push_optional_i32_predicate(
+    query: &mut QueryBuilder<'_, Postgres>,
+    column_name: &'static str,
+    value: Option<i32>,
+) {
+    query.push(" AND ").push(column_name);
+    match value {
+        Some(value) => {
+            query.push(" = ").push_bind(value);
+        }
+        None => {
+            query.push(" IS NULL");
+        }
+    }
+}
+
+fn push_optional_string_predicate<'a>(
+    query: &mut QueryBuilder<'a, Postgres>,
+    column_name: &'static str,
+    value: &'a Option<String>,
+) {
+    query.push(" AND ").push(column_name);
+    match value {
+        Some(value) => {
+            query.push(" = ").push_bind(value);
+        }
+        None => {
+            query.push(" IS NULL");
+        }
+    }
 }
 
 async fn upsert_live_delegate_power_overlays(
@@ -2722,32 +4059,90 @@ struct DataMetricRefreshScope {
     token_address: String,
 }
 
-async fn refresh_data_metrics(
+async fn enqueue_data_metric_refresh_scopes(
     transaction: &mut Transaction<'_, Postgres>,
-    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
-) -> Result<usize, sqlx::Error> {
-    let scopes = successes
-        .iter()
-        .map(|(task, _value)| DataMetricRefreshScope {
-            contract_set_id: task.contract_set_id.clone(),
-            chain_id: task.chain_id,
-            dao_code: task.dao_code.clone(),
-            governor_address: task.governor_address.clone(),
-            token_address: task.token_address.clone(),
-        })
-        .collect::<std::collections::BTreeSet<_>>();
-
-    for scope in &scopes {
-        refresh_data_metric_scope(transaction, scope).await?;
+    scopes: &BTreeSet<DataMetricRefreshScope>,
+    now_ms: i64,
+) -> Result<(), sqlx::Error> {
+    if scopes.is_empty() {
+        return Ok(());
     }
 
-    Ok(scopes.len())
+    let mut query = QueryBuilder::<Postgres>::new(
+        "INSERT INTO onchain_refresh_data_metric_task (
+            id, contract_set_id, chain_id, dao_code, governor_address, token_address,
+            created_at, updated_at
+         ) ",
+    );
+    query.push_values(scopes, |mut values, scope| {
+        values
+            .push_bind(data_metric_refresh_task_id(scope))
+            .push_bind(&scope.contract_set_id)
+            .push_bind(scope.chain_id)
+            .push_bind(&scope.dao_code)
+            .push_bind(&scope.governor_address)
+            .push_bind(&scope.token_address)
+            .push_bind(now_ms.to_string())
+            .push_unseparated("::NUMERIC(78, 0)")
+            .push_bind(now_ms.to_string())
+            .push_unseparated("::NUMERIC(78, 0)");
+    });
+    query.push(
+        " ON CONFLICT (id) DO UPDATE
+          SET token_address = EXCLUDED.token_address,
+              updated_at = EXCLUDED.updated_at",
+    );
+    query.build().execute(&mut **transaction).await?;
+
+    Ok(())
+}
+
+fn data_metric_refresh_scopes_for_chunk(
+    successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
+) -> BTreeSet<DataMetricRefreshScope> {
+    successes
+        .iter()
+        .map(|(task, _value)| data_metric_refresh_scope(task))
+        .collect()
+}
+
+fn data_metric_refresh_scope(task: &OnchainRefreshTask) -> DataMetricRefreshScope {
+    DataMetricRefreshScope {
+        contract_set_id: task.contract_set_id.clone(),
+        chain_id: task.chain_id,
+        dao_code: task.dao_code.clone(),
+        governor_address: task.governor_address.clone(),
+        token_address: task.token_address.clone(),
+    }
+}
+
+fn data_metric_refresh_task_id(scope: &DataMetricRefreshScope) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        scope.contract_set_id,
+        scope.chain_id,
+        scope.dao_code.as_deref().unwrap_or(""),
+        scope.governor_address
+    )
+}
+
+fn data_metric_refresh_ready_before(now_ms: i64, debounce: Duration) -> i64 {
+    now_ms.saturating_sub(duration_millis_i64(debounce)).max(0)
 }
 
 async fn refresh_data_metric_scope(
     transaction: &mut Transaction<'_, Postgres>,
     scope: &DataMetricRefreshScope,
 ) -> Result<(), sqlx::Error> {
+    if let Some(dao_code) = &scope.dao_code {
+        acquire_delegate_profile_scope_lock(
+            transaction,
+            scope.chain_id,
+            dao_code,
+            &scope.governor_address,
+        )
+        .await?;
+    }
     let metric_id = data_metric_id(
         scope.chain_id,
         &scope.governor_address,
@@ -2755,9 +4150,24 @@ async fn refresh_data_metric_scope(
     );
 
     sqlx::query(
-        "INSERT INTO data_metric (
+        "WITH rollout AS (
+            SELECT COALESCE(bool_or(delegate_profiles_count IS NOT NULL), FALSE) AS initialized
+            FROM data_metric
+            WHERE id = 'global'
+              AND chain_id = $3
+              AND dao_code IS NOT DISTINCT FROM $4
+              AND lower(governor_address) = lower($5)
+         ), profile_count AS (
+            SELECT count(*)::INTEGER AS value
+            FROM delegate_profile
+            WHERE chain_id = $3
+              AND dao_code IS NOT DISTINCT FROM $4
+              AND governor_address = lower($5)
+         )
+         INSERT INTO data_metric (
             id, contract_set_id, chain_id, dao_code, governor_address, token_address,
-            power_sum, contributor_count, holders_count, member_count
+            power_sum, contributor_count, holders_count, member_count,
+            delegate_profiles_count
          )
          SELECT
             $1, $2, $3, $4, $5, $6,
@@ -2769,12 +4179,9 @@ async fn refresh_data_metric_scope(
                     ELSE count(*)
                 END
             )::INTEGER,
-            (
-                CASE
-                    WHEN count(balance) > 0 THEN count(*) FILTER (WHERE balance > 0)
-                    ELSE count(*)
-                END
-            )::INTEGER
+            count(*)::INTEGER,
+            (SELECT CASE WHEN rollout.initialized THEN profile_count.value END
+             FROM rollout, profile_count)
          FROM contributor
          WHERE contract_set_id = $2 AND chain_id = $3 AND governor_address = $5 AND dao_code IS NOT DISTINCT FROM $4
          ON CONFLICT ON CONSTRAINT data_metric_scope_unique DO UPDATE
@@ -2782,7 +4189,11 @@ async fn refresh_data_metric_scope(
              power_sum = EXCLUDED.power_sum,
              contributor_count = EXCLUDED.contributor_count,
              holders_count = EXCLUDED.holders_count,
-             member_count = EXCLUDED.member_count",
+             member_count = EXCLUDED.member_count,
+             delegate_profiles_count = COALESCE(
+                 EXCLUDED.delegate_profiles_count,
+                 data_metric.delegate_profiles_count
+             )",
     )
     .bind(metric_id)
     .bind(&scope.contract_set_id)
@@ -2801,6 +4212,7 @@ async fn complete_tasks(
     successes: &[(OnchainRefreshTask, OnchainRefreshReadValue)],
     now_ms: i64,
     debounce: Duration,
+    lock_owner: &str,
 ) -> Result<usize, sqlx::Error> {
     let task_ids = successes
         .iter()
@@ -2825,11 +4237,14 @@ async fn complete_tasks(
              pending_after_lock_transaction_hash = NULL,
              updated_at = $3::NUMERIC(78, 0)
          WHERE id = ANY($1)
+           AND status = 'processing'
+           AND locked_by = $4
          RETURNING status",
     )
     .bind(&task_ids)
     .bind(next_run_at.to_string())
     .bind(now_ms.to_string())
+    .bind(lock_owner)
     .fetch_all(&mut **transaction)
     .await?;
 
@@ -3005,6 +4420,14 @@ fn current_power_checkpoint_source(method: ChainReadMethod) -> &'static str {
     }
 }
 
+#[cfg(test)]
+fn current_power_signature(method: ChainReadMethod) -> &'static str {
+    match method {
+        ChainReadMethod::CurrentVotes => "getCurrentVotes(address)",
+        _ => "getVotes(address)",
+    }
+}
+
 fn parse_u64(value: &str) -> Result<u64, OnchainRefreshReaderError> {
     value.parse::<u64>().map_err(|error| {
         OnchainRefreshReaderError::new(format!("parse block number {value}: {error}"))
@@ -3063,6 +4486,21 @@ fn is_multicall_eligible(read: &ChainReadRequest) -> bool {
     !matches!(
         read.key.method,
         ChainReadMethod::BlockTimestamp | ChainReadMethod::TimelockOperationState
+    )
+}
+
+fn alternate_current_power_method(method: ChainReadMethod) -> Option<ChainReadMethod> {
+    match method {
+        ChainReadMethod::GetVotes => Some(ChainReadMethod::CurrentVotes),
+        ChainReadMethod::CurrentVotes => Some(ChainReadMethod::GetVotes),
+        _ => None,
+    }
+}
+
+fn is_current_power_method(method: ChainReadMethod) -> bool {
+    matches!(
+        method,
+        ChainReadMethod::GetVotes | ChainReadMethod::CurrentVotes
     )
 }
 
@@ -3420,6 +4858,190 @@ struct JsonRpcError {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::{borrow::Cow, error::Error as StdError};
+
+    #[derive(Debug)]
+    struct FakeDatabaseError {
+        code: &'static str,
+    }
+
+    impl fmt::Display for FakeDatabaseError {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "fake database error {}", self.code)
+        }
+    }
+
+    impl StdError for FakeDatabaseError {}
+
+    impl sqlx::error::DatabaseError for FakeDatabaseError {
+        fn message(&self) -> &str {
+            "fake database error"
+        }
+
+        fn code(&self) -> Option<Cow<'_, str>> {
+            Some(Cow::Borrowed(self.code))
+        }
+
+        fn as_error(&self) -> &(dyn StdError + Send + Sync + 'static) {
+            self
+        }
+
+        fn as_error_mut(&mut self) -> &mut (dyn StdError + Send + Sync + 'static) {
+            self
+        }
+
+        fn into_error(self: Box<Self>) -> Box<dyn StdError + Send + Sync + 'static> {
+            self
+        }
+
+        fn kind(&self) -> sqlx::error::ErrorKind {
+            sqlx::error::ErrorKind::Other
+        }
+    }
+
+    fn fake_database_error(code: &'static str) -> OnchainRefreshWorkerError {
+        OnchainRefreshWorkerError::Database(sqlx::Error::Database(Box::new(FakeDatabaseError {
+            code,
+        })))
+    }
+
+    #[test]
+    fn test_live_delegate_power_overlay_relation_query_uses_account_driven_lateral_lookup() {
+        let scope = LiveDelegateRelationScope {
+            contract_set_id: "contract-set".to_owned(),
+            chain_id: Some(1),
+            dao_code: Some("dao".to_owned()),
+            governor_address: Some("0xgovernor".to_owned()),
+            token_address: Some("0xtoken".to_owned()),
+        };
+        let accounts = vec![
+            "0x0000000000000000000000000000000000000001".to_owned(),
+            "0x0000000000000000000000000000000000000002".to_owned(),
+        ];
+        let mut query = QueryBuilder::<Postgres>::new("");
+
+        push_live_delegate_power_overlay_relations_query(&mut query, &scope, &accounts);
+        let sql = query.sql();
+
+        assert!(sql.contains("WITH scoped_accounts AS MATERIALIZED"));
+        assert!(sql.contains("JOIN LATERAL"));
+        assert!(sql.contains("from_delegate = scoped_accounts.account"));
+        assert!(sql.contains("OFFSET 0"));
+        assert!(!sql.contains("from_delegate = ANY"));
+        assert!(!sql.contains("IS NOT DISTINCT FROM"));
+    }
+
+    #[test]
+    fn test_onchain_refresh_scope_filter_uses_indexable_dao_code_equality() {
+        let scope = OnchainRefreshTaskScope {
+            chain_id: 1,
+            contract_set_id: "contract-set".to_owned(),
+            dao_code: "dao".to_owned(),
+        };
+        let mut query = QueryBuilder::<Postgres>::new("SELECT 1 WHERE true");
+
+        push_onchain_refresh_scope_filter(&mut query, Some(&scope));
+        let sql = query.sql();
+
+        assert!(sql.contains("chain_id = "));
+        assert!(sql.contains("contract_set_id = "));
+        assert!(sql.contains("dao_code = "));
+        assert!(!sql.contains("dao_code IS NOT DISTINCT FROM"));
+    }
+
+    #[test]
+    fn test_delegate_relation_balance_refresh_query_uses_fixed_unnest_input() {
+        let refreshes = vec![DelegateRelationBalanceRefresh {
+            key: DelegateRelationBalanceRefreshKey {
+                contract_set_id: "contract-set".to_owned(),
+                chain_id: 1,
+                dao_code: Some("dao".to_owned()),
+                governor_address: "0xgovernor".to_owned(),
+                token_address: "0xtoken".to_owned(),
+                account: "0xaccount".to_owned(),
+            },
+            balance: "42".to_owned(),
+        }];
+        let mut query = QueryBuilder::<Postgres>::new("");
+
+        push_delegate_relation_balance_refresh_query(&mut query, &refreshes);
+        let sql = query.sql();
+
+        assert!(sql.contains("WITH refreshed AS MATERIALIZED"));
+        assert!(sql.contains("unnest("));
+        assert!(sql.contains("::TEXT[]"));
+        assert!(sql.contains("::INT4[]"));
+        assert!(sql.contains("balance_text::NUMERIC(78, 0) AS balance"));
+        assert!(!sql.contains("VALUES"));
+    }
+
+    #[test]
+    fn test_delegate_relation_balance_refresh_query_updates_effective_count_by_delta() {
+        let refreshes = vec![DelegateRelationBalanceRefresh {
+            key: DelegateRelationBalanceRefreshKey {
+                contract_set_id: "contract-set".to_owned(),
+                chain_id: 1,
+                dao_code: Some("dao".to_owned()),
+                governor_address: "0xgovernor".to_owned(),
+                token_address: "0xtoken".to_owned(),
+                account: "0xaccount".to_owned(),
+            },
+            balance: "42".to_owned(),
+        }];
+        let mut query = QueryBuilder::<Postgres>::new("");
+
+        push_delegate_relation_balance_refresh_query(&mut query, &refreshes);
+        let sql = query.sql();
+
+        assert!(sql.contains("mapping_edges AS"));
+        assert!(sql.contains("effective_count_delta"));
+        assert!(sql.contains("effective_count_deltas AS"));
+        assert!(sql.contains("SUM(effective_count_delta)::INT AS count_delta"));
+        assert!(sql.contains(
+            "GREATEST(0, contributor.delegates_count_effective + effective_count_deltas.count_delta)"
+        ));
+        assert!(!sql.contains("COUNT(delegate_mapping.id)"));
+        assert!(!sql.contains("positive_count"));
+    }
+
+    #[test]
+    fn test_insert_refresh_checkpoints_skips_values_without_checkpoint_values() {
+        let task = OnchainRefreshTask {
+            id: "task-one".to_owned(),
+            contract_set_id: "contract-set".to_owned(),
+            chain_id: 1,
+            dao_code: Some("dao".to_owned()),
+            governor_address: "0xgovernor".to_owned(),
+            token_address: "0xtoken".to_owned(),
+            account: "0xaccount".to_owned(),
+            refresh_balance: true,
+            refresh_power: true,
+            last_seen_block_number: "12".to_owned(),
+            last_seen_block_timestamp: "12000".to_owned(),
+            last_seen_transaction_hash: "0xtask".to_owned(),
+            attempts: 0,
+        };
+        let latest_only = OnchainRefreshReadValue {
+            task_id: "task-one".to_owned(),
+            balance: Some("99".to_owned()),
+            power: Some("88".to_owned()),
+            checkpoint_balance: None,
+            checkpoint_power: None,
+        };
+        let with_checkpoints = OnchainRefreshReadValue {
+            checkpoint_balance: Some("11".to_owned()),
+            checkpoint_power: Some("22".to_owned()),
+            ..latest_only.clone()
+        };
+
+        assert_eq!(checkpoint_balance_value(&task, &latest_only), None);
+        assert_eq!(checkpoint_power_value(&task, &latest_only), None);
+        assert_eq!(
+            checkpoint_balance_value(&task, &with_checkpoints),
+            Some("11")
+        );
+        assert_eq!(checkpoint_power_value(&task, &with_checkpoints), Some("22"));
+    }
 
     #[test]
     fn test_encode_call_data_accepts_hex_uint_arguments() {
@@ -3432,9 +5054,175 @@ mod tests {
     }
 
     #[test]
-    fn test_worker_deferred_drain_batch_size_tracks_claim_budget() {
-        assert_eq!(worker_deferred_drain_batch_size(100, 1_000), 1_000);
-        assert_eq!(worker_deferred_drain_batch_size(2_000, 1_000), 2_000);
+    fn test_worker_deferred_drain_target_tracks_claim_budget() {
+        assert_eq!(worker_deferred_drain_target(100, 1_000), 1_000);
+        assert_eq!(worker_deferred_drain_target(2_000, 1_000), 2_000);
+    }
+
+    #[test]
+    fn test_data_metric_refresh_ready_before_waits_for_quiet_period() {
+        assert_eq!(
+            data_metric_refresh_ready_before(10_000, Duration::from_secs(120)),
+            0
+        );
+        assert_eq!(
+            data_metric_refresh_ready_before(130_000, Duration::from_secs(120)),
+            10_000
+        );
+    }
+
+    #[test]
+    fn test_onchain_refresh_apply_retry_classifies_retryable_sqlstates() {
+        assert!(is_retryable_onchain_refresh_apply_sqlstate("40P01"));
+        assert!(is_retryable_onchain_refresh_apply_sqlstate("40001"));
+        assert!(!is_retryable_onchain_refresh_apply_sqlstate("23505"));
+    }
+
+    #[test]
+    fn test_onchain_refresh_block_not_found_does_not_exhaust() {
+        let error = "multicall failed: block not found: 25378785";
+
+        assert!(is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_historical_state_gap_does_not_exhaust() {
+        let error = "multicall failed: historical state abc is not available";
+
+        assert!(is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_transport_error_does_not_exhaust() {
+        let error = "multicall failed: error sending request for url (<rpc-url>)";
+
+        assert!(is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_context_canceled_does_not_exhaust() {
+        let error = "alternate current power method eth_call failed: context canceled";
+
+        assert!(is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "failed");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 2);
+    }
+
+    #[test]
+    fn test_onchain_refresh_retries_block_not_found_reads_immediately() {
+        let error = "block not found: 25381885";
+
+        assert!(should_try_direct_fallback_after_multicall_error(error));
+        assert!(should_retry_multicall_direct_fallback_error(error));
+    }
+
+    #[test]
+    fn test_onchain_refresh_retries_header_not_found_reads_immediately() {
+        let error = "header not found";
+
+        assert!(should_try_direct_fallback_after_multicall_error(error));
+        assert!(should_retry_multicall_direct_fallback_error(error));
+    }
+
+    #[test]
+    fn test_onchain_refresh_non_retryable_error_exhausts_at_limit() {
+        let error = "multicall subcall reverted";
+
+        assert!(!is_retryable_onchain_refresh_task_error(error));
+        assert_eq!(onchain_refresh_failure_status(error, 3, 3), "exhausted");
+        assert_eq!(onchain_refresh_failure_attempts(error, 3, 3), 3);
+    }
+
+    #[tokio::test]
+    async fn test_onchain_refresh_apply_retry_retries_retryable_errors_until_success() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let result = retry_onchain_refresh_apply_operation(
+            {
+                let attempts = attempts.clone();
+                move || {
+                    let attempts = attempts.clone();
+                    Box::pin(async move {
+                        let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                        if attempt < 2 {
+                            Err(fake_database_error("40P01"))
+                        } else {
+                            Ok("ok")
+                        }
+                    })
+                }
+            },
+            Duration::ZERO,
+        )
+        .await
+        .expect("retryable errors eventually succeed");
+
+        assert_eq!(result, "ok");
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_onchain_refresh_apply_retry_stops_at_max_attempts() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let error = retry_onchain_refresh_apply_operation(
+            {
+                let attempts = attempts.clone();
+                move || {
+                    let attempts = attempts.clone();
+                    Box::pin(async move {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        Err::<(), _>(fake_database_error("40P01"))
+                    })
+                }
+            },
+            Duration::ZERO,
+        )
+        .await
+        .expect_err("retryable errors stop after max attempts");
+
+        assert!(is_retryable_onchain_refresh_apply_error(&error));
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_onchain_refresh_apply_retry_does_not_retry_non_retryable_errors() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let error = retry_onchain_refresh_apply_operation(
+            {
+                let attempts = attempts.clone();
+                move || {
+                    let attempts = attempts.clone();
+                    Box::pin(async move {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        Err::<(), _>(fake_database_error("23505"))
+                    })
+                }
+            },
+            Duration::ZERO,
+        )
+        .await
+        .expect_err("non-retryable errors fail immediately");
+
+        assert!(!is_retryable_onchain_refresh_apply_error(&error));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_default_onchain_refresh_apply_batch_size_keeps_transactions_small() {
+        assert_eq!(DEFAULT_ONCHAIN_REFRESH_APPLY_BATCH_SIZE, 200);
+    }
+
+    #[test]
+    fn test_exhausted_archive_batch_size_keeps_cleanup_transactions_small() {
+        assert_eq!(MAX_ONCHAIN_REFRESH_EXHAUSTED_ARCHIVE_ROWS, 200);
     }
 
     #[test]
@@ -3520,6 +5308,40 @@ mod tests {
         );
         assert_eq!(cache.get(&same_account_latest), None);
         assert_eq!(cache.get(&other_account), None);
+    }
+
+    #[test]
+    fn test_chain_read_cache_keeps_historical_current_account_reads_block_specific() {
+        let cache = ChainReadCache::default();
+        let balance = ChainReadKey {
+            chain_id: 1,
+            contract_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+            method: ChainReadMethod::BalanceOf,
+            args: vec!["0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned()],
+            block_mode: BlockReadMode::AtBlock(200),
+        };
+        let same_account_next_block = ChainReadKey {
+            block_mode: BlockReadMode::AtBlock(201),
+            ..balance.clone()
+        };
+        let same_account_safe = ChainReadKey {
+            block_mode: BlockReadMode::Safe,
+            ..balance.clone()
+        };
+        let same_account_latest = ChainReadKey {
+            block_mode: BlockReadMode::Latest,
+            ..balance.clone()
+        };
+
+        cache.insert(&balance, ChainReadValue::Integer("100".to_owned()));
+
+        assert_eq!(
+            cache.get(&balance),
+            Some(ChainReadValue::Integer("100".to_owned()))
+        );
+        assert_eq!(cache.get(&same_account_next_block), None);
+        assert_eq!(cache.get(&same_account_safe), None);
+        assert_eq!(cache.get(&same_account_latest), None);
     }
 
     #[test]
@@ -3625,6 +5447,218 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    struct MulticallOutOfGasFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for MulticallOutOfGasFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            let call_count = self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Uint(U256::from(call_count + 200))]))
+            ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RetryingMulticallFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+        direct_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for RetryingMulticallFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            let direct_call_count = self.direct_call_count.fetch_add(1, Ordering::SeqCst);
+            if direct_call_count == 0 {
+                return Err("transport unavailable".to_owned());
+            }
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Uint(U256::from(direct_call_count + 200))]))
+            ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RevertingMulticallFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for RevertingMulticallFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            Err("execution reverted: 0x".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RateLimitedMulticallFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for RateLimitedMulticallFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            Err("RPC eth_call failed with HTTP 429".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct NestedPowerFallbackRetryMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for NestedPowerFallbackRetryMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    ChainReadMethod::GetVotes
+                )))
+            )) {
+                return Err("execution reverted: 0x".to_owned());
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    ChainReadMethod::CurrentVotes
+                )))
+            )) {
+                return Err("error sending request".to_owned());
+            }
+
+            Err("unexpected eth_call".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RevertingBalanceZeroPowerRefreshMockEvmRpcClient;
+
+    impl EvmRpcClient for RevertingBalanceZeroPowerRefreshMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("out of gas".to_owned());
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("balanceOf(address)"))
+            )) {
+                return Err("execution reverted: 0x".to_owned());
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("getVotes(address)"))
+            )) {
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::zero())]))
+                ));
+            }
+
+            Err("unexpected eth_call".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
     struct PartialFailureMockEvmRpcClient;
 
     impl EvmRpcClient for PartialFailureMockEvmRpcClient {
@@ -3662,6 +5696,103 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    struct RequiredPartialFailureMockEvmRpcClient;
+
+    impl EvmRpcClient for RequiredPartialFailureMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            if !data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Err("fallback unavailable".to_owned());
+            }
+            let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+            let return_data = calls
+                .into_iter()
+                .enumerate()
+                .map(|(index, _call)| {
+                    if index == 1 {
+                        Token::Tuple(vec![Token::Bool(false), Token::Bytes(Vec::new())])
+                    } else {
+                        Token::Tuple(vec![
+                            Token::Bool(true),
+                            Token::Bytes(encode(&[Token::Uint(U256::from(index + 100))])),
+                        ])
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Array(return_data)]))
+            ))
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RetryingPowerMethodFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+        fallback_call_count: Arc<AtomicUsize>,
+    }
+
+    impl EvmRpcClient for RetryingPowerMethodFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+                let return_data = calls
+                    .into_iter()
+                    .map(|_| Token::Tuple(vec![Token::Bool(false), Token::Bytes(Vec::new())]))
+                    .collect::<Vec<_>>();
+
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Array(return_data)]))
+                ));
+            }
+
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    ChainReadMethod::CurrentVotes
+                )))
+            )) {
+                let fallback_call_count = self.fallback_call_count.fetch_add(1, Ordering::SeqCst);
+                if fallback_call_count == 0 {
+                    return Err("error sending request".to_owned());
+                }
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::from(250))]))
+                ));
+            }
+
+            Err("unexpected eth_call".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone, Default)]
     struct TransportFailureMockEvmRpcClient {
         eth_call_count: Arc<AtomicUsize>,
     }
@@ -3675,6 +5806,228 @@ mod tests {
         ) -> Result<String, String> {
             self.eth_call_count.fetch_add(1, Ordering::SeqCst);
             Err("transport unavailable".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone)]
+    struct PowerMethodFallbackMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+        primary_method: ChainReadMethod,
+        fallback_method: ChainReadMethod,
+    }
+
+    impl EvmRpcClient for PowerMethodFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+                let primary_selector = format!(
+                    "0x{}",
+                    hex::encode(function_selector(current_power_signature(
+                        self.primary_method
+                    )))
+                );
+                let return_data = calls
+                    .into_iter()
+                    .map(|call| {
+                        if call.call_data.starts_with(&primary_selector) {
+                            Token::Tuple(vec![Token::Bool(false), Token::Bytes(Vec::new())])
+                        } else {
+                            Token::Tuple(vec![
+                                Token::Bool(true),
+                                Token::Bytes(encode(&[Token::Uint(U256::from(100))])),
+                            ])
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Array(return_data)]))
+                ));
+            }
+
+            let fallback_selector = format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    self.fallback_method
+                )))
+            );
+            if data.starts_with(&fallback_selector) {
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::from(250))]))
+                ));
+            }
+
+            Err("unexpected eth_call".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone)]
+    struct MulticallDecodeFallbackPowerMethodMockEvmRpcClient {
+        eth_call_count: Arc<AtomicUsize>,
+        primary_method: ChainReadMethod,
+        fallback_method: ChainReadMethod,
+        primary_error: &'static str,
+    }
+
+    impl EvmRpcClient for MulticallDecodeFallbackPowerMethodMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            _block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.eth_call_count.fetch_add(1, Ordering::SeqCst);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return Ok("0x".to_owned());
+            }
+
+            let primary_selector = format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    self.primary_method
+                )))
+            );
+            if data.starts_with(&primary_selector) {
+                return Err(self.primary_error.to_owned());
+            }
+
+            let fallback_selector = format!(
+                "0x{}",
+                hex::encode(function_selector(current_power_signature(
+                    self.fallback_method
+                )))
+            );
+            if data.starts_with(&fallback_selector) {
+                return Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::from(250))]))
+                ));
+            }
+
+            Err("unexpected eth_call".to_owned())
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone)]
+    struct HistoricalStateFallbackMockEvmRpcClient {
+        block_modes: Arc<Mutex<Vec<BlockReadMode>>>,
+        at_block_error: &'static str,
+    }
+
+    impl EvmRpcClient for HistoricalStateFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.block_modes
+                .lock()
+                .expect("block mode lock")
+                .push(block_mode);
+            if data.starts_with(&format!(
+                "0x{}",
+                hex::encode(function_selector("aggregate3((address,bool,bytes)[])"))
+            )) {
+                return match block_mode {
+                    BlockReadMode::AtBlock(_) => Err(self.at_block_error.to_owned()),
+                    BlockReadMode::Latest => Ok(format!(
+                        "0x{}",
+                        hex::encode(encode(&[Token::Array(vec![Token::Tuple(vec![
+                            Token::Bool(true),
+                            Token::Bytes(encode(&[Token::Uint(U256::from(777))])),
+                        ])])]))
+                    )),
+                    _ => Err("unexpected block mode".to_owned()),
+                };
+            }
+
+            match block_mode {
+                BlockReadMode::AtBlock(_) => Err(self.at_block_error.to_owned()),
+                BlockReadMode::Latest => Ok(format!(
+                    "0x{}",
+                    hex::encode(encode(&[Token::Uint(U256::from(777))]))
+                )),
+                _ => Err("unexpected block mode".to_owned()),
+            }
+        }
+
+        fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
+            Ok(0)
+        }
+    }
+
+    #[derive(Clone)]
+    struct LatestMulticallFallbackMockEvmRpcClient {
+        block_modes: Arc<Mutex<Vec<BlockReadMode>>>,
+        at_block_result: Result<String, &'static str>,
+    }
+
+    impl EvmRpcClient for LatestMulticallFallbackMockEvmRpcClient {
+        fn eth_call(
+            &self,
+            _contract_address: &str,
+            data: &str,
+            block_mode: BlockReadMode,
+        ) -> Result<String, String> {
+            self.block_modes
+                .lock()
+                .expect("block mode lock")
+                .push(block_mode);
+
+            let calls = decode_aggregate3_call_data(data).expect("aggregate3 calldata decodes");
+            match block_mode {
+                BlockReadMode::AtBlock(_) => {
+                    return self
+                        .at_block_result
+                        .clone()
+                        .map_err(std::string::ToString::to_string);
+                }
+                BlockReadMode::Latest => {}
+                _ => return Err("unexpected block mode".to_owned()),
+            }
+
+            let return_data = calls
+                .into_iter()
+                .enumerate()
+                .map(|(index, _call)| {
+                    Token::Tuple(vec![
+                        Token::Bool(true),
+                        Token::Bytes(encode(&[Token::Uint(U256::from(index + 700))])),
+                    ])
+                })
+                .collect::<Vec<_>>();
+
+            Ok(format!(
+                "0x{}",
+                hex::encode(encode(&[Token::Array(return_data)]))
+            ))
         }
 
         fn eth_get_block_timestamp(&self, _block_number: &str) -> Result<u128, String> {
@@ -3728,6 +6081,230 @@ mod tests {
     }
 
     #[test]
+    fn test_evm_rpc_chain_tool_falls_back_to_direct_reads_after_multicall_out_of_gas() {
+        let rpc = MulticallOutOfGasFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("direct fallback reads succeed after multicall out of gas");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(report.metrics.executed_rpc_calls, 2);
+        assert_eq!(report.results.len(), 2);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("201".to_owned())
+        );
+        assert_eq!(
+            report.results[1].value,
+            ChainReadValue::Integer("202".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_retries_direct_fallback_after_multicall_out_of_gas_transport_error()
+    {
+        let rpc = RetryingMulticallFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("direct fallback read retries after transient transport error");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(report.metrics.executed_rpc_calls, 2);
+        assert_eq!(report.metrics.retries, 1);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("201".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_retry_direct_fallback_revert_after_multicall_out_of_gas() {
+        let rpc = RevertingMulticallFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("direct fallback revert fails without retry");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(failures.required_failures[0].message.contains("reverted"));
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_retry_direct_fallback_rate_limit_after_multicall_out_of_gas()
+     {
+        let rpc = RateLimitedMulticallFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_latest_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("direct fallback rate limit fails without retry");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(failures.required_failures[0].message.contains("HTTP 429"));
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_nest_power_fallback_retries_inside_direct_fallback() {
+        let rpc = NestedPowerFallbackRetryMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            56,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("direct fallback retries without nested power fallback retry");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 7);
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(
+            failures.required_failures[0]
+                .message
+                .contains("alternate current power method eth_call failed")
+        );
+    }
+
+    #[test]
+    fn test_onchain_refresh_skips_reverted_balance_when_power_read_succeeds() {
+        let chain_tool =
+            EvmRpcChainTool::from_rpc_client(RevertingBalanceZeroPowerRefreshMockEvmRpcClient);
+        let reader = ChainToolOnchainRefreshReader::new(
+            chain_tool,
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+            ChainReadMethod::GetVotes,
+        );
+        let task = OnchainRefreshTask {
+            id: "task-one".to_owned(),
+            contract_set_id: "contract-set".to_owned(),
+            chain_id: 56,
+            dao_code: Some("ark-dao".to_owned()),
+            governor_address: "0x1000000000000000000000000000000000000000".to_owned(),
+            token_address: "0x2000000000000000000000000000000000000000".to_owned(),
+            account: "0x0000000000000000000000000000000000000001".to_owned(),
+            refresh_balance: true,
+            refresh_power: true,
+            last_seen_block_number: "200".to_owned(),
+            last_seen_block_timestamp: "200000".to_owned(),
+            last_seen_transaction_hash: "0xtx".to_owned(),
+            attempts: 0,
+        };
+
+        let report = reader
+            .read_tasks_with_report(&[task.clone()])
+            .expect("refresh read completes with skipped balance");
+
+        assert_eq!(report.failures, vec![]);
+        assert_eq!(report.values.len(), 1);
+        assert_eq!(report.values[0].balance.as_deref(), None);
+        assert_eq!(report.values[0].power.as_deref(), Some("0"));
+        validate_read_value(&task, &report.values[0])
+            .expect("partial power refresh should not fail on skipped balance");
+    }
+
+    #[test]
     fn test_evm_rpc_chain_tool_uses_cache_before_multicall() {
         let rpc = MockEvmRpcClient::default();
         let calls = rpc.eth_call_count.clone();
@@ -3757,6 +6334,433 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(cached.metrics.executed_rpc_calls, 0);
         assert_eq!(cached.metrics.cache_hits, 1);
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_falls_back_to_alternate_current_power_method() {
+        let rpc = PowerMethodFallbackMockEvmRpcClient {
+            eth_call_count: Arc::default(),
+            primary_method: ChainReadMethod::GetVotes,
+            fallback_method: ChainReadMethod::CurrentVotes,
+        };
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let plan = builder.build();
+        let report = tool
+            .execute_read_plan(&plan)
+            .expect("power read falls back to alternate method");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[0].key.method, ChainReadMethod::GetVotes);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
+
+        let cached = tool
+            .execute_read_plan(&plan)
+            .expect("fallback result is cached under original read key");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(cached.metrics.cache_hits, 1);
+        assert_eq!(
+            cached.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
+
+        let mut next_builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        next_builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let next = tool
+            .execute_read_plan(&next_builder.build())
+            .expect("learned fallback method is used for later account reads");
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(next.metrics.executed_rpc_calls, 1);
+        assert_eq!(next.results[0].key.method, ChainReadMethod::GetVotes);
+        assert_eq!(
+            next.results[0].value,
+            ChainReadValue::Integer("100".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_falls_back_from_current_votes_to_get_votes() {
+        let rpc = PowerMethodFallbackMockEvmRpcClient {
+            eth_call_count: Arc::default(),
+            primary_method: ChainReadMethod::CurrentVotes,
+            fallback_method: ChainReadMethod::GetVotes,
+        };
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh_with_method(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+            ChainReadMethod::CurrentVotes,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("current votes read falls back to getVotes");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[0].key.method, ChainReadMethod::CurrentVotes);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_uses_power_method_fallback_after_multicall_decode_failure() {
+        let rpc = MulticallDecodeFallbackPowerMethodMockEvmRpcClient {
+            eth_call_count: Arc::default(),
+            primary_method: ChainReadMethod::GetVotes,
+            fallback_method: ChainReadMethod::CurrentVotes,
+            primary_error: "execution reverted",
+        };
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("direct fallback read uses alternate current power method");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[0].key.method, ChainReadMethod::GetVotes);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_use_power_method_fallback_after_transport_error() {
+        let rpc = MulticallDecodeFallbackPowerMethodMockEvmRpcClient {
+            eth_call_count: Arc::default(),
+            primary_method: ChainReadMethod::GetVotes,
+            fallback_method: ChainReadMethod::CurrentVotes,
+            primary_error: "RPC eth_call failed with HTTP 500",
+        };
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("transport failure is reported");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(failures.required_failures[0].message.contains("HTTP 500"));
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_falls_back_to_latest_for_missing_historical_state() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_error: "historical state abc is not available",
+        });
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("missing historical state falls back to latest");
+
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("777".to_owned())
+        );
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200), BlockReadMode::Latest]
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_skips_optional_historical_direct_fallback() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_error: "historical state abc is not available",
+        });
+        let contracts = ChainContracts {
+            governor: "0x1000000000000000000000000000000000000000".to_owned(),
+            governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+            timelock: None,
+        };
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            contracts.clone(),
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_optional_enrichment_read(
+            contracts.governor_token,
+            ChainReadMethod::BalanceOf,
+            vec!["0x0000000000000000000000000000000000000001".to_owned()],
+            BlockReadMode::AtBlock(200),
+        );
+
+        let report = tool.execute_read_plan_partial(&builder.build());
+
+        assert_eq!(report.results, vec![]);
+        assert_eq!(report.partial_failures.required_failures, vec![]);
+        assert_eq!(report.partial_failures.optional_failures.len(), 1);
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200)]
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_preserves_required_fallback_in_mixed_historical_group() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_error: "historical state abc is not available",
+        });
+        let contracts = ChainContracts {
+            governor: "0x1000000000000000000000000000000000000000".to_owned(),
+            governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+            timelock: None,
+        };
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            contracts.clone(),
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_optional_enrichment_read(
+            contracts.governor_token,
+            ChainReadMethod::BalanceOf,
+            vec!["0x0000000000000000000000000000000000000002".to_owned()],
+            BlockReadMode::AtBlock(200),
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("required read falls back when optional read cannot use latest");
+
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("777".to_owned())
+        );
+        assert_eq!(report.partial_failures.required_failures, vec![]);
+        assert_eq!(report.partial_failures.optional_failures.len(), 1);
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![
+                BlockReadMode::AtBlock(200),
+                BlockReadMode::AtBlock(200),
+                BlockReadMode::Latest,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_retries_historical_state_multicall_at_latest() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(LatestMulticallFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_result: Err("historical state abc is not available"),
+        });
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let plan = builder.build();
+        let report = tool
+            .execute_read_plan(&plan)
+            .expect("historical aggregate falls back to latest aggregate");
+
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200), BlockReadMode::Latest]
+        );
+        assert_eq!(report.results.len(), 2);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("700".to_owned())
+        );
+        assert_eq!(
+            report.results[1].value,
+            ChainReadValue::Integer("701".to_owned())
+        );
+
+        let cached = tool
+            .execute_read_plan(&plan)
+            .expect("latest aggregate results are cached under original read keys");
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200), BlockReadMode::Latest]
+        );
+        assert_eq!(cached.metrics.executed_rpc_calls, 0);
+        assert_eq!(cached.metrics.cache_hits, 2);
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_does_not_fallback_to_latest_for_transport_error() {
+        let block_modes = Arc::new(Mutex::new(Vec::new()));
+        let tool = EvmRpcChainTool::from_rpc_client(HistoricalStateFallbackMockEvmRpcClient {
+            block_modes: block_modes.clone(),
+            at_block_error: "RPC eth_call failed with HTTP 500",
+        });
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_balance_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let failures = tool
+            .execute_read_plan(&builder.build())
+            .expect_err("transport error does not fall back to latest");
+
+        assert_eq!(failures.required_failures.len(), 1);
+        assert!(failures.required_failures[0].message.contains("HTTP 500"));
+        assert_eq!(
+            *block_modes.lock().expect("block mode lock"),
+            vec![BlockReadMode::AtBlock(200)]
+        );
     }
 
     #[test]
@@ -3791,7 +6795,7 @@ mod tests {
             .execute_read_plan(&builder.build())
             .expect("required read survives optional multicall failure");
 
-        assert_eq!(report.metrics.executed_rpc_calls, 1);
+        assert_eq!(report.metrics.executed_rpc_calls, 2);
         assert_eq!(report.results.len(), 1);
         assert_eq!(
             report.results[0].value,
@@ -3799,6 +6803,97 @@ mod tests {
         );
         assert_eq!(report.partial_failures.required_failures.len(), 0);
         assert_eq!(report.partial_failures.optional_failures.len(), 1);
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_partial_report_keeps_successes_when_required_multicall_item_fails() {
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000002",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+        let plan = builder.build();
+
+        let failure = EvmRpcChainTool::from_rpc_client(RequiredPartialFailureMockEvmRpcClient)
+            .execute_read_plan(&plan)
+            .expect_err("required failure still fails regular read plan");
+        assert_eq!(failure.required_failures.len(), 1);
+        assert_eq!(
+            failure.required_failures[0].kind,
+            ChainReadFailureKind::Transport
+        );
+        assert!(failure.required_failures[0].retryable);
+        assert!(
+            failure.required_failures[0]
+                .message
+                .contains("alternate current power method eth_call failed")
+        );
+
+        let tool = EvmRpcChainTool::from_rpc_client(RequiredPartialFailureMockEvmRpcClient);
+        let report = tool.execute_read_plan_partial(&plan);
+
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("100".to_owned())
+        );
+        assert_eq!(report.partial_failures.required_failures.len(), 1);
+        assert_eq!(report.metrics.executed_rpc_calls, 2);
+    }
+
+    #[test]
+    fn test_evm_rpc_chain_tool_retries_power_method_fallback_transport_error_after_multicall_subcall_failure()
+     {
+        let rpc = RetryingPowerMethodFallbackMockEvmRpcClient::default();
+        let calls = rpc.eth_call_count.clone();
+        let tool = EvmRpcChainTool::from_rpc_client(rpc);
+        let mut builder = ChainReadPlanBuilder::new(
+            1,
+            ChainContracts {
+                governor: "0x1000000000000000000000000000000000000000".to_owned(),
+                governor_token: "0x2000000000000000000000000000000000000000".to_owned(),
+                timelock: None,
+            },
+            BatchReadPlanConfig {
+                max_concurrency: 4,
+                multicall_batch_size: 10,
+            },
+        );
+        builder.add_account_power_refresh(
+            "0x0000000000000000000000000000000000000001",
+            200,
+            crate::ChainReadReason::TokenActivityPowerRefresh,
+        );
+
+        let report = tool
+            .execute_read_plan(&builder.build())
+            .expect("power method fallback retries after transient transport error");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(report.metrics.executed_rpc_calls, 3);
+        assert_eq!(report.metrics.retries, 1);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(
+            report.results[0].value,
+            ChainReadValue::Integer("250".to_owned())
+        );
     }
 
     #[test]

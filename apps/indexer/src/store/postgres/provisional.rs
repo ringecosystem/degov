@@ -51,9 +51,25 @@ impl PostgresProvisionalCleanupStore {
                 &segment_ids,
             )
             .await?,
+            proposal_event_overlays_marked_finalized: mark_finalized_overlay_table(
+                &mut transaction,
+                "degov_provisional_proposal_event_overlay",
+                identity,
+                source,
+                &segment_ids,
+            )
+            .await?,
             timelock_overlays_marked_finalized: mark_finalized_overlay_table(
                 &mut transaction,
                 "degov_provisional_timelock_operation_overlay",
+                identity,
+                source,
+                &segment_ids,
+            )
+            .await?,
+            vote_overlays_marked_finalized: mark_finalized_overlay_table(
+                &mut transaction,
+                "degov_provisional_vote_cast_group_overlay",
                 identity,
                 source,
                 &segment_ids,
@@ -96,9 +112,21 @@ impl PostgresProvisionalCleanupStore {
                 scope,
             )
             .await?,
+            proposal_event_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                &mut transaction,
+                "degov_provisional_proposal_event_overlay",
+                scope,
+            )
+            .await?,
             timelock_overlays_marked_invalid: mark_available_overlay_table_invalid(
                 &mut transaction,
                 "degov_provisional_timelock_operation_overlay",
+                scope,
+            )
+            .await?,
+            vote_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                &mut transaction,
+                "degov_provisional_vote_cast_group_overlay",
                 scope,
             )
             .await?,
@@ -169,6 +197,32 @@ impl DatalensProvisionalSegmentStore for PostgresProvisionalSegmentStore {
         block_on_runtime(PostgresProvisionalSegmentStore::write_provisional_segments(
             self, segments,
         ))
+    }
+}
+
+impl ProvisionalProposalOverlayStore for PostgresProvisionalSegmentStore {
+    type Error = PostgresIndexerRunnerStoreError;
+
+    fn write_proposal_overlays(
+        &mut self,
+        proposals: &[ProvisionalProposalOverlayWrite],
+        proposal_events: &[ProvisionalProposalEventOverlayWrite],
+        timelocks: &[ProvisionalTimelockOperationOverlayWrite],
+    ) -> Result<(), Self::Error> {
+        let store = PostgresProvisionalProposalOverlayStore::new(self.pool.clone());
+        block_on_runtime(store.write_proposal_overlays(proposals, proposal_events, timelocks))
+    }
+}
+
+impl ProvisionalVoteOverlayStore for PostgresProvisionalSegmentStore {
+    type Error = PostgresIndexerRunnerStoreError;
+
+    fn write_vote_overlays(
+        &mut self,
+        votes: &[ProvisionalVoteCastGroupOverlayWrite],
+    ) -> Result<(), Self::Error> {
+        let store = PostgresProvisionalVoteOverlayStore::new(self.pool.clone());
+        block_on_runtime(store.write_vote_overlays(votes))
     }
 }
 
@@ -252,11 +306,15 @@ impl PostgresProvisionalProposalOverlayStore {
     pub async fn write_proposal_overlays(
         &self,
         proposals: &[ProvisionalProposalOverlayWrite],
+        proposal_events: &[ProvisionalProposalEventOverlayWrite],
         timelocks: &[ProvisionalTimelockOperationOverlayWrite],
     ) -> Result<(), PostgresIndexerRunnerStoreError> {
         let mut transaction = self.pool.begin().await?;
         for proposal in proposals {
             upsert_provisional_proposal_overlay(&mut transaction, proposal).await?;
+        }
+        for proposal_event in proposal_events {
+            upsert_provisional_proposal_event_overlay(&mut transaction, proposal_event).await?;
         }
         for timelock in timelocks {
             upsert_provisional_timelock_operation_overlay(&mut transaction, timelock).await?;
@@ -273,10 +331,51 @@ impl ProvisionalProposalOverlayStore for PostgresProvisionalProposalOverlayStore
     fn write_proposal_overlays(
         &mut self,
         proposals: &[ProvisionalProposalOverlayWrite],
+        proposal_events: &[ProvisionalProposalEventOverlayWrite],
         timelocks: &[ProvisionalTimelockOperationOverlayWrite],
     ) -> Result<(), Self::Error> {
         block_on_runtime(PostgresProvisionalProposalOverlayStore::write_proposal_overlays(
-            self, proposals, timelocks,
+            self,
+            proposals,
+            proposal_events,
+            timelocks,
+        ))
+    }
+}
+
+#[derive(Clone)]
+pub struct PostgresProvisionalVoteOverlayStore {
+    pool: PgPool,
+}
+
+impl PostgresProvisionalVoteOverlayStore {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn write_vote_overlays(
+        &self,
+        votes: &[ProvisionalVoteCastGroupOverlayWrite],
+    ) -> Result<(), PostgresIndexerRunnerStoreError> {
+        let mut transaction = self.pool.begin().await?;
+        for vote in votes {
+            upsert_provisional_vote_cast_group_overlay(&mut transaction, vote).await?;
+        }
+        transaction.commit().await?;
+
+        Ok(())
+    }
+}
+
+impl ProvisionalVoteOverlayStore for PostgresProvisionalVoteOverlayStore {
+    type Error = PostgresIndexerRunnerStoreError;
+
+    fn write_vote_overlays(
+        &mut self,
+        votes: &[ProvisionalVoteCastGroupOverlayWrite],
+    ) -> Result<(), Self::Error> {
+        block_on_runtime(PostgresProvisionalVoteOverlayStore::write_vote_overlays(
+            self, votes,
         ))
     }
 }
@@ -509,6 +608,8 @@ async fn upsert_provisional_proposal_overlay(
         .bind(&proposal.dao_code)
         .bind(&proposal.governor_address)
         .bind(&proposal.contract_address)
+        .bind(proposal.log_index)
+        .bind(proposal.transaction_index)
         .bind(&proposal.proposal_id)
         .bind(&proposal.proposer)
         .bind(&proposal.targets)
@@ -528,6 +629,10 @@ async fn upsert_provisional_proposal_overlay(
         .bind(&proposal.proposal_eta)
         .bind(&proposal.queue_ready_at)
         .bind(&proposal.queue_expires_at)
+        .bind(&proposal.block_number)
+        .bind(&proposal.block_timestamp)
+        .bind(&proposal.transaction_hash)
+        .bind(&proposal.block_interval)
         .bind(&proposal.counting_mode)
         .bind(&proposal.timelock_address)
         .bind(&proposal.timelock_grace_period)
@@ -540,6 +645,39 @@ async fn upsert_provisional_proposal_overlay(
         .bind(&proposal.anchor_block_hash)
         .bind(&proposal.anchor_parent_hash)
         .bind(&proposal.anchor_block_timestamp)
+        .execute(&mut **transaction)
+        .await?;
+
+    Ok(())
+}
+
+async fn upsert_provisional_proposal_event_overlay(
+    transaction: &mut Transaction<'_, Postgres>,
+    proposal_event: &ProvisionalProposalEventOverlayWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(UPSERT_PROVISIONAL_PROPOSAL_EVENT_OVERLAY_SQL)
+        .bind(&proposal_event.id)
+        .bind(&proposal_event.segment_id)
+        .bind(&proposal_event.contract_set_id)
+        .bind(proposal_event.chain_id)
+        .bind(&proposal_event.chain_name)
+        .bind(&proposal_event.dao_code)
+        .bind(&proposal_event.governor_address)
+        .bind(&proposal_event.contract_address)
+        .bind(&proposal_event.event_type)
+        .bind(proposal_event.log_index)
+        .bind(proposal_event.transaction_index)
+        .bind(&proposal_event.proposal_id)
+        .bind(&proposal_event.eta_seconds)
+        .bind(&proposal_event.block_number)
+        .bind(&proposal_event.block_timestamp)
+        .bind(&proposal_event.transaction_hash)
+        .bind(&proposal_event.source)
+        .bind(&proposal_event.status)
+        .bind(&proposal_event.anchor_block_number)
+        .bind(&proposal_event.anchor_block_hash)
+        .bind(&proposal_event.anchor_parent_hash)
+        .bind(&proposal_event.anchor_block_timestamp)
         .execute(&mut **transaction)
         .await?;
 
@@ -720,6 +858,44 @@ async fn upsert_provisional_delegate_power_overlay(
     Ok(())
 }
 
+async fn upsert_provisional_vote_cast_group_overlay(
+    transaction: &mut Transaction<'_, Postgres>,
+    vote: &ProvisionalVoteCastGroupOverlayWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(UPSERT_PROVISIONAL_VOTE_CAST_GROUP_OVERLAY_SQL)
+        .bind(&vote.id)
+        .bind(&vote.segment_id)
+        .bind(&vote.contract_set_id)
+        .bind(vote.chain_id)
+        .bind(&vote.chain_name)
+        .bind(&vote.dao_code)
+        .bind(&vote.governor_address)
+        .bind(&vote.contract_address)
+        .bind(vote.log_index)
+        .bind(vote.transaction_index)
+        .bind(&vote.proposal_id)
+        .bind(&vote.kind)
+        .bind(&vote.voter)
+        .bind(&vote.ref_proposal_id)
+        .bind(vote.support)
+        .bind(&vote.weight)
+        .bind(&vote.reason)
+        .bind(&vote.params)
+        .bind(&vote.block_number)
+        .bind(&vote.block_timestamp)
+        .bind(&vote.transaction_hash)
+        .bind(&vote.source)
+        .bind(&vote.status)
+        .bind(&vote.anchor_block_number)
+        .bind(&vote.anchor_block_hash)
+        .bind(&vote.anchor_parent_hash)
+        .bind(&vote.anchor_block_timestamp)
+        .execute(&mut **transaction)
+        .await?;
+
+    Ok(())
+}
+
 const UPSERT_PROVISIONAL_CONTRIBUTOR_POWER_OVERLAY_SQL: &str =
     "INSERT INTO degov_provisional_contributor_power_overlay (
              id, segment_id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
@@ -745,6 +921,78 @@ const UPSERT_PROVISIONAL_CONTRIBUTOR_POWER_OVERLAY_SQL: &str =
              delegates_count_effective = EXCLUDED.delegates_count_effective,
              last_vote_block_number = EXCLUDED.last_vote_block_number,
              last_vote_timestamp = EXCLUDED.last_vote_timestamp,
+             status = EXCLUDED.status,
+             anchor_block_number = EXCLUDED.anchor_block_number,
+             anchor_block_hash = EXCLUDED.anchor_block_hash,
+             anchor_parent_hash = EXCLUDED.anchor_parent_hash,
+             anchor_block_timestamp = EXCLUDED.anchor_block_timestamp,
+             updated_at = now()";
+
+const UPSERT_PROVISIONAL_VOTE_CAST_GROUP_OVERLAY_SQL: &str =
+    "INSERT INTO degov_provisional_vote_cast_group_overlay (
+             id, segment_id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+             contract_address, log_index, transaction_index, proposal_id, type, voter,
+             ref_proposal_id, support, weight, reason, params, block_number, block_timestamp,
+             transaction_hash, source, status, anchor_block_number, anchor_block_hash,
+             anchor_parent_hash, anchor_block_timestamp
+         )
+         VALUES (
+             $1, $2, $3, $4, $5, $6, $7,
+             $8, $9, $10, $11, $12, $13,
+             $14, $15, $16::NUMERIC(78, 0), $17, $18,
+             $19::NUMERIC(78, 0), $20::NUMERIC(78, 0),
+             $21, $22, $23, $24::NUMERIC(78, 0), $25,
+             $26, $27::NUMERIC(78, 0)
+         )
+         ON CONFLICT ON CONSTRAINT degov_provisional_vote_cast_group_overlay_scope_unique
+         DO UPDATE SET
+             segment_id = EXCLUDED.segment_id,
+             contract_address = EXCLUDED.contract_address,
+             log_index = EXCLUDED.log_index,
+             transaction_index = EXCLUDED.transaction_index,
+             proposal_id = EXCLUDED.proposal_id,
+             type = EXCLUDED.type,
+             voter = EXCLUDED.voter,
+             ref_proposal_id = EXCLUDED.ref_proposal_id,
+             support = EXCLUDED.support,
+             weight = EXCLUDED.weight,
+             reason = EXCLUDED.reason,
+             params = EXCLUDED.params,
+             block_number = EXCLUDED.block_number,
+             block_timestamp = EXCLUDED.block_timestamp,
+             transaction_hash = EXCLUDED.transaction_hash,
+             status = EXCLUDED.status,
+             anchor_block_number = EXCLUDED.anchor_block_number,
+             anchor_block_hash = EXCLUDED.anchor_block_hash,
+             anchor_parent_hash = EXCLUDED.anchor_parent_hash,
+             anchor_block_timestamp = EXCLUDED.anchor_block_timestamp,
+             updated_at = now()";
+
+const UPSERT_PROVISIONAL_PROPOSAL_EVENT_OVERLAY_SQL: &str =
+    "INSERT INTO degov_provisional_proposal_event_overlay (
+             id, segment_id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
+             contract_address, event_type, log_index, transaction_index, proposal_id,
+             eta_seconds, block_number, block_timestamp, transaction_hash, source, status,
+             anchor_block_number, anchor_block_hash, anchor_parent_hash, anchor_block_timestamp
+         )
+         VALUES (
+             $1, $2, $3, $4, $5, $6, $7,
+             $8, $9, $10, $11, $12,
+             $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15::NUMERIC(78, 0),
+             $16, $17, $18, $19::NUMERIC(78, 0), $20, $21, $22::NUMERIC(78, 0)
+         )
+         ON CONFLICT ON CONSTRAINT degov_provisional_proposal_event_overlay_scope_unique
+         DO UPDATE SET
+             segment_id = EXCLUDED.segment_id,
+             contract_address = EXCLUDED.contract_address,
+             event_type = EXCLUDED.event_type,
+             log_index = EXCLUDED.log_index,
+             transaction_index = EXCLUDED.transaction_index,
+             proposal_id = EXCLUDED.proposal_id,
+             eta_seconds = EXCLUDED.eta_seconds,
+             block_number = EXCLUDED.block_number,
+             block_timestamp = EXCLUDED.block_timestamp,
+             transaction_hash = EXCLUDED.transaction_hash,
              status = EXCLUDED.status,
              anchor_block_number = EXCLUDED.anchor_block_number,
              anchor_block_hash = EXCLUDED.anchor_block_hash,
@@ -779,28 +1027,33 @@ const UPSERT_PROVISIONAL_DELEGATE_POWER_OVERLAY_SQL: &str =
 const UPSERT_PROVISIONAL_PROPOSAL_OVERLAY_SQL: &str =
     "INSERT INTO degov_provisional_proposal_overlay (
              id, segment_id, contract_set_id, chain_id, chain_name, dao_code, governor_address,
-             contract_address, proposal_id, proposer, targets, values, signatures, calldatas,
+             contract_address, log_index, transaction_index, proposal_id, proposer, targets,
+             values, signatures, calldatas,
              vote_start, vote_end, description, title, state, vote_start_timestamp,
              vote_end_timestamp, description_hash, proposal_snapshot, proposal_deadline,
-             proposal_eta, queue_ready_at, queue_expires_at, counting_mode, timelock_address,
+             proposal_eta, queue_ready_at, queue_expires_at, block_number, block_timestamp,
+             transaction_hash, block_interval, counting_mode, timelock_address,
              timelock_grace_period, clock_mode, quorum, decimals, source, status,
              anchor_block_number, anchor_block_hash, anchor_parent_hash, anchor_block_timestamp
          )
          VALUES (
              $1, $2, $3, $4, $5, $6, $7,
-             $8, $9, $10, $11, $12, $13, $14,
-             $15::NUMERIC(78, 0), $16::NUMERIC(78, 0), $17, $18, $19,
-             $20::NUMERIC(78, 0), $21::NUMERIC(78, 0), $22,
-             $23::NUMERIC(78, 0), $24::NUMERIC(78, 0), $25::NUMERIC(78, 0),
-             $26::NUMERIC(78, 0), $27::NUMERIC(78, 0), $28, $29,
-             $30::NUMERIC(78, 0), $31, $32::NUMERIC(78, 0), $33::NUMERIC(78, 0),
-             $34, $35, $36::NUMERIC(78, 0), $37, $38, $39::NUMERIC(78, 0)
+             $8, $9, $10, $11, $12, $13, $14, $15, $16,
+             $17::NUMERIC(78, 0), $18::NUMERIC(78, 0), $19, $20, $21,
+             $22::NUMERIC(78, 0), $23::NUMERIC(78, 0), $24,
+             $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27::NUMERIC(78, 0),
+             $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30::NUMERIC(78, 0),
+             $31::NUMERIC(78, 0), $32, $33, $34, $35,
+             $36::NUMERIC(78, 0), $37, $38::NUMERIC(78, 0), $39::NUMERIC(78, 0),
+             $40, $41, $42::NUMERIC(78, 0), $43, $44, $45::NUMERIC(78, 0)
          )
          ON CONFLICT ON CONSTRAINT degov_provisional_proposal_overlay_scope_unique
          DO UPDATE SET
              id = EXCLUDED.id,
              segment_id = EXCLUDED.segment_id,
              contract_address = EXCLUDED.contract_address,
+             log_index = EXCLUDED.log_index,
+             transaction_index = EXCLUDED.transaction_index,
              proposer = EXCLUDED.proposer,
              targets = EXCLUDED.targets,
              values = EXCLUDED.values,
@@ -819,6 +1072,10 @@ const UPSERT_PROVISIONAL_PROPOSAL_OVERLAY_SQL: &str =
              proposal_eta = EXCLUDED.proposal_eta,
              queue_ready_at = EXCLUDED.queue_ready_at,
              queue_expires_at = EXCLUDED.queue_expires_at,
+             block_number = EXCLUDED.block_number,
+             block_timestamp = EXCLUDED.block_timestamp,
+             transaction_hash = EXCLUDED.transaction_hash,
+             block_interval = EXCLUDED.block_interval,
              counting_mode = EXCLUDED.counting_mode,
              timelock_address = EXCLUDED.timelock_address,
              timelock_grace_period = EXCLUDED.timelock_grace_period,
@@ -914,8 +1171,22 @@ mod provisional_segment_sql_tests {
                 .contains("ON CONFLICT ON CONSTRAINT degov_provisional_proposal_overlay_scope_unique")
         );
         assert!(
+            UPSERT_PROVISIONAL_PROPOSAL_EVENT_OVERLAY_SQL.contains(
+                "ON CONFLICT ON CONSTRAINT degov_provisional_proposal_event_overlay_scope_unique"
+            )
+        );
+        assert!(
             UPSERT_PROVISIONAL_TIMELOCK_OPERATION_OVERLAY_SQL.contains(
                 "ON CONFLICT ON CONSTRAINT degov_provisional_timelock_operation_overlay_scope_unique"
+            )
+        );
+    }
+
+    #[test]
+    fn test_provisional_vote_overlay_upserts_target_scope_constraint() {
+        assert!(
+            UPSERT_PROVISIONAL_VOTE_CAST_GROUP_OVERLAY_SQL.contains(
+                "ON CONFLICT ON CONSTRAINT degov_provisional_vote_cast_group_overlay_scope_unique"
             )
         );
     }

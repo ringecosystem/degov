@@ -65,11 +65,13 @@ pub struct Proposal {
     pub(super) vote_start_timestamp: String,
     pub(super) vote_end_timestamp: String,
     pub(super) block_interval: Option<String>,
+    pub(super) description_hash: Option<String>,
     pub(super) clock_mode: String,
     pub(super) proposal_deadline: Option<String>,
     pub(super) proposal_eta: Option<String>,
     pub(super) queue_ready_at: Option<String>,
     pub(super) queue_expires_at: Option<String>,
+    pub(super) counting_mode: Option<String>,
     pub(super) quorum: String,
     pub(super) decimals: String,
     pub(super) timelock_address: Option<String>,
@@ -147,6 +149,7 @@ pub struct DataMetric {
     pub(super) contributor_count: Option<i32>,
     pub(super) holders_count: Option<i32>,
     pub(super) member_count: Option<i32>,
+    pub(super) delegate_profiles_count: Option<i32>,
 }
 
 #[derive(Clone, Debug, FromRow, SimpleObject)]
@@ -203,6 +206,7 @@ pub struct IndexerStatus {
     pub(super) chain_id: i32,
     pub(super) contract_set_id: String,
     pub(super) processed_height: Option<i64>,
+    pub(super) provisional_height: Option<i64>,
     pub(super) target_height: Option<i64>,
     pub(super) synced_percentage: Option<f64>,
     pub(super) is_synced: bool,
@@ -419,6 +423,12 @@ pub struct ScopeWhereInput {
 pub struct ProposalWhereInput {
     #[graphql(flatten)]
     pub(super) scope: ScopeWhereInput,
+    #[graphql(name = "blockNumber_eq")]
+    pub(super) block_number_eq: Option<String>,
+    #[graphql(name = "blockNumber_gt")]
+    pub(super) block_number_gt: Option<String>,
+    #[graphql(name = "id_gt")]
+    pub(super) id_gt: Option<String>,
     #[graphql(name = "proposalId_eq")]
     pub(super) proposal_id_eq: Option<String>,
     #[graphql(name = "proposer_eq")]
@@ -427,6 +437,10 @@ pub struct ProposalWhereInput {
     pub(super) description_contains_insensitive: Option<String>,
     #[graphql(name = "voters_some")]
     pub(super) voters_some: Option<VoteCastGroupWhereInput>,
+    #[graphql(name = "voteEndTimestamp_gte")]
+    pub(super) vote_end_timestamp_gte: Option<String>,
+    #[graphql(name = "voteEndTimestamp_lt")]
+    pub(super) vote_end_timestamp_lt: Option<String>,
     #[graphql(name = "OR")]
     pub(super) or: Option<Vec<ProposalWhereInput>>,
 }
@@ -434,6 +448,8 @@ pub struct ProposalWhereInput {
 #[derive(Clone, Debug, Default, InputObject)]
 #[graphql(rename_fields = "camelCase")]
 pub struct VoteCastGroupWhereInput {
+    #[graphql(name = "id_eq")]
+    pub(super) id_eq: Option<String>,
     #[graphql(name = "voter_eq")]
     pub(super) voter_eq: Option<String>,
     #[graphql(name = "support_eq")]
@@ -512,6 +528,8 @@ pub struct ContributorWhereInput {
     pub(super) id_not_eq: Option<String>,
     #[graphql(name = "power_lt")]
     pub(super) power_lt: Option<i64>,
+    #[graphql(name = "delegatesCountAll_gt")]
+    pub(super) delegates_count_all_gt: Option<i32>,
     #[graphql(name = "OR")]
     pub(super) or: Option<Vec<ContributorWhereInput>>,
 }
@@ -547,6 +565,10 @@ pub struct DelegateMappingWhereInput {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Enum)]
 #[graphql(rename_items = "camelCase")]
 pub enum ProposalOrderByInput {
+    #[graphql(name = "blockNumber_ASC_NULLS_FIRST")]
+    BlockNumberAscNullsFirst,
+    #[graphql(name = "blockTimestamp_ASC_NULLS_FIRST")]
+    BlockTimestampAscNullsFirst,
     #[graphql(name = "blockTimestamp_DESC_NULLS_LAST")]
     BlockTimestampDescNullsLast,
     #[graphql(name = "id_ASC")]

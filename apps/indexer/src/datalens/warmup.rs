@@ -238,30 +238,33 @@ impl DatalensWarmupEnsurer for crate::DatalensNativeClient {
         &mut self,
         request: DatalensWarmupSubmitRequest,
     ) -> Result<DatalensWarmupEnsureOutcome, DatalensError> {
-        self.submit_warmup_task(request)
+        self.ensure_warmup_task_http(request)
     }
 }
 
 impl crate::DatalensNativeClient {
-    pub(crate) fn submit_warmup_task(
+    pub(crate) fn ensure_warmup_task_http(
         &self,
         request: DatalensWarmupSubmitRequest,
     ) -> Result<DatalensWarmupEnsureOutcome, DatalensError> {
         let response = self
             .blocking_http()
-            .post(format!("{}/v1/warmup/tasks", self.service_base_endpoint()))
+            .post(format!(
+                "{}/v1/warmup/tasks/ensure",
+                self.service_base_endpoint()
+            ))
             .bearer_auth(self.bearer_token())
             .header("x-datalens-application", self.application())
             .json(&warmup_api_request(request))
             .send()
-            .map_err(|error| DatalensError::Warmup(format!("submit warmup task: {error}")))?;
+            .map_err(|error| DatalensError::Warmup(format!("ensure warmup task: {error}")))?;
         let status = response.status().as_u16();
         let body = response
             .text()
             .map_err(|error| DatalensError::Warmup(format!("read warmup response: {error}")))?;
         if !(200..300).contains(&status) {
             return Err(DatalensError::Warmup(format!(
-                "Datalens warmup submit failed with status {status}: {body}"
+                "Datalens warmup ensure failed with status {status}: {body}"
             )));
         }
         let response: WarmupSubmitResponse = serde_json::from_str(&body)

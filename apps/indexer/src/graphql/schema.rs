@@ -90,7 +90,28 @@ impl QueryRoot {
               block_number::text AS block_number,
               (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
               transaction_hash
-            FROM proposal_queued
+            FROM (
+              SELECT id, chain_id, dao_code, governor_address, proposal_id, eta_seconds,
+                block_number, block_timestamp, transaction_hash
+              FROM proposal_queued
+              UNION ALL
+              SELECT event_overlay.id, event_overlay.chain_id, event_overlay.dao_code,
+                event_overlay.governor_address, event_overlay.proposal_id,
+                COALESCE(event_overlay.eta_seconds, 0) AS eta_seconds,
+                event_overlay.block_number, event_overlay.block_timestamp,
+                event_overlay.transaction_hash
+              FROM degov_provisional_proposal_event_overlay event_overlay
+              WHERE event_overlay.status = 'available'
+                AND event_overlay.event_type = 'proposal_queued'
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM proposal_queued durable_event
+                  WHERE durable_event.id = event_overlay.id
+                    AND durable_event.chain_id IS NOT DISTINCT FROM event_overlay.chain_id
+                    AND durable_event.dao_code IS NOT DISTINCT FROM event_overlay.dao_code
+                    AND durable_event.governor_address IS NOT DISTINCT FROM event_overlay.governor_address
+                )
+            ) proposal_queued
             "#,
         );
         push_event_where(&mut query, scope(ctx)?, where_.as_ref());
@@ -283,6 +304,14 @@ impl QueryRoot {
         })
     }
 
+    async fn delegate_profiles_count(
+        &self,
+        ctx: &Context<'_>,
+        where_: Option<DelegateWhereInput>,
+    ) -> GraphqlResult<i64> {
+        count_delegate_profiles(pool(ctx)?, scope(ctx)?, where_.as_ref()).await
+    }
+
     async fn delegate_mappings_page(
         &self,
         ctx: &Context<'_>,
@@ -371,7 +400,26 @@ impl Proposal {
               block_number::text AS block_number,
               (CASE WHEN block_timestamp < 1000000000000 THEN block_timestamp * 1000 ELSE block_timestamp END)::text AS block_timestamp,
               transaction_hash
-            FROM vote_cast_group
+            FROM (
+              SELECT id, contract_set_id, chain_id, dao_code, governor_address, proposal_id,
+                ref_proposal_id, type, params, voter, support, weight, reason, block_number,
+                block_timestamp, transaction_hash
+              FROM vote_cast_group
+              UNION ALL
+              SELECT vote_overlay.id, vote_overlay.contract_set_id, vote_overlay.chain_id,
+                vote_overlay.dao_code, vote_overlay.governor_address, vote_overlay.proposal_id,
+                vote_overlay.ref_proposal_id, vote_overlay.type, vote_overlay.params,
+                vote_overlay.voter, vote_overlay.support, vote_overlay.weight, vote_overlay.reason,
+                vote_overlay.block_number, vote_overlay.block_timestamp, vote_overlay.transaction_hash
+              FROM degov_provisional_vote_cast_group_overlay vote_overlay
+              WHERE vote_overlay.status = 'available'
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM vote_cast_group durable_vote
+                  WHERE durable_vote.contract_set_id = vote_overlay.contract_set_id
+                    AND durable_vote.id = vote_overlay.id
+                )
+            ) vote_cast_group
             "#,
         );
         query

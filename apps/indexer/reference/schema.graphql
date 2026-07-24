@@ -618,6 +618,7 @@ type DataMetric @entity @index(fields: ["chainId", "governorAddress", "daoCode"]
   contributorCount: Int
   holdersCount: Int
   memberCount: Int
+  delegateProfilesCount: Int
 }
 
 

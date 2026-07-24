@@ -1,8 +1,8 @@
 import { unstable_cache } from "next/cache";
 import { headers } from "next/headers";
 
-import { loadConfigYaml } from "@/lib/config-yaml";
 import { getDaoConfigServer } from "@/lib/config";
+import { loadConfigYaml } from "@/lib/config-yaml";
 import type { Config } from "@/types/config";
 import { degovApiDaoConfigServer } from "@/utils/remote-api";
 
@@ -38,12 +38,17 @@ export async function getConfigCachedByHost(): Promise<Config> {
 
   const get = unstable_cache(
     async () => {
-      try {
-        const apiUrl = degovApiDaoConfigServer();
-        if (!apiUrl) {
-          return getDaoConfigServer();
-        }
+      const apiUrl = degovApiDaoConfigServer();
+      if (!apiUrl) {
+        return getDaoConfigServer();
+      }
 
+      const requiresOrigin = !process.env.NEXT_PUBLIC_DEGOV_DAO;
+      if (requiresOrigin && !resolvedOrigin) {
+        throw new Error("Unable to resolve request origin for remote config.");
+      }
+
+      try {
         console.log(`[Cache] MISS: Fetching remote config for origin: ${resolvedOrigin}`);
         const res = await fetch(apiUrl, {
           headers: resolvedOrigin ? { Origin: resolvedOrigin } : undefined,
@@ -56,8 +61,8 @@ export async function getConfigCachedByHost(): Promise<Config> {
 
         return result;
       } catch (err) {
-        console.error("[Cache] Remote config failed, fallback to local:", err);
-        return getDaoConfigServer();
+        console.error("[Cache] Remote config failed:", err);
+        throw err;
       }
     },
     ["metadata-config", hostKey],

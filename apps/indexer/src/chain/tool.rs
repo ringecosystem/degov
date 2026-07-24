@@ -204,6 +204,23 @@ pub trait ChainTool {
         &self,
         plan: &ChainReadPlan,
     ) -> Result<ChainReadExecutionReport, PartialChainReadFailureReport>;
+
+    fn execute_read_plan_partial(&self, plan: &ChainReadPlan) -> ChainReadExecutionReport {
+        match self.execute_read_plan(plan) {
+            Ok(report) => report,
+            Err(failures) => ChainReadExecutionReport {
+                metrics: ChainReadMetrics {
+                    requested_reads: plan.metrics.requested_reads,
+                    deduped_reads: plan.metrics.deduped_reads,
+                    multicall_batch_size: plan.metrics.multicall_batch_size,
+                    failures: failures.required_failures.len() + failures.optional_failures.len(),
+                    ..ChainReadMetrics::default()
+                },
+                partial_failures: failures,
+                ..ChainReadExecutionReport::default()
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -320,7 +337,7 @@ impl ChainReadPlanBuilder {
             activity_block,
             reason,
             method,
-            BlockReadMode::Safe,
+            BlockReadMode::AtBlock(activity_block),
         );
     }
 
@@ -368,12 +385,41 @@ impl ChainReadPlanBuilder {
         activity_block: u64,
         reason: ChainReadReason,
     ) {
+        self.add_account_balance_refresh_with_block_mode(
+            account,
+            activity_block,
+            reason,
+            BlockReadMode::AtBlock(activity_block),
+        );
+    }
+
+    pub fn add_account_latest_balance_refresh(
+        &mut self,
+        account: &str,
+        activity_block: u64,
+        reason: ChainReadReason,
+    ) {
+        self.add_account_balance_refresh_with_block_mode(
+            account,
+            activity_block,
+            reason,
+            BlockReadMode::Latest,
+        );
+    }
+
+    fn add_account_balance_refresh_with_block_mode(
+        &mut self,
+        account: &str,
+        activity_block: u64,
+        reason: ChainReadReason,
+        block_mode: BlockReadMode,
+    ) {
         let account = normalize_identifier(account);
         self.add_required_read(ChainReadDraft {
             contract_address: self.contracts.governor_token.clone(),
             method: ChainReadMethod::BalanceOf,
             args: vec![account.clone()],
-            block_mode: BlockReadMode::Safe,
+            block_mode,
             account: Some(account),
             proposal_id: None,
             operation_id: None,

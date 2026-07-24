@@ -22,6 +22,7 @@ pub trait DatalensNativeReader {
 
 pub trait DatalensDurableHeadReader {
     fn durable_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError>;
+    fn latest_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -40,6 +41,7 @@ pub struct DatalensNativeClient {
     query_key: DatalensQueryConcurrencyKey,
     query_timeout: Duration,
     blocking_query_guard: Arc<DatalensBlockingQueryGuard>,
+    blocking_head_guard: Arc<DatalensBlockingQueryGuard>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -98,16 +100,68 @@ struct DatalensBlockingQueryKey {
     endpoint: String,
     application: String,
     query_key: DatalensQueryConcurrencyKey,
+    operation: &'static str,
 }
 
 impl DatalensBlockingQueryKey {
-    fn from_config(config: &DatalensConfig) -> Self {
+    fn from_config(config: &DatalensConfig, operation: &'static str) -> Self {
         Self {
             endpoint: config.endpoint.clone(),
             application: config.application.clone(),
             query_key: DatalensQueryConcurrencyKey::from_config(config),
+            operation,
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct DatalensHeadCacheKey {
+    endpoint: String,
+    application: String,
+    query_key: DatalensQueryConcurrencyKey,
+    finality: &'static str,
+}
+
+impl DatalensHeadCacheKey {
+    fn from_config(config: &DatalensConfig, finality: ChainHeadFinalityInput) -> Self {
+        Self {
+            endpoint: config.endpoint.clone(),
+            application: config.application.clone(),
+            query_key: DatalensQueryConcurrencyKey::from_config(config),
+            finality: head_finality_cache_key(finality),
+        }
+    }
+}
+
+#[derive(Default)]
+struct DatalensHeadCacheState {
+    cached: Option<DatalensHeadCacheValue>,
+    in_flight: bool,
+}
+
+struct DatalensHeadCacheValue {
+    height: i64,
+    cached_at: Instant,
+}
+
+struct DatalensHeadCacheEntry {
+    state: Mutex<DatalensHeadCacheState>,
+    ready: Condvar,
+}
+
+impl DatalensHeadCacheEntry {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(DatalensHeadCacheState::default()),
+            ready: Condvar::new(),
+        }
+    }
+}
+
+enum DatalensHeadCacheAcquire {
+    Cached(i64),
+    Fetch,
+    TimedOut,
 }
 
 #[derive(Clone)]
@@ -128,9 +182,15 @@ struct DatalensQueryConcurrencyGateState {
 }
 
 const MAX_BLOCKING_SDK_WORKERS_PER_KEY: usize = 2;
+const HEAD_HEIGHT_CACHE_TTL: Duration = Duration::from_secs(2);
 
 struct DatalensBlockingQueryGuard {
-    active_workers: Mutex<usize>,
+    state: Mutex<DatalensBlockingQueryGuardState>,
+}
+
+struct DatalensBlockingQueryGuardState {
+    active_workers: usize,
+    max_workers: usize,
 }
 
 struct DatalensBlockingQueryPermit {
@@ -140,26 +200,44 @@ struct DatalensBlockingQueryPermit {
 impl DatalensBlockingQueryGuard {
     fn new() -> Self {
         Self {
-            active_workers: Mutex::new(0),
+            state: Mutex::new(DatalensBlockingQueryGuardState {
+                active_workers: 0,
+                max_workers: MAX_BLOCKING_SDK_WORKERS_PER_KEY,
+            }),
         }
     }
 
-    fn acquire(&self) -> Result<(), DatalensSdkError> {
-        let mut active_workers = self.active_workers.lock().map_err(|_| {
+    fn acquire(&self, operation: &str) -> Result<(), DatalensSdkError> {
+        let mut state = self.state.lock().map_err(|_| {
             DatalensSdkError::Transport("Datalens blocking query guard lock poisoned".to_owned())
         })?;
-        if *active_workers >= MAX_BLOCKING_SDK_WORKERS_PER_KEY {
-            return Err(DatalensSdkError::Transport(format!(
-                "Datalens query timed out because {active_workers} previous SDK queries are still in flight"
-            )));
+        if state.active_workers >= state.max_workers {
+            let message = if operation == "query" {
+                format!(
+                    "Datalens query timed out because {} previous SDK queries are still in flight",
+                    state.active_workers
+                )
+            } else {
+                format!(
+                    "Datalens {operation} timed out because {} previous SDK {operation} workers are still in flight",
+                    state.active_workers
+                )
+            };
+            return Err(DatalensSdkError::Transport(message));
         }
-        *active_workers += 1;
+        state.active_workers += 1;
         Ok(())
     }
 
     fn release(&self) {
-        if let Ok(mut active_workers) = self.active_workers.lock() {
-            *active_workers = active_workers.saturating_sub(1);
+        if let Ok(mut state) = self.state.lock() {
+            state.active_workers = state.active_workers.saturating_sub(1);
+        }
+    }
+
+    fn set_max_workers(&self, max_workers: usize) {
+        if let Ok(mut state) = self.state.lock() {
+            state.max_workers = max_workers.max(1);
         }
     }
 }
@@ -293,6 +371,13 @@ impl DatalensQueryConcurrencyGate {
                         >= limit
                 })
     }
+
+    fn blocking_query_worker_limit(&self) -> Option<usize> {
+        self.inner
+            .config
+            .per_chain_max_in_flight
+            .or(self.inner.config.global_max_in_flight)
+    }
 }
 
 impl Drop for DatalensQueryConcurrencyPermit {
@@ -360,6 +445,13 @@ pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
     DatalensQueryErrorClass::Other
 }
 
+pub fn datalens_query_error_is_current_head_race(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+
+    normalized.contains("invalid_input")
+        && normalized.contains("block range extends beyond current head block")
+}
+
 impl DatalensNativeClient {
     pub fn from_config(config: &DatalensConfig) -> Result<Self, DatalensError> {
         let retry_config = RetryConfig::default();
@@ -379,7 +471,8 @@ impl DatalensNativeClient {
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
-            blocking_query_guard: blocking_query_guard_for_config(config)?,
+            blocking_query_guard: blocking_query_guard_for_config(config, "query")?,
+            blocking_head_guard: blocking_query_guard_for_config(config, "head")?,
         })
     }
 
@@ -415,11 +508,15 @@ impl DatalensNativeClient {
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
-            blocking_query_guard: blocking_query_guard_for_config(config)?,
+            blocking_query_guard: blocking_query_guard_for_config(config, "query")?,
+            blocking_head_guard: blocking_query_guard_for_config(config, "head")?,
         })
     }
 
     pub fn with_query_concurrency_gate(mut self, gate: DatalensQueryConcurrencyGate) -> Self {
+        if let Some(max_workers) = gate.blocking_query_worker_limit() {
+            self.blocking_query_guard.set_max_workers(max_workers);
+        }
         self.query_gate = Some(gate);
         self
     }
@@ -517,39 +614,33 @@ impl DatalensNativeClient {
     }
 
     fn query_with_deadline(&self, input: QueryInput) -> Result<QueryResponse, DatalensSdkError> {
-        self.run_query_with_deadline("query", move |client| client.native().query(input))
+        self.run_query_with_deadline("query", Instant::now(), move |client| {
+            client.native().query(input)
+        })
     }
 
     fn query_provisional_with_deadline(
         &self,
         input: QueryInput,
     ) -> Result<QueryResponse, DatalensSdkError> {
-        self.run_query_with_deadline("provisional query", move |client| {
+        self.run_query_with_deadline("provisional query", Instant::now(), move |client| {
             client.native().query_provisional(input)
         })
     }
 
-    fn run_query_with_deadline<F>(
+    fn run_query_with_deadline<F, R>(
         &self,
         operation: &'static str,
+        started_at: Instant,
         run: F,
-    ) -> Result<QueryResponse, DatalensSdkError>
+    ) -> Result<R, DatalensSdkError>
     where
-        F: FnOnce(DatalensClient) -> Result<QueryResponse, DatalensSdkError> + Send + 'static,
+        F: FnOnce(DatalensClient) -> Result<R, DatalensSdkError> + Send + 'static,
+        R: Send + 'static,
     {
-        let started_at = Instant::now();
-        if let Err(error) = self.blocking_query_guard.acquire() {
-            self.warn_query_timeout(operation, &error);
-            return Err(error);
-        }
-        let blocking_query_permit = DatalensBlockingQueryPermit {
-            guard: self.blocking_query_guard.clone(),
-        };
-
         let permit = match self.acquire_query_concurrency_permit(operation) {
             Ok(DatalensQueryConcurrencyAcquire::Acquired(permit)) => permit,
             Ok(DatalensQueryConcurrencyAcquire::TimedOut) => {
-                drop(blocking_query_permit);
                 let error = datalens_query_timeout_error(
                     operation,
                     self.query_timeout,
@@ -559,12 +650,10 @@ impl DatalensNativeClient {
                 return Err(error);
             }
             Err(error) => {
-                drop(blocking_query_permit);
                 return Err(DatalensSdkError::Transport(error.to_string()));
             }
         };
         let Some(remaining_timeout) = self.query_timeout.checked_sub(started_at.elapsed()) else {
-            drop(blocking_query_permit);
             let error = datalens_query_timeout_error(
                 operation,
                 self.query_timeout,
@@ -572,6 +661,14 @@ impl DatalensNativeClient {
             );
             self.warn_query_timeout(operation, &error);
             return Err(error);
+        };
+        let blocking_guard = self.blocking_guard_for_operation(operation);
+        if let Err(error) = blocking_guard.acquire(operation) {
+            self.warn_query_timeout(operation, &error);
+            return Err(error);
+        }
+        let blocking_query_permit = DatalensBlockingQueryPermit {
+            guard: blocking_guard,
         };
         let (sender, receiver) = mpsc::sync_channel(1);
         let client = self.client.clone();
@@ -607,6 +704,10 @@ impl DatalensNativeClient {
         &self,
         operation: &str,
     ) -> Result<DatalensQueryConcurrencyAcquire, DatalensError> {
+        if operation == "head" {
+            return Ok(DatalensQueryConcurrencyAcquire::Acquired(None));
+        }
+
         let Some(gate) = self.query_gate.as_ref() else {
             return Ok(DatalensQueryConcurrencyAcquire::Acquired(None));
         };
@@ -643,6 +744,14 @@ impl DatalensNativeClient {
             error
         );
     }
+
+    fn blocking_guard_for_operation(&self, operation: &str) -> Arc<DatalensBlockingQueryGuard> {
+        if operation == "head" {
+            self.blocking_head_guard.clone()
+        } else {
+            self.blocking_query_guard.clone()
+        }
+    }
 }
 
 fn fallback_retry_delay(
@@ -670,12 +779,13 @@ fn fallback_retry_delay(
 
 fn blocking_query_guard_for_config(
     config: &DatalensConfig,
+    operation: &'static str,
 ) -> Result<Arc<DatalensBlockingQueryGuard>, DatalensError> {
     static BLOCKING_QUERY_GUARDS: OnceLock<
         Mutex<HashMap<DatalensBlockingQueryKey, Arc<DatalensBlockingQueryGuard>>>,
     > = OnceLock::new();
 
-    let key = DatalensBlockingQueryKey::from_config(config);
+    let key = DatalensBlockingQueryKey::from_config(config, operation);
     let guards = BLOCKING_QUERY_GUARDS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guards = guards.lock().map_err(|_| {
         DatalensError::Query("Datalens blocking query guard lock poisoned".to_owned())
@@ -684,6 +794,82 @@ fn blocking_query_guard_for_config(
         .entry(key)
         .or_insert_with(|| Arc::new(DatalensBlockingQueryGuard::new()))
         .clone())
+}
+
+fn head_cache_entry_for_config(
+    config: &DatalensConfig,
+    finality: ChainHeadFinalityInput,
+) -> Result<Arc<DatalensHeadCacheEntry>, DatalensError> {
+    static HEAD_CACHE_ENTRIES: OnceLock<
+        Mutex<HashMap<DatalensHeadCacheKey, Arc<DatalensHeadCacheEntry>>>,
+    > = OnceLock::new();
+
+    let key = DatalensHeadCacheKey::from_config(config, finality);
+    let entries = HEAD_CACHE_ENTRIES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut entries = entries
+        .lock()
+        .map_err(|_| DatalensError::Query("Datalens head cache lock poisoned".to_owned()))?;
+    Ok(entries
+        .entry(key)
+        .or_insert_with(|| Arc::new(DatalensHeadCacheEntry::new()))
+        .clone())
+}
+
+fn acquire_head_cache(
+    entry: &DatalensHeadCacheEntry,
+    started_at: Instant,
+    timeout: Duration,
+) -> Result<DatalensHeadCacheAcquire, DatalensSdkError> {
+    let mut state = entry
+        .state
+        .lock()
+        .map_err(|_| DatalensSdkError::Transport("Datalens head cache lock poisoned".to_owned()))?;
+    let mut waited_for_in_flight = false;
+
+    loop {
+        if let Some(cached) = state.cached.as_ref()
+            && cached.cached_at.elapsed() <= HEAD_HEIGHT_CACHE_TTL
+        {
+            return Ok(DatalensHeadCacheAcquire::Cached(cached.height));
+        }
+
+        if !state.in_flight {
+            if waited_for_in_flight {
+                return Ok(DatalensHeadCacheAcquire::TimedOut);
+            }
+            state.in_flight = true;
+            return Ok(DatalensHeadCacheAcquire::Fetch);
+        }
+
+        waited_for_in_flight = true;
+        let Some(remaining) = timeout.checked_sub(started_at.elapsed()) else {
+            return Ok(DatalensHeadCacheAcquire::TimedOut);
+        };
+        if remaining.is_zero() {
+            return Ok(DatalensHeadCacheAcquire::TimedOut);
+        }
+        let (next_state, wait_result) =
+            entry.ready.wait_timeout(state, remaining).map_err(|_| {
+                DatalensSdkError::Transport("Datalens head cache lock poisoned".to_owned())
+            })?;
+        state = next_state;
+        if wait_result.timed_out() {
+            return Ok(DatalensHeadCacheAcquire::TimedOut);
+        }
+    }
+}
+
+fn finish_head_cache_fetch(entry: &DatalensHeadCacheEntry, height: Option<i64>) {
+    if let Ok(mut state) = entry.state.lock() {
+        if let Some(height) = height {
+            state.cached = Some(DatalensHeadCacheValue {
+                height,
+                cached_at: Instant::now(),
+            });
+        }
+        state.in_flight = false;
+        entry.ready.notify_all();
+    }
 }
 
 fn datalens_query_timeout_error(
@@ -700,6 +886,14 @@ fn datalens_query_timeout_error(
         message.push_str(context);
     }
     DatalensSdkError::Transport(message)
+}
+
+fn head_finality_cache_key(finality: ChainHeadFinalityInput) -> &'static str {
+    match finality {
+        ChainHeadFinalityInput::Safe => "safe",
+        ChainHeadFinalityInput::Latest => "latest",
+        ChainHeadFinalityInput::Finalized => "finalized",
+    }
 }
 
 fn is_transient_sdk_api_error(error: &DatalensSdkError) -> bool {
@@ -763,12 +957,21 @@ impl DatalensProvisionalLogQueryReader for DatalensNativeClient {
         self.query_provisional_with_transient_fallback(input)
             .map_err(|error| {
                 let error_message = error.to_string();
-                warn!(
-                    "Datalens provisional query failed error_class={} max_attempts={} error={}",
-                    classify_datalens_query_error(&error_message).as_str(),
-                    self.retry_config.max_attempts,
-                    error_message
-                );
+                if datalens_query_error_is_current_head_race(&error_message) {
+                    info!(
+                        "Datalens provisional query skipped current head race error_class={} max_attempts={} error={}",
+                        classify_datalens_query_error(&error_message).as_str(),
+                        self.retry_config.max_attempts,
+                        error_message
+                    );
+                } else {
+                    warn!(
+                        "Datalens provisional query failed error_class={} max_attempts={} error={}",
+                        classify_datalens_query_error(&error_message).as_str(),
+                        self.retry_config.max_attempts,
+                        error_message
+                    );
+                }
                 DatalensError::Query(error_message)
             })
     }
@@ -776,21 +979,57 @@ impl DatalensProvisionalLogQueryReader for DatalensNativeClient {
 
 impl DatalensDurableHeadReader for DatalensNativeClient {
     fn durable_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
-        let response = self
-            .client
-            .native()
-            .chain_head(
-                &config.chain.configured_name,
-                Some(ChainHeadFinalityInput::Safe),
-            )
-            .map_err(|error| DatalensError::Query(error.to_string()))?;
+        self.head_height(config, ChainHeadFinalityInput::Safe)
+    }
 
-        i64::try_from(response.height).map_err(|_| {
+    fn latest_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
+        self.head_height(config, ChainHeadFinalityInput::Latest)
+    }
+}
+
+impl DatalensNativeClient {
+    fn head_height(
+        &mut self,
+        config: &DatalensConfig,
+        finality: ChainHeadFinalityInput,
+    ) -> Result<i64, DatalensError> {
+        let started_at = Instant::now();
+        let cache_entry = head_cache_entry_for_config(config, finality)?;
+        match acquire_head_cache(&cache_entry, started_at, self.query_timeout)
+            .map_err(|error| DatalensError::Query(error.to_string()))?
+        {
+            DatalensHeadCacheAcquire::Cached(height) => return Ok(height),
+            DatalensHeadCacheAcquire::Fetch => {}
+            DatalensHeadCacheAcquire::TimedOut => {
+                let error = datalens_query_timeout_error(
+                    "head",
+                    self.query_timeout,
+                    Some("waiting for head cache fill"),
+                );
+                self.warn_query_timeout("head", &error);
+                return Err(DatalensError::Query(error.to_string()));
+            }
+        }
+
+        let chain_name = config.chain.configured_name.clone();
+        let response = self
+            .run_query_with_deadline("head", started_at, move |client| {
+                client.native().chain_head(&chain_name, Some(finality))
+            })
+            .map_err(|error| {
+                finish_head_cache_fetch(&cache_entry, None);
+                DatalensError::Query(error.to_string())
+            })?;
+
+        let height = i64::try_from(response.height).map_err(|_| {
+            finish_head_cache_fetch(&cache_entry, None);
             DatalensError::Query(format!(
                 "Datalens chain head height {} exceeds supported indexer height",
                 response.height
             ))
-        })
+        })?;
+        finish_head_cache_fetch(&cache_entry, Some(height));
+        Ok(height)
     }
 }
 

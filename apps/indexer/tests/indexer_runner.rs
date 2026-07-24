@@ -289,12 +289,26 @@ fn test_runner_runs_onchain_refresh_tick_after_chunk_commit() {
 #[test]
 fn test_runner_drains_deferred_onchain_refresh_with_configured_budget_after_chunk_commit() {
     let mut options = options();
+    options.onchain_refresh_deferred_drain_enabled = true;
     options.onchain_refresh_deferred_drain_batch_size = 1_000;
     let mut runner = runner_with_decoder(vec![vec![row(1, 0, 0)]], ScriptedDecoder, options);
 
     runner.run_to_target(1).expect("runner succeeds");
 
     assert_eq!(runner.store().deferred_drain_requests(), &[1_000]);
+}
+
+#[test]
+fn test_runner_skips_deferred_onchain_refresh_drain_when_disabled_after_chunk_commit() {
+    let mut options = options();
+    options.onchain_refresh_deferred_drain_enabled = false;
+    options.onchain_refresh_deferred_drain_batch_size = 1_000;
+    let mut runner = runner_with_decoder(vec![vec![row(1, 0, 0)]], ScriptedDecoder, options);
+
+    runner.run_to_target(1).expect("runner succeeds");
+
+    assert_eq!(runner.store().deferred_drain_requests(), &[] as &[usize]);
+    assert_eq!(runner.store().commit_count(), 1);
 }
 
 #[test]
@@ -361,18 +375,11 @@ fn test_runner_splits_provider_limit_range_and_advances_checkpoint_after_subrang
         1_001
     );
     assert_eq!(runner.store().commit_count(), 2);
-    assert_eq!(
-        *observed_ranges.lock().expect("observed ranges"),
-        vec![
-            (1, 1_000),
-            (1, 500),
-            (1, 500),
-            (1, 500),
-            (501, 1_000),
-            (501, 1_000),
-            (501, 1_000),
-        ]
-    );
+    let observed = observed_ranges.lock().expect("observed ranges");
+    assert_range_count(&observed, (1, 1_000), 1);
+    assert_range_count(&observed, (1, 500), 1);
+    assert_range_count(&observed, (501, 1_000), 1);
+    assert_eq!(observed.len(), 3);
 }
 
 #[test]
@@ -401,10 +408,10 @@ fn test_runner_splits_transient_range_and_retries_without_pass_error() {
         2_501
     );
     assert_eq!(runner.store().commit_count(), 1);
-    assert_eq!(
-        *observed_ranges.lock().expect("observed ranges"),
-        vec![(1, 5_000), (1, 2_500), (1, 2_500), (1, 2_500)]
-    );
+    let observed = observed_ranges.lock().expect("observed ranges");
+    assert_range_count(&observed, (1, 5_000), 1);
+    assert_range_count(&observed, (1, 2_500), 1);
+    assert_eq!(observed.len(), 2);
 }
 
 #[test]
@@ -433,20 +440,13 @@ fn test_runner_splits_transient_failure_below_normal_min_and_advances_checkpoint
         2
     );
     assert_eq!(runner.store().commit_count(), 1);
+    let observed = observed_ranges.lock().expect("observed ranges");
     assert_eq!(
-        *observed_ranges.lock().expect("observed ranges"),
-        vec![
-            (1, 101),
-            (1, 50),
-            (1, 25),
-            (1, 12),
-            (1, 6),
-            (1, 3),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-        ]
+        &observed[..6],
+        &[(1, 101), (1, 50), (1, 25), (1, 12), (1, 6), (1, 3)]
     );
+    assert_range_count(&observed, (1, 1), 1);
+    assert_eq!(observed.len(), 7);
 }
 
 #[test]
@@ -475,9 +475,81 @@ fn test_runner_splits_two_block_transient_failure_to_single_block() {
         2
     );
     assert_eq!(runner.store().commit_count(), 1);
+    let observed = observed_ranges.lock().expect("observed ranges");
+    assert_range_count(&observed, (1, 2), 1);
+    assert_range_count(&observed, (1, 1), 1);
+    assert_eq!(observed.len(), 2);
+}
+
+#[test]
+fn test_runner_restores_adaptive_chunk_size_from_checkpoint_between_passes() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 4);
+    options.adaptive_chunk_sizer.initial_chunk_size = 1;
+    options.adaptive_chunk_sizer.min_chunk_size = 1;
+    options.adaptive_chunk_sizer.stable_chunks_to_grow = 1;
+    let store = InMemoryIndexerRunnerStore::new(identity(), 1);
+    let mut runner = runner_with_store(vec![vec![]], ScriptedDecoder, options, store);
+    runner.request_shutdown_after_chunks(1);
+
+    let first_report = runner.run_to_target(8).expect("first run succeeds");
+    runner.request_shutdown_after_chunks(1);
+    let second_report = runner.run_to_target(8).expect("second run succeeds");
+
+    let checkpoint = runner.store().checkpoint().expect("checkpoint");
+    assert_eq!(first_report.last_progress.processed_height, Some(1));
+    assert_eq!(second_report.last_progress.processed_height, Some(3));
+    assert_eq!(checkpoint.next_block, 4);
+    assert_eq!(checkpoint.adaptive_chunk_size, Some(4));
     assert_eq!(
-        *observed_ranges.lock().expect("observed ranges"),
-        vec![(1, 2), (1, 1), (1, 1), (1, 1)]
+        checkpoint.adaptive_chunk_reason.as_deref(),
+        Some("stable_fast_chunk")
+    );
+    assert!(checkpoint.adaptive_chunk_updated_at.is_some());
+}
+
+#[test]
+fn test_runner_does_not_persist_adaptive_chunk_size_when_commit_fails() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 4);
+    options.adaptive_chunk_sizer.initial_chunk_size = 1;
+    options.adaptive_chunk_sizer.min_chunk_size = 1;
+    options.adaptive_chunk_sizer.stable_chunks_to_grow = 1;
+    let mut runner = runner_with_decoder(vec![vec![]], ScriptedDecoder, options);
+    runner
+        .store_mut()
+        .fail_next_commit("projection write failed");
+
+    runner.run_to_target(4).expect_err("commit fails");
+
+    let checkpoint = runner.store().checkpoint().expect("checkpoint");
+    assert_eq!(checkpoint.next_block, 1);
+    assert_eq!(checkpoint.adaptive_chunk_size, None);
+    assert_eq!(checkpoint.adaptive_chunk_reason, None);
+    assert_eq!(checkpoint.adaptive_chunk_updated_at, None);
+}
+
+#[test]
+fn test_runner_adaptive_decision_includes_checkpoint_advance_duration() {
+    let mut options = options();
+    set_block_range_limit(&mut options, 4);
+    options.adaptive_chunk_sizer.initial_chunk_size = 4;
+    options.adaptive_chunk_sizer.min_chunk_size = 1;
+    options
+        .adaptive_chunk_sizer
+        .local_processing_shrink_threshold = Duration::from_millis(20);
+    let mut runner = runner_with_decoder(vec![vec![]], ScriptedDecoder, options);
+    runner
+        .store_mut()
+        .delay_next_checkpoint_advance(Duration::from_millis(30));
+
+    runner.run_to_target(4).expect("runner succeeds");
+
+    let checkpoint = runner.store().checkpoint().expect("checkpoint");
+    assert_eq!(checkpoint.adaptive_chunk_size, Some(2));
+    assert_eq!(
+        checkpoint.adaptive_chunk_reason.as_deref(),
+        Some("slow_local_processing")
     );
 }
 
@@ -548,12 +620,12 @@ fn test_adaptive_chunk_sizer_grows_after_consecutive_full_cache_hits() {
     let first = sizer.record_chunk(adaptive_feedback_with_rows(
         cache_full_hit(),
         Duration::from_millis(50),
-        1_000,
+        10,
     ));
     let second = sizer.record_chunk(adaptive_feedback_with_rows(
         cache_full_hit(),
         Duration::from_millis(50),
-        1_000,
+        10,
     ));
 
     assert_eq!(first.current_chunk_size, 100);
@@ -561,6 +633,88 @@ fn test_adaptive_chunk_sizer_grows_after_consecutive_full_cache_hits() {
     assert_eq!(second.previous_chunk_size, 100);
     assert_eq!(second.current_chunk_size, 200);
     assert_eq!(second.reason, AdaptiveChunkSizingReason::StableFullHit);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_sparse_full_hits_grow_from_initial_to_max() {
+    let mut config = adaptive_config(10_000, 50_000);
+    config.stable_chunks_to_grow = 1;
+    let mut sizer = AdaptiveChunkSizer::new(config).expect("sizer");
+
+    let first = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit(),
+        Duration::from_millis(50),
+        10,
+    ));
+    let second = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit(),
+        Duration::from_millis(50),
+        10,
+    ));
+    let third = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit(),
+        Duration::from_millis(50),
+        10,
+    ));
+
+    assert_eq!(first.previous_chunk_size, 10_000);
+    assert_eq!(first.current_chunk_size, 20_000);
+    assert_eq!(first.reason, AdaptiveChunkSizingReason::StableFullHit);
+    assert_eq!(second.previous_chunk_size, 20_000);
+    assert_eq!(second.current_chunk_size, 40_000);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::StableFullHit);
+    assert_eq!(third.previous_chunk_size, 40_000);
+    assert_eq!(third.current_chunk_size, 50_000);
+    assert_eq!(third.reason, AdaptiveChunkSizingReason::StableFullHit);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_sparse_full_hits_grow_when_read_is_not_fast_but_below_high() {
+    let mut config = adaptive_config(10_000, 50_000);
+    config.stable_chunks_to_grow = 1;
+    let mut sizer = AdaptiveChunkSizer::new(config).expect("sizer");
+
+    let decision = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit(),
+        Duration::from_millis(150),
+        10,
+    ));
+
+    assert_eq!(decision.previous_chunk_size, 10_000);
+    assert_eq!(decision.current_chunk_size, 20_000);
+    assert_eq!(decision.reason, AdaptiveChunkSizingReason::StableFullHit);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_full_hits_with_write_heavy_rows_do_not_grow_aggressively() {
+    let mut config = adaptive_config(10_000, 50_000);
+    config.stable_chunks_to_grow = 1;
+    let mut sizer = AdaptiveChunkSizer::new(config).expect("sizer");
+
+    let decision = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_full_hit(),
+        Duration::from_millis(50),
+        1_000,
+    ));
+
+    assert_eq!(decision.previous_chunk_size, 10_000);
+    assert_eq!(decision.current_chunk_size, 10_000);
+    assert_eq!(decision.reason, AdaptiveChunkSizingReason::Hold);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_sparse_full_hits_with_slow_writes_do_not_grow() {
+    let mut config = adaptive_config(10_000, 50_000);
+    config.stable_chunks_to_grow = 1;
+    let mut sizer = AdaptiveChunkSizer::new(config).expect("sizer");
+    let mut feedback = adaptive_feedback_with_rows(cache_full_hit(), Duration::from_millis(50), 10);
+    feedback.local_processing_write_duration = Duration::from_millis(800);
+
+    let decision = sizer.record_chunk(feedback);
+
+    assert_eq!(decision.previous_chunk_size, 10_000);
+    assert_eq!(decision.current_chunk_size, 10_000);
+    assert_eq!(decision.reason, AdaptiveChunkSizingReason::Hold);
 }
 
 #[test]
@@ -576,6 +730,23 @@ fn test_adaptive_chunk_sizer_grows_after_consecutive_fast_chunks() {
         Duration::from_millis(20),
     ));
 
+    assert_eq!(decision.current_chunk_size, 200);
+    assert_eq!(decision.reason, AdaptiveChunkSizingReason::StableFastChunk);
+}
+
+#[test]
+fn test_adaptive_chunk_sizer_fast_chunks_above_sparse_threshold_still_grow() {
+    let mut config = adaptive_config(100, 400);
+    config.stable_chunks_to_grow = 1;
+    let mut sizer = AdaptiveChunkSizer::new(config).expect("sizer");
+
+    let decision = sizer.record_chunk(adaptive_feedback_with_rows(
+        cache_unavailable(),
+        Duration::from_millis(20),
+        1_000,
+    ));
+
+    assert_eq!(decision.previous_chunk_size, 100);
     assert_eq!(decision.current_chunk_size, 200);
     assert_eq!(decision.reason, AdaptiveChunkSizingReason::StableFastChunk);
 }
@@ -600,18 +771,12 @@ fn test_adaptive_chunk_sizer_fast_cache_fill_recovers_and_grows() {
 
     assert_eq!(first.current_chunk_size, 100);
     assert_eq!(first.reason, AdaptiveChunkSizingReason::FastCacheFill);
-    assert_eq!(second.current_chunk_size, 200);
-    assert_eq!(
-        second.reason,
-        AdaptiveChunkSizingReason::StableFastCacheFill
-    );
-    assert_eq!(third.current_chunk_size, 200);
+    assert_eq!(second.current_chunk_size, 100);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::FastCacheFill);
+    assert_eq!(third.current_chunk_size, 100);
     assert_eq!(third.reason, AdaptiveChunkSizingReason::FastCacheFill);
-    assert_eq!(fourth.current_chunk_size, 400);
-    assert_eq!(
-        fourth.reason,
-        AdaptiveChunkSizingReason::StableFastCacheFill
-    );
+    assert_eq!(fourth.current_chunk_size, 100);
+    assert_eq!(fourth.reason, AdaptiveChunkSizingReason::FastCacheFill);
 }
 
 #[test]
@@ -632,7 +797,7 @@ fn test_adaptive_chunk_sizer_cache_fill_above_high_duration_shrinks_immediately(
 }
 
 #[test]
-fn test_adaptive_chunk_sizer_provider_fill_below_high_duration_grows() {
+fn test_adaptive_chunk_sizer_provider_fill_below_high_duration_holds() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 
     let first = sizer.record_chunk(adaptive_feedback(
@@ -647,12 +812,12 @@ fn test_adaptive_chunk_sizer_provider_fill_below_high_duration_grows() {
     assert_eq!(first.previous_chunk_size, 100);
     assert!(first.current_chunk_size >= first.previous_chunk_size);
     assert_eq!(second.previous_chunk_size, first.current_chunk_size);
-    assert_eq!(second.current_chunk_size, 200);
-    assert_eq!(second.reason, AdaptiveChunkSizingReason::StableSparseRange);
+    assert_eq!(second.current_chunk_size, 100);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::Hold);
 }
 
 #[test]
-fn test_adaptive_chunk_sizer_provider_fill_over_sparse_threshold_grows_below_high_duration() {
+fn test_adaptive_chunk_sizer_provider_fill_over_sparse_threshold_holds_below_high_duration() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 
     let first = sizer.record_chunk(adaptive_feedback_with_rows(
@@ -669,8 +834,8 @@ fn test_adaptive_chunk_sizer_provider_fill_over_sparse_threshold_grows_below_hig
     assert_eq!(first.current_chunk_size, 100);
     assert_eq!(first.reason, AdaptiveChunkSizingReason::Hold);
     assert_eq!(second.previous_chunk_size, 100);
-    assert_eq!(second.current_chunk_size, 200);
-    assert_eq!(second.reason, AdaptiveChunkSizingReason::StableSparseRange);
+    assert_eq!(second.current_chunk_size, 100);
+    assert_eq!(second.reason, AdaptiveChunkSizingReason::Hold);
 }
 
 #[test]
@@ -717,7 +882,7 @@ fn test_adaptive_chunk_sizer_full_hit_high_duration_can_shrink_below_full_hit_fl
 }
 
 #[test]
-fn test_adaptive_chunk_sizer_full_hit_dense_rows_do_not_shrink_by_row_count() {
+fn test_adaptive_chunk_sizer_full_hit_dense_rows_shrink_by_row_count() {
     let mut sizer = AdaptiveChunkSizer::new(adaptive_config(100, 400)).expect("sizer");
 
     let dense = sizer.record_chunk(adaptive_feedback_with_rows(
@@ -726,8 +891,8 @@ fn test_adaptive_chunk_sizer_full_hit_dense_rows_do_not_shrink_by_row_count() {
         5_000,
     ));
 
-    assert_eq!(dense.current_chunk_size, 100);
-    assert_eq!(dense.reason, AdaptiveChunkSizingReason::Hold);
+    assert_eq!(dense.current_chunk_size, 50);
+    assert_eq!(dense.reason, AdaptiveChunkSizingReason::DenseReturnedRows);
 }
 
 #[test]
@@ -904,9 +1069,12 @@ fn test_runner_decodes_distinct_log_addresses_with_matching_sources() {
 
     runner.run_to_target(1).expect("runner succeeds");
 
-    assert_eq!(
-        *attempts.lock().expect("attempts"),
-        vec![DaoLogSource::Governor, DaoLogSource::GovernorToken]
+    let attempts = attempts.lock().expect("attempts");
+    assert_source_attempt_counts(
+        &attempts,
+        GOVERNOR_SELECTOR_COUNT,
+        GOVERNOR_TOKEN_SELECTOR_COUNT,
+        0,
     );
     assert_eq!(
         runner.store().vote_repository().data_metric().votes_count,
@@ -919,24 +1087,46 @@ fn test_runner_decodes_distinct_log_addresses_with_matching_sources() {
 }
 
 #[test]
+fn test_runner_skips_logs_from_broad_datalens_selector_outside_dao_addresses() {
+    let attempts = Arc::new(Mutex::new(Vec::new()));
+    let mut runner = runner_with_decoder(
+        vec![vec![
+            row_at_address(1, 0, 1, FOREIGN),
+            row_at_address(1, 0, 0, GOVERNOR),
+        ]],
+        SourceMatchingDecoder::new(attempts.clone()),
+        options(),
+    );
+
+    runner.run_to_target(1).expect("runner succeeds");
+
+    let attempts = attempts.lock().expect("attempts");
+    assert_source_attempt_counts(&attempts, GOVERNOR_SELECTOR_COUNT, 0, 0);
+    assert_eq!(
+        runner.store().vote_repository().data_metric().votes_count,
+        1
+    );
+}
+
+#[test]
 fn test_runner_decodes_duplicate_address_token_log_with_token_source() {
     let attempts = Arc::new(Mutex::new(Vec::new()));
     let mut runner = runner_with_decoder(
-        vec![vec![row_at_address(1, 0, 1, GOVERNOR)]],
+        vec![vec![row_at_address_with_topic(
+            1,
+            0,
+            1,
+            GOVERNOR,
+            TOKEN_DELEGATE_CHANGED_TOPIC0,
+        )]],
         SourceMatchingDecoder::new(attempts.clone()),
         duplicate_address_options(),
     );
 
     runner.run_to_target(1).expect("runner succeeds");
 
-    assert_eq!(
-        *attempts.lock().expect("attempts"),
-        vec![
-            DaoLogSource::Governor,
-            DaoLogSource::GovernorToken,
-            DaoLogSource::Timelock
-        ]
-    );
+    let attempts = attempts.lock().expect("attempts");
+    assert_source_attempt_counts(&attempts, 0, GOVERNOR_TOKEN_SELECTOR_COUNT, 0);
     assert_eq!(
         runner.store().token_repository().delegate_changed().len(),
         1
@@ -954,14 +1144,8 @@ fn test_runner_keeps_duplicate_address_unsupported_topic_unsupported() {
 
     runner.run_to_target(1).expect("runner succeeds");
 
-    assert_eq!(
-        *attempts.lock().expect("attempts"),
-        vec![
-            DaoLogSource::Governor,
-            DaoLogSource::GovernorToken,
-            DaoLogSource::Timelock
-        ]
-    );
+    let attempts = attempts.lock().expect("attempts");
+    assert_source_attempt_counts(&attempts, GOVERNOR_SELECTOR_COUNT, 0, 0);
     assert_eq!(
         runner.store().checkpoint().expect("checkpoint").next_block,
         2
@@ -1034,6 +1218,13 @@ impl DatalensLogQueryReader for ScriptedDatalensReader {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let topic0_values = input
+            .selector
+            .evm_logs
+            .as_ref()
+            .and_then(|selector| selector.topics.first())
+            .cloned()
+            .unwrap_or_default();
         let rows = self
             .rows
             .iter()
@@ -1049,9 +1240,16 @@ impl DatalensLogQueryReader for ScriptedDatalensReader {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_ascii_lowercase();
+                let topic0 = row
+                    .pointer("/topics/0")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
 
                 (input.range.start..=input.range.end).contains(&block_number)
-                    && addresses.iter().any(|candidate| candidate == &address)
+                    && (addresses.is_empty()
+                        || addresses.iter().any(|candidate| candidate == &address))
+                    && (topic0_values.is_empty()
+                        || topic0_values.iter().any(|candidate| candidate == topic0))
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -1434,6 +1632,7 @@ fn options() -> IndexerRunnerOptions {
         safe_height: None,
         progress_refresh_lag_blocks: 0,
         adaptive_chunk_sizer: AdaptiveChunkSizerConfig::for_max_chunk_size(1),
+        onchain_refresh_deferred_drain_enabled: true,
         onchain_refresh_deferred_drain_batch_size: 100,
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
     }
@@ -1545,6 +1744,49 @@ fn set_block_range_limit(options: &mut IndexerRunnerOptions, block_range_limit: 
     options.adaptive_chunk_sizer = AdaptiveChunkSizerConfig::for_max_chunk_size(block_range_limit);
 }
 
+fn assert_range_count(observed: &[(u64, u64)], range: (u64, u64), expected_count: usize) {
+    assert_eq!(
+        observed
+            .iter()
+            .filter(|observed_range| **observed_range == range)
+            .count(),
+        expected_count
+    );
+}
+
+fn assert_source_attempt_counts(
+    attempts: &[DaoLogSource],
+    governor_count: usize,
+    governor_token_count: usize,
+    timelock_count: usize,
+) {
+    assert_eq!(
+        attempts
+            .iter()
+            .filter(|source| **source == DaoLogSource::Governor)
+            .count(),
+        governor_count
+    );
+    assert_eq!(
+        attempts
+            .iter()
+            .filter(|source| **source == DaoLogSource::GovernorToken)
+            .count(),
+        governor_token_count
+    );
+    assert_eq!(
+        attempts
+            .iter()
+            .filter(|source| **source == DaoLogSource::Timelock)
+            .count(),
+        timelock_count
+    );
+    assert_eq!(
+        attempts.len(),
+        governor_count + governor_token_count + timelock_count
+    );
+}
+
 fn contexts() -> IndexerRunnerContexts {
     let contracts = ChainContracts {
         governor: "0x1111111111111111111111111111111111111111".to_owned(),
@@ -1637,11 +1879,40 @@ fn row_at_address(
     log_index: u64,
     address: &str,
 ) -> Value {
-    row_with_removed(block_number, transaction_index, log_index, address, false)
+    let topic0 = if address.eq_ignore_ascii_case(TOKEN) {
+        TOKEN_DELEGATE_CHANGED_TOPIC0
+    } else {
+        GOVERNOR_VOTE_CAST_TOPIC0
+    };
+    row_at_address_with_topic(block_number, transaction_index, log_index, address, topic0)
+}
+
+fn row_at_address_with_topic(
+    block_number: u64,
+    transaction_index: u64,
+    log_index: u64,
+    address: &str,
+    topic0: &str,
+) -> Value {
+    row_with_removed(
+        block_number,
+        transaction_index,
+        log_index,
+        address,
+        topic0,
+        false,
+    )
 }
 
 fn removed_row(block_number: u64, transaction_index: u64, log_index: u64) -> Value {
-    row_with_removed(block_number, transaction_index, log_index, GOVERNOR, true)
+    row_with_removed(
+        block_number,
+        transaction_index,
+        log_index,
+        GOVERNOR,
+        GOVERNOR_VOTE_CAST_TOPIC0,
+        true,
+    )
 }
 
 fn row_with_removed(
@@ -1649,6 +1920,7 @@ fn row_with_removed(
     transaction_index: u64,
     log_index: u64,
     address: &str,
+    topic0: &str,
     removed: bool,
 ) -> Value {
     json!({
@@ -1659,7 +1931,7 @@ fn row_with_removed(
         "transaction_index": transaction_index,
         "log_index": log_index,
         "address": address,
-        "topics": ["0x0000000000000000000000000000000000000000000000000000000000000000"],
+        "topics": [topic0],
         "data": "0x",
         "removed": removed
     })
@@ -1667,3 +1939,10 @@ fn row_with_removed(
 
 const GOVERNOR: &str = "0x1111111111111111111111111111111111111111";
 const TOKEN: &str = "0x2222222222222222222222222222222222222222";
+const FOREIGN: &str = "0x9999999999999999999999999999999999999999";
+const GOVERNOR_VOTE_CAST_TOPIC0: &str =
+    "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0";
+const TOKEN_DELEGATE_CHANGED_TOPIC0: &str =
+    "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f";
+const GOVERNOR_SELECTOR_COUNT: usize = 1;
+const GOVERNOR_TOKEN_SELECTOR_COUNT: usize = 1;

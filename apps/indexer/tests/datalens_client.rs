@@ -12,7 +12,8 @@ use degov_datalens_indexer::{
     DatalensNativeClient, DatalensNativeReader, DatalensProvisionalLogQueryReader,
     DatalensQueryConcurrencyConfig, DatalensQueryConcurrencyGate, DatalensQueryConcurrencyKey,
     DatalensQueryErrorClass, DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig,
-    SecretString, ServiceReadiness, classify_datalens_query_error, plan_dao_log_queries,
+    SecretString, ServiceReadiness, classify_datalens_query_error,
+    datalens_query_error_is_current_head_race, ensure_datalens_warmup_task, plan_dao_log_queries,
     verify_datalens_service,
 };
 use std::sync::{
@@ -161,6 +162,19 @@ fn test_classify_datalens_query_error_separates_provider_limit_from_timeout() {
 }
 
 #[test]
+fn test_datalens_query_error_is_current_head_race_is_narrow() {
+    assert!(datalens_query_error_is_current_head_race(
+        r#"Datalens HTTP 400 invalid_input: "block range extends beyond current head block""#
+    ));
+    assert!(!datalens_query_error_is_current_head_race(
+        "Datalens HTTP 400 invalid_input: selector is invalid"
+    ));
+    assert!(!datalens_query_error_is_current_head_race(
+        "Datalens HTTP 400 provider_timeout: block range extends beyond current head block"
+    ));
+}
+
+#[test]
 fn test_datalens_durable_head_reader_uses_sdk_chain_head_safe_finality() {
     let server = FakeHeadServer::start(568800, "safe");
     let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
@@ -196,6 +210,272 @@ fn test_datalens_durable_head_reader_uses_safe_finality_for_durable_head() {
         "{request}"
     );
     assert!(!request.contains(r#""end":2147483647"#));
+}
+
+#[test]
+fn test_datalens_durable_head_reader_uses_sdk_chain_head_latest_finality() {
+    let server = FakeHeadServer::start(568900, "latest");
+    let config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    let mut client = DatalensNativeClient::from_config(&config).expect("client");
+
+    let height = client
+        .latest_head_height(&config)
+        .expect("latest head height");
+
+    assert_eq!(height, 568900);
+    let request = server.join();
+    assert!(
+        request.starts_with("GET /v1/chains/ethereum/head?finality=latest "),
+        "{request}"
+    );
+}
+
+#[test]
+fn test_datalens_warmup_ensurer_uses_ensure_endpoint() {
+    let response = http_response(
+        200,
+        serde_json::json!({
+            "task_id": "task-1",
+            "created": false
+        }),
+    );
+    let server = FakeQueryServer::start(vec![response]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.warmup.enabled = true;
+    let mut client = DatalensNativeClient::from_config(&config).expect("client");
+
+    ensure_datalens_warmup_task(&mut client, &config, &addresses(), 100).expect("warmup ensured");
+
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+    for request in requests {
+        assert!(
+            request.starts_with("POST /v1/warmup/tasks/ensure "),
+            "{request}"
+        );
+    }
+}
+
+#[test]
+fn test_datalens_head_reader_returns_degov_timeout_for_stalled_sdk_head() {
+    let server = FakeHangingQueryServer::start(Duration::from_millis(500));
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(50);
+    let mut client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("client");
+    let started_at = std::time::Instant::now();
+
+    let error = client
+        .durable_head_height(&config)
+        .expect_err("stalled head request times out");
+
+    assert!(
+        started_at.elapsed() < Duration::from_millis(300),
+        "outer timeout should bound the stalled SDK head call"
+    );
+    let error_message = error.to_string();
+    assert!(
+        error_message.contains("Datalens head timed out after 50ms")
+            || error_message.contains("send datalens REST request"),
+        "{error_message}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&error.to_string()),
+        DatalensQueryErrorClass::Transient
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
+fn test_datalens_head_reader_uses_separate_worker_guard_from_log_queries() {
+    let server = FakeQueryServer::start_concurrent(vec![
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+        FakeQueryResponse::Http(head_success_response(568901, "safe")),
+    ]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(120);
+    let gate = DatalensQueryConcurrencyGate::new(DatalensQueryConcurrencyConfig {
+        global_max_in_flight: Some(2),
+        per_chain_max_in_flight: Some(2),
+    })
+    .expect("gate");
+    let mut first_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("first client")
+            .with_query_concurrency_gate(gate.clone());
+    let mut second_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("second client")
+            .with_query_concurrency_gate(gate.clone());
+    let mut head_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("head client")
+            .with_query_concurrency_gate(gate);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+    let first_input = plans[0].input.clone();
+    let second_input = plans[0].input.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+
+    let first_handle = thread::spawn({
+        let started_sender = started_sender.clone();
+        move || {
+            started_sender.send(()).expect("send first start");
+            first_client
+                .query_logs(first_input)
+                .expect_err("first stalled query times out")
+        }
+    });
+    let second_handle = thread::spawn(move || {
+        started_sender.send(()).expect("send second start");
+        second_client
+            .query_logs(second_input)
+            .expect_err("second stalled query times out")
+    });
+    started_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .expect("first query starts");
+    started_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .expect("second query starts");
+    thread::sleep(Duration::from_millis(50));
+
+    let height = head_client
+        .durable_head_height(&config)
+        .expect("head uses a separate blocking worker guard");
+
+    assert_eq!(height, 568901);
+    let first_error = first_handle.join().expect("first query joins");
+    let second_error = second_handle.join().expect("second query joins");
+    assert_eq!(
+        classify_datalens_query_error(&first_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{first_error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&second_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{second_error}"
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 3);
+    assert!(
+        requests
+            .iter()
+            .any(|request| request.starts_with("GET /v1/chains/ethereum/head?finality=safe ")),
+        "{requests:?}"
+    );
+}
+
+#[test]
+fn test_datalens_head_reader_coalesces_concurrent_same_chain_reads() {
+    let server = FakeQueryServer::start_concurrent(vec![FakeQueryResponse::DelayedHttp(
+        Duration::from_millis(100),
+        head_success_response(568902, "safe"),
+    )]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(500);
+    let first_config = config.clone();
+    let second_config = config.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+
+    let first_handle = thread::spawn(move || {
+        started_sender.send(()).expect("send first start");
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &first_config,
+            retry_config_with_attempts(1),
+        )
+        .expect("first client");
+        client
+            .durable_head_height(&first_config)
+            .expect("first durable head height")
+    });
+    started_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("first head starts");
+    thread::sleep(Duration::from_millis(20));
+    let second_handle = thread::spawn(move || {
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &second_config,
+            retry_config_with_attempts(1),
+        )
+        .expect("second client");
+        client
+            .durable_head_height(&second_config)
+            .expect("second durable head height")
+    });
+
+    assert_eq!(first_handle.join().expect("first head joins"), 568902);
+    assert_eq!(second_handle.join().expect("second head joins"), 568902);
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
+    assert!(
+        requests[0].starts_with("GET /v1/chains/ethereum/head?finality=safe "),
+        "{requests:?}"
+    );
+}
+
+#[test]
+fn test_datalens_head_reader_cache_wait_counts_against_deadline() {
+    let server = FakeQueryServer::start_concurrent(vec![FakeQueryResponse::HoldOpen(
+        Duration::from_millis(300),
+    )]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(120);
+    let first_config = config.clone();
+    let second_config = config.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+
+    let first_handle = thread::spawn(move || {
+        started_sender.send(()).expect("send first start");
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &first_config,
+            retry_config_with_attempts(1),
+        )
+        .expect("first client");
+        client
+            .durable_head_height(&first_config)
+            .expect_err("first head times out")
+    });
+    started_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("first head starts");
+    thread::sleep(Duration::from_millis(20));
+    let second_handle = thread::spawn(move || {
+        let mut client = DatalensNativeClient::from_config_with_retry_config(
+            &second_config,
+            retry_config_with_attempts(1),
+        )
+        .expect("second client");
+        let started_at = std::time::Instant::now();
+        let error = client
+            .durable_head_height(&second_config)
+            .expect_err("second head times out");
+        (started_at.elapsed(), error)
+    });
+
+    let first_error = first_handle.join().expect("first head joins");
+    let (second_elapsed, second_error) = second_handle.join().expect("second head joins");
+    assert!(
+        second_elapsed < Duration::from_millis(220),
+        "cache wait should count against the Datalens head deadline"
+    );
+    assert!(
+        first_error
+            .to_string()
+            .contains("Datalens head timed out after 120ms"),
+        "{first_error}"
+    );
+    assert!(
+        second_error
+            .to_string()
+            .contains("Datalens head timed out after 120ms"),
+        "{second_error}"
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 1);
 }
 
 #[test]
@@ -458,6 +738,97 @@ fn test_datalens_log_query_caps_overlapping_stalled_sdk_queries() {
 }
 
 #[test]
+fn test_datalens_log_query_uses_configured_gate_for_overlapping_sdk_cap() {
+    let server = FakeQueryServer::start_concurrent(vec![
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+        FakeQueryResponse::HoldOpen(Duration::from_millis(300)),
+    ]);
+    let mut config = datalens_config(&server.endpoint, DatalensFinality::DurableOnly);
+    config.timeout = Duration::from_millis(120);
+    let gate = DatalensQueryConcurrencyGate::new(DatalensQueryConcurrencyConfig {
+        global_max_in_flight: Some(4),
+        per_chain_max_in_flight: Some(4),
+    })
+    .expect("gate");
+    let mut first_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("first client")
+            .with_query_concurrency_gate(gate.clone());
+    let mut second_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("second client")
+            .with_query_concurrency_gate(gate.clone());
+    let mut third_client =
+        DatalensNativeClient::from_config_with_retry_config(&config, retry_config_with_attempts(1))
+            .expect("third client")
+            .with_query_concurrency_gate(gate);
+    let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("query plan builds");
+    let first_input = plans[0].input.clone();
+    let second_input = plans[0].input.clone();
+    let third_input = plans[0].input.clone();
+    let (started_sender, started_receiver) = mpsc::channel();
+
+    let first_handle = thread::spawn({
+        let started_sender = started_sender.clone();
+        move || {
+            started_sender.send(()).expect("send first start");
+            first_client
+                .query_logs(first_input)
+                .expect_err("first stalled query times out")
+        }
+    });
+    let second_handle = thread::spawn(move || {
+        started_sender.send(()).expect("send second start");
+        second_client
+            .query_logs(second_input)
+            .expect_err("second stalled query times out")
+    });
+    started_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .expect("first query starts");
+    started_receiver
+        .recv_timeout(Duration::from_millis(100))
+        .expect("second query starts");
+    thread::sleep(Duration::from_millis(50));
+
+    let started_at = std::time::Instant::now();
+    let third_error = third_client
+        .query_logs(third_input)
+        .expect_err("third query times out through configured gate");
+
+    assert!(
+        started_at.elapsed() >= Duration::from_millis(100),
+        "third query should use the configured worker cap instead of failing immediately"
+    );
+    assert!(
+        !third_error
+            .to_string()
+            .contains("previous SDK queries are still in flight"),
+        "{third_error}"
+    );
+    let first_error = first_handle.join().expect("first query joins");
+    let second_error = second_handle.join().expect("second query joins");
+    assert_eq!(
+        classify_datalens_query_error(&first_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{first_error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&second_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{second_error}"
+    );
+    assert_eq!(
+        classify_datalens_query_error(&third_error.to_string()),
+        DatalensQueryErrorClass::Transient,
+        "{third_error}"
+    );
+    let requests = server.join();
+    assert_eq!(requests.len(), 3);
+}
+
+#[test]
 fn test_datalens_log_query_times_out_while_waiting_for_query_gate() {
     let mut config = datalens_config("http://127.0.0.1:9", DatalensFinality::DurableOnly);
     config.timeout = Duration::from_millis(50);
@@ -658,6 +1029,7 @@ impl FakeHangingQueryServer {
 
 enum FakeQueryResponse {
     Http(String),
+    DelayedHttp(Duration, String),
     CloseWithoutResponse,
     HoldOpen(Duration),
 }
@@ -681,6 +1053,12 @@ impl FakeQueryServer {
                     FakeQueryResponse::Http(response) => stream
                         .write_all(response.as_bytes())
                         .expect("write fake Datalens query response"),
+                    FakeQueryResponse::DelayedHttp(duration, response) => {
+                        thread::sleep(duration);
+                        stream
+                            .write_all(response.as_bytes())
+                            .expect("write fake Datalens query response");
+                    }
                     FakeQueryResponse::CloseWithoutResponse => {}
                     FakeQueryResponse::HoldOpen(duration) => thread::sleep(duration),
                 }
@@ -706,6 +1084,12 @@ impl FakeQueryServer {
                         FakeQueryResponse::Http(response) => stream
                             .write_all(response.as_bytes())
                             .expect("write fake Datalens query response"),
+                        FakeQueryResponse::DelayedHttp(duration, response) => {
+                            thread::sleep(duration);
+                            stream
+                                .write_all(response.as_bytes())
+                                .expect("write fake Datalens query response");
+                        }
                         FakeQueryResponse::CloseWithoutResponse => {}
                         FakeQueryResponse::HoldOpen(duration) => thread::sleep(duration),
                     }
@@ -731,6 +1115,15 @@ impl FakeQueryServer {
 
 fn handle_head_request(mut stream: TcpStream, height: u64, finality: &'static str) -> String {
     let request = read_http_request(&mut stream);
+    let response = head_success_response(height, finality);
+    stream
+        .write_all(response.as_bytes())
+        .expect("write fake Datalens head response");
+
+    request
+}
+
+fn head_success_response(height: u64, finality: &'static str) -> String {
     let body = serde_json::json!({
         "chain": {
             "configured_name": "ethereum"
@@ -745,11 +1138,7 @@ fn handle_head_request(mut stream: TcpStream, height: u64, finality: &'static st
         body.len(),
         body
     );
-    stream
-        .write_all(response.as_bytes())
-        .expect("write fake Datalens head response");
-
-    request
+    response
 }
 
 fn query_success_response(rows: serde_json::Value) -> String {

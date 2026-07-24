@@ -23,24 +23,34 @@ export function useBlockSync() {
       return indexerStatusService.getIndexerStatus(daoConfig.indexer.endpoint);
     },
     enabled: !!daoConfig?.indexer?.endpoint,
-    refetchInterval: CACHE_TIMES.THIRTY_SECONDS,
+    refetchInterval: CACHE_TIMES.TWO_SECONDS,
   });
 
   const currentBlock = currentBlockData ? Number(currentBlockData) : 0;
-  const indexedBlock = indexerStatus?.processedHeight
+  const durableProcessedBlock = indexerStatus?.processedHeight
     ? Number(indexerStatus.processedHeight)
     : 0;
+  const indexedBlock = indexerStatus?.provisionalHeight
+    ? Number(indexerStatus.provisionalHeight)
+    : durableProcessedBlock;
+  const hasProvisionalHeight =
+    indexerStatus?.provisionalHeight !== null &&
+    indexerStatus?.provisionalHeight !== undefined;
   const nativeSyncPercentage = indexerStatus?.syncedPercentage;
 
   const syncPercentage = useMemo(() => {
-    if (nativeSyncPercentage !== null && nativeSyncPercentage !== undefined) {
+    if (
+      !hasProvisionalHeight &&
+      nativeSyncPercentage !== null &&
+      nativeSyncPercentage !== undefined
+    ) {
       return Number(Number(nativeSyncPercentage).toFixed(1));
     }
 
     if (!currentBlock || !indexedBlock) return 0;
     const ratio = (indexedBlock / currentBlock) * 100;
     return Number(ratio.toFixed(1));
-  }, [currentBlock, indexedBlock, nativeSyncPercentage]);
+  }, [currentBlock, hasProvisionalHeight, indexedBlock, nativeSyncPercentage]);
 
   const status: BlockSyncStatus = useMemo(() => {
     if (!indexedBlock) return "offline";
@@ -52,6 +62,7 @@ export function useBlockSync() {
   return {
     currentBlock,
     indexedBlock,
+    durableProcessedBlock,
     syncPercentage,
     isLoading,
     status,

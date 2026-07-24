@@ -10,70 +10,66 @@ use degov_datalens_indexer::{
 };
 
 #[test]
-fn test_plan_dao_log_queries_builds_evm_log_inputs_for_governor_token_and_timelock() {
+fn test_plan_dao_log_queries_combines_sources_into_single_evm_log_selector() {
     let config = config(1_000, DatalensFinality::DurableOnly);
-    let plans = plan_dao_log_queries(&config, &addresses(), 100, 199).expect("plans");
+    let addresses = addresses();
+    let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    assert_eq!(plans.len(), 3);
+    assert_eq!(plans.len(), 1);
     assert_query(
         &plans[0],
-        &[DaoLogAddressSource {
-            address: "0x1111111111111111111111111111111111111111".to_owned(),
-            source: DaoLogSource::Governor,
-        }],
         &[
-            "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0",
-            "0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892",
-            "0x541f725fb9f7c98a30cc9c0ff32fbb14358cd7159c847a3aa20a2bdc442ba511",
-            "0x712ae1383f79ac853f8d882153778e0260ef8f03b504e2866e0593e04d2b291f",
-            "0x789cf55be980739dad1d0699b93b58e806b51c9d96619bfa8fe0a28abaa7b30c",
-            "0xc565b045403dc03c2eea82b81a0465edad9e2e7fc4d97e11421c209da93d7a93",
-            "0x7e3f7f0708a84de9203036abaa450dccc85ad5ff52f78c170f3edb55cf5e8828",
-            "0xccb45da8d5717e6c4544694297c4ba5cf151d455c9bb0ed4fc7a38411bc05461",
-            "0x0553476bf02ef2726e8ce5ced78d63e26e602e4a2257b1f559418e24b4633997",
-            "0x7ca4ac117ed3cdce75c1161d8207c440389b1a15d69d096831664657c07dafc2",
-            "0x08f74ea46ef7894f65eabfb5e6e695de773a000b47c529ab559178069b226401",
-            "0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4",
-            "0xe2babfbac5889a709b63bb7f598b324e08bc5a4fb9ec647fb3cbc9ec07eb8712",
+            DaoLogAddressSource {
+                address: addresses.governor.clone(),
+                source: DaoLogSource::Governor,
+            },
+            DaoLogAddressSource {
+                address: addresses.governor_token.clone(),
+                source: DaoLogSource::GovernorToken,
+            },
+            DaoLogAddressSource {
+                address: addresses.timelock.clone().expect("timelock"),
+                source: DaoLogSource::Timelock,
+            },
         ],
+        &[
+            addresses.governor.clone(),
+            addresses.governor_token.clone(),
+            addresses.timelock.clone().expect("timelock"),
+        ],
+        &topic0_union(&[
+            GOVERNOR_TOPIC0_VALUES,
+            TIMELOCK_TOPIC0_VALUES,
+            GOVERNOR_TOKEN_TOPIC0_VALUES,
+        ]),
         100,
         199,
         "durable_only",
     );
-    assert_query(
-        &plans[1],
-        &[DaoLogAddressSource {
-            address: "0x2222222222222222222222222222222222222222".to_owned(),
-            source: DaoLogSource::GovernorToken,
-        }],
-        &[
-            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-            "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f",
-            "0xdec2bacdd2f05b59de34da9b523dff8be42e5e38e818c82fdb0bae774387a724",
-        ],
-        100,
-        199,
-        "durable_only",
+}
+
+#[test]
+fn test_plan_dao_log_queries_scopes_governance_selector_to_dao_addresses() {
+    let config = config(1_000, DatalensFinality::DurableOnly);
+    let addresses = addresses();
+    let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
+
+    let evm_logs = plans[0].input.selector.evm_logs.as_ref().expect("evm logs");
+    assert_eq!(
+        evm_logs.addresses,
+        vec![
+            addresses.governor,
+            addresses.governor_token,
+            addresses.timelock.expect("timelock"),
+        ]
     );
-    assert_query(
-        &plans[2],
-        &[DaoLogAddressSource {
-            address: "0x3333333333333333333333333333333333333333".to_owned(),
-            source: DaoLogSource::Timelock,
-        }],
-        &[
-            "0x4cf4410cc57040e44862ef0f45f3dd5a5e02db8eb8add648d4b0e236f1d07dca",
-            "0xc2617efa69bab66782fa219543714338489c4e9e178271560a91b82c3f612b58",
-            "0x20fda5fd27a1ea7bf5b9567f143ac5470bb059374a27e8f67cb44f946f6d0387",
-            "0xbaa1eb22f2a492ba1a5fea61b8df4d27c6c8b5f3971e63bb58fa14ff72eedb70",
-            "0x11c24f4ead16507c69ac467fbd5e4eed5fb5c699626d2cc6d66421df253886d5",
-            "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d",
-            "0xf6391f5c32d9c69d2a47ea670b442974b53935d1edc7fd64eb21e047a839171b",
-            "0xbd79b86ffe0ab8e8776151514217cd7cacd52c909f66475c3af44e129f0b00ff",
-        ],
-        100,
-        199,
-        "durable_only",
+    assert_eq!(
+        evm_logs.topics,
+        vec![topic0_union(&[
+            GOVERNOR_TOPIC0_VALUES,
+            TIMELOCK_TOPIC0_VALUES,
+            GOVERNOR_TOKEN_TOPIC0_VALUES,
+        ])]
     );
 }
 
@@ -85,9 +81,25 @@ fn test_plan_dao_log_queries_skips_timelock_when_not_configured() {
 
     let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    assert_eq!(plans.len(), 2);
-    assert_eq!(plans[0].sources[0].source, DaoLogSource::Governor);
-    assert_eq!(plans[1].sources[0].source, DaoLogSource::GovernorToken);
+    assert_eq!(plans.len(), 1);
+    assert_query(
+        &plans[0],
+        &[
+            DaoLogAddressSource {
+                address: addresses.governor.clone(),
+                source: DaoLogSource::Governor,
+            },
+            DaoLogAddressSource {
+                address: addresses.governor_token.clone(),
+                source: DaoLogSource::GovernorToken,
+            },
+        ],
+        &[addresses.governor.clone(), addresses.governor_token.clone()],
+        &topic0_union(&[GOVERNOR_TOPIC0_VALUES, GOVERNOR_TOKEN_TOPIC0_VALUES]),
+        100,
+        199,
+        "durable_only",
+    );
 }
 
 #[test]
@@ -99,20 +111,18 @@ fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
         .map(|plan| (plan.from_block, plan.to_block))
         .collect::<Vec<_>>();
 
-    assert_eq!(
-        ranges,
-        vec![
-            (100, 149),
-            (100, 149),
-            (100, 149),
-            (150, 199),
-            (150, 199),
-            (150, 199),
-            (200, 220),
-            (200, 220),
-            (200, 220),
-        ]
-    );
+    assert_eq!(ranges, vec![(100, 149), (150, 199), (200, 220)]);
+    assert!(plans.iter().all(|plan| plan.sources.len() == 3));
+    assert!(plans.iter().all(|plan| {
+        plan.input
+            .selector
+            .evm_logs
+            .as_ref()
+            .expect("evm logs")
+            .addresses
+            .len()
+            == 3
+    }));
 }
 
 #[test]
@@ -213,7 +223,8 @@ fn test_fetch_dao_log_pages_stops_without_later_pages_on_reader_error() {
 fn assert_query(
     plan: &DaoLogQueryPlan,
     sources: &[DaoLogAddressSource],
-    topic0_values: &[&str],
+    addresses: &[String],
+    topic0_values: &[String],
     from_block: i32,
     to_block: i32,
     finality: &str,
@@ -231,22 +242,19 @@ fn assert_query(
     assert_eq!(plan.input.finality.as_deref(), Some(finality));
 
     let evm_logs = plan.input.selector.evm_logs.as_ref().expect("evm logs");
-    assert_eq!(
-        evm_logs.addresses,
-        sources
-            .iter()
-            .map(|source| source.address.clone())
-            .collect::<Vec<_>>()
-    );
-    assert_eq!(
-        evm_logs.topics,
-        vec![
-            topic0_values
-                .iter()
-                .map(|topic| topic.to_string())
-                .collect::<Vec<_>>()
-        ]
-    );
+    assert_eq!(evm_logs.addresses, addresses);
+    assert_eq!(evm_logs.topics, vec![topic0_values.to_vec()]);
+}
+
+fn topic0_union(topic_groups: &[&[&str]]) -> Vec<String> {
+    topic_groups.iter().fold(Vec::new(), |mut union, topics| {
+        for topic in *topics {
+            if !union.iter().any(|existing| existing == topic) {
+                union.push((*topic).to_owned());
+            }
+        }
+        union
+    })
 }
 
 fn config(block_range_limit: u32, finality: DatalensFinality) -> DatalensConfig {
@@ -280,6 +288,39 @@ fn addresses() -> DaoContractAddresses {
         timelock: Some("0x3333333333333333333333333333333333333333".to_owned()),
     }
 }
+
+const GOVERNOR_TOPIC0_VALUES: &[&str] = &[
+    "0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0",
+    "0x9a2e42fd6722813d69113e7d0079d3d940171428df7373df9c7f7617cfda2892",
+    "0x541f725fb9f7c98a30cc9c0ff32fbb14358cd7159c847a3aa20a2bdc442ba511",
+    "0x712ae1383f79ac853f8d882153778e0260ef8f03b504e2866e0593e04d2b291f",
+    "0x789cf55be980739dad1d0699b93b58e806b51c9d96619bfa8fe0a28abaa7b30c",
+    "0xc565b045403dc03c2eea82b81a0465edad9e2e7fc4d97e11421c209da93d7a93",
+    "0x7e3f7f0708a84de9203036abaa450dccc85ad5ff52f78c170f3edb55cf5e8828",
+    "0xccb45da8d5717e6c4544694297c4ba5cf151d455c9bb0ed4fc7a38411bc05461",
+    "0x0553476bf02ef2726e8ce5ced78d63e26e602e4a2257b1f559418e24b4633997",
+    "0x7ca4ac117ed3cdce75c1161d8207c440389b1a15d69d096831664657c07dafc2",
+    "0x08f74ea46ef7894f65eabfb5e6e695de773a000b47c529ab559178069b226401",
+    "0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4",
+    "0xe2babfbac5889a709b63bb7f598b324e08bc5a4fb9ec647fb3cbc9ec07eb8712",
+];
+
+const GOVERNOR_TOKEN_TOPIC0_VALUES: &[&str] = &[
+    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+    "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f",
+    "0xdec2bacdd2f05b59de34da9b523dff8be42e5e38e818c82fdb0bae774387a724",
+];
+
+const TIMELOCK_TOPIC0_VALUES: &[&str] = &[
+    "0x4cf4410cc57040e44862ef0f45f3dd5a5e02db8eb8add648d4b0e236f1d07dca",
+    "0xc2617efa69bab66782fa219543714338489c4e9e178271560a91b82c3f612b58",
+    "0x20fda5fd27a1ea7bf5b9567f143ac5470bb059374a27e8f67cb44f946f6d0387",
+    "0xbaa1eb22f2a492ba1a5fea61b8df4d27c6c8b5f3971e63bb58fa14ff72eedb70",
+    "0x11c24f4ead16507c69ac467fbd5e4eed5fb5c699626d2cc6d66421df253886d5",
+    "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d",
+    "0xf6391f5c32d9c69d2a47ea670b442974b53935d1edc7fd64eb21e047a839171b",
+    "0xbd79b86ffe0ab8e8776151514217cd7cacd52c909f66475c3af44e129f0b00ff",
+];
 
 struct MockLogReader {
     calls: Vec<QueryInput>,
