@@ -23,6 +23,7 @@ use crate::{OnchainRefreshRunReport, OnchainRefreshTaskScope};
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct IndexerMetricsSnapshot {
     pub sync_rows: Vec<IndexerSyncMetricsRow>,
+    pub configured_scope_rows: Vec<IndexerConfiguredScopeMetricsRow>,
     pub onchain_backlog_rows: Vec<OnchainRefreshBacklogMetricsRow>,
     pub deferred_onchain_backlog_rows: Vec<OnchainRefreshBacklogMetricsRow>,
     pub chunk_runtime_rows: Vec<IndexerChunkRuntimeMetricsRow>,
@@ -57,6 +58,14 @@ pub struct IndexerSyncMetricsRow {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct IndexerConfiguredScopeMetricsRow {
+    pub dao_code: String,
+    pub chain_id: i32,
+    pub contract_set_id: String,
+    pub start_block: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct OnchainRefreshBacklogMetricsRow {
     pub dao_code: String,
     pub chain_id: i32,
@@ -81,6 +90,17 @@ pub struct IndexerChunkRuntimeMetricsRow {
     pub chunk_duration_seconds_count: u64,
     pub last_chunk_size: Option<u32>,
     pub current_chunk_size: Option<u32>,
+    pub chunk_attempts_success_total: u64,
+    pub chunk_attempts_failure_total: u64,
+    pub last_chain_pass_success_timestamp_seconds: Option<f64>,
+    pub last_forward_advance_timestamp_seconds: Option<f64>,
+    pub consecutive_failures: u64,
+    pub chain_pass_success_total: u64,
+    pub chain_pass_failure_total: u64,
+    pub datalens_head_observed_timestamp_seconds: Option<f64>,
+    pub datalens_head_advanced_timestamp_seconds: Option<f64>,
+    pub last_datalens_head_height: Option<i64>,
+    pub reorg_rollbacks_total: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -131,6 +151,7 @@ struct MetricsScopeKey {
 
 #[derive(Clone, Debug, Default)]
 struct RuntimeMetricsState {
+    configured_scope_rows: BTreeMap<MetricsScopeKey, IndexerConfiguredScopeMetricsRow>,
     sync_rows: BTreeMap<MetricsScopeKey, RuntimeSyncMetricsRow>,
     chunk_rows: BTreeMap<MetricsScopeKey, IndexerChunkRuntimeMetricsRow>,
     onchain_worker_rows: BTreeMap<OnchainWorkerMetricsScopeKey, OnchainRefreshWorkerMetricsRow>,
@@ -254,7 +275,10 @@ impl MetricsSnapshotCache {
         };
         drop(state);
 
-        snapshot.chunk_runtime_rows = collect_runtime_metrics(&mut snapshot.sync_rows);
+        let (configured_scope_rows, chunk_runtime_rows) =
+            collect_runtime_metrics(&mut snapshot.sync_rows);
+        snapshot.configured_scope_rows = configured_scope_rows;
+        snapshot.chunk_runtime_rows = chunk_runtime_rows;
         snapshot.onchain_worker_rows = collect_onchain_worker_runtime_metrics();
         (snapshot, status)
     }
@@ -264,6 +288,7 @@ pub async fn record_indexer_latest_head(
     pool: &PgPool,
     record: &IndexerLatestHeadRecord,
 ) -> Result<(), MetricsError> {
+    record_indexer_head_observation(record);
     sqlx::query(
         r#"
         INSERT INTO degov_indexer_latest_head (
@@ -295,6 +320,73 @@ pub async fn record_indexer_latest_head(
     .await?;
 
     Ok(())
+}
+
+pub fn record_configured_indexer_scope(identity: &IndexerCheckpointIdentity, start_block: i64) {
+    let key = MetricsScopeKey {
+        dao_code: identity.dao_code.clone(),
+        chain_id: identity.chain_id,
+        contract_set_id: identity.contract_set_id.clone(),
+    };
+    let mut state = runtime_metrics_state()
+        .lock()
+        .expect("runtime metrics mutex is not poisoned");
+    state.configured_scope_rows.insert(
+        key,
+        IndexerConfiguredScopeMetricsRow {
+            dao_code: identity.dao_code.clone(),
+            chain_id: identity.chain_id,
+            contract_set_id: identity.contract_set_id.clone(),
+            start_block,
+        },
+    );
+}
+
+pub fn record_indexer_chain_pass(
+    identity: &IndexerCheckpointIdentity,
+    success: bool,
+    consecutive_failures: u64,
+) {
+    let row = runtime_chunk_row(identity);
+    let mut state = runtime_metrics_state()
+        .lock()
+        .expect("runtime metrics mutex is not poisoned");
+    let row = state.chunk_rows.entry(row.0).or_insert(row.1);
+    row.consecutive_failures = consecutive_failures;
+    if success {
+        row.chain_pass_success_total = row.chain_pass_success_total.saturating_add(1);
+        row.last_chain_pass_success_timestamp_seconds = Some(unix_timestamp_seconds());
+    } else {
+        row.chain_pass_failure_total = row.chain_pass_failure_total.saturating_add(1);
+    }
+}
+
+pub fn record_indexer_head_observation_for_identity(
+    identity: &IndexerCheckpointIdentity,
+    latest_height: i64,
+) {
+    let record = IndexerLatestHeadRecord {
+        dao_code: identity.dao_code.clone(),
+        chain_id: identity.chain_id,
+        contract_set_id: identity.contract_set_id.clone(),
+        stream_id: identity.stream_id.clone(),
+        data_source_version: identity.data_source_version.clone(),
+        latest_height,
+    };
+    record_indexer_head_observation(&record);
+}
+
+pub fn record_indexer_chunk_attempt(identity: &IndexerCheckpointIdentity, success: bool) {
+    let row = runtime_chunk_row(identity);
+    let mut state = runtime_metrics_state()
+        .lock()
+        .expect("runtime metrics mutex is not poisoned");
+    let row = state.chunk_rows.entry(row.0).or_insert(row.1);
+    if success {
+        row.chunk_attempts_success_total = row.chunk_attempts_success_total.saturating_add(1);
+    } else {
+        row.chunk_attempts_failure_total = row.chunk_attempts_failure_total.saturating_add(1);
+    }
 }
 
 pub async fn spawn_metrics_server(
@@ -369,7 +461,10 @@ pub async fn collect_indexer_metrics_snapshot(
     pool: &PgPool,
 ) -> Result<IndexerMetricsSnapshot, MetricsError> {
     let mut snapshot = collect_db_metrics_snapshot(pool).await?;
-    snapshot.chunk_runtime_rows = collect_runtime_metrics(&mut snapshot.sync_rows);
+    let (configured_scope_rows, chunk_runtime_rows) =
+        collect_runtime_metrics(&mut snapshot.sync_rows);
+    snapshot.configured_scope_rows = configured_scope_rows;
+    snapshot.chunk_runtime_rows = chunk_runtime_rows;
     snapshot.onchain_worker_rows = collect_onchain_worker_runtime_metrics();
 
     Ok(snapshot)
@@ -385,6 +480,7 @@ async fn collect_db_metrics_snapshot(
 
     Ok(IndexerMetricsSnapshot {
         sync_rows,
+        configured_scope_rows: Vec::new(),
         onchain_backlog_rows,
         deferred_onchain_backlog_rows,
         ..Default::default()
@@ -441,6 +537,56 @@ pub fn record_indexer_chunk_metrics(
     row.chunk_duration_seconds_count = row.chunk_duration_seconds_count.saturating_add(1);
     row.last_chunk_size = Some(observation.last_chunk_size);
     row.current_chunk_size = Some(observation.current_chunk_size);
+    row.last_forward_advance_timestamp_seconds = Some(unix_timestamp_seconds());
+}
+
+fn record_indexer_head_observation(record: &IndexerLatestHeadRecord) {
+    let key = MetricsScopeKey {
+        dao_code: record.dao_code.clone(),
+        chain_id: record.chain_id,
+        contract_set_id: record.contract_set_id.clone(),
+    };
+    let mut state = runtime_metrics_state()
+        .lock()
+        .expect("runtime metrics mutex is not poisoned");
+    let row =
+        state
+            .chunk_rows
+            .entry(key.clone())
+            .or_insert_with(|| IndexerChunkRuntimeMetricsRow {
+                dao_code: key.dao_code.clone(),
+                chain_id: key.chain_id,
+                contract_set_id: key.contract_set_id.clone(),
+                ..Default::default()
+            });
+    let now = unix_timestamp_seconds();
+    row.datalens_head_observed_timestamp_seconds = Some(now);
+    if row
+        .last_datalens_head_height
+        .is_none_or(|previous| record.latest_height > previous)
+    {
+        row.datalens_head_advanced_timestamp_seconds = Some(now);
+    }
+    row.last_datalens_head_height = Some(record.latest_height);
+}
+
+fn runtime_chunk_row(
+    identity: &IndexerCheckpointIdentity,
+) -> (MetricsScopeKey, IndexerChunkRuntimeMetricsRow) {
+    let key = MetricsScopeKey {
+        dao_code: identity.dao_code.clone(),
+        chain_id: identity.chain_id,
+        contract_set_id: identity.contract_set_id.clone(),
+    };
+    (
+        key.clone(),
+        IndexerChunkRuntimeMetricsRow {
+            dao_code: key.dao_code,
+            chain_id: key.chain_id,
+            contract_set_id: key.contract_set_id,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn record_onchain_refresh_worker_report(
@@ -556,6 +702,66 @@ pub fn render_prometheus_metrics_with_status(
         "degov_metrics_snapshot_stale",
         "Whether the DB-backed metrics snapshot is older than the configured freshness threshold.",
         "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_configured_scope_info",
+        "Configured DeGov indexer scope information.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_checkpoint_present",
+        "Whether a configured DeGov indexer scope has a durable checkpoint row.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_last_chain_pass_success_timestamp_seconds",
+        "Unix timestamp of the last successful DeGov indexer chain pass.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_last_forward_advance_timestamp_seconds",
+        "Unix timestamp of the last forward durable checkpoint advancement.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_consecutive_failures",
+        "Consecutive DeGov indexer contract set pass failures.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_chain_passes_total",
+        "DeGov indexer contract set passes by result.",
+        "counter",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_chunk_attempts_total",
+        "DeGov indexer chunk attempts by result.",
+        "counter",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_datalens_head_observed_timestamp_seconds",
+        "Unix timestamp of the last Datalens head observation.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_datalens_head_advanced_timestamp_seconds",
+        "Unix timestamp of the last Datalens head advancement.",
+        "gauge",
+    );
+    metric_header(
+        &mut output,
+        "degov_indexer_reorg_rollbacks_total",
+        "DeGov indexer reorg rollbacks.",
+        "counter",
     );
     metric_header(
         &mut output,
@@ -757,6 +963,27 @@ pub fn render_prometheus_metrics_with_status(
         i64::from(status.stale),
     );
 
+    for row in &snapshot.configured_scope_rows {
+        let labels = configured_scope_labels(row);
+        let checkpoint_present = snapshot.sync_rows.iter().any(|sync_row| {
+            sync_row.dao_code == row.dao_code
+                && sync_row.chain_id == row.chain_id
+                && sync_row.contract_set_id == row.contract_set_id
+        });
+        append_metric(
+            &mut output,
+            "degov_indexer_configured_scope_info",
+            &configured_scope_info_labels(row),
+            1,
+        );
+        append_metric(
+            &mut output,
+            "degov_indexer_checkpoint_present",
+            &labels,
+            i64::from(checkpoint_present),
+        );
+    }
+
     for row in &snapshot.sync_rows {
         let labels = sync_labels(row);
         append_optional_metric(
@@ -929,6 +1156,66 @@ pub fn render_prometheus_metrics_with_status(
             &labels,
             row.current_chunk_size,
         );
+        append_optional_metric(
+            &mut output,
+            "degov_indexer_last_chain_pass_success_timestamp_seconds",
+            &labels,
+            row.last_chain_pass_success_timestamp_seconds,
+        );
+        append_optional_metric(
+            &mut output,
+            "degov_indexer_last_forward_advance_timestamp_seconds",
+            &labels,
+            row.last_forward_advance_timestamp_seconds,
+        );
+        append_metric(
+            &mut output,
+            "degov_indexer_consecutive_failures",
+            &labels,
+            row.consecutive_failures,
+        );
+        append_metric(
+            &mut output,
+            "degov_indexer_chain_passes_total",
+            &result_labels(row, "success"),
+            row.chain_pass_success_total,
+        );
+        append_metric(
+            &mut output,
+            "degov_indexer_chain_passes_total",
+            &result_labels(row, "failure"),
+            row.chain_pass_failure_total,
+        );
+        append_metric(
+            &mut output,
+            "degov_indexer_chunk_attempts_total",
+            &result_labels(row, "success"),
+            row.chunk_attempts_success_total,
+        );
+        append_metric(
+            &mut output,
+            "degov_indexer_chunk_attempts_total",
+            &result_labels(row, "failure"),
+            row.chunk_attempts_failure_total,
+        );
+        append_optional_metric(
+            &mut output,
+            "degov_indexer_datalens_head_observed_timestamp_seconds",
+            &labels,
+            row.datalens_head_observed_timestamp_seconds,
+        );
+        append_optional_metric(
+            &mut output,
+            "degov_indexer_datalens_head_advanced_timestamp_seconds",
+            &labels,
+            row.datalens_head_advanced_timestamp_seconds,
+        );
+        append_metric(
+            &mut output,
+            "degov_indexer_reorg_rollbacks_total",
+            &labels,
+            row.reorg_rollbacks_total,
+        );
     }
 
     for row in &snapshot.onchain_worker_rows {
@@ -1014,7 +1301,10 @@ fn unix_timestamp_seconds() -> f64 {
 
 fn collect_runtime_metrics(
     sync_rows: &mut [IndexerSyncMetricsRow],
-) -> Vec<IndexerChunkRuntimeMetricsRow> {
+) -> (
+    Vec<IndexerConfiguredScopeMetricsRow>,
+    Vec<IndexerChunkRuntimeMetricsRow>,
+) {
     let state = runtime_metrics_state()
         .lock()
         .expect("runtime metrics mutex is not poisoned");
@@ -1030,7 +1320,10 @@ fn collect_runtime_metrics(
         }
     }
 
-    state.chunk_rows.values().cloned().collect()
+    (
+        state.configured_scope_rows.values().cloned().collect(),
+        state.chunk_rows.values().cloned().collect(),
+    )
 }
 
 fn runtime_metrics_state() -> &'static Mutex<RuntimeMetricsState> {
@@ -1203,6 +1496,22 @@ fn sync_labels(row: &IndexerSyncMetricsRow) -> Vec<(&'static str, String)> {
     ]
 }
 
+fn configured_scope_labels(row: &IndexerConfiguredScopeMetricsRow) -> Vec<(&'static str, String)> {
+    vec![
+        ("dao_code", row.dao_code.clone()),
+        ("chain_id", row.chain_id.to_string()),
+        ("contract_set_id", row.contract_set_id.clone()),
+    ]
+}
+
+fn configured_scope_info_labels(
+    row: &IndexerConfiguredScopeMetricsRow,
+) -> Vec<(&'static str, String)> {
+    let mut labels = configured_scope_labels(row);
+    labels.push(("start_block", row.start_block.to_string()));
+    labels
+}
+
 fn onchain_labels(row: &OnchainRefreshBacklogMetricsRow) -> Vec<(&'static str, String)> {
     vec![
         ("dao_code", row.dao_code.clone()),
@@ -1226,6 +1535,15 @@ fn cache_labels(
 ) -> Vec<(&'static str, String)> {
     let mut labels = chunk_labels(row);
     labels.push(("outcome", outcome.to_owned()));
+    labels
+}
+
+fn result_labels(
+    row: &IndexerChunkRuntimeMetricsRow,
+    result: &'static str,
+) -> Vec<(&'static str, String)> {
+    let mut labels = chunk_labels(row);
+    labels.push(("result", result.to_owned()));
     labels
 }
 
