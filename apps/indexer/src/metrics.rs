@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::Display,
     future::Future,
     sync::{Arc, Mutex, OnceLock},
@@ -100,7 +100,6 @@ pub struct IndexerChunkRuntimeMetricsRow {
     pub datalens_head_observed_timestamp_seconds: Option<f64>,
     pub datalens_head_advanced_timestamp_seconds: Option<f64>,
     pub last_datalens_head_height: Option<i64>,
-    pub reorg_rollbacks_total: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -342,21 +341,18 @@ pub fn record_configured_indexer_scope(identity: &IndexerCheckpointIdentity, sta
     );
 }
 
-pub fn record_indexer_chain_pass(
-    identity: &IndexerCheckpointIdentity,
-    success: bool,
-    consecutive_failures: u64,
-) {
+pub fn record_indexer_chain_pass(identity: &IndexerCheckpointIdentity, success: bool) {
     let row = runtime_chunk_row(identity);
     let mut state = runtime_metrics_state()
         .lock()
         .expect("runtime metrics mutex is not poisoned");
     let row = state.chunk_rows.entry(row.0).or_insert(row.1);
-    row.consecutive_failures = consecutive_failures;
     if success {
+        row.consecutive_failures = 0;
         row.chain_pass_success_total = row.chain_pass_success_total.saturating_add(1);
         row.last_chain_pass_success_timestamp_seconds = Some(unix_timestamp_seconds());
     } else {
+        row.consecutive_failures = row.consecutive_failures.saturating_add(1);
         row.chain_pass_failure_total = row.chain_pass_failure_total.saturating_add(1);
     }
 }
@@ -566,8 +562,8 @@ fn record_indexer_head_observation(record: &IndexerLatestHeadRecord) {
         .is_none_or(|previous| record.latest_height > previous)
     {
         row.datalens_head_advanced_timestamp_seconds = Some(now);
+        row.last_datalens_head_height = Some(record.latest_height);
     }
-    row.last_datalens_head_height = Some(record.latest_height);
 }
 
 fn runtime_chunk_row(
@@ -756,12 +752,6 @@ pub fn render_prometheus_metrics_with_status(
         "degov_indexer_datalens_head_advanced_timestamp_seconds",
         "Unix timestamp of the last Datalens head advancement.",
         "gauge",
-    );
-    metric_header(
-        &mut output,
-        "degov_indexer_reorg_rollbacks_total",
-        "DeGov indexer reorg rollbacks.",
-        "counter",
     );
     metric_header(
         &mut output,
@@ -963,13 +953,25 @@ pub fn render_prometheus_metrics_with_status(
         i64::from(status.stale),
     );
 
+    let checkpoint_keys = snapshot
+        .sync_rows
+        .iter()
+        .map(|row| {
+            (
+                row.dao_code.as_str(),
+                row.chain_id,
+                row.contract_set_id.as_str(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+
     for row in &snapshot.configured_scope_rows {
         let labels = configured_scope_labels(row);
-        let checkpoint_present = snapshot.sync_rows.iter().any(|sync_row| {
-            sync_row.dao_code == row.dao_code
-                && sync_row.chain_id == row.chain_id
-                && sync_row.contract_set_id == row.contract_set_id
-        });
+        let checkpoint_present = checkpoint_keys.contains(&(
+            row.dao_code.as_str(),
+            row.chain_id,
+            row.contract_set_id.as_str(),
+        ));
         append_metric(
             &mut output,
             "degov_indexer_configured_scope_info",
@@ -1209,12 +1211,6 @@ pub fn render_prometheus_metrics_with_status(
             "degov_indexer_datalens_head_advanced_timestamp_seconds",
             &labels,
             row.datalens_head_advanced_timestamp_seconds,
-        );
-        append_metric(
-            &mut output,
-            "degov_indexer_reorg_rollbacks_total",
-            &labels,
-            row.reorg_rollbacks_total,
         );
     }
 

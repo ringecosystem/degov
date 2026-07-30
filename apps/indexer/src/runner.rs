@@ -933,11 +933,21 @@ where
             let checkpoint_identity = self.options.checkpoint_identity.clone();
             let checkpoint_next_block_before = checkpoint.next_block;
             let write_started_at = Instant::now();
-            let mut transaction = self
-                .store
-                .begin_transaction()
-                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
+            let mut transaction = match self.store.begin_transaction() {
+                Ok(transaction) => transaction,
+                Err(error) => {
+                    crate::metrics::record_indexer_chunk_attempt(
+                        &self.options.checkpoint_identity,
+                        false,
+                    );
+                    return Err(transaction_error(&checkpoint_identity, range, error));
+                }
+            };
             if let Err(error) = transaction.apply_projection_batch(&processing.batch) {
+                crate::metrics::record_indexer_chunk_attempt(
+                    &self.options.checkpoint_identity,
+                    false,
+                );
                 return Err(rollback_transaction_after_error(
                     &checkpoint_identity,
                     range,
@@ -950,6 +960,10 @@ where
                 range.to_block,
                 Some(effective_target),
             ) {
+                crate::metrics::record_indexer_chunk_attempt(
+                    &self.options.checkpoint_identity,
+                    false,
+                );
                 return Err(rollback_transaction_after_error(
                     &checkpoint_identity,
                     range,
@@ -969,6 +983,10 @@ where
             if let Err(error) = transaction
                 .update_adaptive_chunk_state(&self.options.checkpoint_identity, &sizing_decision)
             {
+                crate::metrics::record_indexer_chunk_attempt(
+                    &self.options.checkpoint_identity,
+                    false,
+                );
                 return Err(rollback_transaction_after_error(
                     &checkpoint_identity,
                     range,
@@ -976,9 +994,13 @@ where
                     error,
                 ));
             }
-            transaction
-                .commit()
-                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
+            if let Err(error) = transaction.commit() {
+                crate::metrics::record_indexer_chunk_attempt(
+                    &self.options.checkpoint_identity,
+                    false,
+                );
+                return Err(transaction_error(&checkpoint_identity, range, error));
+            }
             let write_duration = write_started_at.elapsed();
             let (deferred_drain_count, deferred_drain_duration) =
                 self.drain_deferred_onchain_refresh_tasks(range);

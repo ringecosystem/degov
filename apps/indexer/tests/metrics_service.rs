@@ -75,7 +75,6 @@ fn test_prometheus_renderer_emits_indexer_sync_and_onchain_backlog_gauges() {
             datalens_head_observed_timestamp_seconds: Some(1_782_437_030.0),
             datalens_head_advanced_timestamp_seconds: Some(1_782_437_030.0),
             last_datalens_head_height: Some(12_209_940),
-            reorg_rollbacks_total: 0,
         }],
         onchain_worker_rows: vec![OnchainRefreshWorkerMetricsRow {
             scope: "contract_set".to_owned(),
