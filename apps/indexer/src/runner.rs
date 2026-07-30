@@ -851,6 +851,10 @@ where
             let processing = match self.process_range(range, effective_target) {
                 Ok(processing) => processing,
                 Err(error) => {
+                    crate::metrics::record_indexer_chunk_attempt(
+                        &self.options.checkpoint_identity,
+                        false,
+                    );
                     let failed_range_block_count = range_block_count(range);
                     if is_provider_limit_error(&error) && failed_range_block_count > 1 {
                         provider_limit_count_since_summary += 1;
@@ -929,11 +933,21 @@ where
             let checkpoint_identity = self.options.checkpoint_identity.clone();
             let checkpoint_next_block_before = checkpoint.next_block;
             let write_started_at = Instant::now();
-            let mut transaction = self
-                .store
-                .begin_transaction()
-                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
+            let mut transaction = match self.store.begin_transaction() {
+                Ok(transaction) => transaction,
+                Err(error) => {
+                    crate::metrics::record_indexer_chunk_attempt(
+                        &self.options.checkpoint_identity,
+                        false,
+                    );
+                    return Err(transaction_error(&checkpoint_identity, range, error));
+                }
+            };
             if let Err(error) = transaction.apply_projection_batch(&processing.batch) {
+                crate::metrics::record_indexer_chunk_attempt(
+                    &self.options.checkpoint_identity,
+                    false,
+                );
                 return Err(rollback_transaction_after_error(
                     &checkpoint_identity,
                     range,
@@ -946,6 +960,10 @@ where
                 range.to_block,
                 Some(effective_target),
             ) {
+                crate::metrics::record_indexer_chunk_attempt(
+                    &self.options.checkpoint_identity,
+                    false,
+                );
                 return Err(rollback_transaction_after_error(
                     &checkpoint_identity,
                     range,
@@ -965,6 +983,10 @@ where
             if let Err(error) = transaction
                 .update_adaptive_chunk_state(&self.options.checkpoint_identity, &sizing_decision)
             {
+                crate::metrics::record_indexer_chunk_attempt(
+                    &self.options.checkpoint_identity,
+                    false,
+                );
                 return Err(rollback_transaction_after_error(
                     &checkpoint_identity,
                     range,
@@ -972,9 +994,13 @@ where
                     error,
                 ));
             }
-            transaction
-                .commit()
-                .map_err(|error| transaction_error(&checkpoint_identity, range, error))?;
+            if let Err(error) = transaction.commit() {
+                crate::metrics::record_indexer_chunk_attempt(
+                    &self.options.checkpoint_identity,
+                    false,
+                );
+                return Err(transaction_error(&checkpoint_identity, range, error));
+            }
             let write_duration = write_started_at.elapsed();
             let (deferred_drain_count, deferred_drain_duration) =
                 self.drain_deferred_onchain_refresh_tasks(range);
@@ -1011,6 +1037,7 @@ where
                     current_chunk_size: sizing_decision.current_chunk_size,
                 },
             );
+            crate::metrics::record_indexer_chunk_attempt(&self.options.checkpoint_identity, true);
             info!(
                 "Datalens indexer chunk observed dao_code={} chain_id={} contract_set_id={} stream_id={} data_source_version={} configured_start_block={} from_block={} to_block={} target_height={} chunk_size={} datalens_request_count={} returned_row_count={} decoded_count={} projection_proposal_events={} projection_vote_events={} projection_token_events={} projection_timelock_events={} read_duration_ms={} decode_duration_ms={} project_duration_ms={} write_duration_ms={} local_processing_write_duration_ms={} total_duration_ms={} checkpoint_next_block_before={} checkpoint_advanced_to={} checkpoint_next_block_after={} synced_percentage={:.2} configured_range_synced_percentage={:.2} remaining_blocks={} current_rate_blocks_per_second={} eta_seconds={} datalens_retry_attempts=unavailable adaptive_chunk_size_before={} adaptive_chunk_size_after={} adaptive_reason={} adaptive_cache_full_hit_count={} adaptive_cache_partial_hit_count={} adaptive_cache_miss_count={} adaptive_cache_provider_fill_range_count={} adaptive_query_duration_max_ms={} onchain_refresh_deferred_drain_enabled={} onchain_refresh_deferred_drain_batch_size={} onchain_refresh_deferred_drain_count={} onchain_refresh_deferred_drain_duration_ms={}",
                 self.options.checkpoint_identity.dao_code,

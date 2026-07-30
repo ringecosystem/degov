@@ -814,6 +814,18 @@ async fn run_configured_contract_set_pass_result(
     pool: sqlx::PgPool,
     datalens_query_gate: Option<DatalensQueryConcurrencyGate>,
 ) -> std::result::Result<ContractSetPassOutcome, ContractSetPassError> {
+    let checkpoint_identity = crate::IndexerCheckpointIdentity {
+        dao_code: contract_set.dao_code.clone(),
+        chain_id: contract_set.contract.chain_id,
+        contract_set_id: contract_set.contract_set_id.clone(),
+        stream_id: runtime.checkpoint_stream_id.clone(),
+        data_source_version: runtime.data_source_version.clone(),
+    };
+    crate::metrics::record_configured_indexer_scope(
+        &checkpoint_identity,
+        contract_set.contract.start_block,
+    );
+
     let target_height = resolve_contract_set_target_height(runtime, &contract_set.config)
         .await
         .map_err(ContractSetPassError::setup)?;
@@ -840,6 +852,10 @@ async fn run_configured_contract_set_pass_result(
         }
         Err(error) => return Err(ContractSetPassError::setup(error)),
     };
+    crate::metrics::record_indexer_head_observation_for_identity(
+        &checkpoint_identity,
+        target_height,
+    );
     let report = match run_contract_set_pass(
         runtime.contract_set_mode,
         contract_runtime.clone(),
@@ -851,7 +867,10 @@ async fn run_configured_contract_set_pass_result(
     .await
     {
         Ok(report) => report,
-        Err(error) => return Err(error.with_contract_runtime(contract_runtime.clone())),
+        Err(error) => {
+            crate::metrics::record_indexer_chain_pass(&checkpoint_identity, false);
+            return Err(error.with_contract_runtime(contract_runtime.clone()));
+        }
     };
     cleanup_finalized_provisional_overlays(&contract_runtime, &contract_set, pool.clone())
         .await
@@ -869,6 +888,7 @@ async fn run_configured_contract_set_pass_result(
         report.last_progress.onchain_refresh_allowed
     );
 
+    crate::metrics::record_indexer_chain_pass(&checkpoint_identity, true);
     Ok(ContractSetPassOutcome { report })
 }
 

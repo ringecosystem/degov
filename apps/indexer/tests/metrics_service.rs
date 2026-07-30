@@ -27,6 +27,14 @@ fn test_prometheus_renderer_emits_indexer_sync_and_onchain_backlog_gauges() {
             current_rate_blocks_per_second: Some(4.5),
             eta_seconds: Some(52.2),
         }],
+        configured_scope_rows: vec![
+            degov_datalens_indexer::metrics::IndexerConfiguredScopeMetricsRow {
+                dao_code: "ring-dao".to_owned(),
+                chain_id: 46,
+                contract_set_id: "dao=ring-dao|chain=46|governor=0xgovernor".to_owned(),
+                start_block: 12_000_000,
+            },
+        ],
         onchain_backlog_rows: vec![OnchainRefreshBacklogMetricsRow {
             dao_code: "ring-dao".to_owned(),
             chain_id: 46,
@@ -57,6 +65,16 @@ fn test_prometheus_renderer_emits_indexer_sync_and_onchain_backlog_gauges() {
             chunk_duration_seconds_count: 2,
             last_chunk_size: Some(5000),
             current_chunk_size: Some(10000),
+            chunk_attempts_success_total: 2,
+            chunk_attempts_failure_total: 1,
+            last_chain_pass_success_timestamp_seconds: Some(1_782_437_010.0),
+            last_forward_advance_timestamp_seconds: Some(1_782_437_020.0),
+            consecutive_failures: 0,
+            chain_pass_success_total: 3,
+            chain_pass_failure_total: 1,
+            datalens_head_observed_timestamp_seconds: Some(1_782_437_030.0),
+            datalens_head_advanced_timestamp_seconds: Some(1_782_437_030.0),
+            last_datalens_head_height: Some(12_209_940),
         }],
         onchain_worker_rows: vec![OnchainRefreshWorkerMetricsRow {
             scope: "contract_set".to_owned(),
@@ -81,6 +99,12 @@ fn test_prometheus_renderer_emits_indexer_sync_and_onchain_backlog_gauges() {
         "degov_indexer_processed_height{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 12209673"
     ));
     assert!(output.contains(
+        "degov_indexer_configured_scope_info{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\",start_block=\"12000000\"} 1"
+    ));
+    assert!(output.contains(
+        "degov_indexer_checkpoint_present{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 1"
+    ));
+    assert!(output.contains(
         "degov_indexer_target_height{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 12209908"
     ));
     assert!(output.contains(
@@ -97,6 +121,21 @@ fn test_prometheus_renderer_emits_indexer_sync_and_onchain_backlog_gauges() {
     ));
     assert!(output.contains(
         "degov_indexer_current_rate_blocks_per_second{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 4.5"
+    ));
+    assert!(output.contains(
+        "degov_indexer_last_chain_pass_success_timestamp_seconds{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 1782437010"
+    ));
+    assert!(output.contains(
+        "degov_indexer_last_forward_advance_timestamp_seconds{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 1782437020"
+    ));
+    assert!(output.contains(
+        "degov_indexer_chain_passes_total{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\",result=\"success\"} 3"
+    ));
+    assert!(output.contains(
+        "degov_indexer_chunk_attempts_total{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\",result=\"failure\"} 1"
+    ));
+    assert!(output.contains(
+        "degov_indexer_datalens_head_observed_timestamp_seconds{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 1782437030"
     ));
     assert!(output.contains(
         "degov_indexer_eta_seconds{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 52.2"
