@@ -1,5 +1,12 @@
 import type { Config } from "@/types/config";
 
+import { cleanMetadataText, truncateMetadataText } from "./metadata-text.ts";
+
+export {
+  cleanMetadataText,
+  truncateMetadataText,
+} from "./metadata-text.ts";
+
 import type { Metadata } from "next";
 
 const DEFAULT_SITE_URL = "https://localhost";
@@ -61,33 +68,6 @@ function shortenProposalId(proposalId: string): string {
   }
 
   return `${proposalId.slice(0, 8)}...${proposalId.slice(-6)}`;
-}
-
-export function cleanMetadataText(value?: string | null): string {
-  if (!value) {
-    return "";
-  }
-
-  return value
-    .replace(/<[^>]+>/g, " ")
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^>\s?/gm, "")
-    .replace(/[`*_~]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function truncateMetadataText(
-  value: string,
-  maxLength: number
-): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 export function buildSiteMetadata(
