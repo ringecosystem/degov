@@ -24,7 +24,7 @@ const rootDir = path.resolve(
 const imagePath = path.join(
   rootDir,
   "apps/web/public",
-  SOCIAL_PREVIEW_IMAGE_PATH
+  SOCIAL_PREVIEW_IMAGE_PATH.slice(1)
 );
 
 const demoConfig: Config = {
