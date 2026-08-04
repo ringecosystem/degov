@@ -85,9 +85,21 @@
         "@type",
         "@id",
         "name",
-        "url",
-        "publisher"
+        "url"
       ],
+      "requiredEntityProperties": {
+        "Organization": [
+          "@id",
+          "name",
+          "url"
+        ],
+        "WebSite": [
+          "@id",
+          "name",
+          "url",
+          "publisher"
+        ]
+      },
       "forbiddenProperties": [
         "aggregateRating",
         "review",
@@ -370,7 +382,9 @@
         "name",
         "url",
         "mainEntityOfPage",
-        "itemListElement"
+        "itemListElement",
+        "position",
+        "item"
       ],
       "forbiddenProperties": [
         "dataset-without-license",
@@ -490,8 +504,7 @@
       "id": "ratings-reviews-fake-freshness",
       "rejectedTypes": [
         "AggregateRating",
-        "Review",
-        "fakeDateModified"
+        "Review"
       ],
       "reason": "Ratings, reviews, authors, and freshness dates must not be invented or derived from build/deploy time."
     },

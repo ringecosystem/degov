@@ -156,7 +156,8 @@ assert.match(contract.maintenance.changeRule, /visible-content evidence/);
 assert.match(contract.maintenance.changeRule, /rollback path/);
 
 for (const sourceKey of requiredSourceKeys) {
-  assert.match(contract.sourcePolicy[sourceKey], /^https:\/\//, `missing source ${sourceKey}`);
+  assert.equal(typeof contract.sourcePolicy[sourceKey], "string", `missing source ${sourceKey}`);
+  assert.match(contract.sourcePolicy[sourceKey], /^https:\/\//, `invalid source ${sourceKey}`);
 }
 assert.match(contract.sourcePolicy.sourceUseRule, /Schema existence alone is not approval/);
 
@@ -246,6 +247,36 @@ for (const forbiddenType of [
   );
 }
 
+const homeDecision = contract.pageClassDecisions.find(
+  (decision) => decision.id === "home.root"
+);
+assert.ok(homeDecision.requiredEntityProperties, "home.root must split entity properties");
+assert.deepEqual(homeDecision.requiredEntityProperties.Organization, [
+  "@id",
+  "name",
+  "url",
+]);
+assert.deepEqual(homeDecision.requiredEntityProperties.WebSite, [
+  "@id",
+  "name",
+  "url",
+  "publisher",
+]);
+assert.ok(
+  !homeDecision.requiredProperties.includes("publisher"),
+  "publisher must not be a shared home.root Organization/WebSite requirement"
+);
+
+const atlasDaoDecision = contract.pageClassDecisions.find(
+  (decision) => decision.id === "atlas.dao-detail"
+);
+for (const breadcrumbField of ["itemListElement", "position", "name", "item"]) {
+  assert.ok(
+    atlasDaoDecision.requiredProperties.includes(breadcrumbField),
+    `Atlas DAO breadcrumb mapping must require ${breadcrumbField}`
+  );
+}
+
 const datasetDecision = contract.pageClassDecisions.find(
   (decision) => decision.id === "atlas.dataset"
 );
@@ -277,6 +308,9 @@ for (const rejectionId of requiredExplicitRejectionIds) {
 }
 for (const rejection of contract.explicitRejections) {
   assert.ok(rejection.rejectedTypes.length > 0, `${rejection.id} rejectedTypes`);
+  for (const rejectedType of rejection.rejectedTypes) {
+    assert.match(rejectedType, /^[A-Z][A-Za-z]+$/, `${rejection.id} rejected type ${rejectedType}`);
+  }
   assert.ok(rejection.reason.length > 60, `${rejection.id} reason`);
 }
 
