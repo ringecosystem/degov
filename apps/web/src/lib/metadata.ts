@@ -4,6 +4,11 @@ import type { Metadata } from "next";
 
 const DEFAULT_SITE_URL = "https://localhost";
 const DEFAULT_TWITTER_HANDLE = "@ai_degov";
+export const SOCIAL_PREVIEW_IMAGE_PATH =
+  "/assets/image/degov-social-preview.png";
+export const SOCIAL_PREVIEW_IMAGE_WIDTH = 1200;
+export const SOCIAL_PREVIEW_IMAGE_HEIGHT = 630;
+export const SOCIAL_PREVIEW_IMAGE_TYPE = "image/png";
 const TITLE_MAX_LENGTH = 120;
 const DESCRIPTION_MAX_LENGTH = 220;
 
@@ -11,8 +16,28 @@ function getMetadataBase(siteUrl?: string): URL {
   return new URL(siteUrl ?? DEFAULT_SITE_URL);
 }
 
-function buildDefaultOgImageUrl(siteUrl?: string): string {
-  return new URL("/assets/image/og.png", siteUrl ?? DEFAULT_SITE_URL).toString();
+type SocialPreviewImage = {
+  url: string;
+  width: number;
+  height: number;
+  type: string;
+  alt: string;
+};
+
+function buildSocialPreviewImage(
+  siteUrl: string | undefined,
+  alt: string
+): SocialPreviewImage {
+  return {
+    url: new URL(
+      SOCIAL_PREVIEW_IMAGE_PATH,
+      siteUrl ?? DEFAULT_SITE_URL
+    ).toString(),
+    width: SOCIAL_PREVIEW_IMAGE_WIDTH,
+    height: SOCIAL_PREVIEW_IMAGE_HEIGHT,
+    type: SOCIAL_PREVIEW_IMAGE_TYPE,
+    alt,
+  };
 }
 
 function getPublicSiteUrl(config: Config | null | undefined): string | undefined {
@@ -73,7 +98,10 @@ export function buildSiteMetadata(
   const publicSiteUrl = getPublicSiteUrl(config);
   const siteUrl = publicSiteUrl ?? DEFAULT_SITE_URL;
   const metadataBase = getMetadataBase(siteUrl);
-  const ogImageUrl = buildDefaultOgImageUrl(siteUrl);
+  const socialImage = buildSocialPreviewImage(
+    siteUrl,
+    `${daoName} DAO governance share card`
+  );
 
   return {
     title: {
@@ -96,20 +124,26 @@ export function buildSiteMetadata(
       url: siteUrl,
       images: [
         {
-          url: ogImageUrl,
-          width: 512,
-          height: 512,
-          alt: `${daoName} - DAO governance platform`,
+          url: socialImage.url,
+          width: socialImage.width,
+          height: socialImage.height,
+          type: socialImage.type,
+          alt: socialImage.alt,
         },
       ],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       site: DEFAULT_TWITTER_HANDLE,
       creator: DEFAULT_TWITTER_HANDLE,
       title: `${daoName} - Powered by DeGov.AI`,
       description,
-      images: [ogImageUrl],
+      images: [
+        {
+          url: socialImage.url,
+          alt: socialImage.alt,
+        },
+      ],
     },
     other: {
       configName: daoName,
@@ -148,7 +182,6 @@ export function buildProposalMetadata({
   const daoName = config?.name || "DeGov";
   const publicSiteUrl = getPublicSiteUrl(config);
   const siteUrl = publicSiteUrl ?? DEFAULT_SITE_URL;
-  const ogImageUrl = buildDefaultOgImageUrl(siteUrl);
   const normalizedTitle = cleanMetadataText(title);
   const normalizedDescription = cleanMetadataText(description);
   const proposalTitle = truncateMetadataText(
@@ -162,6 +195,10 @@ export function buildProposalMetadata({
   );
   const proposalUrl = new URL(`/proposal/${proposalId}`, siteUrl).toString();
   const socialTitle = `${proposalTitle} | ${daoName}`;
+  const socialImage = buildSocialPreviewImage(
+    siteUrl,
+    `${daoName} proposal share card`
+  );
 
   return {
     title: proposalTitle,
@@ -179,20 +216,26 @@ export function buildProposalMetadata({
       url: proposalUrl,
       images: [
         {
-          url: ogImageUrl,
-          width: 512,
-          height: 512,
-          alt: `${daoName} proposal share card`,
+          url: socialImage.url,
+          width: socialImage.width,
+          height: socialImage.height,
+          type: socialImage.type,
+          alt: socialImage.alt,
         },
       ],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       site: DEFAULT_TWITTER_HANDLE,
       creator: DEFAULT_TWITTER_HANDLE,
       title: socialTitle,
       description: proposalDescription,
-      images: [ogImageUrl],
+      images: [
+        {
+          url: socialImage.url,
+          alt: socialImage.alt,
+        },
+      ],
     },
   };
 }
@@ -206,7 +249,10 @@ export function buildProposalDirectoryMetadata(
   const proposalDirectoryUrl = new URL("/proposals", siteUrl).toString();
   const title = `${daoName} proposals`;
   const description = `Browse public governance proposals for ${daoName} on DeGov.AI.`;
-  const ogImageUrl = buildDefaultOgImageUrl(siteUrl);
+  const socialImage = buildSocialPreviewImage(
+    siteUrl,
+    `${daoName} proposals share card`
+  );
 
   return {
     title,
@@ -224,20 +270,26 @@ export function buildProposalDirectoryMetadata(
       url: proposalDirectoryUrl,
       images: [
         {
-          url: ogImageUrl,
-          width: 512,
-          height: 512,
-          alt: `${daoName} proposals`,
+          url: socialImage.url,
+          width: socialImage.width,
+          height: socialImage.height,
+          type: socialImage.type,
+          alt: socialImage.alt,
         },
       ],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       site: DEFAULT_TWITTER_HANDLE,
       creator: DEFAULT_TWITTER_HANDLE,
       title,
       description,
-      images: [ogImageUrl],
+      images: [
+        {
+          url: socialImage.url,
+          alt: socialImage.alt,
+        },
+      ],
     },
   };
 }
