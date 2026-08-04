@@ -1,0 +1,981 @@
+{
+  "version": 1,
+  "ownerIssue": "https://github.com/ringecosystem/degov/issues/1027",
+  "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
+  "updatedAt": "2026-08-04",
+  "maintenance": {
+    "ownerRepository": "ringecosystem/degov",
+    "contractPath": "docs/spec/seo-geo-content-provenance-contract.json",
+    "localCheck": "pnpm run test:seo-geo-content-provenance",
+    "changeRule": "A priority intent, claim owner, freshness rule, provenance rule, audit result, implementation follow-up, baseline claim, or completion claim may change only with an owner issue, source evidence, validation method, and #714-linked rationale.",
+    "closeIssueWhen": "The content/provenance contract is approved, repository-specific implementation issues are linked for approved content gaps, every changed factual page cites appropriate evidence, pre-change query/citation/search baseline is saved for the first content cohort, and #714 has the final evidence summary."
+  },
+  "sourcePolicy": {
+    "searchCrawlerObservabilityBaseline": "docs/spec/search-crawler-observability-baseline.json",
+    "structuredDataContract": "docs/spec/seo-geo-structured-data-contract.json",
+    "routeContract": "docs/spec/seo-geo-route-contract.json",
+    "socialPreviewContract": "docs/spec/seo-geo-social-preview-contract.json",
+    "sourceUseRule": "Repository contracts may define required evidence and owner surfaces, but factual page changes must cite primary or first-party sources adjacent to the affected claim where available. Do not copy third-party descriptions without ownership or licensing authority."
+  },
+  "priorityIntents": [
+    {
+      "id": "product-definition",
+      "question": "What is DeGov and who is it for?",
+      "claimGroups": [
+        "degov-product-purpose",
+        "target-users",
+        "product-boundaries"
+      ],
+      "canonicalOwnerSurface": "home",
+      "canonicalRepository": "ringecosystem/degov-home",
+      "secondarySurfaces": [
+        "docs",
+        "square",
+        "atlas",
+        "dao-sites"
+      ],
+      "expectedAnswerShape": "Direct definition near the page start, product surfaces named distinctly, and links to Docs, Square, Atlas, and representative DAO sites.",
+      "baselineRequired": true
+    },
+    {
+      "id": "product-relationship",
+      "question": "How do the official site, Docs, Square, DAO deployments, and Atlas relate?",
+      "claimGroups": [
+        "surface-purpose",
+        "cross-product-navigation",
+        "canonical-source-map"
+      ],
+      "canonicalOwnerSurface": "home",
+      "canonicalRepository": "ringecosystem/degov-home",
+      "secondarySurfaces": [
+        "docs",
+        "square",
+        "atlas",
+        "dao-sites"
+      ],
+      "expectedAnswerShape": "A crawlable product relationship explanation with each surface linking to its canonical live destination.",
+      "baselineRequired": true
+    },
+    {
+      "id": "supported-governance",
+      "question": "Which chains and governance models are supported?",
+      "claimGroups": [
+        "supported-chain",
+        "governance-model",
+        "deployment-configuration"
+      ],
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "secondarySurfaces": [
+        "home",
+        "dao-sites",
+        "atlas"
+      ],
+      "expectedAnswerShape": "Supported chains and governance models are stated with configuration authority and links to implementation or registry evidence.",
+      "baselineRequired": true
+    },
+    {
+      "id": "dao-onboarding",
+      "question": "How are DAOs added or deployed?",
+      "claimGroups": [
+        "dao-addition-workflow",
+        "deployment-prerequisites",
+        "configuration-authority"
+      ],
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "secondarySurfaces": [
+        "home",
+        "square",
+        "dao-sites"
+      ],
+      "expectedAnswerShape": "Workflow steps and prerequisites are explicit, current, and linked to the owning configuration or setup guide.",
+      "baselineRequired": true
+    },
+    {
+      "id": "proposal-lifecycle",
+      "question": "How do proposal lifecycle, voting, delegation, quorum, proposal thresholds, and timelocks work?",
+      "claimGroups": [
+        "proposal-state",
+        "vote-method",
+        "delegation",
+        "quorum",
+        "proposal-threshold",
+        "timelock"
+      ],
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "secondarySurfaces": [
+        "dao-sites",
+        "atlas"
+      ],
+      "expectedAnswerShape": "Definitions distinguish generic governance concepts from DAO-specific values and link to live proposal or contract evidence where relevant.",
+      "baselineRequired": true
+    },
+    {
+      "id": "indexing-data-freshness",
+      "question": "How is governance data indexed, and what do indexing lag/status states mean?",
+      "claimGroups": [
+        "indexer-source",
+        "indexing-lag",
+        "sync-status",
+        "data-as-of"
+      ],
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov",
+      "secondarySurfaces": [
+        "atlas",
+        "dao-sites"
+      ],
+      "expectedAnswerShape": "Indexing behavior states source, lag/status meaning, and data-as-of semantics without presenting rebuild time as content freshness.",
+      "baselineRequired": true
+    },
+    {
+      "id": "dao-entity-facts",
+      "question": "What is the identity, official site, chain, contract, governance model, and current activity of a particular DAO?",
+      "claimGroups": [
+        "dao-identity",
+        "official-dao-link",
+        "chain",
+        "contract",
+        "governance-model",
+        "current-activity"
+      ],
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "secondarySurfaces": [
+        "square",
+        "atlas"
+      ],
+      "expectedAnswerShape": "DAO-specific pages expose visible identity, chain/contract evidence, canonical links, and activity freshness from primary sources.",
+      "baselineRequired": true
+    },
+    {
+      "id": "objective-comparison",
+      "question": "How does DeGov compare objectively with Snapshot, Tally, or direct Governor interfaces?",
+      "claimGroups": [
+        "comparison-scope",
+        "feature-evidence",
+        "unsupported-claim-boundary"
+      ],
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "secondarySurfaces": [
+        "home"
+      ],
+      "expectedAnswerShape": "Comparisons are factual, dated, sourced, and avoid unsupported superiority or proprietary score claims.",
+      "baselineRequired": true
+    },
+    {
+      "id": "atlas-square-methodology",
+      "question": "What are the sources and limitations of Atlas, Square, and DAO data?",
+      "claimGroups": [
+        "source-coverage",
+        "methodology",
+        "limitations",
+        "computed-metric"
+      ],
+      "canonicalOwnerSurface": "atlas",
+      "canonicalRepository": "ringecosystem/degov-agent-api",
+      "secondarySurfaces": [
+        "square",
+        "dao-sites",
+        "docs"
+      ],
+      "expectedAnswerShape": "Methodology pages identify source coverage, exclusions, computed metrics, data-as-of, and links to primary evidence.",
+      "baselineRequired": true
+    }
+  ],
+  "claimOwnership": [
+    {
+      "claimGroup": "degov-product-purpose",
+      "canonicalOwnerSurface": "home",
+      "canonicalRepository": "ringecosystem/degov-home",
+      "claimKind": "product-copy",
+      "requiredEvidence": [
+        "first-party product page",
+        "current navigation target"
+      ],
+      "duplicateRisk": "Docs, Square, Atlas, and DAO pages should summarize and link to the home owner instead of independently maintaining positioning copy.",
+      "freshnessAuthority": "product owner review"
+    },
+    {
+      "claimGroup": "surface-purpose",
+      "canonicalOwnerSurface": "home",
+      "canonicalRepository": "ringecosystem/degov-home",
+      "claimKind": "product-copy",
+      "requiredEvidence": [
+        "crawlable cross-product link",
+        "surface description"
+      ],
+      "duplicateRisk": "Cross-product descriptions can drift when copied into each repository without a source owner.",
+      "freshnessAuthority": "product owner review"
+    },
+    {
+      "claimGroup": "supported-chain",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "configuration source",
+        "implementation support statement"
+      ],
+      "duplicateRisk": "Marketing pages must not list chains beyond documented support.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "governance-model",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "methodology page",
+        "protocol or contract source"
+      ],
+      "duplicateRisk": "DAO-specific values must not overwrite generic definitions.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "proposal-state",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "on-chain-fact",
+      "requiredEvidence": [
+        "proposal source",
+        "chain or contract reference",
+        "data-as-of"
+      ],
+      "duplicateRisk": "Atlas and Square must link to the proposal authority instead of storing independently stale proposal status text.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "indexing-lag",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "indexed-observation",
+      "requiredEvidence": [
+        "indexer status source",
+        "sync time",
+        "methodology explanation"
+      ],
+      "duplicateRisk": "Application pages should show status and link to methodology rather than editorialize lag in multiple places.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "dao-identity",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "on-chain-fact",
+      "requiredEvidence": [
+        "validated DAO registry record",
+        "canonical DAO URL",
+        "visible DAO name"
+      ],
+      "duplicateRisk": "Square and Atlas must use the validated DAO identity and canonical URL rather than local aliases.",
+      "freshnessAuthority": "registry validation"
+    },
+    {
+      "claimGroup": "official-dao-link",
+      "canonicalOwnerSurface": "square",
+      "canonicalRepository": "ringecosystem/degov-square",
+      "claimKind": "indexed-observation",
+      "requiredEvidence": [
+        "validated DAO registry URL",
+        "raw HTML link"
+      ],
+      "duplicateRisk": "Links copied outside registry authority can point to aliases, development hosts, or retired DAO sites.",
+      "freshnessAuthority": "registry validation"
+    },
+    {
+      "claimGroup": "computed-metric",
+      "canonicalOwnerSurface": "atlas",
+      "canonicalRepository": "ringecosystem/degov-agent-api",
+      "claimKind": "computed-metric",
+      "requiredEvidence": [
+        "methodology",
+        "source coverage",
+        "data-as-of",
+        "exclusions"
+      ],
+      "duplicateRisk": "DAO pages must not repeat Atlas metrics without method, time, and source context.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "comparison-scope",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "dated comparison source",
+        "factual feature evidence"
+      ],
+      "duplicateRisk": "Unsupported competitor claims can drift quickly and should not be copied into marketing or DAO pages.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "target-users",
+      "canonicalOwnerSurface": "home",
+      "canonicalRepository": "ringecosystem/degov-home",
+      "claimKind": "product-copy",
+      "requiredEvidence": [
+        "first-party product page",
+        "product owner approval"
+      ],
+      "duplicateRisk": "Target audience copy can drift if independently rewritten across Docs, Square, Atlas, and DAO templates.",
+      "freshnessAuthority": "product owner review"
+    },
+    {
+      "claimGroup": "product-boundaries",
+      "canonicalOwnerSurface": "home",
+      "canonicalRepository": "ringecosystem/degov-home",
+      "claimKind": "product-copy",
+      "requiredEvidence": [
+        "first-party product page",
+        "linked product surface"
+      ],
+      "duplicateRisk": "Product boundaries can drift when secondary surfaces describe features they do not own.",
+      "freshnessAuthority": "product owner review"
+    },
+    {
+      "claimGroup": "cross-product-navigation",
+      "canonicalOwnerSurface": "home",
+      "canonicalRepository": "ringecosystem/degov-home",
+      "claimKind": "product-copy",
+      "requiredEvidence": [
+        "rendered HTML link",
+        "validated production URL"
+      ],
+      "duplicateRisk": "Copied navigation targets can become stale, wrong-host, or client-only links.",
+      "freshnessAuthority": "product owner review"
+    },
+    {
+      "claimGroup": "canonical-source-map",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "source ownership table",
+        "linked canonical surface"
+      ],
+      "duplicateRisk": "A missing source map lets surfaces duplicate factual answers and diverge over time.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "deployment-configuration",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "configuration source",
+        "deployment guide"
+      ],
+      "duplicateRisk": "Deployment details copied into marketing or DAO pages can become stale after configuration changes.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "dao-addition-workflow",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "workflow guide",
+        "configuration authority"
+      ],
+      "duplicateRisk": "DAO addition steps can drift when Square or DAO pages repeat onboarding instructions locally.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "deployment-prerequisites",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "deployment guide",
+        "supported configuration source"
+      ],
+      "duplicateRisk": "Prerequisites copied into other products can become stale when deployment support changes.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "configuration-authority",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "configuration repository or registry",
+        "owner-approved guide"
+      ],
+      "duplicateRisk": "Configuration authority can drift if pages cite unvalidated or retired sources.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "vote-method",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "governance methodology",
+        "proposal or contract example"
+      ],
+      "duplicateRisk": "Vote method definitions can drift from DAO-specific contract behavior.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "delegation",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "delegation methodology",
+        "contract or live DAO example"
+      ],
+      "duplicateRisk": "Delegation explanations can become stale if DAO templates summarize protocol behavior independently.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "quorum",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "on-chain-fact",
+      "requiredEvidence": [
+        "proposal source",
+        "contract or chain reference"
+      ],
+      "duplicateRisk": "Quorum values are DAO-specific and can drift if copied into generic Docs or Atlas summaries.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "proposal-threshold",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "on-chain-fact",
+      "requiredEvidence": [
+        "contract source",
+        "data-as-of"
+      ],
+      "duplicateRisk": "Proposal threshold values can drift if repeated away from the DAO source page.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "timelock",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "on-chain-fact",
+      "requiredEvidence": [
+        "timelock contract",
+        "proposal execution source"
+      ],
+      "duplicateRisk": "Timelock state can drift when Atlas or Docs summarize live DAO execution values.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "indexer-source",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "indexed-observation",
+      "requiredEvidence": [
+        "indexer source configuration",
+        "methodology"
+      ],
+      "duplicateRisk": "Indexer source descriptions can become stale if copied into Atlas and DAO pages without the owning methodology.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "sync-status",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "indexed-observation",
+      "requiredEvidence": [
+        "sync status value",
+        "data-as-of"
+      ],
+      "duplicateRisk": "Sync status claims can drift when secondary pages present a stale observation as current.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "data-as-of",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "indexed-observation",
+      "requiredEvidence": [
+        "source timestamp",
+        "sync status"
+      ],
+      "duplicateRisk": "Freshness text can drift if build dates or cache times are copied as source data freshness.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "chain",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "on-chain-fact",
+      "requiredEvidence": [
+        "validated DAO registry record",
+        "chain identifier"
+      ],
+      "duplicateRisk": "Chain identity can drift when Square or Atlas use local aliases instead of validated registry authority.",
+      "freshnessAuthority": "registry validation"
+    },
+    {
+      "claimGroup": "contract",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "on-chain-fact",
+      "requiredEvidence": [
+        "contract address",
+        "chain or explorer source"
+      ],
+      "duplicateRisk": "Contract references can become stale or wrong-chain when copied across surfaces.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "current-activity",
+      "canonicalOwnerSurface": "dao-sites",
+      "canonicalRepository": "ringecosystem/degov",
+      "claimKind": "indexed-observation",
+      "requiredEvidence": [
+        "proposal list",
+        "data-as-of"
+      ],
+      "duplicateRisk": "Current activity summaries can drift quickly when copied into Square or Atlas.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "feature-evidence",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "dated comparison source",
+        "first-party feature documentation"
+      ],
+      "duplicateRisk": "Feature evidence can drift if marketing copy repeats comparison details without dated review.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "unsupported-claim-boundary",
+      "canonicalOwnerSurface": "docs",
+      "canonicalRepository": "ringecosystem/degov-docs",
+      "claimKind": "editorial-content",
+      "requiredEvidence": [
+        "comparison caveat",
+        "owner approval"
+      ],
+      "duplicateRisk": "Unsupported claim boundaries can disappear when short summaries are copied across product pages.",
+      "freshnessAuthority": "docs review"
+    },
+    {
+      "claimGroup": "source-coverage",
+      "canonicalOwnerSurface": "atlas",
+      "canonicalRepository": "ringecosystem/degov-agent-api",
+      "claimKind": "computed-metric",
+      "requiredEvidence": [
+        "coverage statement",
+        "included and excluded sources"
+      ],
+      "duplicateRisk": "Source coverage can drift when metrics are copied without the Atlas methodology owner.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "methodology",
+      "canonicalOwnerSurface": "atlas",
+      "canonicalRepository": "ringecosystem/degov-agent-api",
+      "claimKind": "computed-metric",
+      "requiredEvidence": [
+        "methodology page",
+        "data-as-of"
+      ],
+      "duplicateRisk": "Methodology summaries can become stale when repeated on DAO pages without linking to the Atlas owner.",
+      "freshnessAuthority": "source data-as-of"
+    },
+    {
+      "claimGroup": "limitations",
+      "canonicalOwnerSurface": "atlas",
+      "canonicalRepository": "ringecosystem/degov-agent-api",
+      "claimKind": "computed-metric",
+      "requiredEvidence": [
+        "known limitations",
+        "coverage gaps"
+      ],
+      "duplicateRisk": "Limitations are often lost when computed metrics are copied into shorter product summaries.",
+      "freshnessAuthority": "source data-as-of"
+    }
+  ],
+  "pageQualityContract": {
+    "directAnswerRule": "Priority pages must answer the primary user question near the beginning before deep navigation or marketing copy.",
+    "canonicalUrlRule": "Every priority factual page must have one stable canonical URL that agrees with metadata, internal links, sitemap inclusion, and structured-data URL rules when JSON-LD is emitted.",
+    "headingRule": "Headings must describe the page topic and entity clearly enough for users, crawlers, and assistive technology to scan.",
+    "definitionRule": "Reusable definitions may be summarized on secondary surfaces, but the canonical definition must remain owned by one surface and linked from copies.",
+    "sourceRule": "Factual claims must link to primary or first-party evidence where available, and citation text must support the adjacent claim.",
+    "entityRule": "Entity names, aliases, chains, contracts, DAO URLs, and source links must be visible and disambiguated.",
+    "statusRule": "Data pages must distinguish on-chain facts, indexed observations, computed metrics, and editorial explanation.",
+    "historyRule": "Completed or historical proposal pages should remain crawlable unless privacy, legal, or product policy requires removal.",
+    "caveatRule": "Known source coverage gaps, unsupported models, stale data, or unverifiable claims must be visible instead of hidden in code or comments."
+  },
+  "freshnessContract": {
+    "contentReviewedAt": "Use for editorial review time only. Do not update it merely because the application was rebuilt or deployed.",
+    "contentUpdatedAt": "Use only when user-visible factual or editorial content changes.",
+    "sourceDataAsOf": "Use for indexed, on-chain, registry, or external source data freshness.",
+    "syncStatus": "Use for indexer or fetch status, and keep it separate from page publish/update timestamps.",
+    "stalenessQueueRule": "A priority page with expired source coverage, old review time, or failed source verification must enter a dated review queue before any freshness claim is shown.",
+    "unknownFreshnessRule": "When the source cannot prove precise freshness, show a bounded caveat instead of a precise timestamp."
+  },
+  "provenanceContract": {
+    "primaryEvidencePreference": [
+      "on-chain contract or transaction",
+      "DAO proposal source",
+      "validated DAO registry record",
+      "official DAO site",
+      "first-party DeGov documentation",
+      "methodology or source coverage page"
+    ],
+    "computedMetricRule": "Computed metrics must identify formula or method, included sources, excluded sources, data-as-of, and known limitations.",
+    "citationSupportRule": "A citation must support the adjacent claim; a general homepage or unrelated documentation page is not enough evidence for a specific chain, contract, status, or comparison claim.",
+    "coverageGapRule": "Known source gaps must be visible when they materially affect an answer, metric, or comparison.",
+    "thirdPartyCopyRule": "Do not copy third-party DAO or competitor descriptions unless ownership or licensing authority is documented."
+  },
+  "internalLinkContract": {
+    "home": [
+      "Docs",
+      "Square",
+      "Atlas",
+      "representative DAO site"
+    ],
+    "docs": [
+      "canonical live examples",
+      "DAO deployment/configuration authority",
+      "methodology or source coverage"
+    ],
+    "square": [
+      "canonical DAO governance site",
+      "official DAO link when verified"
+    ],
+    "dao-sites": [
+      "DAO context",
+      "proposal source",
+      "related proposals",
+      "official discussion or source evidence"
+    ],
+    "atlas": [
+      "canonical DAO governance site",
+      "primary proposal/source evidence",
+      "methodology and data limitations"
+    ],
+    "linkAvailabilityRule": "Priority links must be available in rendered HTML without wallet connection, client-only initialization, or authentication."
+  },
+  "contentKindRules": [
+    {
+      "kind": "product-copy",
+      "definition": "First-party positioning, value proposition, product relationship, and conversion-oriented explanation.",
+      "allowedSurfaces": [
+        "home",
+        "docs"
+      ],
+      "requiredFreshness": [
+        "content-reviewed-at"
+      ],
+      "forbiddenClaims": [
+        "unsupported ranking promise",
+        "unsupported competitor superiority",
+        "hidden SEO text"
+      ]
+    },
+    {
+      "kind": "editorial-content",
+      "definition": "Definitions, workflows, methodology, setup guidance, and explainers owned by an editorial or product surface.",
+      "allowedSurfaces": [
+        "docs",
+        "home",
+        "atlas"
+      ],
+      "requiredFreshness": [
+        "content-reviewed-at",
+        "content-updated-at when changed"
+      ],
+      "forbiddenClaims": [
+        "fake author",
+        "fake review date",
+        "third-party copy without authority"
+      ]
+    },
+    {
+      "kind": "on-chain-fact",
+      "definition": "DAO, proposal, contract, vote, delegation, quorum, threshold, timelock, and lifecycle facts from chain or protocol sources.",
+      "allowedSurfaces": [
+        "dao-sites",
+        "atlas",
+        "docs"
+      ],
+      "requiredFreshness": [
+        "source-data-as-of",
+        "chain or contract source"
+      ],
+      "forbiddenClaims": [
+        "build date as update date",
+        "unverified source"
+      ]
+    },
+    {
+      "kind": "indexed-observation",
+      "definition": "Facts observed by DeGov services from registries, chain reads, crawled proposal sources, or indexed data stores.",
+      "allowedSurfaces": [
+        "square",
+        "dao-sites",
+        "atlas",
+        "docs"
+      ],
+      "requiredFreshness": [
+        "source-data-as-of",
+        "sync-status"
+      ],
+      "forbiddenClaims": [
+        "complete coverage when gaps exist",
+        "precise freshness without source support"
+      ]
+    },
+    {
+      "kind": "computed-metric",
+      "definition": "Derived metrics, aggregate summaries, scores, and analysis generated from source data.",
+      "allowedSurfaces": [
+        "atlas",
+        "dao-sites"
+      ],
+      "requiredFreshness": [
+        "methodology",
+        "source-data-as-of",
+        "coverage and exclusions"
+      ],
+      "forbiddenClaims": [
+        "black-box metric without method",
+        "score as ranking guarantee"
+      ]
+    }
+  ],
+  "representativeSurfaceAudits": [
+    {
+      "id": "home.root",
+      "surface": "home",
+      "repository": "ringecosystem/degov-home",
+      "representativeUrl": "https://degov.ai/",
+      "auditStatus": "contract-required",
+      "requiredChecks": [
+        "direct-answer",
+        "product-relationship-links",
+        "canonical-url",
+        "source-owner-for-product-copy"
+      ],
+      "gapPriority": "high",
+      "followUpRequired": true
+    },
+    {
+      "id": "docs.representative-page",
+      "surface": "docs",
+      "repository": "ringecosystem/degov-docs",
+      "representativeUrl": "https://docs.degov.ai/",
+      "auditStatus": "contract-required",
+      "requiredChecks": [
+        "direct-answer",
+        "primary-source-links",
+        "reviewed-updated-date-separation",
+        "live-example-links"
+      ],
+      "gapPriority": "high",
+      "followUpRequired": true
+    },
+    {
+      "id": "square.directory",
+      "surface": "square",
+      "repository": "ringecosystem/degov-square",
+      "representativeUrl": "https://square.degov.ai/",
+      "auditStatus": "contract-required",
+      "requiredChecks": [
+        "canonical-dao-links",
+        "visible-directory-content",
+        "registry-source-authority",
+        "no-client-only-links"
+      ],
+      "gapPriority": "high",
+      "followUpRequired": true
+    },
+    {
+      "id": "dao.home",
+      "surface": "dao-sites",
+      "repository": "ringecosystem/degov",
+      "representativeUrl": "https://demo.degov.ai/",
+      "auditStatus": "contract-required",
+      "requiredChecks": [
+        "visible-dao-identity",
+        "chain-contract-source",
+        "proposal-discovery-links",
+        "data-as-of-or-status"
+      ],
+      "gapPriority": "high",
+      "followUpRequired": true
+    },
+    {
+      "id": "dao.proposal-detail",
+      "surface": "dao-sites",
+      "repository": "ringecosystem/degov",
+      "representativeUrl": "https://demo.degov.ai/proposal/<id>",
+      "auditStatus": "contract-required",
+      "requiredChecks": [
+        "preserved-historical-page",
+        "proposal-source-link",
+        "visible-state-and-freshness",
+        "no-fake-date"
+      ],
+      "gapPriority": "high",
+      "followUpRequired": true
+    },
+    {
+      "id": "atlas.dao-detail",
+      "surface": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "representativeUrl": "https://atlas.degov.ai/",
+      "auditStatus": "contract-required",
+      "requiredChecks": [
+        "methodology-link",
+        "source-coverage",
+        "canonical-dao-link",
+        "computed-metric-caveat"
+      ],
+      "gapPriority": "medium",
+      "followUpRequired": true
+    }
+  ],
+  "gapPrioritization": {
+    "high": "Blocks a priority answer, canonical entity relationship, primary source citation, or source freshness claim for a public page.",
+    "medium": "Improves citation support, internal discovery, or methodology clarity after high-priority answerability gaps are handled.",
+    "low": "Polish or secondary-copy cleanup that does not change a priority answer or source trust outcome.",
+    "orderingRule": "Prioritize gaps by user value and citation value, not word count or volume of generated pages."
+  },
+  "baselinePlan": {
+    "requiredBeforeFirstContentCohort": true,
+    "querySet": [
+      "What is DeGov?",
+      "What are DeGov Square and DeGov Atlas?",
+      "Which chains and governance models does DeGov support?",
+      "How do DeGov proposals and voting work?",
+      "How does DeGov know whether governance data is fresh?",
+      "Where is the canonical governance site for a representative DAO?",
+      "What are the sources and limitations of DeGov Atlas data?"
+    ],
+    "requiredEvidence": [
+      "dated query text",
+      "surface and URL inspected",
+      "current canonical answer page or gap",
+      "citation/source-support result",
+      "search or answer-engine observation when available",
+      "known limitations"
+    ],
+    "storageRule": "Save raw baseline evidence in an approved repository issue, workspace, or measurement store before changing the first content cohort.",
+    "noScoreRule": "Do not collapse answerability, source support, freshness, and citation correctness into one proprietary GEO score."
+  },
+  "repositoryFollowUps": [
+    {
+      "repository": "ringecosystem/degov-home",
+      "surface": "home",
+      "scope": "Add or revise crawlable product definition, product relationship links, and source-owned product copy after baseline capture.",
+      "issueRequired": true,
+      "blocksClose": true
+    },
+    {
+      "repository": "ringecosystem/degov-docs",
+      "surface": "docs",
+      "scope": "Add or revise priority definition, workflow, supported chain/governance model, onboarding, proposal lifecycle, and source/freshness methodology pages.",
+      "issueRequired": true,
+      "blocksClose": true
+    },
+    {
+      "repository": "ringecosystem/degov-square",
+      "surface": "square",
+      "scope": "Expose crawlable canonical DAO links and source authority notes without duplicating product or DAO facts.",
+      "issueRequired": true,
+      "blocksClose": true
+    },
+    {
+      "repository": "ringecosystem/degov",
+      "surface": "dao-sites",
+      "scope": "Improve DAO and proposal page answerability with visible identity, proposal source, chain/contract evidence, source freshness, and preserved historical context.",
+      "issueRequired": true,
+      "blocksClose": true
+    },
+    {
+      "repository": "ringecosystem/degov-agent-api",
+      "surface": "atlas",
+      "scope": "Expose Atlas methodology, source coverage, limitations, computed metric provenance, and canonical DAO/source links.",
+      "issueRequired": true,
+      "blocksClose": true
+    }
+  ],
+  "explicitRejections": [
+    {
+      "id": "mass-thin-pages",
+      "rejectedPractice": "Mass-generating DAO, location, or keyword pages without distinct user value and source evidence.",
+      "reason": "Thin pages add crawl surface without improving answerability or citation support.",
+      "releaseBlocking": true
+    },
+    {
+      "id": "hidden-seo-text",
+      "rejectedPractice": "Adding text hidden from users only to influence search or answer engines.",
+      "reason": "Hidden SEO text violates the visible-content principle and creates trust risk.",
+      "releaseBlocking": true
+    },
+    {
+      "id": "fake-freshness",
+      "rejectedPractice": "Using build time, deploy time, or generated time as content reviewed/updated time.",
+      "reason": "Freshness must describe content review or source data state, not application rebuilds.",
+      "releaseBlocking": true
+    },
+    {
+      "id": "unsupported-competitor-claims",
+      "rejectedPractice": "Publishing competitor comparison or superiority claims without dated factual evidence and owner approval.",
+      "reason": "Unsupported comparisons are likely to drift and may be misleading.",
+      "releaseBlocking": true
+    },
+    {
+      "id": "source-free-computed-metrics",
+      "rejectedPractice": "Publishing scores, rankings, or metrics without methodology, source coverage, exclusions, and data-as-of.",
+      "reason": "Computed metrics must be explainable and auditable before they are answerable.",
+      "releaseBlocking": true
+    },
+    {
+      "id": "third-party-copy-without-authority",
+      "rejectedPractice": "Copying third-party DAO or competitor descriptions without ownership or licensing authority.",
+      "reason": "Unlicensed copied content is a legal and trust risk and can create duplicate-content drift.",
+      "releaseBlocking": true
+    }
+  ],
+  "validation": {
+    "ciChecks": [
+      "contract-json-parse",
+      "priority-intent-coverage",
+      "claim-owner-coverage",
+      "surface-audit-coverage",
+      "content-kind-distinction",
+      "freshness-provenance-rules",
+      "follow-up-blockers",
+      "explicit-rejection-coverage",
+      "baseline-plan-required"
+    ],
+    "manualChecks": [
+      "representative-page-raw-html-audit",
+      "primary-source-link-readback",
+      "query-citation-baseline",
+      "owner-approval-for-content-change",
+      "post-release-search-or-answer-observation"
+    ],
+    "releaseBlockingFailures": [
+      "fake-date-or-build-time-freshness",
+      "hidden-seo-text",
+      "unsupported-competitor-claim",
+      "factual-page-without-source",
+      "copied-third-party-description-without-authority",
+      "computed-metric-without-methodology",
+      "priority-content-change-before-baseline",
+      "client-only-critical-link",
+      "duplicate-canonical-answer-owner"
+    ],
+    "rollback": "Revert the affected content or metadata change if source evidence, freshness semantics, canonical ownership, or visible answerability cannot be proven. Keep the baseline record and #714 rationale intact."
+  }
+}
