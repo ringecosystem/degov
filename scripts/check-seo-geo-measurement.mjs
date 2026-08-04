@@ -245,9 +245,12 @@ const serializedEvents = JSON.stringify(contract.eventContracts);
 for (const sensitiveValue of ["wallet_address", "vote_choice", "auth_token"]) {
   assert.match(serializedEvents, new RegExp(sensitiveValue), `missing event exclusion ${sensitiveValue}`);
 }
+const referredEngagedVisitEvent = contract.eventContracts.find(
+  (event) => event.name === "degov_referred_engaged_visit"
+);
+assert.ok(referredEngagedVisitEvent, "missing degov_referred_engaged_visit event");
 assert.match(
-  contract.eventContracts.find((event) => event.name === "degov_referred_engaged_visit")
-    .testProcedure,
+  referredEngagedVisitEvent.testProcedure,
   /direct\/unknown is not reclassified as AI/
 );
 

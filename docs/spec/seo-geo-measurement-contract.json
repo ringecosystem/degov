@@ -370,7 +370,7 @@
       ],
       "prohibitedSensitiveParameters": [
         "wallet_address",
-        "ens_name",
+        "ens_identity",
         "vote_choice",
         "token_balance",
         "voting_power",
