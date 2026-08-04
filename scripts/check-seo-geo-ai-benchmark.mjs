@@ -47,7 +47,7 @@ const requiredRunFields = new Set([
 const requiredProviderIds = new Set([
   "chatgpt-search",
   "perplexity",
-  "copilot",
+  "microsoft-copilot",
   "google-ai-mode-or-overview",
   "bing-ai-performance",
 ]);
@@ -186,9 +186,16 @@ const providerIds = new Set(contract.providerCoverage.map((provider) => provider
 for (const providerId of requiredProviderIds) {
   assert.ok(providerIds.has(providerId), `missing provider ${providerId}`);
 }
+for (const provider of contract.providerCoverage) {
+  assert.ok(provider.description.length > 40, `${provider.id} description`);
+}
 assert.equal(
   contract.providerCoverage.find((provider) => provider.id === "bing-ai-performance").status,
   "separate-channel-report"
+);
+assert.match(
+  contract.providerCoverage.find((provider) => provider.id === "microsoft-copilot").description,
+  /distinct from GitHub Copilot/
 );
 
 assertUnique(contract.evaluationDimensions, "id", "evaluation dimensions");
@@ -220,6 +227,7 @@ assert.match(contract.privacyAndStorage.automationRule, /provider terms/);
 
 assert.equal(contract.baselineState.firstBaselineStatus, "not-run");
 assert.equal(contract.baselineState.requiredBeforeExperimentClaims, true);
+assert.match(contract.baselineState.fixtureLockRule, /exact demo\.degov\.ai proposal ID/);
 for (const evidence of requiredBaselineEvidence) {
   assert.ok(contract.baselineState.requiredEvidence.includes(evidence), `missing baseline evidence ${evidence}`);
 }
