@@ -143,9 +143,11 @@ const accessStates = new Set([
   "confirmed",
 ]);
 const observationStates = new Set(["observed", "not-observed", "access-gap", "known-gap"]);
+const gapObservationStates = new Set(["not-observed", "access-gap", "known-gap"]);
 const requiredRetentionAggregationFields = new Set([
   "surface",
   "host",
+  "pathGroup",
   "crawlerPurpose",
   "identityVerification",
   "statusGroup",
@@ -156,6 +158,7 @@ const requiredRetentionRedactionRules = new Set([
   "remove-request-id-before-publication",
   "remove-user-level-identifiers",
   "remove-wallet-addresses",
+  "truncate-or-hash-paths-when-sensitive",
 ]);
 
 assert.equal(contract.version, 1);
@@ -285,6 +288,11 @@ assert.match(
   /Delete raw private logs/,
   "retention policy must require raw private log deletion"
 );
+assert.match(
+  contract.retentionPolicy.samplingRule,
+  /must not be committed/,
+  "retention policy must keep raw samples out of committed evidence"
+);
 
 const crawlerPurposeIds = new Set(
   contract.crawlerPurposes.map((purpose) => purpose.id)
@@ -309,119 +317,143 @@ for (const event of requiredAnnotationEvents) {
 }
 assert.deepEqual(contract.changeAnnotationModel.comparisonWindowsDays, [7, 28, 90]);
 
-const baselineReport = contract.baselineReports.find(
-  (report) => report.id === "baseline-2026-08-04-public-readback"
-);
-assert.ok(baselineReport, "missing dated baseline report");
-assert.equal(baselineReport.date, "2026-08-04");
-assert.equal(baselineReport.result, "mixed");
-assert.equal(
-  baselineReport.linkedUmbrellaIssue,
-  "https://github.com/ringecosystem/degov/issues/714"
-);
-assert.ok(
-  Number.isFinite(Date.parse(baselineReport.collectionStartedAt)),
-  "baseline report must record collectionStartedAt"
-);
-assert.ok(
-  Number.isFinite(Date.parse(baselineReport.collectionEndedAt)),
-  "baseline report must record collectionEndedAt"
-);
-assert.deepEqual(baselineReport.comparisonWindowsDays, [7, 28, 90]);
-assert.ok(Array.isArray(baselineReport.collectionMethods));
-assert.ok(baselineReport.collectionMethods.length >= 2);
-const collectionMethodIds = new Set();
-for (const method of baselineReport.collectionMethods) {
-  assert.ok(!collectionMethodIds.has(method.id), `duplicate collection method ${method.id}`);
-  collectionMethodIds.add(method.id);
-  assert.ok(method.ownerRole.length > 3, `${method.id} ownerRole`);
-  assert.ok(method.dataSource.length > 3, `${method.id} dataSource`);
-  assert.ok(method.reproducibleStep.length > 20, `${method.id} reproducibleStep`);
-  assert.match(method.evidenceLink, /^https:\/\/github\.com\/ringecosystem\/degov\//);
-}
-assert.ok(Array.isArray(baselineReport.surfaceResults));
-assert.equal(
-  baselineReport.surfaceResults.length,
-  new Set(baselineReport.surfaceResults.map((surface) => surface.surface)).size,
-  "baseline surface results must be unique"
-);
-const baselineSurfaceIds = new Set(
-  baselineReport.surfaceResults.map((surface) => surface.surface)
-);
-for (const surfaceId of requiredSurfaceIds) {
-  assert.ok(baselineSurfaceIds.has(surfaceId), `missing baseline surface ${surfaceId}`);
-}
-for (const surface of baselineReport.surfaceResults) {
-  assert.ok(requiredSurfaceIds.has(surface.surface), `unexpected baseline surface ${surface.surface}`);
-  assert.ok(surface.summary.length > 20, `${surface.surface} summary`);
-  assert.ok(Array.isArray(surface.metricResults), `${surface.surface} metricResults`);
-  assert.equal(
-    surface.metricResults.length,
-    new Set(surface.metricResults.map((metric) => metric.metric)).size,
-    `${surface.surface} metric results must be unique`
-  );
-  const metricResultIds = new Set(
-    surface.metricResults.map((metric) => metric.metric)
-  );
-  for (const metricGroupId of requiredMetricGroupIds) {
-    assert.ok(
-      metricResultIds.has(metricGroupId),
-      `missing ${surface.surface} metric result ${metricGroupId}`
-    );
-  }
-  for (const metric of surface.metricResults) {
-    assert.ok(requiredMetricGroupIds.has(metric.metric), `unexpected metric result ${metric.metric}`);
-    assert.ok(
-      observationStates.has(metric.observationState),
-      `${surface.surface}/${metric.metric} observationState`
-    );
-    assert.ok(metric.ownerRole.length > 3, `${surface.surface}/${metric.metric} ownerRole`);
-    assert.ok(metric.dataSource.length > 3, `${surface.surface}/${metric.metric} dataSource`);
-    assert.ok(
-      collectionMethodIds.has(metric.collectionMethod),
-      `${surface.surface}/${metric.metric} collectionMethod`
-    );
-    assert.match(
-      metric.evidenceLink,
-      /^https:\/\/github\.com\/ringecosystem\/degov\//,
-      `${surface.surface}/${metric.metric} evidenceLink`
-    );
-  }
-}
-assert.ok(
-  baselineReport.surfaceResults.some(
-    (surface) => surface.surface === "dao-sites" && surface.status === "known-fail"
-  ),
-  "missing DAO known-fail baseline"
-);
-assert.equal(baselineReport.privatePlatformData.googleSearchConsole, "access-gap");
-assert.equal(baselineReport.privatePlatformData.bingWebmasterTools, "access-gap");
-assert.equal(baselineReport.privatePlatformData.cdnServerLogs, "access-gap");
-
-assert.ok(Array.isArray(baselineReport.outcomeClaims));
-assert.ok(baselineReport.outcomeClaims.length > 0, "missing outcome claims");
 const claimRules = contract.reportingRules.claimRules;
 assert.deepEqual(claimRules.requiredFields, ["claim", "basis", "limitations"]);
 assert.equal(claimRules.successRequiresAtLeastTwoNonVanityEvidenceTypes, true);
 assert.equal(claimRules.singleMetricSuccessForbidden, true);
 const allowedOutcomeBasis = new Set(claimRules.allowedOutcomeBasis);
-for (const outcomeClaim of baselineReport.outcomeClaims) {
-  for (const field of claimRules.requiredFields) {
-    assert.ok(
-      Object.hasOwn(outcomeClaim, field),
-      `outcome claim missing field ${field}`
-    );
+const allowedClaims = new Set(contract.reportingRules.allowedClaims);
+assert.equal(contract.baselineReports.length, 1, "version 1 permits one dated baseline report");
+const baselineReport = contract.baselineReports.find(
+  (report) => report.id === "baseline-2026-08-04-public-readback"
+);
+assert.ok(baselineReport, "missing dated baseline report");
+
+for (const report of contract.baselineReports) {
+  assert.equal(report.date, "2026-08-04");
+  assert.equal(report.result, "mixed");
+  assert.equal(
+    report.linkedUmbrellaIssue,
+    "https://github.com/ringecosystem/degov/issues/714"
+  );
+  assert.ok(
+    Number.isFinite(Date.parse(report.collectionStartedAt)),
+    `${report.id} must record collectionStartedAt`
+  );
+  assert.ok(
+    Number.isFinite(Date.parse(report.collectionEndedAt)),
+    `${report.id} must record collectionEndedAt`
+  );
+  assert.deepEqual(report.comparisonWindowsDays, [7, 28, 90]);
+  assert.ok(Array.isArray(report.collectionMethods));
+  assert.ok(report.collectionMethods.length >= 2);
+  const collectionMethodIds = new Set();
+  for (const method of report.collectionMethods) {
+    assert.ok(!collectionMethodIds.has(method.id), `duplicate collection method ${method.id}`);
+    collectionMethodIds.add(method.id);
+    assert.ok(method.ownerRole.length > 3, `${method.id} ownerRole`);
+    assert.ok(method.dataSource.length > 3, `${method.id} dataSource`);
+    assert.ok(method.reproducibleStep.length > 20, `${method.id} reproducibleStep`);
+    assert.match(method.evidenceLink, /^https:\/\/github\.com\/ringecosystem\/degov\//);
   }
-  assert.ok(outcomeClaim.claim.length > 3);
-  assert.ok(Array.isArray(outcomeClaim.basis));
-  assert.ok(Array.isArray(outcomeClaim.limitations));
-  for (const basis of outcomeClaim.basis) {
-    assert.ok(allowedOutcomeBasis.has(basis), `unsupported outcome basis ${basis}`);
+
+  assert.ok(Array.isArray(report.surfaceResults));
+  assert.equal(
+    report.surfaceResults.length,
+    new Set(report.surfaceResults.map((surface) => surface.surface)).size,
+    "baseline surface results must be unique"
+  );
+  const baselineSurfaceIds = new Set(
+    report.surfaceResults.map((surface) => surface.surface)
+  );
+  for (const surfaceId of requiredSurfaceIds) {
+    assert.ok(baselineSurfaceIds.has(surfaceId), `missing baseline surface ${surfaceId}`);
+  }
+  for (const surface of report.surfaceResults) {
+    assert.ok(requiredSurfaceIds.has(surface.surface), `unexpected baseline surface ${surface.surface}`);
+    assert.ok(surface.summary.length > 20, `${surface.surface} summary`);
+    assert.ok(Array.isArray(surface.metricResults), `${surface.surface} metricResults`);
+    assert.equal(
+      surface.metricResults.length,
+      new Set(surface.metricResults.map((metric) => metric.metric)).size,
+      `${surface.surface} metric results must be unique`
+    );
+    const metricResultIds = new Set(
+      surface.metricResults.map((metric) => metric.metric)
+    );
+    for (const metricGroupId of requiredMetricGroupIds) {
+      assert.ok(
+        metricResultIds.has(metricGroupId),
+        `missing ${surface.surface} metric result ${metricGroupId}`
+      );
+    }
+    for (const metric of surface.metricResults) {
+      assert.ok(requiredMetricGroupIds.has(metric.metric), `unexpected metric result ${metric.metric}`);
+      assert.ok(
+        observationStates.has(metric.observationState),
+        `${surface.surface}/${metric.metric} observationState`
+      );
+      assert.ok(metric.ownerRole.length > 3, `${surface.surface}/${metric.metric} ownerRole`);
+      assert.ok(metric.dataSource.length > 3, `${surface.surface}/${metric.metric} dataSource`);
+      assert.ok(
+        collectionMethodIds.has(metric.collectionMethod),
+        `${surface.surface}/${metric.metric} collectionMethod`
+      );
+      assert.match(
+        metric.evidenceLink,
+        /^https:\/\/github\.com\/ringecosystem\/degov\//,
+        `${surface.surface}/${metric.metric} evidenceLink`
+      );
+      if (metric.observationState === "observed") {
+        assert.ok(metric.payload && typeof metric.payload === "object", `${surface.surface}/${metric.metric} payload`);
+        for (const field of metricRequirements[metric.metric]) {
+          assert.ok(
+            Object.hasOwn(metric.payload, field),
+            `${surface.surface}/${metric.metric} payload missing ${field}`
+          );
+        }
+      }
+      if (gapObservationStates.has(metric.observationState)) {
+        assert.ok(metric.gapReason.length > 20, `${surface.surface}/${metric.metric} gapReason`);
+      }
+    }
   }
   assert.ok(
-    outcomeClaim.limitations.includes("no-ranking-or-traffic-impact-claim"),
-    "baseline outcome claims must avoid ranking or traffic impact claims"
+    report.surfaceResults.some(
+      (surface) => surface.surface === "dao-sites" && surface.status === "known-fail"
+    ),
+    "missing DAO known-fail baseline"
   );
+  assert.equal(report.privatePlatformData.googleSearchConsole, "access-gap");
+  assert.equal(report.privatePlatformData.bingWebmasterTools, "access-gap");
+  assert.equal(report.privatePlatformData.cdnServerLogs, "access-gap");
+
+  assert.ok(Array.isArray(report.outcomeClaims));
+  assert.ok(report.outcomeClaims.length > 0, "missing outcome claims");
+  for (const outcomeClaim of report.outcomeClaims) {
+    for (const field of claimRules.requiredFields) {
+      assert.ok(
+        Object.hasOwn(outcomeClaim, field),
+        `outcome claim missing field ${field}`
+      );
+    }
+    assert.ok(allowedClaims.has(outcomeClaim.claim), `unsupported claim ${outcomeClaim.claim}`);
+    assert.ok(Array.isArray(outcomeClaim.basis));
+    assert.ok(outcomeClaim.basis.length >= 2, "outcome claim needs at least two basis entries");
+    assert.equal(
+      outcomeClaim.basis.length,
+      new Set(outcomeClaim.basis).size,
+      "outcome claim basis entries must be unique"
+    );
+    assert.ok(Array.isArray(outcomeClaim.limitations));
+    for (const basis of outcomeClaim.basis) {
+      assert.ok(allowedOutcomeBasis.has(basis), `unsupported outcome basis ${basis}`);
+    }
+    assert.ok(
+      outcomeClaim.limitations.includes("no-ranking-or-traffic-impact-claim"),
+      "baseline outcome claims must avoid ranking or traffic impact claims"
+    );
+  }
 }
 
 const forbiddenSignals = new Set(contract.reportingRules.forbiddenSuccessSignals);
