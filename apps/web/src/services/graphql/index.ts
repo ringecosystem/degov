@@ -520,6 +520,12 @@ export const delegateService = {
 };
 
 type IndexerStatusQueryVariant = "provisionalHeight" | "base";
+type CachedIndexerStatusQueryVariant = {
+  key: IndexerStatusQueryVariant;
+  cachedAt: number;
+};
+
+const BASE_INDEXER_STATUS_VARIANT_RETRY_MS = 5 * 60 * 1000;
 
 const indexerStatusQueryVariants: Array<{
   key: IndexerStatusQueryVariant;
@@ -537,7 +543,7 @@ const indexerStatusQueryVariants: Array<{
 
 const indexerStatusQueryVariantByEndpoint = new Map<
   string,
-  IndexerStatusQueryVariant
+  CachedIndexerStatusQueryVariant
 >();
 
 const isUnsupportedIndexerStatusFieldError = (error: unknown) => {
@@ -553,13 +559,17 @@ const fetchIndexerStatusWithQuery = async (endpoint: string, query: string) => {
 export const indexerStatusService = {
   getIndexerStatus: async (endpoint: string) => {
     const cachedVariant = indexerStatusQueryVariantByEndpoint.get(endpoint);
-    const variants = cachedVariant && cachedVariant !== "base"
+    const shouldPrioritizeCachedVariant =
+      cachedVariant &&
+      (cachedVariant.key !== "base" ||
+        Date.now() - cachedVariant.cachedAt < BASE_INDEXER_STATUS_VARIANT_RETRY_MS);
+    const variants = shouldPrioritizeCachedVariant
       ? [
           ...indexerStatusQueryVariants.filter(
-            (variant) => variant.key === cachedVariant
+            (variant) => variant.key === cachedVariant.key
           ),
           ...indexerStatusQueryVariants.filter(
-            (variant) => variant.key !== cachedVariant
+            (variant) => variant.key !== cachedVariant.key
           ),
         ]
       : indexerStatusQueryVariants;
@@ -570,9 +580,10 @@ export const indexerStatusService = {
           endpoint,
           variant.query
         );
-        if (variant.key !== "base") {
-          indexerStatusQueryVariantByEndpoint.set(endpoint, variant.key);
-        }
+        indexerStatusQueryVariantByEndpoint.set(endpoint, {
+          key: variant.key,
+          cachedAt: Date.now(),
+        });
         return indexerStatus;
       } catch (error) {
         if (

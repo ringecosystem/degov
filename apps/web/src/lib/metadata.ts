@@ -80,11 +80,6 @@ export function buildSiteMetadata(
       default: `${daoName}`,
     },
     description,
-    alternates: getPublicSiteUrl(config)
-      ? {
-          canonical: getPublicSiteUrl(config),
-        }
-      : undefined,
     icons: config?.logo
       ? {
           icon: [{ url: config.logo }],
@@ -117,6 +112,21 @@ export function buildSiteMetadata(
     },
     other: {
       configName: daoName,
+    },
+  };
+}
+
+export function buildHomeMetadata(
+  config: Config | null | undefined
+): Metadata {
+  const publicSiteUrl = getPublicSiteUrl(config);
+  if (!publicSiteUrl) {
+    return {};
+  }
+
+  return {
+    alternates: {
+      canonical: publicSiteUrl,
     },
   };
 }

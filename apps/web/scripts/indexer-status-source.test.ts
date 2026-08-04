@@ -40,6 +40,15 @@ test("indexer status query requests native status fields", () => {
   assert.doesNotMatch(source, new RegExp(removedStatusField));
 });
 
+test("indexer status fallback caches base variant without blocking upgrades forever", () => {
+  const source = readSource("src/services/graphql/index.ts");
+
+  assert.match(source, /BASE_INDEXER_STATUS_VARIANT_RETRY_MS/);
+  assert.match(source, /cachedAt/);
+  assert.match(source, /variant\.key === "base"/);
+  assert.match(source, /indexerStatusQueryVariantByEndpoint\.set/);
+});
+
 test("indexer status tooltip includes confirmed safe height", () => {
   const source = readSource("src/components/indexer-status.tsx");
 

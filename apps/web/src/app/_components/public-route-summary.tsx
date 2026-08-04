@@ -101,9 +101,10 @@ export function ProposalDetailPublicSummary({
   if (!proposal) {
     return (
       <section className="rounded-[14px] bg-card p-[20px] shadow-card">
-        <h1 className="text-[26px] font-extrabold">Proposal not found</h1>
+        <h1 className="text-[26px] font-extrabold">{config.name} proposal</h1>
         <p className="mt-[10px] text-[14px] text-muted-foreground">
-          No indexed proposal with this identifier is currently available for {config.name}.
+          Proposal data is not indexed yet. The page will continue checking whether this proposal
+          exists on-chain.
         </p>
       </section>
     );
