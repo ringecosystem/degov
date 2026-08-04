@@ -27,17 +27,32 @@ export function DaoPublicSummary({ config }: { config: Config }) {
           View proposals
         </Link>
         {facts.officialWebsiteUrl ? (
-          <a className="underline" href={facts.officialWebsiteUrl}>
+          <a
+            className="underline"
+            href={facts.officialWebsiteUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Official website
           </a>
         ) : null}
         {facts.discussionUrl ? (
-          <a className="underline" href={facts.discussionUrl}>
+          <a
+            className="underline"
+            href={facts.discussionUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Discussion
           </a>
         ) : null}
         {facts.registrySourceUrl ? (
-          <a className="underline" href={facts.registrySourceUrl}>
+          <a
+            className="underline"
+            href={facts.registrySourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Registry source
           </a>
         ) : null}
@@ -57,7 +72,12 @@ export function DaoPublicSummary({ config }: { config: Config }) {
           <dt className="text-muted-foreground">Governor contract</dt>
           <dd>
             {facts.contracts.governor.url ? (
-              <a className="underline" href={facts.contracts.governor.url}>
+              <a
+                className="underline"
+                href={facts.contracts.governor.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {facts.contracts.governor.address}
               </a>
             ) : (
@@ -69,7 +89,12 @@ export function DaoPublicSummary({ config }: { config: Config }) {
           <dt className="text-muted-foreground">Governance token</dt>
           <dd>
             {facts.contracts.governanceToken.url ? (
-              <a className="underline" href={facts.contracts.governanceToken.url}>
+              <a
+                className="underline"
+                href={facts.contracts.governanceToken.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {facts.contracts.governanceToken.address}
               </a>
             ) : (
@@ -83,7 +108,12 @@ export function DaoPublicSummary({ config }: { config: Config }) {
             <dt className="text-muted-foreground">Timelock contract</dt>
             <dd>
               {facts.contracts.timelock.url ? (
-                <a className="underline" href={facts.contracts.timelock.url}>
+                <a
+                  className="underline"
+                  href={facts.contracts.timelock.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   {facts.contracts.timelock.address}
                 </a>
               ) : (
@@ -93,7 +123,7 @@ export function DaoPublicSummary({ config }: { config: Config }) {
           </div>
         ) : null}
         <div>
-          <dt className="text-muted-foreground">Registry start block</dt>
+          <dt className="text-muted-foreground">Indexer start block</dt>
           <dd>{facts.indexer.startBlock}</dd>
         </div>
       </dl>

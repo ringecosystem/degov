@@ -81,7 +81,7 @@ test("DAO homepage provenance facts expose canonical registry and contract sourc
 test("DAO homepage provenance facts reject non-http external links", () => {
   const facts = buildDaoPublicSummaryFacts({
     ...liskConfig,
-    siteUrl: "javascript:alert(1)",
+    siteUrl: " https://user:password@lisk.degov.ai ",
     links: { website: "data:text/html,phish" },
     offChainDiscussionUrl: "mailto:security@example.com",
     editLink: "/relative",
@@ -99,4 +99,13 @@ test("DAO homepage provenance facts reject non-http external links", () => {
   assert.equal(facts.contracts.governor.url, null);
   assert.equal(facts.contracts.governanceToken.url, null);
   assert.equal(facts.contracts.timelock?.url, null);
+});
+
+test("DAO homepage provenance facts trim safe URLs", () => {
+  const facts = buildDaoPublicSummaryFacts({
+    ...liskConfig,
+    links: { website: " https://lisk.com/docs " },
+  });
+
+  assert.equal(facts.officialWebsiteUrl, "https://lisk.com/docs");
 });

@@ -1,10 +1,12 @@
 import type { Config } from "@/types/config";
 
 function safeExternalUrl(value?: string | null): string | null {
-  if (!value) return null;
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
 
   try {
-    const url = new URL(value);
+    const url = new URL(trimmed);
+    if (url.username || url.password) return null;
     return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
   } catch {
     return null;
